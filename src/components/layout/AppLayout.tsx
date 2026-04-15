@@ -3,9 +3,9 @@ import { useState } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import Dashboard from '@/components/dashboard/Dashboard';
+import Clients from '@/components/clients/Clients';
 import styles from './AppLayout.module.css';
 
-// Pages placeholder
 const PlaceholderPage = ({ title, sub }: { title: string; sub: string }) => (
   <div style={{ padding: '28px 24px' }}>
     <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 800, color: '#1a2332', marginBottom: 4 }}>{title}</div>
@@ -16,20 +16,29 @@ const PlaceholderPage = ({ title, sub }: { title: string; sub: string }) => (
   </div>
 );
 
-const pages: Record<string, React.ReactNode> = {
-  clients:    <PlaceholderPage title="Mes Clients" sub="Gestion de vos acheteurs" />,
-  recherche:  <PlaceholderPage title="Recherche en cours" sub="8 clients avec mandat actif" />,
-  visites:    <PlaceholderPage title="Visites" sub="Planning et comptes-rendus" />,
-  relances:   <PlaceholderPage title="Relances" sub="5 relances en attente" />,
-  mail:       <PlaceholderPage title="Nouveau mail" sub="Envoi depuis arogelet@emilio-immo.com" />,
-  activite:   <PlaceholderPage title="Mon activité" sub="Statistiques 2026" />,
-  parametres: <PlaceholderPage title="Paramètres" sub="Configuration de votre outil" />,
-};
-
 export default function AppLayout() {
   const [activePage, setActivePage] = useState('dashboard');
+  const [pageData, setPageData] = useState<unknown>(null);
 
-  const handleNavigate = (page: string) => setActivePage(page);
+  const handleNavigate = (page: string, data?: unknown) => {
+    setActivePage(page);
+    setPageData(data || null);
+  };
+
+  const renderPage = () => {
+    switch(activePage) {
+      case 'dashboard':   return <Dashboard onNavigate={handleNavigate} />;
+      case 'clients':     return <Clients onNavigate={handleNavigate} />;
+      case 'fiche':       return <PlaceholderPage title="Fiche Client" sub="En cours de construction" />;
+      case 'recherche':   return <PlaceholderPage title="Recherche en cours" sub="8 clients avec mandat actif" />;
+      case 'visites':     return <PlaceholderPage title="Visites" sub="Planning et comptes-rendus" />;
+      case 'relances':    return <PlaceholderPage title="Relances" sub="5 relances en attente" />;
+      case 'mail':        return <PlaceholderPage title="Nouveau mail" sub="Envoi depuis arogelet@emilio-immo.com" />;
+      case 'activite':    return <PlaceholderPage title="Mon activité" sub="Statistiques 2026" />;
+      case 'parametres':  return <PlaceholderPage title="Paramètres" sub="Configuration de votre outil" />;
+      default:            return <Dashboard onNavigate={handleNavigate} />;
+    }
+  };
 
   return (
     <div className={styles.appLayout}>
@@ -37,10 +46,7 @@ export default function AppLayout() {
       <div className={styles.mainArea}>
         <Topbar onNavigate={handleNavigate} />
         <main className={styles.content}>
-          {activePage === 'dashboard'
-            ? <Dashboard onNavigate={handleNavigate} />
-            : pages[activePage] || <Dashboard onNavigate={handleNavigate} />
-          }
+          {renderPage()}
         </main>
       </div>
     </div>
