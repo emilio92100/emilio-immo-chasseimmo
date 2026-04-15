@@ -1,49 +1,60 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
 
-const navItems = [
-  {
-    section: 'PRINCIPAL',
-    items: [
-      { id: 'dashboard',  label: 'Dashboard',          icon: '⊞',  badge: null },
-      { id: 'clients',    label: 'Clients',             icon: '◎',  badge: { count: 12, type: 'gold' } },
-      { id: 'recherche',  label: 'Recherche en cours',  icon: '⊙',  badge: { count: 8,  type: 'slate' } },
-    ]
-  },
-  {
-    section: 'SUIVI',
-    items: [
-      { id: 'visites',    label: 'Visites',             icon: '◷',  badge: { count: 3,  type: 'blue' } },
-      { id: 'relances',   label: 'Relances',            icon: '◉',  badge: { count: 5,  type: 'red', pulse: true } },
-      { id: 'mail',       label: 'Nouveau mail',        icon: '◻',  badge: null },
-    ]
-  },
-  {
-    section: 'ANALYSE',
-    items: [
-      { id: 'activite',   label: 'Mon activité',        icon: '◈',  badge: null },
-      { id: 'parametres', label: 'Paramètres',          icon: '◌',  badge: null },
-    ]
-  }
-];
-
 export default function Sidebar({ activePage, onNavigate }: { activePage: string; onNavigate: (page: string) => void }) {
+  const [counts, setCounts] = useState({ clients: 0, relances: 0, visites: 0, recherche: 0 });
+
+  useEffect(() => { fetchCounts(); }, [activePage]);
+
+  async function fetchCounts() {
+    const today = new Date().toISOString();
+    const [{ count: cl }, { count: rel }, { count: vis }, { count: rech }] = await Promise.all([
+      supabase.from('clients').select('*', { count: 'exact', head: true }),
+      supabase.from('relances').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
+      supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
+      supabase.from('clients').select('*', { count: 'exact', head: true }).in('statut', ['actif', 'prospect']),
+    ]);
+    setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0, recherche: rech || 0 });
+  }
+
+  const navItems = [
+    {
+      section: 'PRINCIPAL',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: '⊞', badge: null },
+        { id: 'clients', label: 'Clients', icon: '◎', badge: counts.clients > 0 ? { count: counts.clients, type: 'gold' } : null },
+        { id: 'recherche', label: 'Recherche en cours', icon: '⊙', badge: counts.recherche > 0 ? { count: counts.recherche, type: 'slate' } : null },
+      ]
+    },
+    {
+      section: 'SUIVI',
+      items: [
+        { id: 'visites', label: 'Visites', icon: '◷', badge: counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
+        { id: 'relances', label: 'Relances', icon: '◉', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
+        { id: 'mail', label: 'Nouveau mail', icon: '◻', badge: null },
+      ]
+    },
+    {
+      section: 'ANALYSE',
+      items: [
+        { id: 'activite', label: 'Mon activité', icon: '◈', badge: null },
+        { id: 'parametres', label: 'Paramètres', icon: '◌', badge: null },
+      ]
+    }
+  ];
+
   return (
     <aside className={styles.sidebar}>
-
-      {/* LOGO */}
       <div className={styles.logo}>
-        <div className={styles.logoMark}>
-          <span>EI</span>
-        </div>
+        <div className={styles.logoMark}><span>EI</span></div>
         <div>
           <div className={styles.logoName}>Emilio</div>
           <div className={styles.logoSub}>Immobilier</div>
         </div>
       </div>
 
-      {/* NAV */}
       <nav className={styles.nav}>
         {navItems.map((group, gi) => (
           <div key={gi} className={styles.navGroup}>
@@ -68,17 +79,15 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
         ))}
       </nav>
 
-      {/* USER */}
       <div className={styles.userArea}>
         <div className={styles.userCard}>
           <div className={styles.userAvatar}>AR</div>
-          <div className={styles.userInfo}>
+          <div>
             <div className={styles.userName}>Alexandre R.</div>
             <div className={styles.userRole}>Chasseur immobilier</div>
           </div>
         </div>
       </div>
-
     </aside>
   );
 }
