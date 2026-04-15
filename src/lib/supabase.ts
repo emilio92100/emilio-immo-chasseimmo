@@ -59,3 +59,15 @@ export async function addJournal(
     client_id: clientId, type, titre, description, metadata: metadata || {}
   })
 }
+
+export interface Relance {
+  id: string
+  client_id: string
+  bien_id?: string
+  type: 'auto' | 'manuelle'
+  statut: 'en_attente' | 'cloturee' | 'reportee'
+  date_echeance: string
+  note?: string
+  resultat?: string
+  created_at: string
+}
