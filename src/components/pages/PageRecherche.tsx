@@ -10,7 +10,7 @@ export default function PageRecherche({ onNavigate }: { onNavigate: (page: strin
   useEffect(() => {
     supabase.from('clients')
       .select('*')
-      .in('statut', ['actif', 'prospect'])
+      .eq('statut', 'actif')
       .order('updated_at', { ascending: false })
       .then(({ data }) => { setClients(data || []); setLoading(false); });
   }, []);
