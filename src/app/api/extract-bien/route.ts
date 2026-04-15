@@ -3,30 +3,61 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const { url } = await req.json();
-    if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
+    if (!url) return NextResponse.json({ bien: null, error: 'URL requise' });
 
-    // Fetch la page
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-
-    // Détection portail
     const portail = detectPortail(url);
 
-    // Extraction par regex/parsing selon portail
-    const bien = extractBien(html, url, portail);
+    // Plusieurs tentatives avec différents User-Agents
+    const agents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    ];
 
-    return NextResponse.json({ bien, portail });
+    let html = '';
+    for (const agent of agents) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Upgrade-Insecure-Requests': '1',
+          },
+          signal: AbortSignal.timeout(12000),
+        });
+
+        if (res.ok) {
+          const text = await res.text();
+          // Vérifier que c'est pas une page de blocage
+          if (text.length > 5000 && !text.includes('captcha') && !text.includes('robot') && !text.includes('blocked')) {
+            html = text;
+            break;
+          }
+        }
+      } catch { continue; }
+    }
+
+    // Si SeLoger bloque — extraction depuis l'URL elle-même
+    if (!html && portail === 'SeLoger') {
+      const bienFromUrl = extractFromUrl(url, portail);
+      return NextResponse.json({ bien: bienFromUrl, partial: true, reason: 'seloger_blocked' });
+    }
+
+    if (!html) {
+      return NextResponse.json({ bien: extractFromUrl(url, portail), partial: true, reason: 'fetch_failed' });
+    }
+
+    const bien = extractBien(html, url, portail);
+    return NextResponse.json({ bien });
+
   } catch (e: any) {
-    // Retourner un formulaire vide plutôt qu'une erreur
     return NextResponse.json({ bien: null, error: e.message });
   }
 }
@@ -35,158 +66,155 @@ function detectPortail(url: string): string {
   if (url.includes('seloger.com')) return 'SeLoger';
   if (url.includes('leboncoin.fr')) return 'LeBonCoin';
   if (url.includes('pap.fr')) return 'PAP';
-  if (url.includes('bienici.com')) return 'Bien\'ici';
+  if (url.includes('bienici.com')) return "Bien'ici";
   if (url.includes('logic-immo.com')) return 'Logic-Immo';
-  if (url.includes('figaro-immo.com')) return 'Figaro Immo';
+  if (url.includes('figaro-immo.com') || url.includes('lefigaro.fr')) return 'Figaro Immo';
   if (url.includes('jinka.fr')) return 'Jinka';
   if (url.includes('bellesdemeures.com')) return 'Belle Demeure';
-  if (url.includes('lefigaro.fr')) return 'Le Figaro';
-  if (url.includes('meilleurs-agents.com')) return 'Meilleurs Agents';
   if (url.includes('orpi.com')) return 'Orpi';
   if (url.includes('era.fr')) return 'ERA';
   if (url.includes('century21.fr')) return 'Century 21';
   if (url.includes('laforet.com')) return 'Laforêt';
+  if (url.includes('guy-hoquet.com')) return 'Guy Hoquet';
+  if (url.includes('stephanepiaza.com')) return 'Stéphane Plaza';
+  if (url.includes('fnaim.fr')) return 'FNAIM';
+  if (url.includes('meilleursagents.com')) return 'Meilleurs Agents';
   return 'Autre';
 }
 
+// Extraction depuis l'URL uniquement (fallback)
+function extractFromUrl(url: string, portail: string) {
+  // Essayer d'extraire ville/type depuis l'URL
+  let ville = '';
+  let type_bien = 'Appartement';
+
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('maison') || urlLower.includes('villa')) type_bien = 'Maison';
+  else if (urlLower.includes('studio')) type_bien = 'Studio';
+  else if (urlLower.includes('loft')) type_bien = 'Loft';
+
+  // Villes communes dans les URLs
+  const villes = ['paris','boulogne-billancourt','neuilly','levallois','courbevoie','issy','clichy','asnières','rueil','puteaux','suresnes','vanves','montrouge','clamart','meudon','saint-cloud','nanterre','colombes'];
+  for (const v of villes) {
+    if (urlLower.includes(v)) {
+      ville = v.charAt(0).toUpperCase() + v.slice(1).replace(/-/g, '-');
+      break;
+    }
+  }
+
+  return {
+    titre: `${type_bien}${ville ? ` — ${ville}` : ''} (à compléter)`,
+    type_bien, ville, source_portail: portail,
+    surface: null, nb_pieces: null, etage: null, parking: false,
+    dpe: '', prix_vendeur: null, description: '', photos: [],
+    agence_nom: '', code_postal: '', adresse: '',
+  };
+}
+
 function extractText(html: string, patterns: RegExp[]): string {
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return match[1].trim();
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1]) return m[1].trim().substring(0, 500);
   }
   return '';
 }
 
 function extractNumber(html: string, patterns: RegExp[]): number | null {
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) {
-      const num = parseFloat(match[1].replace(/[\s,]/g, '').replace(',', '.'));
-      if (!isNaN(num)) return num;
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1]) {
+      const n = parseFloat(m[1].replace(/[\s\u00a0]/g, '').replace(',', '.'));
+      if (!isNaN(n) && n > 0) return n;
     }
   }
   return null;
 }
 
 function extractBien(html: string, url: string, portail: string) {
-  // Nettoyer HTML
-  const text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                   .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                   .replace(/<[^>]+>/g, ' ')
-                   .replace(/\s+/g, ' ');
-
-  // TITRE
   const titre = extractText(html, [
-    /<title[^>]*>([^<]+)<\/title>/i,
     /<h1[^>]*>([^<]+)<\/h1>/i,
-    /"name"\s*:\s*"([^"]+)"/,
-    /"headline"\s*:\s*"([^"]+)"/,
-  ]).replace(/\s*[\|\-–]\s*.*$/, '').trim();
+    /"name"\s*:\s*"([^"]{10,200})"/,
+    /<title[^>]*>([^<|–-]{10,150})/i,
+  ]).replace(/\s+/g, ' ').trim();
 
-  // PRIX
   const prix = extractNumber(html, [
-    /(\d[\d\s]{2,8})\s*€/,
     /"price"\s*:\s*(\d+)/,
-    /"prix"\s*:\s*(\d+)/,
-    /price["\s:]+(\d+)/i,
+    /(\d[\d\s]{3,8})\s*€/,
+    /"Prix"\s*:\s*"?(\d+)/i,
   ]);
 
-  // SURFACE
   const surface = extractNumber(html, [
+    /"surface"\s*:\s*(\d+(?:[.,]\d+)?)/i,
     /(\d+(?:[.,]\d+)?)\s*m[²2]/i,
-    /"surface"\s*:\s*(\d+)/,
-    /surface\s*:?\s*(\d+)/i,
-    /(\d+)\s*m²/,
+    /"squareMeters"\s*:\s*(\d+)/,
   ]);
 
-  // PIÈCES
   const pieces = extractNumber(html, [
-    /(\d+)\s*pi[èe]ce/i,
     /"rooms"\s*:\s*(\d+)/,
-    /"nbPieces"\s*:\s*(\d+)/,
-    /(\d+)\s*p(?:ièces?|ieces?)\b/i,
+    /"nbPieces"\s*:\s*(\d+)/i,
+    /(\d+)\s*pi[èe]ce/i,
   ]);
 
-  // CHAMBRES
   const chambres = extractNumber(html, [
-    /(\d+)\s*chambre/i,
     /"bedrooms"\s*:\s*(\d+)/,
-    /"nbChambres"\s*:\s*(\d+)/,
+    /"nbChambres"\s*:\s*(\d+)/i,
+    /(\d+)\s*chambre/i,
   ]);
 
-  // VILLE / LOCALISATION
   const ville = extractText(html, [
     /"addressLocality"\s*:\s*"([^"]+)"/,
     /"city"\s*:\s*"([^"]+)"/,
-    /"ville"\s*:\s*"([^"]+)"/,
-    /ville\s*"?\s*:\s*"?([^",<\n]+)/i,
-    /<span[^>]*class="[^"]*city[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /"ville"\s*:\s*"([^"]+)"/i,
   ]);
 
-  // CODE POSTAL
   const cp = extractText(html, [
     /"postalCode"\s*:\s*"(\d{5})"/,
-    /"zipCode"\s*:\s*"(\d{5})"/,
-    /(\d{5})\s+(?:Paris|Boulogne|Neuilly|Levallois|Issy|Clichy|Asnières|Courbevoie|Puteaux|Nanterre)/i,
+    /(\d{5})\s+(?:PARIS|Paris|Boulogne|Neuilly|Levallois)/i,
   ]);
 
-  // ETAGE
   const etage = extractNumber(html, [
-    /(\d+)(?:er|ème|e)\s+étage/i,
     /"floor"\s*:\s*(\d+)/,
-    /étage\s*:?\s*(\d+)/i,
+    /(\d+)(?:er|ème|e)\s+[eé]tage/i,
   ]);
 
-  // DPE
   const dpe = extractText(html, [
-    /DPE\s*:?\s*([A-G])/i,
-    /classe\s+énergie\s*:?\s*([A-G])/i,
     /"dpe"\s*:\s*"([A-G])"/i,
     /"energyClass"\s*:\s*"([A-G])"/,
+    /DPE\s*:?\s*classe\s*([A-G])/i,
+    /classe\s+[eé]nergie\s*:?\s*([A-G])/i,
   ]);
 
-  // PARKING
   const parking = /parking|garage|stationnement/i.test(html);
-
-  // DESCRIPTION
-  const description = extractText(html, [
-    /"description"\s*:\s*"([^"]{50,500})"/,
-    /<meta[^>]+name="description"[^>]+content="([^"]+)"/i,
-    /<p[^>]*class="[^"]*description[^"]*"[^>]*>([^<]{50,})<\/p>/i,
-  ]).substring(0, 600);
-
-  // PHOTOS
-  const photoMatches = html.matchAll(/"url"\s*:\s*"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi);
-  const photos = Array.from(new Set(Array.from(photoMatches).map(m => m[1]))).slice(0, 10);
-
-  // AGENCE
   const agence = extractText(html, [
     /"agencyName"\s*:\s*"([^"]+)"/,
-    /"agence"\s*:\s*"([^"]+)"/,
-    /"agency"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/,
+    /"agency"[^}]*"name"\s*:\s*"([^"]+)"/,
   ]);
 
-  // TYPE
+  const description = extractText(html, [
+    /"description"\s*:\s*"([^"]{50,800})"/,
+    /<meta[^>]+name="description"[^>]+content="([^"]{30,}?)"/i,
+  ]).replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const photoMatches = [...html.matchAll(/"url"\s*:\s*"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)" /gi)];
+  const photos = [...new Set(photoMatches.map(m => m[1]).filter(p => !p.includes('logo') && !p.includes('icon') && p.length < 400))].slice(0, 12);
+
   let type_bien = 'Appartement';
-  if (/maison|villa|pavillon/i.test(html)) type_bien = 'Maison';
-  else if (/loft|atelier/i.test(html)) type_bien = 'Loft';
-  else if (/studio|chambre(?!\s+de\s+bain)/i.test(html)) type_bien = 'Studio';
-  else if (/duplex/i.test(html)) type_bien = 'Duplex';
+  if (/\bmaison\b|villa|pavillon/i.test(html)) type_bien = 'Maison';
+  else if (/\bloft\b|atelier/i.test(html)) type_bien = 'Loft';
+  else if (/\bstudio\b/i.test(html)) type_bien = 'Studio';
+  else if (/\bduplex\b/i.test(html)) type_bien = 'Duplex';
 
   return {
     titre: titre || `${type_bien}${ville ? ` — ${ville}` : ''}`,
-    type_bien,
-    ville: ville || '',
-    code_postal: cp || '',
+    type_bien, ville: ville || '', code_postal: cp || '',
     surface: surface || null,
     nb_pieces: pieces ? Math.round(pieces) : null,
     nb_chambres: chambres ? Math.round(chambres) : null,
     etage: etage ? Math.round(etage) : null,
-    parking,
-    dpe: dpe || '',
+    parking, dpe: dpe || '',
     prix_vendeur: prix || null,
     description: description || '',
-    photos: photos.filter(p => !p.includes('logo') && !p.includes('icon') && p.length < 300),
+    photos: photos,
     source_portail: portail,
     agence_nom: agence || '',
     adresse: '',
