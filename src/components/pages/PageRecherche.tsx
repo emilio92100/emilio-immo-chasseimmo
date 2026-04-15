@@ -25,28 +25,25 @@ export default function PageRecherche({ onNavigate }: { onNavigate: (page: strin
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>Recherche en cours</h1>
-          <p className={styles.sub}>{clients.length} client{clients.length > 1 ? 's' : ''} avec mandat actif</p>
+          <p className={styles.sub}>{clients.length} client{clients.length > 1 ? 's' : ''} actif{clients.length > 1 ? 's' : ''} avec mandat</p>
         </div>
       </div>
-
       {loading ? (
         <div className={styles.empty}><div className={styles.emptySub}>Chargement...</div></div>
       ) : clients.length === 0 ? (
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>🔍</div>
           <div className={styles.emptyTitle}>Aucune recherche en cours</div>
-          <div className={styles.emptySub}>Les clients actifs et prospects apparaissent ici</div>
+          <div className={styles.emptySub}>Les clients avec le statut <strong>Actif</strong> apparaissent ici</div>
         </div>
       ) : (
         <div className={styles.card}>
           {clients.map(c => {
             const joursSuivi = Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000);
             return (
-              <div key={c.id} className={styles.listRow} onClick={() => onNavigate('clients')}>
-                <div style={{ width: 40, height: 40, borderRadius: 11, background: '#1a2332', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: '#c9a84c', fontSize: 13 }}>
-                    {c.prenom[0]}{c.nom[0]}
-                  </span>
+              <div key={c.id} className={styles.listRow} onClick={() => onNavigate('fiche', c)}>
+                <div style={{ width: 42, height: 42, borderRadius: 12, background: '#1a2332', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: '#c9a84c', fontSize: 13 }}>{c.prenom[0]}{c.nom[0]}</span>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div className={styles.name}>{c.prenom} {c.nom}</div>
