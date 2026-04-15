@@ -1,195 +1,191 @@
 'use client';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 
-export default function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
+export default function Dashboard({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [relances, setRelances] = useState<Relance[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function fetchData() {
+    const [{ data: c }, { data: r }] = await Promise.all([
+      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      supabase.from('relances').select('*').eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
+    ]);
+    setClients(c || []);
+    setRelances(r || []);
+    setLoading(false);
+  }
+
+  const actifs    = clients.filter(c => c.statut === 'actif').length;
+  const prospects = clients.filter(c => c.statut === 'prospect').length;
+  const today     = new Date().toISOString().split('T')[0];
+
+  const relanceRetard   = relances.filter(r => r.date_echeance.split('T')[0] < today);
+  const relanceAujourdhui = relances.filter(r => r.date_echeance.split('T')[0] === today);
+  const relanceAvenir   = relances.filter(r => r.date_echeance.split('T')[0] > today);
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  if (loading) return (
+    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+      Chargement...
+    </div>
+  );
+
   return (
     <div className={styles.dashboard}>
 
-      {/* ── WELCOME BANNER ── */}
+      {/* WELCOME BANNER */}
       <div className={styles.welcomeBanner}>
         <div className={styles.welcomeLeft}>
-          <p className={styles.welcomeDate}>Mercredi 15 avril 2026</p>
+          <p className={styles.welcomeDate}>{dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</p>
           <h1 className={styles.welcomeTitle}>Bonjour, Alexandre 👋</h1>
           <p className={styles.welcomeSub}>
-            Vous avez <strong className={styles.accent}>5 relances</strong> en attente
-            et <strong>3 visites</strong> cette semaine.
+            {relances.length > 0
+              ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relances.length} relance{relances.length > 1 ? 's' : ''}</strong> en attente.</>
+              : <>Aucune relance en attente — bonne journée ! ☀️</>
+            }
           </p>
         </div>
         <div className={styles.welcomeRight}>
-          <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>
-            ✉️ Nouveau mail
-          </button>
+          <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
         </div>
       </div>
 
-      {/* ── DIVIDER ── */}
-      <div className={styles.sectionDivider}>
-        <span>Vue d'ensemble</span>
-      </div>
+      {/* DIVIDER */}
+      <div className={styles.sectionDivider}><span>Vue d'ensemble</span></div>
 
-      {/* ── STATS ── */}
+      {/* STATS */}
       <div className={styles.statsGrid}>
-        <div className={styles.statCard}>
+        <div className={styles.statCard} onClick={() => onNavigate('clients')}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconSlate}`}>👥</div>
-            <span className={`${styles.statBadge} ${styles.badgePurple}`}>3 prospects</span>
+            {prospects > 0 && <span className={`${styles.statBadge} ${styles.badgePurple}`}>{prospects} prospect{prospects > 1 ? 's' : ''}</span>}
           </div>
-          <div className={styles.statVal}>8</div>
+          <div className={styles.statVal}>{actifs}</div>
           <div className={styles.statLabel}>Clients actifs</div>
         </div>
+
         <div className={styles.statCard}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconGold}`}>📄</div>
-            <span className={`${styles.statBadge} ${styles.badgeGreen}`}>+6 vs mois dernier</span>
           </div>
-          <div className={styles.statVal}>24</div>
+          <div className={styles.statVal}>0</div>
           <div className={styles.statLabel}>Sélections ce mois</div>
         </div>
-        <div className={styles.statCard}>
+
+        <div className={styles.statCard} onClick={() => onNavigate('visites')}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconBlue}`}>📅</div>
-            <span className={`${styles.statBadge} ${styles.badgeBlue}`}>3 à venir</span>
           </div>
-          <div className={styles.statVal}>11</div>
+          <div className={styles.statVal}>0</div>
           <div className={styles.statLabel}>Visites effectuées</div>
         </div>
+
         <div className={`${styles.statCard} ${styles.statDark}`}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconDark}`}>💰</div>
             <span className={`${styles.statBadge} ${styles.badgeGoldDark}`}>HT</span>
           </div>
-          <div className={`${styles.statVal} ${styles.statValWhite}`}>18 400€</div>
+          <div className={`${styles.statVal} ${styles.statValWhite}`}>0€</div>
           <div className={`${styles.statLabel} ${styles.statLabelDark}`}>CA mois en cours</div>
-          <div className={styles.statSub}>✓ 1 dossier finalisé</div>
         </div>
       </div>
 
-      {/* ── MAIN ROW ── */}
+      {/* MAIN ROW */}
       <div className={styles.mainRow}>
+
         {/* RELANCES */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
             <div className={styles.cardTitle}>
-              <span>🔔</span> Relances en attente
-              <span className={`${styles.badge} ${styles.badgeRedSm}`}>5</span>
+              🔔 Relances en attente
+              {relances.length > 0 && <span className={styles.badgeRedSm}>{relances.length}</span>}
             </div>
-            <button className={styles.cardLink} onClick={() => onNavigate('relances')}>Voir toutes →</button>
+            {relances.length > 0 && <button className={styles.cardLink} onClick={() => onNavigate('relances')}>Voir toutes →</button>}
           </div>
-          {[
-            { name: 'Sophie Martin', detail: 'PDF envoyé le 10/04 — 3 biens', tag: '2j de retard', color: '#ef4444', badgeClass: 'badgeRed' },
-            { name: 'Jean Dupont',   detail: 'PDF envoyé le 10/04 — 2 biens', tag: "Aujourd'hui",  color: '#ef4444', badgeClass: 'badgeRed' },
-            { name: 'Marie Leblanc', detail: 'PDF envoyé le 13/04 — 1 bien',  tag: 'Dans 3 jours', color: '#f59e0b', badgeClass: 'badgeAmber' },
-            { name: 'Paul Renard',   detail: 'Manuelle — "Après RDV notaire"', tag: '20 avril',    color: '#60a5fa', badgeClass: 'badgeBlue2' },
-          ].map((r, i) => (
-            <div key={i} className={styles.listRow}>
-              <div className={styles.urgBar} style={{ background: r.color }} />
-              <div className={styles.listInfo}>
-                <div className={styles.listName}>{r.name}</div>
-                <div className={styles.listDetail}>{r.detail}</div>
-              </div>
-              <span className={`${styles.badge} ${styles[r.badgeClass]}`}>{r.tag}</span>
+          {relances.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+              ✅ Aucune relance en attente
             </div>
-          ))}
+          ) : (
+            <div>
+              {[...relanceRetard, ...relanceAujourdhui, ...relanceAvenir].slice(0, 4).map((r) => {
+                const dateR = r.date_echeance.split('T')[0];
+                const isRetard = dateR < today;
+                const isAujourd = dateR === today;
+                const jours = Math.abs(Math.floor((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
+                return (
+                  <div key={r.id} className={styles.listRow}>
+                    <div className={styles.urgBar} style={{ background: isRetard ? '#ef4444' : isAujourd ? '#ef4444' : '#f59e0b' }} />
+                    <div className={styles.listInfo}>
+                      <div className={styles.listName}>Client #{r.client_id.slice(0, 8)}</div>
+                      <div className={styles.listDetail}>{r.note || 'Relance automatique'}</div>
+                    </div>
+                    <span className={`${styles.badge} ${isRetard ? styles.badgeRed : isAujourd ? styles.badgeRed : styles.badgeAmber}`}>
+                      {isRetard ? `${jours}j de retard` : isAujourd ? "Aujourd'hui" : `Dans ${jours}j`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* TRANSACTIONS */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <div className={styles.cardTitle}><span>🏠</span> Transactions en cours</div>
-            <button className={styles.cardLink}>Voir tout →</button>
+            <div className={styles.cardTitle}>🏠 Transactions en cours</div>
           </div>
-          <div className={styles.txList}>
-            <div className={styles.txItem}>
-              <div className={styles.txTop}>
-                <span className={styles.txName}>Sophie Martin</span>
-                <span className={styles.txPrice}>348 000€</span>
-              </div>
-              <div className={styles.txSub}>Appt 3P · 68m² · Boulogne-Billancourt</div>
-              <div className={styles.progBar}>
-                <div className={`${styles.progStep} ${styles.done}`} />
-                <div className={`${styles.progStep} ${styles.done}`} />
-                <div className={`${styles.progStep} ${styles.done}`} />
-                <div className={`${styles.progStep} ${styles.active}`} />
-                <div className={styles.progStep} />
-              </div>
-              <div className={styles.txHint}>Compromis signé · Acte prévu 22/07</div>
-            </div>
-            <div className={styles.txItem}>
-              <div className={styles.txTop}>
-                <span className={styles.txName}>Jean Dupont</span>
-                <span className={styles.txPrice}>520 000€</span>
-              </div>
-              <div className={styles.txSub}>Maison 5P · 120m² · Neuilly-sur-Seine</div>
-              <div className={styles.progBar}>
-                <div className={`${styles.progStep} ${styles.done}`} />
-                <div className={`${styles.progStep} ${styles.active}`} />
-                <div className={styles.progStep} />
-                <div className={styles.progStep} />
-                <div className={styles.progStep} />
-              </div>
-              <div className={styles.txHint}>Négociation · 2 contre-offres</div>
-            </div>
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+            Aucune transaction en cours
           </div>
         </div>
 
         {/* RIGHT COL */}
         <div className={styles.rightCol}>
-          {/* VISITES */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
-              <div className={styles.cardTitle}><span>📅</span> Visites à venir</div>
+              <div className={styles.cardTitle}>📅 Visites à venir</div>
               <button className={styles.cardLink} onClick={() => onNavigate('visites')}>Tout →</button>
             </div>
-            <div className={styles.visiteList}>
-              {[
-                { day: '20', mon: 'Avr', name: 'Sophie Martin', lieu: 'Rue de Rivoli, 1er', heure: '14h00', dark: true },
-                { day: '22', mon: 'Avr', name: 'Paul Renard',   lieu: 'Av. Foch, 16ème',   heure: '10h30', dark: false },
-                { day: '24', mon: 'Avr', name: 'Marie Leblanc', lieu: 'Boulogne-B.',         heure: '16h00', dark: false },
-              ].map((v, i) => (
-                <div key={i} className={styles.visiteRow}>
-                  <div className={`${styles.vdate} ${v.dark ? styles.vdateDark : styles.vdateLight}`}>
-                    <div className={styles.vday}>{v.day}</div>
-                    <div className={styles.vmon}>{v.mon}</div>
-                  </div>
-                  <div>
-                    <div className={styles.vname}>{v.name}</div>
-                    <div className={styles.vlieu}>{v.lieu}</div>
-                    <div className={styles.vheure}>{v.heure}</div>
-                  </div>
-                </div>
-              ))}
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+              Aucune visite planifiée
             </div>
           </div>
 
-          {/* ACTIVITÉ */}
           <div className={styles.card} style={{ flex: 1 }}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>🕐 Activité récente</div>
             </div>
-            <div className={styles.actList}>
-              {[
-                { dot: '#c9a84c', text: <><strong>PDF envoyé</strong> · Sophie Martin · 3 biens</>, time: 'Il y a 2h' },
-                { dot: '#10b981', text: <><strong>Visite effectuée</strong> · Paul Renard</>,       time: 'Hier 14h30' },
-                { dot: '#1a2332', text: <><strong>Compromis signé</strong> · Sophie Martin</>,      time: 'Il y a 3 jours' },
-              ].map((a, i) => (
-                <div key={i} className={styles.actRow}>
-                  <div className={styles.actDot} style={{ background: a.dot }} />
-                  <div><div className={styles.actText}>{a.text}</div><div className={styles.actTime}>{a.time}</div></div>
-                </div>
-              ))}
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+              {clients.length === 0
+                ? 'Créez votre premier client pour commencer'
+                : 'Aucune activité récente'
+              }
             </div>
           </div>
 
-          {/* MANDAT ALERT */}
-          <div className={styles.mandatAlert}>
-            <div className={styles.mandatLabel}>⚠️ Mandat expirant</div>
-            <div className={styles.mandatName}>Marie Leblanc</div>
-            <div className={styles.mandatExpire}>Expire le 15/05/2026</div>
-            <div className={styles.mandatFooter}>
-              <span className={styles.mandatDays}>30 jours</span>
-              <button className={styles.mandatBtn}>Renouveler</button>
+          {/* CTA SI AUCUN CLIENT */}
+          {clients.length === 0 && (
+            <div style={{ background: 'linear-gradient(135deg, #1a2332, #243044)', borderRadius: 16, padding: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#c9a84c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>🚀 Pour commencer</div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: 13, color: 'white', marginBottom: 4 }}>Créez votre premier client</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>Ajoutez vos acheteurs et commencez la chasse !</div>
+              <button
+                onClick={() => onNavigate('clients')}
+                style={{ width: '100%', background: '#c9a84c', color: '#1a2332', border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+              >
+                + Nouveau client
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
