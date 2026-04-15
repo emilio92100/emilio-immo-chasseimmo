@@ -1,477 +1,424 @@
 # CONTEXTE PROJET — Emilio Immobilier
 ## Outil de Chasse Immobilière — Version 1.0
+### Mis à jour le 15 avril 2026
 
 ---
 
-## 0. CONTEXTE & GENÈSE DU PROJET
+## 0. IDENTITÉ & ACCÈS
 
-### Qui est Alexandre ROGELET ?
-Alexandre ROGELET est chasseur immobilier indépendant, opérant sur **Paris et le département 92 (Hauts-de-Seine)**. Son métier consiste à rechercher activement des biens immobiliers pour le compte de ses clients acheteurs, en s'appuyant sur les annonces publiées par les agences confrères et les particuliers sur les grands portails immobiliers.
-
-Il utilise actuellement Immofacile AC3 comme CRM principal, conçu pour la gestion de mandats vendeurs — pas pour le métier de chasseur.
-
-### Le problème
-Pas d'outil dédié pour :
-- Gérer les clients acheteurs avec leurs critères précis
-- Présenter des biens de confrères de façon professionnelle
-- Générer des PDFs soignés aux couleurs d'Emilio Immobilier
-- Envoyer automatiquement par email et SMS
-- Suivre tout le parcours client jusqu'à la signature
-
-### La solution
-Un outil web sur mesure, accessible depuis n'importe quel appareil (PC, téléphone, tablette), pensé exclusivement pour le chasseur immobilier solo.
-
-### Zone géographique
-- Paris — tous arrondissements
-- Hauts-de-Seine 92 — toutes communes
-
-### Périmètre métier
-- Vente / Achat uniquement (pas de location)
-- Chasseur immobilier (biens issus de confrères et particuliers)
-- Utilisateur unique solo en V1
-- Langue française uniquement en V1
-
----
-
-## 0B. EXIGENCES UX — NON NÉGOCIABLES
-
-> **"Quand Alexandre ouvre l'outil le matin, il a envie de l'utiliser."**
-
-- Design premium dès la page de connexion
-- Chaque écran agréable visuellement, pas de surcharge
-- Animations fluides et transitions douces
-- Typographie propre : Plus Jakarta Sans + DM Sans
-- Espaces bien aérés — respiration visuelle
-- Badges et éléments arrondis
-- Micro-interactions satisfaisantes
-- Dashboard motivant
-- Minimum de clics pour chaque action
-- Responsive PC + téléphone + tablette
-
-### Palette & Style
-| Élément | Valeur |
-|---|---|
-| Couleur principale | `#1a2332` — Navy |
-| Couleur accent | `#c9a84c` — Or |
-| Fond | Blanc / Gris très clair |
-| Sidebar | Foncée (navy) avec accent or |
-| Style | Sobre, luxe discret, premium |
-
----
-
-## 1. INFORMATIONS GÉNÉRALES & TECHNIQUE
-
-### Identité
 | Champ | Valeur |
 |---|---|
-| Agence | Emilio Immobilier |
-| Conseiller | Alexandre ROGELET |
+| Client | Alexandre ROGELET |
 | Email | arogelet@emilio-immo.com |
 | Téléphone | 06 58 95 76 32 |
-| Activité | Chasseur immobilier — Vente/Achat |
-| Numérotation | EMI-2026-001, EMI-2026-002... |
+| Login outil | alexandre.rogelet / chasseimmo |
+| Activité | Chasseur immobilier — Paris & 92 |
 
-### Stack Technique
-| Service | Usage | Coût |
+---
+
+## 1. STACK TECHNIQUE
+
+| Service | Usage | Statut |
 |---|---|---|
-| **Next.js** | Framework frontend | Gratuit |
-| **Vercel** | Hébergement | Gratuit |
-| **Supabase** | Base de données + fichiers PDF | Gratuit |
-| **Mailjet** | Email + SMS | 0,04€/SMS |
-| **geo.api.gouv.fr** | Codes postaux + quartiers | Gratuit |
+| Next.js 16 + TypeScript | Framework frontend | ✅ Déployé |
+| Vercel | Hébergement | ✅ Actif |
+| Supabase | Base de données | ✅ Connecté |
+| GitHub | Repo source | ✅ emilio92100/emilio-immo-chasseimmo |
+| Mailjet | Email + SMS | ⏳ Clés à configurer |
+| geo.api.gouv.fr | Autocomplétion villes | ✅ Intégré |
 
-### Accès sécurisé
-- Identifiant : `alexandre.rogelet`
-- Mot de passe : `chasseimmo`
+**URL prod :** https://emilio-immo-chasseimmo.vercel.app
+**Polices :** Plus Jakarta Sans (titres) + DM Sans (corps)
+
+### Supabase
+- Project ID : eutxmrdcykztjdyydmuo
+- URL : https://eutxmrdcykztjdyydmuo.supabase.co
+- Env vars Vercel : NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY ✅
+
+### Design
+- Navy principal : #1a2332
+- Or accent : #c9a84c
+- Sidebar : #344a63
+- Fond : #f8fafc
+- Border-radius cards : 14-16px
 
 ---
 
-## 2. NAVIGATION — MENU LATÉRAL FIXE (SIDEBAR FONCÉE)
+## 2. TABLES SUPABASE
 
-Menu latéral fixe sur toute la hauteur, fond navy `#1a2332`, accent or.
+`clients`, `biens`, `visites`, `transactions`, `relances`, `envois`, `journal`, `partenaires`, `parametres`
 
-### Structure
+### Type Client (lib/supabase.ts)
+```typescript
+export interface Client {
+  id: string
+  reference: string           // EMI-2026-001
+  prenom: string
+  nom: string
+  emails: string[]
+  telephones: string[]
+  adresse?: string
+  statut: 'prospect' | 'actif' | 'suspendu' | 'bien_trouve' | 'perdu'
+  chaleur?: string            // tres_chaud | interesse | tiede | froid
+  type_bien?: string          // peut contenir "Appartement, Maison"
+  budget_min?: number
+  budget_max?: number
+  surface_min?: number
+  surface_max?: number
+  nb_pieces_min?: number
+  nb_pieces_max?: number
+  secteurs?: string[]
+  notes?: string
+  mandat_date_signature?: string
+  mandat_duree?: number
+  mandat_honoraires?: string
+  mandat_date_expiration?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Relance {
+  id: string
+  client_id: string
+  bien_id?: string
+  type: 'auto' | 'manuelle'
+  statut: 'en_attente' | 'cloturee' | 'reportee'
+  date_echeance: string
+  note?: string
+  resultat?: string
+  created_at: string
+}
 ```
-PRINCIPAL
-  ├── Dashboard
-  ├── Clients (badge: 12)
-  └── Recherche en cours (badge: 8)
 
-SUIVI
-  ├── Visites (badge bleu: 3)
-  ├── Relances (badge rouge: 5, pulsant)
-  └── Nouveau mail
+---
 
-ANALYSE
-  ├── Mon activité
-  └── Paramètres
+## 3. STRUCTURE FICHIERS
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   └── extract-bien/route.ts   ← Extraction URL annonces
+│   ├── layout.tsx
+│   └── page.tsx
+├── components/
+│   ├── layout/
+│   │   ├── AppLayout.tsx + .module.css    ← Layout principal, routing pages
+│   │   ├── Sidebar.tsx + .module.css      ← Menu latéral, compteurs Supabase
+│   │   └── Topbar.tsx + .module.css       ← Recherche universelle fonctionnelle
+│   ├── dashboard/
+│   │   └── Dashboard.tsx + .module.css    ← Dashboard connecté Supabase
+│   ├── clients/
+│   │   └── Clients.tsx + .module.css      ← Liste clients + création
+│   ├── fiche/
+│   │   └── FicheClient.tsx + .module.css  ← Fiche client complète
+│   └── pages/
+│       ├── Page.module.css
+│       ├── PageRelances.tsx
+│       ├── PageVisites.tsx
+│       ├── PageMail.tsx
+│       ├── PageActivite.tsx
+│       ├── PageParametres.tsx
+│       └── PageRecherche.tsx
+└── lib/
+    └── supabase.ts                         ← Client + types + helpers
 ```
 
-### Barre de recherche universelle (topbar)
-Recherche par : nom, prénom, email, téléphone, secteur/quartier, URL d'annonce, numéro de dossier EMI-XXXX
+---
 
-### Icône relances permanente
-Badge rouge avec compteur dans le topbar — reste visible jusqu'à traitement complet.
+## 4. ÉTAT DES PAGES — CE QUI FONCTIONNE ✅
+
+### Dashboard
+- Données réelles Supabase (0 si vide)
+- Welcome banner navy
+- Stats : clients actifs, sélections, visites, CA
+- Blocs : relances, transactions, visites à venir, activité récente
+- CTA "Créer votre premier client" si base vide
+
+### Sidebar
+- Couleur : #344a63
+- Compteurs réels Supabase
+- "Recherche en cours" = seulement les Actifs ✅
+- Relances badge rouge pulsant si > 0
+
+### Topbar — Recherche universelle ✅
+- Recherche temps réel par prénom, nom, référence EMI
+- Debounce 300ms
+- Dropdown résultats avec statut coloré
+- Clic → ouvre directement la fiche client
+- Fermeture au clic extérieur
+
+### Page Clients
+- Liste avec filtres statut + recherche
+- Création modal complet (référence EMI auto)
+- Clic sur client → ouvre FicheClient
+
+### FicheClient — COMPLÈTE ✅
+
+**Header :**
+- Bouton retour "← Clients"
+- Boutons "+ Action" et "+ Ajouter un bien"
+
+**Identité (barre haute) :**
+- Avatar initiales, nom, référence, jours de suivi
+- Statut : dropdown select (Prospect / Actif / Suspendu / Offre écrite / Bien trouvé / Perdu) ✅
+- Chaleur : boutons emoji 🔥👍😐❄️
+- Synthèse : Biens / Visites / Offre(s) / Jours suivi
+
+**Blocs info (3 colonnes) :**
+1. Contact (éditable) : téléphones, emails, adresse
+2. Critères de recherche (modal complet) :
+   - Multi-sélection types (Appartement ET Maison) ✅
+   - Budget min/max
+   - Surface min/max
+   - Pièces min/max + chambres min
+   - Étage (RDC exclu, dernier étage, étage min)
+   - Options : Parking, Cave, Balcon, Terrasse, Jardin, Ascenseur, Gardien, Interphone, Digicode
+   - DPE max (A à G)
+   - Secteurs : API geo.api.gouv.fr + base Paris/92 intégrée
+     - Ville maintenue active pour multi-quartiers ✅
+     - Saisie libre (Entrée pour valider)
+   - Notes libres
+   - Overlay fermable UNIQUEMENT via boutons ✅
+3. Mandat de recherche (navy, modal dédié) :
+   - Date signature, durée, honoraires
+   - Expiration calculée automatiquement
+   - Badge Actif/Expiré avec jours restants
+
+**Boutons d'envoi (barre dédiée) :**
+- 📄 Sélection de biens (→ PDF à coder)
+- 🤝 Présentation services (V2)
+- 📋 Compte-rendu visites (→ PDF à coder)
+- ✉️ Mail libre
+
+**5 onglets :**
+1. **Biens** : cards avec photo, prix acquéreur, specs, badge retour client (dropdown), lien annonce, bouton planifier visite
+2. **Visites** : à venir (éditable date/heure/contact) + effectuées, bouton "Marquer effectuée"
+3. **Transaction** : workflow 5 étapes (Offre → Négociation → Offre acceptée → Compromis → Acte), SRU J+10, financement, clôture "Bien trouvé"
+4. **Historique** : envois tracés (PDF, mails)
+5. **Journal** : chronologique, scrollable ✅, actions manuelles (modal grille de types, titre optionnel)
+
+**Modal Ajouter un bien :**
+- URL → extraction automatique (SeLoger bloque → message + formulaire vide)
+- Formulaire complet : titre, type, source, ville, CP, surface, pièces, étage, DPE, prix vendeur, commission (% ou €), prix acquéreur calculé, agence, description
+- Vérification doublon URL
+
+### Pages secondaires
+- **Relances** : triées retard/aujourd'hui/à venir, clôturer/reporter +5j
+- **Visites** : à venir + effectuées
+- **Nouveau mail** : destinataires depuis Supabase, objet, corps avec {{prénom}}, SMS optionnel
+- **Mon activité** : stats réelles depuis Supabase
+- **Recherche en cours** : seulement les clients Actifs ✅
+- **Paramètres** : navigation par sections (Agence, Templates email, SMS & Relances, Sécurité), clés Mailjet configurables
 
 ---
 
-## 3. DASHBOARD
+## 5. CE QUI RESTE À FAIRE — PRIORITÉS
 
-### Welcome Banner
-Section distincte en haut avec fond dégradé navy :
-> *"Bonjour Alexandre, vous avez X relances aujourd'hui et X visites cette semaine."*
+### 🔴 Priorité haute
 
-### Métriques clients
-- 🟣 Prospects
-- 🟢 Actifs
-- ⏸️ Suspendus
-- Clients sans activité +30 jours → badge orange
+**Génération PDF — LE WORKFLOW PRINCIPAL**
+C'est le cœur de l'outil. À partir des biens sélectionnés sur une fiche :
+1. Alexandre sélectionne les biens à inclure (cases à cocher)
+2. Génération PDF mise en page Emilio :
+   - Header : logo + coordonnées
+   - Pour chaque bien : photo principale, titre, prix acquéreur (vendeur masqué), specs (surface, pièces, étage, parking, DPE), localisation, description nettoyée, note conseiller
+   - Footer : coordonnées + "Document confidentiel"
+3. Sauvegarde PDF dans Supabase Storage
+4. Envoi email via Mailjet (arogelet@emilio-immo.com) avec PDF joint
+5. Envoi SMS de notification simultané
+6. Création relance automatique J+5
+7. Tracé dans journal et historique envois
 
-### Métriques activité
-- Sélections envoyées ce mois
-- Visites effectuées ce mois
-- PDFs générés
+**Intégration Mailjet**
+- Alexandre doit fournir ses clés API (à saisir dans Paramètres)
+- Email depuis arogelet@emilio-immo.com
+- SMS via Mailjet (0,04€/SMS)
+- Templates configurables dans Paramètres
 
-### Blocs dashboard
-- 🔴 Relances J+5 — classées : En retard / Aujourd'hui / À venir
-- 📅 Visites à venir — toutes fiches confondues, triées par date
-- ⚠️ Mandats expirant dans 15 jours — badge orange
-- 🏠 Transactions en cours — étape actuelle de chaque dossier
-- 🕐 Dernière activité globale
-- 📈 Graphiques mensuels
+### 🟡 Priorité moyenne
 
-### Tableau de bord financier
-- Vue mensuelle : CA HT / CA TTC / Recherches réalisées / Panier moyen
-- Vue annuelle : CA HT / CA TTC / Dossiers / Meilleur mois / Panier moyen
+**Page connexion**
+- Login/password (alexandre.rogelet / chasseimmo)
+- Protection de l'accès
 
----
+**Relances automatiques J+5**
+- Créées automatiquement après chaque envoi PDF
+- Lien vers la fiche client depuis la page Relances
 
-## 4. STATUTS CLIENTS
+**Matching biens → clients**
+- Quand un bien est ajouté → suggestion des clients dont il correspond aux critères
 
-| Icône | Statut | Dashboard | Relances |
-|---|---|---|---|
-| 🟣 | Prospect | ✅ Oui | ❌ Non |
-| 🟢 | Actif | ✅ Oui | ✅ Oui |
-| ⏸️ | Suspendu | ❌ Non | ❌ Non |
-| ✅ | **Bien trouvé — Dossier finalisé** | ❌ Archivé | ❌ Non |
-| 🔴 | Perdu | ❌ Archivé | ❌ Non |
+**Export Excel**
+- Depuis "Mon activité" : export mensuel/annuel CA
 
-### Raisons de perte
-Acheté via confrère / Abandon de projet / Budget revu / Parti à la concurrence / Autre (champ libre)
+### 🟢 Priorité basse / V2
 
-### Indicateur de chaleur (manuel)
-🔥 Très chaud / 👍 Intéressé / 😐 Tiède / ❄️ Froid
+**PDF Présentation des services**
+- Contenu à définir par Alexandre
 
-### Jauge de progression
-Auto + manuelle : `Prospect → Actif → Bien trouvé — Dossier finalisé`
+**PDF Compte-rendu visites**
+- CR individuel + bilan récapitulatif
 
----
+**Réponses emails dans la fiche**
+- Configuration DNS
 
-## 5. FICHE CLIENT — DÉTAIL COMPLET
-
-### Identité client
-- Prénom + Nom
-- Adresse complète
-- Plusieurs emails (envoi PDF aux deux simultanément)
-- Plusieurs numéros de téléphone
-- Date de première prise de contact (auto à la création)
-- Numéro de dossier auto : EMI-2026-XXX
-- Durée de suivi : "Suivi depuis X jours"
-
-### Critères de recherche
-- Type de bien / Budget min-max / Surface min-max / Nb pièces
-- Secteurs/villes : code postal → ville auto + quartiers + champ libre
-- Notes libres
-
-### Synthèse chiffrée (en haut de fiche)
-Biens présentés / Visites effectuées / Offres faites / Jours de suivi
-
-### Journal de bord automatique
-Fil chronologique automatique de toutes les actions :
-PDF envoyé, visite planifiée/effectuée, relance, statut modifié, mail envoyé, étape transaction...
-
-### Actions manuelles (bouton "+ Ajouter une action")
-Appel passé / Relance manuelle / Visite à planifier / Note libre / Envoi externe / RDV physique
-
-### Section Vendeur (optionnelle)
-Si le client est aussi potentiellement vendeur :
-- Adresse du bien à vendre (peut différer de l'adresse client)
-- Type / Surface + pièces / Estimation prix
-- Statut : Estimé / Mandat signé / Vendu
-- Notes libres
-
-### Mandat de recherche
-Date signature / Durée / Honoraires convenus / Alerte 15 jours avant expiration
-
-### Onglets de la fiche
-1. Biens proposés
-2. Visites
-3. Suivi Transaction
-4. Historique envois
-5. Journal de bord
-
-### 3 boutons d'envoi
-- 📄 **Sélection de biens** — PDF + email(s) + SMS
-- 🤝 **Présentation services** — PDF + email(s) + SMS (grisé avec date après 1er envoi)
-- 📋 **Compte-rendu / Bilan visites**
-
-### Envoi mail texte libre
-Objet libre, texte libre, pièce jointe (tous types), envoi Mailjet, tracé dans le journal.
-
-### Corbeille et archivage
-- Suppression → corbeille → destruction auto J+30
-- "Bien trouvé" et "Perdu" → archivés, consultables
+**Actions groupées multi-clients**
+- Email groupé, SMS groupé, changement statut en masse
 
 ---
 
-## 6. GESTION DES BIENS
+## 6. NOTES IMPORTANTES
 
-### Ajout par URL
-Sources : SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Figaro Immo, Jinka, Belle Demeure...
+### Extraction URL annonces
+- SeLoger bloque activement les requêtes serveur → message explicatif + formulaire vide
+- PAP, LeBonCoin, Bien'ici, Orpi, Century 21 fonctionnent mieux
+- L'API tente 3 User-Agents différents avant d'abandonner
+- Fallback : extraction ville/type depuis l'URL
 
-Extraction automatique :
-- Titre, prix, surface, pièces, description, photos, localisation
-- Description nettoyée (nom d'agence retiré)
-- Snapshot permanent (archivé même si l'annonce expire)
+### Mailjet — pas encore fonctionnel
+Pour activer :
+1. Alexandre crée compte sur mailjet.com
+2. Copie clé API + clé secrète dans Paramètres → SMS & Relances
+3. On code l'intégration dans route.ts
 
-### Détection de doublons
-- Même URL → alerte immédiate
-- Bien similaire (ville, surface ±3m², prix ±2%, pièces) → alerte
-- Même bien, URL différente → détection par similarité + confirmation
+### Secteurs / Quartiers
+- API geo.api.gouv.fr pour autocomplétion des villes
+- Base Paris (75001-75020) + 92 pré-intégrée dans le code
+- La ville reste active pour ajouter plusieurs quartiers
+- Saisie libre possible (Entrée pour valider)
 
-### Sélection des photos
-- Sélection manuelle + réordonnancement par glisser-déposer
-- 1ère photo = couverture
-- Filigrane conservé (protection juridique)
+### Type de bien
+- Stocké en BDD comme string : "Appartement, Maison"
+- Affiché en multi-sélection dans le modal critères
 
-### Prix & Commission
-- Prix vendeur détecté
-- Commission saisie : % ou montant fixe, bien par bien
-- Prix acquéreur calculé automatiquement
-- Dans le PDF : prix acquéreur uniquement (prix vendeur masqué)
-
-### Badges retour client
-Intéressé / Souhaite visiter / Visité / Offre faite / Refusé + commentaire libre
-
-> Badge "Offre faite" → ouverture automatique du Suivi Transaction
-
-### Agence source
-- Détectée automatiquement si possible
-- Saisie manuelle : nom, adresse complète, téléphone, contact
-- Même agence, adresse différente = entrée distincte
-- Pré-remplissage automatique pour les prochains biens
+### Statuts clients
+| Statut | Recherche en cours | Relances |
+|---|---|---|
+| Prospect | ❌ Non | ❌ Non |
+| Actif | ✅ Oui | ✅ Oui |
+| Suspendu | ❌ Non | ❌ Non |
+| Offre écrite | ❌ Non | ❌ Non |
+| Bien trouvé | ❌ Archivé | ❌ Non |
+| Perdu | ❌ Archivé | ❌ Non |
 
 ---
 
-## 7. WORKFLOW VISITES
+## 7. HORS PÉRIMÈTRE V1
 
-### Progression
-Badge "Souhaite visiter" → **Visite à venir** → **Visite effectuée** → Compte-rendu
-
-### Logistique visite
-- Adresse exacte du bien
-- Contact agence pour confirmer le RDV
-- Rappel automatique la veille — notification dans l'outil
-
-### Page Visites (menu)
-- Visites à venir — triées chronologiquement
-- Visites effectuées — avec note étoiles et résumé
-
-### PDFs Visites
-- PDF compte-rendu individuel par visite
-- PDF bilan récapitulatif de toutes les visites d'un client
+- Scraping automatique portails (bloqué juridiquement)
+- Suppression filigrane photos (illégal)
+- Multi-utilisateurs
+- Location (vente/achat uniquement)
+- Signature électronique mandats
+- Mode hors ligne
 
 ---
 
-## 8. SUIVI TRANSACTION — WORKFLOW COMPLET
+## 8. CE QUI MANQUE ENCORE PAR RAPPORT AU CAHIER DES CHARGES INITIAL
 
-Déclenché dès que le badge "Offre faite" est posé. Visible dans l'onglet "Suivi Transaction" ET dans le dashboard. Étapes verrouillées — progression chronologique obligatoire.
+### Fiche client — fonctionnalités non encore codées
+- **Section Vendeur** (optionnelle) : si le client est aussi potentiellement vendeur — adresse bien à vendre, type, surface, estimation, statut (Estimé/Mandat signé/Vendu)
+- **Jauge de progression** client : Prospect → Actif → Bien trouvé (visuelle)
+- **Clients sans activité +30 jours** → badge orange sur dashboard et liste
+- **Corbeille / archivage** : suppression → corbeille → destruction auto J+30 ; "Bien trouvé" et "Perdu" → archivés consultables
+- **Détection de doublons biens** : même URL = alerte immédiate ; bien similaire (ville, surface ±3m², prix ±2%, pièces) = alerte
 
-### Étape 1 — Offre
-Offre sur le prix / Date / Document joint optionnel / Note libre
+### Biens — fonctionnalités non encore codées
+- **Sélection photos** : sélection manuelle + réordonnancement drag & drop ; 1ère photo = couverture
+- **Note conseiller** par bien (pour le PDF)
+- **Agence source** complète : nom, adresse, téléphone, contact agent — pré-remplissage automatique pour les prochains biens de la même agence
 
-### Étape 2 — Négociation
-Historique complet des contre-offres : montant + date + partie (vendeur/acheteur)
-Bouton "+ Ajouter une contre-offre" — nombre illimité
+### Visites — fonctionnalités non encore codées
+- **Rappel automatique la veille** (notification dans l'outil)
+- **Note étoiles** après visite (1 à 5)
+- **Commentaire visite** 
 
-### Étape 3 — Offre acceptée
-Prix final accepté / Date d'accord
+### Envois — fonctionnalités non encore codées
+- **Snapshot permanent des biens** : archivage même si annonce expire
+- **Sélection des photos à inclure** dans le PDF par bien
+- **Prix vendeur masqué** dans le PDF (acquéreur uniquement visible)
 
-### Étape 4 — Compromis signé
-- Date de signature / Nom du notaire
-- Alerte automatique J+10 (délai de rétractation SRU)
-- Financement : Prêt (montant, apport, durée, taux, date fin condition suspensive) ou Comptant
+### Dashboard — blocs non encore codés
+- **Mandats expirant dans 15 jours** → badge orange
+- **Graphiques mensuels** activité
+- **Tableau financier** : CA HT / CA TTC / Recherches / Panier moyen (mensuel + annuel)
 
-### Suivi avancement du prêt
-Banque contactée / Offre reçue / Offre acceptée / Alerte si date limite approche
-
-### Étape 5 — Acte définitif
-Date prévue / Date effective / Notaire acheteur / Notaire vendeur
-
-### Clôture — Bien trouvé / Dossier finalisé
-Fenêtre pré-remplie avec toutes les données saisies :
-- Bien acquis : adresse, type, surface, pièces
-- Prix affiché / Prix final / Économie négociée (auto)
-- Financement détaillé
-- Honoraires HT → TVA 20% → TTC (auto)
-- Dates clés récapitulatives
-- Notes finales
-
-> À la validation : statut "Bien trouvé — Dossier finalisé", fiche archivée, CA et stats mis à jour.
-
----
-
-## 9. PDFs GÉNÉRÉS — 3 TYPES
-
-### PDF Sélection de biens
-- Personnalisé : nom client, référence dossier, date, "Document confidentiel"
-- Header : logo + coordonnées conseiller
-- Bloc prix acquéreur mis en valeur (prix vendeur masqué)
-- Barre de specs : surface, pièces, chambres, étage, parking, DPE
-- Localisation + points forts + description nettoyée
-- Note personnelle du conseiller
-- Photos sélectionnées + carte
-- Footer coordonnées
-- **Sauvegardé définitivement** — consultable même si l'annonce a expiré
-
-### PDF Présentation de services
-Bouton grisé avec date après 1er envoi (re-envoi possible avec confirmation).
-Contenu à définir par Alexandre (V2).
-
-### PDF Compte-rendu / Bilan visites
-- CR individuel par visite
-- Bilan récapitulatif de toutes les visites d'un client
-
----
-
-## 10. ENVOIS MAILJET — EMAIL + SMS
-
-Un seul bouton → email(s) + SMS simultanés depuis `arogelet@emilio-immo.com`
-
-### Email
-- Envoi depuis arogelet@emilio-immo.com
-- Si plusieurs emails sur la fiche → envoi aux deux simultanément
-- Template modifiable dans Paramètres avec variables `{{prénom}}`, `{{nom}}`...
-- PDF joint automatiquement / Signature automatique
-
-### SMS
-- Expéditeur : nom alphanumérique (11 car. max, sans espace ni caractère spécial)
-- 160 caractères max / **0,04€ par SMS**
-- Template modifiable dans Paramètres
-
-### Relance automatique J+5
-- Créée après chaque envoi de PDF sélection
-- Badge rouge permanent dashboard + icône compteur menu
-- Clôture : note résultat + journal / Report ou suppression possibles
-
-### Mail texte libre
-- Depuis fiche ou menu "Nouveau mail"
-- Objet libre / Texte libre / Pièce jointe tous types
-- Recherche destinataire par nom dans la base
-- Tracé dans le journal
-
----
-
-## 11. ACTIONS GROUPÉES MULTI-CLIENTS
-
-Sélection de plusieurs clients → menu d'actions :
-- ✉️ **Email groupé** — chaque client reçoit son email individuel (aucun CC visible), prénom personnalisé, pièce jointe possible
-- 📱 **SMS groupé** — message court avec prénom auto
-- 🔔 **Relance groupée** — même date pour tous
-- 📋 **Changement de statut en masse**
-- 📤 **Export Excel** des fiches sélectionnées
-
-Chaque action tracée individuellement dans le journal de bord de chaque fiche.
-
----
-
-## 12. PAGE RELANCES
-
-- 🔴 En retard — J+5 dépassé
-- 🔴 Aujourd'hui
-- 🟡 À venir
-- 🔵 Manuelles
-
-Boutons : Appeler / Voir fiche / Clôturer / Reporter
-
-Icône rouge compteur dans le menu — permanente jusqu'à traitement complet.
-
----
-
-## 13. PAGE MON ACTIVITÉ — STATISTIQUES
-
+### Page Mon activité — stats non encore codées
 - Délai moyen 1er contact → dossier finalisé
 - Délai moyen offre → acte
 - Taux de visite : biens proposés vs visités
 - Taux de transformation : visites vs offres
 - Économie moyenne négociée
 - Statistiques agences partenaires
-- Tableau financier mensuel : CA HT/TTC / Recherches / Panier moyen
-- Tableau financier annuel : CA HT/TTC / Dossiers / Panier moyen / Meilleur mois
 - Export Excel mensuel et annuel
 
----
+### Actions groupées multi-clients (page Clients)
+- Sélection de plusieurs clients → menu d'actions
+- Email groupé (prénom personnalisé, aucun CC visible)
+- SMS groupé
+- Relance groupée même date
+- Changement statut en masse
+- Export Excel des fiches sélectionnées
 
-## 14. ONGLET PARAMÈTRES
+### Relances — améliorations prévues
+- Lien direct vers fiche client depuis la page Relances
+- Bouton "Appeler" sur chaque relance
+- Relances automatiques créées après chaque envoi PDF (pas encore implémenté)
 
-- Infos agence : nom, conseiller, email, téléphone, logo, couleurs
-- Templates email (objet + corps avec variables) / Template SMS / Signature
-- Délai relance par défaut : J+5 (modifiable)
-- Sécurité : modification identifiant et mot de passe
+### Page connexion
+- Écran login avant accès à l'outil
+- Identifiant : alexandre.rogelet / Mot de passe : chasseimmo
+- Non encore codé — l'outil est accessible sans authentification pour l'instant
+
+### Paramètres — sections à compléter
 - Corbeille : restauration / destruction auto J+30
 - Export global Excel
-
-> Toute modification dans Paramètres est répercutée immédiatement sur les prochains envois Mailjet.
-
----
-
-## 15. GESTION DES SECTEURS / QUARTIERS
-
-- Code postal → ville auto via **API geo.api.gouv.fr** (officielle, gratuite)
-- Grande ville → liste déroulante quartiers pré-intégrés
-- Autre → champ texte libre
-- Plusieurs secteurs sélectionnables par client
-
-### Base pré-intégrée Paris & 92
-| Code | Ville | Quartiers |
-|---|---|---|
-| 92100 | Boulogne-Billancourt | Parchamp-Albert Kahn, Silly-Gallieni, Renault-Billancourt, Point-du-Jour, Vaillant-Marcel Sembat, Jean-Jaurès-Reine, Château-Les-Princes-Marmottan |
-| 75006 | Paris 6ème | Saint-Germain-des-Prés, Luxembourg, Vavin, Notre-Dame-des-Champs, Bon Marché, Saint-Sulpice, Quais de Seine, Faubourg Saint-Germain |
-| 75015 | Paris 15ème | Grenelle, Javel, Saint-Lambert, Necker, Beaugrenelle, Convention, Commerce, Falguière, Brancion |
+- Délai conservation PDFs archivés (15 / 30 / 60 jours / Jamais)
 
 ---
 
-## 16. STOCKAGE DES PDFs — SUPABASE
+## 9. DÉCISIONS DE DESIGN IMPORTANTES
 
-- PDFs des clients **Actifs** → conservés dans Supabase Storage
-- PDFs des clients **Bien trouvé / Perdu** → supprimés automatiquement après X jours (configurable dans Paramètres : 15 / 30 / 60 jours / Jamais)
-- Données texte (prix, dates, historique, CA...) → conservées définitivement
-- Avec 5–10 clients actifs en permanence : plan gratuit Supabase (1GB) largement suffisant
-
----
-
-## 17. FONCTIONNALITÉS PRÉVUES EN V2
-
-- Réponses emails clients dans la fiche (configuration DNS)
-- PDF de présentation des services Emilio Immobilier (contenu à définir)
-- Intégration flux XML Immofacile AC3
-- Matching automatique : bien → clients correspondants
-- Extension base quartiers hors Île-de-France
-- Diffusion mandats vendeurs via API portails (SeLoger, Jinka, Belle Demeure)
+- **Modal critères** : overlay NON fermable au clic extérieur (uniquement Annuler/Sauvegarder)
+- **Statut client** : dropdown select (pas boutons) — inclut "Offre écrite" ✅
+- **Chaleur** : boutons emoji uniquement 🔥👍😐❄️
+- **Badge retour bien** : dropdown inline sur chaque bien
+- **Prix** : prix acquéreur affiché, prix vendeur masqué (important pour le PDF)
+- **Commission** : saisie % ou montant fixe → prix acquéreur calculé automatiquement
+- **Référence dossier** : EMI-2026-001, EMI-2026-002... (auto à la création)
+- **Relance J+5** : créée automatiquement après chaque envoi PDF (à implémenter)
+- **SRU** : alerte automatique J+10 après signature compromis
 
 ---
 
-## 18. HORS PÉRIMÈTRE V1
+## 10. WORKFLOW PDF — DÉTAIL COMPLET (À CODER)
 
-- Scraping automatique portails — instable et juridiquement risqué
-- Suppression filigrane photos — non légal
-- Import automatique clients Immofacile AC3 — saisie manuelle en V1
-- Mode hors ligne — outil 100% en ligne
-- Multi-utilisateurs — solo en V1
-- Location — vente/achat uniquement
-- Gestion comptable avancée
-- Signature électronique mandats
+### Déclencheur
+Bouton "📄 Sélection de biens" sur la fiche client
 
----
+### Étapes
+1. Modal de sélection : liste des biens avec cases à cocher, aperçu miniature
+2. Pour chaque bien sélectionné : choisir les photos à inclure (max 3-4 par bien), réordonner
+3. Option : ajouter note personnelle du conseiller par bien
+4. Prévisualisation PDF avant envoi
+5. Choix destinataires : emails de la fiche (1 ou 2), SMS oui/non
+6. Envoi → Mailjet → PDF joint + SMS
+7. Sauvegarde PDF dans Supabase Storage
+8. Création relance J+5 automatique
+9. Tracé dans journal + historique envois
 
-*Document de référence — Emilio Immobilier V1 — Alexandre ROGELET*
+### Contenu PDF
+- **Page de garde** : logo Emilio, nom client, référence dossier, date, "Document confidentiel"
+- **Par bien** :
+  - Photo principale (grande)
+  - Titre + localisation
+  - Prix acquéreur TTC (en gras, mis en valeur — prix vendeur masqué)
+  - Barre specs : surface, pièces, chambres, étage, parking, DPE
+  - Description nettoyée (nom agence retiré si mentionné)
+  - Note du conseiller (encadrée)
+  - Autres photos (2-3)
+- **Footer** : logo + coordonnées Alexandre ROGELET + "Emilio Immobilier"
+
+### Librairie recommandée
+jsPDF + html2canvas (déjà installé dans package.json)
