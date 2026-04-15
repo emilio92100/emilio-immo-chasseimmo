@@ -14,7 +14,7 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
       supabase.from('clients').select('*', { count: 'exact', head: true }),
       supabase.from('relances').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
-      supabase.from('clients').select('*', { count: 'exact', head: true }).in('statut', ['actif', 'prospect']),
+      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
     ]);
     setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0, recherche: rech || 0 });
   }
