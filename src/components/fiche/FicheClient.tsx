@@ -167,7 +167,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function saveAction() {
-    await addJournal(client.id, actionF.type, actionF.titre, actionF.description);
+    const typeLabels: Record<string, string> = { appel: 'Appel passé', rdv: 'RDV physique', note: 'Note', relance_manuelle: 'Relance manuelle', envoi_externe: 'Envoi externe', email_libre: 'Email envoyé' };
+    const titre = actionF.titre.trim() || typeLabels[actionF.type] || 'Action';
+    await addJournal(client.id, actionF.type, titre, actionF.description);
     setShowAction(false); setActionF({ type: 'note', titre: '', description: '' }); load();
   }
 
@@ -319,7 +321,98 @@ export default function FicheClient({ client: init, onBack }: Props) {
           </div>
         </div>
 
+        {/* BOUTONS D'ENVOI */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>📤 Envoyer :</div>
+
+          {/* SÉLECTION DE BIENS */}
+          <button
+            onClick={() => {
+              if (biens.length === 0) { alert('Ajoutez d’abord des biens à la fiche de ce client.'); return; }
+              setTab('biens');
+              alert('Fonctionnalité PDF en cours de développement. Les biens seront inclus dans la sélection.');
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#243044')}
+            onMouseOut={e => (e.currentTarget.style.background = '#1a2332')}>
+            📄 Sélection de biens
+          </button>
+
+          {/* PRÉSENTATION SERVICES */}
+          <button
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
+            onClick={() => alert('PDF Présentation des services — à configurer dans Paramètres (V2)')}
+            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
+            🤝 Présentation services
+          </button>
+
+          {/* COMPTE-RENDU VISITES */}
+          <button
+            onClick={() => {
+              if (visites.filter(v => v.statut === 'effectuee').length === 0) { alert('Aucune visite effectuée à inclure dans le compte-rendu.'); return; }
+              setTab('visites');
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
+            📋 Compte-rendu visites
+          </button>
+
+          {/* MAIL LIBRE */}
+          <button
+            onClick={() => setTab('journal')}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', marginLeft: 'auto' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
+            ✉️ Mail libre
+          </button>
+        </div>
+
+        {/* BOUTONS D'ENVOI */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>📤 Envoyer :</div>
+          <button onClick={() => { if (biens.length === 0) { alert('Ajoutez des biens avant d’envoyer une sélection.'); return; } alert('Fonctionnalité PDF à venir — les biens sont prêts !'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            📄 Sélection de biens
+          </button>
+          <button onClick={() => alert('PDF Présentation des services — V2')}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            🤝 Présentation services
+          </button>
+          <button onClick={() => { if (visites.filter(v => v.statut === 'effectuee').length === 0) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            📋 Compte-rendu visites
+          </button>
+          <button onClick={() => setShowAction(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>
+            ✉️ Mail libre
+          </button>
+        </div>
+
         {/* TABS */}
+
+        {/* BOUTONS ENVOI */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>Envoyer :</div>
+          <button onClick={() => { if (biens.length === 0) { alert('Ajoutez des biens avant.'); return; } alert('PDF selection - bientot disponible !'); }}
+            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Selection de biens
+          </button>
+          <button onClick={() => alert('Presentation services - V2')}
+            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Presentation services
+          </button>
+          <button onClick={() => setTab('visites')}
+            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Compte-rendu visites
+          </button>
+          <button onClick={() => setShowAction(true)}
+            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>
+            Mail libre
+          </button>
+        </div>
+
         <div className={styles.tabs}>
           {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
         </div>
@@ -445,7 +538,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
         {/* JOURNAL */}
         {tab === 'journal' && (
-          <div className={styles.card} style={{ padding: 22 }}>
+          <div className={styles.card} style={{ padding: 22, maxHeight: '65vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button></div>
             {journal.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📓</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Journal vide</div></div>
             : journal.map((j, i) => (
@@ -700,15 +793,34 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
       {/* ═══ MODAL ACTION ═══ */}
       {showAction && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowAction(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 480 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>+ Action</h2><button className={styles.modalClose} onClick={() => setShowAction(false)}>✕</button></div>
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 500 }}>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>+ Ajouter une action</h2><button className={styles.modalClose} onClick={() => setShowAction(false)}>✕</button></div>
             <div className={styles.modalBody}>
-              <div><label className={styles.lbl}>Type</label><select className={styles.inp} value={actionF.type} onChange={e => setActionF(f => ({ ...f, type: e.target.value }))}><option value="note">📝 Note</option><option value="appel">📞 Appel</option><option value="rdv">🤝 RDV</option><option value="relance_manuelle">🔔 Relance</option><option value="envoi_externe">📤 Envoi externe</option></select></div>
-              <div><label className={styles.lbl}>Titre *</label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi" /></div>
-              <div><label className={styles.lbl}>Description</label><textarea className={styles.inp} rows={3} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} /></div>
+              <div>
+                <label className={styles.lbl}>Type d'action</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (
+                    <button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))}
+                      style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? '#1a2332' : '#e2e8f0'}`, background: actionF.type === o.v ? '#1a2332' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>
+                      {o.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel — pré-rempli selon le type)</span></label>
+                <input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." />
+              </div>
+              <div>
+                <label className={styles.lbl}>Notes / Détails</label>
+                <textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." />
+              </div>
             </div>
-            <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction} disabled={!actionF.titre}>✓ Ajouter</button></div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>✓ Ajouter au journal</button>
+            </div>
           </div>
         </div>
       )}
