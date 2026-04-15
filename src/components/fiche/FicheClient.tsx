@@ -42,7 +42,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   // Forms
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
-  const [crit, setCrit] = useState({ type_bien: client.type_bien||'', budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, dpe_max: '' });
+  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: '', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, rdc_exclu: false, dernier_etage: false, etage_min: '', dpe_max: '', annee_min: '' });
+  const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
 
@@ -101,7 +102,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   async function saveCriteres() {
     setSaving(true);
-    const { data } = await supabase.from('clients').update({ type_bien: crit.type_bien||null, budget_min: crit.budget_min ? parseInt(crit.budget_min) : null, budget_max: crit.budget_max ? parseInt(crit.budget_max) : null, surface_min: crit.surface_min ? parseInt(crit.surface_min) : null, surface_max: crit.surface_max ? parseInt(crit.surface_max) : null, nb_pieces_min: crit.nb_pieces_min ? parseInt(crit.nb_pieces_min) : null, nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null, secteurs: crit.secteurs, notes: crit.notes||null }).eq('id', client.id).select().single();
+    const { data } = await supabase.from('clients').update({ type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null, budget_min: crit.budget_min ? parseInt(crit.budget_min) : null, budget_max: crit.budget_max ? parseInt(crit.budget_max) : null, surface_min: crit.surface_min ? parseInt(crit.surface_min) : null, surface_max: crit.surface_max ? parseInt(crit.surface_max) : null, nb_pieces_min: crit.nb_pieces_min ? parseInt(crit.nb_pieces_min) : null, nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null, secteurs: crit.secteurs, notes: crit.notes||null }).eq('id', client.id).select().single();
     if (data) { setClient(data as Client); await addJournal(client.id, 'criteres_modifies', 'Critères mis à jour'); }
     setSaving(false); setShowCriteres(false);
   }
@@ -131,7 +132,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
     try {
       const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
       const data = await res.json();
-      setBienForm({ ...(data.bien||{}), url, commission_type: 'pourcentage', commission_val: 3.5 });
+      if (data.bien) {
+        setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: 3.5, _partial: data.partial, _reason: data.reason });
+      } else {
+        setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 });
+      }
     } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 }); }
     setExtracting(false);
   }
@@ -210,11 +215,29 @@ export default function FicheClient({ client: init, onBack }: Props) {
             <div className={styles.clientMeta}>{client.reference} · Suivi depuis {jours} jour{jours > 1 ? 's' : ''} · Créé le {new Date(client.created_at).toLocaleDateString('fr-FR')}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          {[{k:'prospect',l:'🟣 Prospect',bg:'#f5f3ff',c:'#8b5cf6',b:'#ddd6fe'},{k:'actif',l:'🟢 Actif',bg:'#ecfdf5',c:'#10b981',b:'#a7f3d0'},{k:'suspendu',l:'⏸️ Suspendu',bg:'#fffbeb',c:'#f59e0b',b:'#fde68a'}].map(s => (
-            <button key={s.k} onClick={() => changeStatut(s.k)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', background: client.statut === s.k ? s.bg : '#f8fafc', color: client.statut === s.k ? s.c : '#94a3b8', border: `1px solid ${client.statut === s.k ? s.b : '#e2e8f0'}` }}>{s.l}</button>
-          ))}
-          <div style={{ width: 1, height: 24, background: '#e2e8f0', margin: '0 4px' }} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* STATUT DROPDOWN */}
+          <div style={{ position: 'relative' }}>
+            <select
+              value={client.statut}
+              onChange={e => changeStatut(e.target.value)}
+              style={{
+                padding: '7px 32px 7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0',
+                background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2',
+                color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444',
+                appearance: 'none', WebkitAppearance: 'none', outline: 'none',
+              }}>
+              <option value="prospect">🟣 Prospect</option>
+              <option value="actif">🟢 Actif</option>
+              <option value="suspendu">⏸️ Suspendu</option>
+              <option value="offre_ecrite">✍️ Offre écrite</option>
+              <option value="bien_trouve">✅ Bien trouvé</option>
+              <option value="perdu">🔴 Perdu</option>
+            </select>
+            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10 }}>▼</span>
+          </div>
+          <div style={{ width: 1, height: 24, background: '#e2e8f0', margin: '0 2px' }} />
           {[{k:'tres_chaud',l:'🔥'},{k:'interesse',l:'👍'},{k:'tiede',l:'😐'},{k:'froid',l:'❄️'}].map(c => (
             <button key={c.k} onClick={() => changeChaleur(c.k)} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${client.chaleur === c.k ? '#c9a84c' : '#e2e8f0'}`, background: client.chaleur === c.k ? '#fef9c3' : '#f8fafc', cursor: 'pointer', fontSize: 18, transition: 'all 0.15s' }}>{c.l}</button>
           ))}
@@ -247,7 +270,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
           {/* CRITÈRES */}
           <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ type_bien: client.type_bien||'', budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, dpe_max: '' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: '', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, rdc_exclu: false, dernier_etage: false, etage_min: '', dpe_max: '', annee_min: '' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
               {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length) ? (
                 <div className={styles.criteresGrid}>
@@ -462,24 +485,159 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
       {/* ═══ MODAL CRITÈRES ═══ */}
       {showCriteres && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowCriteres(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 720 }}>
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 740 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🎯 Critères de recherche</h2><button className={styles.modalClose} onClick={() => setShowCriteres(false)}>✕</button></div>
             <div className={styles.modalBody}>
-              <div><label className={styles.lbl}>Type de bien</label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{['Appartement','Maison','Loft','Duplex','Studio','Villa','Autre'].map(t => <button key={t} onClick={() => setCrit(f => ({ ...f, type_bien: t }))} style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${crit.type_bien === t ? '#1a2332' : '#e2e8f0'}`, background: crit.type_bien === t ? '#1a2332' : 'white', color: crit.type_bien === t ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{t}</button>)}</div></div>
-              <div><label className={styles.lbl}>Budget</label><div className={styles.formRow}><div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} placeholder="300 000" /></div><div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div></div></div>
+
+              {/* TYPES — multi-sélection */}
+              <div>
+                <label className={styles.lbl}>Type(s) de bien <span style={{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#94a3b8'}}>(plusieurs choix possibles)</span></label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {['Appartement','Maison','Loft','Duplex','Studio','Villa','Terrain','Autre'].map(t => {
+                    const sel = crit.types_bien.includes(t);
+                    return <button key={t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==t) : [...f.types_bien, t] }))}
+                      style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{t}</button>;
+                  })}
+                </div>
+              </div>
+
+              {/* BUDGET */}
+              <div>
+                <label className={styles.lbl}>Budget</label>
+                <div className={styles.formRow}>
+                  <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} placeholder="300 000" /></div>
+                  <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div>
+                </div>
+              </div>
+
+              {/* SURFACE + PIÈCES + CHAMBRES */}
               <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Surface</label><div style={{ display: 'flex', gap: 6 }}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e => setCrit(f => ({ ...f, surface_min: e.target.value }))} placeholder="Min m²" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e => setCrit(f => ({ ...f, surface_max: e.target.value }))} placeholder="Max m²" /></div></div>
-                <div><label className={styles.lbl}>Pièces</label><div style={{ display: 'flex', gap: 6 }}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e => setCrit(f => ({ ...f, nb_pieces_min: e.target.value }))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e => setCrit(f => ({ ...f, nb_pieces_max: e.target.value }))} placeholder="Max" /></div></div>
+                <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
+                <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
               </div>
-              <div><label className={styles.lbl}>Options</label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{[{k:'parking',l:'🅿️ Parking'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'cave',l:'📦 Cave'},{k:'ascenseur',l:'🛗 Ascenseur'}].map(o => <button key={o.k} onClick={() => setCrit(f => ({ ...f, [o.k]: !(f as any)[o.k] }))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>)}</div></div>
-              <div><label className={styles.lbl}>DPE maximum</label><div style={{ display: 'flex', gap: 6 }}>{['A','B','C','D','E','F','G'].map(d => <button key={d} onClick={() => setCrit(f => ({ ...f, dpe_max: f.dpe_max === d ? '' : d }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max === d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max === d ? '#1a2332' : 'white', color: crit.dpe_max === d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>)}</div></div>
-              <div><label className={styles.lbl}>Secteurs / Quartiers</label>
-                <div style={{ position: 'relative' }}><input className={styles.inp} value={cpQ} onChange={e => searchCP(e.target.value)} placeholder="Code postal ou ville (ex: 75016, Boulogne...)" />{cpSug.length > 0 && <div className={styles.suggestions}>{cpSug.map((s, i) => <div key={i} className={styles.suggItem} onClick={() => { const info = QUARTIERS[s.cp]; if (info?.quartiers) { setSelCP(s.cp); setCpSug([]); } else { addSecteur(s.cp, s.ville); }}}><strong>{s.cp}</strong> — {s.ville}</div>)}</div>}</div>
-                {selCP && QUARTIERS[selCP] && <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginTop: 8 }}><div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: 600 }}>Quartiers de {QUARTIERS[selCP].ville} :</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}><button onClick={() => addSecteur(selCP, QUARTIERS[selCP].ville)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Toute la ville</button>{QUARTIERS[selCP].quartiers.map(q => <button key={q} onClick={() => addSecteur(selCP, QUARTIERS[selCP].ville, q)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>{q}</button>)}</div></div>}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>{crit.secteurs.map(s => <span key={s} className={styles.secteurTag}>{s} <span onClick={() => setCrit(f => ({ ...f, secteurs: f.secteurs.filter(x => x !== s) }))} style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span></span>)}</div>
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Chambres minimum</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} placeholder="Ex: 2" /></div>
+                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
               </div>
-              <div><label className={styles.lbl}>Notes libres</label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f => ({ ...f, notes: e.target.value }))} placeholder="Particularités, préférences..." /></div>
+
+              {/* ÉTAGE */}
+              <div>
+                <label className={styles.lbl}>Étage</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (
+                    <button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))}
+                      style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
+                  ))}
+                  <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage min :</label><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="Ex: 2" style={{width:80}} /></div>
+                </div>
+              </div>
+
+              {/* OPTIONS */}
+              <div>
+                <label className={styles.lbl}>Équipements souhaités</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (
+                    <button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))}
+                      style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* DPE */}
+              <div>
+                <label className={styles.lbl}>DPE maximum accepté</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['A','B','C','D','E','F','G'].map(d => (
+                    <button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))}
+                      style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTEURS améliorés */}
+              <div>
+                <label className={styles.lbl}>Secteurs / Quartiers</label>
+                <div style={{ position: 'relative' }}>
+                  <input className={styles.inp} value={cpQ} onChange={e => searchCP(e.target.value)} placeholder="Tapez un code postal ou une ville (ex: 92100, Neuilly...)" />
+                  {cpSug.length > 0 && (
+                    <div className={styles.suggestions}>
+                      {cpSug.map((s, i) => (
+                        <div key={i} className={styles.suggItem} onClick={() => {
+                          const info = QUARTIERS[s.cp];
+                          if (info?.quartiers) {
+                            setSecteurVilleActive({cp: s.cp, ville: info.ville});
+                          } else {
+                            setSecteurVilleActive({cp: s.cp, ville: s.ville});
+                          }
+                          setCpSug([]);
+                          setCpQ('');
+                        }}>
+                          <strong>{s.cp}</strong> — {s.ville}
+                          {QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quartiers de la ville active — reste affiché jusqu'à changement */}
+                {secteurVilleActive && (
+                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>📍 {secteurVilleActive.ville} ({secteurVilleActive.cp})</div>
+                      <button onClick={() => setSecteurVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                      <button onClick={() => addSecteur(secteurVilleActive.cp, secteurVilleActive.ville)}
+                        style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                        ✓ Toute la ville
+                      </button>
+                      {QUARTIERS[secteurVilleActive.cp]?.quartiers.map(q => {
+                        const label = `${q} (${secteurVilleActive.ville})`;
+                        const already = crit.secteurs.includes(label);
+                        return (
+                          <button key={q} onClick={() => already ? setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==label)})) : addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, q)}
+                            style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: `1px solid ${already ? '#10b981' : '#e2e8f0'}`, background: already ? '#ecfdf5' : 'white', color: already ? '#10b981' : '#64748b', cursor: 'pointer', fontFamily: 'inherit', fontWeight: already ? 600 : 400, transition: 'all 0.12s' }}>
+                            {already ? '✓ ' : ''}{q}
+                          </button>
+                        );
+                      })}
+                      {!QUARTIERS[secteurVilleActive.cp] && (
+                        <div style={{fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>
+                      )}
+                    </div>
+                    <div style={{fontSize:11,color:'#94a3b8'}}>💡 Vous pouvez sélectionner plusieurs quartiers puis chercher une autre ville</div>
+                  </div>
+                )}
+
+                {/* Secteurs sélectionnés */}
+                {crit.secteurs.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    {crit.secteurs.map(s => (
+                      <span key={s} className={styles.secteurTag}>
+                        {s} <span onClick={() => setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==s)}))} style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Saisie libre */}
+                <div style={{ marginTop: 10 }}>
+                  <input className={styles.inp} placeholder="Ou saisir un secteur libre (ex: Triangle d'Or, Proche RER...)"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                        const v = (e.target as HTMLInputElement).value.trim();
+                        if (!crit.secteurs.includes(v)) setCrit(f=>({...f,secteurs:[...f.secteurs,v]}));
+                        (e.target as HTMLInputElement).value = '';
+                      }
+                    }} />
+                  <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Appuyez sur Entrée pour ajouter un secteur personnalisé</div>
+                </div>
+              </div>
+
+              {/* NOTES */}
+              <div><label className={styles.lbl}>Notes libres</label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowCriteres(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCriteres} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
@@ -513,7 +671,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
             <div className={styles.modalBody}>
               <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={extract} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
               {bienForm !== null && <>
-                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '9px 13px', fontSize: 13, color: '#065f46' }}>{bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}</div>
+                <div style={{ background: bienForm._reason === 'seloger_blocked' ? '#fffbeb' : bienForm.titre ? '#ecfdf5' : '#f8fafc', border: `1px solid ${bienForm._reason === 'seloger_blocked' ? '#fde68a' : bienForm.titre ? '#a7f3d0' : '#e2e8f0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 13, color: bienForm._reason === 'seloger_blocked' ? '#92400e' : bienForm.titre ? '#065f46' : '#64748b' }}>
+                  {bienForm._reason === 'seloger_blocked' ? '⚠️ SeLoger bloque l’extraction automatique — complétez manuellement les informations' : bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Titre</label><input className={styles.inp} value={bienForm.titre||''} onChange={e => setBienForm((f: any) => ({ ...f, titre: e.target.value }))} /></div>
                   <div><label className={styles.lbl}>Type</label><select className={styles.inp} value={bienForm.type_bien||'Appartement'} onChange={e => setBienForm((f: any) => ({ ...f, type_bien: e.target.value }))}><option>Appartement</option><option>Maison</option><option>Loft</option><option>Studio</option><option>Duplex</option></select></div>
