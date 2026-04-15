@@ -4,6 +4,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import Dashboard from '@/components/dashboard/Dashboard';
 import Clients from '@/components/clients/Clients';
+import FicheClient from '@/components/fiche/FicheClient';
 import PageRelances from '@/components/pages/PageRelances';
 import PageVisites from '@/components/pages/PageVisites';
 import PageMail from '@/components/pages/PageMail';
@@ -11,17 +12,29 @@ import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
 import PageRecherche from '@/components/pages/PageRecherche';
 import styles from './AppLayout.module.css';
+import type { Client } from '@/lib/supabase';
 
 export default function AppLayout() {
   const [activePage, setActivePage] = useState('dashboard');
-  const [pageData, setPageData] = useState<unknown>(null);
+  const [ficheClient, setFicheClient] = useState<Client | null>(null);
 
   const handleNavigate = (page: string, data?: unknown) => {
+    if (page === 'fiche' && data) {
+      setFicheClient(data as Client);
+    }
     setActivePage(page);
-    setPageData(data || null);
   };
 
   const renderPage = () => {
+    if (activePage === 'fiche' && ficheClient) {
+      return (
+        <FicheClient
+          client={ficheClient}
+          onBack={() => setActivePage('clients')}
+          onNavigate={handleNavigate}
+        />
+      );
+    }
     switch(activePage) {
       case 'dashboard':  return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
