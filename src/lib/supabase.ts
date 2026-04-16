@@ -28,7 +28,22 @@ export interface Client {
   surface_max?: number
   nb_pieces_min?: number
   nb_pieces_max?: number
+  chambres_min?: number
   secteurs: string[]
+  parking?: boolean
+  cave?: boolean
+  balcon?: boolean
+  terrasse?: boolean
+  jardin?: boolean
+  ascenseur?: boolean
+  gardien?: boolean
+  interphone?: boolean
+  digicode?: boolean
+  rdc_exclu?: boolean
+  dernier_etage?: boolean
+  etage_min?: number
+  dpe_max?: string
+  annee_construction_min?: number
   est_vendeur: boolean
   mandat_date_signature?: string
   mandat_duree?: number
