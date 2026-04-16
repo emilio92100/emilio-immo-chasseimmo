@@ -25,9 +25,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
   const prospects = clients.filter(c => c.statut === 'prospect').length;
   const today     = new Date().toISOString().split('T')[0];
 
-  const relanceRetard   = relances.filter(r => r.date_echeance.split('T')[0] < today);
+  const relanceRetard     = relances.filter(r => r.date_echeance.split('T')[0] < today);
   const relanceAujourdhui = relances.filter(r => r.date_echeance.split('T')[0] === today);
-  const relanceAvenir   = relances.filter(r => r.date_echeance.split('T')[0] > today);
+  const relanceAvenir     = relances.filter(r => r.date_echeance.split('T')[0] > today);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -48,13 +48,14 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           <h1 className={styles.welcomeTitle}>Bonjour, Alexandre 👋</h1>
           <p className={styles.welcomeSub}>
             {relances.length > 0
-              ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relances.length} relance{relances.length > 1 ? 's' : ''}</strong> en attente.</>
+              ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relances.length} relance{relances.length > 1 ? 's' : ''}</strong> en attente — bonne journée ! 🌟</>
               : <>Aucune relance en attente — bonne journée ! ☀️</>
             }
           </p>
         </div>
-        <div className={styles.welcomeRight}>
+        <div className={styles.welcomeRight} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
+          <button onClick={() => onNavigate('clients')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: '#1a2332', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ Nouveau client</button>
         </div>
       </div>
 
@@ -121,12 +122,13 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
                 const isRetard = dateR < today;
                 const isAujourd = dateR === today;
                 const jours = Math.abs(Math.floor((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
+                const clientRelance = clients.find(c => c.id === r.client_id);
                 return (
-                  <div key={r.id} className={styles.listRow}>
+                  <div key={r.id} className={styles.listRow} onClick={() => { if (clientRelance) onNavigate('fiche', clientRelance); }}>
                     <div className={styles.urgBar} style={{ background: isRetard ? '#ef4444' : isAujourd ? '#ef4444' : '#f59e0b' }} />
                     <div className={styles.listInfo}>
-                      <div className={styles.listName}>Client #{r.client_id.slice(0, 8)}</div>
-                      <div className={styles.listDetail}>{r.note || 'Relance automatique'}</div>
+                      <div className={styles.listName}>{clientRelance ? `${clientRelance.prenom} ${clientRelance.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
+                      <div className={styles.listDetail}>{r.type === 'auto' ? 'PDF envoyé — relance J+5' : r.note || 'Relance manuelle'}</div>
                     </div>
                     <span className={`${styles.badge} ${isRetard ? styles.badgeRed : isAujourd ? styles.badgeRed : styles.badgeAmber}`}>
                       {isRetard ? `${jours}j de retard` : isAujourd ? "Aujourd'hui" : `Dans ${jours}j`}
@@ -172,7 +174,6 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
             </div>
           </div>
 
-          {/* CTA SI AUCUN CLIENT */}
           {clients.length === 0 && (
             <div style={{ background: 'linear-gradient(135deg, #1a2332, #243044)', borderRadius: 16, padding: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#c9a84c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>🚀 Pour commencer</div>
