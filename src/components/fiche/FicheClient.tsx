@@ -54,6 +54,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [selCP, setSelCP] = useState('');
   const [txData, setTxData] = useState<any>({});
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
+  const [showPlanVisite, setShowPlanVisite] = useState(false);
+  const [showCompteRendu, setShowCompteRendu] = useState(false);
+  const [planVisteForm, setPlanVisiteForm] = useState({ bien_id: '', date: '', heure: '', contact: '', notes: '' });
+  const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
   const [offreForm, setOffreForm] = useState({ bien_id: '', montant: '', date: '', notes: '' });
 
   useEffect(() => { load(); }, [client.id]);
@@ -228,10 +232,46 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function planifierVisite(bienId: string) {
-    await supabase.from('visites').insert({ client_id: client.id, bien_id: bienId, statut: 'a_venir' });
-    await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).eq('id', bienId);
-    await addJournal(client.id, 'visite_planifiee', 'Visite planifiée');
-    load();
+    // Vérifier si une visite à venir existe déjà pour ce bien
+    const existante = visites.find(v => v.bien_id === bienId && v.statut === 'a_venir');
+    if (existante) {
+      const suppr = confirm('Une visite est déjà planifiée pour ce bien. Voulez-vous la supprimer pour en créer une nouvelle ?');
+      if (!suppr) return;
+      await supabase.from('visites').delete().eq('id', existante.id);
+      await load();
+    }
+    setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
+    setShowPlanVisite(true);
+  }
+
+  async function savePlanVisite() {
+    const { bien_id, date, heure, contact, notes } = planVisteForm;
+    if (!bien_id) return;
+    await supabase.from('visites').insert({ client_id: client.id, bien_id, statut: 'a_venir', date_visite: date || null, heure: heure || null, contact_agence: contact || null, commentaire: notes || null });
+    await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).eq('id', bien_id);
+    const bien = biens.find(b => b.id === bien_id);
+    const desc = [date ? `Le ${new Date(date).toLocaleDateString('fr-FR')}` : '', heure ? `à ${heure}` : '', contact ? `· Contact : ${contact}` : ''].filter(Boolean).join(' ');
+    await addJournal(client.id, 'visite_planifiee', `📅 Visite planifiée — ${bien?.titre || bien?.ville || ''}`, desc);
+    setShowPlanVisite(false); load();
+  }
+
+  async function marquerEffectuee(visiteId: string, bienId: string) {
+    setCrForm({ visite_id: visiteId, etoiles: 0, commentaire: '', avis_client: '' });
+    setShowCompteRendu(true);
+    // pré-sélectionner le bien pour le compte-rendu
+    const _ = bienId;
+  }
+
+  async function saveCompteRendu() {
+    const { visite_id, etoiles, commentaire, avis_client } = crForm;
+    await supabase.from('visites').update({ statut: 'effectuee', note_etoiles: etoiles, commentaire, avis_client }).eq('id', visite_id);
+    const v = visites.find(x => x.id === visite_id);
+    const b = biens.find(x => x.id === v?.bien_id);
+    await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', v?.bien_id);
+    const etoilesStr = etoiles > 0 ? ' · ' + '⭐'.repeat(etoiles) : '';
+    const desc = [commentaire ? `Avis : "${commentaire}"` : '', avis_client ? `Retour client : "${avis_client}"` : ''].filter(Boolean).join(' · ');
+    await addJournal(client.id, 'visite_effectuee', `✅ Visite effectuée${etoilesStr} — ${b?.titre || b?.ville || ''}`, desc || undefined);
+    setShowCompteRendu(false); load();
   }
 
   async function saveAction() {
@@ -402,6 +442,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
                       <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
                       {v.heure && <div style={{ fontSize: 14, color: '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
                       {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>Contact : {v.contact_agence}</div>}
+                      {v.avis_client && <div style={{ marginTop: 4 }}><span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 20, fontWeight: 700, background: v.avis_client === 'tres_interesse' ? '#fef9c3' : v.avis_client === 'interesse' ? '#eff6ff' : v.avis_client === 'elimine' ? '#fef2f2' : '#f8fafc', color: v.avis_client === 'tres_interesse' ? '#854d0e' : v.avis_client === 'interesse' ? '#1d4ed8' : v.avis_client === 'elimine' ? '#ef4444' : '#64748b' }}>{v.avis_client === 'tres_interesse' ? '🔥 Très intéressé' : v.avis_client === 'interesse' ? '👍 Intéressé' : v.avis_client === 'a_voir' ? '🤔 À revoir' : v.avis_client === 'pas_interesse' ? '👎 Pas intéressé' : '❌ Éliminé'}</span></div>}
+                      {v.note_etoiles && <div style={{ marginTop: 4, fontSize: 16 }}>{'⭐'.repeat(v.note_etoiles)}</div>}
                       {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8, borderLeft: '3px solid #c9a84c' }}>{v.commentaire}</div>}
                     </div>
                     <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 600, background: v.statut === 'a_venir' ? '#eff6ff' : '#ecfdf5', color: v.statut === 'a_venir' ? '#3b82f6' : '#10b981', border: '1px solid currentColor', opacity: 0.8 }}>
@@ -413,7 +455,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
                       <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
                       <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
                       <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
-                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={async () => { await supabase.from('visites').update({ statut: 'effectuee' }).eq('id', v.id); await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', v.bien_id); await addJournal(client.id, 'visite_effectuee', 'Visite effectuée', b?.titre||''); load(); }}>✓ Effectuée</button>
+                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>✓ Effectuée</button>
                     </div>
                   )}
                 </div>
@@ -824,6 +866,81 @@ export default function FicheClient({ client: init, onBack }: Props) {
               </>}
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL PLANIFIER VISITE ═══ */}
+      {showPlanVisite && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowPlanVisite(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 500 }}>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📅 Planifier une visite</h2><button className={styles.modalClose} onClick={() => setShowPlanVisite(false)}>✕</button></div>
+            <div className={styles.modalBody}>
+              <div>
+                <label className={styles.lbl}>Bien à visiter</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {biens.map(b => (
+                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${planVisteForm.bien_id === b.id ? '#1a2332' : '#e3e8f0'}`, background: planVisteForm.bien_id === b.id ? '#f8fafc' : 'white', cursor: 'pointer' }}>
+                      <input type="radio" name="bien_visite" value={b.id} checked={planVisteForm.bien_id === b.id} onChange={() => setPlanVisiteForm(f => ({ ...f, bien_id: b.id }))} style={{ accentColor: '#1a2332' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                        {b.surface && <span style={{ fontSize: 12, color: '#64748b' }}>{b.surface}m²{b.nb_pieces ? ` · ${b.nb_pieces}P` : ''}{b.ville ? ` · ${b.ville}` : ''}</span>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Date de la visite</label><input className={styles.inp} type="date" value={planVisteForm.date} onChange={e => setPlanVisiteForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div><label className={styles.lbl}>Heure</label><input className={styles.inp} type="time" value={planVisteForm.heure} onChange={e => setPlanVisiteForm(f => ({ ...f, heure: e.target.value }))} /></div>
+              </div>
+              <div><label className={styles.lbl}>Contact agence / vendeur</label><input className={styles.inp} value={planVisteForm.contact} onChange={e => setPlanVisiteForm(f => ({ ...f, contact: e.target.value }))} placeholder="Nom, téléphone, email..." /></div>
+              <div><label className={styles.lbl}>Notes préparatoires</label><textarea className={styles.inp} rows={2} value={planVisteForm.notes} onChange={e => setPlanVisiteForm(f => ({ ...f, notes: e.target.value }))} placeholder="Points à vérifier, documents à apporter..." /></div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowPlanVisite(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={savePlanVisite} disabled={!planVisteForm.bien_id}>📅 Confirmer la visite</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL COMPTE-RENDU VISITE ═══ */}
+      {showCompteRendu && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowCompteRendu(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 520 }}>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>✅ Compte-rendu de visite</h2><button className={styles.modalClose} onClick={() => setShowCompteRendu(false)}>✕</button></div>
+            <div className={styles.modalBody}>
+              <div>
+                <label className={styles.lbl}>Note globale</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setCrForm(f => ({ ...f, etoiles: f.etoiles === n ? 0 : n }))}
+                      style={{ width: 44, height: 44, borderRadius: 12, border: `2px solid ${crForm.etoiles >= n ? '#c9a84c' : '#e2e8f0'}`, background: crForm.etoiles >= n ? '#fef9c3' : 'white', fontSize: 22, cursor: 'pointer', transition: 'all 0.12s' }}>
+                      ⭐
+                    </button>
+                  ))}
+                  {crForm.etoiles > 0 && <span style={{ alignSelf: 'center', fontSize: 13, color: '#64748b', fontWeight: 600 }}>{crForm.etoiles}/5</span>}
+                </div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Avis du client sur ce bien</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  {[{v:'tres_interesse', l:'🔥 Très intéressé'}, {v:'interesse', l:'👍 Intéressé'}, {v:'a_voir', l:'🤔 À revoir'}, {v:'pas_interesse', l:'👎 Pas intéressé'}, {v:'elimine', l:'❌ Éliminé'}].map(o => (
+                    <button key={o.v} onClick={() => setCrForm(f => ({ ...f, avis_client: f.avis_client === o.v ? '' : o.v }))}
+                      style={{ padding: '8px 10px', borderRadius: 10, border: `1px solid ${crForm.avis_client === o.v ? '#1a2332' : '#e2e8f0'}`, background: crForm.avis_client === o.v ? '#1a2332' : 'white', color: crForm.avis_client === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Commentaires / Observations</label>
+                <textarea className={styles.inp} rows={4} value={crForm.commentaire} onChange={e => setCrForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Points positifs, négatifs, questions posées, éléments à vérifier..." />
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowCompteRendu(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCompteRendu}>✅ Valider le compte-rendu</button>
+            </div>
           </div>
         </div>
       )}
