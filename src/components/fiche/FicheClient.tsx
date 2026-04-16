@@ -55,6 +55,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [txData, setTxData] = useState<any>({});
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
+  const [showEnvoiBien, setShowEnvoiBien] = useState(false);
+  const [envoiBienId, setEnvoiBienId] = useState('');
+  const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
+  const [envoiSending, setEnvoiSending] = useState(false);
   const [showCompteRendu, setShowCompteRendu] = useState(false);
   const [planVisteForm, setPlanVisiteForm] = useState({ bien_id: '', date: '', heure: '', contact: '', notes: '' });
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
@@ -244,6 +248,51 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setShowPlanVisite(true);
   }
 
+  function openEnvoiBien(bienId: string) {
+    const b = biens.find(x => x.id === bienId);
+    const emails = client.emails?.filter(Boolean) || [];
+    const titre = b?.titre || `${b?.type_bien||'Bien'} — ${b?.ville||''}`;
+    setEnvoiBienId(bienId);
+    setEnvoiForm({
+      destinataires: emails.join(', '),
+      objet: `Proposition immobilière — ${titre}`,
+      corps: `Bonjour ${client.prenom},
+
+Veuillez trouver ci-joint la fiche détaillée du bien suivant :
+
+📍 ${titre}${b?.surface ? `
+📐 Surface : ${b.surface}m²` : ''}${b?.nb_pieces ? `
+🚪 ${b.nb_pieces} pièces` : ''}${b?.prix_acquereur ? `
+💰 Prix : ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}
+
+N'hésitez pas à me contacter pour plus d'informations ou pour organiser une visite.
+
+Cordialement,
+Alexandre ROGELET
+Emilio Immobilier`,
+      sms: false,
+    });
+    setShowEnvoiBien(true);
+  }
+
+  async function saveEnvoiBien() {
+    if (!envoiForm.destinataires) { alert('Indiquez un destinataire.'); return; }
+    setEnvoiSending(true);
+    const b = biens.find(x => x.id === envoiBienId);
+    // Sauvegarder l'envoi en base
+    await supabase.from('envois').insert({
+      client_id: client.id, type: 'selection_biens',
+      objet: envoiForm.objet,
+      corps: envoiForm.corps,
+      destinataires: envoiForm.destinataires.split(',').map((s: string) => s.trim()).filter(Boolean),
+      biens_ids: [envoiBienId],
+      sms_envoye: envoiForm.sms,
+    });
+    await addJournal(client.id, 'envoi_bien', `📤 Bien envoyé — ${b?.titre || b?.ville || ''}`, `Destinataires : ${envoiForm.destinataires}`);
+    setEnvoiSending(false); setShowEnvoiBien(false); load();
+    alert('Envoi enregistré ! (Intégration Mailjet à configurer dans Paramètres pour envoi réel)');
+  }
+
   async function savePlanVisite() {
     const { bien_id, date, heure, contact, notes } = planVisteForm;
     if (!bien_id) return;
@@ -417,7 +466,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
                       </select>
                       {b.source_portail && <span style={{ fontSize: 12, background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>{b.source_portail}</span>}
                       {b.url && <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', textDecoration: 'none' }}>🔗 Annonce</a>}
-                      <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, marginLeft: 'auto', background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Planifier visite</button>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                        <button onClick={() => openEnvoiBien(b.id)} style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📤 Envoyer</button>
+                        <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Planifier visite</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -469,6 +521,34 @@ export default function FicheClient({ client: init, onBack }: Props) {
           !transaction
             ? <div className={styles.emptyTab}><div style={{ fontSize: 36, marginBottom: 12 }}>📋</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucune transaction</div><div style={{ color: '#94a3b8', fontSize: 14 }}>Posez le badge "Offre faite" sur un bien pour démarrer</div></div>
             : <div className={styles.card} style={{ padding: 24 }}>
+
+                {/* Bien concerné */}
+                {(() => { const bienTx = biens.find(b => b.id === transaction.bien_id); return bienTx ? (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: '10px 14px', marginBottom: 20, display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+                      {bienTx.photos?.[0] ? <img src={bienTx.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} /> : '🏠'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Bien concerné par la transaction</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{bienTx.titre || `${bienTx.type_bien||'Bien'} — ${bienTx.ville||'—'}`}</div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{[bienTx.surface && `${bienTx.surface}m²`, bienTx.nb_pieces && `${bienTx.nb_pieces}P`, bienTx.ville].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    {bienTx.prix_acquereur && <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#c9a84c', flexShrink: 0 }}>{bienTx.prix_acquereur.toLocaleString('fr-FR')}€</div>}
+                    {transaction.etape_actuelle === 'offre' && biens.length > 1 && (
+                      <select onChange={async e => { await supabase.from('transactions').update({ bien_id: e.target.value }).eq('id', transaction.id); load(); }} value={transaction.bien_id} className={styles.inp} style={{ fontSize: 12, width: 'auto', maxWidth: 160 }}>
+                        {biens.map(b => <option key={b.id} value={b.id}>{b.titre || `${b.type_bien} — ${b.ville||'—'}`}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#92400e' }}>
+                    ⚠️ Aucun bien associé à cette transaction.
+                    {biens.length > 0 && <select onChange={async e => { await supabase.from('transactions').update({ bien_id: e.target.value }).eq('id', transaction.id); load(); }} className={styles.inp} style={{ marginLeft: 10, fontSize: 12, width: 'auto' }}>
+                      <option value="">Choisir un bien...</option>
+                      {biens.map(b => <option key={b.id} value={b.id}>{b.titre || `${b.type_bien} — ${b.ville||'—'}`}</option>)}
+                    </select>}
+                  </div>
+                ); })()}
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                   <div>
@@ -866,6 +946,58 @@ export default function FicheClient({ client: init, onBack }: Props) {
               </>}
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL ENVOI BIEN ═══ */}
+      {showEnvoiBien && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoiBien(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 600 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>📤 Envoyer ce bien au client</h2>
+              <button className={styles.modalClose} onClick={() => setShowEnvoiBien(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              {/* Aperçu du bien */}
+              {(() => { const b = biens.find(x => x.id === envoiBienId); return b ? (
+                <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, overflow: 'hidden', flexShrink: 0 }}>
+                    {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {b.prix_acquereur && <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#c9a84c' }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
+                  {/* PDF simulé */}
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 10px', textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{ fontSize: 20 }}>📄</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#ef4444' }}>PDF joint</div>
+                    <div style={{ fontSize: 9, color: '#94a3b8' }}>Fiche bien</div>
+                  </div>
+                </div>
+              ) : null; })()}
+
+              <div><label className={styles.lbl}>Destinataire(s) <span style={{ fontWeight: 400, color: '#94a3b8' }}>(séparés par virgule)</span></label>
+                <input className={styles.inp} value={envoiForm.destinataires} onChange={e => setEnvoiForm(f => ({ ...f, destinataires: e.target.value }))} placeholder="email@client.fr" />
+              </div>
+              <div><label className={styles.lbl}>Objet</label>
+                <input className={styles.inp} value={envoiForm.objet} onChange={e => setEnvoiForm(f => ({ ...f, objet: e.target.value }))} />
+              </div>
+              <div><label className={styles.lbl}>Corps du message</label>
+                <textarea className={styles.inp} rows={8} value={envoiForm.corps} onChange={e => setEnvoiForm(f => ({ ...f, corps: e.target.value }))} style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6 }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e3e8f0' }}>
+                <input type="checkbox" id="sms_envoi" checked={envoiForm.sms} onChange={e => setEnvoiForm(f => ({ ...f, sms: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
+                <label htmlFor="sms_envoi" style={{ fontSize: 13, fontWeight: 600, color: '#1a2332', cursor: 'pointer' }}>📱 Envoyer aussi un SMS de notification</label>
+                {client.telephones?.[0] && <span style={{ fontSize: 12, color: '#94a3b8' }}>→ {client.telephones[0]}</span>}
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowEnvoiBien(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveEnvoiBien} disabled={envoiSending || !envoiForm.destinataires}>{envoiSending ? '⏳ Envoi...' : '📤 Envoyer'}</button>
+            </div>
           </div>
         </div>
       )}
