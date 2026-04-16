@@ -42,7 +42,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   // Forms
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
-  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: '', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, rdc_exclu: false, dernier_etage: false, etage_min: '', dpe_max: '', annee_min: '' });
+  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
@@ -102,7 +102,35 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   async function saveCriteres() {
     setSaving(true);
-    const { data } = await supabase.from('clients').update({ type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null, budget_min: crit.budget_min ? parseInt(crit.budget_min) : null, budget_max: crit.budget_max ? parseInt(crit.budget_max) : null, surface_min: crit.surface_min ? parseInt(crit.surface_min) : null, surface_max: crit.surface_max ? parseInt(crit.surface_max) : null, nb_pieces_min: crit.nb_pieces_min ? parseInt(crit.nb_pieces_min) : null, nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null, secteurs: crit.secteurs, notes: crit.notes||null }).eq('id', client.id).select().single();
+    const { data } = await supabase.from('clients').update({
+      type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null,
+      budget_min: crit.budget_min ? parseInt(crit.budget_min) : null,
+      budget_max: crit.budget_max ? parseInt(crit.budget_max) : null,
+      surface_min: crit.surface_min ? parseInt(crit.surface_min) : null,
+      surface_max: crit.surface_max ? parseInt(crit.surface_max) : null,
+      nb_pieces_min: crit.nb_pieces_min ? parseInt(crit.nb_pieces_min) : null,
+      nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null,
+      chambres_min: crit.chambres_min ? parseInt(crit.chambres_min) : null,
+      secteurs: crit.secteurs,
+      notes: crit.notes || null,
+      // Équipements
+      parking: crit.parking,
+      cave: crit.cave,
+      balcon: crit.balcon,
+      terrasse: crit.terrasse,
+      jardin: crit.jardin,
+      ascenseur: crit.ascenseur,
+      gardien: crit.gardien,
+      interphone: (crit as any).interphone || false,
+      digicode: (crit as any).digicode || false,
+      // Étage
+      rdc_exclu: crit.rdc_exclu,
+      dernier_etage: crit.dernier_etage,
+      etage_min: crit.etage_min ? parseInt(crit.etage_min) : null,
+      // DPE + année
+      dpe_max: crit.dpe_max || null,
+      annee_construction_min: crit.annee_min ? parseInt(crit.annee_min) : null,
+    }).eq('id', client.id).select().single();
     if (data) { setClient(data as Client); await addJournal(client.id, 'criteres_modifies', 'Critères mis à jour'); }
     setSaving(false); setShowCriteres(false);
   }
@@ -272,7 +300,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
           {/* CRITÈRES */}
           <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: '', secteurs: client.secteurs||[], notes: client.notes||'', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, rdc_exclu: false, dernier_etage: false, etage_min: '', dpe_max: '', annee_min: '' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
               {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length) ? (
                 <div className={styles.criteresGrid}>
@@ -368,51 +396,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
             ✉️ Mail libre
           </button>
         </div>
-
-        {/* BOUTONS D'ENVOI */}
-        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>📤 Envoyer :</div>
-          <button onClick={() => { if (biens.length === 0) { alert('Ajoutez des biens avant d’envoyer une sélection.'); return; } alert('Fonctionnalité PDF à venir — les biens sont prêts !'); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            📄 Sélection de biens
-          </button>
-          <button onClick={() => alert('PDF Présentation des services — V2')}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            🤝 Présentation services
-          </button>
-          <button onClick={() => { if (visites.filter(v => v.statut === 'effectuee').length === 0) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            📋 Compte-rendu visites
-          </button>
-          <button onClick={() => setShowAction(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>
-            ✉️ Mail libre
-          </button>
-        </div>
-
-        {/* TABS */}
-
-        {/* BOUTONS ENVOI */}
-        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>Envoyer :</div>
-          <button onClick={() => { if (biens.length === 0) { alert('Ajoutez des biens avant.'); return; } alert('PDF selection - bientot disponible !'); }}
-            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Selection de biens
-          </button>
-          <button onClick={() => alert('Presentation services - V2')}
-            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Presentation services
-          </button>
-          <button onClick={() => setTab('visites')}
-            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Compte-rendu visites
-          </button>
-          <button onClick={() => setShowAction(true)}
-            style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>
-            Mail libre
-          </button>
-        </div>
-
         <div className={styles.tabs}>
           {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
         </div>
@@ -538,7 +521,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
         {/* JOURNAL */}
         {tab === 'journal' && (
-          <div className={styles.card} style={{ padding: 22, maxHeight: '65vh', overflowY: 'auto' }}>
+          <div className={styles.card} style={{ padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button></div>
             {journal.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📓</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Journal vide</div></div>
             : journal.map((j, i) => (
