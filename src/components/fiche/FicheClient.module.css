@@ -1,4 +1,4 @@
-.page { display: flex; flex-direction: column; height: 100%; background: #f8fafc; }
+.page { display: flex; flex-direction: column; min-height: 100%; background: #f8fafc; }
 
 .pageHeader {
   display: flex; align-items: center; justify-content: space-between;
@@ -30,8 +30,8 @@
 .syntheseVal  { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 24px; line-height: 1; }
 .syntheseLabel { font-size: 10px; color: #94a3b8; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* CONTENU CENTRÉ */
-.contentWrap { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+/* CONTENU */
+.contentWrap { flex: 1; overflow-y: visible; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
 
 /* ROW INFO */
 .infoRow { display: grid; grid-template-columns: 220px 1fr 220px; gap: 14px; }
