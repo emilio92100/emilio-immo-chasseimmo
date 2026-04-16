@@ -21,6 +21,8 @@ const QUARTIERS: Record<string, { ville: string; quartiers: string[] }> = {
   '92800': { ville: 'Puteaux', quartiers: ['Centre Puteaux','La Défense','Île de Puteaux'] },
 };
 
+const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
+
 interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; }
 
 export default function FicheClient({ client: init, onBack }: Props) {
@@ -33,31 +35,29 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [journal, setJournal] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Modals
   const [showContact, setShowContact] = useState(false);
   const [showCriteres, setShowCriteres] = useState(false);
   const [showMandat, setShowMandat] = useState(false);
   const [showBien, setShowBien] = useState(false);
   const [showAction, setShowAction] = useState(false);
 
-  // Forms
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
   const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
-
-  // Bien
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
-
-  // Secteurs
   const [cpQ, setCpQ] = useState('');
   const [cpSug, setCpSug] = useState<any[]>([]);
   const [selCP, setSelCP] = useState('');
+  const [txData, setTxData] = useState<any>({});
+  const [showOffreEcrite, setShowOffreEcrite] = useState(false);
+  const [offreForm, setOffreForm] = useState({ bien_id: '', montant: '', date: '', notes: '' });
 
   useEffect(() => { load(); }, [client.id]);
+  useEffect(() => { if (transaction) setTxData(transaction); }, [transaction]);
 
   async function load() {
     const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }] = await Promise.all([
@@ -111,27 +111,43 @@ export default function FicheClient({ client: init, onBack }: Props) {
       nb_pieces_min: crit.nb_pieces_min ? parseInt(crit.nb_pieces_min) : null,
       nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null,
       chambres_min: crit.chambres_min ? parseInt(crit.chambres_min) : null,
-      secteurs: crit.secteurs,
-      notes: crit.notes || null,
-      // Équipements
-      parking: crit.parking,
-      cave: crit.cave,
-      balcon: crit.balcon,
-      terrasse: crit.terrasse,
-      jardin: crit.jardin,
-      ascenseur: crit.ascenseur,
-      gardien: crit.gardien,
-      interphone: (crit as any).interphone || false,
+      secteurs: crit.secteurs, notes: crit.notes || null,
+      parking: crit.parking, cave: crit.cave, balcon: crit.balcon,
+      terrasse: crit.terrasse, jardin: crit.jardin, ascenseur: crit.ascenseur,
+      gardien: crit.gardien, interphone: (crit as any).interphone || false,
       digicode: (crit as any).digicode || false,
-      // Étage
-      rdc_exclu: crit.rdc_exclu,
-      dernier_etage: crit.dernier_etage,
+      rdc_exclu: crit.rdc_exclu, dernier_etage: crit.dernier_etage,
       etage_min: crit.etage_min ? parseInt(crit.etage_min) : null,
-      // DPE + année
       dpe_max: crit.dpe_max || null,
       annee_construction_min: crit.annee_min ? parseInt(crit.annee_min) : null,
     }).eq('id', client.id).select().single();
-    if (data) { setClient(data as Client); await addJournal(client.id, 'criteres_modifies', 'Critères mis à jour'); }
+    if (data) {
+      setClient(data as Client);
+      // Construire un diff détaillé
+      const changes: string[] = [];
+      const prev = client;
+      const newTypes = crit.types_bien.join(', ');
+      if ((prev.type_bien||'') !== newTypes) changes.push(`Type : "${prev.type_bien||'—'}" → "${newTypes||'—'}"`);
+      if ((prev.budget_min||0) !== (parseInt(crit.budget_min)||0)) changes.push(`Budget min : ${(prev.budget_min||0).toLocaleString('fr-FR')}€ → ${(parseInt(crit.budget_min)||0).toLocaleString('fr-FR')}€`);
+      if ((prev.budget_max||0) !== (parseInt(crit.budget_max)||0)) changes.push(`Budget max : ${(prev.budget_max||0).toLocaleString('fr-FR')}€ → ${(parseInt(crit.budget_max)||0).toLocaleString('fr-FR')}€`);
+      if ((prev.surface_min||0) !== (parseInt(crit.surface_min)||0)) changes.push(`Surface min : ${prev.surface_min||'—'}m² → ${crit.surface_min||'—'}m²`);
+      if ((prev.nb_pieces_min||0) !== (parseInt(crit.nb_pieces_min)||0)) changes.push(`Pièces min : ${prev.nb_pieces_min||'—'} → ${crit.nb_pieces_min||'—'}`);
+      if ((prev.chambres_min||0) !== (parseInt(crit.chambres_min)||0)) changes.push(`Chambres min : ${prev.chambres_min||'—'} → ${crit.chambres_min||'—'}`);
+      if ((prev.dpe_max||'') !== (crit.dpe_max||'')) changes.push(`DPE max : ${prev.dpe_max||'—'} → ${crit.dpe_max||'—'}`);
+      if ((prev.etage_min||0) !== (parseInt(crit.etage_min)||0)) changes.push(`Étage min : ${prev.etage_min||'—'} → ${crit.etage_min||'—'}`);
+      if ((prev.annee_construction_min||0) !== (parseInt(crit.annee_min)||0)) changes.push(`Année min : ${prev.annee_construction_min||'—'} → ${crit.annee_min||'—'}`);
+      const equipKeys: [string, string][] = [['parking','Parking'],['balcon','Balcon'],['terrasse','Terrasse'],['jardin','Jardin'],['cave','Cave'],['ascenseur','Ascenseur'],['gardien','Gardien']];
+      equipKeys.forEach(([k, l]) => { if ((prev as any)[k] !== (crit as any)[k]) changes.push(`${l} : ${(prev as any)[k] ? '✅' : '❌'} → ${(crit as any)[k] ? '✅' : '❌'}`); });
+      if (JSON.stringify(prev.secteurs||[]) !== JSON.stringify(crit.secteurs)) {
+        const added = crit.secteurs.filter(s => !(prev.secteurs||[]).includes(s));
+        const removed = (prev.secteurs||[]).filter(s => !crit.secteurs.includes(s));
+        if (added.length) changes.push(`Secteurs ajoutés : ${added.join(', ')}`);
+        if (removed.length) changes.push(`Secteurs supprimés : ${removed.join(', ')}`);
+      }
+      if ((prev.notes||'') !== (crit.notes||'')) changes.push(`Notes modifiées`);
+      const desc = changes.length > 0 ? changes.join(' · ') : 'Aucun changement détecté';
+      await addJournal(client.id, 'criteres_modifies', '🎯 Critères mis à jour', desc);
+    }
     setSaving(false); setShowCriteres(false);
   }
 
@@ -145,8 +161,35 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function changeStatut(statut: string) {
+    if (statut === 'offre_ecrite') {
+      if (biens.length === 0) { alert('Ajoutez d\'abord des biens à la fiche avant de créer une offre écrite.'); return; }
+      setOffreForm({ bien_id: biens[0]?.id || '', montant: '', date: new Date().toISOString().split('T')[0], notes: '' });
+      setShowOffreEcrite(true);
+      return;
+    }
     const { data } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().single();
     if (data) { setClient(data as Client); await addJournal(client.id, 'statut_change', `Statut → ${statut}`); }
+  }
+
+  async function saveOffreEcrite() {
+    if (!offreForm.bien_id || !offreForm.montant) { alert('Sélectionnez un bien et indiquez le montant de l\'offre.'); return; }
+    setSaving(true);
+    // Mettre à jour le statut client
+    const { data: clientData } = await supabase.from('clients').update({ statut: 'offre_ecrite' }).eq('id', client.id).select().single();
+    if (clientData) setClient(clientData as Client);
+    // Créer ou mettre à jour la transaction
+    if (!transaction) {
+      await supabase.from('transactions').insert({ client_id: client.id, bien_id: offreForm.bien_id, etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date });
+    } else {
+      await supabase.from('transactions').update({ etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date, bien_id: offreForm.bien_id }).eq('id', transaction.id);
+    }
+    // Badge sur le bien
+    await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', offreForm.bien_id);
+    // Journal
+    const bien = biens.find(b => b.id === offreForm.bien_id);
+    const desc = `Montant : ${parseInt(offreForm.montant).toLocaleString('fr-FR')}€ · Bien : ${bien?.titre || bien?.ville || '—'}${offreForm.notes ? ' · ' + offreForm.notes : ''}`;
+    await addJournal(client.id, 'offre_ecrite', '✍️ Offre écrite créée', desc);
+    setSaving(false); setShowOffreEcrite(false); load();
   }
 
   async function changeChaleur(chaleur: string) {
@@ -160,11 +203,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
     try {
       const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
       const data = await res.json();
-      if (data.bien) {
-        setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: 3.5, _partial: data.partial, _reason: data.reason });
-      } else {
-        setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 });
-      }
+      if (data.bien) { setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: 3.5, _partial: data.partial, _reason: data.reason }); }
+      else { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 }); }
     } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 }); }
     setExtracting(false);
   }
@@ -201,13 +241,34 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setShowAction(false); setActionF({ type: 'note', titre: '', description: '' }); load();
   }
 
+  async function saveTxField(field: string, value: any) {
+    setTxData((prev: any) => ({ ...prev, [field]: value }));
+    await supabase.from('transactions').update({ [field]: value }).eq('id', transaction.id);
+  }
+
+  async function avancerEtape(prochaine: string, label: string) {
+    await supabase.from('transactions').update({ etape_actuelle: prochaine }).eq('id', transaction.id);
+    await addJournal(client.id, prochaine, label);
+    load();
+  }
+
+  async function reculerEtape() {
+    const idx = ORDRE_ETAPES.indexOf(transaction.etape_actuelle);
+    if (idx <= 0) return;
+    const precedente = ORDRE_ETAPES[idx - 1];
+    if (!confirm(`Revenir à l'étape "${ETAPES_LABELS[precedente]}" ?`)) return;
+    await supabase.from('transactions').update({ etape_actuelle: precedente }).eq('id', transaction.id);
+    await addJournal(client.id, 'retour_etape', `Retour → ${ETAPES_LABELS[precedente]}`);
+    load();
+  }
+
   const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
   const joursMandat = client.mandat_date_expiration ? Math.floor((new Date(client.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
 
   const TABS = [
     { id: 'biens', label: `🏠 Biens (${biens.length})` },
     { id: 'visites', label: `📅 Visites (${visites.filter(v => v.statut === 'effectuee').length})` },
-    { id: 'transaction', label: '📋 Transaction' },
+    { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
     { id: 'historique', label: `📄 Historique (${envois.length})` },
     { id: 'journal', label: `📓 Journal (${journal.length})` },
   ];
@@ -221,22 +282,36 @@ export default function FicheClient({ client: init, onBack }: Props) {
     refuse:           { label: '❌ Refusé',            color: '#ef4444', bg: '#fef2f2' },
   };
 
+  const ETAPES_LABELS: Record<string, string> = {
+    offre: '1 — Offre', negociation: '2 — Négociation',
+    offre_acceptee: '3 — Offre acceptée', compromis: '4 — Compromis', acte: '5 — Acte'
+  };
+
   return (
     <div className={styles.page}>
-      {/* HEADER */}
+
       <div className={styles.pageHeader}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className={styles.backBtn} onClick={onBack}>← Clients</button>
           <span style={{ color: '#94a3b8' }}>/</span>
           <span style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
+          <div style={{ width: 1, height: 18, background: '#e2e8f0' }} />
+          {/* ENVOI INLINE */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>ENVOYER</span>
+            <button onClick={() => { if (biens.length === 0) { alert('Ajoutez d\'abord des biens.'); return; } alert('Génération PDF en cours de développement.'); }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>📄 Sélection de biens</button>
+            <button onClick={() => alert('PDF Présentation — V2')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>🤝 Présentation</button>
+            <button onClick={() => { if (!visites.filter((v:any)=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>📋 C-R visites</button>
+            <button onClick={() => setShowAction(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>✉️ Mail libre</button>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); await supabase.from('relances').insert({ client_id: client.id, date_relance: date.toISOString().split('T')[0], motif: 'Relance manuelle', statut: 'a_faire' }); await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
           <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
         </div>
       </div>
 
-      {/* IDENTITÉ */}
       <div className={styles.identiteBar}>
         <div className={styles.avatarWrap}>
           <div className={styles.avatar}>{client.prenom[0]}{client.nom[0]}</div>
@@ -246,18 +321,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* STATUT DROPDOWN */}
           <div style={{ position: 'relative' }}>
-            <select
-              value={client.statut}
-              onChange={e => changeStatut(e.target.value)}
-              style={{
-                padding: '7px 32px 7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0',
-                background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2',
-                color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444',
-                appearance: 'none', WebkitAppearance: 'none', outline: 'none',
-              }}>
+            <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '7px 32px 7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0', background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
               <option value="prospect">🟣 Prospect</option>
               <option value="actif">🟢 Actif</option>
               <option value="suspendu">⏸️ Suspendu</option>
@@ -267,10 +332,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
             </select>
             <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10 }}>▼</span>
           </div>
-          <div style={{ width: 1, height: 24, background: '#e2e8f0', margin: '0 2px' }} />
-          {[{k:'tres_chaud',l:'🔥'},{k:'interesse',l:'👍'},{k:'tiede',l:'😐'},{k:'froid',l:'❄️'}].map(c => (
-            <button key={c.k} onClick={() => changeChaleur(c.k)} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${client.chaleur === c.k ? '#c9a84c' : '#e2e8f0'}`, background: client.chaleur === c.k ? '#fef9c3' : '#f8fafc', cursor: 'pointer', fontSize: 18, transition: 'all 0.15s' }}>{c.l}</button>
-          ))}
+
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {[{val: biens.length, l:'Biens présentés',c:'#1a2332'},{val: visites.filter(v=>v.statut==='effectuee').length,l:'Visites effectuées',c:'#1a2332'},{val: biens.filter(b=>b.badge_retour==='offre_faite').length,l:'Offre(s)',c:'#c9a84c'},{val:`${jours}j`,l:'Suivi',c:'#1a2332'}].map((s, i) => (
@@ -282,146 +344,16 @@ export default function FicheClient({ client: init, onBack }: Props) {
         </div>
       </div>
 
-      {/* CONTENU */}
       <div className={styles.contentWrap}>
 
-        {/* ROW INFO */}
-        <div className={styles.infoRow}>
-          {/* CONTACT */}
-          <div className={styles.infoCard}>
-            <div className={styles.infoCardHeader}>📞 Contact <button className={styles.editBtn} onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' }); setShowContact(true); }}>✏️ Modifier</button></div>
-            <div className={styles.infoCardBody}>
-              {client.telephones?.filter(Boolean).map(t => <div key={t} className={styles.contactLine}><span className={styles.contactIcon}>📞</span><span>{t}</span></div>)}
-              {client.emails?.filter(Boolean).map(e => <div key={e} className={styles.contactLine}><span className={styles.contactIcon}>✉️</span><span>{e}</span></div>)}
-              {client.adresse && <div className={styles.contactLine}><span className={styles.contactIcon}>📍</span><span>{client.adresse}</span></div>}
-              {!client.telephones?.length && !client.emails?.length && !client.adresse && <div style={{ color: '#94a3b8', fontSize: 13 }}>Non renseigné</div>}
-            </div>
-          </div>
-
-          {/* CRITÈRES */}
-          <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
-            <div className={styles.infoCardBody}>
-              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
-                <div className={styles.criteresGrid}>
-                  {client.type_bien && <div className={styles.critItem}><div className={styles.critLabel}>Type</div><div className={styles.critVal}>{client.type_bien}</div></div>}
-                  {client.budget_min && <div className={styles.critItem}><div className={styles.critLabel}>Budget</div><div className={styles.critVal}>{(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</div></div>}
-                  {client.surface_min && <div className={styles.critItem}><div className={styles.critLabel}>Surface</div><div className={styles.critVal}>{client.surface_min}{client.surface_max ? `–${client.surface_max}` : '+'}m²</div></div>}
-                  {client.nb_pieces_min && <div className={styles.critItem}><div className={styles.critLabel}>Pièces</div><div className={styles.critVal}>{client.nb_pieces_min}{client.nb_pieces_max ? `–${client.nb_pieces_max}` : '+'}P</div></div>}
-                  {client.chambres_min && <div className={styles.critItem}><div className={styles.critLabel}>Chambres min</div><div className={styles.critVal}>{client.chambres_min}</div></div>}
-                  {client.dpe_max && <div className={styles.critItem}><div className={styles.critLabel}>DPE max</div><div className={styles.critVal}>{client.dpe_max}</div></div>}
-                  {client.etage_min && <div className={styles.critItem}><div className={styles.critLabel}>Étage min</div><div className={styles.critVal}>{client.etage_min}</div></div>}
-                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
-                    <div className={styles.critItem} style={{ gridColumn: '1/-1' }}>
-                      <div className={styles.critLabel}>Équipements</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
-                        {client.parking && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🅿️ Parking</span>}
-                        {client.balcon && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🌿 Balcon</span>}
-                        {client.terrasse && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>☀️ Terrasse</span>}
-                        {client.jardin && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🌳 Jardin</span>}
-                        {client.cave && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>📦 Cave</span>}
-                        {client.ascenseur && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🛗 Ascenseur</span>}
-                        {client.gardien && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>👮 Gardien</span>}
-                        {(client as any).interphone && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🔔 Interphone</span>}
-                        {(client as any).digicode && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🔢 Digicode</span>}
-                      </div>
-                    </div>
-                  )}
-                  {client.rdc_exclu && <div className={styles.critItem}><div className={styles.critLabel}>Étage</div><div className={styles.critVal} style={{fontSize:12}}>🚫 RDC exclu{client.dernier_etage ? ' · 🏙️ Dernier ét.' : ''}</div></div>}
-                  {client.annee_construction_min && <div className={styles.critItem}><div className={styles.critLabel}>Année min</div><div className={styles.critVal}>{client.annee_construction_min}</div></div>}
-                  {client.secteurs?.length > 0 && <div className={styles.critItem} style={{ gridColumn: '1/-1' }}><div className={styles.critLabel}>Secteurs</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>{client.secteurs.map(s => <span key={s} className={styles.secteurTag}>{s}</span>)}</div></div>}
-                  {client.notes && <div className={styles.critItem} style={{ gridColumn: '1/-1' }}><div className={styles.critLabel}>Notes</div><div style={{ fontSize: 13, color: '#64748b', fontStyle: 'italic' }}>{client.notes}</div></div>}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Aucun critère défini</span>
-                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCriteres(true)}>+ Définir</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* MANDAT */}
-          <div className={styles.infoCard} style={{ background: '#1a2332', minWidth: 210 }}>
-            <div className={styles.infoCardHeader} style={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-              <span style={{ color: '#c9a84c' }}>📋 Mandat</span>
-              <button className={styles.editBtn} style={{ color: 'rgba(255,255,255,0.5)' }} onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }}>✏️</button>
-            </div>
-            <div className={styles.infoCardBody}>
-              {client.mandat_date_signature ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[{l:'Signature',v:new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')},{l:'Durée',v:client.mandat_duree ? `${client.mandat_duree} mois` : '—'},{l:'Honoraires',v:client.mandat_honoraires||'—'}].map(r => (
-                    <div key={r.l}><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>{r.l}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{r.v}</div></div>
-                  ))}
-                  {joursMandat !== null && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, marginTop: 2 }}>
-                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>Expiration</div><div style={{ fontSize: 22, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div></div>
-                      <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>Non renseigné</div>
-                  <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* BOUTONS D'ENVOI */}
-        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: '14px 18px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a2332', marginRight: 4 }}>📤 Envoyer :</div>
-
-          {/* SÉLECTION DE BIENS */}
-          <button
-            onClick={() => {
-              if (biens.length === 0) { alert('Ajoutez d’abord des biens à la fiche de ce client.'); return; }
-              setTab('biens');
-              alert('Fonctionnalité PDF en cours de développement. Les biens seront inclus dans la sélection.');
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#243044')}
-            onMouseOut={e => (e.currentTarget.style.background = '#1a2332')}>
-            📄 Sélection de biens
-          </button>
-
-          {/* PRÉSENTATION SERVICES */}
-          <button
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-            onClick={() => alert('PDF Présentation des services — à configurer dans Paramètres (V2)')}
-            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
-            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
-            🤝 Présentation services
-          </button>
-
-          {/* COMPTE-RENDU VISITES */}
-          <button
-            onClick={() => {
-              if (visites.filter(v => v.statut === 'effectuee').length === 0) { alert('Aucune visite effectuée à inclure dans le compte-rendu.'); return; }
-              setTab('visites');
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
-            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
-            📋 Compte-rendu visites
-          </button>
-
-          {/* MAIL LIBRE */}
-          <button
-            onClick={() => setTab('journal')}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', marginLeft: 'auto' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
-            onMouseOut={e => (e.currentTarget.style.background = 'white')}>
-            ✉️ Mail libre
-          </button>
-        </div>
+        {/* ONGLETS en haut */}
         <div className={styles.tabs}>
           {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
         </div>
 
-        {/* BIENS */}
+
+
+        {/* TAB BIENS */}
         {tab === 'biens' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {biens.length === 0 ? (
@@ -454,7 +386,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
           </div>
         )}
 
-        {/* VISITES */}
+        {/* TAB VISITES */}
         {tab === 'visites' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {visites.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📅</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div><div style={{ color: '#94a3b8', fontSize: 13 }}>Planifiez depuis l'onglet Biens</div></div>
@@ -470,7 +402,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
                       <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
                       {v.heure && <div style={{ fontSize: 14, color: '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
                       {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>Contact : {v.contact_agence}</div>}
-                      {v.statut === 'effectuee' && v.note_etoiles && <div style={{ marginTop: 6, fontSize: 16 }}>{'⭐'.repeat(v.note_etoiles)}</div>}
                       {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8, borderLeft: '3px solid #c9a84c' }}>{v.commentaire}</div>}
                     </div>
                     <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 600, background: v.statut === 'a_venir' ? '#eff6ff' : '#ecfdf5', color: v.statut === 'a_venir' ? '#3b82f6' : '#10b981', border: '1px solid currentColor', opacity: 0.8 }}>
@@ -491,42 +422,139 @@ export default function FicheClient({ client: init, onBack }: Props) {
           </div>
         )}
 
-        {/* TRANSACTION */}
+        {/* TAB TRANSACTION - refonte complète */}
         {tab === 'transaction' && (
-          !transaction ? <div className={styles.emptyTab}><div style={{ fontSize: 36, marginBottom: 12 }}>📋</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucune transaction</div><div style={{ color: '#94a3b8', fontSize: 14 }}>Posez le badge "Offre faite" sur un bien pour démarrer</div></div>
-          : <div className={styles.card} style={{ padding: 24 }}>
-            <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 20 }}>Étape : <span style={{ color: '#c9a84c' }}>{transaction.etape_actuelle}</span></div>
-            {[{id:'offre',l:'1 — Offre'},{id:'negociation',l:'2 — Négociation'},{id:'offre_acceptee',l:'3 — Offre acceptée'},{id:'compromis',l:'4 — Compromis'},{id:'acte',l:'5 — Acte'}].map((e, i) => {
-              const ordre = ['offre','negociation','offre_acceptee','compromis','acte'];
-              const done = ordre.indexOf(e.id) < ordre.indexOf(transaction.etape_actuelle);
-              const cur = e.id === transaction.etape_actuelle;
-              return (
-                <div key={e.id} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 9, background: done ? '#c9a84c' : cur ? '#1a2332' : '#e2e8f0', color: done ? '#1a2332' : cur ? 'white' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, boxShadow: cur ? '0 0 0 4px rgba(26,35,50,0.1)' : 'none', flexShrink: 0 }}>{done ? '✓' : i+1}</div>
-                    {i < 4 && <div style={{ width: 1, flex: 1, background: done ? '#c9a84c' : '#e2e8f0', marginTop: 4 }} />}
+          !transaction
+            ? <div className={styles.emptyTab}><div style={{ fontSize: 36, marginBottom: 12 }}>📋</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucune transaction</div><div style={{ color: '#94a3b8', fontSize: 14 }}>Posez le badge "Offre faite" sur un bien pour démarrer</div></div>
+            : <div className={styles.card} style={{ padding: 24 }}>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Étape en cours</div>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: '#1a2332' }}>
+                      {transaction.etape_actuelle === 'finalise' ? '🎉 Dossier finalisé !' : ETAPES_LABELS[transaction.etape_actuelle]}
+                    </div>
                   </div>
-                  <div style={{ flex: 1, paddingTop: 4 }}>
-                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, color: cur ? '#1a2332' : done ? '#64748b' : '#94a3b8', marginBottom: cur ? 10 : 0 }}>{e.l}</div>
-                    {cur && (
-                      <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14 }}>
-                        {e.id === 'offre' && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><input className={styles.inp} type="number" placeholder="Montant €" defaultValue={transaction.offre_montant} style={{ flex: 1 }} onChange={x => supabase.from('transactions').update({ offre_montant: parseInt(x.target.value) }).eq('id', transaction.id)} /><input className={styles.inp} type="date" defaultValue={transaction.offre_date} style={{ width: 160 }} onChange={x => supabase.from('transactions').update({ offre_date: x.target.value }).eq('id', transaction.id)} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={async () => { await supabase.from('transactions').update({ etape_actuelle: 'negociation' }).eq('id', transaction.id); await addJournal(client.id, 'negociation', 'Négociation'); load(); }}>→ Négociation</button></div>}
-                        {e.id === 'negociation' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}><select className={styles.inp} id="cop" style={{ width: 120 }}><option value="vendeur">Vendeur</option><option value="acheteur">Acheteur</option></select><input className={styles.inp} type="number" id="com" placeholder="Montant €" style={{ flex: 1 }} /><input className={styles.inp} type="date" id="cod" style={{ width: 160 }} /><button className={styles.btn} onClick={async () => { const p = (document.getElementById('cop') as HTMLSelectElement).value; const m = (document.getElementById('com') as HTMLInputElement).value; const d = (document.getElementById('cod') as HTMLInputElement).value; await supabase.from('transactions').update({ contre_offres: [...(transaction.contre_offres||[]), {partie:p,montant:m,date:d}] }).eq('id', transaction.id); load(); }}>+ Contre-offre</button></div>{(transaction.contre_offres||[]).map((co: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 5 }}><span style={{ padding: '2px 10px', borderRadius: 20, fontWeight: 700, background: co.partie === 'vendeur' ? '#fef2f2' : '#f0fdf4', color: co.partie === 'vendeur' ? '#ef4444' : '#10b981' }}>{co.partie}</span><span style={{ fontWeight: 600 }}>{parseInt(co.montant).toLocaleString('fr-FR')}€</span><span style={{ color: '#94a3b8' }}>{co.date}</span></div>)}<button className={`${styles.btn} ${styles.btnPrimary}`} style={{ width: '100%', marginTop: 10 }} onClick={async () => { await supabase.from('transactions').update({ etape_actuelle: 'offre_acceptee' }).eq('id', transaction.id); load(); }}>✓ Offre acceptée</button></div>}
-                        {e.id === 'offre_acceptee' && <div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} type="number" placeholder="Prix final €" style={{ flex: 1 }} onChange={x => supabase.from('transactions').update({ prix_final: parseInt(x.target.value) }).eq('id', transaction.id)} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={async () => { await supabase.from('transactions').update({ etape_actuelle: 'compromis' }).eq('id', transaction.id); load(); }}>→ Compromis</button></div>}
-                        {e.id === 'compromis' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><div style={{ display: 'flex', gap: 8 }}><div style={{ flex: 1 }}><label className={styles.lbl}>Date compromis</label><input className={styles.inp} type="date" onChange={x => supabase.from('transactions').update({ compromis_date: x.target.value, sru_date_fin: new Date(new Date(x.target.value).getTime() + 10*86400000).toISOString().split('T')[0] }).eq('id', transaction.id)} /></div><div style={{ flex: 1 }}><label className={styles.lbl}>Notaire</label><input className={styles.inp} onChange={x => supabase.from('transactions').update({ compromis_notaire: x.target.value }).eq('id', transaction.id)} /></div></div><div style={{ display: 'flex', gap: 8 }}><div style={{ flex: 1 }}><label className={styles.lbl}>Prêt €</label><input className={styles.inp} type="number" onChange={x => supabase.from('transactions').update({ pret_montant: parseInt(x.target.value) }).eq('id', transaction.id)} /></div><div style={{ flex: 1 }}><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" onChange={x => supabase.from('transactions').update({ pret_apport: parseInt(x.target.value) }).eq('id', transaction.id)} /></div></div><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={async () => { await supabase.from('transactions').update({ etape_actuelle: 'acte' }).eq('id', transaction.id); load(); }}>→ Acte</button></div>}
-                        {e.id === 'acte' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><div style={{ display: 'flex', gap: 8 }}><div style={{ flex: 1 }}><label className={styles.lbl}>Date prévue</label><input className={styles.inp} type="date" onChange={x => supabase.from('transactions').update({ acte_date_prevue: x.target.value }).eq('id', transaction.id)} /></div><div style={{ flex: 1 }}><label className={styles.lbl}>Honoraires HT €</label><input className={styles.inp} type="number" onChange={x => supabase.from('transactions').update({ honoraires_ht: parseInt(x.target.value), honoraires_ttc: Math.round(parseInt(x.target.value)*1.2) }).eq('id', transaction.id)} /></div></div><button style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: 10, padding: '10px 20px', fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: 'pointer' }} onClick={async () => { await supabase.from('clients').update({ statut: 'bien_trouve' }).eq('id', client.id); await supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id); await addJournal(client.id, 'dossier_finalise', '🎉 Bien trouvé !'); refresh(); load(); }}>🎉 Clôturer — Bien trouvé !</button></div>}
-                      </div>
-                    )}
-                    {done && e.id === 'offre' && transaction.offre_montant && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{transaction.offre_montant.toLocaleString('fr-FR')}€</div>}
-                    {done && e.id === 'offre_acceptee' && transaction.prix_final && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Prix final : {transaction.prix_final.toLocaleString('fr-FR')}€</div>}
-                  </div>
+                  {transaction.etape_actuelle !== 'offre' && transaction.etape_actuelle !== 'finalise' && (
+                    <button onClick={reculerEtape} className={styles.btn} style={{ fontSize: 12 }}>← Étape précédente</button>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+
+                {ORDRE_ETAPES.map((etapeId, i) => {
+                  const idx = ORDRE_ETAPES.indexOf(transaction.etape_actuelle);
+                  const done = i < idx;
+                  const cur = etapeId === transaction.etape_actuelle && transaction.etape_actuelle !== 'finalise';
+
+                  return (
+                    <div key={etapeId} style={{ display: 'flex', gap: 16, marginBottom: cur ? 0 : 16 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 10, background: done ? '#c9a84c' : cur ? '#1a2332' : '#f1f5f9', color: done ? '#1a2332' : cur ? 'white' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, boxShadow: cur ? '0 0 0 4px rgba(26,35,50,0.08)' : 'none' }}>
+                          {done ? '✓' : i + 1}
+                        </div>
+                        {i < ORDRE_ETAPES.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 16, background: done ? '#c9a84c' : '#e3e8f0', marginTop: 4, marginBottom: 4, borderRadius: 1 }} />}
+                      </div>
+
+                      <div style={{ flex: 1, paddingTop: 6, paddingBottom: cur ? 20 : 0 }}>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, color: done ? '#64748b' : cur ? '#1a2332' : '#b0bec5', marginBottom: done || cur ? 6 : 0 }}>
+                          {ETAPES_LABELS[etapeId]}
+                        </div>
+
+                        {done && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {etapeId === 'offre' && transaction.offre_montant && (
+                              <span style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>💰 {transaction.offre_montant.toLocaleString('fr-FR')}€{transaction.offre_date ? ` · ${new Date(transaction.offre_date).toLocaleDateString('fr-FR')}` : ''}</span>
+                            )}
+                            {etapeId === 'offre_acceptee' && transaction.prix_final && (
+                              <span style={{ fontSize: 12, background: '#ecfdf5', color: '#16a34a', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>✅ Prix final : {transaction.prix_final.toLocaleString('fr-FR')}€</span>
+                            )}
+                            {etapeId === 'compromis' && transaction.compromis_date && (
+                              <span style={{ fontSize: 12, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>📋 {new Date(transaction.compromis_date).toLocaleDateString('fr-FR')}{transaction.compromis_notaire ? ` · ${transaction.compromis_notaire}` : ''}</span>
+                            )}
+                            {etapeId === 'negociation' && transaction.contre_offres?.length > 0 && (
+                              <span style={{ fontSize: 12, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>🔄 {transaction.contre_offres.length} contre-offre(s)</span>
+                            )}
+                          </div>
+                        )}
+
+                        {cur && (
+                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: 18, marginTop: 8, border: '1px solid #e3e8f0' }}>
+                            {etapeId === 'offre' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div className={styles.formRow}>
+                                  <div><label className={styles.lbl}>Montant offre €</label><input className={styles.inp} type="number" defaultValue={transaction.offre_montant} placeholder="Ex: 350 000" onChange={e => saveTxField('offre_montant', parseInt(e.target.value))} /></div>
+                                  <div><label className={styles.lbl}>Date de l'offre</label><input className={styles.inp} type="date" defaultValue={transaction.offre_date} onChange={e => saveTxField('offre_date', e.target.value)} /></div>
+                                </div>
+                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('negociation', 'Passage en négociation')}>→ Passer en négociation</button>
+                              </div>
+                            )}
+                            {etapeId === 'negociation' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <label className={styles.lbl}>Ajouter une contre-offre</label>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <select className={styles.inp} id="cop" style={{ width: 130 }}><option value="vendeur">Vendeur</option><option value="acheteur">Acheteur</option></select>
+                                  <input className={styles.inp} type="number" id="com" placeholder="Montant €" style={{ flex: 1 }} />
+                                  <input className={styles.inp} type="date" id="cod" style={{ width: 160 }} />
+                                  <button className={styles.btn} onClick={async () => { const p = (document.getElementById('cop') as HTMLSelectElement).value; const m = (document.getElementById('com') as HTMLInputElement).value; const d = (document.getElementById('cod') as HTMLInputElement).value; await supabase.from('transactions').update({ contre_offres: [...(transaction.contre_offres||[]), {partie:p,montant:m,date:d}] }).eq('id', transaction.id); load(); }}>+ Ajouter</button>
+                                </div>
+                                {(transaction.contre_offres||[]).map((co: any, i: number) => (
+                                  <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: 10, border: '1px solid #e3e8f0' }}>
+                                    <span style={{ padding: '2px 10px', borderRadius: 20, fontWeight: 700, background: co.partie === 'vendeur' ? '#fef2f2' : '#f0fdf4', color: co.partie === 'vendeur' ? '#ef4444' : '#10b981' }}>{co.partie}</span>
+                                    <span style={{ fontWeight: 600 }}>{parseInt(co.montant).toLocaleString('fr-FR')}€</span>
+                                    <span style={{ color: '#94a3b8' }}>{co.date}</span>
+                                  </div>
+                                ))}
+                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('offre_acceptee', 'Offre acceptée')}>✓ Offre acceptée →</button>
+                              </div>
+                            )}
+                            {etapeId === 'offre_acceptee' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div><label className={styles.lbl}>Prix final accepté €</label><input className={styles.inp} type="number" defaultValue={transaction.prix_final} placeholder="Ex: 345 000" onChange={e => saveTxField('prix_final', parseInt(e.target.value))} /></div>
+                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('compromis', 'Passage au compromis')}>→ Passer au compromis</button>
+                              </div>
+                            )}
+                            {etapeId === 'compromis' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div className={styles.formRow}>
+                                  <div><label className={styles.lbl}>Date compromis</label><input className={styles.inp} type="date" defaultValue={transaction.compromis_date} onChange={e => { saveTxField('compromis_date', e.target.value); saveTxField('sru_date_fin', new Date(new Date(e.target.value).getTime() + 10*86400000).toISOString().split('T')[0]); }} /></div>
+                                  <div><label className={styles.lbl}>Notaire</label><input className={styles.inp} defaultValue={transaction.compromis_notaire} placeholder="Me Dupont..." onChange={e => saveTxField('compromis_notaire', e.target.value)} /></div>
+                                </div>
+                                <div className={styles.formRow}>
+                                  <div><label className={styles.lbl}>Montant prêt €</label><input className={styles.inp} type="number" defaultValue={transaction.pret_montant} onChange={e => saveTxField('pret_montant', parseInt(e.target.value))} /></div>
+                                  <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" defaultValue={transaction.pret_apport} onChange={e => saveTxField('pret_apport', parseInt(e.target.value))} /></div>
+                                </div>
+                                {transaction.sru_date_fin && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>⏰ SRU : rétractation possible jusqu'au {new Date(transaction.sru_date_fin).toLocaleDateString('fr-FR')}</div>}
+                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('acte', 'Passage à l\'acte')}>→ Passer à l'acte</button>
+                              </div>
+                            )}
+                            {etapeId === 'acte' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div className={styles.formRow}>
+                                  <div><label className={styles.lbl}>Date acte prévue</label><input className={styles.inp} type="date" defaultValue={transaction.acte_date_prevue} onChange={e => saveTxField('acte_date_prevue', e.target.value)} /></div>
+                                  <div><label className={styles.lbl}>Honoraires HT €</label><input className={styles.inp} type="number" defaultValue={transaction.honoraires_ht} onChange={e => { saveTxField('honoraires_ht', parseInt(e.target.value)); saveTxField('honoraires_ttc', Math.round(parseInt(e.target.value)*1.2)); }} /></div>
+                                </div>
+                                {transaction.honoraires_ht && <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#16a34a', fontWeight: 600 }}>💰 Honoraires TTC : {Math.round((txData.honoraires_ht||transaction.honoraires_ht) * 1.2).toLocaleString('fr-FR')}€</div>}
+                                <button style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: 'pointer', alignSelf: 'flex-end' }} onClick={async () => { await supabase.from('clients').update({ statut: 'bien_trouve' }).eq('id', client.id); await supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id); await addJournal(client.id, 'dossier_finalise', '🎉 Bien trouvé !'); refresh(); load(); }}>🎉 Clôturer — Bien trouvé !</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {transaction.etape_actuelle === 'finalise' && (
+                  <div style={{ background: 'linear-gradient(135deg, #ecfdf5, #f0fdf4)', border: '1px solid #bbf7d0', borderRadius: 14, padding: 20, textAlign: 'center', marginTop: 8 }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#16a34a' }}>Dossier finalisé !</div>
+                    {transaction.honoraires_ht && <div style={{ fontSize: 15, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>Honoraires HT : {transaction.honoraires_ht.toLocaleString('fr-FR')}€</div>}
+                    {transaction.acte_date_prevue && <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Acte prévu le {new Date(transaction.acte_date_prevue).toLocaleDateString('fr-FR')}</div>}
+                  </div>
+                )}
+              </div>
         )}
 
-        {/* HISTORIQUE */}
+        {/* TAB HISTORIQUE */}
         {tab === 'historique' && (
           <div className={styles.card}>
             {envois.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📄</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucun envoi</div></div>
@@ -540,7 +568,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
           </div>
         )}
 
-        {/* JOURNAL */}
+        {/* TAB JOURNAL */}
         {tab === 'journal' && (
           <div className={styles.card} style={{ padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button></div>
@@ -562,9 +590,91 @@ export default function FicheClient({ client: init, onBack }: Props) {
             ))}
           </div>
         )}
+
+        {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
+        <div className={styles.infoRow}>
+          <div className={styles.infoCard}>
+            <div className={styles.infoCardHeader}>📞 Contact <button className={styles.editBtn} onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' }); setShowContact(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardBody}>
+              {client.telephones?.filter(Boolean).map(t => <div key={t} className={styles.contactLine}><span className={styles.contactIcon}>📞</span><span>{t}</span></div>)}
+              {client.emails?.filter(Boolean).map(e => <div key={e} className={styles.contactLine}><span className={styles.contactIcon}>✉️</span><span>{e}</span></div>)}
+              {client.adresse && <div className={styles.contactLine}><span className={styles.contactIcon}>📍</span><span>{client.adresse}</span></div>}
+              {!client.telephones?.length && !client.emails?.length && !client.adresse && <div style={{ color: '#94a3b8', fontSize: 13 }}>Non renseigné</div>}
+            </div>
+          </div>
+
+          <div className={styles.infoCard} style={{ flex: 2 }}>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardBody}>
+              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Ligne 1 : Type / Budget / Surface / Pièces / Chambres */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
+                    {client.type_bien && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Type</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
+                    {client.budget_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</div></div>}
+                    {client.surface_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Surface</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.surface_min}{client.surface_max ? `–${client.surface_max}` : '+'}m²</div></div>}
+                    {client.nb_pieces_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Pièces</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_min}{client.nb_pieces_max ? `–${client.nb_pieces_max}` : '+'}P</div></div>}
+                    {client.chambres_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Chambres</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
+                    {client.dpe_max && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
+                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
+                    {client.annee_construction_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Année min</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
+                  </div>
+                  {/* Ligne 2 : Équipements */}
+                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingBottom: client.secteurs?.length || client.notes ? 8 : 0, borderBottom: (client.secteurs?.length || client.notes) ? '1px solid #f1f5f9' : 'none' }}>
+                      {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
+                        <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{l}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Ligne 3 : Secteurs */}
+                  {client.secteurs?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {client.secteurs.map(s => <span key={s} className={styles.secteurTag}>{s}</span>)}
+                    </div>
+                  )}
+                  {/* Notes */}
+                  {client.notes && <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>{client.notes}</div>}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Aucun critère défini</span>
+                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCriteres(true)}>+ Définir</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.infoCard} style={{ background: '#1a2332', minWidth: 210 }}>
+            <div className={styles.infoCardHeader} style={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+              <span style={{ color: '#c9a84c' }}>📋 Mandat</span>
+              <button className={styles.editBtn} style={{ color: 'rgba(255,255,255,0.5)' }} onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }}>✏️</button>
+            </div>
+            <div className={styles.infoCardBody}>
+              {client.mandat_date_signature ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[{l:'Signature',v:new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')},{l:'Durée',v:client.mandat_duree ? `${client.mandat_duree} mois` : '—'},{l:'Honoraires',v:client.mandat_honoraires||'—'}].map(r => (
+                    <div key={r.l}><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>{r.l}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{r.v}</div></div>
+                  ))}
+                  {joursMandat !== null && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, marginTop: 2 }}>
+                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>Expiration</div><div style={{ fontSize: 22, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div></div>
+                      <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>Non renseigné</div>
+                  <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      {/* ═══ MODAL CONTACT ═══ */}
       {showContact && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowContact(false); }}>
           <div className={styles.modal}>
@@ -580,26 +690,17 @@ export default function FicheClient({ client: init, onBack }: Props) {
         </div>
       )}
 
-      {/* ═══ MODAL CRITÈRES ═══ */}
       {showCriteres && (
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 740 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🎯 Critères de recherche</h2><button className={styles.modalClose} onClick={() => setShowCriteres(false)}>✕</button></div>
             <div className={styles.modalBody}>
-
-              {/* TYPES — multi-sélection */}
               <div>
                 <label className={styles.lbl}>Type(s) de bien <span style={{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#94a3b8'}}>(plusieurs choix possibles)</span></label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['Appartement','Maison','Loft','Duplex','Studio','Villa','Terrain','Autre'].map(t => {
-                    const sel = crit.types_bien.includes(t);
-                    return <button key={t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==t) : [...f.types_bien, t] }))}
-                      style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{t}</button>;
-                  })}
+                  {['Appartement','Maison','Loft','Duplex','Studio','Villa','Terrain','Autre'].map(t => { const sel = crit.types_bien.includes(t); return <button key={t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==t) : [...f.types_bien, t] }))} style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{t}</button>; })}
                 </div>
               </div>
-
-              {/* BUDGET */}
               <div>
                 <label className={styles.lbl}>Budget</label>
                 <div className={styles.formRow}>
@@ -607,78 +708,43 @@ export default function FicheClient({ client: init, onBack }: Props) {
                   <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div>
                 </div>
               </div>
-
-              {/* SURFACE + PIÈCES + CHAMBRES */}
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
                 <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
               </div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Chambres minimum</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} placeholder="Ex: 2" /></div>
-                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
+                <div><label className={styles.lbl}>Année construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
               </div>
-
-              {/* ÉTAGE */}
               <div>
                 <label className={styles.lbl}>Étage</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (
-                    <button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))}
-                      style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
-                  ))}
+                  {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
                   <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage min :</label><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="Ex: 2" style={{width:80}} /></div>
                 </div>
               </div>
-
-              {/* OPTIONS */}
               <div>
                 <label className={styles.lbl}>Équipements souhaités</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (
-                    <button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))}
-                      style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
-                  ))}
+                  {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
                 </div>
               </div>
-
-              {/* DPE */}
               <div>
                 <label className={styles.lbl}>DPE maximum accepté</label>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {['A','B','C','D','E','F','G'].map(d => (
-                    <button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))}
-                      style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>
-                  ))}
+                  {['A','B','C','D','E','F','G'].map(d => (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>))}
                 </div>
               </div>
-
-              {/* SECTEURS améliorés */}
               <div>
                 <label className={styles.lbl}>Secteurs / Quartiers</label>
                 <div style={{ position: 'relative' }}>
                   <input className={styles.inp} value={cpQ} onChange={e => searchCP(e.target.value)} placeholder="Tapez un code postal ou une ville (ex: 92100, Neuilly...)" />
                   {cpSug.length > 0 && (
                     <div className={styles.suggestions}>
-                      {cpSug.map((s, i) => (
-                        <div key={i} className={styles.suggItem} onClick={() => {
-                          const info = QUARTIERS[s.cp];
-                          if (info?.quartiers) {
-                            setSecteurVilleActive({cp: s.cp, ville: info.ville});
-                          } else {
-                            setSecteurVilleActive({cp: s.cp, ville: s.ville});
-                          }
-                          setCpSug([]);
-                          setCpQ('');
-                        }}>
-                          <strong>{s.cp}</strong> — {s.ville}
-                          {QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}
-                        </div>
-                      ))}
+                      {cpSug.map((s, i) => (<div key={i} className={styles.suggItem} onClick={() => { const info = QUARTIERS[s.cp]; if (info?.quartiers) { setSecteurVilleActive({cp: s.cp, ville: info.ville}); } else { setSecteurVilleActive({cp: s.cp, ville: s.ville}); } setCpSug([]); setCpQ(''); }}><strong>{s.cp}</strong> — {s.ville}{QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}</div>))}
                     </div>
                   )}
                 </div>
-
-                {/* Quartiers de la ville active — reste affiché jusqu'à changement */}
                 {secteurVilleActive && (
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -686,54 +752,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
                       <button onClick={() => setSecteurVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                      <button onClick={() => addSecteur(secteurVilleActive.cp, secteurVilleActive.ville)}
-                        style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
-                        ✓ Toute la ville
-                      </button>
-                      {QUARTIERS[secteurVilleActive.cp]?.quartiers.map(q => {
-                        const label = `${q} (${secteurVilleActive.ville})`;
-                        const already = crit.secteurs.includes(label);
-                        return (
-                          <button key={q} onClick={() => already ? setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==label)})) : addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, q)}
-                            style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: `1px solid ${already ? '#10b981' : '#e2e8f0'}`, background: already ? '#ecfdf5' : 'white', color: already ? '#10b981' : '#64748b', cursor: 'pointer', fontFamily: 'inherit', fontWeight: already ? 600 : 400, transition: 'all 0.12s' }}>
-                            {already ? '✓ ' : ''}{q}
-                          </button>
-                        );
-                      })}
-                      {!QUARTIERS[secteurVilleActive.cp] && (
-                        <div style={{fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>
-                      )}
+                      <button onClick={() => addSecteur(secteurVilleActive.cp, secteurVilleActive.ville)} style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✓ Toute la ville</button>
+                      {QUARTIERS[secteurVilleActive.cp]?.quartiers.map(q => { const label = `${q} (${secteurVilleActive.ville})`; const already = crit.secteurs.includes(label); return (<button key={q} onClick={() => already ? setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==label)})) : addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, q)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: `1px solid ${already ? '#10b981' : '#e2e8f0'}`, background: already ? '#ecfdf5' : 'white', color: already ? '#10b981' : '#64748b', cursor: 'pointer', fontFamily: 'inherit', fontWeight: already ? 600 : 400, transition: 'all 0.12s' }}>{already ? '✓ ' : ''}{q}</button>); })}
+                      {!QUARTIERS[secteurVilleActive.cp] && <div style={{fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>}
                     </div>
                     <div style={{fontSize:11,color:'#94a3b8'}}>💡 Vous pouvez sélectionner plusieurs quartiers puis chercher une autre ville</div>
                   </div>
                 )}
-
-                {/* Secteurs sélectionnés */}
                 {crit.secteurs.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                    {crit.secteurs.map(s => (
-                      <span key={s} className={styles.secteurTag}>
-                        {s} <span onClick={() => setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==s)}))} style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
-                      </span>
-                    ))}
+                    {crit.secteurs.map(s => (<span key={s} className={styles.secteurTag}>{s} <span onClick={() => setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==s)}))} style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span></span>))}
                   </div>
                 )}
-
-                {/* Saisie libre */}
                 <div style={{ marginTop: 10 }}>
-                  <input className={styles.inp} placeholder="Ou saisir un secteur libre (ex: Triangle d'Or, Proche RER...)"
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                        const v = (e.target as HTMLInputElement).value.trim();
-                        if (!crit.secteurs.includes(v)) setCrit(f=>({...f,secteurs:[...f.secteurs,v]}));
-                        (e.target as HTMLInputElement).value = '';
-                      }
-                    }} />
+                  <input className={styles.inp} placeholder="Ou saisir un secteur libre (ex: Triangle d'Or, Proche RER...)" onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) { const v = (e.target as HTMLInputElement).value.trim(); if (!crit.secteurs.includes(v)) setCrit(f=>({...f,secteurs:[...f.secteurs,v]})); (e.target as HTMLInputElement).value = ''; } }} />
                   <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Appuyez sur Entrée pour ajouter un secteur personnalisé</div>
                 </div>
               </div>
-
-              {/* NOTES */}
               <div><label className={styles.lbl}>Notes libres</label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowCriteres(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCriteres} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
@@ -741,7 +776,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
         </div>
       )}
 
-      {/* ═══ MODAL MANDAT ═══ */}
       {showMandat && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowMandat(false); }}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
@@ -760,7 +794,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
         </div>
       )}
 
-      {/* ═══ MODAL AJOUTER BIEN ═══ */}
       {showBien && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) { setShowBien(false); setBienForm(null); setUrl(''); }}}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
@@ -769,7 +802,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
               <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={extract} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
               {bienForm !== null && <>
                 <div style={{ background: bienForm._reason === 'seloger_blocked' ? '#fffbeb' : bienForm.titre ? '#ecfdf5' : '#f8fafc', border: `1px solid ${bienForm._reason === 'seloger_blocked' ? '#fde68a' : bienForm.titre ? '#a7f3d0' : '#e2e8f0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 13, color: bienForm._reason === 'seloger_blocked' ? '#92400e' : bienForm.titre ? '#065f46' : '#64748b' }}>
-                  {bienForm._reason === 'seloger_blocked' ? '⚠️ SeLoger bloque l’extraction automatique — complétez manuellement les informations' : bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}
+                  {bienForm._reason === 'seloger_blocked' ? "⚠️ SeLoger bloque l'extraction automatique — complétez manuellement" : bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Titre</label><input className={styles.inp} value={bienForm.titre||''} onChange={e => setBienForm((f: any) => ({ ...f, titre: e.target.value }))} /></div>
@@ -795,7 +828,46 @@ export default function FicheClient({ client: init, onBack }: Props) {
         </div>
       )}
 
-      {/* ═══ MODAL ACTION ═══ */}
+      {/* ═══ MODAL OFFRE ÉCRITE ═══ */}
+      {showOffreEcrite && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowOffreEcrite(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 580 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>✍️ Créer une offre écrite</h2>
+              <button className={styles.modalClose} onClick={() => setShowOffreEcrite(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 4 }}>
+                ✍️ Cette action va passer le statut client en "Offre écrite" et créer / mettre à jour la transaction.
+              </div>
+              <div>
+                <label className={styles.lbl}>Bien concerné par l'offre</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {biens.map(b => (
+                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${offreForm.bien_id === b.id ? '#1a2332' : '#e3e8f0'}`, background: offreForm.bien_id === b.id ? '#f8fafc' : 'white', cursor: 'pointer' }}>
+                      <input type="radio" name="bien_offre" value={b.id} checked={offreForm.bien_id === b.id} onChange={() => setOffreForm(f => ({ ...f, bien_id: b.id }))} style={{ accentColor: '#1a2332' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>{b.prix_acquereur ? `Prix acquéreur : ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}{b.surface ? ` · ${b.surface}m²` : ''}{b.ville ? ` · ${b.ville}` : ''}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Montant de l'offre €</label><input className={styles.inp} type="number" value={offreForm.montant} onChange={e => setOffreForm(f => ({ ...f, montant: e.target.value }))} placeholder="Ex : 345 000" /></div>
+                <div><label className={styles.lbl}>Date de l'offre</label><input className={styles.inp} type="date" value={offreForm.date} onChange={e => setOffreForm(f => ({ ...f, date: e.target.value }))} /></div>
+              </div>
+              <div><label className={styles.lbl}>Notes / Conditions particulières</label><textarea className={styles.inp} rows={3} value={offreForm.notes} onChange={e => setOffreForm(f => ({ ...f, notes: e.target.value }))} placeholder="Conditions suspensives, délai de réponse attendu..." /></div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowOffreEcrite(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveOffreEcrite} disabled={saving || !offreForm.bien_id || !offreForm.montant}>{saving ? '...' : '✍️ Créer l\'offre écrite'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAction && (
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
@@ -804,22 +876,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
               <div>
                 <label className={styles.lbl}>Type d'action</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (
-                    <button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))}
-                      style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? '#1a2332' : '#e2e8f0'}`, background: actionF.type === o.v ? '#1a2332' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>
-                      {o.l}
-                    </button>
-                  ))}
+                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? '#1a2332' : '#e2e8f0'}`, background: actionF.type === o.v ? '#1a2332' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
                 </div>
               </div>
-              <div>
-                <label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel — pré-rempli selon le type)</span></label>
-                <input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." />
-              </div>
-              <div>
-                <label className={styles.lbl}>Notes / Détails</label>
-                <textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." />
-              </div>
+              <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
+              <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button>
