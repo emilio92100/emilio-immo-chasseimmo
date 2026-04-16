@@ -273,7 +273,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {[{val: biens.length, l:'Biens',c:'#1a2332'},{val: visites.filter(v=>v.statut==='effectuee').length,l:'Visites',c:'#1a2332'},{val: biens.filter(b=>b.badge_retour==='offre_faite').length,l:'Offre(s)',c:'#c9a84c'},{val:`${jours}j`,l:'Suivi',c:'#1a2332'}].map((s, i) => (
+          {[{val: biens.length, l:'Biens présentés',c:'#1a2332'},{val: visites.filter(v=>v.statut==='effectuee').length,l:'Visites effectuées',c:'#1a2332'},{val: biens.filter(b=>b.badge_retour==='offre_faite').length,l:'Offre(s)',c:'#c9a84c'},{val:`${jours}j`,l:'Suivi',c:'#1a2332'}].map((s, i) => (
             <div key={i} className={styles.syntheseItem}>
               <div className={styles.syntheseVal} style={{ color: s.c }}>{s.val}</div>
               <div className={styles.syntheseLabel}>{s.l}</div>
@@ -302,12 +302,33 @@ export default function FicheClient({ client: init, onBack }: Props) {
           <div className={styles.infoCard} style={{ flex: 2 }}>
             <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
-              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length) ? (
+              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
                 <div className={styles.criteresGrid}>
                   {client.type_bien && <div className={styles.critItem}><div className={styles.critLabel}>Type</div><div className={styles.critVal}>{client.type_bien}</div></div>}
                   {client.budget_min && <div className={styles.critItem}><div className={styles.critLabel}>Budget</div><div className={styles.critVal}>{(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</div></div>}
-                  {client.surface_min && <div className={styles.critItem}><div className={styles.critLabel}>Surface</div><div className={styles.critVal}>{client.surface_min}–{client.surface_max}m²</div></div>}
-                  {client.nb_pieces_min && <div className={styles.critItem}><div className={styles.critLabel}>Pièces</div><div className={styles.critVal}>{client.nb_pieces_min}–{client.nb_pieces_max}P</div></div>}
+                  {client.surface_min && <div className={styles.critItem}><div className={styles.critLabel}>Surface</div><div className={styles.critVal}>{client.surface_min}{client.surface_max ? `–${client.surface_max}` : '+'}m²</div></div>}
+                  {client.nb_pieces_min && <div className={styles.critItem}><div className={styles.critLabel}>Pièces</div><div className={styles.critVal}>{client.nb_pieces_min}{client.nb_pieces_max ? `–${client.nb_pieces_max}` : '+'}P</div></div>}
+                  {client.chambres_min && <div className={styles.critItem}><div className={styles.critLabel}>Chambres min</div><div className={styles.critVal}>{client.chambres_min}</div></div>}
+                  {client.dpe_max && <div className={styles.critItem}><div className={styles.critLabel}>DPE max</div><div className={styles.critVal}>{client.dpe_max}</div></div>}
+                  {client.etage_min && <div className={styles.critItem}><div className={styles.critLabel}>Étage min</div><div className={styles.critVal}>{client.etage_min}</div></div>}
+                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
+                    <div className={styles.critItem} style={{ gridColumn: '1/-1' }}>
+                      <div className={styles.critLabel}>Équipements</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+                        {client.parking && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🅿️ Parking</span>}
+                        {client.balcon && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🌿 Balcon</span>}
+                        {client.terrasse && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>☀️ Terrasse</span>}
+                        {client.jardin && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🌳 Jardin</span>}
+                        {client.cave && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>📦 Cave</span>}
+                        {client.ascenseur && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🛗 Ascenseur</span>}
+                        {client.gardien && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>👮 Gardien</span>}
+                        {(client as any).interphone && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🔔 Interphone</span>}
+                        {(client as any).digicode && <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>🔢 Digicode</span>}
+                      </div>
+                    </div>
+                  )}
+                  {client.rdc_exclu && <div className={styles.critItem}><div className={styles.critLabel}>Étage</div><div className={styles.critVal} style={{fontSize:12}}>🚫 RDC exclu{client.dernier_etage ? ' · 🏙️ Dernier ét.' : ''}</div></div>}
+                  {client.annee_construction_min && <div className={styles.critItem}><div className={styles.critLabel}>Année min</div><div className={styles.critVal}>{client.annee_construction_min}</div></div>}
                   {client.secteurs?.length > 0 && <div className={styles.critItem} style={{ gridColumn: '1/-1' }}><div className={styles.critLabel}>Secteurs</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>{client.secteurs.map(s => <span key={s} className={styles.secteurTag}>{s}</span>)}</div></div>}
                   {client.notes && <div className={styles.critItem} style={{ gridColumn: '1/-1' }}><div className={styles.critLabel}>Notes</div><div style={{ fontSize: 13, color: '#64748b', fontStyle: 'italic' }}>{client.notes}</div></div>}
                 </div>
