@@ -25,6 +25,28 @@ const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte']
 
 interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; }
 
+function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: any; setBienForm: any; prixAcq: number; styles: any }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Titre</label><input className={styles.inp} value={bienForm.titre||''} onChange={e => setBienForm((f: any) => ({ ...f, titre: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Type</label><select className={styles.inp} value={bienForm.type_bien||'Appartement'} onChange={e => setBienForm((f: any) => ({ ...f, type_bien: e.target.value }))}><option>Appartement</option><option>Maison</option><option>Loft</option><option>Studio</option><option>Duplex</option><option>Villa</option></select></div>
+      <div><label className={styles.lbl}>Source</label><input className={styles.inp} value={bienForm.source_portail||''} onChange={e => setBienForm((f: any) => ({ ...f, source_portail: e.target.value }))} placeholder="SeLoger..." /></div>
+      <div><label className={styles.lbl}>Ville</label><input className={styles.inp} value={bienForm.ville||''} onChange={e => setBienForm((f: any) => ({ ...f, ville: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Code postal</label><input className={styles.inp} value={bienForm.code_postal||''} onChange={e => setBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Surface m²</label><input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => setBienForm((f: any) => ({ ...f, surface: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Pièces</label><input className={styles.inp} type="number" value={bienForm.nb_pieces||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_pieces: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Étage</label><input className={styles.inp} type="number" value={bienForm.etage||''} onChange={e => setBienForm((f: any) => ({ ...f, etage: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>DPE</label><input className={styles.inp} value={bienForm.dpe||''} onChange={e => setBienForm((f: any) => ({ ...f, dpe: e.target.value }))} placeholder="A B C..." /></div>
+      <div><label className={styles.lbl}>Prix vendeur €</label><input className={styles.inp} type="number" value={bienForm.prix_vendeur||''} onChange={e => setBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Commission</label><div style={{ display: 'flex', gap: 6 }}><select className={styles.inp} style={{ width: 80 }} value={bienForm.commission_type} onChange={e => setBienForm((f: any) => ({ ...f, commission_type: e.target.value }))}><option value="pourcentage">%</option><option value="montant">€</option></select><input className={styles.inp} type="number" value={bienForm.commission_val||''} onChange={e => setBienForm((f: any) => ({ ...f, commission_val: e.target.value }))} /></div></div>
+      <div><label className={styles.lbl}>Prix acquéreur</label><div className={styles.inp} style={{ background: '#fef9c3', color: '#854d0e', fontWeight: 700 }}>{prixAcq ? `${prixAcq.toLocaleString('fr-FR')}€` : '—'}</div></div>
+      <div><label className={styles.lbl}>Agence</label><input className={styles.inp} value={bienForm.agence_nom||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_nom: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Tél. agence</label><input className={styles.inp} value={bienForm.agence_tel||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_tel: e.target.value }))} /></div>
+      <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Description</label><textarea className={styles.inp} rows={3} value={bienForm.description||''} onChange={e => setBienForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+    </div>
+  );
+}
+
 export default function FicheClient({ client: init, onBack }: Props) {
   const [client, setClient] = useState<Client>(init);
   const [tab, setTab] = useState('biens');
@@ -49,6 +71,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
+  const [bienMode, setBienMode] = useState<'url'|'texte'>('url');
+  const [texteAnnonce, setTexteAnnonce] = useState('');
+  const [photosInput, setPhotosInput] = useState('');
   const [cpQ, setCpQ] = useState('');
   const [cpSug, setCpSug] = useState<any[]>([]);
   const [selCP, setSelCP] = useState('');
@@ -203,6 +228,20 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function changeChaleur(chaleur: string) {
     const { data } = await supabase.from('clients').update({ chaleur }).eq('id', client.id).select().single();
     if (data) setClient(data as Client);
+  }
+
+  async function parseTexte() {
+    if (texteAnnonce.trim().length < 30) return;
+    setExtracting(true);
+    try {
+      const res = await fetch('/api/parse-texte-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texte: texteAnnonce, url }) });
+      const data = await res.json();
+      if (data.bien) {
+        const photosManual = photosInput.split('\n').map((s: string) => s.trim()).filter((s: string) => s.startsWith('http'));
+        setBienForm({ ...data.bien, url: url||'', commission_type: 'pourcentage', commission_val: 3.5, photos: photosManual.length > 0 ? photosManual : [], source_portail: data.bien.source_portail || 'Autre', _method: data.method });
+      }
+    } catch { }
+    setExtracting(false);
   }
 
   async function extract() {
@@ -917,40 +956,83 @@ Emilio Immobilier`,
       )}
 
       {showBien && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) { setShowBien(false); setBienForm(null); setUrl(''); }}}>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); }}>✕</button></div>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>✕</button></div>
             <div className={styles.modalBody}>
-              <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={extract} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
-              {bienForm !== null && <>
-                <div style={{ background: bienForm._reason === 'seloger_blocked' ? '#fffbeb' : bienForm.titre ? '#ecfdf5' : '#f8fafc', border: `1px solid ${bienForm._reason === 'seloger_blocked' ? '#fde68a' : bienForm.titre ? '#a7f3d0' : '#e2e8f0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 13, color: bienForm._reason === 'seloger_blocked' ? '#92400e' : bienForm.titre ? '#065f46' : '#64748b' }}>
-                  {bienForm._reason === 'seloger_blocked' ? "⚠️ SeLoger bloque l'extraction automatique — complétez manuellement" : bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}
+
+              {/* Sélecteur mode */}
+              <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3 }}>
+                {(['url', 'texte'] as const).map(m => (
+                  <button key={m} onClick={() => { setBienMode(m); setBienForm(null); }}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', background: bienMode === m ? 'white' : 'transparent', color: bienMode === m ? '#1a2332' : '#64748b', fontWeight: bienMode === m ? 700 : 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', boxShadow: bienMode === m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s' }}>
+                    {m === 'url' ? '🔗 Par URL' : '📋 Coller le texte'}
+                  </button>
+                ))}
+              </div>
+
+              {/* MODE URL */}
+              {bienMode === 'url' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={extract} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
+                  {bienForm !== null && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ background: bienForm._reason === 'seloger_blocked' ? '#fffbeb' : bienForm.titre ? '#ecfdf5' : '#f8fafc', border: `1px solid ${bienForm._reason === 'seloger_blocked' ? '#fde68a' : bienForm.titre ? '#a7f3d0' : '#e2e8f0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 13, color: bienForm._reason === 'seloger_blocked' ? '#92400e' : bienForm.titre ? '#065f46' : '#64748b' }}>
+                        {bienForm._reason === 'seloger_blocked' ? "⚠️ SeLoger bloque l'extraction — complétez manuellement" : bienForm.titre ? '✅ Informations extraites — vérifiez et complétez' : 'ℹ️ Remplissez manuellement'}
+                      </div>
+                      <BienFormFields bienForm={bienForm} setBienForm={setBienForm} prixAcq={prixAcq} styles={styles} />
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Titre</label><input className={styles.inp} value={bienForm.titre||''} onChange={e => setBienForm((f: any) => ({ ...f, titre: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Type</label><select className={styles.inp} value={bienForm.type_bien||'Appartement'} onChange={e => setBienForm((f: any) => ({ ...f, type_bien: e.target.value }))}><option>Appartement</option><option>Maison</option><option>Loft</option><option>Studio</option><option>Duplex</option></select></div>
-                  <div><label className={styles.lbl}>Source</label><input className={styles.inp} value={bienForm.source_portail||''} onChange={e => setBienForm((f: any) => ({ ...f, source_portail: e.target.value }))} placeholder="SeLoger..." /></div>
-                  <div><label className={styles.lbl}>Ville</label><input className={styles.inp} value={bienForm.ville||''} onChange={e => setBienForm((f: any) => ({ ...f, ville: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Code postal</label><input className={styles.inp} value={bienForm.code_postal||''} onChange={e => setBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Surface m²</label><input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => setBienForm((f: any) => ({ ...f, surface: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Pièces</label><input className={styles.inp} type="number" value={bienForm.nb_pieces||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_pieces: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Étage</label><input className={styles.inp} type="number" value={bienForm.etage||''} onChange={e => setBienForm((f: any) => ({ ...f, etage: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>DPE</label><input className={styles.inp} value={bienForm.dpe||''} onChange={e => setBienForm((f: any) => ({ ...f, dpe: e.target.value }))} placeholder="A B C..." /></div>
-                  <div><label className={styles.lbl}>Prix vendeur €</label><input className={styles.inp} type="number" value={bienForm.prix_vendeur||''} onChange={e => setBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Commission</label><div style={{ display: 'flex', gap: 6 }}><select className={styles.inp} style={{ width: 80 }} value={bienForm.commission_type} onChange={e => setBienForm((f: any) => ({ ...f, commission_type: e.target.value }))}><option value="pourcentage">%</option><option value="montant">€</option></select><input className={styles.inp} type="number" value={bienForm.commission_val||''} onChange={e => setBienForm((f: any) => ({ ...f, commission_val: e.target.value }))} /></div></div>
-                  <div><label className={styles.lbl}>Prix acquéreur</label><div className={styles.inp} style={{ background: '#fef9c3', color: '#854d0e', fontWeight: 700 }}>{prixAcq ? `${prixAcq.toLocaleString('fr-FR')}€` : '—'}</div></div>
-                  <div><label className={styles.lbl}>Agence</label><input className={styles.inp} value={bienForm.agence_nom||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_nom: e.target.value }))} /></div>
-                  <div><label className={styles.lbl}>Tél. agence</label><input className={styles.inp} value={bienForm.agence_tel||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_tel: e.target.value }))} /></div>
-                  <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Description</label><textarea className={styles.inp} rows={3} value={bienForm.description||''} onChange={e => setBienForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+              )}
+
+              {/* MODE TEXTE */}
+              {bienMode === 'texte' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>
+                    💡 <strong>Comment faire :</strong> Sur la page de l'annonce, sélectionne tout (Ctrl+A), copie (Ctrl+C), colle ici (Ctrl+V). Le système extrait automatiquement toutes les infos.
+                  </div>
+                  <div><label className={styles.lbl}>Lien de l'annonce <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." /></div>
+                  <div><label className={styles.lbl}>Texte copié de l'annonce</label><textarea className={styles.inp} rows={8} value={texteAnnonce} onChange={e => setTexteAnnonce(e.target.value)} placeholder="Ctrl+A sur la page → Ctrl+C → coller ici..." style={{ fontFamily: 'inherit', fontSize: 12 }} /></div>
+                  <div>
+                    <label className={styles.lbl}>Photos <span style={{fontWeight:400,color:'#94a3b8'}}>(clic droit sur chaque photo → "Copier l'adresse" → une URL par ligne)</span></label>
+                    <textarea className={styles.inp} rows={3} value={photosInput} onChange={e => setPhotosInput(e.target.value)} placeholder="https://cdn.seloger.com/photo1.jpg" style={{ fontFamily: 'monospace', fontSize: 11 }} />
+                    {photosInput && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        {photosInput.split('\n').map((u: string) => u.trim()).filter((u: string) => u.startsWith('http')).slice(0, 6).map((u: string, i: number) => (
+                          <img key={i} src={u} alt="" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid #e3e8f0' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={parseTexte} disabled={extracting || texteAnnonce.trim().length < 30}>{extracting ? '⏳ Analyse en cours...' : '🤖 Analyser et remplir les champs'}</button>
+                  {bienForm !== null && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '9px 13px', fontSize: 13, color: '#065f46' }}>{bienForm._method === 'claude' ? '🤖 Analysé par IA — vérifiez et ajustez' : '✅ Informations extraites — vérifiez et ajustez'}</div>
+                      <BienFormFields bienForm={bienForm} setBienForm={setBienForm} prixAcq={prixAcq} styles={styles} />
+                      {bienForm.photos?.length > 0 && (
+                        <div><label className={styles.lbl}>Photos ({bienForm.photos.length})</label>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {bienForm.photos.map((p: string, i: number) => (
+                              <div key={i} style={{ position: 'relative' }}>
+                                <img src={p} alt="" style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 8, border: '1px solid #e3e8f0' }} onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }} />
+                                <button onClick={() => setBienForm((f: any) => ({ ...f, photos: f.photos.filter((_: string, j: number) => j !== i) }))} style={{ position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none', fontSize: 10, cursor: 'pointer' }}>✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </>}
+              )}
+
             </div>
-            <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+            <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
           </div>
         </div>
       )}
 
-      {/* ═══ MODAL ENVOI BIEN ═══ */}
       {showEnvoiBien && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoiBien(false); }}>
           <div className={styles.modal} style={{ maxWidth: 600 }}>
