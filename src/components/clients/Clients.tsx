@@ -179,13 +179,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 className={styles.clientRow}
                 onClick={() => onNavigate('fiche', client)}
               >
-                <div className={styles.clientAv}>
+                <div className={styles.clientAv} style={{ width: 46, height: 46, borderRadius: 14 }}>
                   <span>{initiales}</span>
                 </div>
                 <div className={styles.clientInfo}>
                   {/* Ligne 1 : nom + badges */}
                   <div className={styles.clientTop}>
-                    <span className={styles.clientName}>{client.prenom} {client.nom}</span>
+                    <span className={styles.clientName} style={{ fontSize: 16, fontWeight: 800 }}>{client.prenom} {client.nom}</span>
                     <span className={styles.badge} style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}30` }}>{st.label}</span>
                     <span className={styles.badgeGold}>{client.reference}</span>
                     {client.mandat_date_expiration && (() => { const j = Math.floor((new Date(client.mandat_date_expiration).getTime()-Date.now())/86400000); return j<15 ? <span className={styles.badge} style={{color:'#ef4444',background:'#fef2f2',border:'1px solid #fecaca'}}>⚠️ Mandat {j}j</span> : null; })()}
@@ -201,15 +201,21 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       {equipements.map((e,i) => <span key={i} style={{ fontSize: 11 }}>{e}</span>)}
                     </div>
                   )}
-                  {/* Ligne 3 : secteurs groupés par ville */}
-                  {client.secteurs?.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                      {client.secteurs.slice(0,4).map((s:string) => (
-                        <span key={s} style={{ fontSize: 11, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>📍 {s}</span>
-                      ))}
-                      {client.secteurs.length > 4 && <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center' }}>+{client.secteurs.length-4} autres</span>}
-                    </div>
-                  )}
+                  {/* Ligne 3 : villes uniquement */}
+                  {client.secteurs?.length > 0 && (() => {
+                    const villes = [...new Set(client.secteurs.map((s:string) => {
+                      const m = s.match(/\((.+?)\)$/);
+                      return m ? m[1].trim() : s;
+                    }))];
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                        {villes.slice(0,4).map((v:any) => (
+                          <span key={v} style={{ fontSize: 11, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>📍 {v}</span>
+                        ))}
+                        {villes.length > 4 && <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center' }}>+{villes.length-4} autres</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className={styles.clientStats}>
                   <div className={styles.stat}><div className={styles.statN}>—</div><div className={styles.statL}>Biens</div></div>
