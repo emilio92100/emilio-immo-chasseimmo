@@ -231,16 +231,46 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function parseTexte() {
-    if (texteAnnonce.trim().length < 30) return;
+    const texte = texteAnnonce.trim();
+    if (texte.length < 30) {
+      alert('Veuillez coller le texte de l\'annonce (au moins quelques lignes).');
+      return;
+    }
     setExtracting(true);
     try {
-      const res = await fetch('/api/parse-texte-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texte: texteAnnonce, url }) });
+      const res = await fetch('/api/parse-texte-bien', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texte, url }),
+      });
+      if (!res.ok) {
+        alert(`Erreur serveur : ${res.status}. Vérifiez que le fichier parse-texte-bien/route.ts est bien déployé.`);
+        setExtracting(false);
+        return;
+      }
       const data = await res.json();
+      if (data.error) {
+        alert(`Erreur : ${data.error}`);
+        setExtracting(false);
+        return;
+      }
       if (data.bien) {
         const photosManual = photosInput.split('\n').map((s: string) => s.trim()).filter((s: string) => s.startsWith('http'));
-        setBienForm({ ...data.bien, url: url||'', commission_type: 'pourcentage', commission_val: 3.5, photos: photosManual.length > 0 ? photosManual : [], source_portail: data.bien.source_portail || 'Autre', _method: data.method });
+        setBienForm({
+          ...data.bien,
+          url: url || '',
+          commission_type: 'pourcentage',
+          commission_val: 3.5,
+          photos: photosManual.length > 0 ? photosManual : (data.bien.photos || []),
+          source_portail: data.bien.source_portail || 'Autre',
+          _method: data.method,
+        });
+      } else {
+        alert('Impossible d\'extraire les informations. Essayez de coller plus de texte.');
       }
-    } catch { }
+    } catch (e: any) {
+      alert(`Erreur réseau : ${e.message}`);
+    }
     setExtracting(false);
   }
 
