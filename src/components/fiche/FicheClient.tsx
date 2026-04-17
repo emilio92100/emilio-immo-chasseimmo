@@ -35,6 +35,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
       <div><label className={styles.lbl}>Code postal</label><input className={styles.inp} value={bienForm.code_postal||''} onChange={e => setBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} /></div>
       <div><label className={styles.lbl}>Surface m²</label><input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => setBienForm((f: any) => ({ ...f, surface: e.target.value }))} /></div>
       <div><label className={styles.lbl}>Pièces</label><input className={styles.inp} type="number" value={bienForm.nb_pieces||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_pieces: e.target.value }))} /></div>
+      <div><label className={styles.lbl}>Chambres</label><input className={styles.inp} type="number" value={bienForm.nb_chambres||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_chambres: e.target.value }))} /></div>
       <div><label className={styles.lbl}>Étage</label><input className={styles.inp} type="number" value={bienForm.etage||''} onChange={e => setBienForm((f: any) => ({ ...f, etage: e.target.value }))} /></div>
       <div><label className={styles.lbl}>DPE</label><input className={styles.inp} value={bienForm.dpe||''} onChange={e => setBienForm((f: any) => ({ ...f, dpe: e.target.value }))} placeholder="A B C..." /></div>
       <div><label className={styles.lbl}>Prix vendeur €</label><input className={styles.inp} type="number" value={bienForm.prix_vendeur||''} onChange={e => setBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} /></div>
@@ -304,7 +305,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const tempId = crypto.randomUUID();
     // Uploader les photos vers Supabase Storage
     const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
-    const { data: bienInsere } = await supabase.from('biens').insert({ client_id: client.id, url: bienForm.url||null, titre: bienForm.titre, ville: bienForm.ville, code_postal: bienForm.code_postal, type_bien: bienForm.type_bien, surface: parseFloat(bienForm.surface)||null, nb_pieces: parseInt(bienForm.nb_pieces)||null, etage: parseInt(bienForm.etage)||null, parking: bienForm.parking||false, dpe: bienForm.dpe, description: bienForm.description, prix_vendeur: parseFloat(bienForm.prix_vendeur)||null, commission_type: bienForm.commission_type, commission_val: parseFloat(bienForm.commission_val)||null, prix_acquereur: prixAcq||null, photos: photosStockees, source_portail: bienForm.source_portail, agence_nom: bienForm.agence_nom, badge_retour: 'propose' }).select().single();
+    const { data: bienInsere } = await supabase.from('biens').insert({ client_id: client.id, url: bienForm.url||null, titre: bienForm.titre, ville: bienForm.ville, code_postal: bienForm.code_postal, type_bien: bienForm.type_bien, surface: parseFloat(bienForm.surface)||null, nb_pieces: parseInt(bienForm.nb_pieces)||null, nb_chambres: parseInt(bienForm.nb_chambres)||null, etage: parseInt(bienForm.etage)||null, parking: bienForm.parking||false, dpe: bienForm.dpe, description: bienForm.description, prix_vendeur: parseFloat(bienForm.prix_vendeur)||null, commission_type: bienForm.commission_type, commission_val: parseFloat(bienForm.commission_val)||null, prix_acquereur: prixAcq||null, photos: photosStockees, source_portail: bienForm.source_portail, agence_nom: bienForm.agence_nom, badge_retour: 'propose' }).select().single();
     await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'');
     setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
   }
@@ -389,8 +390,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   async function deleteBien(bienId: string) {
     if (!confirm('Supprimer ce bien de la fiche ? Cette action est irréversible.')) return;
+    // Récupérer les photos stockées dans Supabase Storage pour les supprimer
+    const bien = biens.find(b => b.id === bienId);
+    if (bien?.photos?.length > 0) {
+      const photosStorage = bien.photos.filter((p: string) => p.includes('supabase.co/storage'));
+      if (photosStorage.length > 0) {
+        // Extraire les chemins relatifs depuis les URLs publiques
+        const paths = photosStorage.map((url: string) => {
+          const match = url.match(/photos-biens\/(.+)$/);
+          return match ? match[1] : null;
+        }).filter(Boolean) as string[];
+        if (paths.length > 0) {
+          await supabase.storage.from('photos-biens').remove(paths);
+        }
+      }
+    }
     await supabase.from('biens').delete().eq('id', bienId);
-    await addJournal(client.id, 'bien_supprime', '🗑️ Bien supprimé');
+    await addJournal(client.id, 'bien_supprime', `🗑️ Bien supprimé — ${bien?.titre || bien?.ville || ''}`);
     setShowFicheBien(false); load();
   }
 
