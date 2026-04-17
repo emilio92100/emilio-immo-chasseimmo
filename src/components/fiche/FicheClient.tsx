@@ -80,6 +80,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [txData, setTxData] = useState<any>({});
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
+  const [showFicheBien, setShowFicheBien] = useState(false);
+  const [ficheBienId, setFicheBienId] = useState('');
+  const [editBienForm, setEditBienForm] = useState<any>(null);
+  const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
   const [envoiBienId, setEnvoiBienId] = useState('');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
@@ -291,8 +295,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function saveBien() {
     if (!bienForm) return;
     setSaving(true);
-    const { data: ex } = await supabase.from('biens').select('id').eq('client_id', client.id).eq('url', bienForm.url).maybeSingle();
-    if (ex) { alert('Ce bien est déjà dans la liste !'); setSaving(false); return; }
+    // Vérifier doublon URL seulement si une URL est fournie
+    if (bienForm.url && bienForm.url.trim()) {
+      const { data: ex } = await supabase.from('biens').select('id').eq('client_id', client.id).eq('url', bienForm.url.trim()).maybeSingle();
+      if (ex) { alert('Ce bien (même URL) est déjà dans la liste !'); setSaving(false); return; }
+    }
     await supabase.from('biens').insert({ client_id: client.id, url: bienForm.url, titre: bienForm.titre, ville: bienForm.ville, code_postal: bienForm.code_postal, type_bien: bienForm.type_bien, surface: parseFloat(bienForm.surface)||null, nb_pieces: parseInt(bienForm.nb_pieces)||null, etage: parseInt(bienForm.etage)||null, parking: bienForm.parking||false, dpe: bienForm.dpe, description: bienForm.description, prix_vendeur: parseFloat(bienForm.prix_vendeur)||null, commission_type: bienForm.commission_type, commission_val: parseFloat(bienForm.commission_val)||null, prix_acquereur: prixAcq||null, photos: bienForm.photos||[], source_portail: bienForm.source_portail, agence_nom: bienForm.agence_nom, badge_retour: 'propose' });
     await addJournal(client.id, 'bien_ajoute', `Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url);
     setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); load();
@@ -315,6 +322,43 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
     setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
     setShowPlanVisite(true);
+  }
+
+  function openFicheBien(bienId: string) {
+    const b = biens.find(x => x.id === bienId);
+    if (!b) return;
+    setFicheBienId(bienId);
+    setEditBienForm({ ...b, commission_val: b.commission_val || 3.5, commission_type: b.commission_type || 'pourcentage' });
+    setNewPhotoUrl('');
+    setShowFicheBien(true);
+  }
+
+  async function saveFicheBien() {
+    if (!editBienForm) return;
+    setSaving(true);
+    const prixAcqEdit = editBienForm.commission_type === 'pourcentage'
+      ? Math.round((parseFloat(editBienForm.prix_vendeur)||0) * (1 + (parseFloat(editBienForm.commission_val)||0) / 100))
+      : (parseFloat(editBienForm.prix_vendeur)||0) + (parseFloat(editBienForm.commission_val)||0);
+    await supabase.from('biens').update({
+      titre: editBienForm.titre, ville: editBienForm.ville, code_postal: editBienForm.code_postal,
+      type_bien: editBienForm.type_bien, surface: parseFloat(editBienForm.surface)||null,
+      nb_pieces: parseInt(editBienForm.nb_pieces)||null, etage: parseInt(editBienForm.etage)||null,
+      parking: editBienForm.parking||false, dpe: editBienForm.dpe,
+      description: editBienForm.description, prix_vendeur: parseFloat(editBienForm.prix_vendeur)||null,
+      commission_type: editBienForm.commission_type, commission_val: parseFloat(editBienForm.commission_val)||null,
+      prix_acquereur: prixAcqEdit||null, photos: editBienForm.photos||[],
+      source_portail: editBienForm.source_portail, agence_nom: editBienForm.agence_nom,
+      agence_tel: editBienForm.agence_tel, url: editBienForm.url||null,
+    }).eq('id', ficheBienId);
+    await addJournal(client.id, 'bien_modifie', `🏠 Bien modifié — ${editBienForm.titre||editBienForm.ville||''}`);
+    setSaving(false); setShowFicheBien(false); load();
+  }
+
+  async function deleteBien(bienId: string) {
+    if (!confirm('Supprimer ce bien de la fiche ? Cette action est irréversible.')) return;
+    await supabase.from('biens').delete().eq('id', bienId);
+    await addJournal(client.id, 'bien_supprime', '🗑️ Bien supprimé');
+    setShowFicheBien(false); load();
   }
 
   function openEnvoiBien(bienId: string) {
@@ -536,8 +580,9 @@ Emilio Immobilier`,
                       {b.source_portail && <span style={{ fontSize: 12, background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>{b.source_portail}</span>}
                       {b.url && <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', textDecoration: 'none' }}>🔗 Annonce</a>}
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                        <button onClick={() => openFicheBien(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>✏️ Détail</button>
                         <button onClick={() => openEnvoiBien(b.id)} style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📤 Envoyer</button>
-                        <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Planifier visite</button>
+                        <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Visite</button>
                       </div>
                     </div>
                   </div>
