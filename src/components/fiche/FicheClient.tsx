@@ -1108,6 +1108,184 @@ Emilio Immobilier`,
         </div>
       )}
 
+      {/* ═══ MODAL FICHE BIEN ═══ */}
+      {showFicheBien && editBienForm && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowFicheBien(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 720 }}>
+
+            {/* Header */}
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>🏠 Détail du bien</h2>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={() => deleteBien(ficheBienId)}
+                  style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  🗑️ Supprimer
+                </button>
+                <button className={styles.modalClose} onClick={() => setShowFicheBien(false)}>✕</button>
+              </div>
+            </div>
+
+            <div className={styles.modalBody}>
+
+              {/* ── PHOTOS ── */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <label className={styles.lbl} style={{ marginBottom: 0 }}>Photos ({editBienForm.photos?.length || 0})</label>
+                  {editBienForm.photos?.length > 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>← réordonner · ✕ supprimer · première = couverture</span>}
+                </div>
+
+                {editBienForm.photos?.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+                    {editBienForm.photos.map((p: string, i: number) => (
+                      <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4/3', background: '#f1f5f9' }}>
+                        <img src={p} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).parentElement!.style.opacity = '0.3'; }} />
+                        {i === 0 && (
+                          <span style={{ position: 'absolute', bottom: 6, left: 6, background: '#c9a84c', color: '#1a2332', fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 6, letterSpacing: 0.5 }}>COUVERTURE</span>
+                        )}
+                        <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3 }}>
+                          {i > 0 && (
+                            <button
+                              onClick={() => { const p2 = [...editBienForm.photos]; [p2[i-1], p2[i]] = [p2[i], p2[i-1]]; setEditBienForm((f: any) => ({ ...f, photos: p2 })); }}
+                              style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.95)', border: 'none', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>←</button>
+                          )}
+                          <button
+                            onClick={() => setEditBienForm((f: any) => ({ ...f, photos: f.photos.filter((_: string, j: number) => j !== i) }))}
+                            style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(239,68,68,0.9)', border: 'none', color: 'white', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ background: '#f8fafc', border: '2px dashed #e3e8f0', borderRadius: 12, padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>
+                    📷 Aucune photo — ajoutez des URLs ci-dessous
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className={styles.inp}
+                    value={newPhotoUrl}
+                    onChange={e => setNewPhotoUrl(e.target.value)}
+                    placeholder="Coller l'URL d'une photo (clic droit → Copier l'adresse de l'image)"
+                    style={{ flex: 1, fontSize: 12 }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newPhotoUrl.trim().startsWith('http')) {
+                        setEditBienForm((f: any) => ({ ...f, photos: [...(f.photos || []), newPhotoUrl.trim()] }));
+                        setNewPhotoUrl('');
+                      }
+                    }}
+                  />
+                  <button
+                    className={styles.btn}
+                    onClick={() => {
+                      if (newPhotoUrl.trim().startsWith('http')) {
+                        setEditBienForm((f: any) => ({ ...f, photos: [...(f.photos || []), newPhotoUrl.trim()] }));
+                        setNewPhotoUrl('');
+                      }
+                    }}>+ Ajouter</button>
+                </div>
+              </div>
+
+              {/* Séparateur */}
+              <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
+
+              {/* ── INFOS BIEN ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className={styles.lbl}>Titre</label>
+                  <input className={styles.inp} value={editBienForm.titre||''} onChange={e => setEditBienForm((f: any) => ({ ...f, titre: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Type</label>
+                  <select className={styles.inp} value={editBienForm.type_bien||'Appartement'} onChange={e => setEditBienForm((f: any) => ({ ...f, type_bien: e.target.value }))}>
+                    {['Appartement','Maison','Loft','Studio','Duplex','Villa','Terrain'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={styles.lbl}>Source / Portail</label>
+                  <input className={styles.inp} value={editBienForm.source_portail||''} onChange={e => setEditBienForm((f: any) => ({ ...f, source_portail: e.target.value }))} placeholder="SeLoger, LeBonCoin..." />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Ville</label>
+                  <input className={styles.inp} value={editBienForm.ville||''} onChange={e => setEditBienForm((f: any) => ({ ...f, ville: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Code postal</label>
+                  <input className={styles.inp} value={editBienForm.code_postal||''} onChange={e => setEditBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Surface m²</label>
+                  <input className={styles.inp} type="number" value={editBienForm.surface||''} onChange={e => setEditBienForm((f: any) => ({ ...f, surface: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Pièces</label>
+                  <input className={styles.inp} type="number" value={editBienForm.nb_pieces||''} onChange={e => setEditBienForm((f: any) => ({ ...f, nb_pieces: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Chambres</label>
+                  <input className={styles.inp} type="number" value={editBienForm.nb_chambres||''} onChange={e => setEditBienForm((f: any) => ({ ...f, nb_chambres: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Étage</label>
+                  <input className={styles.inp} type="number" value={editBienForm.etage||''} onChange={e => setEditBienForm((f: any) => ({ ...f, etage: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>DPE</label>
+                  <select className={styles.inp} value={editBienForm.dpe||''} onChange={e => setEditBienForm((f: any) => ({ ...f, dpe: e.target.value }))}>
+                    <option value="">—</option>
+                    {['A','B','C','D','E','F','G'].map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={styles.lbl}>Prix vendeur €</label>
+                  <input className={styles.inp} type="number" value={editBienForm.prix_vendeur||''} onChange={e => setEditBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Commission</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select className={styles.inp} style={{ width: 72 }} value={editBienForm.commission_type} onChange={e => setEditBienForm((f: any) => ({ ...f, commission_type: e.target.value }))}>
+                      <option value="pourcentage">%</option>
+                      <option value="montant">€</option>
+                    </select>
+                    <input className={styles.inp} type="number" value={editBienForm.commission_val||''} onChange={e => setEditBienForm((f: any) => ({ ...f, commission_val: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className={styles.lbl}>Agence</label>
+                  <input className={styles.inp} value={editBienForm.agence_nom||''} onChange={e => setEditBienForm((f: any) => ({ ...f, agence_nom: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={styles.lbl}>Tél. agence</label>
+                  <input className={styles.inp} value={editBienForm.agence_tel||''} onChange={e => setEditBienForm((f: any) => ({ ...f, agence_tel: e.target.value }))} />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className={styles.lbl}>URL de l'annonce</label>
+                  <input className={styles.inp} value={editBienForm.url||''} onChange={e => setEditBienForm((f: any) => ({ ...f, url: e.target.value }))} placeholder="https://..." />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className={styles.lbl}>Description</label>
+                  <textarea className={styles.inp} rows={4} value={editBienForm.description||''} onChange={e => setEditBienForm((f: any) => ({ ...f, description: e.target.value }))} />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1a2332' }}>
+                    <input type="checkbox" checked={editBienForm.parking||false} onChange={e => setEditBienForm((f: any) => ({ ...f, parking: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
+                    🅿️ Parking / Garage inclus
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowFicheBien(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveFicheBien} disabled={saving}>
+                {saving ? '⏳ Sauvegarde...' : '✓ Sauvegarder les modifications'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showEnvoiBien && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoiBien(false); }}>
           <div className={styles.modal} style={{ maxWidth: 600 }}>
