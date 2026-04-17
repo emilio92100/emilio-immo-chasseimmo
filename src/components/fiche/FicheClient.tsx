@@ -85,6 +85,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [ficheBienId, setFicheBienId] = useState('');
   const [editBienForm, setEditBienForm] = useState<any>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [dragOverIdx, setDragOverIdx] = useState<number|null>(null);
+  const dragIdxRef = { current: -1 };
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
   const [envoiBienId, setEnvoiBienId] = useState('');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
@@ -1163,15 +1165,25 @@ Emilio Immobilier`,
           <div className={styles.modal} style={{ maxWidth: 720 }}>
 
             {/* Header */}
-            <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>🏠 Détail du bien</h2>
+            <div className={styles.modalHeader} style={{ background: 'linear-gradient(135deg, #1a2332 0%, #243044 100%)', borderRadius: '20px 20px 0 0', borderBottom: 'none', padding: '20px 24px' }}>
+              <div>
+                <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: 'white', margin: 0 }}>
+                  {editBienForm.type_bien || '🏠'} — {editBienForm.titre?.substring(0, 45) || 'Détail du bien'}
+                </h2>
+                {(editBienForm.ville || editBienForm.prix_vendeur) && (
+                  <div style={{ marginTop: 4, display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {editBienForm.ville && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>📍 {editBienForm.ville}{editBienForm.code_postal ? ` (${editBienForm.code_postal})` : ''}</span>}
+                    {editBienForm.prix_vendeur && <span style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{parseFloat(editBienForm.prix_vendeur).toLocaleString('fr-FR')}€</span>}
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   onClick={() => deleteBien(ficheBienId)}
-                  style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                   🗑️ Supprimer
                 </button>
-                <button className={styles.modalClose} onClick={() => setShowFicheBien(false)}>✕</button>
+                <button onClick={() => setShowFicheBien(false)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
             </div>
 
@@ -1181,33 +1193,57 @@ Emilio Immobilier`,
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                   <label className={styles.lbl} style={{ marginBottom: 0 }}>Photos ({editBienForm.photos?.length || 0})</label>
-                  {editBienForm.photos?.length > 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>← réordonner · ✕ supprimer · première = couverture</span>}
+                  {editBienForm.photos?.length > 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>🖱️ Glisser-déposer pour réordonner · ✕ supprimer · 1ère = couverture</span>}
                 </div>
 
                 {editBienForm.photos?.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
                     {editBienForm.photos.map((p: string, i: number) => (
-                      <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4/3', background: '#f1f5f9' }}>
-                        <img src={p} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).parentElement!.style.opacity = '0.3'; }} />
+                      <div
+                        key={i}
+                        draggable
+                        onDragStart={() => { dragIdxRef.current = i; }}
+                        onDragOver={e => { e.preventDefault(); setDragOverIdx(i); }}
+                        onDragLeave={() => setDragOverIdx(null)}
+                        onDrop={e => {
+                          e.preventDefault();
+                          const from = dragIdxRef.current;
+                          if (from === i || from === -1) { setDragOverIdx(null); return; }
+                          const arr = [...editBienForm.photos];
+                          const [removed] = arr.splice(from, 1);
+                          arr.splice(i, 0, removed);
+                          setEditBienForm((f: any) => ({ ...f, photos: arr }));
+                          dragIdxRef.current = -1;
+                          setDragOverIdx(null);
+                        }}
+                        onDragEnd={() => { dragIdxRef.current = -1; setDragOverIdx(null); }}
+                        style={{
+                          position: 'relative', borderRadius: 12, overflow: 'hidden',
+                          aspectRatio: '4/3', background: '#f1f5f9', cursor: 'grab',
+                          border: dragOverIdx === i ? '2px solid #c9a84c' : '2px solid transparent',
+                          transform: dragOverIdx === i ? 'scale(1.03)' : 'scale(1)',
+                          transition: 'transform 0.15s, border 0.15s',
+                          boxShadow: dragOverIdx === i ? '0 8px 24px rgba(201,168,76,0.25)' : '0 1px 3px rgba(0,0,0,0.08)',
+                        }}>
+                        <img src={p} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} onError={e => { (e.target as HTMLImageElement).parentElement!.style.opacity = '0.3'; }} />
+                        {/* Badge couverture */}
                         {i === 0 && (
-                          <span style={{ position: 'absolute', bottom: 6, left: 6, background: '#c9a84c', color: '#1a2332', fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 6, letterSpacing: 0.5 }}>COUVERTURE</span>
+                          <span style={{ position: 'absolute', bottom: 7, left: 7, background: 'linear-gradient(135deg,#c9a84c,#e8c96a)', color: '#1a2332', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 8, letterSpacing: 0.8, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>⭐ COUVERTURE</span>
                         )}
-                        <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3 }}>
-                          {i > 0 && (
-                            <button
-                              onClick={() => { const p2 = [...editBienForm.photos]; [p2[i-1], p2[i]] = [p2[i], p2[i-1]]; setEditBienForm((f: any) => ({ ...f, photos: p2 })); }}
-                              style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.95)', border: 'none', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>←</button>
-                          )}
-                          <button
-                            onClick={() => setEditBienForm((f: any) => ({ ...f, photos: f.photos.filter((_: string, j: number) => j !== i) }))}
-                            style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(239,68,68,0.9)', border: 'none', color: 'white', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>✕</button>
-                        </div>
+                        {/* Indicateur drag */}
+                        <div style={{ position: 'absolute', top: 7, left: 7, background: 'rgba(0,0,0,0.4)', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 6, opacity: 0.8 }}>⠿ {i+1}</div>
+                        {/* Bouton supprimer */}
+                        <button
+                          onClick={e => { e.stopPropagation(); setEditBienForm((f: any) => ({ ...f, photos: f.photos.filter((_: string, j: number) => j !== i) })); }}
+                          style={{ position: 'absolute', top: 5, right: 5, width: 26, height: 26, borderRadius: 8, background: 'rgba(239,68,68,0.9)', border: 'none', color: 'white', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>✕</button>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ background: '#f8fafc', border: '2px dashed #e3e8f0', borderRadius: 12, padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>
-                    📷 Aucune photo — ajoutez des URLs ci-dessous
+                  <div style={{ background: '#f8fafc', border: '2px dashed #e3e8f0', borderRadius: 12, padding: 28, textAlign: 'center', color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+                    <div style={{ fontWeight: 600 }}>Aucune photo</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Ajoutez des URLs ci-dessous</div>
                   </div>
                 )}
 
@@ -1236,11 +1272,13 @@ Emilio Immobilier`,
                 </div>
               </div>
 
-              {/* Séparateur */}
-              <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
-
               {/* ── INFOS BIEN ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* Groupe localisation */}
+              <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>📍 Localisation & Identification</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className={styles.lbl}>Titre</label>
                   <input className={styles.inp} value={editBienForm.titre||''} onChange={e => setEditBienForm((f: any) => ({ ...f, titre: e.target.value }))} />
@@ -1263,6 +1301,17 @@ Emilio Immobilier`,
                   <label className={styles.lbl}>Code postal</label>
                   <input className={styles.inp} value={editBienForm.code_postal||''} onChange={e => setEditBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} />
                 </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className={styles.lbl}>URL de l'annonce</label>
+                  <input className={styles.inp} value={editBienForm.url||''} onChange={e => setEditBienForm((f: any) => ({ ...f, url: e.target.value }))} placeholder="https://..." />
+                </div>
+                </div>
+              </div>
+
+              {/* Groupe caractéristiques */}
+              <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>📐 Caractéristiques</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label className={styles.lbl}>Surface m²</label>
                   <input className={styles.inp} type="number" value={editBienForm.surface||''} onChange={e => setEditBienForm((f: any) => ({ ...f, surface: e.target.value }))} />
@@ -1286,6 +1335,19 @@ Emilio Immobilier`,
                     {['A','B','C','D','E','F','G'].map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1a2332' }}>
+                    <input type="checkbox" checked={editBienForm.parking||false} onChange={e => setEditBienForm((f: any) => ({ ...f, parking: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
+                    🅿️ Parking / Garage inclus
+                  </label>
+                </div>
+                </div>
+              </div>
+
+              {/* Groupe prix */}
+              <div style={{ background: '#fffbeb', borderRadius: 12, padding: 14, border: '1px solid #fde68a' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>💰 Prix & Commission</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label className={styles.lbl}>Prix vendeur €</label>
                   <input className={styles.inp} type="number" value={editBienForm.prix_vendeur||''} onChange={e => setEditBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} />
@@ -1300,28 +1362,41 @@ Emilio Immobilier`,
                     <input className={styles.inp} type="number" value={editBienForm.commission_val||''} onChange={e => setEditBienForm((f: any) => ({ ...f, commission_val: e.target.value }))} />
                   </div>
                 </div>
+                {editBienForm.prix_vendeur && editBienForm.commission_val && (
+                  <div style={{ gridColumn: '1/-1', background: 'white', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>Prix acquéreur estimé</span>
+                    <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#c9a84c' }}>
+                      {(editBienForm.commission_type === 'pourcentage'
+                        ? Math.round((parseFloat(editBienForm.prix_vendeur)||0) * (1 + (parseFloat(editBienForm.commission_val)||0) / 100))
+                        : (parseFloat(editBienForm.prix_vendeur)||0) + (parseFloat(editBienForm.commission_val)||0)
+                      ).toLocaleString('fr-FR')}€
+                    </span>
+                  </div>
+                )}
+                </div>
+              </div>
+
+              {/* Groupe agence */}
+              <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>🏢 Agence</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label className={styles.lbl}>Agence</label>
+                  <label className={styles.lbl}>Nom de l'agence</label>
                   <input className={styles.inp} value={editBienForm.agence_nom||''} onChange={e => setEditBienForm((f: any) => ({ ...f, agence_nom: e.target.value }))} />
                 </div>
                 <div>
                   <label className={styles.lbl}>Tél. agence</label>
                   <input className={styles.inp} value={editBienForm.agence_tel||''} onChange={e => setEditBienForm((f: any) => ({ ...f, agence_tel: e.target.value }))} />
                 </div>
-                <div style={{ gridColumn: '1/-1' }}>
-                  <label className={styles.lbl}>URL de l'annonce</label>
-                  <input className={styles.inp} value={editBienForm.url||''} onChange={e => setEditBienForm((f: any) => ({ ...f, url: e.target.value }))} placeholder="https://..." />
                 </div>
-                <div style={{ gridColumn: '1/-1' }}>
-                  <label className={styles.lbl}>Description</label>
-                  <textarea className={styles.inp} rows={4} value={editBienForm.description||''} onChange={e => setEditBienForm((f: any) => ({ ...f, description: e.target.value }))} />
-                </div>
-                <div style={{ gridColumn: '1/-1' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1a2332' }}>
-                    <input type="checkbox" checked={editBienForm.parking||false} onChange={e => setEditBienForm((f: any) => ({ ...f, parking: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
-                    🅿️ Parking / Garage inclus
-                  </label>
-                </div>
+              </div>
+
+              {/* Description */}
+              <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>📝 Description</div>
+                <textarea className={styles.inp} rows={5} value={editBienForm.description||''} onChange={e => setEditBienForm((f: any) => ({ ...f, description: e.target.value }))} placeholder="Description du bien..." style={{ background: 'white' }} />
+              </div>
+
               </div>
             </div>
 
