@@ -82,9 +82,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
   const [showFicheBien, setShowFicheBien] = useState(false);
+  const [showEnvoi, setShowEnvoi] = useState(false);
   const [ficheBienId, setFicheBienId] = useState('');
   const [editBienForm, setEditBienForm] = useState<any>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [reformuling, setReformuling] = useState(false);
   const [dragOverIdx, setDragOverIdx] = useState<number|null>(null);
   const dragIdxRef = useRef(-1);
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
@@ -347,6 +349,33 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
   }
 
+  async function reformulerDescription() {
+    if (!editBienForm?.description) { alert('Aucune description à reformuler.'); return; }
+    setReformuling(true);
+    try {
+      const res = await fetch('/api/parse-texte-bien', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          texte: `Reformule cette description de bien immobilier en langage professionnel de chasseur immobilier. 
+Sois concis, valorisant, orienté acquéreur. Max 5 phrases percutantes. Pas de liste à puces. 
+Ne répète pas les chiffres (surface, pièces) déjà dans les caractéristiques.
+Description originale : ${editBienForm.description}`,
+          url: '',
+        }),
+      });
+      const data = await res.json();
+      // On utilise la description retournée par Claude
+      if (data.bien?.description) {
+        setEditBienForm((f: any) => ({ ...f, description: data.bien.description }));
+      } else {
+        // Fallback : appel direct sans passer par parse-texte-bien
+        alert('Reformulation indisponible — clé Anthropic non configurée.');
+      }
+    } catch { alert('Erreur lors de la reformulation.'); }
+    setReformuling(false);
+  }
+
   function openFicheBien(bienId: string) {
     const b = biens.find(x => x.id === bienId);
     if (!b) return;
@@ -548,17 +577,9 @@ Emilio Immobilier`,
           <button className={styles.backBtn} onClick={onBack}>← Clients</button>
           <span style={{ color: '#94a3b8' }}>/</span>
           <span style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
-          <div style={{ width: 1, height: 18, background: '#e2e8f0' }} />
-          {/* ENVOI INLINE */}
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>ENVOYER</span>
-            <button onClick={() => { if (biens.length === 0) { alert('Ajoutez d\'abord des biens.'); return; } alert('Génération PDF en cours de développement.'); }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #1a2332', background: '#1a2332', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>📄 Sélection de biens</button>
-            <button onClick={() => alert('PDF Présentation — V2')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>🤝 Présentation</button>
-            <button onClick={() => { if (!visites.filter((v:any)=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>📋 C-R visites</button>
-            <button onClick={() => setShowAction(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>✉️ Mail libre</button>
-          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
           <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); await supabase.from('relances').insert({ client_id: client.id, date_relance: date.toISOString().split('T')[0], motif: 'Relance manuelle', statut: 'a_faire' }); await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
           <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
@@ -566,28 +587,32 @@ Emilio Immobilier`,
       </div>
 
       <div className={styles.identiteBar}>
-        <div className={styles.avatarWrap}>
-          <div className={styles.avatar}>{client.prenom[0]}{client.nom[0]}</div>
-          <div>
-            <div className={styles.clientName}>{client.prenom} {client.nom}</div>
-            <div className={styles.clientMeta}>{client.reference} · Suivi depuis {jours} jour{jours > 1 ? 's' : ''} · Créé le {new Date(client.created_at).toLocaleDateString('fr-FR')}</div>
+        {/* Avatar + Nom + Contact inline */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: 1 }}>
+          <div className={styles.avatar} style={{ width: 56, height: 56, borderRadius: 16, fontSize: 20 }}>{client.prenom[0]}{client.nom[0]}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div className={styles.clientName}>{client.prenom} {client.nom}</div>
+              <div style={{ position: 'relative' }}>
+                <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '5px 28px 5px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0', background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
+                  <option value="prospect">🟣 Prospect</option><option value="actif">🟢 Actif</option><option value="suspendu">⏸️ Suspendu</option><option value="offre_ecrite">✍️ Offre écrite</option><option value="bien_trouve">✅ Bien trouvé</option><option value="perdu">🔴 Perdu</option>
+                </select>
+                <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9 }}>▼</span>
+              </div>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{client.reference} · {jours}j de suivi</span>
+              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' }); setShowContact(true); }} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
+            </div>
+            {/* Infos contact inline */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+              {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 13, color: '#1a2332', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>📞 {t}</a>)}
+              {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 13, color: '#3b82f6', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>✉️ {e}</a>)}
+              {client.adresse && <span style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {client.adresse}</span>}
+              {!client.telephones?.length && !client.emails?.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>Aucun contact renseigné</span>}
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative' }}>
-            <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '7px 32px 7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0', background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
-              <option value="prospect">🟣 Prospect</option>
-              <option value="actif">🟢 Actif</option>
-              <option value="suspendu">⏸️ Suspendu</option>
-              <option value="offre_ecrite">✍️ Offre écrite</option>
-              <option value="bien_trouve">✅ Bien trouvé</option>
-              <option value="perdu">🔴 Perdu</option>
-            </select>
-            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10 }}>▼</span>
-          </div>
-
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        {/* KPIs */}
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           {[{val: biens.length, l:'Biens présentés',c:'#1a2332'},{val: visites.filter(v=>v.statut==='effectuee').length,l:'Visites effectuées',c:'#1a2332'},{val: biens.filter(b=>b.badge_retour==='offre_faite').length,l:'Offre(s)',c:'#c9a84c'},{val:`${jours}j`,l:'Suivi',c:'#1a2332'}].map((s, i) => (
             <div key={i} className={styles.syntheseItem}>
               <div className={styles.syntheseVal} style={{ color: s.c }}>{s.val}</div>
@@ -598,6 +623,95 @@ Emilio Immobilier`,
       </div>
 
       <div className={styles.contentWrap}>
+
+        {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
+        <div className={styles.infoRow}>
+          <div className={styles.infoCard} style={{ flex: 2 }}>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardBody}>
+              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Ligne 1 : Type / Budget / Surface / Pièces / Chambres */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
+                    {client.type_bien && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Type</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
+                    {client.budget_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</div></div>}
+                    {client.surface_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Surface</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.surface_min}{client.surface_max ? `–${client.surface_max}` : '+'}m²</div></div>}
+                    {client.nb_pieces_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Pièces</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_min}{client.nb_pieces_max ? `–${client.nb_pieces_max}` : '+'}P</div></div>}
+                    {client.chambres_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Chambres</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
+                    {client.dpe_max && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
+                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
+                    {client.annee_construction_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Année min</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
+                  </div>
+                  {/* Ligne 2 : Équipements */}
+                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingBottom: client.secteurs?.length || client.notes ? 8 : 0, borderBottom: (client.secteurs?.length || client.notes) ? '1px solid #f1f5f9' : 'none' }}>
+                      {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
+                        <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{l}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Ligne 3 : Secteurs */}
+                  {client.secteurs?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {(() => {
+                        const bv: Record<string, string[]> = {};
+                        client.secteurs.forEach((s:string) => {
+                          const m = s.match(/^(.+?)\s*\((.+?)\)$/);
+                          if (m) { const q=m[1].trim(),v=m[2].trim(); if(!bv[v])bv[v]=[]; bv[v].push(q); }
+                          else { if(!bv[s])bv[s]=[]; }
+                        });
+                        return Object.entries(bv).map(([ville, qs]) => (
+                          <div key={ville} style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#1a2332' }}>📍 {ville}</span>
+                            {qs.length > 0 && qs.map(q => <span key={q} className={styles.secteurTag}>{q}</span>)}
+                            {qs.length === 0 && <span className={styles.secteurTag}>Toute la ville</span>}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                  {/* Notes */}
+                  {client.notes && <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>{client.notes}</div>}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Aucun critère défini</span>
+                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCriteres(true)}>+ Définir</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.infoCard} style={{ background: '#1a2332', minWidth: 210 }}>
+            <div className={styles.infoCardHeader} style={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+              <span style={{ color: '#c9a84c' }}>📋 Mandat</span>
+              <button className={styles.editBtn} style={{ color: 'rgba(255,255,255,0.5)' }} onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }}>✏️</button>
+            </div>
+            <div className={styles.infoCardBody}>
+              {client.mandat_date_signature ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[{l:'Signature',v:new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')},{l:'Durée',v:client.mandat_duree ? `${client.mandat_duree} mois` : '—'},{l:'Honoraires',v:client.mandat_honoraires||'—'}].map(r => (
+                    <div key={r.l}><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>{r.l}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{r.v}</div></div>
+                  ))}
+                  {joursMandat !== null && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, marginTop: 2 }}>
+                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>Expiration</div><div style={{ fontSize: 22, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div></div>
+                      <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>Non renseigné</div>
+                  <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
 
         {/* ONGLETS en haut */}
         <div className={styles.tabs}>
@@ -619,7 +733,14 @@ Emilio Immobilier`,
                   <div className={styles.bienBody}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 5 }}>
                       <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
-                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#c9a84c', flexShrink: 0 }}>{b.prix_acquereur ? `${b.prix_acquereur.toLocaleString('fr-FR')}€` : '—'}</div>
+                      <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: '#c9a84c' }}>{b.prix_acquereur ? `${b.prix_acquereur.toLocaleString('fr-FR')}€` : '—'}</div>
+                        {b.prix_vendeur && b.commission_val && (
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                            {b.prix_vendeur.toLocaleString('fr-FR')}€ + {b.commission_type === 'pourcentage' ? `${b.commission_val}%` : `${b.commission_val.toLocaleString('fr-FR')}€`} commission
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#64748b', marginBottom: 10, flexWrap: 'wrap' }}>
                       {b.surface && <span>📐 {b.surface}m²</span>}{b.nb_pieces && <span>🚪 {b.nb_pieces}P</span>}{b.etage && <span>🏢 {b.etage}ème</span>}{b.parking && <span>🅿️</span>}{b.dpe && <span>🌿 {b.dpe}</span>}{b.ville && <span>📍 {b.ville}</span>}
@@ -878,90 +999,6 @@ Emilio Immobilier`,
           </div>
         )}
 
-        {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
-        <div className={styles.infoRow}>
-          <div className={styles.infoCard}>
-            <div className={styles.infoCardHeader}>📞 Contact <button className={styles.editBtn} onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' }); setShowContact(true); }}>✏️ Modifier</button></div>
-            <div className={styles.infoCardBody}>
-              {client.telephones?.filter(Boolean).map(t => <div key={t} className={styles.contactLine}><span className={styles.contactIcon}>📞</span><span>{t}</span></div>)}
-              {client.emails?.filter(Boolean).map(e => <div key={e} className={styles.contactLine}><span className={styles.contactIcon}>✉️</span><span>{e}</span></div>)}
-              {client.adresse && <div className={styles.contactLine}><span className={styles.contactIcon}>📍</span><span>{client.adresse}</span></div>}
-              {!client.telephones?.length && !client.emails?.length && !client.adresse && <div style={{ color: '#94a3b8', fontSize: 13 }}>Non renseigné</div>}
-            </div>
-          </div>
-
-          <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
-            <div className={styles.infoCardBody}>
-              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {/* Ligne 1 : Type / Budget / Surface / Pièces / Chambres */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {client.type_bien && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Type</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
-                    {client.budget_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</div></div>}
-                    {client.surface_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Surface</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.surface_min}{client.surface_max ? `–${client.surface_max}` : '+'}m²</div></div>}
-                    {client.nb_pieces_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Pièces</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_min}{client.nb_pieces_max ? `–${client.nb_pieces_max}` : '+'}P</div></div>}
-                    {client.chambres_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Chambres</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
-                    {client.dpe_max && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
-                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
-                    {client.annee_construction_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Année min</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
-                  </div>
-                  {/* Ligne 2 : Équipements */}
-                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingBottom: client.secteurs?.length || client.notes ? 8 : 0, borderBottom: (client.secteurs?.length || client.notes) ? '1px solid #f1f5f9' : 'none' }}>
-                      {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
-                        <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{l}</span>
-                      ))}
-                    </div>
-                  )}
-                  {/* Ligne 3 : Secteurs */}
-                  {client.secteurs?.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {client.secteurs.map(s => <span key={s} className={styles.secteurTag}>{s}</span>)}
-                    </div>
-                  )}
-                  {/* Notes */}
-                  {client.notes && <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>{client.notes}</div>}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Aucun critère défini</span>
-                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCriteres(true)}>+ Définir</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className={styles.infoCard} style={{ background: '#1a2332', minWidth: 210 }}>
-            <div className={styles.infoCardHeader} style={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-              <span style={{ color: '#c9a84c' }}>📋 Mandat</span>
-              <button className={styles.editBtn} style={{ color: 'rgba(255,255,255,0.5)' }} onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }}>✏️</button>
-            </div>
-            <div className={styles.infoCardBody}>
-              {client.mandat_date_signature ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[{l:'Signature',v:new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')},{l:'Durée',v:client.mandat_duree ? `${client.mandat_duree} mois` : '—'},{l:'Honoraires',v:client.mandat_honoraires||'—'}].map(r => (
-                    <div key={r.l}><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>{r.l}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{r.v}</div></div>
-                  ))}
-                  {joursMandat !== null && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, marginTop: 2 }}>
-                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>Expiration</div><div style={{ fontSize: 22, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div></div>
-                      <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>Non renseigné</div>
-                  <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
       {showContact && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowContact(false); }}>
           <div className={styles.modal}>
@@ -1155,6 +1192,36 @@ Emilio Immobilier`,
 
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL ENVOI ═══ */}
+      {showEnvoi && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoi(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 520 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>📤 Envoyer à {client.prenom}</h2>
+              <button className={styles.modalClose} onClick={() => setShowEnvoi(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Que souhaitez-vous envoyer à ce client ?</p>
+              {[
+                { icon: '📄', label: 'Sélection de biens', sub: `${biens.length} bien${biens.length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.length === 0) { alert("Ajoutez d'abord des biens."); return; } alert('Génération PDF en cours de développement.'); }, primary: true },
+                { icon: '🤝', label: 'Présentation des services', sub: 'Plaquette Emilio Immobilier', action: () => { setShowEnvoi(false); alert('PDF Présentation — V2'); }, primary: false },
+                { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
+                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé', action: () => { setShowEnvoi(false); setShowAction(true); }, primary: false },
+              ].map((btn, i) => (
+                <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid #1a2332' : '1px solid #e3e8f0', background: btn.primary ? '#1a2332' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
+                  <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: btn.primary ? 'white' : '#1a2332' }}>{btn.label}</div>
+                    <div style={{ fontSize: 12, color: btn.primary ? 'rgba(255,255,255,0.5)' : '#94a3b8', marginTop: 2 }}>{btn.sub}</div>
+                  </div>
+                  <span style={{ marginLeft: 'auto', color: btn.primary ? 'rgba(255,255,255,0.4)' : '#cbd5e1', fontSize: 18 }}>›</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1393,8 +1460,17 @@ Emilio Immobilier`,
 
               {/* Description */}
               <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>📝 Description</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8 }}>📝 Description</div>
+                  <button
+                    onClick={reformulerDescription}
+                    disabled={reformuling || !editBienForm?.description}
+                    style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '4px 12px', cursor: 'pointer', fontFamily: 'inherit', opacity: reformuling ? 0.6 : 1 }}>
+                    {reformuling ? '⏳ Reformulation...' : '✨ Reformuler avec IA'}
+                  </button>
+                </div>
                 <textarea className={styles.inp} rows={5} value={editBienForm.description||''} onChange={e => setEditBienForm((f: any) => ({ ...f, description: e.target.value }))} placeholder="Description du bien..." style={{ background: 'white' }} />
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>💡 Le bouton IA reformule en style chasseur immo professionnel (nécessite la clé Anthropic)</div>
               </div>
 
               </div>
