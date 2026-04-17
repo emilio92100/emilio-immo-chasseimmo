@@ -682,31 +682,31 @@ Emilio Immobilier`,
             </div>
           </div>
 
-          <div className={styles.infoCard} style={{ background: '#1a2332', minWidth: 210 }}>
-            <div className={styles.infoCardHeader} style={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-              <span style={{ color: '#c9a84c' }}>📋 Mandat</span>
-              <button className={styles.editBtn} style={{ color: 'rgba(255,255,255,0.5)' }} onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }}>✏️</button>
+          <div style={{ background: '#1a2332', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#c9a84c' }}>📋 Mandat</span>
+              <button onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }} style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✏️</button>
             </div>
-            <div className={styles.infoCardBody}>
-              {client.mandat_date_signature ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[{l:'Signature',v:new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')},{l:'Durée',v:client.mandat_duree ? `${client.mandat_duree} mois` : '—'},{l:'Honoraires',v:client.mandat_honoraires||'—'}].map(r => (
-                    <div key={r.l}><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>{r.l}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{r.v}</div></div>
-                  ))}
-                  {joursMandat !== null && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, marginTop: 2 }}>
-                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 1 }}>Expiration</div><div style={{ fontSize: 22, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div></div>
-                      <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
-                    </div>
-                  )}
+            {client.mandat_date_signature ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{client.mandat_duree ? `${client.mandat_duree} mois` : '—'}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{client.mandat_honoraires||'—'}</div></div>
                 </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginBottom: 10 }}>Non renseigné</div>
-                  <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
-                </div>
-              )}
-            </div>
+                {joursMandat !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ fontSize: 18, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat}j</div>
+                    <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '3px 8px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginBottom: 8 }}>Non renseigné</div>
+                <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
+              </div>
+            )}
           </div>
         </div>
 
