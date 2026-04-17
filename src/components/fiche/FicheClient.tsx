@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import type { Client } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
@@ -86,7 +86,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [editBienForm, setEditBienForm] = useState<any>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [dragOverIdx, setDragOverIdx] = useState<number|null>(null);
-  const dragIdxRef = { current: -1 };
+  const dragIdxRef = useRef(-1);
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
   const [envoiBienId, setEnvoiBienId] = useState('');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
@@ -267,7 +267,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
           ...data.bien,
           url: url || '',
           commission_type: 'pourcentage',
-          commission_val: 3.5,
+          commission_val: '',
           photos: photosManual.length > 0 ? photosManual : (data.bien.photos || []),
           source_portail: data.bien.source_portail || 'Autre',
           _method: data.method,
@@ -287,9 +287,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
     try {
       const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
       const data = await res.json();
-      if (data.bien) { setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: 3.5, _partial: data.partial, _reason: data.reason }); }
-      else { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 }); }
-    } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: 3.5 }); }
+      if (data.bien) { setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: '', _partial: data.partial, _reason: data.reason }); }
+      else { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
+    } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
     setExtracting(false);
   }
 
