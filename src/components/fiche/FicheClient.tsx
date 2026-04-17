@@ -710,9 +710,6 @@ Emilio Immobilier`,
           </div>
         </div>
 
-      </div>
-
-
         {/* ONGLETS en haut */}
         <div className={styles.tabs}>
           {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
@@ -1196,6 +1193,8 @@ Emilio Immobilier`,
         </div>
       )}
 
+      </div>
+
       {/* ═══ MODAL ENVOI ═══ */}
       {showEnvoi && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoi(false); }}>
@@ -1210,7 +1209,7 @@ Emilio Immobilier`,
                 { icon: '📄', label: 'Sélection de biens', sub: `${biens.length} bien${biens.length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.length === 0) { alert("Ajoutez d'abord des biens."); return; } alert('Génération PDF en cours de développement.'); }, primary: true },
                 { icon: '🤝', label: 'Présentation des services', sub: 'Plaquette Emilio Immobilier', action: () => { setShowEnvoi(false); alert('PDF Présentation — V2'); }, primary: false },
                 { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
-                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé', action: () => { setShowEnvoi(false); setShowAction(true); }, primary: false },
+                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé', action: () => { setShowEnvoi(false); setEnvoiForm({ destinataires: (client.emails||[]).join(', '), objet: '', corps: `Bonjour ${client.prenom},\n\nCordialement,\nAlexandre ROGELET\nEmilio Immobilier`, sms: false }); setEnvoiBienId(''); setShowEnvoiBien(true); }, primary: false },
               ].map((btn, i) => (
                 <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid #1a2332' : '1px solid #e3e8f0', background: btn.primary ? '#1a2332' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
                   <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>
