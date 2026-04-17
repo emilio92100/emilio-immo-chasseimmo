@@ -171,7 +171,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             const st = statutBadge[client.statut];
             const initiales = `${client.prenom[0]}${client.nom[0]}`.toUpperCase();
             const joursSuivi = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
-            const chaleur = CHALEURS.find(c => c.key === client.chaleur);
+
+            const equipements = [client.parking&&'🅿️',client.balcon&&'🌿',client.terrasse&&'☀️',client.jardin&&'🌳',client.cave&&'📦',client.ascenseur&&'🛗'].filter(Boolean);
             return (
               <div
                 key={client.id}
@@ -182,19 +183,33 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   <span>{initiales}</span>
                 </div>
                 <div className={styles.clientInfo}>
+                  {/* Ligne 1 : nom + badges */}
                   <div className={styles.clientTop}>
                     <span className={styles.clientName}>{client.prenom} {client.nom}</span>
                     <span className={styles.badge} style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}30` }}>{st.label}</span>
-                    {chaleur && <span className={styles.badgeSlate}>{chaleur.label}</span>}
                     <span className={styles.badgeGold}>{client.reference}</span>
+                    {client.mandat_date_expiration && (() => { const j = Math.floor((new Date(client.mandat_date_expiration).getTime()-Date.now())/86400000); return j<15 ? <span className={styles.badge} style={{color:'#ef4444',background:'#fef2f2',border:'1px solid #fecaca'}}>⚠️ Mandat {j}j</span> : null; })()}
                   </div>
-                  <div className={styles.clientCrit}>
-                    {client.type_bien && <span>{client.type_bien}</span>}
-                    {client.budget_min && client.budget_max && <span>· {(client.budget_min/1000).toFixed(0)}–{(client.budget_max/1000).toFixed(0)}k€</span>}
-                    {client.surface_min && client.surface_max && <span>· {client.surface_min}–{client.surface_max} m²</span>}
-                    {client.nb_pieces_min && client.nb_pieces_max && <span>· {client.nb_pieces_min}–{client.nb_pieces_max}P</span>}
-                    {client.secteurs?.length > 0 && <span>· {client.secteurs.join(', ')}</span>}
-                  </div>
+                  {/* Ligne 2 : critères en chips */}
+                  {(client.type_bien || client.budget_min || client.surface_min || client.secteurs?.length > 0) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                      {client.type_bien && <span style={{ fontSize: 11, fontWeight: 600, color: '#1a2332', background: '#f1f5f9', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>🏠 {client.type_bien}</span>}
+                      {client.budget_min && <span style={{ fontSize: 11, fontWeight: 700, color: '#854d0e', background: '#fef9c3', padding: '2px 8px', borderRadius: 20, border: '1px solid #fde68a' }}>💰 {(client.budget_min/1000).toFixed(0)}–{((client.budget_max||0)/1000).toFixed(0)}k€</span>}
+                      {client.surface_min && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f8fafc', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>📐 {client.surface_min}{client.surface_max?`–${client.surface_max}`:'+'} m²</span>}
+                      {client.nb_pieces_min && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f8fafc', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>🚪 {client.nb_pieces_min}{client.nb_pieces_max?`–${client.nb_pieces_max}`:'+'} P</span>}
+                      {client.dpe_max && <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: 20, border: '1px solid #bbf7d0' }}>🌿 DPE ≤{client.dpe_max}</span>}
+                      {equipements.map((e,i) => <span key={i} style={{ fontSize: 11 }}>{e}</span>)}
+                    </div>
+                  )}
+                  {/* Ligne 3 : secteurs groupés par ville */}
+                  {client.secteurs?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                      {client.secteurs.slice(0,4).map((s:string) => (
+                        <span key={s} style={{ fontSize: 11, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>📍 {s}</span>
+                      ))}
+                      {client.secteurs.length > 4 && <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center' }}>+{client.secteurs.length-4} autres</span>}
+                    </div>
+                  )}
                 </div>
                 <div className={styles.clientStats}>
                   <div className={styles.stat}><div className={styles.statN}>—</div><div className={styles.statL}>Biens</div></div>
