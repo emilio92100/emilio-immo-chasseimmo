@@ -300,9 +300,13 @@ export default function FicheClient({ client: init, onBack }: Props) {
       const { data: ex } = await supabase.from('biens').select('id').eq('client_id', client.id).eq('url', bienForm.url.trim()).maybeSingle();
       if (ex) { alert('Ce bien (même URL) est déjà dans la liste !'); setSaving(false); return; }
     }
-    await supabase.from('biens').insert({ client_id: client.id, url: bienForm.url, titre: bienForm.titre, ville: bienForm.ville, code_postal: bienForm.code_postal, type_bien: bienForm.type_bien, surface: parseFloat(bienForm.surface)||null, nb_pieces: parseInt(bienForm.nb_pieces)||null, etage: parseInt(bienForm.etage)||null, parking: bienForm.parking||false, dpe: bienForm.dpe, description: bienForm.description, prix_vendeur: parseFloat(bienForm.prix_vendeur)||null, commission_type: bienForm.commission_type, commission_val: parseFloat(bienForm.commission_val)||null, prix_acquereur: prixAcq||null, photos: bienForm.photos||[], source_portail: bienForm.source_portail, agence_nom: bienForm.agence_nom, badge_retour: 'propose' });
-    await addJournal(client.id, 'bien_ajoute', `Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url);
-    setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); load();
+    // Générer un ID temporaire pour le dossier storage
+    const tempId = crypto.randomUUID();
+    // Uploader les photos vers Supabase Storage
+    const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
+    const { data: bienInsere } = await supabase.from('biens').insert({ client_id: client.id, url: bienForm.url||null, titre: bienForm.titre, ville: bienForm.ville, code_postal: bienForm.code_postal, type_bien: bienForm.type_bien, surface: parseFloat(bienForm.surface)||null, nb_pieces: parseInt(bienForm.nb_pieces)||null, etage: parseInt(bienForm.etage)||null, parking: bienForm.parking||false, dpe: bienForm.dpe, description: bienForm.description, prix_vendeur: parseFloat(bienForm.prix_vendeur)||null, commission_type: bienForm.commission_type, commission_val: parseFloat(bienForm.commission_val)||null, prix_acquereur: prixAcq||null, photos: photosStockees, source_portail: bienForm.source_portail, agence_nom: bienForm.agence_nom, badge_retour: 'propose' }).select().single();
+    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'');
+    setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
   }
 
   async function changeBadge(bienId: string, badge: string) {
@@ -324,6 +328,22 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setShowPlanVisite(true);
   }
 
+  async function uploadPhotosToStorage(photos: string[], bienId: string): Promise<string[]> {
+    if (!photos || photos.length === 0) return [];
+    try {
+      const res = await fetch('/api/upload-photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photos, bien_id: bienId }),
+      });
+      if (!res.ok) return photos; // fallback
+      const data = await res.json();
+      return data.urls?.length > 0 ? data.urls : photos;
+    } catch {
+      return photos; // fallback : garder URLs originales
+    }
+  }
+
   function openFicheBien(bienId: string) {
     const b = biens.find(x => x.id === bienId);
     if (!b) return;
@@ -336,17 +356,30 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function saveFicheBien() {
     if (!editBienForm) return;
     setSaving(true);
+    // Uploader les nouvelles photos (celles qui ne sont pas encore dans Supabase Storage)
+    const photosAUploader = (editBienForm.photos || []).filter((p: string) => !p.includes('supabase.co/storage'));
+    const photosDejaStockees = (editBienForm.photos || []).filter((p: string) => p.includes('supabase.co/storage'));
+    let photosFinales = editBienForm.photos || [];
+    if (photosAUploader.length > 0) {
+      const urlsUploadees = await uploadPhotosToStorage(photosAUploader, ficheBienId);
+      // Reconstruire dans le bon ordre
+      photosFinales = (editBienForm.photos || []).map((p: string) => {
+        if (p.includes('supabase.co/storage')) return p;
+        const idx = photosAUploader.indexOf(p);
+        return idx >= 0 ? urlsUploadees[idx] : p;
+      });
+    }
     const prixAcqEdit = editBienForm.commission_type === 'pourcentage'
       ? Math.round((parseFloat(editBienForm.prix_vendeur)||0) * (1 + (parseFloat(editBienForm.commission_val)||0) / 100))
       : (parseFloat(editBienForm.prix_vendeur)||0) + (parseFloat(editBienForm.commission_val)||0);
-    await supabase.from('biens').update({
+    await supabase.from('biens').update({ photos: photosFinales,
       titre: editBienForm.titre, ville: editBienForm.ville, code_postal: editBienForm.code_postal,
       type_bien: editBienForm.type_bien, surface: parseFloat(editBienForm.surface)||null,
       nb_pieces: parseInt(editBienForm.nb_pieces)||null, etage: parseInt(editBienForm.etage)||null,
       parking: editBienForm.parking||false, dpe: editBienForm.dpe,
       description: editBienForm.description, prix_vendeur: parseFloat(editBienForm.prix_vendeur)||null,
       commission_type: editBienForm.commission_type, commission_val: parseFloat(editBienForm.commission_val)||null,
-      prix_acquereur: prixAcqEdit||null, photos: editBienForm.photos||[],
+      prix_acquereur: prixAcqEdit||null,
       source_portail: editBienForm.source_portail, agence_nom: editBienForm.agence_nom,
       agence_tel: editBienForm.agence_tel, url: editBienForm.url||null,
     }).eq('id', ficheBienId);
