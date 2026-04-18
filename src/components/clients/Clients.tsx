@@ -188,7 +188,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     <span className={styles.clientName} style={{ fontSize: 16, fontWeight: 800 }}>{client.prenom} {client.nom}</span>
                     <span className={styles.badge} style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}30` }}>{st.label}</span>
                     <span className={styles.badgeGold}>{client.reference}</span>
-                    {client.mandat_date_expiration && (() => { const j = Math.floor((new Date(client.mandat_date_expiration).getTime()-Date.now())/86400000); return j<15 ? <span className={styles.badge} style={{color:'#ef4444',background:'#fef2f2',border:'1px solid #fecaca'}}>⚠️ Mandat {j}j</span> : null; })()}
+                    {client.mandat_date_expiration && (() => { const j = Math.floor((new Date(client.mandat_date_expiration).getTime()-Date.now())/86400000); return j<15 ? <span className={styles.badge} style={{color:'#ef4444',background:'#fef2f2',border:'1px solid #fecaca'}}>⚠️ Mandat {j > 0 ? `${j}j restants` : 'expiré'}</span> : null; })()}
                   </div>
                   {/* Ligne 2 : critères en chips */}
                   {(client.type_bien || client.budget_min || client.surface_min || client.secteurs?.length > 0) && (
