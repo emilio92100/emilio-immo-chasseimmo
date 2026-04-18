@@ -51,7 +51,7 @@
 .critLabel { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
 .critVal   { font-size: 14px; font-weight: 700; color: #1a2332; }
 
-.secteurTag { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; }
+.secteurTag { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; }
 
 /* TABS */
 .tabs { display: flex; background: white; border-radius: 12px; border: 1px solid #e3e8f0; padding: 4px; gap: 2px; overflow-x: auto; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
