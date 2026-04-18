@@ -524,14 +524,31 @@ Emilio Immobilier`,
 
   async function saveCompteRendu() {
     const { visite_id, etoiles, commentaire, avis_client } = crForm;
-    await supabase.from('visites').update({ statut: 'effectuee', note_etoiles: etoiles, commentaire, avis_client }).eq('id', visite_id);
+    if (!visite_id) { alert('Erreur : visite non identifiée'); return; }
+    const { error } = await supabase.from('visites').update({
+      statut: 'effectuee',
+      note_etoiles: etoiles || 0,
+      commentaire: commentaire || '',
+      avis_client: avis_client || '',
+    }).eq('id', visite_id);
+    if (error) { alert('Erreur : ' + error.message); return; }
     const v = visites.find(x => x.id === visite_id);
     const b = biens.find(x => x.id === v?.bien_id);
-    await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', v?.bien_id);
-    const etoilesStr = etoiles > 0 ? ' · ' + '⭐'.repeat(etoiles) : '';
-    const desc = [commentaire ? `Avis : "${commentaire}"` : '', avis_client ? `Retour client : "${avis_client}"` : ''].filter(Boolean).join(' · ');
-    await addJournal(client.id, 'visite_effectuee', `✅ Visite effectuée${etoilesStr} — ${b?.titre || b?.ville || ''}`, desc || undefined);
-    setShowCompteRendu(false); load();
+    if (v?.bien_id) await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', v.bien_id);
+    const AVIS: Record<string,string> = { tres_interesse:'🔥 Très intéressé', interesse:'👍 Intéressé', a_voir:'🤔 À revoir', pas_interesse:'👎 Pas intéressé', elimine:'❌ Éliminé' };
+    const etoilesStr = etoiles > 0 ? '⭐'.repeat(etoiles) : '';
+    const corpsLines = [avis_client ? `Avis : ${AVIS[avis_client]||avis_client}` : '', etoilesStr ? `Note : ${etoilesStr}` : '', commentaire || ''].filter(Boolean);
+    await supabase.from('envois').insert({
+      client_id: client.id,
+      type: 'compte_rendu_visite',
+      objet: `Visite — ${b?.titre || b?.ville || 'Bien'}`,
+      corps: corpsLines.join(' | '),
+      destinataires: [],
+      sms_envoye: false,
+    });
+    await addJournal(client.id, 'visite_effectuee', `✅ Visite effectuée${etoilesStr ? ' · '+etoilesStr : ''} — ${b?.titre || b?.ville || ''}`, commentaire || undefined);
+    setShowCompteRendu(false);
+    await load();
   }
 
   async function saveAction() {
@@ -654,12 +671,11 @@ Emilio Immobilier`,
             <div className={styles.infoCardBody}>
               {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {/* Type seul sur sa ligne */}
-                  {client.type_bien && (
-                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div>
-                    </div>
+                  {/* Type + Budget sur même ligne */}
+                  {(client.type_bien || client.budget_min) && (
+                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      {client.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
+                      </div>
                   )}
                   {/* Autres critères chiffrés */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
@@ -697,7 +713,7 @@ Emilio Immobilier`,
                         });
                         return Object.entries(bv).map(([ville, qs]) => (
                           <div key={ville} style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: '#1a2332' }}>📍 {ville}</span>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: '#1a2332', minWidth: 'max-content' }}>📍 {ville}</span>
                             {qs.length > 0 && qs.map(q => <span key={q} className={styles.secteurTag}>{q}</span>)}
                             {qs.length === 0 && <span className={styles.secteurTag}>Toute la ville</span>}
                           </div>
@@ -706,7 +722,12 @@ Emilio Immobilier`,
                     </div>
                   )}
                   {/* Notes */}
-                  {client.notes && <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>{client.notes}</div>}
+                  {client.notes && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #c9a84c' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 }}>💬 Précisions sur la recherche</div>
+                      <div style={{ fontSize: 14, color: '#1a2332', lineHeight: 1.6 }}>{client.notes}</div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1056,14 +1077,30 @@ Emilio Immobilier`,
         {/* TAB HISTORIQUE */}
         {tab === 'historique' && (
           <div className={styles.card}>
-            {envois.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📄</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucun envoi</div></div>
-            : envois.map(e => (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderBottom: '1px solid #f8fafc' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{e.type === 'selection_biens' ? '📄' : '✉️'}</div>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{e.objet || e.type}</div><div style={{ fontSize: 12, color: '#94a3b8' }}>{e.destinataires?.join(', ')}</div></div>
-                <div style={{ textAlign: 'right' }}><div style={{ fontSize: 13, fontWeight: 600 }}>{new Date(e.created_at).toLocaleDateString('fr-FR')}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{e.sms_envoye ? '✉️ + 📱' : '✉️'}</div></div>
-              </div>
-            ))}
+            {envois.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📄</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucun historique</div></div>
+            : envois.map(e => {
+              const isCR = e.type === 'compte_rendu_visite';
+              const icon = isCR ? '📋' : e.type === 'selection_biens' ? '📄' : '✉️';
+              const bg = isCR ? '#f0fdf4' : '#fef9c3';
+              const parts = isCR && e.corps ? e.corps.split(' | ') : [];
+              return (
+                <div key={e.id} style={{ padding: '14px 18px', borderBottom: '1px solid #f8fafc' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{e.objet || e.type}</div>
+                      {isCR && parts.length > 0 && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 3 }}>{parts.slice(0, 2).join(' · ')}</div>}
+                      {isCR && parts.length > 2 && <div style={{ fontSize: 13, color: '#64748b', background: '#f0fdf4', borderRadius: 8, padding: '6px 10px', marginTop: 6, borderLeft: '3px solid #10b981' }}>{parts[2]}</div>}
+                      {!isCR && e.destinataires?.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{e.destinataires.join(', ')}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{new Date(e.created_at).toLocaleDateString('fr-FR')}</div>
+                      {!isCR && <div style={{ fontSize: 11, color: '#94a3b8' }}>{e.sms_envoye ? '✉️+📱' : '✉️'}</div>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
