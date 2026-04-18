@@ -67,7 +67,7 @@ export default function PageRecherche({ onNavigate }: { onNavigate: (page: strin
                       <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#1a2332' }}>{c.prenom} {c.nom}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#ecfdf5', color: '#10b981', border: '1px solid #bbf7d0' }}>● Actif</span>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a' }}>{c.reference}</span>
-                      {joursMandat !== null && joursMandat < 15 && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}>⚠️ Mandat {joursMandat}j</span>}
+                      {joursMandat !== null && joursMandat < 15 && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}>⚠️ Mandat {joursMandat > 0 ? `${joursMandat}j restants` : 'expiré'}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
