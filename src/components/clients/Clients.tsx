@@ -179,8 +179,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 className={styles.clientRow}
                 onClick={() => onNavigate('fiche', client)}
               >
-                <div className={styles.clientAv} style={{ width: 46, height: 46, borderRadius: 14 }}>
-                  <span>{initiales}</span>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', border: `3px solid ${(client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#1a2332', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+                    {client.prenom[0]}
+                  </div>
                 </div>
                 <div className={styles.clientInfo}>
                   {/* Ligne 1 : nom + badges */}
