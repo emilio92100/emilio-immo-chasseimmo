@@ -83,6 +83,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showPlanVisite, setShowPlanVisite] = useState(false);
   const [showFicheBien, setShowFicheBien] = useState(false);
   const [showEnvoi, setShowEnvoi] = useState(false);
+  const [showConfirmEtape, setShowConfirmEtape] = useState(false);
+  const [showConfirmDeleteBien, setShowConfirmDeleteBien] = useState(false);
+  const [showConfirmVisite, setShowConfirmVisite] = useState<string|null>(null);
+  const [pendingBienId, setPendingBienId] = useState('');
   const [ficheBienId, setFicheBienId] = useState('');
   const [editBienForm, setEditBienForm] = useState<any>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -324,11 +328,20 @@ export default function FicheClient({ client: init, onBack }: Props) {
     // Vérifier si une visite à venir existe déjà pour ce bien
     const existante = visites.find(v => v.bien_id === bienId && v.statut === 'a_venir');
     if (existante) {
-      const suppr = confirm('Une visite est déjà planifiée pour ce bien. Voulez-vous la supprimer pour en créer une nouvelle ?');
-      if (!suppr) return;
-      await supabase.from('visites').delete().eq('id', existante.id);
-      await load();
+      setShowConfirmVisite(existante.id);
+    setPendingBienId(bienId);
+    return;
     }
+    setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
+    setShowPlanVisite(true);
+  }
+
+  async function doRemplacerVisite() {
+    const visiteId = showConfirmVisite;
+    const bienId = pendingBienId;
+    if (visiteId) await supabase.from('visites').delete().eq('id', visiteId);
+    setShowConfirmVisite(null);
+    await load();
     setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
     setShowPlanVisite(true);
   }
@@ -420,7 +433,12 @@ Description originale : ${editBienForm.description}`,
   }
 
   async function deleteBien(bienId: string) {
-    if (!confirm('Supprimer ce bien de la fiche ? Cette action est irréversible.')) return;
+    setPendingBienId(bienId); setShowConfirmDeleteBien(true);
+  }
+
+  async function doDeleteBien() {
+    const bienId = pendingBienId;
+    setShowConfirmDeleteBien(false);
     // Récupérer les photos stockées dans Supabase Storage pour les supprimer
     const bien = biens.find(b => b.id === bienId);
     if (bien?.photos?.length > 0) {
@@ -535,13 +553,16 @@ Emilio Immobilier`,
   }
 
   async function reculerEtape() {
+    setShowConfirmEtape(true);
+  }
+
+  async function doReculerEtape() {
     const idx = ORDRE_ETAPES.indexOf(transaction.etape_actuelle);
     if (idx <= 0) return;
     const precedente = ORDRE_ETAPES[idx - 1];
-    if (!confirm(`Revenir à l'étape "${ETAPES_LABELS[precedente]}" ?`)) return;
     await supabase.from('transactions').update({ etape_actuelle: precedente }).eq('id', transaction.id);
     await addJournal(client.id, 'retour_etape', `Retour → ${ETAPES_LABELS[precedente]}`);
-    load();
+    setShowConfirmEtape(false); load();
   }
 
   const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
@@ -549,7 +570,7 @@ Emilio Immobilier`,
 
   const TABS = [
     { id: 'biens', label: `🏠 Biens (${biens.length})` },
-    { id: 'visites', label: `📅 Visites (${visites.filter(v => v.statut === 'effectuee').length})` },
+    { id: 'visites', label: `📅 Visites (${visites.length})` },
     { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
     { id: 'historique', label: `📄 Historique (${envois.length})` },
     { id: 'journal', label: `📓 Journal (${journal.length})` },
@@ -589,7 +610,9 @@ Emilio Immobilier`,
       <div className={styles.identiteBar}>
         {/* Avatar + Nom + Contact inline */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: 1 }}>
-          <div className={styles.avatar} style={{ width: 56, height: 56, borderRadius: 16, fontSize: 20 }}>{client.prenom[0]}{client.nom[0]}</div>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', border: `3px solid ${(client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#1a2332', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>{client.prenom[0]}</div>
+          </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
               <div className={styles.clientName}>{client.prenom} {client.nom}</div>
@@ -633,14 +656,14 @@ Emilio Immobilier`,
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Ligne 1 : Type / Budget / Surface / Pièces / Chambres */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {client.type_bien && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Type</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
-                    {client.budget_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</div></div>}
-                    {client.surface_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Surface</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.surface_max ? `${client.surface_min}–${client.surface_max}m²` : `min ${client.surface_min}m²`}</div></div>}
-                    {client.nb_pieces_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Pièces</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</div></div>}
-                    {client.chambres_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Chambres</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
-                    {client.dpe_max && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
-                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
-                    {client.annee_construction_min && <div><div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Année min</div><div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
+                    {client.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
+                    {client.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</div></div>}
+                    {client.surface_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.surface_max ? `${client.surface_min}–${client.surface_max}m²` : `min ${client.surface_min}m²`}</div></div>}
+                    {client.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</div></div>}
+                    {client.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
+                    {client.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
+                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
+                    {client.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
                   </div>
                   {/* Ligne 2 : Équipements */}
                   {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
@@ -763,39 +786,92 @@ Emilio Immobilier`,
 
         {/* TAB VISITES */}
         {tab === 'visites' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {visites.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📅</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div><div style={{ color: '#94a3b8', fontSize: 13 }}>Planifiez depuis l'onglet Biens</div></div>
-            : visites.map(v => {
-              const b = biens.find(x => x.id === v.bien_id);
-              return (
-                <div key={v.id} className={styles.card} style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                    <div style={{ background: v.statut === 'effectuee' ? '#e2e8f0' : '#1a2332', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
-                      {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: v.statut === 'effectuee' ? '#1a2332' : 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: v.statut === 'effectuee' ? '#94a3b8' : 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)' }}>—</div>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
-                      {v.heure && <div style={{ fontSize: 14, color: '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
-                      {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>Contact : {v.contact_agence}</div>}
-                      {v.avis_client && <div style={{ marginTop: 4 }}><span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 20, fontWeight: 700, background: v.avis_client === 'tres_interesse' ? '#fef9c3' : v.avis_client === 'interesse' ? '#eff6ff' : v.avis_client === 'elimine' ? '#fef2f2' : '#f8fafc', color: v.avis_client === 'tres_interesse' ? '#854d0e' : v.avis_client === 'interesse' ? '#1d4ed8' : v.avis_client === 'elimine' ? '#ef4444' : '#64748b' }}>{v.avis_client === 'tres_interesse' ? '🔥 Très intéressé' : v.avis_client === 'interesse' ? '👍 Intéressé' : v.avis_client === 'a_voir' ? '🤔 À revoir' : v.avis_client === 'pas_interesse' ? '👎 Pas intéressé' : '❌ Éliminé'}</span></div>}
-                      {v.note_etoiles && <div style={{ marginTop: 4, fontSize: 16 }}>{'⭐'.repeat(v.note_etoiles)}</div>}
-                      {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8, borderLeft: '3px solid #c9a84c' }}>{v.commentaire}</div>}
-                    </div>
-                    <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 600, background: v.statut === 'a_venir' ? '#eff6ff' : '#ecfdf5', color: v.statut === 'a_venir' ? '#3b82f6' : '#10b981', border: '1px solid currentColor', opacity: 0.8 }}>
-                      {v.statut === 'a_venir' ? '📅 À venir' : '✅ Effectuée'}
-                    </span>
-                  </div>
-                  {v.statut === 'a_venir' && (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
-                      <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
-                      <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
-                      <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
-                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>✓ Effectuée</button>
-                    </div>
-                  )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {visites.length === 0 && <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📅</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div><div style={{ color: '#94a3b8', fontSize: 13 }}>Planifiez depuis l'onglet Biens</div></div>}
+
+            {/* Section À venir */}
+            {visites.filter(v => v.statut === 'a_venir').length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }}></span>
+                  À venir — {visites.filter(v => v.statut === 'a_venir').length}
                 </div>
-              );
-            })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {visites.filter(v => v.statut === 'a_venir').map(v => {
+                    const b = biens.find(x => x.id === v.bien_id);
+                    return (
+                      <div key={v.id} className={styles.card} style={{ padding: 18, borderLeft: '3px solid #3b82f6' }}>
+                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                          <div style={{ background: '#1a2332', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
+                            {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>—</div>}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
+                            {v.heure && <div style={{ fontSize: 14, color: '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
+                            {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>📞 {v.contact_agence}</div>}
+                            {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8 }}>📝 {v.commentaire}</div>}
+                          </div>
+                          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', flexShrink: 0 }}>📅 À venir</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
+                          <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
+                          <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
+                          <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
+                          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>✓ Effectuée</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Section Effectuées */}
+            {visites.filter(v => v.statut === 'effectuee').length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                  Effectuées — {visites.filter(v => v.statut === 'effectuee').length}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {visites.filter(v => v.statut === 'effectuee').map(v => {
+                    const b = biens.find(x => x.id === v.bien_id);
+                    return (
+                      <div key={v.id} className={styles.card} style={{ padding: 18, borderLeft: '3px solid #10b981' }}>
+                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                          <div style={{ background: '#ecfdf5', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
+                            {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: '#065f46', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: '#94a3b8', fontSize: 20 }}>—</div>}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
+                            {v.heure && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>🕐 {v.heure}</div>}
+                            {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>📞 {v.contact_agence}</div>}
+                            {/* Avis client */}
+                            {v.avis_client && (
+                              <div style={{ marginTop: 8 }}>
+                                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 700, background: v.avis_client === 'tres_interesse' ? '#fef9c3' : v.avis_client === 'interesse' ? '#eff6ff' : v.avis_client === 'elimine' ? '#fef2f2' : v.avis_client === 'pas_interesse' ? '#fef2f2' : '#f8fafc', color: v.avis_client === 'tres_interesse' ? '#854d0e' : v.avis_client === 'interesse' ? '#1d4ed8' : (v.avis_client === 'elimine' || v.avis_client === 'pas_interesse') ? '#ef4444' : '#64748b' }}>
+                                  {v.avis_client === 'tres_interesse' ? '🔥 Très intéressé' : v.avis_client === 'interesse' ? '👍 Intéressé' : v.avis_client === 'a_voir' ? '🤔 À revoir' : v.avis_client === 'pas_interesse' ? '👎 Pas intéressé' : '❌ Éliminé'}
+                                </span>
+                              </div>
+                            )}
+                            {/* Note étoiles */}
+                            {v.note_etoiles > 0 && <div style={{ marginTop: 6, fontSize: 16 }}>{'⭐'.repeat(v.note_etoiles)} <span style={{ fontSize: 12, color: '#94a3b8' }}>{v.note_etoiles}/5</span></div>}
+                            {/* Compte-rendu */}
+                            {v.commentaire && (
+                              <div style={{ fontSize: 13, color: '#1a2332', background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', marginTop: 10, borderLeft: '3px solid #10b981' }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Compte-rendu</div>
+                                {v.commentaire}
+                              </div>
+                            )}
+                          </div>
+                          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#ecfdf5', color: '#10b981', border: '1px solid #bbf7d0', flexShrink: 0 }}>✅ Effectuée</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -812,7 +888,7 @@ Emilio Immobilier`,
                       {bienTx.photos?.[0] ? <img src={bienTx.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} /> : '🏠'}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Bien concerné par la transaction</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien concerné par la transaction</div>
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{bienTx.titre || `${bienTx.type_bien||'Bien'} — ${bienTx.ville||'—'}`}</div>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{[bienTx.surface && `${bienTx.surface}m²`, bienTx.nb_pieces && `${bienTx.nb_pieces}P`, bienTx.ville].filter(Boolean).join(' · ')}</div>
                     </div>
@@ -1069,7 +1145,7 @@ Emilio Immobilier`,
                 {secteurVilleActive && (
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a2332' }}>📍 {secteurVilleActive.ville} ({secteurVilleActive.cp})</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>📍 {secteurVilleActive.ville} ({secteurVilleActive.cp})</div>
                       <button onClick={() => setSecteurVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
@@ -1194,6 +1270,68 @@ Emilio Immobilier`,
       )}
 
       </div>
+
+      {/* ═══ MODAL CONFIRM ÉTAPE PRÉCÉDENTE ═══ */}
+      {showConfirmEtape && transaction && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmEtape(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 440 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>← Retour à l'étape précédente</h2>
+              <button className={styles.modalClose} onClick={() => setShowConfirmEtape(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+                Voulez-vous vraiment revenir à l'étape <strong style={{ color: '#1a2332' }}>"{ETAPES_LABELS[ORDRE_ETAPES[Math.max(0, ORDRE_ETAPES.indexOf(transaction.etape_actuelle) - 1)]]}"</strong> ?
+              </p>
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>
+                ⚠️ Les données saisies pour l'étape actuelle seront conservées mais l'étape sera marquée comme non finalisée.
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowConfirmEtape(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={doReculerEtape}>← Confirmer le retour</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL CONFIRM DELETE BIEN ═══ */}
+      {showConfirmDeleteBien && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmDeleteBien(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 420 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle} style={{ color: '#ef4444' }}>🗑️ Supprimer ce bien</h2>
+              <button className={styles.modalClose} onClick={() => setShowConfirmDeleteBien(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>Cette action est irréversible. Le bien et toutes ses photos seront définitivement supprimés.</p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowConfirmDeleteBien(false)}>Annuler</button>
+              <button onClick={doDeleteBien} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Supprimer définitivement</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL CONFIRM VISITE DOUBLON ═══ */}
+      {showConfirmVisite && (
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmVisite(null); }}>
+          <div className={styles.modal} style={{ maxWidth: 420 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>📅 Visite déjà planifiée</h2>
+              <button className={styles.modalClose} onClick={() => setShowConfirmVisite(null)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>Une visite est déjà planifiée pour ce bien. Voulez-vous la remplacer par une nouvelle ?</p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowConfirmVisite(null)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={doRemplacerVisite}>Remplacer la visite</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ MODAL ENVOI ═══ */}
       {showEnvoi && (
