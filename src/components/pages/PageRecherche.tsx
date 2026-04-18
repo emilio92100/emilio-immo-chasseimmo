@@ -59,8 +59,8 @@ export default function PageRecherche({ onNavigate }: { onNavigate: (page: strin
 
                 {/* Ligne 1 : identité + statut + KPIs */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 14, background: '#1a2332', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: '#c9a84c', fontSize: 14 }}>{c.prenom[0]}{c.nom[0]}</span>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#ecfdf5', border: '3px solid #10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 20, fontWeight: 800, color: '#1a2332', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+                    {c.prenom[0]}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
