@@ -627,9 +627,9 @@ Emilio Immobilier`,
             </div>
             {/* Infos contact inline */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 13, color: '#1a2332', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>📞 {t}</a>)}
-              {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 13, color: '#3b82f6', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>✉️ {e}</a>)}
-              {client.adresse && <span style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {client.adresse}</span>}
+              {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 14, color: '#1a2332', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>📞 {t}</a>)}
+              {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 14, color: '#3b82f6', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>✉️ {e}</a>)}
+              {client.adresse && <span style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {client.adresse}</span>}
               {!client.telephones?.length && !client.emails?.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>Aucun contact renseigné</span>}
             </div>
           </div>
@@ -654,26 +654,38 @@ Emilio Immobilier`,
             <div className={styles.infoCardBody}>
               {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {/* Ligne 1 : Type / Budget / Surface / Pièces / Chambres */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {client.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
-                    {client.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</div></div>}
+                  {/* Type seul sur sa ligne */}
+                  {client.type_bien && (
+                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div>
+                    </div>
+                  )}
+                  {/* Autres critères chiffrés */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
+                    {client.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 15, fontWeight: 700, color: '#c9a84c' }}>{client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</div></div>}
                     {client.surface_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.surface_max ? `${client.surface_min}–${client.surface_max}m²` : `min ${client.surface_min}m²`}</div></div>}
                     {client.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</div></div>}
-                    {client.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.chambres_min}+</div></div>}
-                    {client.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 13, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
-                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `${client.etage_min}+` : '', client.rdc_exclu ? '🚫RDC' : '', client.dernier_etage ? '🏙️Dernier' : ''].filter(Boolean).join(' ')}</div></div>}
+                    {client.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${client.chambres_min}`}</div></div>}
+                    {client.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
+                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `min ${client.etage_min}` : '', client.rdc_exclu ? '🚫 RDC exclu' : '', client.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
                     {client.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
                   </div>
                   {/* Ligne 2 : Équipements */}
                   {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, paddingBottom: client.secteurs?.length || client.notes ? 8 : 0, borderBottom: (client.secteurs?.length || client.notes) ? '1px solid #f1f5f9' : 'none' }}>
-                      {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
-                        <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{l}</span>
-                      ))}
+                    <div style={{ paddingBottom: client.secteurs?.length ? 8 : 0, borderBottom: client.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Critères importants</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
+                          <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l}</span>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {/* Ligne 3 : Secteurs */}
+                  {client.secteurs?.length > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Secteurs recherchés</div>
+                  )}
                   {client.secteurs?.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                       {(() => {
@@ -713,9 +725,9 @@ Emilio Immobilier`,
             {client.mandat_date_signature ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{client.mandat_duree ? `${client.mandat_duree} mois` : '—'}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 12, fontWeight: 600, color: 'white' }}>{client.mandat_honoraires||'—'}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{client.mandat_duree ? `${client.mandat_duree} mois` : '—'}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{client.mandat_honoraires||'—'}</div></div>
                 </div>
                 {joursMandat !== null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
@@ -952,7 +964,13 @@ Emilio Immobilier`,
                               <span style={{ fontSize: 12, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>📋 {new Date(transaction.compromis_date).toLocaleDateString('fr-FR')}{transaction.compromis_notaire ? ` · ${transaction.compromis_notaire}` : ''}</span>
                             )}
                             {etapeId === 'negociation' && transaction.contre_offres?.length > 0 && (
-                              <span style={{ fontSize: 12, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>🔄 {transaction.contre_offres.length} contre-offre(s)</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {(transaction.contre_offres as any[]).map((co: any, i: number) => (
+                                  <span key={i} style={{ fontSize: 12, background: co.partie === 'acheteur' ? '#eff6ff' : '#fef2f2', color: co.partie === 'acheteur' ? '#1d4ed8' : '#dc2626', border: `1px solid ${co.partie === 'acheteur' ? '#bfdbfe' : '#fecaca'}`, padding: '3px 10px', borderRadius: 20, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    {co.partie === 'acheteur' ? '🏠 Acheteur' : '🏢 Vendeur'} · {parseInt(co.montant).toLocaleString('fr-FR')}€{co.date ? ` · ${new Date(co.date).toLocaleDateString('fr-FR')}` : ''}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
                         )}
