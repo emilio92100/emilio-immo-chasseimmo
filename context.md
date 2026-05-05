@@ -1,17 +1,35 @@
 # CONTEXTE PROJET — Emilio Immobilier
-## Outil de Chasse Immobilière — Version 1.2
-### Mis à jour le 18 avril 2026
+## CRM Immobilier sur mesure — Version 2.0
+### Mis à jour le 5 mai 2026
 
 ---
 
-## 0. IDENTITÉ & ACCÈS
+## 0. IDENTITÉ & VISION
 
 | Champ | Valeur |
 |---|---|
-| Client | Alexandre ROGELET |
+| Fondateur | Alexandre ROGELET |
+| Entreprise | Emilio Immobilier |
 | Email | arogelet@emilio-immo.com |
 | Téléphone | 06 58 95 76 32 |
-| Activité | Chasseur immobilier — Paris & 92 |
+| Activité | Agence immobilière — Paris & 92 (vente + chasse immobilière) |
+
+### Contexte métier
+Emilio Immobilier est une agence immobilière qui fait de la **vente classique** (mandats vendeurs, mise en vente de biens) et de la **chasse immobilière** (mandats de recherche pour acquéreurs). Un client peut être vendeur, acheteur, ou les deux.
+
+### Pourquoi ce CRM custom
+Le CRM actuel (Immofacile) ne convient pas en termes d'UX et de design. L'objectif est de **remplacer Immofacile** par ce CRM sur mesure, beau, fluide et adapté au workflow réel de l'agence. Immofacile est conservé **uniquement pour la diffusion portails** (SeLoger, LeBonCoin, Bien'ici, etc.) car ces portails nécessitent des partenariats techniques non reproductibles par un développeur indépendant. À terme, une passerelle de diffusion seule (Ubiflow, Adaptimmo…) pourrait remplacer Immofacile.
+
+### Périmètre du CRM
+- **Gestion clients** : acquéreurs, vendeurs, ou les deux — avec critères de recherche (acquéreurs) et biens en mandat (vendeurs)
+- **Gestion biens** : biens sourcés (pour la chasse) + biens en mandat (propres à l'agence)
+- **Visites, transactions, suivi complet** du cycle de vie
+- **Communication** : mails, SMS, PDF de présentation
+- **Dashboard & statistiques**
+- ❌ **PAS de diffusion portails** — reste sur Immofacile
+
+### Ce qui n'a aucun rapport avec ce projet
+Ce CRM est indépendant de Verimo (SaaS d'analyse de documents immo) et de Tonton Immo / Emilio Immo (pages réseaux sociaux). Ce sont des projets distincts.
 
 ---
 
@@ -153,7 +171,7 @@ src/
 
 ## 7. À FAIRE — PRIORITÉS
 
-### 🔴 Priorité 1 (bloquant métier)
+### 🔴 Priorité 1 — Module chasse (en cours)
 1. **Génération PDF sélection de biens** (jsPDF + html2canvas déjà dans package.json)
    - Modal : sélection biens avec cases à cocher + choix photos (max 3-4)
    - Page de garde + fiche par bien (prix acquéreur uniquement) + footer
@@ -164,21 +182,25 @@ src/
 
 3. **Page connexion** : Supabase Auth · alexandre.rogelet / chasseimmo
 
-### 🟡 Priorité 2
-4. **Matching biens → clients** : à l'ajout d'un bien, suggérer clients correspondants
-5. **Relances automatiques** post-envoi PDF
-6. **KPI "Biens présentés"** incrémenté à l'envoi PDF
+### 🟠 Priorité 2 — Extension CRM complet (vendeurs)
+4. **Fiche client unifiée vendeur/acheteur** : un client peut être vendeur, acheteur, ou les deux. Ajouter le volet vendeur (bien en mandat, prix de mise en vente, honoraires vendeur, documents du bien)
+5. **Gestion des biens en mandat** : biens propres à l'agence (≠ biens sourcés pour la chasse), avec photos, description, prix, statut (disponible, sous offre, compromis, vendu)
+6. **Pipeline de vente** : suivi des offres reçues sur les mandats vendeurs
 
-### 🟢 V2
+### 🟡 Priorité 3 — Enrichissements
+7. **Matching biens → clients** : à l'ajout d'un bien, suggérer clients correspondants
+8. **Relances automatiques** post-envoi PDF
+9. **KPI "Biens présentés"** incrémenté à l'envoi PDF
+10. **Dashboard enrichi** : KPIs, graphiques, pipeline vente + chasse, CA
+
+### 🟢 V3
 - PDF C-R visites · PDF Présentation services
 - Export Excel mensuel/annuel
 - Extension Chrome (photos SeLoger depuis navigateur)
-- Dashboard enrichi (KPIs, graphiques, pipeline)
 - Multi-utilisateur
 - Actions groupées multi-clients
 - Clients inactifs +30j · Corbeille archivage J+30
 - Statistiques Mon activité (taux transformation, délais, CA)
-- Section vendeur sur fiche client
 
 ---
 
@@ -209,6 +231,7 @@ src/
 
 ## 10. HORS PÉRIMÈTRE
 
+- **Diffusion portails** (SeLoger, LBC, Bien'ici) → reste sur Immofacile
 - Scraping automatique portails
 - Suppression filigrane photos
 - Location (vente uniquement)
