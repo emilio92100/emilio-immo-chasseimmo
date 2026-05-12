@@ -13,7 +13,7 @@ export default function CapturePage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [commission, setCommission] = useState({ type: 'pourcentage', val: '' });
 
-  // Charger les clients
+  // ─── Charger les clients ──────────────────────────────────────────────
   useEffect(() => {
     supabase
       .from('clients')
@@ -27,7 +27,7 @@ export default function CapturePage() {
       });
   }, []);
 
-  // Filtrer les clients selon la recherche
+  // ─── Filtrer les clients ──────────────────────────────────────────────
   useEffect(() => {
     if (!search) {
       setFilteredClients(clients);
@@ -44,7 +44,7 @@ export default function CapturePage() {
     );
   }, [search, clients]);
 
-  // Recevoir le HTML du bookmarklet via postMessage
+  // ─── Recevoir le HTML ─────────────────────────────────────────────────
   const handleMessage = useCallback(async (event: MessageEvent) => {
     if (event.data?.type !== 'EMILIO_HTML') return;
     if (event.origin !== window.location.origin) return;
@@ -74,12 +74,51 @@ export default function CapturePage() {
     }
   }, []);
 
+  // ─── Demander activement le HTML à la fenêtre parente ──────────────────
   useEffect(() => {
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    // Envoie un signal READY à la fenêtre opener
+    // Elle va alors nous renvoyer le HTML stocké
+    function askForHtml() {
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage({ type: 'EMILIO_READY' }, '*');
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // On essaye plusieurs fois car la fenêtre opener doit avoir installé son listener
+    askForHtml();
+    const t1 = setTimeout(askForHtml, 300);
+    const t2 = setTimeout(askForHtml, 800);
+    const t3 = setTimeout(askForHtml, 2000);
+
+    // Timeout final : si rien reçu après 8 secondes, erreur
+    const timeoutFinal = setTimeout(() => {
+      setStep((current) => {
+        if (current === 'waiting') {
+          setError(
+            "Pas de contenu reçu. Vérifie : (1) que tu as bien cliqué sur le favori depuis une page d'annonce, (2) que la fenêtre d'origine est toujours ouverte. Ferme et réessaie."
+          );
+          return 'error';
+        }
+        return current;
+      });
+    }, 8000);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(timeoutFinal);
+    };
   }, [handleMessage]);
 
-  // Calcul prix acquéreur
+  // ─── Calcul prix acquéreur ────────────────────────────────────────────
   const prixAcq = bien
     ? commission.type === 'pourcentage'
       ? Math.round((parseFloat(bien.prix_vendeur) || 0) * (1 + (parseFloat(commission.val) || 0) / 100))
@@ -162,7 +201,7 @@ export default function CapturePage() {
             <Spinner />
             <div style={{ marginTop: 14, color: '#64748b' }}>En attente du contenu de la page...</div>
             <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-              Si rien ne se passe après 5 secondes, ferme cette fenêtre et clique à nouveau sur le favori.
+              Si rien ne se passe après 8 secondes, ferme cette fenêtre et clique à nouveau sur le favori.
             </div>
           </Card>
         )}
@@ -176,7 +215,6 @@ export default function CapturePage() {
 
         {step === 'choose' && bien && (
           <>
-            {/* Aperçu du bien extrait */}
             <Card>
               <div style={{ display: 'flex', gap: 14 }}>
                 {bien.photos?.[0] && (
@@ -186,7 +224,7 @@ export default function CapturePage() {
                     style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }}
                   />
                 )}
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                   <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16, color: '#1a2332', marginBottom: 6 }}>
                     {bien.titre || 'Bien sans titre'}
                   </div>
@@ -205,7 +243,6 @@ export default function CapturePage() {
               </div>
             </Card>
 
-            {/* Commission */}
             <Card>
               <Label>Commission acquéreur</Label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -232,7 +269,6 @@ export default function CapturePage() {
               </div>
             </Card>
 
-            {/* Sélection client */}
             <Card>
               <Label>Choisir le client</Label>
               <input
@@ -294,7 +330,6 @@ export default function CapturePage() {
               </div>
             </Card>
 
-            {/* Bouton valider */}
             <button
               onClick={saveBien}
               disabled={!selectedClient}
@@ -378,7 +413,6 @@ export default function CapturePage() {
   );
 }
 
-// ─── COMPOSANTS UTILITAIRES ─────────────────────────────────────────────
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div
