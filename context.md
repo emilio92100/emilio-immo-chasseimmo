@@ -1,6 +1,6 @@
 # CONTEXTE PROJET — Emilio Immobilier
 ## CRM Immobilier sur mesure — Version 2.0
-### Mis à jour le 5 mai 2026
+### Mis à jour le 12 mai 2026
 
 ---
 
@@ -134,6 +134,22 @@ src/
 - **Visites globale** : photo bien · date année · CR intégré · sync fiche client
 - **Nouveau mail** : objet vide · signature seule · 5 modèles pré-rédigés · tous clients searchables · historique contenu complet
 
+### 🆕 Améliorations session 12 mai 2026
+
+**Journal client — Anti-bruit (FicheClient.tsx)**
+- `saveContact` : log uniquement si vrai changement détecté (avec détail du diff prénom/nom/adresse/email/tél)
+- `saveCriteres` : skip complet si aucun changement (fini les entrées "Aucun changement détecté")
+- `saveMandat` : log uniquement si vrai changement (avec détail signature/durée/honoraires/expiration)
+- `changeStatut` : anti-doublon, ignore si le statut est déjà le même
+
+**UI — Bas de page (FicheClient.module.css)**
+- `contentWrap` : padding-bottom passé de 16px à 80px pour éviter que les onglets soient tronqués par la barre Windows
+
+**Bugs corrigés (FicheClient.tsx)**
+- `agence_tel` manquant dans l'INSERT de `saveBien` → la valeur s'affichait dans le preview mais n'était jamais enregistrée
+- `nb_chambres` manquant dans l'UPDATE de `saveFicheBien` → modification non persistée
+- ⚠️ Les biens créés avant ces fix ont ces champs vides, à corriger manuellement
+
 ---
 
 ## 5. RÈGLES D'AFFICHAGE FIGÉES
@@ -164,8 +180,21 @@ src/
 | `/api/extract-bien` | URL → Claude analyse HTML → JSON bien | ANTHROPIC_API_KEY |
 | `/api/parse-texte-bien` | Texte collé → Claude structure → JSON bien | ANTHROPIC_API_KEY |
 | `/api/upload-photos` | URLs externes → Supabase Storage → URLs permanentes | SUPABASE_SERVICE_ROLE_KEY |
+| `/api/bien-from-bookmarklet` | ⚠️ Dormant — tentative bookmarklet Chrome abandonnée le 12/05 | — |
 
 **SeLoger** : bloqué Cloudflare → copier-coller recommandé. LeBonCoin/PAP/Orpi : OK.
+
+### ⚠️ Tentative bookmarklet Chrome abandonnée (12 mai 2026)
+3 fichiers créés puis abandonnés à cause de blocages techniques (React bloque `javascript:` URLs, timing fragile sur `postMessage` entre fenêtres) :
+- `src/app/api/bien-from-bookmarklet/route.ts`
+- `src/app/bookmarklet/page.tsx`
+- `src/app/bookmarklet/capture/page.tsx`
+
+Fichiers laissés en place mais inactifs (aucun lien vers eux dans l'app). **Solution retenue** : continuer avec le copier-coller texte existant via `/api/parse-texte-bien`. À durcir : tronquer le texte collé à 4000 chars, prompt strict "ignore biens similaires", détecter les marqueurs "Plus de biens similaires" / "À voir aussi".
+
+### Limites connues SeLoger (copier-coller)
+- **DPE en image SVG** : la lettre A-G du bien principal est un graphique, non capturée par Ctrl+A. À saisir manuellement après création (sélecteur A-G dans la fiche modifier)
+- **Biens similaires en bas de page** : leur texte (prix, DPE, etc.) peut être confondu avec le bien principal par l'IA si on ne tronque pas le texte collé
 
 ---
 
@@ -237,3 +266,15 @@ src/
 - Location (vente uniquement)
 - Signature électronique
 - Mode hors ligne
+
+---
+
+## 11. DISCUSSIONS HORS-PROJET — Site public Emilio Immo
+
+### SEO local par arrondissement (à traiter sur le site public, PAS sur ce CRM)
+Discussion du 12 mai 2026 sur la présence locale d'Emilio Immo dans Paris :
+- **Stratégie SEO** : créer des pages dédiées par arrondissement sur le site public (ex `/vendre-appartement-paris-6`) avec contenu unique par zone (prix au m² du quartier, ventes récentes, expertise locale). Délai de ranking Google : 3-6 mois.
+- **Google Maps** : pour apparaître sur la map dans un arrondissement, il faut une **adresse physique vérifiée** dans cette zone (Google envoie un courrier de vérification). Solutions légales : coworking (50-150€/mois), domiciliation, bureau partagé. **Un seul profil Google Business par adresse** : pour 3 arrondissements, il faut 3 adresses.
+- **Alternative payante rapide** : Google Ads géolocalisé (~500-2000€/mois selon concurrence).
+
+À traiter sur le site public Emilio Immo, **pas sur ce projet CRM interne**.
