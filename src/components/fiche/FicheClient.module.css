@@ -31,7 +31,7 @@
 .syntheseLabel { font-size: 10px; color: #94a3b8; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* CONTENU CENTRÉ */
-.contentWrap { flex: 1; overflow-y: visible; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.contentWrap { flex: 1; overflow-y: visible; padding: 16px 24px 80px; display: flex; flex-direction: column; gap: 12px; }
 
 /* ROW INFO */
 .infoRow { display: grid; grid-template-columns: 1fr 200px; gap: 14px; align-items: start; }
