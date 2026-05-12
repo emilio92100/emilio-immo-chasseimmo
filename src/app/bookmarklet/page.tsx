@@ -1,18 +1,33 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function BookmarkletPage() {
   const [origin, setOrigin] = useState('');
+  const [copied, setCopied] = useState(false);
+  const linkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
-  // Le code JS du bookmarklet, minifié sur une ligne
-  // Il récupère le HTML de la page courante et l'envoie à notre API
+  // Code JS du bookmarklet
   const bookmarkletCode = origin
     ? `javascript:(function(){var APP='${origin}';var h=document.documentElement.outerHTML;var u=window.location.href;var t=document.title;var w=window.open(APP+'/bookmarklet/capture?url='+encodeURIComponent(u)+'&title='+encodeURIComponent(t),'_blank','width=900,height=700');setTimeout(function(){if(w&&!w.closed){w.postMessage({type:'EMILIO_HTML',html:h,url:u,title:t},APP);}},1500);})();`
     : '';
+
+  // CONTOURNEMENT : on définit le href en JavaScript après le rendu
+  // pour éviter le blocage de React sur les javascript: URLs
+  useEffect(() => {
+    if (linkRef.current && bookmarkletCode) {
+      linkRef.current.setAttribute('href', bookmarkletCode);
+    }
+  }, [bookmarkletCode]);
+
+  function copyCode() {
+    navigator.clipboard.writeText(bookmarkletCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '40px 20px', fontFamily: "'DM Sans', sans-serif" }}>
@@ -34,14 +49,20 @@ export default function BookmarkletPage() {
 
         {/* Étape 2 */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: 24, marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, color: '#c9a84c', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Étape 2</div>
+          <div style={{ fontWeight: 800, fontSize: 14, color: '#c9a84c', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Étape 2 — Glisser le bouton</div>
           <div style={{ fontSize: 16, color: '#1a2332', marginBottom: 16 }}>
-            Fais <strong>glisser ce bouton</strong> dans ta barre de favoris :
+            Fais <strong>glisser le bouton ci-dessous</strong> dans ta barre de favoris :
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+            {/* Le href est défini dynamiquement par useEffect pour bypasser React */}
             <a
-              href={bookmarkletCode}
-              onClick={(e) => { e.preventDefault(); alert('⚠️ Ne clique pas dessus — glisse-le dans ta barre de favoris !'); }}
+              ref={linkRef}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                alert('⚠️ Ne clique pas — glisse-le dans ta barre de favoris en haut !\n\nOu fais clic-droit dessus → "Ajouter cette page aux favoris"');
+              }}
+              draggable
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -63,25 +84,64 @@ export default function BookmarkletPage() {
             </a>
           </div>
           <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 8 }}>
-            👆 Maintiens le clic et fais-le glisser jusqu&apos;à ta barre de favoris en haut
+            👆 Maintiens le clic gauche et fais-le glisser jusqu&apos;à ta barre de favoris en haut
           </div>
         </div>
 
-        {/* Étape 3 */}
+        {/* MÉTHODE ALTERNATIVE RECOMMANDÉE */}
+        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 14, padding: 24, marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: '#065f46', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
+            ✅ Méthode garantie (si le glissé ne marche pas)
+          </div>
+          <div style={{ fontSize: 15, color: '#1a2332', lineHeight: 1.7, marginBottom: 14 }}>
+            <strong>1.</strong> Clique sur le bouton pour copier le code :
+          </div>
+
+          <button
+            onClick={copyCode}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '12px 22px',
+              background: copied ? '#10b981' : '#1a2332',
+              color: 'white',
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 14,
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: "'DM Sans', sans-serif",
+              marginBottom: 16,
+            }}
+          >
+            {copied ? '✓ Code copié !' : '📋 Copier le code du bookmarklet'}
+          </button>
+
+          <div style={{ fontSize: 15, color: '#1a2332', lineHeight: 1.9 }}>
+            <div><strong>2.</strong> Fais <strong>Ctrl + D</strong> sur cette page (ça ouvre la fenêtre &laquo;&nbsp;Ajouter un favori&nbsp;&raquo;)</div>
+            <div><strong>3.</strong> Dans la fenêtre, change le <strong>nom</strong> en : <code style={codeStyle}>📥 Envoyer à Emilio</code></div>
+            <div><strong>4.</strong> Clique sur <strong>&laquo;&nbsp;Plus&nbsp;&raquo;</strong> pour voir le champ &laquo;&nbsp;URL&nbsp;&raquo;</div>
+            <div><strong>5.</strong> Efface l&apos;URL et <strong>colle</strong> (Ctrl+V) le code copié</div>
+            <div><strong>6.</strong> Choisis &laquo;&nbsp;<strong>Barre de favoris</strong>&nbsp;&raquo; comme dossier</div>
+            <div><strong>7.</strong> Clique sur <strong>&laquo;&nbsp;Enregistrer&nbsp;&raquo;</strong></div>
+          </div>
+        </div>
+
+        {/* Étape 3 — Utilisation */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e3e8f0', padding: 24, marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 14, color: '#c9a84c', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Étape 3 — Utilisation</div>
           <ol style={{ fontSize: 15, color: '#1a2332', lineHeight: 1.8, paddingLeft: 20 }}>
             <li>Va sur une annonce (SeLoger, LeBonCoin, Bien&apos;ici...)</li>
-            <li>Scroll rapidement jusqu&apos;en bas pour que toutes les photos se chargent</li>
-            <li>Si tu veux le téléphone agence, clique sur &laquo;&nbsp;Afficher le numéro&nbsp;&raquo;</li>
+            <li>Scroll rapidement jusqu&apos;en bas pour charger les photos</li>
             <li>Clique sur le favori <strong>📥 Envoyer à Emilio</strong></li>
             <li>Une fenêtre s&apos;ouvre : choisis le client et confirme</li>
           </ol>
         </div>
 
-        {/* Note alternative */}
-        <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 14, padding: 18, marginTop: 24, fontSize: 13, color: '#854d0e' }}>
-          <strong>💡 Astuce :</strong> Si le bouton ne se glisse pas, fais clic droit dessus → &laquo;&nbsp;Ajouter aux favoris&nbsp;&raquo;. Ou copie ce code et colle-le manuellement comme URL d&apos;un nouveau favori&nbsp;:
+        {/* Code brut visible */}
+        <details style={{ marginTop: 20 }}>
+          <summary style={{ cursor: 'pointer', color: '#64748b', fontSize: 13 }}>Voir le code brut du bookmarklet</summary>
           <textarea
             readOnly
             value={bookmarkletCode}
@@ -92,20 +152,20 @@ export default function BookmarkletPage() {
               fontSize: 11,
               fontFamily: 'monospace',
               background: 'white',
-              border: '1px solid #fde68a',
+              border: '1px solid #e3e8f0',
               borderRadius: 8,
               resize: 'vertical',
-              minHeight: 60,
+              minHeight: 80,
             }}
             onClick={(e) => (e.target as HTMLTextAreaElement).select()}
           />
-        </div>
+        </details>
       </div>
     </div>
   );
 }
 
-const kbdStyle = {
+const kbdStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '2px 8px',
   background: '#1a2332',
@@ -114,4 +174,13 @@ const kbdStyle = {
   fontSize: 12,
   fontFamily: 'monospace',
   fontWeight: 600,
+};
+
+const codeStyle: React.CSSProperties = {
+  background: 'white',
+  padding: '2px 8px',
+  borderRadius: 4,
+  border: '1px solid #a7f3d0',
+  fontSize: 13,
+  fontFamily: 'monospace',
 };
