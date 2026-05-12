@@ -141,8 +141,24 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   async function saveContact() {
     setSaving(true);
-    const { data } = await supabase.from('clients').update({ prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: [cf.email1, cf.email2].filter(Boolean), telephones: [cf.tel1, cf.tel2].filter(Boolean) }).eq('id', client.id).select().single();
-    if (data) { setClient(data as Client); await addJournal(client.id, 'fiche_modifiee', 'Contact mis à jour'); }
+    // Détecter les vrais changements avant de logger
+    const newEmails = [cf.email1, cf.email2].filter(Boolean);
+    const newTels = [cf.tel1, cf.tel2].filter(Boolean);
+    const changes: string[] = [];
+    if ((client.prenom||'') !== cf.prenom) changes.push(`Prénom : "${client.prenom||'—'}" → "${cf.prenom||'—'}"`);
+    if ((client.nom||'') !== cf.nom) changes.push(`Nom : "${client.nom||'—'}" → "${cf.nom||'—'}"`);
+    if ((client.adresse||'') !== (cf.adresse||'')) changes.push(`Adresse mise à jour`);
+    if (JSON.stringify(client.emails||[]) !== JSON.stringify(newEmails)) changes.push(`Email modifié`);
+    if (JSON.stringify(client.telephones||[]) !== JSON.stringify(newTels)) changes.push(`Téléphone modifié`);
+
+    const { data } = await supabase.from('clients').update({ prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels }).eq('id', client.id).select().single();
+    if (data) {
+      setClient(data as Client);
+      // Ne log que s'il y a un vrai changement
+      if (changes.length > 0) {
+        await addJournal(client.id, 'fiche_modifiee', '✏️ Contact mis à jour', changes.join(' · '));
+      }
+    }
     setSaving(false); setShowContact(false);
   }
 
@@ -191,8 +207,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
         if (removed.length) changes.push(`Secteurs supprimés : ${removed.join(', ')}`);
       }
       if ((prev.notes||'') !== (crit.notes||'')) changes.push(`Notes modifiées`);
-      const desc = changes.length > 0 ? changes.join(' · ') : 'Aucun changement détecté';
-      await addJournal(client.id, 'criteres_modifies', '🎯 Critères mis à jour', desc);
+      // Ne log que s'il y a un vrai changement
+      if (changes.length > 0) {
+        await addJournal(client.id, 'criteres_modifies', '🎯 Critères mis à jour', changes.join(' · '));
+      }
     }
     setSaving(false); setShowCriteres(false);
   }
@@ -201,8 +219,20 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setSaving(true);
     let exp = mandat.date_expiration;
     if (mandat.date_signature && mandat.duree && !exp) { const d = new Date(mandat.date_signature); d.setMonth(d.getMonth() + parseInt(mandat.duree)); exp = d.toISOString().split('T')[0]; }
+    // Détecter les vrais changements
+    const changes: string[] = [];
+    if ((client.mandat_date_signature||'') !== (mandat.date_signature||'')) changes.push(`Date signature : ${client.mandat_date_signature||'—'} → ${mandat.date_signature||'—'}`);
+    if ((client.mandat_duree||0).toString() !== (mandat.duree||'')) changes.push(`Durée : ${client.mandat_duree||'—'} mois → ${mandat.duree||'—'} mois`);
+    if ((client.mandat_honoraires||'') !== (mandat.honoraires||'')) changes.push(`Honoraires : ${client.mandat_honoraires||'—'} → ${mandat.honoraires||'—'}`);
+    if ((client.mandat_date_expiration||'') !== (exp||'')) changes.push(`Expiration : ${client.mandat_date_expiration||'—'} → ${exp||'—'}`);
+
     const { data } = await supabase.from('clients').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null }).eq('id', client.id).select().single();
-    if (data) { setClient(data as Client); await addJournal(client.id, 'mandat_modifie', 'Mandat mis à jour'); }
+    if (data) {
+      setClient(data as Client);
+      if (changes.length > 0) {
+        await addJournal(client.id, 'mandat_modifie', '📜 Mandat mis à jour', changes.join(' · '));
+      }
+    }
     setSaving(false); setShowMandat(false);
   }
 
@@ -213,6 +243,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
       setShowOffreEcrite(true);
       return;
     }
+    // Anti-doublon : ne rien faire si le statut est déjà le même
+    if (client.statut === statut) return;
     const { data } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().single();
     if (data) { setClient(data as Client); await addJournal(client.id, 'statut_change', `Statut → ${statut}`); }
   }
