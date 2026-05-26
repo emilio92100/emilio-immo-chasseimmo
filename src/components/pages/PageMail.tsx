@@ -14,6 +14,7 @@ const MESSAGES_PRE = [
   { label: '📋 Compte-rendu d\'activité', corps: `Bonjour {{prénom}},\n\nJe souhaitais vous faire un bilan de nos recherches en cours. Nous avons analysé plusieurs biens sur vos secteurs prioritaires et je travaille activement à vous trouver la perle rare.\n\nN'hésitez pas à me faire part de vos remarques ou nouvelles priorités.\n\n` + SIGNATURE },
   { label: '✅ Confirmation de rendez-vous', corps: `Bonjour {{prénom}},\n\nJe vous confirme notre rendez-vous. N'oubliez pas de vous munir de vos documents (pièce d'identité, justificatifs de revenus) si vous souhaitez avancer rapidement sur un bien.\n\nÀ très bientôt !\n\n` + SIGNATURE },
   { label: '💌 Message personnalisé', corps: `Bonjour {{prénom}},\n\n` + SIGNATURE },
+  { label: '🏠 Sélection de biens', corps: `Bonjour {{prénom}},\n\nJ'ai le plaisir de vous transmettre une sélection de biens qui correspondent à vos critères de recherche.\n\nVous trouverez ci-dessous le détail de chacun. N'hésitez pas à cliquer sur "Consulter le bien" pour accéder à la fiche complète.\n\nJe reste à votre disposition pour toute question ou pour organiser une visite.\n\n` + SIGNATURE },
 ];
 
 export default function PageMail({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -26,6 +27,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [showPre, setShowPre] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from('clients').select('id, prenom, nom, emails, telephones, reference')
@@ -45,28 +47,63 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   async function handleSend() {
     if (selected.length === 0) { alert('Ajoutez au moins un destinataire'); return; }
     if (!objet.trim()) { alert("L'objet est obligatoire"); return; }
-    setSending(true);
-    for (const client of selected) {
-      const corpsPersonnalise = corps.replace(/\{\{prénom\}\}/g, client.prenom);
-      await supabase.from('envois').insert({
-        client_id: client.id,
-        type: 'mail_libre',
-        objet,
-        corps: corpsPersonnalise,
-        destinataires: client.emails || [],
-        sms_envoye: sms,
-      });
-      // Journal avec contenu complet du message
-      await supabase.from('journal').insert({
-        client_id: client.id,
-        type: 'mail_envoye',
-        titre: `✉️ Mail envoyé — ${objet}`,
-        description: `À : ${(client.emails||[]).join(', ')}\n\n${corpsPersonnalise}`,
-      });
+
+    // Vérif que tous les destinataires ont un email
+    const sansEmail = selected.filter(c => !c.emails || c.emails.length === 0);
+    if (sansEmail.length > 0) {
+      alert(`Ces clients n'ont pas d'email : ${sansEmail.map(c => `${c.prenom} ${c.nom}`).join(', ')}`);
+      return;
     }
-    setSending(false);
-    setSent(true);
-    setTimeout(() => { setSent(false); setSelected([]); setObjet(''); setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE); }, 3000);
+
+    setSending(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/api/send-mail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_ids: selected.map(c => c.id),
+          objet,
+          corps,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const detail = data.error || (data.results || []).find((r: any) => !r.success)?.error || 'Erreur inconnue';
+        setErrorMsg(`Échec d'envoi : ${detail}`);
+        setSending(false);
+        return;
+      }
+
+      // Optionnel : SMS de notification (pas branché à un service SMS, juste journalisé)
+      if (sms) {
+        for (const client of selected) {
+          if (client.telephones?.[0]) {
+            await supabase.from('journal').insert({
+              client_id: client.id,
+              type: 'sms_notification',
+              titre: `📱 SMS de notification`,
+              description: `Notification envoyée à ${client.telephones[0]} (à intégrer avec service SMS)`,
+            });
+          }
+        }
+      }
+
+      setSending(false);
+      setSent(true);
+      setTimeout(() => {
+        setSent(false);
+        setSelected([]);
+        setObjet('');
+        setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE);
+      }, 3500);
+    } catch (e) {
+      setErrorMsg(`Erreur réseau : ${(e as Error).message}`);
+      setSending(false);
+    }
   }
 
   return (
@@ -81,7 +118,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
       {sent ? (
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>✅</div>
-          <div className={styles.emptyTitle}>Mail envoyé !</div>
+          <div className={styles.emptyTitle}>Mail{selected.length > 1 ? 's' : ''} envoyé{selected.length > 1 ? 's' : ''} !</div>
           <div className={styles.emptySub}>Le contenu a été tracé dans le journal de chaque client</div>
         </div>
       ) : (
@@ -137,7 +174,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             {/* MESSAGE */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser</span></label>
+                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser · les biens du client sont automatiquement joints</span></label>
                 <div style={{ position: 'relative' }}>
                   <button onClick={() => setShowPre(!showPre)} style={{ fontSize: 12, fontWeight: 600, color: '#3b82f6', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
                     💬 Messages pré-rédigés ▾
@@ -159,6 +196,12 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
               <textarea className={styles.textarea} rows={12} value={corps} onChange={e => setCorps(e.target.value)} style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7 }} />
             </div>
 
+            {errorMsg && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#991b1b' }}>
+                ⚠️ {errorMsg}
+              </div>
+            )}
+
             {/* FOOTER */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a5568', cursor: 'pointer' }}>
@@ -167,7 +210,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
                 {selected.length > 0 && selected[0].telephones?.[0] && <span style={{ fontSize: 11, color: '#94a3b8' }}>→ {selected[0].telephones[0]}</span>}
               </label>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button className={styles.btn} onClick={() => { setSelected([]); setObjet(''); setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE); }}>Annuler</button>
+                <button className={styles.btn} onClick={() => { setSelected([]); setObjet(''); setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE); setErrorMsg(null); }}>Annuler</button>
                 <button className={`${styles.btn} ${styles.btnDark}`} onClick={handleSend} disabled={sending || selected.length === 0}>
                   {sending ? '⏳ Envoi...' : `✈️ Envoyer${selected.length > 0 ? ` (${selected.length} destinataire${selected.length > 1 ? 's' : ''})` : ''}`}
                 </button>
