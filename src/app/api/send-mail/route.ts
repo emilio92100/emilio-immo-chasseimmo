@@ -157,7 +157,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { client_ids, objet, corps } = body as { client_ids: string[]; objet: string; corps: string };
+    const { client_ids, objet, corps, biens_ids, destinataires_override, mode } = body as {
+      client_ids: string[];
+      objet: string;
+      corps: string;
+      biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
+      destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
+      mode?: 'libre' | 'biens';       // 'libre' = pas de biens (mail texte), 'biens' = avec biens (défaut)
+    };
 
     if (!Array.isArray(client_ids) || client_ids.length === 0) {
       return NextResponse.json({ error: 'Aucun destinataire' }, { status: 400 });
@@ -166,7 +173,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "L'objet est obligatoire" }, { status: 400 });
     }
 
-    // Récupère clients + leurs biens actifs
+    // Récupère clients
     const { data: clients } = await supabase
       .from('clients')
       .select('id, prenom, nom, emails')
@@ -176,24 +183,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Clients introuvables' }, { status: 404 });
     }
 
-    const { data: tousBiens } = await supabase
-      .from('biens')
-      .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, prix_vendeur, prix_acquereur, photos, badge_retour')
-      .in('client_id', client_ids)
-      .neq('badge_retour', 'refuse')
-      .order('created_at', { ascending: false });
+    // Récupère les biens UNIQUEMENT si mode != 'libre'
+    let tousBiens: (BienLite & { client_id: string })[] = [];
+    if (mode !== 'libre') {
+      let query = supabase
+        .from('biens')
+        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, prix_vendeur, prix_acquereur, photos, badge_retour')
+        .in('client_id', client_ids)
+        .order('created_at', { ascending: false });
+
+      // Si biens_ids fourni → on filtre sur ces biens-là seulement
+      if (Array.isArray(biens_ids) && biens_ids.length > 0) {
+        query = query.in('id', biens_ids);
+      } else {
+        // Sinon, on prend tous les biens actifs (non refusés)
+        query = query.neq('badge_retour', 'refuse');
+      }
+
+      const { data } = await query;
+      tousBiens = (data || []) as (BienLite & { client_id: string })[];
+    }
 
     const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     const results: { client_id: string; success: boolean; error?: string }[] = [];
 
     for (const client of clients) {
-      const emails = (client.emails || []).filter((e: string) => e && e.includes('@'));
+      // Si override fourni → utiliser cette liste, sinon les emails du client
+      const sourceEmails = Array.isArray(destinataires_override) && destinataires_override.length > 0
+        ? destinataires_override
+        : (client.emails || []);
+      const emails = sourceEmails.filter((e: string) => e && e.includes('@'));
       if (emails.length === 0) {
-        results.push({ client_id: client.id, success: false, error: 'Pas d\'email' });
+        results.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' });
         continue;
       }
 
-      const biensClient = (tousBiens || []).filter((b: BienLite & { client_id: string }) => b.client_id === client.id);
+      const biensClient = tousBiens.filter(b => b.client_id === client.id);
       const corpsPerso = corps.replace(/\{\{prénom\}\}/g, client.prenom);
       const html = buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient });
       const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${SITE_URL}/bien/${b.id}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32`;
@@ -221,19 +246,25 @@ export async function POST(req: NextRequest) {
         const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
 
         if (ok) {
+          const typeEnvoi = biensClient.length === 0 ? 'mail_libre' : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
           await supabase.from('envois').insert({
             client_id: client.id,
-            type: 'mail_libre',
+            type: typeEnvoi,
             objet,
             corps: corpsPerso,
             destinataires: emails,
             biens_ids: biensClient.map(b => b.id),
             sms_envoye: false,
           });
+          const titreJournal = biensClient.length === 0
+            ? `✉️ Mail envoyé — ${objet}`
+            : biensClient.length === 1
+              ? `📤 Bien envoyé — ${biensClient[0].titre || biensClient[0].ville || 'bien'}`
+              : `📤 Sélection envoyée — ${biensClient.length} biens`;
           await supabase.from('journal').insert({
             client_id: client.id,
-            type: 'mail_envoye',
-            titre: `✉️ Mail envoyé — ${objet}`,
+            type: biensClient.length === 0 ? 'mail_envoye' : 'envoi_bien',
+            titre: titreJournal,
             description: `À : ${emails.join(', ')}\n\n${corpsPerso}${biensClient.length > 0 ? `\n\nBiens joints : ${biensClient.length}` : ''}`,
           });
           results.push({ client_id: client.id, success: true });
