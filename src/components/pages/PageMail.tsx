@@ -66,6 +66,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
           client_ids: selected.map(c => c.id),
           objet,
           corps,
+          mode: 'libre',
         }),
       });
 
@@ -174,7 +175,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             {/* MESSAGE */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser · les biens du client sont automatiquement joints</span></label>
+                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser</span></label>
                 <div style={{ position: 'relative' }}>
                   <button onClick={() => setShowPre(!showPre)} style={{ fontSize: 12, fontWeight: 600, color: '#3b82f6', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
                     💬 Messages pré-rédigés ▾
