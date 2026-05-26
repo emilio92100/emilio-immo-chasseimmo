@@ -95,6 +95,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const dragIdxRef = useRef(-1);
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
   const [envoiBienId, setEnvoiBienId] = useState('');
+  const [envoiBienIds, setEnvoiBienIds] = useState<string[]>([]); // sélection multiple
+  const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
   const [envoiSending, setEnvoiSending] = useState(false);
   const [showCompteRendu, setShowCompteRendu] = useState(false);
@@ -496,44 +498,111 @@ Description originale : ${editBienForm.description}`,
     const emails = client.emails?.filter(Boolean) || [];
     const titre = b?.titre || `${b?.type_bien||'Bien'} — ${b?.ville||''}`;
     setEnvoiBienId(bienId);
+    setEnvoiBienIds([bienId]);
+    setEnvoiMode('unique');
     setEnvoiForm({
       destinataires: emails.join(', '),
       objet: `Proposition immobilière — ${titre}`,
       corps: `Bonjour ${client.prenom},
 
-Veuillez trouver ci-joint la fiche détaillée du bien suivant :
+Je vous transmets les détails de ce bien qui correspond à vos critères de recherche.
 
-📍 ${titre}${b?.surface ? `
-📐 Surface : ${b.surface}m²` : ''}${b?.nb_pieces ? `
-🚪 ${b.nb_pieces} pièces` : ''}${b?.prix_acquereur ? `
-💰 Prix : ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}
+Vous trouverez ci-dessous l'aperçu et le bouton pour consulter la fiche complète.
 
 N'hésitez pas à me contacter pour plus d'informations ou pour organiser une visite.
 
 Cordialement,
 Alexandre ROGELET
-Emilio Immobilier`,
+Emilio Immobilier
+06 58 95 76 32`,
+      sms: false,
+    });
+    setShowEnvoiBien(true);
+  }
+
+  function openEnvoiMulti() {
+    const emails = client.emails?.filter(Boolean) || [];
+    // Pré-sélectionne tous les biens non refusés
+    const biensActifs = biens.filter(b => b.badge_retour !== 'refuse');
+    setEnvoiBienIds(biensActifs.map(b => b.id));
+    setEnvoiBienId('');
+    setEnvoiMode('multi');
+    setEnvoiForm({
+      destinataires: emails.join(', '),
+      objet: `Sélection de biens — Vos recherches immobilières`,
+      corps: `Bonjour ${client.prenom},
+
+J'ai le plaisir de vous transmettre une sélection de biens qui correspondent à vos critères de recherche.
+
+Vous trouverez ci-dessous le détail de chacun. Cliquez sur "Consulter le bien" pour accéder à la fiche complète.
+
+Je reste à votre disposition pour toute question ou pour organiser des visites.
+
+Cordialement,
+Alexandre ROGELET
+Emilio Immobilier
+06 58 95 76 32`,
+      sms: false,
+    });
+    setShowEnvoiBien(true);
+  }
+
+  function openEnvoiLibre() {
+    const emails = client.emails?.filter(Boolean) || [];
+    setEnvoiBienIds([]);
+    setEnvoiBienId('');
+    setEnvoiMode('libre');
+    setEnvoiForm({
+      destinataires: emails.join(', '),
+      objet: '',
+      corps: `Bonjour ${client.prenom},
+
+Cordialement,
+Alexandre ROGELET
+Emilio Immobilier
+06 58 95 76 32`,
       sms: false,
     });
     setShowEnvoiBien(true);
   }
 
   async function saveEnvoiBien() {
-    if (!envoiForm.destinataires) { alert('Indiquez un destinataire.'); return; }
+    if (!envoiForm.destinataires.trim()) { alert('Indiquez un destinataire.'); return; }
+    if (!envoiForm.objet.trim()) { alert("L'objet est obligatoire."); return; }
+    if (envoiMode !== 'libre' && envoiBienIds.length === 0) { alert('Sélectionnez au moins un bien.'); return; }
+
     setEnvoiSending(true);
-    const b = biens.find(x => x.id === envoiBienId);
-    // Sauvegarder l'envoi en base
-    await supabase.from('envois').insert({
-      client_id: client.id, type: 'selection_biens',
-      objet: envoiForm.objet,
-      corps: envoiForm.corps,
-      destinataires: envoiForm.destinataires.split(',').map((s: string) => s.trim()).filter(Boolean),
-      biens_ids: [envoiBienId],
-      sms_envoye: envoiForm.sms,
-    });
-    await addJournal(client.id, 'envoi_bien', `📤 Bien envoyé — ${b?.titre || b?.ville || ''}`, `Destinataires : ${envoiForm.destinataires}`);
-    setEnvoiSending(false); setShowEnvoiBien(false); load();
-    alert('Envoi enregistré ! (Intégration Mailjet à configurer dans Paramètres pour envoi réel)');
+    try {
+      const destinataires_override = envoiForm.destinataires.split(',').map(s => s.trim()).filter(Boolean);
+      const res = await fetch('/api/send-mail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_ids: [client.id],
+          objet: envoiForm.objet,
+          corps: envoiForm.corps,
+          biens_ids: envoiMode === 'libre' ? undefined : envoiBienIds,
+          mode: envoiMode === 'libre' ? 'libre' : 'biens',
+          destinataires_override,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const detail = data.error || (data.results || []).find((r: { success: boolean; error?: string }) => !r.success)?.error || 'Erreur inconnue';
+        alert(`Échec d'envoi : ${detail}`);
+        setEnvoiSending(false);
+        return;
+      }
+
+      setEnvoiSending(false);
+      setShowEnvoiBien(false);
+      load();
+      alert('✅ Mail envoyé avec succès !');
+    } catch (e) {
+      alert(`Erreur réseau : ${(e as Error).message}`);
+      setEnvoiSending(false);
+    }
   }
 
   async function savePlanVisite() {
@@ -1431,10 +1500,10 @@ Emilio Immobilier`,
             <div className={styles.modalBody}>
               <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Que souhaitez-vous envoyer à ce client ?</p>
               {[
-                { icon: '📄', label: 'Sélection de biens', sub: `${biens.length} bien${biens.length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.length === 0) { alert("Ajoutez d'abord des biens."); return; } alert('Génération PDF en cours de développement.'); }, primary: true },
+                { icon: '📄', label: 'Sélection de biens', sub: `${biens.filter(b => b.badge_retour !== 'refuse').length} bien${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} actif${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.filter(b => b.badge_retour !== 'refuse').length === 0) { alert("Ajoutez d'abord des biens à la fiche."); return; } openEnvoiMulti(); }, primary: true },
                 { icon: '🤝', label: 'Présentation des services', sub: 'Plaquette Emilio Immobilier', action: () => { setShowEnvoi(false); alert('PDF Présentation — V2'); }, primary: false },
                 { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
-                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé', action: () => { setShowEnvoi(false); setEnvoiForm({ destinataires: (client.emails||[]).join(', '), objet: '', corps: `Bonjour ${client.prenom},\n\nCordialement,\nAlexandre ROGELET\nEmilio Immobilier`, sms: false }); setEnvoiBienId(''); setShowEnvoiBien(true); }, primary: false },
+                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé sans bien', action: () => { setShowEnvoi(false); openEnvoiLibre(); }, primary: false },
               ].map((btn, i) => (
                 <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid #1a2332' : '1px solid #e3e8f0', background: btn.primary ? '#1a2332' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
                   <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>
@@ -1712,31 +1781,62 @@ Emilio Immobilier`,
 
       {showEnvoiBien && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoiBien(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 600 }}>
+          <div className={styles.modal} style={{ maxWidth: 680 }}>
             <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>📤 Envoyer ce bien au client</h2>
+              <h2 className={styles.modalTitle}>
+                {envoiMode === 'unique' && '📤 Envoyer ce bien au client'}
+                {envoiMode === 'multi' && '📤 Envoyer une sélection de biens'}
+                {envoiMode === 'libre' && '✉️ Envoyer un mail libre'}
+              </h2>
               <button className={styles.modalClose} onClick={() => setShowEnvoiBien(false)}>✕</button>
             </div>
             <div className={styles.modalBody}>
-              {/* Aperçu du bien */}
-              {(() => { const b = biens.find(x => x.id === envoiBienId); return b ? (
-                <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{ width: 56, height: 56, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, overflow: 'hidden', flexShrink: 0 }}>
-                    {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+
+              {/* MODE UNIQUE : aperçu du bien */}
+              {envoiMode === 'unique' && (() => {
+                const b = biens.find(x => x.id === envoiBienId);
+                return b ? (
+                  <div style={{ background: '#faf6ee', border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, overflow: 'hidden', flexShrink: 0 }}>
+                      {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    {b.prix_acquereur && <div style={{ fontWeight: 800, fontSize: 16, color: '#c9a84c' }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
+                ) : null;
+              })()}
+
+              {/* MODE MULTI : checkboxes pour sélection */}
+              {envoiMode === 'multi' && (
+                <div>
+                  <label className={styles.lbl}>Biens à inclure dans le mail <span style={{ fontWeight: 400, color: '#94a3b8' }}>({envoiBienIds.length}/{biens.filter(b => b.badge_retour !== 'refuse').length})</span></label>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    <button type="button" onClick={() => setEnvoiBienIds(biens.filter(b => b.badge_retour !== 'refuse').map(b => b.id))} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' }}>Tout sélectionner</button>
+                    <button type="button" onClick={() => setEnvoiBienIds([])} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' }}>Tout désélectionner</button>
                   </div>
-                  {b.prix_acquereur && <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#c9a84c' }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
-                  {/* PDF simulé */}
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 10px', textAlign: 'center', flexShrink: 0 }}>
-                    <div style={{ fontSize: 20 }}>📄</div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#ef4444' }}>PDF joint</div>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>Fiche bien</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', border: '1px solid #e3e8f0', borderRadius: 10, padding: 8, background: '#fafbfc' }}>
+                    {biens.filter(b => b.badge_retour !== 'refuse').map(b => {
+                      const checked = envoiBienIds.includes(b.id);
+                      return (
+                        <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#c9a84c' : '#e3e8f0'}`, background: checked ? '#faf6ee' : 'white', cursor: 'pointer', transition: 'all 0.12s' }}>
+                          <input type="checkbox" checked={checked} onChange={e => { if (e.target.checked) setEnvoiBienIds(prev => [...prev, b.id]); else setEnvoiBienIds(prev => prev.filter(id => id !== b.id)); }} style={{ accentColor: '#1a2332', width: 16, height: 16, flexShrink: 0 }} />
+                          <div style={{ width: 38, height: 38, borderRadius: 6, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, overflow: 'hidden', flexShrink: 0 }}>
+                            {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
+                          </div>
+                          {b.prix_acquereur && <div style={{ fontWeight: 700, fontSize: 13, color: '#c9a84c', flexShrink: 0 }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
-              ) : null; })()}
+              )}
 
               <div><label className={styles.lbl}>Destinataire(s) <span style={{ fontWeight: 400, color: '#94a3b8' }}>(séparés par virgule)</span></label>
                 <input className={styles.inp} value={envoiForm.destinataires} onChange={e => setEnvoiForm(f => ({ ...f, destinataires: e.target.value }))} placeholder="email@client.fr" />
@@ -1752,10 +1852,18 @@ Emilio Immobilier`,
                 <label htmlFor="sms_envoi" style={{ fontSize: 13, fontWeight: 600, color: '#1a2332', cursor: 'pointer' }}>📱 Envoyer aussi un SMS de notification</label>
                 {client.telephones?.[0] && <span style={{ fontSize: 12, color: '#94a3b8' }}>→ {client.telephones[0]}</span>}
               </div>
+
+              {envoiMode !== 'libre' && envoiBienIds.length > 0 && (
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
+                  ℹ️ Le mail inclura {envoiBienIds.length} bien{envoiBienIds.length > 1 ? 's' : ''} avec un bouton &quot;Consulter le bien&quot; vers la fiche complète.
+                </div>
+              )}
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowEnvoiBien(false)}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveEnvoiBien} disabled={envoiSending || !envoiForm.destinataires}>{envoiSending ? '⏳ Envoi...' : '📤 Envoyer'}</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveEnvoiBien} disabled={envoiSending || !envoiForm.destinataires || (envoiMode !== 'libre' && envoiBienIds.length === 0)}>
+                {envoiSending ? '⏳ Envoi...' : `📤 Envoyer${envoiMode === 'multi' && envoiBienIds.length > 0 ? ` (${envoiBienIds.length} biens)` : ''}`}
+              </button>
             </div>
           </div>
         </div>
