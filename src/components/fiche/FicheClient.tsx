@@ -26,24 +26,270 @@ const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte']
 interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; }
 
 function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: any; setBienForm: any; prixAcq: number; styles: any }) {
+  const set = (key: string, value: any) => setBienForm((f: any) => ({ ...f, [key]: value }));
+  const toggle = (key: string) => setBienForm((f: any) => ({ ...f, [key]: !f[key] }));
+
+  const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#c9a84c', letterSpacing: 1.5, textTransform: 'uppercase', margin: '8px 0 10px', paddingBottom: 6, borderBottom: '1px solid #f1f5f9' };
+  const chip = (active: boolean): React.CSSProperties => ({
+    padding: '7px 12px',
+    borderRadius: 20,
+    border: `1.5px solid ${active ? '#c9a84c' : '#e3e8f0'}`,
+    background: active ? '#fdf6e3' : 'white',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    color: active ? '#854d0e' : '#64748b',
+    fontFamily: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    transition: 'all 0.12s',
+  });
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Titre</label><input className={styles.inp} value={bienForm.titre||''} onChange={e => setBienForm((f: any) => ({ ...f, titre: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Type</label><select className={styles.inp} value={bienForm.type_bien||'Appartement'} onChange={e => setBienForm((f: any) => ({ ...f, type_bien: e.target.value }))}><option>Appartement</option><option>Maison</option><option>Loft</option><option>Studio</option><option>Duplex</option><option>Villa</option></select></div>
-      <div><label className={styles.lbl}>Source</label><input className={styles.inp} value={bienForm.source_portail||''} onChange={e => setBienForm((f: any) => ({ ...f, source_portail: e.target.value }))} placeholder="SeLoger..." /></div>
-      <div><label className={styles.lbl}>Ville</label><input className={styles.inp} value={bienForm.ville||''} onChange={e => setBienForm((f: any) => ({ ...f, ville: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Code postal</label><input className={styles.inp} value={bienForm.code_postal||''} onChange={e => setBienForm((f: any) => ({ ...f, code_postal: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Surface m²</label><input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => setBienForm((f: any) => ({ ...f, surface: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Pièces</label><input className={styles.inp} type="number" value={bienForm.nb_pieces||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_pieces: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Chambres</label><input className={styles.inp} type="number" value={bienForm.nb_chambres||''} onChange={e => setBienForm((f: any) => ({ ...f, nb_chambres: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Étage</label><input className={styles.inp} type="number" value={bienForm.etage||''} onChange={e => setBienForm((f: any) => ({ ...f, etage: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>DPE</label><input className={styles.inp} value={bienForm.dpe||''} onChange={e => setBienForm((f: any) => ({ ...f, dpe: e.target.value }))} placeholder="A B C..." /></div>
-      <div><label className={styles.lbl}>Prix vendeur €</label><input className={styles.inp} type="number" value={bienForm.prix_vendeur||''} onChange={e => setBienForm((f: any) => ({ ...f, prix_vendeur: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Commission</label><div style={{ display: 'flex', gap: 6 }}><select className={styles.inp} style={{ width: 80 }} value={bienForm.commission_type} onChange={e => setBienForm((f: any) => ({ ...f, commission_type: e.target.value }))}><option value="pourcentage">%</option><option value="montant">€</option></select><input className={styles.inp} type="number" value={bienForm.commission_val||''} onChange={e => setBienForm((f: any) => ({ ...f, commission_val: e.target.value }))} /></div></div>
-      <div><label className={styles.lbl}>Prix acquéreur</label><div className={styles.inp} style={{ background: '#fef9c3', color: '#854d0e', fontWeight: 700 }}>{prixAcq ? `${prixAcq.toLocaleString('fr-FR')}€` : '—'}</div></div>
-      <div><label className={styles.lbl}>Agence</label><input className={styles.inp} value={bienForm.agence_nom||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_nom: e.target.value }))} /></div>
-      <div><label className={styles.lbl}>Tél. agence</label><input className={styles.inp} value={bienForm.agence_tel||''} onChange={e => setBienForm((f: any) => ({ ...f, agence_tel: e.target.value }))} /></div>
-      <div style={{ gridColumn: '1/-1' }}><label className={styles.lbl}>Description</label><textarea className={styles.inp} rows={3} value={bienForm.description||''} onChange={e => setBienForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+
+      {/* ===== IDENTIFICATION ===== */}
+      <div style={sectionTitle}>📍 Identification</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label className={styles.lbl}>Titre du bien</label>
+          <input className={styles.inp} value={bienForm.titre||''} onChange={e => set('titre', e.target.value)} placeholder="Ex: Appartement 3 pièces traversant sur jardin" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Type</label>
+          <select className={styles.inp} value={bienForm.type_bien||'Appartement'} onChange={e => set('type_bien', e.target.value)}>
+            <option>Appartement</option><option>Maison</option><option>Loft</option><option>Studio</option><option>Duplex</option><option>Villa</option><option>Terrain</option><option>Autre</option>
+          </select>
+        </div>
+        <div>
+          <label className={styles.lbl}>Source / Portail</label>
+          <input className={styles.inp} value={bienForm.source_portail||''} onChange={e => set('source_portail', e.target.value)} placeholder="SeLoger, LogicImmo..." />
+        </div>
+        <div>
+          <label className={styles.lbl}>Ville</label>
+          <input className={styles.inp} value={bienForm.ville||''} onChange={e => set('ville', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Code postal</label>
+          <input className={styles.inp} value={bienForm.code_postal||''} onChange={e => set('code_postal', e.target.value)} />
+        </div>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label className={styles.lbl}>Quartier <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span></label>
+          <input className={styles.inp} value={bienForm.quartier||''} onChange={e => set('quartier', e.target.value)} placeholder="Parchamp–Albert Kahn..." />
+        </div>
+      </div>
+
+      {/* ===== CARACTÉRISTIQUES ===== */}
+      <div style={sectionTitle}>📐 Caractéristiques</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <div>
+          <label className={styles.lbl}>Surface m²</label>
+          <input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => set('surface', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Pièces</label>
+          <input className={styles.inp} type="number" value={bienForm.nb_pieces||''} onChange={e => set('nb_pieces', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Chambres</label>
+          <input className={styles.inp} type="number" value={bienForm.nb_chambres||''} onChange={e => set('nb_chambres', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Sdb / Sdd</label>
+          <input className={styles.inp} type="number" value={bienForm.nb_salles_bain||''} onChange={e => set('nb_salles_bain', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>WC</label>
+          <input className={styles.inp} type="number" value={bienForm.nb_wc||''} onChange={e => set('nb_wc', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Étage</label>
+          <input className={styles.inp} type="number" value={bienForm.etage||''} onChange={e => set('etage', e.target.value)} placeholder="0=RDC" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Sur</label>
+          <input className={styles.inp} type="number" value={bienForm.etage_total||''} onChange={e => set('etage_total', e.target.value)} placeholder="étages total" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Année</label>
+          <input className={styles.inp} type="number" value={bienForm.annee_construction||''} onChange={e => set('annee_construction', e.target.value)} placeholder="1981" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Exposition</label>
+          <select className={styles.inp} value={bienForm.exposition||''} onChange={e => set('exposition', e.target.value)}>
+            <option value="">—</option>
+            <option value="nord">Nord</option><option value="sud">Sud</option>
+            <option value="est">Est</option><option value="ouest">Ouest</option>
+            <option value="nord-sud">Nord-Sud</option><option value="est-ouest">Est-Ouest</option>
+            <option value="nord-est">Nord-Est</option><option value="nord-ouest">Nord-Ouest</option>
+            <option value="sud-est">Sud-Est</option><option value="sud-ouest">Sud-Ouest</option>
+          </select>
+        </div>
+        <div>
+          <label className={styles.lbl}>État général</label>
+          <select className={styles.inp} value={bienForm.etat_general||''} onChange={e => set('etat_general', e.target.value)}>
+            <option value="">—</option>
+            <option value="Neuf">Neuf</option>
+            <option value="Rénové">Rénové</option>
+            <option value="Bon état">Bon état</option>
+            <option value="Entretenu">Entretenu</option>
+            <option value="À rafraîchir">À rafraîchir</option>
+            <option value="À rénover">À rénover</option>
+          </select>
+        </div>
+        <div style={{ gridColumn: '3/5' }}>
+          <label className={styles.lbl} style={{ visibility: 'hidden' }}>spacer</label>
+          <div style={{ height: 38 }} />
+        </div>
+      </div>
+
+      {/* ===== ÉQUIPEMENTS (CHIPS) ===== */}
+      <div style={sectionTitle}>✨ Équipements & Caractéristiques</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+        {[
+          { key: 'parking', label: '🅿️ Parking' },
+          { key: 'ascenseur', label: '🛗 Ascenseur' },
+          { key: 'cave', label: '📦 Cave' },
+          { key: 'balcon', label: '🌿 Balcon' },
+          { key: 'terrasse', label: '🌞 Terrasse' },
+          { key: 'jardin', label: '🌳 Jardin' },
+          { key: 'gardien', label: '🛡️ Gardien' },
+          { key: 'cuisine_equipee', label: '🍳 Cuisine équipée' },
+          { key: 'climatisation', label: '❄️ Climatisation' },
+          { key: 'traversant', label: '↔️ Traversant' },
+        ].map(opt => (
+          <button key={opt.key} type="button" onClick={() => toggle(opt.key)} style={chip(!!bienForm[opt.key])}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Surfaces optionnelles si balcon/terrasse cochés */}
+      {(bienForm.balcon || bienForm.terrasse) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginTop: 6 }}>
+          {bienForm.balcon && (
+            <div>
+              <label className={styles.lbl}>Surface balcon m² <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span></label>
+              <input className={styles.inp} type="number" step="0.1" value={bienForm.surface_balcon||''} onChange={e => set('surface_balcon', e.target.value)} />
+            </div>
+          )}
+          {bienForm.terrasse && (
+            <div>
+              <label className={styles.lbl}>Surface terrasse m² <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span></label>
+              <input className={styles.inp} type="number" step="0.1" value={bienForm.surface_terrasse||''} onChange={e => set('surface_terrasse', e.target.value)} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== PERFORMANCE ÉNERGÉTIQUE ===== */}
+      <div style={sectionTitle}>🔋 Performance énergétique</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <div>
+          <label className={styles.lbl}>DPE</label>
+          <select className={styles.inp} value={bienForm.dpe||''} onChange={e => set('dpe', e.target.value)}>
+            <option value="">—</option>
+            <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+            <option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option>
+          </select>
+        </div>
+        <div>
+          <label className={styles.lbl}>Conso kWh/m²/an</label>
+          <input className={styles.inp} type="number" value={bienForm.dpe_conso||''} onChange={e => set('dpe_conso', e.target.value)} placeholder="292" />
+        </div>
+        <div>
+          <label className={styles.lbl}>GES</label>
+          <select className={styles.inp} value={bienForm.ges||''} onChange={e => set('ges', e.target.value)}>
+            <option value="">—</option>
+            <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+            <option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option>
+          </select>
+        </div>
+        <div>
+          <label className={styles.lbl}>Émissions kg CO₂/m²/an</label>
+          <input className={styles.inp} type="number" value={bienForm.ges_emissions||''} onChange={e => set('ges_emissions', e.target.value)} placeholder="64" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Chauffage</label>
+          <select className={styles.inp} value={bienForm.chauffage||''} onChange={e => set('chauffage', e.target.value)}>
+            <option value="">—</option>
+            <option value="Central">Central</option>
+            <option value="Individuel">Individuel</option>
+            <option value="Collectif">Collectif</option>
+            <option value="Électrique">Électrique</option>
+          </select>
+        </div>
+        <div style={{ gridColumn: '2/-1' }}>
+          <label className={styles.lbl}>Source d&apos;énergie</label>
+          <select className={styles.inp} value={bienForm.source_energie||''} onChange={e => set('source_energie', e.target.value)}>
+            <option value="">—</option>
+            <option value="Gaz">Gaz</option>
+            <option value="Électrique">Électrique</option>
+            <option value="Fioul">Fioul</option>
+            <option value="Pompe à chaleur">Pompe à chaleur</option>
+            <option value="Bois">Bois</option>
+            <option value="Solaire">Solaire</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ===== PRIX & CHARGES ===== */}
+      <div style={sectionTitle}>💰 Prix & Charges</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+        <div>
+          <label className={styles.lbl}>Prix vendeur €</label>
+          <input className={styles.inp} type="number" value={bienForm.prix_vendeur||''} onChange={e => set('prix_vendeur', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Commission</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select className={styles.inp} style={{ width: 80 }} value={bienForm.commission_type||'pourcentage'} onChange={e => set('commission_type', e.target.value)}>
+              <option value="pourcentage">%</option>
+              <option value="montant">€</option>
+            </select>
+            <input className={styles.inp} type="number" value={bienForm.commission_val||''} onChange={e => set('commission_val', e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <label className={styles.lbl}>Prix acquéreur (FAI)</label>
+          <div className={styles.inp} style={{ background: '#fef9c3', color: '#854d0e', fontWeight: 700 }}>
+            {prixAcq ? `${prixAcq.toLocaleString('fr-FR')}€` : '—'}
+          </div>
+        </div>
+        <div>
+          <label className={styles.lbl}>Prix au m²</label>
+          <div className={styles.inp} style={{ background: '#f8fafc', color: '#64748b' }}>
+            {prixAcq && bienForm.surface ? `${Math.round(prixAcq / parseFloat(bienForm.surface)).toLocaleString('fr-FR')}€/m²` : '—'}
+          </div>
+        </div>
+        <div>
+          <label className={styles.lbl}>Charges trimestrielles €</label>
+          <input className={styles.inp} type="number" value={bienForm.charges_trimestrielles||''} onChange={e => set('charges_trimestrielles', e.target.value)} placeholder="1050" />
+        </div>
+        <div>
+          <label className={styles.lbl}>Taxe foncière annuelle €</label>
+          <input className={styles.inp} type="number" value={bienForm.taxe_fonciere||''} onChange={e => set('taxe_fonciere', e.target.value)} placeholder="1393" />
+        </div>
+      </div>
+
+      {/* ===== AGENCE / VENDEUR ===== */}
+      <div style={sectionTitle}>🏢 Agence / Vendeur</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <label className={styles.lbl}>Nom agence ou vendeur</label>
+          <input className={styles.inp} value={bienForm.agence_nom||''} onChange={e => set('agence_nom', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Téléphone</label>
+          <input className={styles.inp} value={bienForm.agence_tel||''} onChange={e => set('agence_tel', e.target.value)} />
+        </div>
+      </div>
+
+      {/* ===== DESCRIPTION ===== */}
+      <div style={sectionTitle}>📝 Description</div>
+      <textarea className={styles.inp} rows={5} value={bienForm.description||''} onChange={e => set('description', e.target.value)} placeholder="Description complète du bien telle qu'envoyée au client..." />
+
     </div>
   );
 }
