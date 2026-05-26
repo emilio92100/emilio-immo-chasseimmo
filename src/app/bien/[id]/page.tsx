@@ -14,6 +14,7 @@ const BLEU = '#1a2332';
 const BLEU_FONCE = '#131b27';
 const DORE = '#c9a84c';
 const CREME = '#faf6ee';
+const BG = '#f7f4ed';
 
 const DPE_COLORS: Record<string, { bg: string; label: string }> = {
   A: { bg: '#00a651', label: 'Excellent' },
@@ -26,7 +27,7 @@ const DPE_COLORS: Record<string, { bg: string; label: string }> = {
 };
 
 function fmt(n?: number | null) {
-  if (!n) return null;
+  if (n === null || n === undefined) return null;
   return new Intl.NumberFormat('fr-FR').format(n);
 }
 
@@ -46,226 +47,298 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   const prixM2 = prixAffiche && bien.surface ? Math.round(prixAffiche / bien.surface) : null;
   const photos: string[] = Array.isArray(bien.photos) ? bien.photos.filter(Boolean) : [];
 
-  // Caractéristiques détectées automatiquement depuis description + champs
-  const desc = (bien.description || '').toLowerCase();
+  // Caractéristiques
   const features: { icon: string; label: string }[] = [];
   if (bien.parking) features.push({ icon: 'ti-car', label: 'Parking' });
-  if (desc.includes('ascenseur')) features.push({ icon: 'ti-elevator', label: 'Ascenseur' });
-  if (desc.includes('cave')) features.push({ icon: 'ti-archive', label: 'Cave' });
-  if (desc.includes('balcon')) features.push({ icon: 'ti-plant', label: 'Balcon' });
-  if (desc.includes('terrasse')) features.push({ icon: 'ti-plant-2', label: 'Terrasse' });
-  if (desc.includes('jardin')) features.push({ icon: 'ti-trees', label: 'Jardin' });
-  if (desc.includes('gardien')) features.push({ icon: 'ti-shield-check', label: 'Gardien' });
-  if (desc.includes('cuisine équipée') || desc.includes('cuisine equipee')) features.push({ icon: 'ti-tools-kitchen-2', label: 'Cuisine équipée' });
-  if (desc.includes('climatisation') || desc.includes('clim')) features.push({ icon: 'ti-snowflake', label: 'Climatisation' });
-  if (desc.includes('cheminée') || desc.includes('cheminee')) features.push({ icon: 'ti-flame', label: 'Cheminée' });
-  if (desc.includes('parquet')) features.push({ icon: 'ti-grid-dots', label: 'Parquet' });
-  if (desc.includes('moulures')) features.push({ icon: 'ti-frame', label: 'Moulures' });
-  if (desc.includes('traversant')) features.push({ icon: 'ti-arrows-horizontal', label: 'Traversant' });
-  if (desc.includes('rénové') || desc.includes('renove')) features.push({ icon: 'ti-paint', label: 'Rénové' });
-  if (desc.includes('sécuris') || desc.includes('securis')) features.push({ icon: 'ti-lock', label: 'Sécurisé' });
+  if (bien.ascenseur) features.push({ icon: 'ti-elevator', label: 'Ascenseur' });
+  if (bien.cave) features.push({ icon: 'ti-archive', label: 'Cave' });
+  if (bien.balcon) features.push({ icon: 'ti-plant', label: bien.surface_balcon ? `Balcon ${bien.surface_balcon}m²` : 'Balcon' });
+  if (bien.terrasse) features.push({ icon: 'ti-deer', label: bien.surface_terrasse ? `Terrasse ${bien.surface_terrasse}m²` : 'Terrasse' });
+  if (bien.jardin) features.push({ icon: 'ti-trees', label: 'Jardin' });
+  if (bien.gardien) features.push({ icon: 'ti-shield-check', label: 'Gardien' });
+  if (bien.cuisine_equipee) features.push({ icon: 'ti-tools-kitchen-2', label: 'Cuisine équipée' });
+  if (bien.climatisation) features.push({ icon: 'ti-snowflake', label: 'Climatisation' });
+  if (bien.traversant) features.push({ icon: 'ti-arrows-horizontal', label: 'Traversant' });
 
-  const dpeInfo = bien.dpe ? DPE_COLORS[bien.dpe.toUpperCase()] : null;
+  const dpeInfo = bien.dpe ? DPE_COLORS[String(bien.dpe).toUpperCase()] : null;
+  const gesInfo = bien.ges ? DPE_COLORS[String(bien.ges).toUpperCase()] : null;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#ece6da', fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px' }}>
-        <div style={{ background: '#ffffff', borderRadius: 4, overflow: 'hidden', boxShadow: '0 8px 32px rgba(26,35,50,0.12)' }}>
+    <div style={{ minHeight: '100vh', background: BG, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 
-          {/* TOP BAR — LOGO */}
-          <div style={{ background: BLEU, padding: '14px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `2px solid ${DORE}` }}>
-            <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={180} height={44} style={{ height: 38, width: 'auto' }} priority />
-            <div style={{ color: DORE, fontSize: 10, letterSpacing: 2.5, fontWeight: 500 }}>SÉLECTION PRIVÉE</div>
+      {/* TOP BAR — LOGO */}
+      <header style={{ background: BLEU, padding: '16px 0', borderBottom: `2px solid ${DORE}` }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={180} height={44} style={{ height: 40, width: 'auto' }} priority />
+          <div style={{ color: DORE, fontSize: 11, letterSpacing: 2.5, fontWeight: 500 }}>SÉLECTION PRIVÉE</div>
+        </div>
+      </header>
+
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 16px 64px' }}>
+
+        {/* TITRE EN HAUT (style Airbnb) */}
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 600, color: BLEU, margin: '0 0 8px', lineHeight: 1.2 }}>
+            {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` de ${bien.surface} m²` : ''}`}
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 14, color: '#64748b' }}>
+            {(bien.quartier || bien.ville || bien.code_postal) && (
+              <span>
+                <i className="ti ti-map-pin" style={{ fontSize: 15, verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />
+                {[bien.quartier, bien.ville, bien.code_postal].filter(Boolean).join(', ')}
+              </span>
+            )}
+            <span style={{ color: '#cbd5e1' }}>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: DORE, fontWeight: 500 }}>
+              <i className="ti ti-sparkles" style={{ fontSize: 14 }} aria-hidden="true" /> Coup de cœur Emilio
+            </span>
           </div>
+        </div>
 
-          {/* CAROUSEL PHOTOS */}
+        {/* CAROUSEL PHOTOS — coins bien arrondis */}
+        <div style={{ borderRadius: 20, overflow: 'hidden', boxShadow: '0 10px 40px rgba(26,35,50,0.12)' }}>
           <PhotoCarousel photos={photos} />
+        </div>
 
-          {/* TITRE + PRIX */}
-          <div style={{ padding: '32px 32px 24px', borderBottom: '0.5px solid rgba(26,35,50,0.1)' }}>
-            <div style={{ fontSize: 10, color: DORE, letterSpacing: 3, fontWeight: 500, marginBottom: 10 }}>
-              {[bien.type_bien?.toUpperCase(), bien.nb_pieces && `${bien.nb_pieces} PIÈCES`].filter(Boolean).join(' · ')}
-            </div>
-            <h1 style={{ fontSize: 26, fontWeight: 500, color: BLEU, margin: '0 0 8px', lineHeight: 1.2 }}>
-              {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` de ${bien.surface} m²` : ''}`}
-            </h1>
-            {(bien.ville || bien.code_postal) && (
-              <div style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
-                <i className="ti ti-map-pin" style={{ fontSize: 14, verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />
-                {[bien.code_postal, bien.ville].filter(Boolean).join(' ')}
-              </div>
-            )}
+        {/* GRID PRINCIPAL : contenu + sidebar prix */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 40, marginTop: 32 }}>
 
-            {prixAffiche && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16, paddingTop: 16, borderTop: '0.5px solid rgba(26,35,50,0.08)' }}>
-                <div>
-                  <div style={{ fontSize: 10, color: '#64748b', letterSpacing: 2, marginBottom: 4 }}>{labelPrix.toUpperCase()}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 32, fontWeight: 500, color: BLEU }}>{fmt(prixAffiche)} €</span>
-                    {prixM2 && <span style={{ fontSize: 12, color: '#64748b' }}>{fmt(prixM2)} €/m²</span>}
-                  </div>
-                  {bien.prix_acquereur && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>Honoraires d&apos;agence inclus</div>}
-                </div>
-                <a href="#contact" style={{ background: BLEU, color: 'white', padding: '12px 22px', borderRadius: 3, fontSize: 12, fontWeight: 500, letterSpacing: 1, textDecoration: 'none', display: 'inline-block' }}>
-                  DEMANDER UNE VISITE
-                </a>
-              </div>
-            )}
-          </div>
+          {/* ===== COLONNE GAUCHE ===== */}
+          <div style={{ minWidth: 0 }}>
 
-          {/* BANDEAU CARACTÉRISTIQUES */}
-          {(bien.surface || bien.nb_pieces || bien.nb_chambres || bien.etage !== null) && (
-            <div style={{ background: CREME, padding: '22px 32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 16, textAlign: 'center' }}>
+            {/* INFOS RAPIDES */}
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', paddingBottom: 24, borderBottom: '1px solid rgba(26,35,50,0.08)' }}>
               {bien.surface && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, marginBottom: 4 }}>SURFACE</div>
-                  <div style={{ fontSize: 18, fontWeight: 500, color: BLEU }}>{bien.surface} <span style={{ fontSize: 11, opacity: 0.6 }}>m²</span></div>
+                  <div style={{ fontSize: 22, fontWeight: 600, color: BLEU }}>{bien.surface}<span style={{ fontSize: 14, opacity: 0.7, marginLeft: 2 }}>m²</span></div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Surface</div>
                 </div>
               )}
               {bien.nb_pieces && (
-                <div style={{ borderLeft: '0.5px solid rgba(26,35,50,0.15)' }}>
-                  <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, marginBottom: 4 }}>PIÈCES</div>
-                  <div style={{ fontSize: 18, fontWeight: 500, color: BLEU }}>{bien.nb_pieces}</div>
-                </div>
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(26,35,50,0.08)' }} />
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: BLEU }}>{bien.nb_pieces}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Pièces</div>
+                  </div>
+                </>
               )}
               {bien.nb_chambres && (
-                <div style={{ borderLeft: '0.5px solid rgba(26,35,50,0.15)' }}>
-                  <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, marginBottom: 4 }}>CHAMBRES</div>
-                  <div style={{ fontSize: 18, fontWeight: 500, color: BLEU }}>{bien.nb_chambres}</div>
-                </div>
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(26,35,50,0.08)' }} />
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: BLEU }}>{bien.nb_chambres}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Chambre{bien.nb_chambres > 1 ? 's' : ''}</div>
+                  </div>
+                </>
               )}
               {bien.etage !== null && bien.etage !== undefined && (
-                <div style={{ borderLeft: '0.5px solid rgba(26,35,50,0.15)' }}>
-                  <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, marginBottom: 4 }}>ÉTAGE</div>
-                  <div style={{ fontSize: 18, fontWeight: 500, color: BLEU }}>{bien.etage === 0 ? 'RDC' : bien.etage}</div>
-                </div>
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(26,35,50,0.08)' }} />
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: BLEU }}>
+                      {bien.etage === 0 ? 'RDC' : bien.etage}
+                      {bien.etage_total && <span style={{ fontSize: 14, opacity: 0.5, marginLeft: 2 }}>/{bien.etage_total}</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Étage</div>
+                  </div>
+                </>
               )}
-            </div>
-          )}
-
-          {/* CONTENU */}
-          <div style={{ padding: 32 }}>
-
-            {/* LE MOT D'ALEXANDRE */}
-            <div style={{ background: CREME, borderLeft: `3px solid ${DORE}`, padding: '22px 26px', marginBottom: 32, position: 'relative' }}>
-              <div style={{ position: 'absolute', top: -10, left: 22, background: 'white', padding: '0 12px', fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500 }}>
-                LE MOT D&apos;ALEXANDRE
-              </div>
-              <p style={{ margin: '0 0 14px', fontSize: 14, lineHeight: 1.8, color: '#334155', fontStyle: 'italic' }}>
-                &quot;J&apos;ai sélectionné ce bien personnellement parmi des dizaines d&apos;annonces. Il correspond à vos critères et présente un excellent potentiel. N&apos;hésitez pas à me contacter pour organiser une visite ou échanger sur le quartier.&quot;
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 12, borderTop: '0.5px solid rgba(201,168,76,0.3)' }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: BLEU, color: DORE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 500 }}>AR</div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: BLEU }}>Alexandre ROGELET</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Votre chasseur dédié · Emilio Immobilier</div>
-                </div>
-              </div>
+              {bien.exposition && (
+                <>
+                  <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(26,35,50,0.08)' }} />
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: BLEU, textTransform: 'capitalize' }}>{bien.exposition}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Exposition</div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* DESCRIPTION */}
             {bien.description && (
-              <div style={{ marginBottom: 36 }}>
-                <div style={{ fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 12 }}>DESCRIPTION</div>
-                <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.8, margin: 0, whiteSpace: 'pre-wrap' }}>
+              <section style={{ padding: '28px 0', borderBottom: '1px solid rgba(26,35,50,0.08)' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: BLEU, margin: '0 0 14px' }}>À propos de ce bien</h2>
+                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                   {bien.description}
-                </p>
-              </div>
+                </div>
+              </section>
             )}
 
-            {/* CARACTÉRISTIQUES DÉTECTÉES */}
+            {/* CARACTÉRISTIQUES */}
             {features.length > 0 && (
-              <div style={{ marginBottom: 36 }}>
-                <div style={{ fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 16 }}>CARACTÉRISTIQUES DU BIEN</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+              <section style={{ padding: '28px 0', borderBottom: '1px solid rgba(26,35,50,0.08)' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: BLEU, margin: '0 0 16px' }}>Équipements et caractéristiques</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
                   {features.map((f, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: CREME, borderRadius: 3 }}>
-                      <i className={`ti ${f.icon}`} style={{ fontSize: 18, color: DORE }} aria-hidden="true" />
-                      <span style={{ fontSize: 13, color: '#334155' }}>{f.label}</span>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'white', borderRadius: 16, border: '1px solid rgba(26,35,50,0.06)' }}>
+                      <i className={`ti ${f.icon}`} style={{ fontSize: 20, color: DORE }} aria-hidden="true" />
+                      <span style={{ fontSize: 14, color: '#334155', fontWeight: 500 }}>{f.label}</span>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* DPE */}
-            {dpeInfo && (
-              <div style={{ marginBottom: 36 }}>
-                <div style={{ fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 16 }}>PERFORMANCE ÉNERGÉTIQUE</div>
-                <div style={{ background: CREME, padding: 18, borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ background: dpeInfo.bg, color: 'white', fontWeight: 500, fontSize: 22, width: 46, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}>
-                    {bien.dpe.toUpperCase()}
+            {/* PERFORMANCE ÉNERGÉTIQUE */}
+            {(dpeInfo || gesInfo) && (
+              <section style={{ padding: '28px 0', borderBottom: '1px solid rgba(26,35,50,0.08)' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: BLEU, margin: '0 0 16px' }}>Performance énergétique</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+                  {dpeInfo && (
+                    <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '1px solid rgba(26,35,50,0.06)' }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Consommation</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ background: dpeInfo.bg, color: 'white', fontWeight: 700, fontSize: 26, width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}>
+                          {String(bien.dpe).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: BLEU }}>DPE {dpeInfo.label}</div>
+                          {bien.dpe_conso && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{bien.dpe_conso} kWh/m².an</div>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {gesInfo && (
+                    <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '1px solid rgba(26,35,50,0.06)' }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Émissions GES</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ background: gesInfo.bg, color: 'white', fontWeight: 700, fontSize: 26, width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}>
+                          {String(bien.ges).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: BLEU }}>GES {gesInfo.label}</div>
+                          {bien.ges_emissions && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{bien.ges_emissions} kg CO₂/m².an</div>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {(bien.chauffage || bien.source_energie) && (
+                  <div style={{ display: 'flex', gap: 24, marginTop: 16, fontSize: 13, color: '#64748b' }}>
+                    {bien.chauffage && <div><span style={{ color: '#94a3b8' }}>Chauffage :</span> <span style={{ color: '#334155', fontWeight: 500 }}>{bien.chauffage}</span></div>}
+                    {bien.source_energie && <div><span style={{ color: '#94a3b8' }}>Énergie :</span> <span style={{ color: '#334155', fontWeight: 500 }}>{bien.source_energie}</span></div>}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: BLEU }}>DPE — Classe {bien.dpe.toUpperCase()}</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{dpeInfo.label}</div>
+                )}
+              </section>
+            )}
+
+            {/* INFORMATIONS COMPLÉMENTAIRES */}
+            {(bien.annee_construction || bien.charges_trimestrielles || bien.taxe_fonciere || bien.etat_general) && (
+              <section style={{ padding: '28px 0' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: BLEU, margin: '0 0 16px' }}>Informations complémentaires</h2>
+                <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(26,35,50,0.06)', padding: '8px 4px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                    <tbody>
+                      {bien.annee_construction && (
+                        <tr style={{ borderBottom: '1px solid rgba(26,35,50,0.06)' }}>
+                          <td style={{ padding: '14px 20px', color: '#64748b' }}>Année de construction</td>
+                          <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 500, color: BLEU }}>{bien.annee_construction}</td>
+                        </tr>
+                      )}
+                      {bien.etat_general && (
+                        <tr style={{ borderBottom: '1px solid rgba(26,35,50,0.06)' }}>
+                          <td style={{ padding: '14px 20px', color: '#64748b' }}>État général</td>
+                          <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 500, color: BLEU }}>{bien.etat_general}</td>
+                        </tr>
+                      )}
+                      {bien.charges_trimestrielles && (
+                        <tr style={{ borderBottom: '1px solid rgba(26,35,50,0.06)' }}>
+                          <td style={{ padding: '14px 20px', color: '#64748b' }}>Charges trimestrielles</td>
+                          <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 500, color: BLEU }}>~ {fmt(bien.charges_trimestrielles)} €</td>
+                        </tr>
+                      )}
+                      {bien.taxe_fonciere && (
+                        <tr>
+                          <td style={{ padding: '14px 20px', color: '#64748b' }}>Taxe foncière</td>
+                          <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 500, color: BLEU }}>{fmt(bien.taxe_fonciere)} € / an</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+          </div>
+
+          {/* ===== SIDEBAR DROITE — PRIX & CTA STICKY ===== */}
+          <aside>
+            <div style={{ position: 'sticky', top: 24, background: 'white', borderRadius: 20, padding: 28, boxShadow: '0 10px 40px rgba(26,35,50,0.1)', border: '1px solid rgba(26,35,50,0.06)' }}>
+
+              {prixAffiche && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <span style={{ fontSize: 28, fontWeight: 600, color: BLEU }}>{fmt(prixAffiche)} €</span>
+                    <span style={{ fontSize: 11, color: DORE, fontWeight: 600, letterSpacing: 1 }}>{labelPrix}</span>
+                  </div>
+                  {prixM2 && (
+                    <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+                      {fmt(prixM2)} €/m²
+                    </div>
+                  )}
+                  {bien.prix_acquereur && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 24 }}>Honoraires d&apos;agence inclus</div>
+                  )}
+                </>
+              )}
+
+              <a href="#contact" style={{ display: 'block', width: '100%', background: BLEU, color: 'white', padding: '14px 22px', borderRadius: 12, fontSize: 14, fontWeight: 600, textAlign: 'center', textDecoration: 'none', marginBottom: 10 }}>
+                Demander une visite
+              </a>
+              <a href="tel:+33658957632" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', background: 'white', color: BLEU, padding: '14px 22px', borderRadius: 12, fontSize: 14, fontWeight: 600, textDecoration: 'none', border: `1.5px solid ${BLEU}`, boxSizing: 'border-box' }}>
+                <i className="ti ti-phone" style={{ fontSize: 16 }} aria-hidden="true" /> 06 58 95 76 32
+              </a>
+
+              <div style={{ borderTop: '1px solid rgba(26,35,50,0.08)', paddingTop: 20, marginTop: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: BLEU, color: DORE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>AR</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: BLEU }}>Alexandre ROGELET</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Votre chasseur dédié</div>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* DÉTAILS FINANCIERS */}
-            {prixAffiche && (
-              <div style={{ marginBottom: 36 }}>
-                <div style={{ fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 16 }}>DÉTAILS FINANCIERS</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: '12px 0', color: '#64748b', borderBottom: '0.5px solid rgba(26,35,50,0.08)' }}>Prix du bien</td>
-                      <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 500, color: BLEU, borderBottom: '0.5px solid rgba(26,35,50,0.08)' }}>{fmt(prixAffiche)} €</td>
-                    </tr>
-                    {prixM2 && (
-                      <tr>
-                        <td style={{ padding: '12px 0', color: '#64748b', borderBottom: '0.5px solid rgba(26,35,50,0.08)' }}>Prix au m²</td>
-                        <td style={{ padding: '12px 0', textAlign: 'right', color: '#334155', borderBottom: '0.5px solid rgba(26,35,50,0.08)' }}>{fmt(prixM2)} €/m²</td>
-                      </tr>
-                    )}
-                    {bien.prix_acquereur && (
-                      <tr>
-                        <td style={{ padding: '12px 0', color: '#64748b' }}>Honoraires d&apos;agence</td>
-                        <td style={{ padding: '12px 0', textAlign: 'right', color: '#334155' }}>Inclus dans le prix</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* CTA */}
-            <div id="contact" style={{ background: BLEU, padding: 28, textAlign: 'center', color: 'white', borderRadius: 4 }}>
-              <div style={{ fontSize: 10, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 8 }}>CE BIEN VOUS INTÉRESSE ?</div>
-              <div style={{ fontSize: 17, fontWeight: 500, marginBottom: 4 }}>Alexandre ROGELET</div>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 18 }}>Votre chasseur Emilio Immobilier</div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <a href="tel:+33658957632" style={{ background: DORE, color: BLEU, padding: '12px 24px', borderRadius: 3, fontWeight: 500, fontSize: 12, letterSpacing: 1, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <i className="ti ti-phone" style={{ fontSize: 14 }} aria-hidden="true" /> 06 58 95 76 32
-                </a>
-                <a href="mailto:arogelet@emilio-immo.com" style={{ background: 'rgba(255,255,255,0.05)', color: 'white', padding: '12px 24px', borderRadius: 3, fontWeight: 500, fontSize: 12, letterSpacing: 1, textDecoration: 'none', border: '0.5px solid rgba(255,255,255,0.3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <i className="ti ti-mail" style={{ fontSize: 14 }} aria-hidden="true" /> M&apos;ENVOYER UN MAIL
-                </a>
-              </div>
             </div>
-
-          </div>
-
-          {/* FOOTER */}
-          <div style={{ background: BLEU_FONCE, padding: '20px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(201,168,76,0.2)', flexWrap: 'wrap', gap: 12 }}>
-            <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={140} height={32} style={{ height: 26, width: 'auto' }} />
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>
-              Chasse immobilière sur mesure · Paris &amp; région
-            </div>
-          </div>
+          </aside>
 
         </div>
 
-        {/* Mention bas de page */}
-        <div style={{ textAlign: 'center', padding: '24px 16px', color: '#64748b', fontSize: 11 }}>
-          Ce document est strictement confidentiel et destiné au client mandant.
-        </div>
+        {/* SECTION CONTACT BAS DE PAGE */}
+        <section id="contact" style={{ background: BLEU, borderRadius: 24, padding: '40px 32px', color: 'white', textAlign: 'center', marginTop: 48 }}>
+          <div style={{ fontSize: 11, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 12 }}>CE BIEN VOUS INTÉRESSE ?</div>
+          <h2 style={{ fontSize: 24, fontWeight: 600, margin: '0 0 8px' }}>Contactez-moi pour organiser une visite</h2>
+          <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 24 }}>Je reste à votre entière disposition</div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="tel:+33658957632" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: DORE, color: BLEU, padding: '14px 28px', borderRadius: 14, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
+              <i className="ti ti-phone" style={{ fontSize: 16 }} aria-hidden="true" /> 06 58 95 76 32
+            </a>
+            <a href="mailto:arogelet@emilio-immo.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.08)', color: 'white', padding: '14px 28px', borderRadius: 14, fontWeight: 600, fontSize: 14, textDecoration: 'none', border: '1px solid rgba(255,255,255,0.25)' }}>
+              <i className="ti ti-mail" style={{ fontSize: 16 }} aria-hidden="true" /> arogelet@emilio-immo.com
+            </a>
+          </div>
+        </section>
+
       </div>
 
-      {/* Tabler Icons */}
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+      {/* FOOTER */}
+      <footer style={{ background: BLEU_FONCE, padding: '24px 16px', textAlign: 'center', borderTop: '1px solid rgba(201,168,76,0.2)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={140} height={32} style={{ height: 28, width: 'auto' }} />
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
+            Chasse immobilière sur mesure · Paris &amp; région · Document confidentiel
+          </div>
+        </div>
+      </footer>
+
+      {/* Responsive sur mobile */}
+      <style>{`
+        @media (max-width: 880px) {
+          main > div > div[style*="grid"] { grid-template-columns: 1fr !important; }
+          aside > div { position: static !important; }
+        }
+      `}</style>
     </div>
   );
 }
