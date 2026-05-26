@@ -1,6 +1,6 @@
 # CONTEXTE PROJET — Emilio Immobilier
-## CRM Immobilier sur mesure — Version 2.0
-### Mis à jour le 12 mai 2026
+## CRM Immobilier sur mesure — Version 2.1
+### Mis à jour le 26 mai 2026
 
 ---
 
@@ -18,18 +18,18 @@
 Emilio Immobilier est une agence immobilière qui fait de la **vente classique** (mandats vendeurs, mise en vente de biens) et de la **chasse immobilière** (mandats de recherche pour acquéreurs). Un client peut être vendeur, acheteur, ou les deux.
 
 ### Pourquoi ce CRM custom
-Le CRM actuel (Immofacile) ne convient pas en termes d'UX et de design. L'objectif est de **remplacer Immofacile** par ce CRM sur mesure, beau, fluide et adapté au workflow réel de l'agence. Immofacile est conservé **uniquement pour la diffusion portails** (SeLoger, LeBonCoin, Bien'ici, etc.) car ces portails nécessitent des partenariats techniques non reproductibles par un développeur indépendant. À terme, une passerelle de diffusion seule (Ubiflow, Adaptimmo…) pourrait remplacer Immofacile.
+Le CRM actuel (Immofacile) ne convient pas en termes d'UX et de design. L'objectif est de **remplacer Immofacile** par ce CRM sur mesure, beau, fluide et adapté au workflow réel de l'agence. Immofacile est conservé **uniquement pour la diffusion portails** car ces portails nécessitent des partenariats techniques non reproductibles par un développeur indépendant.
 
 ### Périmètre du CRM
 - **Gestion clients** : acquéreurs, vendeurs, ou les deux — avec critères de recherche (acquéreurs) et biens en mandat (vendeurs)
 - **Gestion biens** : biens sourcés (pour la chasse) + biens en mandat (propres à l'agence)
 - **Visites, transactions, suivi complet** du cycle de vie
-- **Communication** : mails, SMS, PDF de présentation
+- **Communication** : mails Mailjet + fiches publiques visuelles
 - **Dashboard & statistiques**
 - ❌ **PAS de diffusion portails** — reste sur Immofacile
 
-### Ce qui n'a aucun rapport avec ce projet
-Ce CRM est indépendant de Verimo (SaaS d'analyse de documents immo) et de Tonton Immo / Emilio Immo (pages réseaux sociaux). Ce sont des projets distincts.
+### Ce qui n'a aucun rapport
+Ce CRM est indépendant de Verimo (SaaS d'analyse) et Tonton/Emilio Immo (réseaux sociaux).
 
 ---
 
@@ -42,21 +42,31 @@ Ce CRM est indépendant de Verimo (SaaS d'analyse de documents immo) et de Tonto
 | Supabase | Base de données + Storage | ✅ Connecté |
 | GitHub | Repo source | ✅ emilio92100/emilio-immo-chasseimmo |
 | Claude API (Anthropic) | Extraction texte + reformulation | ✅ Clé configurée Vercel |
-| Mailjet | Email + SMS | ⏳ Clés à configurer |
+| Mailjet | Email transactionnel | ✅ Configuré + DNS validé |
 | geo.api.gouv.fr | Autocomplétion villes | ✅ Intégré |
 
 **URL prod :** https://emilio-immo-chasseimmo.vercel.app
-**Polices :** Plus Jakarta Sans (titres) + DM Sans (corps)
+**Polices :** Plus Jakarta Sans (titres) + DM Sans (corps) + Inter (page publique bien)
 
 ### Supabase
 - Project ID : eutxmrdcykztjdyydmuo
-- Bucket Storage : `photos-biens` (public) ✅ créé
-- Env vars Vercel : NEXT_PUBLIC_SUPABASE_URL ✅ · NEXT_PUBLIC_SUPABASE_ANON_KEY ✅ · ANTHROPIC_API_KEY ✅ · SUPABASE_SERVICE_ROLE_KEY ✅
+- Bucket Storage : `photos-biens` (public) ✅
+- Env vars Vercel : NEXT_PUBLIC_SUPABASE_URL ✅ · NEXT_PUBLIC_SUPABASE_ANON_KEY ✅ · ANTHROPIC_API_KEY ✅ · SUPABASE_SERVICE_ROLE_KEY ✅ · **MAILJET_API_KEY ✅** · **MAILJET_API_SECRET ✅** · **MAILJET_FROM_EMAIL ✅** · **MAILJET_FROM_NAME ✅** · **NEXT_PUBLIC_SITE_URL ✅**
+
+### Mailjet — Configuration (session 26 mai 2026)
+- Domaine `emilio-immo.com` validé dans Mailjet ✅
+- Adresse d'envoi `arogelet@emilio-immo.com` ajoutée (en attente validation par mail Roundcube)
+- **DNS OVH configurés** :
+  - TXT validation domaine : `mailjet._57401e37`
+  - SPF (type TXT, pas SPF !) : `v=spf1 include:mx.ovh.com include:spf.mailjet.com -all`
+  - DKIM : `mailjet._domainkey`
+- Coexistence avec Roundcube OVH : maintenue via `include:mx.ovh.com`
+- ⚠️ **Piège DNS résolu** : OVH avait par défaut un type **SPF** (déprécié RFC 7208) — recréer en **TXT** pour que Mailjet le reconnaisse
 
 ### Design System
 - Navy : `#1a2332` · Or : `#c9a84c` · Fond : `#f8fafc`
+- Fiche bien publique : fond crème `#f7f4ed`, arrondis 16-20px (style Airbnb premium)
 - Animations modals : fadeIn 0.18s + slideUp 0.22s cubic-bezier(0.34,1.56,0.64,1)
-- Avatar client : cercle + initiale prénom + anneau couleur statut
 
 ---
 
@@ -64,14 +74,29 @@ Ce CRM est indépendant de Verimo (SaaS d'analyse de documents immo) et de Tonto
 
 `clients`, `biens`, `visites`, `transactions`, `relances`, `envois`, `journal`, `partenaires`, `parametres`
 
-### Colonnes clients étendues (ajoutées cette session)
+### Colonnes clients étendues
 chambres_min, parking, balcon, terrasse, jardin, cave, ascenseur, gardien, interphone, digicode, rdc_exclu, dernier_etage, etage_min, dpe_max, annee_construction_min
 
-### Format secteurs en BDD
-`"Parchamp-Albert Kahn (Boulogne-Billancourt)"` → groupés par ville à l'affichage
+### 🆕 Colonnes biens étendues (session 26 mai 2026)
+Migration SQL exécutée pour ajouter à la table `biens` :
+- **DPE/GES** : `ges`, `dpe_conso` (kWh/m²/an), `ges_emissions` (kg CO₂/m²/an)
+- **Caractéristiques** : `exposition`, `nb_salles_bain`, `nb_wc`, `etage_total`, `annee_construction`, `quartier`, `etat_general`, `traversant`
+- **Énergie** : `chauffage`, `source_energie`
+- **Surfaces annexes** : `surface_balcon`, `surface_terrasse`, `surface_jardin`
+- **Financier** : `charges_trimestrielles`, `taxe_fonciere`
+- **Équipements booléens** : `balcon`, `terrasse`, `cave`, `ascenseur`, `gardien`, `cuisine_equipee`, `climatisation`, `jardin`
+- **Divers** : `nb_lots`
 
-### Table envois — type compte_rendu_visite
-Corps format : `"Avis : 🔥 Très intéressé | Note : ⭐⭐⭐ | commentaire libre"` (séparateur pipe)
+Fichier SQL : `migration_biens.sql` à la racine du repo
+
+### Format secteurs en BDD
+`"Parchamp-Albert Kahn (Boulogne-Billancourt)"` → groupés par ville
+
+### Table envois — types
+- `mail_libre` : mail texte simple sans biens
+- `envoi_bien` : envoi d'un seul bien
+- `selection_biens` : envoi de plusieurs biens
+- `compte_rendu_visite` : format `"Avis : 🔥 ... | Note : ⭐⭐⭐ | commentaire"` (pipe)
 
 ---
 
@@ -79,96 +104,126 @@ Corps format : `"Avis : 🔥 Très intéressé | Note : ⭐⭐⭐ | commentaire 
 
 ```
 src/
-├── app/api/
-│   ├── extract-bien/route.ts        # URL → Claude analyse HTML
-│   ├── parse-texte-bien/route.ts    # Copier-coller → Claude structure
-│   └── upload-photos/route.ts       # Photos → Supabase Storage
+├── app/
+│   ├── api/
+│   │   ├── extract-bien/route.ts
+│   │   ├── parse-texte-bien/route.ts    # 🆕 Parsing enrichi (DPE/GES/charges/expo)
+│   │   ├── upload-photos/route.ts
+│   │   └── send-mail/route.ts           # 🆕 Mailjet (mail libre + biens)
+│   └── bien/
+│       ├── layout.tsx                   # 🆕 Override overflow CSS global
+│       └── [id]/
+│           ├── page.tsx                 # 🆕 Fiche bien publique style Airbnb
+│           └── PhotoCarousel.tsx        # 🆕 Carrousel photos client
 ├── components/
-│   ├── clients/Clients.tsx          # Liste clients
-│   ├── fiche/FicheClient.tsx        # Fichier principal ~1850 lignes
-│   ├── layout/ (AppLayout, Sidebar, Topbar)
+│   ├── clients/Clients.tsx
+│   ├── fiche/FicheClient.tsx            # ~2350 lignes — formulaire bien étendu
+│   ├── layout/
 │   └── pages/
-│       ├── PageMail.tsx             # Nouveau mail + messages pré-rédigés
-│       ├── PageRecherche.tsx        # Recherche en cours
-│       ├── PageVisites.tsx          # Visites globales + CR intégré
-│       └── PageRelances/Activite/Parametres.tsx
-└── lib/supabase.ts
+│       ├── PageMail.tsx                 # 🆕 Mode 'libre' uniquement
+│       ├── PageRecherche.tsx
+│       └── ...
+├── lib/supabase.ts
+└── migration_biens.sql                  # 🆕
 ```
 
 ---
 
-## 4. FONCTIONNALITÉS LIVRÉES (V1.2)
+## 4. FONCTIONNALITÉS LIVRÉES
 
 ### Fiche Client — Structure
 - **Header** : avatar (cercle + initiale + anneau statut) · Contact inline cliquable · KPIs · Bouton 📤 Envoyer (popup) · Relance J+5 · Action · Ajouter un bien
-- **Bloc critères** (avant onglets) : Type+Budget / Surface+Pièces+Chambres+DPE+Étage+Année / Critères importants (équipements) / Secteurs recherchés (groupés ville→quartiers) / Précisions (notes dorées)
-- **Mandat compact** à droite : infos en 15px · "X jours restants"
+- **Bloc critères** (avant onglets)
+- **Mandat compact** à droite
 - **Onglets** : Biens / Visites / Transaction / Historique / Journal
 
 ### Onglet Biens
-- Ajout URL (Claude analyse HTML) ou copier-coller texte (Claude extrait)
-- Photos → Supabase Storage automatique → permanentes
-- Photos supprimées du Storage avec le bien
-- Drag & drop réordonnement (useRef)
+- Ajout URL (Claude HTML) ou copier-coller texte
+- Photos → Supabase Storage permanentes
+- Drag & drop réordonnement
 - Bouton ✨ Reformuler description avec IA
-- Prix vendeur + commission séparés à l'affichage
-- Modal Détail : 4 groupes (Localisation, Caractéristiques, Prix, Agence+Description)
+- **🆕 Formulaire d'ajout/édition refondu en 7 sections** :
+  - 📍 Identification (titre, type, source, ville, CP, quartier)
+  - 📐 Caractéristiques (surface, pièces, chambres, sdb, wc, étage/total, année, expo, état)
+  - ✨ Équipements (chips cliquables — parking/ascenseur/cave/balcon/terrasse/jardin/gardien/cuisine éq./clim/traversant)
+  - 🔋 Performance énergétique (DPE + conso, GES + émissions, chauffage, source énergie)
+  - 💰 Prix & Charges (prix vendeur, commission, prix FAI auto, prix/m² auto, charges trim, taxe foncière)
+  - 🏢 Agence / Vendeur
+  - 📝 Description
 
-### Onglet Visites
-- 2 sections : À venir (bleu) · Effectuées (vert avec CR complet)
-- Modal CR : étoiles 1-5 + avis 5 options + commentaire
-- CR sauvegardé dans `visites` ET `envois` → visible dans Historique
+### 🆕 Envoi de mails (session 26 mai 2026)
+Tous branchés sur Mailjet via `/api/send-mail`.
 
-### Onglet Transaction
-- 5 étapes avec données sauvegardées affichées en synthèse
-- Contre-offres détaillées (partie + montant + date) dans la synthèse
-- Retour étape via modal stylé (plus de confirm() navigateur)
-- Statut "Offre écrite" → popup de création d'offre
+**4 modes d'envoi** :
 
-### Historique
-- Mails envoyés + Comptes-rendus visites (icône verte, détail avis+note+commentaire)
+1. **PageMail** (page "Nouveau mail" globale) : mode `libre`
+   - Mail texte avec signature, sans bien
+   - Sélection multi-clients
+
+2. **Fiche client → 📤 Envoyer (à côté d'un bien)** : mode `unique`
+   - Un bien pré-sélectionné
+   - Mail avec carte du bien + bouton "Consulter le bien"
+
+3. **Fiche client → 📤 Envoyer (haut) → Sélection de biens** : mode `multi`
+   - Popup avec checkboxes (biens non refusés pré-cochés)
+   - Boutons "Tout sélectionner / désélectionner"
+
+4. **Fiche client → 📤 Envoyer (haut) → Mail libre** : mode `libre`
+
+**API `/api/send-mail`** accepte : `client_ids`, `objet`, `corps`, `biens_ids` (optionnel), `mode` (`libre|biens`), `destinataires_override`.
+Trace dans `envois` + `journal` après succès Mailjet.
+
+### 🆕 Fiche bien publique — `/bien/[id]`
+Page publique accessible à toute personne ayant le lien (pas d'auth).
+**Style Airbnb premium** : fond crème, arrondis 16-20px, sidebar sticky avec prix + CTA.
+
+Sections :
+- Header navy avec logo Emilio + badge "SÉLECTION PRIVÉE"
+- Titre + localisation + badge "Coup de cœur Emilio"
+- Carrousel photos (`PhotoCarousel.tsx`) avec navigation, compteur, dots, galerie modale plein écran
+- Infos rapides avec séparateurs verticaux (surface, pièces, chambres, étage, expo)
+- Description complète
+- Équipements (grid cartes blanches arrondies + icône dorée)
+- Performance énergétique (DPE + GES côte à côte avec étiquettes officielles)
+- Informations complémentaires (table année/état/charges/taxe)
+- Sidebar sticky droite : prix FAI + prix/m² + CTA "Demander une visite" + tel + avatar AR
+- Section contact bas
+- Footer navy
+
+### 🆕 Parsing texte amélioré (`/api/parse-texte-bien`)
+Prompt Claude enrichi pour extraire :
+- DPE/GES avec conso/émissions, exposition, nb sdb/wc, étage/total, année construction
+- Chauffage, source énergie, charges trimestrielles, taxe foncière
+- État général, équipements booléens, quartier, surfaces balcon/terrasse
+
+Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES par lettre, conso kWh, émissions kg CO₂, charges, taxe foncière).
+
+### Autres onglets (inchangés depuis V1.2)
+- **Visites** : À venir / Effectuées (avec CR : étoiles, avis, commentaire)
+- **Transaction** : 5 étapes, contre-offres détaillées
+- **Historique** : mails envoyés + CR
+- **Journal** : anti-bruit (log uniquement si vrai changement)
 
 ### Pages principales
-- **Mes Clients** : chips budget/surface/pièces/DPE · villes uniquement · alerte mandat
-- **Recherche en cours** : secteurs ville→quartiers · critères chips · alerte mandat
-- **Visites globale** : photo bien · date année · CR intégré · sync fiche client
-- **Nouveau mail** : objet vide · signature seule · 5 modèles pré-rédigés · tous clients searchables · historique contenu complet
-
-### 🆕 Améliorations session 12 mai 2026
-
-**Journal client — Anti-bruit (FicheClient.tsx)**
-- `saveContact` : log uniquement si vrai changement détecté (avec détail du diff prénom/nom/adresse/email/tél)
-- `saveCriteres` : skip complet si aucun changement (fini les entrées "Aucun changement détecté")
-- `saveMandat` : log uniquement si vrai changement (avec détail signature/durée/honoraires/expiration)
-- `changeStatut` : anti-doublon, ignore si le statut est déjà le même
-
-**UI — Bas de page (FicheClient.module.css)**
-- `contentWrap` : padding-bottom passé de 16px à 80px pour éviter que les onglets soient tronqués par la barre Windows
-
-**Bugs corrigés (FicheClient.tsx)**
-- `agence_tel` manquant dans l'INSERT de `saveBien` → la valeur s'affichait dans le preview mais n'était jamais enregistrée
-- `nb_chambres` manquant dans l'UPDATE de `saveFicheBien` → modification non persistée
-- ⚠️ Les biens créés avant ces fix ont ces champs vides, à corriger manuellement
+- **Mes Clients** · **Recherche en cours** · **Visites globale**
+- **Nouveau mail** : 6 modèles pré-rédigés (dont "Sélection de biens"), tous clients searchables
 
 ---
 
 ## 5. RÈGLES D'AFFICHAGE FIGÉES
 
-### Min/Max (partout)
-- Min ET max → `32–80m²`
-- Seulement min → `min 32m²`
-- Seulement max → `max 80m²`
-- Jamais de `+` parasite
+### Min/Max
+- `32–80m²` (les deux), `min 32m²` ou `max 80m²` (un seul)
 
 ### Prix
-- Acquéreur (gros, doré) + vendeur+commission (petit, gris) sur les cartes biens
-- PDF : acquéreur uniquement (vendeur masqué)
+- Carte bien : Acquéreur (gros, doré) + vendeur+commission (petit, gris)
+- Fiche publique `/bien/[id]` : Prix FAI uniquement (vendeur masqué)
 
 ### Jours mandat
 - "X jours restants" · "Expiré" · Badge alerte si < 15j
 
 ### Modals
-- Tous animés fadeIn+slideUp · overlay blur
+- fadeIn+slideUp · overlay blur
 - Critères NON fermable au clic extérieur
 
 ---
@@ -177,91 +232,117 @@ src/
 
 | Route | Fonction | Prérequis |
 |---|---|---|
-| `/api/extract-bien` | URL → Claude analyse HTML → JSON bien | ANTHROPIC_API_KEY |
-| `/api/parse-texte-bien` | Texte collé → Claude structure → JSON bien | ANTHROPIC_API_KEY |
-| `/api/upload-photos` | URLs externes → Supabase Storage → URLs permanentes | SUPABASE_SERVICE_ROLE_KEY |
-| `/api/bien-from-bookmarklet` | ⚠️ Dormant — tentative bookmarklet Chrome abandonnée le 12/05 | — |
+| `/api/extract-bien` | URL → Claude analyse HTML → JSON | ANTHROPIC_API_KEY |
+| `/api/parse-texte-bien` | Texte → Claude structure (enrichi) → JSON | ANTHROPIC_API_KEY |
+| `/api/upload-photos` | URLs externes → Supabase Storage | SUPABASE_SERVICE_ROLE_KEY |
+| `/api/send-mail` | Mailjet envoi mail libre ou avec biens | MAILJET_API_KEY + SECRET |
+| `/api/bien-from-bookmarklet` | ⚠️ Dormant (bookmarklet Chrome abandonné) | — |
 
 **SeLoger** : bloqué Cloudflare → copier-coller recommandé. LeBonCoin/PAP/Orpi : OK.
 
-### ⚠️ Tentative bookmarklet Chrome abandonnée (12 mai 2026)
-3 fichiers créés puis abandonnés à cause de blocages techniques (React bloque `javascript:` URLs, timing fragile sur `postMessage` entre fenêtres) :
-- `src/app/api/bien-from-bookmarklet/route.ts`
-- `src/app/bookmarklet/page.tsx`
-- `src/app/bookmarklet/capture/page.tsx`
-
-Fichiers laissés en place mais inactifs (aucun lien vers eux dans l'app). **Solution retenue** : continuer avec le copier-coller texte existant via `/api/parse-texte-bien`. À durcir : tronquer le texte collé à 4000 chars, prompt strict "ignore biens similaires", détecter les marqueurs "Plus de biens similaires" / "À voir aussi".
-
-### Limites connues SeLoger (copier-coller)
-- **DPE en image SVG** : la lettre A-G du bien principal est un graphique, non capturée par Ctrl+A. À saisir manuellement après création (sélecteur A-G dans la fiche modifier)
-- **Biens similaires en bas de page** : leur texte (prix, DPE, etc.) peut être confondu avec le bien principal par l'IA si on ne tronque pas le texte collé
+### Limites copier-coller SeLoger
+- **DPE en image SVG** : extrait par regex désormais, sinon correction manuelle dans formulaire enrichi
+- **Biens similaires en bas** : texte tronqué à ~12000 chars
 
 ---
 
 ## 7. À FAIRE — PRIORITÉS
 
-### 🔴 Priorité 1 — Module chasse (en cours)
-1. **Génération PDF sélection de biens** (jsPDF + html2canvas déjà dans package.json)
-   - Modal : sélection biens avec cases à cocher + choix photos (max 3-4)
-   - Page de garde + fiche par bien (prix acquéreur uniquement) + footer
-   - Note conseiller par bien
-   - Sauvegarde PDF Supabase Storage + relance J+5 auto
+### 🔴 Priorité 1 — Finitions envoi mail (en cours)
 
-2. **Intégration Mailjet** : envoi réel mail + PDF joint + SMS · Clés dans Paramètres
+**1. Améliorer la délivrabilité Mailjet** ⚠️ CRITIQUE
+- Les mails arrivent actuellement dans l'**onglet "Promotions" de Gmail**
+- Causes possibles : trop d'images, mots commerciaux dans l'objet, ratio texte/HTML, absence de DMARC, présence de boutons type marketing
+- Actions à tenter :
+  - **Ajouter DMARC** dans DNS OVH : `_dmarc TXT v=DMARC1; p=none; rua=mailto:arogelet@emilio-immo.com; aspf=r`
+  - **Ajouter CNAME `bnc3`** pointant vers `bnc3.mailjet.com.` (tracking bounces, comme sur Verimo)
+  - **Revoir le template HTML** : réduire les images, augmenter le ratio texte/code, supprimer les boutons trop marketing
+  - **Tester sur mail-tester.com** pour obtenir le score de délivrabilité (objectif > 9/10)
+  - **Éviter mots-piège** dans l'objet : pas de "GRATUIT", "OFFRE", emojis en début, mots commerciaux
+  - **Vérifier SPF strict** : `-all` (déjà fait) plutôt que `~all`
+  - Tester d'envoyer depuis une **adresse pro** vraiment validée (attendre validation `arogelet@emilio-immo.com`)
+  - Considérer **chauffer le domaine** : envoyer peu de mails au début, monter progressivement
 
-3. **Page connexion** : Supabase Auth · alexandre.rogelet / chasseimmo
+**2. Améliorer l'affichage du mail / template envoyé**
+- Le mail HTML actuel a un design simple. À enrichir pour matcher le style Airbnb premium de la fiche bien publique
+- Travailler la cohérence visuelle mail ↔ page `/bien/[id]`
+- Tester sur Gmail web, iOS Mail, Outlook web
 
-### 🟠 Priorité 2 — Extension CRM complet (vendeurs)
-4. **Fiche client unifiée vendeur/acheteur** : un client peut être vendeur, acheteur, ou les deux. Ajouter le volet vendeur (bien en mandat, prix de mise en vente, honoraires vendeur, documents du bien)
-5. **Gestion des biens en mandat** : biens propres à l'agence (≠ biens sourcés pour la chasse), avec photos, description, prix, statut (disponible, sous offre, compromis, vendu)
-6. **Pipeline de vente** : suivi des offres reçues sur les mandats vendeurs
+**3. Améliorer la fiche bien publique mobile**
+- Vérifier que la navigation tactile du carrousel fonctionne
+- S'assurer que la modal "Voir tout" galerie reste utilisable
+- Tester le responsive du grid 2 colonnes (sidebar sticky)
 
-### 🟡 Priorité 3 — Enrichissements
-7. **Matching biens → clients** : à l'ajout d'un bien, suggérer clients correspondants
-8. **Relances automatiques** post-envoi PDF
-9. **KPI "Biens présentés"** incrémenté à l'envoi PDF
-10. **Dashboard enrichi** : KPIs, graphiques, pipeline vente + chasse, CA
+### 🟠 Priorité 2 — Génération PDF sélection de biens
+- jsPDF + html2canvas (déjà dans package.json)
+- Page de garde + fiche par bien + footer
+- Note conseiller par bien
+- Sauvegarde PDF Storage + relance J+5 auto
+- **Joindre le PDF aux mails Mailjet** (attachment)
+
+### 🟠 Priorité 3 — Extension CRM complet (vendeurs)
+- Fiche client unifiée vendeur/acheteur
+- Gestion des biens en mandat (≠ biens sourcés)
+- Pipeline de vente
+
+### 🟡 Priorité 4 — Enrichissements
+- **Matching biens → clients** : suggérer clients correspondants
+- **Relances automatiques** post-envoi mail/PDF
+- **KPI "Biens présentés"** incrémenté à l'envoi
+- **Dashboard enrichi** : KPIs, graphiques, pipeline, CA
+- **Page connexion** : Supabase Auth
 
 ### 🟢 V3
 - PDF C-R visites · PDF Présentation services
 - Export Excel mensuel/annuel
-- Extension Chrome (photos SeLoger depuis navigateur)
+- Extension Chrome (photos SeLoger)
 - Multi-utilisateur
-- Actions groupées multi-clients
-- Clients inactifs +30j · Corbeille archivage J+30
-- Statistiques Mon activité (taux transformation, délais, CA)
+- Actions groupées
+- Corbeille archivage J+30
+- Stats "Mon activité"
 
 ---
 
 ## 8. POINTS DE VIGILANCE TECHNIQUE
 
-- **SeLoger bloqué** : toujours utiliser copier-coller
-- **Photos Storage** : SUPABASE_SERVICE_ROLE_KEY requis + bucket `photos-biens` public
-- **ANTHROPIC_API_KEY** : requise extraction texte + reformulation
-- **saveCompteRendu** : insère dans `visites` ET `envois` (Historique)
-- **Chaleur** : en BDD mais non affichée (remplacée par statut)
-- **SRU** : alerte J+10 après compromis (dans Transaction)
-- **Drag & drop photos** : useRef (pas objet littéral) pour persister entre renders
+- **SeLoger bloqué** : toujours copier-coller
+- **Photos Storage** : SUPABASE_SERVICE_ROLE_KEY + bucket `photos-biens` public
+- **ANTHROPIC_API_KEY** : requise extraction + reformulation
+- **MAILJET_API_KEY/SECRET** : requises pour `/api/send-mail` (sinon 500)
+- **saveCompteRendu** : insère dans `visites` ET `envois`
+- **SRU** : alerte J+10 après compromis
+- **Drag & drop photos** : useRef (pas objet littéral)
+- **🆕 SPF DNS** : type **TXT** (pas SPF déprécié) pour Mailjet
+- **🆕 Page bien publique** : layout dédié `src/app/bien/layout.tsx` qui override `overflow: hidden` du CSS global
 
 ---
 
-## 9. WORKFLOW PDF COMPLET (À CODER)
+## 9. WORKFLOW ENVOI MAIL (V2.1 — Mailjet branché)
 
-1. "📄 Sélection de biens" → modal sélection (cases + miniatures)
-2. Par bien : choix photos + note conseiller
-3. Prévisualisation PDF
-4. Destinataires (emails fiche) + SMS oui/non
-5. Envoi → Mailjet → PDF joint
-6. Sauvegarde PDF Storage + relance J+5 + journal + historique
+### Envoi simple bien
+1. Fiche client → 📤 Envoyer (à côté d'un bien)
+2. Pré-rempli (objet, corps, destinataires = client.emails)
+3. Modifiable
+4. Envoi → `/api/send-mail` → Mailjet
+5. Trace dans `envois` (type `envoi_bien`) + `journal`
+6. Mail HTML reçu avec carte bien + bouton "Consulter le bien" → `/bien/[id]`
 
-**Contenu PDF** : page de garde (logo, nom, référence, date) + par bien (photo principale, titre, localisation, prix acquéreur TTC, specs, description nettoyée, note conseiller, 2-3 autres photos) + footer (logo + coordonnées)
+### Envoi sélection
+1. Fiche client → 📤 Envoyer (en haut) → Sélection de biens
+2. Popup avec checkboxes (biens non refusés pré-cochés)
+3. Modifier sélection + objet/corps
+4. Envoi → toutes les cartes dans le mail
+
+### Mail libre
+- PageMail : multi-clients, texte simple
+- FicheClient → 📤 Envoyer → Mail libre : un client, texte simple
 
 ---
 
 ## 10. HORS PÉRIMÈTRE
 
-- **Diffusion portails** (SeLoger, LBC, Bien'ici) → reste sur Immofacile
-- Scraping automatique portails
+- Diffusion portails → reste Immofacile
+- Scraping automatique
 - Suppression filigrane photos
 - Location (vente uniquement)
 - Signature électronique
@@ -271,10 +352,34 @@ Fichiers laissés en place mais inactifs (aucun lien vers eux dans l'app). **Sol
 
 ## 11. DISCUSSIONS HORS-PROJET — Site public Emilio Immo
 
-### SEO local par arrondissement (à traiter sur le site public, PAS sur ce CRM)
-Discussion du 12 mai 2026 sur la présence locale d'Emilio Immo dans Paris :
-- **Stratégie SEO** : créer des pages dédiées par arrondissement sur le site public (ex `/vendre-appartement-paris-6`) avec contenu unique par zone (prix au m² du quartier, ventes récentes, expertise locale). Délai de ranking Google : 3-6 mois.
-- **Google Maps** : pour apparaître sur la map dans un arrondissement, il faut une **adresse physique vérifiée** dans cette zone (Google envoie un courrier de vérification). Solutions légales : coworking (50-150€/mois), domiciliation, bureau partagé. **Un seul profil Google Business par adresse** : pour 3 arrondissements, il faut 3 adresses.
-- **Alternative payante rapide** : Google Ads géolocalisé (~500-2000€/mois selon concurrence).
+### SEO local par arrondissement (12 mai 2026)
+- Stratégie SEO sur le site public, pas le CRM. Pages dédiées par arrondissement, contenu unique. Délai Google : 3-6 mois.
+- Google Maps : adresse physique vérifiée requise (coworking 50-150€/mois, domiciliation, etc.). Un seul profil Google Business par adresse.
+- Alternative payante : Google Ads géolocalisé.
 
-À traiter sur le site public Emilio Immo, **pas sur ce projet CRM interne**.
+---
+
+## 12. HISTORIQUE DES SESSIONS
+
+### Session 12 mai 2026 (V1.2)
+- Journal anti-bruit (saveContact, saveCriteres, saveMandat, changeStatut)
+- Bug fixes : `agence_tel` manquant dans INSERT saveBien, `nb_chambres` manquant dans UPDATE saveFicheBien
+- UI : padding-bottom contentWrap 16→80px
+- Bookmarklet Chrome abandonné (3 fichiers laissés dormants)
+
+### Session 26 mai 2026 (V2.1) — Envoi mail + Fiche bien publique
+- **Mailjet branché** : DNS OVH configurés (TXT validation + SPF en TXT correct + DKIM), domaine validé
+- **API `/api/send-mail`** créée avec support multi-mode (libre/biens, unique/multi)
+- **4 modes d'envoi** branchés : PageMail (libre), FicheClient bien unique, FicheClient sélection multi, FicheClient mail libre
+- **Page publique `/bien/[id]`** créée avec layout dédié, style Airbnb premium
+- **PhotoCarousel** : composant client avec galerie modale plein écran
+- **Migration SQL biens** : 24 nouvelles colonnes (DPE/GES détaillés, expo, charges, taxe, équipements...)
+- **Parsing texte Claude enrichi** + post-traitement regex
+- **Formulaire d'ajout/édition bien refondu** en 7 sections claires
+- **Découverte importante** : OVH crée SPF en type "SPF" déprécié → recréer en TXT pour que Mailjet le reconnaisse
+- **Bug fix scroll** : layout dédié `bien/layout.tsx` qui override `overflow: hidden` global
+
+### ⏳ Reste à faire en priorité immédiate
+1. **Délivrabilité Mailjet** : sortir de l'onglet Promotions (DMARC + bnc3 + template + tests)
+2. **Améliorer template mail** : aligner sur style Airbnb fiche publique
+3. **Valider l'adresse `arogelet@emilio-immo.com`** côté Mailjet (mail de confirmation Roundcube)
