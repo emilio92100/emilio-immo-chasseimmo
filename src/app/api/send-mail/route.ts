@@ -61,14 +61,14 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
     ].filter(Boolean).join(' · ');
 
     return `
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="bcard" style="margin-bottom:16px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
         <tr>
           ${photo ? `
-          <td width="180" style="vertical-align:top;">
-            <img src="${escapeHtml(photo)}" alt="" width="180" style="width:180px;height:180px;object-fit:cover;display:block;border:0;" />
+          <td width="180" class="bphoto" style="vertical-align:top;">
+            <img src="${escapeHtml(photo)}" alt="" width="180" class="bimg" style="width:180px;height:180px;object-fit:cover;display:block;border:0;" />
           </td>
           ` : ''}
-          <td style="padding:18px 20px;vertical-align:top;">
+          <td class="bcontent" style="padding:18px 20px;vertical-align:top;">
             <div style="font-size:11px;color:${DORE};letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Bien sélectionné</div>
             <div style="font-size:17px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titre)}</div>
             ${localisation ? `<div style="font-size:13px;color:#64748b;margin-bottom:10px;">📍 ${escapeHtml(localisation)}</div>` : ''}
@@ -87,6 +87,13 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Emilio Immobilier</title>
+<style>
+  @media only screen and (max-width:600px) {
+    .bphoto, .bcontent { display:block !important; width:100% !important; }
+    .bphoto .bimg { width:100% !important; height:200px !important; }
+    .bcontent { text-align:center !important; padding:18px 22px 22px !important; }
+  }
+</style>
 </head>
 <body style="margin:0;padding:0;background:${FOND};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${FOND};">
@@ -138,7 +145,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
         </td></tr>
 
         <tr><td style="padding:16px;text-align:center;color:#94a3b8;font-size:11px;">
-          Cet email vous a été envoyé personnellement dans le cadre de votre mandat de recherche.
+          Cet email vous est adressé personnellement dans le cadre de votre projet de recherche immobilière.
         </td></tr>
 
       </table>
