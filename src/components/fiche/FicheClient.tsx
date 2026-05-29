@@ -297,6 +297,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 export default function FicheClient({ client: init, onBack }: Props) {
   const [client, setClient] = useState<Client>(init);
   const [tab, setTab] = useState('biens');
+  const [suiviFiltre, setSuiviFiltre] = useState('tout');
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
   const [transaction, setTransaction] = useState<any>(null);
@@ -402,10 +403,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const { data } = await supabase.from('clients').update({ prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels }).eq('id', client.id).select().single();
     if (data) {
       setClient(data as Client);
-      // Ne log que s'il y a un vrai changement
-      if (changes.length > 0) {
-        await addJournal(client.id, 'fiche_modifiee', '✏️ Contact mis à jour', changes.join(' · '));
-      }
     }
     setSaving(false); setShowContact(false);
   }
@@ -455,10 +452,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
         if (removed.length) changes.push(`Secteurs supprimés : ${removed.join(', ')}`);
       }
       if ((prev.notes||'') !== (crit.notes||'')) changes.push(`Notes modifiées`);
-      // Ne log que s'il y a un vrai changement
-      if (changes.length > 0) {
-        await addJournal(client.id, 'criteres_modifies', '🎯 Critères mis à jour', changes.join(' · '));
-      }
     }
     setSaving(false); setShowCriteres(false);
   }
@@ -477,9 +470,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const { data } = await supabase.from('clients').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null }).eq('id', client.id).select().single();
     if (data) {
       setClient(data as Client);
-      if (changes.length > 0) {
-        await addJournal(client.id, 'mandat_modifie', '📜 Mandat mis à jour', changes.join(' · '));
-      }
     }
     setSaving(false); setShowMandat(false);
   }
@@ -1022,12 +1012,25 @@ Emilio Immobilier
   const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
   const joursMandat = client.mandat_date_expiration ? Math.floor((new Date(client.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
 
+  // Timeline fusionnée (Historique + Journal)
+  // On exclut du journal les types qui font doublon avec les communications (envois)
+  const COMM_JOURNAL_TYPES = ['mail_envoye', 'envoi_bien', 'visite_effectuee'];
+  const suiviComms = envois.map(e => ({ kind: 'comm' as const, ts: e.created_at, data: e }));
+  const suiviEvents = journal
+    .filter(j => !COMM_JOURNAL_TYPES.includes(j.type))
+    .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
+  const suiviItems = (
+    suiviFiltre === 'communications' ? suiviComms
+    : suiviFiltre === 'evenements' ? suiviEvents
+    : [...suiviComms, ...suiviEvents]
+  ).sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const suiviCount = suiviComms.length + suiviEvents.length;
+
   const TABS = [
     { id: 'biens', label: `🏠 Biens (${biens.length})` },
     { id: 'visites', label: `📅 Visites (${visites.length})` },
     { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
-    { id: 'historique', label: `📄 Historique (${envois.length})` },
-    { id: 'journal', label: `📓 Journal (${journal.length})` },
+    { id: 'suivi', label: `🗂️ Suivi (${suiviCount})` },
   ];
 
   const BADGES: Record<string, { label: string; color: string; bg: string }> = {
@@ -1511,56 +1514,75 @@ Emilio Immobilier
               </div>
         )}
 
-        {/* TAB HISTORIQUE */}
-        {tab === 'historique' && (
-          <div className={styles.card}>
-            {envois.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📄</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucun historique</div></div>
-            : envois.map(e => {
-              const isCR = e.type === 'compte_rendu_visite';
-              const icon = isCR ? '📋' : e.type === 'selection_biens' ? '📄' : '✉️';
-              const bg = isCR ? '#f0fdf4' : '#fef9c3';
-              const parts = isCR && e.corps ? e.corps.split(' | ') : [];
-              return (
-                <div key={e.id} style={{ padding: '14px 18px', borderBottom: '1px solid #f8fafc' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
-                    <div style={{ flex: 1 }}>
+        {/* TAB SUIVI (fusion Historique + Journal) */}
+        {tab === 'suivi' && (
+          <div className={styles.card} style={{ padding: 22 }}>
+
+            {/* Barre de filtres + ajouter une action */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { id: 'tout', label: 'Tout' },
+                  { id: 'communications', label: '✉️ Communications' },
+                  { id: 'evenements', label: '📌 Événements' },
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setSuiviFiltre(f.id)}
+                    style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid', borderColor: suiviFiltre === f.id ? '#1a2332' : '#e3e8f0', background: suiviFiltre === f.id ? '#1a2332' : 'white', color: suiviFiltre === f.id ? 'white' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button>
+            </div>
+
+            {suiviItems.length === 0 ? (
+              <div className={styles.emptyTab}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>🗂️</div>
+                <div style={{ fontWeight: 700, color: '#1a2332' }}>Rien à afficher</div>
+              </div>
+            ) : suiviItems.map((it, i) => {
+              const last = i === suiviItems.length - 1;
+              if (it.kind === 'comm') {
+                const e = it.data;
+                const isCR = e.type === 'compte_rendu_visite';
+                const icon = isCR ? '📋' : e.type === 'selection_biens' ? '📄' : '✉️';
+                const bg = isCR ? '#f0fdf4' : '#fef9c3';
+                const parts = isCR && e.corps ? e.corps.split(' | ') : [];
+                return (
+                  <div key={`c-${e.id}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{icon}</div>
+                      {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
+                    </div>
+                    <div style={{ flex: 1, paddingTop: 2 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{e.objet || e.type}</div>
                       {isCR && parts.length > 0 && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 3 }}>{parts.slice(0, 2).join(' · ')}</div>}
                       {isCR && parts.length > 2 && <div style={{ fontSize: 13, color: '#64748b', background: '#f0fdf4', borderRadius: 8, padding: '6px 10px', marginTop: 6, borderLeft: '3px solid #10b981' }}>{parts[2]}</div>}
                       {!isCR && e.destinataires?.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{e.destinataires.join(', ')}</div>}
+                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(e.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2332' }}>{new Date(e.created_at).toLocaleDateString('fr-FR')}</div>
-                      {!isCR && <div style={{ fontSize: 11, color: '#94a3b8' }}>{e.sms_envoye ? '✉️+📱' : '✉️'}</div>}
-                    </div>
+                  </div>
+                );
+              }
+              const j = it.data;
+              const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : '📝';
+              return (
+                <div key={`e-${j.id}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f8fafc', border: '1px solid #e3e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{evIcon}</div>
+                    {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
+                  </div>
+                  <div style={{ flex: 1, paddingTop: 4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
+                    {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(j.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {/* TAB JOURNAL */}
-        {tab === 'journal' && (
-          <div className={styles.card} style={{ padding: 22 }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button></div>
-            {journal.length === 0 ? <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📓</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Journal vide</div></div>
-            : journal.map((j, i) => (
-              <div key={j.id} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f8fafc', border: '1px solid #e3e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
-                    {j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_effectuee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : j.type === 'criteres_modifies' ? '🎯' : j.type === 'mandat_modifie' ? '📋' : '📝'}
-                  </div>
-                  {i < journal.length - 1 && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
-                </div>
-                <div style={{ flex: 1, paddingTop: 4 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
-                  {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(j.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
