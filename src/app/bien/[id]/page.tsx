@@ -75,11 +75,11 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         </div>
       </header>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 16px 64px' }}>
+      <div className="bienwrap" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 16px 64px' }}>
 
         {/* TITRE EN HAUT (style Airbnb) */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, color: BLEU, margin: '0 0 8px', lineHeight: 1.2 }}>
+          <h1 className="bienh1" style={{ fontSize: 28, fontWeight: 600, color: BLEU, margin: '0 0 8px', lineHeight: 1.2 }}>
             {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` de ${bien.surface} m²` : ''}`}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 14, color: '#64748b' }}>
@@ -102,10 +102,10 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* GRID PRINCIPAL : contenu + sidebar prix */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 40, marginTop: 32 }}>
+        <div className="biengrid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 40, marginTop: 32 }}>
 
           {/* ===== COLONNE GAUCHE ===== */}
-          <div style={{ minWidth: 0 }}>
+          <div className="biencol" style={{ minWidth: 0 }}>
 
             {/* INFOS RAPIDES */}
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', paddingBottom: 24, borderBottom: '1px solid rgba(26,35,50,0.08)' }}>
@@ -264,8 +264,8 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
           </div>
 
           {/* ===== SIDEBAR DROITE — PRIX & CTA STICKY ===== */}
-          <aside>
-            <div style={{ position: 'sticky', top: 24, background: 'white', borderRadius: 20, padding: 28, boxShadow: '0 10px 40px rgba(26,35,50,0.1)', border: '1px solid rgba(26,35,50,0.06)' }}>
+          <aside className="bienaside">
+            <div className="bienstick" style={{ position: 'sticky', top: 24, background: 'white', borderRadius: 20, padding: 28, boxShadow: '0 10px 40px rgba(26,35,50,0.1)', border: '1px solid rgba(26,35,50,0.06)' }}>
 
               {prixAffiche && (
                 <>
@@ -306,7 +306,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* SECTION CONTACT BAS DE PAGE */}
-        <section id="contact" style={{ background: BLEU, borderRadius: 24, padding: '40px 32px', color: 'white', textAlign: 'center', marginTop: 48 }}>
+        <section id="contact" className="biencontact" style={{ background: BLEU, borderRadius: 24, padding: '40px 32px', color: 'white', textAlign: 'center', marginTop: 48 }}>
           <div style={{ fontSize: 11, color: DORE, letterSpacing: 2.5, fontWeight: 500, marginBottom: 12 }}>CE BIEN VOUS INTÉRESSE ?</div>
           <h2 style={{ fontSize: 24, fontWeight: 600, margin: '0 0 8px' }}>Contactez-moi pour organiser une visite</h2>
           <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 24 }}>Je reste à votre entière disposition</div>
@@ -335,8 +335,14 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       {/* Responsive sur mobile */}
       <style>{`
         @media (max-width: 880px) {
-          main > div > div[style*="grid"] { grid-template-columns: 1fr !important; }
-          aside > div { position: static !important; }
+          .biengrid { grid-template-columns: 1fr !important; gap: 24px !important; }
+          .bienstick { position: static !important; }
+          .bienaside { order: -1; }
+        }
+        @media (max-width: 560px) {
+          .bienh1 { font-size: 22px !important; }
+          .bienwrap { padding: 20px 14px 48px !important; }
+          .biencontact { padding: 32px 20px !important; }
         }
       `}</style>
     </div>
