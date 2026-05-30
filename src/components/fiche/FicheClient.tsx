@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
-import type { Client } from '@/lib/supabase';
+import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 
 const QUARTIERS: Record<string, { ville: string; quartiers: string[] }> = {
@@ -296,6 +296,11 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 
 export default function FicheClient({ client: init, onBack }: Props) {
   const [client, setClient] = useState<Client>(init);
+  const [recherches, setRecherches] = useState<Recherche[]>([]);
+  const [rechercheId, setRechercheId] = useState<string>('');
+  const [showRechercheMenu, setShowRechercheMenu] = useState(false);
+  const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
+  const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
   const [tab, setTab] = useState('biens');
   const [suiviFiltre, setSuiviFiltre] = useState('tout');
   const [biens, setBiens] = useState<any[]>([]);
@@ -312,9 +317,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
-  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', etage_max: client.etage_max?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'', etat_souhaite: client.etat_souhaite||'', exposition_souhaitee: client.exposition_souhaitee||'', surface_sejour_min: client.surface_sejour_min?.toString()||'', urgence: client.urgence||'', financement: client.financement||'', apport: client.apport?.toString()||'' });
+  const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
-  const [mandat, setMandat] = useState({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' });
+  const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
@@ -351,15 +356,74 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
   const [offreForm, setOffreForm] = useState({ bien_id: '', montant: '', date: '', notes: '' });
 
-  useEffect(() => { load(); }, [client.id]);
+  useEffect(() => { loadRecherches(); }, [client.id]);
+  useEffect(() => { if (rechercheId) load(); }, [rechercheId]);
   useEffect(() => { if (transaction) setTxData(transaction); }, [transaction]);
+
+  // Synchronise les formulaires critères/mandat avec la recherche active
+  useEffect(() => {
+    const r = rechercheActive;
+    if (!r) return;
+    setCrit({
+      types_bien: r.type_bien ? r.type_bien.split(',').map(t => t.trim()).filter(Boolean) : [],
+      budget_min: r.budget_min?.toString() || '', budget_max: r.budget_max?.toString() || '',
+      surface_min: r.surface_min?.toString() || '', surface_max: r.surface_max?.toString() || '',
+      nb_pieces_min: r.nb_pieces_min?.toString() || '', nb_pieces_max: r.nb_pieces_max?.toString() || '',
+      chambres_min: r.chambres_min?.toString() || '', secteurs: r.secteurs || [], notes: r.notes || '',
+      parking: r.parking || false, balcon: r.balcon || false, terrasse: r.terrasse || false, jardin: r.jardin || false,
+      cave: r.cave || false, ascenseur: r.ascenseur || false, gardien: r.gardien || false,
+      interphone: r.interphone || false, digicode: r.digicode || false,
+      rdc_exclu: r.rdc_exclu || false, dernier_etage: r.dernier_etage || false,
+      etage_min: r.etage_min?.toString() || '', etage_max: r.etage_max?.toString() || '',
+      dpe_max: r.dpe_max || '', annee_min: r.annee_construction_min?.toString() || '',
+      etat_souhaite: r.etat_souhaite || '', exposition_souhaitee: r.exposition_souhaitee || '',
+      surface_sejour_min: r.surface_sejour_min?.toString() || '',
+      urgence: r.urgence || '', financement: r.financement || '', apport: r.apport?.toString() || '',
+    });
+    setMandat({
+      date_signature: r.mandat_date_signature || '', duree: r.mandat_duree?.toString() || '3',
+      honoraires: r.mandat_honoraires || '3,5% TTC', date_expiration: r.mandat_date_expiration || '',
+    });
+  }, [rechercheId, recherches]);
+
+  async function loadRecherches() {
+    const { data } = await supabase.from('recherches').select('*').eq('client_id', client.id).order('created_at', { ascending: true });
+    const list = (data || []) as Recherche[];
+    setRecherches(list);
+    // garder la recherche active si elle existe encore, sinon la première
+    setRechercheId(prev => (prev && list.some(r => r.id === prev)) ? prev : (list[0]?.id || ''));
+  }
+
+  async function creerRecherche() {
+    const nom = prompt('Nom de la nouvelle recherche ?', `Recherche ${recherches.length + 1}`);
+    if (nom === null) return;
+    const { data } = await supabase.from('recherches').insert({
+      client_id: client.id,
+      nom: nom.trim() || `Recherche ${recherches.length + 1}`,
+      active: true,
+      secteurs: [],
+    }).select().single();
+    if (data) {
+      setRecherches(rs => [...rs, data as Recherche]);
+      setRechercheId((data as Recherche).id);
+      setTab('biens');
+    }
+  }
+
+  async function renommerRecherche() {
+    if (!rechercheActive) return;
+    const nom = prompt('Renommer la recherche :', rechercheActive.nom);
+    if (nom === null || !nom.trim()) return;
+    const { data } = await supabase.from('recherches').update({ nom: nom.trim() }).eq('id', rechercheActive.id).select().single();
+    if (data) setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
+  }
 
   async function load() {
     const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }] = await Promise.all([
-      supabase.from('biens').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
-      supabase.from('visites').select('*').eq('client_id', client.id).order('date_visite'),
-      supabase.from('transactions').select('*').eq('client_id', client.id).maybeSingle(),
-      supabase.from('envois').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+      supabase.from('biens').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
+      supabase.from('visites').select('*').eq('recherche_id', rechercheId).order('date_visite'),
+      supabase.from('transactions').select('*').eq('recherche_id', rechercheId).maybeSingle(),
+      supabase.from('envois').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
       supabase.from('journal').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
     ]);
     setBiens(b||[]); setVisites(v||[]); setTransaction(t); setEnvois(e||[]); setJournal(j||[]);
@@ -408,8 +472,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function saveCriteres() {
+    if (!rechercheId) return;
     setSaving(true);
-    const { data } = await supabase.from('clients').update({
+    const { data } = await supabase.from('recherches').update({
       type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null,
       budget_min: crit.budget_min ? parseInt(crit.budget_min) : null,
       budget_max: crit.budget_max ? parseInt(crit.budget_max) : null,
@@ -434,49 +499,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
       urgence: crit.urgence || null,
       financement: crit.financement || null,
       apport: crit.apport ? parseInt(crit.apport) : null,
-    }).eq('id', client.id).select().single();
+      updated_at: new Date().toISOString(),
+    }).eq('id', rechercheId).select().single();
     if (data) {
-      setClient(data as Client);
-      // Construire un diff détaillé
-      const changes: string[] = [];
-      const prev = client;
-      const newTypes = crit.types_bien.join(', ');
-      if ((prev.type_bien||'') !== newTypes) changes.push(`Type : "${prev.type_bien||'—'}" → "${newTypes||'—'}"`);
-      if ((prev.budget_min||0) !== (parseInt(crit.budget_min)||0)) changes.push(`Budget min : ${(prev.budget_min||0).toLocaleString('fr-FR')}€ → ${(parseInt(crit.budget_min)||0).toLocaleString('fr-FR')}€`);
-      if ((prev.budget_max||0) !== (parseInt(crit.budget_max)||0)) changes.push(`Budget max : ${(prev.budget_max||0).toLocaleString('fr-FR')}€ → ${(parseInt(crit.budget_max)||0).toLocaleString('fr-FR')}€`);
-      if ((prev.surface_min||0) !== (parseInt(crit.surface_min)||0)) changes.push(`Surface min : ${prev.surface_min||'—'}m² → ${crit.surface_min||'—'}m²`);
-      if ((prev.nb_pieces_min||0) !== (parseInt(crit.nb_pieces_min)||0)) changes.push(`Pièces min : ${prev.nb_pieces_min||'—'} → ${crit.nb_pieces_min||'—'}`);
-      if ((prev.chambres_min||0) !== (parseInt(crit.chambres_min)||0)) changes.push(`Chambres min : ${prev.chambres_min||'—'} → ${crit.chambres_min||'—'}`);
-      if ((prev.dpe_max||'') !== (crit.dpe_max||'')) changes.push(`DPE max : ${prev.dpe_max||'—'} → ${crit.dpe_max||'—'}`);
-      if ((prev.etage_min||0) !== (parseInt(crit.etage_min)||0)) changes.push(`Étage min : ${prev.etage_min||'—'} → ${crit.etage_min||'—'}`);
-      if ((prev.annee_construction_min||0) !== (parseInt(crit.annee_min)||0)) changes.push(`Année min : ${prev.annee_construction_min||'—'} → ${crit.annee_min||'—'}`);
-      const equipKeys: [string, string][] = [['parking','Parking'],['balcon','Balcon'],['terrasse','Terrasse'],['jardin','Jardin'],['cave','Cave'],['ascenseur','Ascenseur'],['gardien','Gardien']];
-      equipKeys.forEach(([k, l]) => { if ((prev as any)[k] !== (crit as any)[k]) changes.push(`${l} : ${(prev as any)[k] ? '✅' : '❌'} → ${(crit as any)[k] ? '✅' : '❌'}`); });
-      if (JSON.stringify(prev.secteurs||[]) !== JSON.stringify(crit.secteurs)) {
-        const added = crit.secteurs.filter(s => !(prev.secteurs||[]).includes(s));
-        const removed = (prev.secteurs||[]).filter(s => !crit.secteurs.includes(s));
-        if (added.length) changes.push(`Secteurs ajoutés : ${added.join(', ')}`);
-        if (removed.length) changes.push(`Secteurs supprimés : ${removed.join(', ')}`);
-      }
-      if ((prev.notes||'') !== (crit.notes||'')) changes.push(`Notes modifiées`);
+      setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
     }
     setSaving(false); setShowCriteres(false);
   }
 
   async function saveMandat() {
     setSaving(true);
+    if (!rechercheId) { setSaving(false); return; }
     let exp = mandat.date_expiration;
     if (mandat.date_signature && mandat.duree && !exp) { const d = new Date(mandat.date_signature); d.setMonth(d.getMonth() + parseInt(mandat.duree)); exp = d.toISOString().split('T')[0]; }
-    // Détecter les vrais changements
-    const changes: string[] = [];
-    if ((client.mandat_date_signature||'') !== (mandat.date_signature||'')) changes.push(`Date signature : ${client.mandat_date_signature||'—'} → ${mandat.date_signature||'—'}`);
-    if ((client.mandat_duree||0).toString() !== (mandat.duree||'')) changes.push(`Durée : ${client.mandat_duree||'—'} mois → ${mandat.duree||'—'} mois`);
-    if ((client.mandat_honoraires||'') !== (mandat.honoraires||'')) changes.push(`Honoraires : ${client.mandat_honoraires||'—'} → ${mandat.honoraires||'—'}`);
-    if ((client.mandat_date_expiration||'') !== (exp||'')) changes.push(`Expiration : ${client.mandat_date_expiration||'—'} → ${exp||'—'}`);
 
-    const { data } = await supabase.from('clients').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null }).eq('id', client.id).select().single();
+    const { data } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().single();
     if (data) {
-      setClient(data as Client);
+      setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
     }
     setSaving(false); setShowMandat(false);
   }
@@ -502,7 +541,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (clientData) setClient(clientData as Client);
     // Créer ou mettre à jour la transaction
     if (!transaction) {
-      await supabase.from('transactions').insert({ client_id: client.id, bien_id: offreForm.bien_id, etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date });
+      await supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: offreForm.bien_id, etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date });
     } else {
       await supabase.from('transactions').update({ etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date, bien_id: offreForm.bien_id }).eq('id', transaction.id);
     }
@@ -583,7 +622,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setSaving(true);
     // Vérifier doublon URL seulement si une URL est fournie
     if (bienForm.url && bienForm.url.trim()) {
-      const { data: ex } = await supabase.from('biens').select('id').eq('client_id', client.id).eq('url', bienForm.url.trim()).maybeSingle();
+      const { data: ex } = await supabase.from('biens').select('id').eq('recherche_id', rechercheId).eq('url', bienForm.url.trim()).maybeSingle();
       if (ex) { alert('Ce bien (même URL) est déjà dans la liste !'); setSaving(false); return; }
     }
     // Générer un ID temporaire pour le dossier storage
@@ -592,6 +631,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
     const { data: bienInsere } = await supabase.from('biens').insert({
       client_id: client.id,
+      recherche_id: rechercheId,
       url: bienForm.url||null,
       titre: bienForm.titre,
       ville: bienForm.ville,
@@ -651,7 +691,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   async function changeBadge(bienId: string, badge: string) {
     await supabase.from('biens').update({ badge_retour: badge }).eq('id', bienId);
-    if (badge === 'offre_faite' && !transaction) { await supabase.from('transactions').insert({ client_id: client.id, bien_id: bienId, etape_actuelle: 'offre' }); await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte'); }
+    if (badge === 'offre_faite' && !transaction) { await supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: bienId, etape_actuelle: 'offre' }); await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte'); }
     load();
   }
 
@@ -912,6 +952,7 @@ Emilio Immobilier
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_ids: [client.id],
+          recherche_id: rechercheId,
           objet: envoiForm.objet,
           corps: envoiForm.corps,
           biens_ids: envoiMode === 'libre' ? undefined : envoiBienIds,
@@ -941,7 +982,7 @@ Emilio Immobilier
   async function savePlanVisite() {
     const { bien_id, date, heure, contact, notes } = planVisteForm;
     if (!bien_id) return;
-    await supabase.from('visites').insert({ client_id: client.id, bien_id, statut: 'a_venir', date_visite: date || null, heure: heure || null, contact_agence: contact || null, commentaire: notes || null });
+    await supabase.from('visites').insert({ client_id: client.id, recherche_id: rechercheId, bien_id, statut: 'a_venir', date_visite: date || null, heure: heure || null, contact_agence: contact || null, commentaire: notes || null });
     await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).eq('id', bien_id);
     const bien = biens.find(b => b.id === bien_id);
     const desc = [date ? `Le ${new Date(date).toLocaleDateString('fr-FR')}` : '', heure ? `à ${heure}` : '', contact ? `· Contact : ${contact}` : ''].filter(Boolean).join(' ');
@@ -974,6 +1015,7 @@ Emilio Immobilier
     const corpsLines = [avis_client ? `Avis : ${AVIS[avis_client]||avis_client}` : '', etoilesStr ? `Note : ${etoilesStr}` : '', commentaire || ''].filter(Boolean);
     await supabase.from('envois').insert({
       client_id: client.id,
+      recherche_id: rechercheId,
       type: 'compte_rendu_visite',
       objet: `Visite — ${b?.titre || b?.ville || 'Bien'}`,
       corps: corpsLines.join(' | '),
@@ -1017,7 +1059,7 @@ Emilio Immobilier
   }
 
   const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
-  const joursMandat = client.mandat_date_expiration ? Math.floor((new Date(client.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
+  const joursMandat = cr.mandat_date_expiration ? Math.floor((new Date(cr.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
 
   // Timeline fusionnée (Historique + Journal)
   // On exclut du journal les types qui font doublon avec les communications (envois)
@@ -1065,7 +1107,7 @@ Emilio Immobilier
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
-          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); await supabase.from('relances').insert({ client_id: client.id, date_relance: date.toISOString().split('T')[0], motif: 'Relance manuelle', statut: 'a_faire' }); await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
+          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); await supabase.from('relances').insert({ client_id: client.id, recherche_id: rechercheId, date_relance: date.toISOString().split('T')[0], motif: 'Relance manuelle', statut: 'a_faire' }); await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
           <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
         </div>
@@ -1110,53 +1152,77 @@ Emilio Immobilier
       </div>
 
       <div className={styles.contentWrap}>
-
+        {/* SÉLECTEUR DE RECHERCHE */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            {showRechercheMenu && <div onClick={() => setShowRechercheMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />}
+            <button onClick={() => setShowRechercheMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6 }}>Recherche active</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#1a2332' }}>{rechercheActive?.nom || '—'}</span>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>▾</span>
+            </button>
+            {showRechercheMenu && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
+                {recherches.map(r => (
+                  <button key={r.id} onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('biens'); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', textAlign: 'left', padding: '11px 16px', border: 'none', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
+                    {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
+                  </button>
+                ))}
+                <button onClick={() => { setShowRechercheMenu(false); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#3b82f6', fontWeight: 700, fontSize: 14 }}>+ Nouvelle recherche</button>
+              </div>
+            )}
+          </div>
+          {recherches.length > 1 && rechercheActive && (
+            <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
+          )}
+        </div>
         {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
         <div className={styles.infoRow}>
           <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', etage_max: client.etage_max?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'', etat_souhaite: client.etat_souhaite||'', exposition_souhaitee: client.exposition_souhaitee||'', surface_sejour_min: client.surface_sejour_min?.toString()||'', urgence: client.urgence||'', financement: client.financement||'', apport: client.apport?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => setShowCriteres(true)}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
-              {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
+              {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Type + Budget sur même ligne */}
-                  {(client.type_bien || client.budget_min) && (
+                  {(cr.type_bien || cr.budget_min) && (
                     <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      {client.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.type_bien}</div></div>}
+                      {cr.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.type_bien}</div></div>}
                       </div>
                   )}
                   {/* Autres critères chiffrés */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {client.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 15, fontWeight: 700, color: '#c9a84c' }}>{client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</div></div>}
-                    {client.surface_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.surface_max ? `${client.surface_min}–${client.surface_max}m²` : `min ${client.surface_min}m²`}</div></div>}
-                    {client.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</div></div>}
-                    {client.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${client.chambres_min}`}</div></div>}
-                    {client.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
-                    {(client.etage_min || client.etage_max || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `min ${client.etage_min}` : '', client.etage_max ? `max ${client.etage_max}` : '', client.rdc_exclu ? '🚫 RDC exclu' : '', client.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
-                    {client.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
-                    {client.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.surface_sejour_min}m²</div></div>}
-                    {client.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{({a_renover:'À rénover',travaux_legers:'Travaux légers',bon_etat:'Bon état',refait_neuf:'Refait à neuf'} as any)[client.etat_souhaite] || client.etat_souhaite}</div></div>}
-                    {client.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332', textTransform: 'capitalize' }}>{client.exposition_souhaitee}</div></div>}
+                    {cr.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 15, fontWeight: 700, color: '#c9a84c' }}>{cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)}k€` : `min ${(cr.budget_min/1000).toFixed(0)}k€`}</div></div>}
+                    {cr.surface_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
+                    {cr.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
+                    {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
+                    {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
+                    {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
+                    {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
+                    {cr.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_sejour_min}m²</div></div>}
+                    {cr.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{({a_renover:'À rénover',travaux_legers:'Travaux légers',bon_etat:'Bon état',refait_neuf:'Refait à neuf'} as any)[cr.etat_souhaite] || cr.etat_souhaite}</div></div>}
+                    {cr.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332', textTransform: 'capitalize' }}>{cr.exposition_souhaitee}</div></div>}
                   </div>
                   {/* Ligne 2 : Équipements */}
-                  {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
-                    <div style={{ paddingBottom: client.secteurs?.length ? 8 : 0, borderBottom: client.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
+                  {(cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.gardien || (cr as any).interphone || (cr as any).digicode) && (
+                    <div style={{ paddingBottom: cr.secteurs?.length ? 8 : 0, borderBottom: cr.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Critères importants</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (client as any)[k]).map(([k,l]) => (
+                        {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (cr as any)[k]).map(([k,l]) => (
                           <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l}</span>
                         ))}
                       </div>
                     </div>
                   )}
                   {/* Ligne 3 : Secteurs */}
-                  {client.secteurs?.length > 0 && (
+                  {cr.secteurs?.length > 0 && (
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Secteurs recherchés</div>
                   )}
-                  {client.secteurs?.length > 0 && (
+                  {cr.secteurs?.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                       {(() => {
                         const bv: Record<string, string[]> = {};
-                        client.secteurs.forEach((s:string) => {
+                        cr.secteurs.forEach((s:string) => {
                           const m = s.match(/^(.+?)\s*\((.+?)\)$/);
                           if (m) { const q=m[1].trim(),v=m[2].trim(); if(!bv[v])bv[v]=[]; bv[v].push(q); }
                           else { if(!bv[s])bv[s]=[]; }
@@ -1172,18 +1238,18 @@ Emilio Immobilier
                     </div>
                   )}
                   {/* Profil d'achat (priorisation) */}
-                  {(client.urgence || client.financement || client.apport) && (
+                  {(cr.urgence || cr.financement || cr.apport) && (
                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #3b82f6', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-                      {client.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({immediate:'Immédiate','3_mois':'Sous 3 mois','6_mois':'Sous 6 mois',annee:"Dans l'année"} as any)[client.urgence] || client.urgence}</div></div>}
-                      {client.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({cash:'Cash',pret_valide:'Prêt validé',pret_en_cours:'Prêt en cours',a_monter:'À monter'} as any)[client.financement] || client.financement}</div></div>}
-                      {client.apport != null && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Apport</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.apport.toLocaleString('fr-FR')}€</div></div>}
+                      {cr.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({immediate:'Immédiate','3_mois':'Sous 3 mois','6_mois':'Sous 6 mois',annee:"Dans l'année"} as any)[cr.urgence] || cr.urgence}</div></div>}
+                      {cr.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({cash:'Cash',pret_valide:'Prêt validé',pret_en_cours:'Prêt en cours',a_monter:'À monter'} as any)[cr.financement] || cr.financement}</div></div>}
+                      {cr.apport != null && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Apport</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.apport.toLocaleString('fr-FR')}€</div></div>}
                     </div>
                   )}
                   {/* Notes */}
-                  {client.notes && (
+                  {cr.notes && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #c9a84c' }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 }}>💬 Précisions sur la recherche</div>
-                      <div style={{ fontSize: 14, color: '#1a2332', lineHeight: 1.6 }}>{client.notes}</div>
+                      <div style={{ fontSize: 14, color: '#1a2332', lineHeight: 1.6 }}>{cr.notes}</div>
                     </div>
                   )}
                 </div>
@@ -1199,14 +1265,14 @@ Emilio Immobilier
           <div style={{ background: '#1a2332', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#c9a84c' }}>📋 Mandat</span>
-              <button onClick={() => { setMandat({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' }); setShowMandat(true); }} style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✏️</button>
+              <button onClick={() => setShowMandat(true)} style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✏️</button>
             </div>
-            {client.mandat_date_signature ? (
+            {cr.mandat_date_signature ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{new Date(client.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{client.mandat_duree ? `${client.mandat_duree} mois` : '—'}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{client.mandat_honoraires||'—'}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{cr.mandat_duree ? `${cr.mandat_duree} mois` : '—'}</div></div>
+                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{cr.mandat_honoraires||'—'}</div></div>
                 </div>
                 {joursMandat !== null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
