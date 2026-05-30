@@ -36,7 +36,15 @@ const initForm = {
   budget_min: '', budget_max: '',
   surface_min: '', surface_max: '',
   nb_pieces_min: '', nb_pieces_max: '',
+  chambres_min: '',
   secteurs: '',
+  etage_min: '', etage_max: '',
+  rdc_exclu: false, dernier_etage: false,
+  dpe_max: '', annee_min: '',
+  parking: false, cave: false, balcon: false, terrasse: false,
+  jardin: false, ascenseur: false, gardien: false,
+  etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '',
+  urgence: '', financement: '', apport: '',
   mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '3,5% TTC',
   notes: '',
 };
@@ -96,7 +104,22 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         surface_max: form.surface_max ? parseInt(form.surface_max) : null,
         nb_pieces_min: form.nb_pieces_min ? parseInt(form.nb_pieces_min) : null,
         nb_pieces_max: form.nb_pieces_max ? parseInt(form.nb_pieces_max) : null,
+        chambres_min: form.chambres_min ? parseInt(form.chambres_min) : null,
         secteurs,
+        etage_min: form.etage_min ? parseInt(form.etage_min) : null,
+        etage_max: form.etage_max ? parseInt(form.etage_max) : null,
+        rdc_exclu: form.rdc_exclu, dernier_etage: form.dernier_etage,
+        dpe_max: form.dpe_max || null,
+        annee_construction_min: form.annee_min ? parseInt(form.annee_min) : null,
+        parking: form.parking, cave: form.cave, balcon: form.balcon,
+        terrasse: form.terrasse, jardin: form.jardin,
+        ascenseur: form.ascenseur, gardien: form.gardien,
+        etat_souhaite: form.etat_souhaite || null,
+        exposition_souhaitee: form.exposition_souhaitee || null,
+        surface_sejour_min: form.surface_sejour_min ? parseInt(form.surface_sejour_min) : null,
+        urgence: form.urgence || null,
+        financement: form.financement || null,
+        apport: form.apport ? parseInt(form.apport) : null,
         mandat_date_signature: form.mandat_date_signature || null,
         mandat_duree: form.mandat_duree ? parseInt(form.mandat_duree) : null,
         mandat_honoraires: form.mandat_honoraires || null,
@@ -309,6 +332,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     <option>Loft</option>
                     <option>Duplex</option>
                     <option>Studio</option>
+                    <option>Hôtel particulier</option>
+                    <option>Atelier</option>
                     <option>Autre</option>
                   </select>
                 </div>
@@ -343,6 +368,106 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   <input className={styles.input} type="number" value={form.nb_pieces_max} onChange={e => setForm({...form, nb_pieces_max: e.target.value})} placeholder="4" />
                 </div>
               </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Chambres min</label>
+                  <input className={styles.input} type="number" value={form.chambres_min} onChange={e => setForm({...form, chambres_min: e.target.value})} placeholder="2" />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Année construction min</label>
+                  <input className={styles.input} type="number" value={form.annee_min} onChange={e => setForm({...form, annee_min: e.target.value})} placeholder="1990" />
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Étage min</label>
+                  <input className={styles.input} type="number" value={form.etage_min} onChange={e => setForm({...form, etage_min: e.target.value})} placeholder="2" />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Étage max</label>
+                  <input className={styles.input} type="number" value={form.etage_max} onChange={e => setForm({...form, etage_max: e.target.value})} placeholder="5" />
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Contraintes d'étage</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (
+                    <button type="button" key={o.k} onClick={() => setForm({...form, [o.k]: !(form as any)[o.k]})} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(form as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (form as any)[o.k] ? '#1a2332' : 'white', color: (form as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>DPE maximum accepté</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['A','B','C','D','E','F','G'].map(d => (
+                    <button type="button" key={d} onClick={() => setForm({...form, dpe_max: form.dpe_max===d?'':d})} style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${form.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: form.dpe_max===d ? '#1a2332' : 'white', color: form.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Équipements souhaités</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'}].map(o => (
+                    <button type="button" key={o.k} onClick={() => setForm({...form, [o.k]: !(form as any)[o.k]})} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(form as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (form as any)[o.k] ? '#ecfdf5' : 'white', color: (form as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>État souhaité</label>
+                  <select className={styles.input} value={form.etat_souhaite} onChange={e => setForm({...form, etat_souhaite: e.target.value})}>
+                    <option value="">Indifférent</option>
+                    <option value="a_renover">À rénover</option>
+                    <option value="travaux_legers">Travaux légers</option>
+                    <option value="bon_etat">Bon état</option>
+                    <option value="refait_neuf">Refait à neuf</option>
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Exposition souhaitée</label>
+                  <select className={styles.input} value={form.exposition_souhaitee} onChange={e => setForm({...form, exposition_souhaitee: e.target.value})}>
+                    <option value="">Indifférent</option>
+                    <option value="sud">Sud</option>
+                    <option value="est">Est</option>
+                    <option value="ouest">Ouest</option>
+                    <option value="nord">Nord</option>
+                    <option value="traversant">Traversant</option>
+                  </select>
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Surface séjour min (m²)</label>
+                <input className={styles.input} type="number" value={form.surface_sejour_min} onChange={e => setForm({...form, surface_sejour_min: e.target.value})} placeholder="25" />
+              </div>
+
+              <div className={styles.formSection}>PROFIL D'ACHAT</div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Urgence du projet</label>
+                  <select className={styles.input} value={form.urgence} onChange={e => setForm({...form, urgence: e.target.value})}>
+                    <option value="">Non précisée</option>
+                    <option value="immediate">Immédiate</option>
+                    <option value="3_mois">Sous 3 mois</option>
+                    <option value="6_mois">Sous 6 mois</option>
+                    <option value="annee">Dans l'année</option>
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Financement</label>
+                  <select className={styles.input} value={form.financement} onChange={e => setForm({...form, financement: e.target.value})}>
+                    <option value="">Non précisé</option>
+                    <option value="cash">Cash</option>
+                    <option value="pret_valide">Prêt validé</option>
+                    <option value="pret_en_cours">Prêt en cours</option>
+                    <option value="a_monter">À monter</option>
+                  </select>
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Apport (€)</label>
+                <input className={styles.input} type="number" value={form.apport} onChange={e => setForm({...form, apport: e.target.value})} placeholder="100000" />
+              </div>
+
               <div className={styles.formGroup}>
                 <label className={styles.label}>Secteurs recherchés (séparés par virgule)</label>
                 <input className={styles.input} value={form.secteurs} onChange={e => setForm({...form, secteurs: e.target.value})} placeholder="Boulogne-Billancourt, Paris 16ème, Neuilly" />
