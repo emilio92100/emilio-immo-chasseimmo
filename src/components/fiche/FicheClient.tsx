@@ -418,6 +418,18 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (data) setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
   }
 
+  async function supprimerRecherche(r: Recherche) {
+    if (recherches.length <= 1) { alert('Impossible de supprimer la seule recherche du client.'); return; }
+    const ok = confirm(`Supprimer la recherche « ${r.nom} » ?\n\n⚠️ Tous les biens, visites et envois rattachés à CETTE recherche seront également supprimés définitivement. Cette action est irréversible.`);
+    if (!ok) return;
+    const { error } = await supabase.from('recherches').delete().eq('id', r.id);
+    if (error) { alert('Erreur : ' + error.message); return; }
+    const reste = recherches.filter(x => x.id !== r.id);
+    setRecherches(reste);
+    if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('biens'); }
+    setShowRechercheMenu(false);
+  }
+
   async function load() {
     const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }] = await Promise.all([
       supabase.from('biens').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
@@ -1164,16 +1176,21 @@ Emilio Immobilier
             {showRechercheMenu && (
               <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
                 {recherches.map(r => (
-                  <button key={r.id} onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('biens'); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', textAlign: 'left', padding: '11px 16px', border: 'none', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
-                    {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
-                  </button>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
+                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('biens'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
+                      {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
+                    </button>
+                    {recherches.length > 1 && (
+                      <button title="Supprimer cette recherche" onClick={() => supprimerRecherche(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 14px', height: '100%' }} onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')} onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
+                    )}
+                  </div>
                 ))}
                 <button onClick={() => { setShowRechercheMenu(false); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#3b82f6', fontWeight: 700, fontSize: 14 }}>+ Nouvelle recherche</button>
               </div>
             )}
           </div>
-          {recherches.length > 1 && rechercheActive && (
+          {rechercheActive && (
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
           )}
         </div>
@@ -1295,7 +1312,10 @@ Emilio Immobilier
           {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
         </div>
 
-
+        <style>{`
+          @keyframes ficheTabIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
+        <div key={`${rechercheId}-${tab}`} style={{ animation: 'ficheTabIn 0.22s ease' }}>
 
         {/* TAB BIENS */}
         {tab === 'biens' && (
@@ -1669,6 +1689,7 @@ Emilio Immobilier
             })}
           </div>
         )}
+        </div>
 
       {showContact && (
         <div className={styles.overlay}>
