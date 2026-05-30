@@ -65,6 +65,9 @@ export default function SecteurPicker({
             <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>📍 {villeActive.ville} ({villeActive.cp})</div>
             <button type="button" onClick={() => setVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
           </div>
+          <div style={{ fontSize: 12.5, color: '#3730a3', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '7px 11px', marginBottom: 10 }}>
+            👆 Cliquez sur <strong>« Toute la ville »</strong> ou sur un ou plusieurs <strong>quartiers</strong> pour les ajouter à la recherche.
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             <button type="button" onClick={() => add(villeActive.cp, villeActive.ville)} style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✓ Toute la ville</button>
             {QUARTIERS[villeActive.cp]?.quartiers.map((q) => {
