@@ -164,8 +164,9 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { client_ids, objet, corps, biens_ids, destinataires_override, mode } = body as {
+    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode } = body as {
       client_ids: string[];
+      recherche_id?: string;
       objet: string;
       corps: string;
       biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
@@ -256,6 +257,7 @@ export async function POST(req: NextRequest) {
           const typeEnvoi = biensClient.length === 0 ? 'mail_libre' : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
           await supabase.from('envois').insert({
             client_id: client.id,
+            recherche_id: recherche_id || null,
             type: typeEnvoi,
             objet,
             corps: corpsPerso,
