@@ -1605,7 +1605,7 @@ Emilio Immobilier
         )}
 
       {showContact && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowContact(false); }}>
+        <div className={styles.overlay}>
           <div className={styles.modal}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📞 Modifier le contact</h2><button className={styles.modalClose} onClick={() => setShowContact(false)}>✕</button></div>
             <div className={styles.modalBody}>
@@ -1711,15 +1711,16 @@ Emilio Immobilier
                   </select>
                 </div>
                 <div>
-                  <label className={styles.lbl}>Exposition souhaitée</label>
-                  <select className={styles.inp} value={crit.exposition_souhaitee} onChange={e=>setCrit(f=>({...f,exposition_souhaitee:e.target.value}))}>
-                    <option value="">Indifférent</option>
-                    <option value="sud">Sud</option>
-                    <option value="est">Est</option>
-                    <option value="ouest">Ouest</option>
-                    <option value="nord">Nord</option>
-                    <option value="traversant">Traversant</option>
-                  </select>
+                  <label className={styles.lbl}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>(plusieurs possibles)</span></label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {[{k:'sud',l:'Sud'},{k:'est',l:'Est'},{k:'ouest',l:'Ouest'},{k:'nord',l:'Nord'},{k:'traversant',l:'Traversant'}].map(o => {
+                      const sel = crit.exposition_souhaitee.split(',').map(x=>x.trim()).filter(Boolean);
+                      const active = sel.includes(o.k);
+                      return (
+                        <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{active ? '✓ ' : ''}{o.l}</button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
               <div className={styles.formRow}>
@@ -1756,7 +1757,7 @@ Emilio Immobilier
       )}
 
       {showMandat && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowMandat(false); }}>
+        <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📋 Mandat de recherche</h2><button className={styles.modalClose} onClick={() => setShowMandat(false)}>✕</button></div>
             <div className={styles.modalBody}>
@@ -1774,7 +1775,7 @@ Emilio Immobilier
       )}
 
       {showBien && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}}>
+        <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>✕</button></div>
             <div className={styles.modalBody}>
