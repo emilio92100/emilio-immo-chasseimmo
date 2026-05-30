@@ -312,7 +312,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
-  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' });
+  const [crit, setCrit] = useState({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', etage_max: client.etage_max?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'', etat_souhaite: client.etat_souhaite||'', exposition_souhaitee: client.exposition_souhaitee||'', surface_sejour_min: client.surface_sejour_min?.toString()||'', urgence: client.urgence||'', financement: client.financement||'', apport: client.apport?.toString()||'' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: client.mandat_date_signature||'', duree: client.mandat_duree?.toString()||'3', honoraires: client.mandat_honoraires||'3,5% TTC', date_expiration: client.mandat_date_expiration||'' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
@@ -425,8 +425,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
       digicode: (crit as any).digicode || false,
       rdc_exclu: crit.rdc_exclu, dernier_etage: crit.dernier_etage,
       etage_min: crit.etage_min ? parseInt(crit.etage_min) : null,
+      etage_max: crit.etage_max ? parseInt(crit.etage_max) : null,
       dpe_max: crit.dpe_max || null,
       annee_construction_min: crit.annee_min ? parseInt(crit.annee_min) : null,
+      etat_souhaite: crit.etat_souhaite || null,
+      exposition_souhaitee: crit.exposition_souhaitee || null,
+      surface_sejour_min: crit.surface_sejour_min ? parseInt(crit.surface_sejour_min) : null,
+      urgence: crit.urgence || null,
+      financement: crit.financement || null,
+      apport: crit.apport ? parseInt(crit.apport) : null,
     }).eq('id', client.id).select().single();
     if (data) {
       setClient(data as Client);
@@ -1107,7 +1114,7 @@ Emilio Immobilier
         {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
         <div className={styles.infoRow}>
           <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
+            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={() => { setCrit({ types_bien: (client.type_bien ? client.type_bien.split(',').map((t:string)=>t.trim()).filter(Boolean) : []) as string[], budget_min: client.budget_min?.toString()||'', budget_max: client.budget_max?.toString()||'', surface_min: client.surface_min?.toString()||'', surface_max: client.surface_max?.toString()||'', nb_pieces_min: client.nb_pieces_min?.toString()||'', nb_pieces_max: client.nb_pieces_max?.toString()||'', chambres_min: client.chambres_min?.toString()||'', secteurs: client.secteurs||[], notes: client.notes||'', parking: client.parking||false, balcon: client.balcon||false, terrasse: client.terrasse||false, jardin: client.jardin||false, cave: client.cave||false, ascenseur: client.ascenseur||false, gardien: client.gardien||false, interphone: (client as any).interphone||false, digicode: (client as any).digicode||false, rdc_exclu: client.rdc_exclu||false, dernier_etage: client.dernier_etage||false, etage_min: client.etage_min?.toString()||'', etage_max: client.etage_max?.toString()||'', dpe_max: client.dpe_max||'', annee_min: client.annee_construction_min?.toString()||'', etat_souhaite: client.etat_souhaite||'', exposition_souhaitee: client.exposition_souhaitee||'', surface_sejour_min: client.surface_sejour_min?.toString()||'', urgence: client.urgence||'', financement: client.financement||'', apport: client.apport?.toString()||'' }); setShowCriteres(true); }}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
               {(client.type_bien || client.budget_min || client.surface_min || client.nb_pieces_min || client.secteurs?.length || client.dpe_max || client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1124,8 +1131,11 @@ Emilio Immobilier
                     {client.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</div></div>}
                     {client.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${client.chambres_min}`}</div></div>}
                     {client.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{client.dpe_max}</div></div>}
-                    {(client.etage_min || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `min ${client.etage_min}` : '', client.rdc_exclu ? '🚫 RDC exclu' : '', client.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
+                    {(client.etage_min || client.etage_max || client.rdc_exclu || client.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[client.etage_min ? `min ${client.etage_min}` : '', client.etage_max ? `max ${client.etage_max}` : '', client.rdc_exclu ? '🚫 RDC exclu' : '', client.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
                     {client.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.annee_construction_min}</div></div>}
+                    {client.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.surface_sejour_min}m²</div></div>}
+                    {client.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{({a_renover:'À rénover',travaux_legers:'Travaux légers',bon_etat:'Bon état',refait_neuf:'Refait à neuf'} as any)[client.etat_souhaite] || client.etat_souhaite}</div></div>}
+                    {client.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332', textTransform: 'capitalize' }}>{client.exposition_souhaitee}</div></div>}
                   </div>
                   {/* Ligne 2 : Équipements */}
                   {(client.parking || client.balcon || client.terrasse || client.jardin || client.cave || client.ascenseur || client.gardien || (client as any).interphone || (client as any).digicode) && (
@@ -1159,6 +1169,14 @@ Emilio Immobilier
                           </div>
                         ));
                       })()}
+                    </div>
+                  )}
+                  {/* Profil d'achat (priorisation) */}
+                  {(client.urgence || client.financement || client.apport) && (
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #3b82f6', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+                      {client.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({immediate:'Immédiate','3_mois':'Sous 3 mois','6_mois':'Sous 6 mois',annee:"Dans l'année"} as any)[client.urgence] || client.urgence}</div></div>}
+                      {client.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({cash:'Cash',pret_valide:'Prêt validé',pret_en_cours:'Prêt en cours',a_monter:'À monter'} as any)[client.financement] || client.financement}</div></div>}
+                      {client.apport != null && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Apport</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{client.apport.toLocaleString('fr-FR')}€</div></div>}
                     </div>
                   )}
                   {/* Notes */}
@@ -1632,6 +1650,7 @@ Emilio Immobilier
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
                   <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage min :</label><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="Ex: 2" style={{width:80}} /></div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage max :</label><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} placeholder="Ex: 5" style={{width:80}} /></div>
                 </div>
               </div>
               <div>
@@ -1678,6 +1697,55 @@ Emilio Immobilier
                 <div style={{ marginTop: 10 }}>
                   <input className={styles.inp} placeholder="Ou saisir un secteur libre (ex: Triangle d'Or, Proche RER...)" onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) { const v = (e.target as HTMLInputElement).value.trim(); if (!crit.secteurs.includes(v)) setCrit(f=>({...f,secteurs:[...f.secteurs,v]})); (e.target as HTMLInputElement).value = ''; } }} />
                   <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Appuyez sur Entrée pour ajouter un secteur personnalisé</div>
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div>
+                  <label className={styles.lbl}>État souhaité</label>
+                  <select className={styles.inp} value={crit.etat_souhaite} onChange={e=>setCrit(f=>({...f,etat_souhaite:e.target.value}))}>
+                    <option value="">Indifférent</option>
+                    <option value="a_renover">À rénover</option>
+                    <option value="travaux_legers">Travaux légers</option>
+                    <option value="bon_etat">Bon état</option>
+                    <option value="refait_neuf">Refait à neuf</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={styles.lbl}>Exposition souhaitée</label>
+                  <select className={styles.inp} value={crit.exposition_souhaitee} onChange={e=>setCrit(f=>({...f,exposition_souhaitee:e.target.value}))}>
+                    <option value="">Indifférent</option>
+                    <option value="sud">Sud</option>
+                    <option value="est">Est</option>
+                    <option value="ouest">Ouest</option>
+                    <option value="nord">Nord</option>
+                    <option value="traversant">Traversant</option>
+                  </select>
+                </div>
+              </div>
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} placeholder="Ex: 25" /></div>
+                <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} placeholder="Ex: 100 000" /></div>
+              </div>
+              <div className={styles.formRow}>
+                <div>
+                  <label className={styles.lbl}>Urgence du projet</label>
+                  <select className={styles.inp} value={crit.urgence} onChange={e=>setCrit(f=>({...f,urgence:e.target.value}))}>
+                    <option value="">Non précisée</option>
+                    <option value="immediate">Immédiate</option>
+                    <option value="3_mois">Sous 3 mois</option>
+                    <option value="6_mois">Sous 6 mois</option>
+                    <option value="annee">Dans l'année</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={styles.lbl}>Financement</label>
+                  <select className={styles.inp} value={crit.financement} onChange={e=>setCrit(f=>({...f,financement:e.target.value}))}>
+                    <option value="">Non précisé</option>
+                    <option value="cash">Cash</option>
+                    <option value="pret_valide">Prêt validé</option>
+                    <option value="pret_en_cours">Prêt en cours</option>
+                    <option value="a_monter">À monter</option>
+                  </select>
                 </div>
               </div>
               <div><label className={styles.lbl}>Notes libres</label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
