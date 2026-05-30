@@ -42,8 +42,15 @@ export interface Client {
   rdc_exclu?: boolean
   dernier_etage?: boolean
   etage_min?: number
+  etage_max?: number
   dpe_max?: string
   annee_construction_min?: number
+  etat_souhaite?: string
+  exposition_souhaitee?: string
+  surface_sejour_min?: number
+  urgence?: string
+  financement?: string
+  apport?: number
   est_vendeur: boolean
   mandat_date_signature?: string
   mandat_duree?: number
