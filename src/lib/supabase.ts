@@ -7,6 +7,51 @@ export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export type StatutClient = 'prospect' | 'actif' | 'suspendu' | 'bien_trouve' | 'perdu'
 export type ChaleurClient = 'tres_chaud' | 'interesse' | 'tiede' | 'froid'
+
+export interface Recherche {
+  id: string
+  client_id: string
+  nom: string
+  active: boolean
+  type_bien?: string
+  budget_min?: number
+  budget_max?: number
+  surface_min?: number
+  surface_max?: number
+  nb_pieces_min?: number
+  nb_pieces_max?: number
+  chambres_min?: number
+  surface_sejour_min?: number
+  secteurs: string[]
+  etage_min?: number
+  etage_max?: number
+  rdc_exclu?: boolean
+  dernier_etage?: boolean
+  dpe_max?: string
+  annee_construction_min?: number
+  etat_souhaite?: string
+  exposition_souhaitee?: string
+  parking?: boolean
+  cave?: boolean
+  balcon?: boolean
+  terrasse?: boolean
+  jardin?: boolean
+  ascenseur?: boolean
+  gardien?: boolean
+  interphone?: boolean
+  digicode?: boolean
+  urgence?: string
+  financement?: string
+  apport?: number
+  sans_mandat?: boolean
+  mandat_date_signature?: string
+  mandat_duree?: number
+  mandat_honoraires?: string
+  mandat_date_expiration?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+}
 export type BadgeRetour = 'propose' | 'interesse' | 'souhaite_visiter' | 'visite' | 'offre_faite' | 'refuse'
 
 export interface Client {
@@ -21,6 +66,12 @@ export interface Client {
   chaleur: ChaleurClient
   raison_perte?: string
   notes?: string
+  statut_occupation?: string
+  bien_actuel_type?: string
+  bien_actuel_surface?: number
+  bien_actuel_valeur?: number
+  bien_actuel_a_vendre?: boolean
+  bien_actuel_notes?: string
   type_bien?: string
   budget_min?: number
   budget_max?: number
