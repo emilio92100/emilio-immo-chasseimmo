@@ -34,6 +34,8 @@ const initForm = {
   adresse_rue: '', adresse_cp: '', adresse_ville: '',
   email1: '', email2: '', tel1: '', tel2: '',
   statut: 'prospect' as StatutClient, chaleur: 'tiede',
+  statut_occupation: '', bien_actuel_type: '', bien_actuel_surface: '',
+  bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
   type_bien: 'Appartement',
   budget_min: '', budget_max: '',
   surface_min: '', surface_max: '',
@@ -123,7 +125,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.prenom || !form.nom) { setError('Prénom et nom obligatoires'); return; }
+    if (!form.prenom.trim() && !form.nom.trim()) { setError('Renseignez au moins un prénom ou un nom'); setStep(0); return; }
     setSaving(true); setError('');
     try {
       const reference = await genererReference();
@@ -131,43 +133,58 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       const telephones = [form.tel1, form.tel2].filter(Boolean);
       const secteurs = form.secteurs;
       const adresse = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      const exposition = form.exposition.length ? form.exposition.join(', ') : null;
 
       const { data, error: err } = await supabase.from('clients').insert({
-        reference, prenom: form.prenom, nom: form.nom,
+        reference, prenom: form.prenom || '', nom: form.nom || '',
         adresse: adresse || null,
         emails, telephones, statut: form.statut, chaleur: form.chaleur,
-        type_bien: form.type_bien || null,
-        budget_min: form.budget_min ? parseInt(form.budget_min) : null,
-        budget_max: form.budget_max ? parseInt(form.budget_max) : null,
-        surface_min: form.surface_min ? parseInt(form.surface_min) : null,
-        surface_max: form.surface_max ? parseInt(form.surface_max) : null,
-        nb_pieces_min: form.nb_pieces_min ? parseInt(form.nb_pieces_min) : null,
-        nb_pieces_max: form.nb_pieces_max ? parseInt(form.nb_pieces_max) : null,
-        chambres_min: form.chambres_min ? parseInt(form.chambres_min) : null,
-        secteurs,
-        etage_min: form.etage_min ? parseInt(form.etage_min) : null,
-        etage_max: form.etage_max ? parseInt(form.etage_max) : null,
-        rdc_exclu: form.rdc_exclu, dernier_etage: form.dernier_etage,
-        dpe_max: form.dpe_max || null,
-        annee_construction_min: form.annee_min ? parseInt(form.annee_min) : null,
-        parking: form.parking, cave: form.cave, balcon: form.balcon,
-        terrasse: form.terrasse, jardin: form.jardin,
-        ascenseur: form.ascenseur, gardien: form.gardien,
-        etat_souhaite: form.etat_souhaite || null,
-        exposition_souhaitee: form.exposition.length ? form.exposition.join(', ') : null,
-        surface_sejour_min: form.surface_sejour_min ? parseInt(form.surface_sejour_min) : null,
-        urgence: form.urgence || null,
-        financement: form.financement || null,
-        apport: form.apport ? parseInt(form.apport) : null,
-        mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
-        mandat_duree: form.sans_mandat ? null : (form.mandat_duree ? parseInt(form.mandat_duree) : null),
-        mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
+        statut_occupation: form.statut_occupation || null,
+        bien_actuel_type: form.statut_occupation === 'proprietaire' ? (form.bien_actuel_type || null) : null,
+        bien_actuel_surface: form.statut_occupation === 'proprietaire' && form.bien_actuel_surface ? parseInt(form.bien_actuel_surface) : null,
+        bien_actuel_valeur: form.statut_occupation === 'proprietaire' && form.bien_actuel_valeur ? parseInt(form.bien_actuel_valeur) : null,
+        bien_actuel_a_vendre: form.statut_occupation === 'proprietaire' ? form.bien_actuel_a_vendre : false,
+        bien_actuel_notes: form.statut_occupation === 'proprietaire' ? (form.bien_actuel_notes || null) : null,
         notes: form.notes || null,
         est_vendeur: false,
       }).select().single();
 
       if (err) throw err;
       if (data) {
+        // Créer la 1ère recherche du client avec tous les critères
+        await supabase.from('recherches').insert({
+          client_id: data.id,
+          nom: 'Recherche principale',
+          active: true,
+          type_bien: form.type_bien || null,
+          budget_min: form.budget_min ? parseInt(form.budget_min) : null,
+          budget_max: form.budget_max ? parseInt(form.budget_max) : null,
+          surface_min: form.surface_min ? parseInt(form.surface_min) : null,
+          surface_max: form.surface_max ? parseInt(form.surface_max) : null,
+          nb_pieces_min: form.nb_pieces_min ? parseInt(form.nb_pieces_min) : null,
+          nb_pieces_max: form.nb_pieces_max ? parseInt(form.nb_pieces_max) : null,
+          chambres_min: form.chambres_min ? parseInt(form.chambres_min) : null,
+          surface_sejour_min: form.surface_sejour_min ? parseInt(form.surface_sejour_min) : null,
+          secteurs,
+          etage_min: form.etage_min ? parseInt(form.etage_min) : null,
+          etage_max: form.etage_max ? parseInt(form.etage_max) : null,
+          rdc_exclu: form.rdc_exclu, dernier_etage: form.dernier_etage,
+          dpe_max: form.dpe_max || null,
+          annee_construction_min: form.annee_min ? parseInt(form.annee_min) : null,
+          etat_souhaite: form.etat_souhaite || null,
+          exposition_souhaitee: exposition,
+          parking: form.parking, cave: form.cave, balcon: form.balcon,
+          terrasse: form.terrasse, jardin: form.jardin,
+          ascenseur: form.ascenseur, gardien: form.gardien,
+          urgence: form.urgence || null,
+          financement: form.financement || null,
+          apport: form.apport ? parseInt(form.apport) : null,
+          sans_mandat: form.sans_mandat,
+          mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
+          mandat_duree: form.sans_mandat ? null : (form.mandat_duree ? parseInt(form.mandat_duree) : null),
+          mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
+          notes: form.notes || null,
+        });
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}`);
       }
       setShowModal(false);
@@ -296,7 +313,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       {/* MODAL NOUVEAU CLIENT — assistant en étapes */}
       {showModal && (() => {
         const STEPS = ['Identité', 'Recherche', 'Profil & mandat'];
-        const canNext = step > 0 || (form.prenom.trim() && form.nom.trim());
+        const canNext = true;
         const expoOptions = [
           { k: 'sud', l: 'Sud' }, { k: 'est', l: 'Est' }, { k: 'ouest', l: 'Ouest' },
           { k: 'nord', l: 'Nord' }, { k: 'traversant', l: 'Traversant' },
@@ -305,8 +322,15 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           setForm(f => ({ ...f, exposition: f.exposition.includes(k) ? f.exposition.filter(x => x !== k) : [...f.exposition, k] }));
 
         return (
-          <div className={styles.modalOverlay}>
-            <div className={styles.modal} style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
+          <div className={styles.modalOverlay} style={{ animation: 'crmFadeIn 0.2s ease' }}>
+            <style>{`
+              @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes crmSlideIn { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+              .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px !important; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+              .crm-select:focus { border-color: #1a2332 !important; box-shadow: 0 0 0 3px rgba(26,35,50,0.08); outline: none; }
+            `}</style>
+            <div className={styles.modal} style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', maxHeight: '92vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
 
               {/* En-tête */}
               <div style={{ padding: '22px 26px 0', position: 'relative' }}>
@@ -329,13 +353,14 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               <div style={{ padding: '22px 26px', overflowY: 'auto', flex: 1 }}>
                 {error && <div className={styles.errorBox} style={{ marginBottom: 16 }}>{error}</div>}
 
+                <div key={step} style={{ animation: 'crmSlideIn 0.25s ease' }}>
                 {/* ÉTAPE 1 — IDENTITÉ & CONTACT */}
                 {step === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                     <Bloc titre="👤 Identité">
                       <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Prénom *</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Nom *</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                        <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" /></div>
+                        <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
                       </div>
                       <div className={styles.formGroup} style={{ position: 'relative' }}>
                         <label className={styles.label}>Adresse actuelle</label>
@@ -369,7 +394,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       <div className={styles.formRow}>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Statut</label>
-                          <select className={styles.input} value={form.statut} onChange={e => setForm({ ...form, statut: e.target.value as StatutClient })}>
+                          <select className={`${styles.input} crm-select`} value={form.statut} onChange={e => setForm({ ...form, statut: e.target.value as StatutClient })}>
                             <option value="prospect">🟣 Prospect</option>
                             <option value="actif">🟢 Actif</option>
                             <option value="suspendu">⏸️ Suspendu</option>
@@ -377,11 +402,36 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </div>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Chaleur client</label>
-                          <select className={styles.input} value={form.chaleur} onChange={e => setForm({ ...form, chaleur: e.target.value })}>
+                          <select className={`${styles.input} crm-select`} value={form.chaleur} onChange={e => setForm({ ...form, chaleur: e.target.value })}>
                             {CHALEURS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                           </select>
                         </div>
                       </div>
+                    </Bloc>
+
+                    <Bloc titre="🏡 Situation de logement">
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Statut d'occupation actuel</label>
+                        <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
+                          <option value="">Non précisé</option>
+                          <option value="proprietaire">🔑 Propriétaire</option>
+                          <option value="locataire">🏠 Locataire</option>
+                          <option value="heberge">👨‍👩‍👧 Hébergé</option>
+                          <option value="autre">Autre</option>
+                        </select>
+                      </div>
+                      {form.statut_occupation === 'proprietaire' && (
+                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 700 }}>💡 Bien possédé — mandat de vente potentiel si vous lui trouvez son achat</div>
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} placeholder="Appartement 3P" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} placeholder="65" /></div>
+                          </div>
+                          <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} placeholder="450000" /></div>
+                          <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c')}>{form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Souhaite vendre ce bien</button>
+                          <div className={styles.formGroup}><label className={styles.label}>Précisions sur le bien actuel</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, particularités, contexte de vente..." rows={2} /></div>
+                        </div>
+                      )}
                     </Bloc>
                   </div>
                 )}
@@ -392,7 +442,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     <Bloc titre="🏠 Le bien recherché">
                       <div className={styles.formGroup}>
                         <label className={styles.label}>Type de bien</label>
-                        <select className={styles.input} value={form.type_bien} onChange={e => setForm({ ...form, type_bien: e.target.value })}>
+                        <select className={`${styles.input} crm-select`} value={form.type_bien} onChange={e => setForm({ ...form, type_bien: e.target.value })}>
                           <option>Appartement</option><option>Maison</option><option>Loft</option><option>Duplex</option><option>Studio</option><option>Hôtel particulier</option><option>Atelier</option><option>Autre</option>
                         </select>
                       </div>
@@ -434,7 +484,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       <div className={styles.formRow}>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>État souhaité</label>
-                          <select className={styles.input} value={form.etat_souhaite} onChange={e => setForm({ ...form, etat_souhaite: e.target.value })}>
+                          <select className={`${styles.input} crm-select`} value={form.etat_souhaite} onChange={e => setForm({ ...form, etat_souhaite: e.target.value })}>
                             <option value="">Indifférent</option><option value="a_renover">À rénover</option><option value="travaux_legers">Travaux légers</option><option value="bon_etat">Bon état</option><option value="refait_neuf">Refait à neuf</option>
                           </select>
                         </div>
@@ -465,6 +515,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </div>
                       </div>
                     </Bloc>
+
+                    <Bloc titre="💬 Précisions sur la recherche">
+                      <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Particularités, préférences fines, exclusions, quartiers à éviter... (ces précisions seront prises en compte dans l'analyse des biens)" rows={4} />
+                    </Bloc>
                   </div>
                 )}
 
@@ -475,13 +529,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       <div className={styles.formRow}>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Urgence du projet</label>
-                          <select className={styles.input} value={form.urgence} onChange={e => setForm({ ...form, urgence: e.target.value })}>
+                          <select className={`${styles.input} crm-select`} value={form.urgence} onChange={e => setForm({ ...form, urgence: e.target.value })}>
                             <option value="">Non précisée</option><option value="immediate">Immédiate</option><option value="3_mois">Sous 3 mois</option><option value="6_mois">Sous 6 mois</option><option value="annee">Dans l'année</option>
                           </select>
                         </div>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Financement</label>
-                          <select className={styles.input} value={form.financement} onChange={e => setForm({ ...form, financement: e.target.value })}>
+                          <select className={`${styles.input} crm-select`} value={form.financement} onChange={e => setForm({ ...form, financement: e.target.value })}>
                             <option value="">Non précisé</option><option value="cash">Cash</option><option value="pret_valide">Prêt validé</option><option value="pret_en_cours">Prêt en cours</option><option value="a_monter">À monter</option>
                           </select>
                         </div>
@@ -503,12 +557,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </>
                       )}
                     </Bloc>
-
-                    <Bloc titre="💬 Notes libres">
-                      <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Contexte, particularités, exclusions, préférences fines... (l'analyse des biens en tiendra compte)" rows={4} />
-                    </Bloc>
                   </div>
                 )}
+                </div>
               </div>
 
               {/* Pied de page navigation */}
@@ -517,7 +568,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   {step === 0 ? 'Annuler' : '← Retour'}
                 </button>
                 {step < 2 ? (
-                  <button type="button" className={styles.btnPrimary} disabled={!canNext} style={{ opacity: canNext ? 1 : 0.5 }} onClick={() => { if (!canNext) { setError('Prénom et nom obligatoires'); return; } setError(''); setStep(step + 1); }}>
+                  <button type="button" className={styles.btnPrimary} disabled={!canNext} style={{ opacity: canNext ? 1 : 0.5 }} onClick={() => { setError(''); setStep(step + 1); }}>
                     Continuer →
                   </button>
                 ) : (
