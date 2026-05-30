@@ -36,7 +36,7 @@ const initForm = {
   statut: 'prospect' as StatutClient, chaleur: 'tiede',
   statut_occupation: '', bien_actuel_type: '', bien_actuel_surface: '',
   bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
-  type_bien: 'Appartement',
+  type_bien: [] as string[],
   budget_min: '', budget_max: '',
   surface_min: '', surface_max: '',
   nb_pieces_min: '', nb_pieces_max: '',
@@ -156,7 +156,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           client_id: data.id,
           nom: 'Recherche principale',
           active: true,
-          type_bien: form.type_bien || null,
+          type_bien: form.type_bien.length ? form.type_bien.join(', ') : null,
           budget_min: form.budget_min ? parseInt(form.budget_min) : null,
           budget_max: form.budget_max ? parseInt(form.budget_max) : null,
           surface_min: form.surface_min ? parseInt(form.surface_min) : null,
@@ -442,10 +442,20 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                     <Bloc titre="🏠 Le bien recherché">
                       <div className={styles.formGroup}>
-                        <label className={styles.label}>Type de bien</label>
-                        <select className={`${styles.input} crm-select`} value={form.type_bien} onChange={e => setForm({ ...form, type_bien: e.target.value })}>
-                          <option>Appartement</option><option>Maison</option><option>Loft</option><option>Duplex</option><option>Studio</option><option>Hôtel particulier</option><option>Atelier</option><option>Autre</option>
-                        </select>
+                        <label className={styles.label}>Type(s) de bien <span style={{ color: '#94a3b8', fontWeight: 400 }}>(plusieurs possibles)</span></label>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {['Appartement', 'Maison', 'Loft', 'Duplex', 'Studio', 'Hôtel particulier', 'Atelier', 'Autre'].map(t => {
+                            const sel = form.type_bien.includes(t);
+                            return (
+                              <button type="button" key={t} onClick={() => setForm(f => ({ ...f, type_bien: sel ? f.type_bien.filter(x => x !== t) : [...f.type_bien, t] }))} style={pill(sel, '#1a2332', '#1a2332', 'white')}>{sel ? '✓ ' : ''}{t}</button>
+                            );
+                          })}
+                        </div>
+                        {form.type_bien.length > 1 && (
+                          <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginTop: 10, lineHeight: 1.5 }}>
+                            💡 Si les critères diffèrent selon le type (ex. jardin pour la maison, balcon pour l'appartement), créez plutôt <strong>une recherche par type</strong> depuis la fiche du client.
+                          </div>
+                        )}
                       </div>
                       <div className={styles.formRow}>
                         <div className={styles.formGroup}><label className={styles.label}>Budget min (€)</label><input className={styles.input} type="number" value={form.budget_min} onChange={e => setForm({ ...form, budget_min: e.target.value })} placeholder="300000" /></div>
