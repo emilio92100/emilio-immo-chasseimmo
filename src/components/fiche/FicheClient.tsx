@@ -319,6 +319,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
+  const [secteurCustomQ, setSecteurCustomQ] = useState('');
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
   const [url, setUrl] = useState('');
@@ -1814,7 +1815,7 @@ Emilio Immobilier
                   <input className={styles.inp} value={cpQ} onChange={e => searchCP(e.target.value)} placeholder="Tapez un code postal ou une ville (ex: 92100, Neuilly...)" />
                   {cpSug.length > 0 && (
                     <div className={styles.suggestions}>
-                      {cpSug.map((s, i) => (<div key={i} className={styles.suggItem} onClick={() => { const info = QUARTIERS[s.cp]; if (info?.quartiers) { setSecteurVilleActive({cp: s.cp, ville: info.ville}); } else { setSecteurVilleActive({cp: s.cp, ville: s.ville}); } setCpSug([]); setCpQ(''); }}><strong>{s.cp}</strong> — {s.ville}{QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}</div>))}
+                      {cpSug.map((s, i) => (<div key={i} className={styles.suggItem} onClick={() => { const info = QUARTIERS[s.cp]; if (info?.quartiers) { setSecteurVilleActive({cp: s.cp, ville: info.ville}); } else { setSecteurVilleActive({cp: s.cp, ville: s.ville}); } setCpSug([]); setCpQ(''); setSecteurCustomQ(''); }}><strong>{s.cp}</strong> — {s.ville}{QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}</div>))}
                     </div>
                   )}
                 </div>
@@ -1822,12 +1823,16 @@ Emilio Immobilier
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>📍 {secteurVilleActive.ville} ({secteurVilleActive.cp})</div>
-                      <button onClick={() => setSecteurVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
+                      <button onClick={() => { setSecteurVilleActive(null); setSecteurCustomQ(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                       <button onClick={() => addSecteur(secteurVilleActive.cp, secteurVilleActive.ville)} style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✓ Toute la ville</button>
                       {QUARTIERS[secteurVilleActive.cp]?.quartiers.map(q => { const label = `${q} (${secteurVilleActive.ville})`; const already = crit.secteurs.includes(label); return (<button key={q} onClick={() => already ? setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==label)})) : addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, q)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: `1px solid ${already ? '#10b981' : '#e2e8f0'}`, background: already ? '#ecfdf5' : 'white', color: already ? '#10b981' : '#64748b', cursor: 'pointer', fontFamily: 'inherit', fontWeight: already ? 600 : 400, transition: 'all 0.12s' }}>{already ? '✓ ' : ''}{q}</button>); })}
                       {!QUARTIERS[secteurVilleActive.cp] && <div style={{fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <input className={styles.inp} value={secteurCustomQ} onChange={e => setSecteurCustomQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && secteurCustomQ.trim()) { e.preventDefault(); addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, secteurCustomQ.trim()); setSecteurCustomQ(''); } }} placeholder={`Ajouter un quartier de ${secteurVilleActive.ville}...`} style={{ flex: 1 }} />
+                      <button type="button" onClick={() => { if (secteurCustomQ.trim()) { addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, secteurCustomQ.trim()); setSecteurCustomQ(''); } }} style={{ fontSize: 12, padding: '0 16px', borderRadius: 10, border: 'none', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Ajouter</button>
                     </div>
                     <div style={{fontSize:11,color:'#94a3b8'}}>💡 Vous pouvez sélectionner plusieurs quartiers puis chercher une autre ville</div>
                   </div>
