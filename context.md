@@ -1,6 +1,6 @@
 # CONTEXTE PROJET — Emilio Immobilier
 ## CRM Immobilier sur mesure — Version 3.0
-### Mis à jour le 30 mai 2026
+### Mis à jour le 2 juin 2026
 
 > **⚡ Nouveauté majeure V3.0 : architecture multi-recherches.** Un client peut désormais avoir **plusieurs recherches en parallèle** (ex. RP Paris + invest Lyon), chacune avec ses propres critères, biens, visites et envois. Voir §13 pour les détails. Formulaire de création refondu en assistant 3 étapes. Onglets Historique + Journal fusionnés en « Suivi ».
 
@@ -58,13 +58,19 @@ Ce CRM est indépendant de Verimo (SaaS d'analyse) et Tonton/Emilio Immo (résea
 
 ### Mailjet — Configuration (session 26 mai 2026)
 - Domaine `emilio-immo.com` validé dans Mailjet ✅
-- Adresse d'envoi `arogelet@emilio-immo.com` ajoutée (en attente validation par mail Roundcube)
+- Adresse d'envoi `arogelet@emilio-immo.com` validée et opérationnelle (envois en prod OK)
 - **DNS OVH configurés** :
   - TXT validation domaine : `mailjet._57401e37`
   - SPF (type TXT, pas SPF !) : `v=spf1 include:mx.ovh.com include:spf.mailjet.com -all`
   - DKIM : `mailjet._domainkey`
 - Coexistence avec Roundcube OVH : maintenue via `include:mx.ovh.com`
 - ⚠️ **Piège DNS résolu** : OVH avait par défaut un type **SPF** (déprécié RFC 7208) — recréer en **TXT** pour que Mailjet le reconnaisse
+
+### Délivrabilité Mailjet — RÉSOLU (session 2 juin 2026)
+- **DMARC ajouté** dans OVH (formulaire type DMARC → enregistre un TXT sur `_dmarc`) : `v=DMARC1; p=none; pct=100; rua=mailto:arogelet@emilio-immo.com; sp=none; aspf=r`
+- **Suivi désactivé** dans `/api/send-mail` (`TrackOpens: 'disabled'` + `TrackClicks: 'disabled'`) → supprime pixel de tracking + réécriture des liens = moins de signaux "Promotions"
+- CNAME `bnc3` volontairement **non ajouté** (inutile sans tracking)
+- **mail-tester.com = 9,9/10** (SPF/DKIM/DMARC tous verts). Reste éventuel Principal vs Promotions = dépend du comportement client, pas d'un défaut technique.
 
 ### Design System
 - Navy : `#1a2332` · Or : `#c9a84c` · Fond : `#f8fafc`
@@ -135,8 +141,9 @@ src/
 │   └── bien/
 │       ├── layout.tsx
 │       └── [id]/
-│           ├── page.tsx                 # responsive mobile corrigé (V3)
-│           └── PhotoCarousel.tsx
+│           ├── page.tsx                 # REFONTE premium 1 colonne centrée (V3.1 — 2 juin)
+│           ├── PhotoCarousel.tsx        # + plein écran lightbox flèches/clavier (V3.1)
+│           └── AboutPliable.tsx         # 🆕 "À propos" pliable (Lire la suite) — client component
 ├── components/
 │   ├── clients/Clients.tsx              # création refondue en wizard 3 étapes + multi-recherches (V3)
 │   ├── fiche/FicheClient.tsx            # ~2500 lignes — sélecteur recherche, onglet Suivi, critères→recherches (V3)
@@ -177,6 +184,7 @@ src/
   - 💰 Prix & Charges (prix vendeur, commission, prix FAI auto, prix/m² auto, charges trim, taxe foncière)
   - 🏢 Agence / Vendeur
   - 📝 Description
+- **🆕 Compte-rendu de visite affiché sous le bien (V3.1 — 2 juin)** : dès qu'un bien a une visite `effectuee`, son CR s'affiche directement dans la liste de l'onglet Biens (encadré vert doux : date, note ⭐/5, pastille avis client, commentaire). Plus besoin d'aller dans l'onglet Visites. Affiche le **dernier** CR + compteur si plusieurs visites. Table de correspondance `AVIS_CR` dans FicheClient.
 
 ### 🆕 Envoi de mails (session 26 mai 2026)
 Tous branchés sur Mailjet via `/api/send-mail`.
@@ -200,22 +208,33 @@ Tous branchés sur Mailjet via `/api/send-mail`.
 **API `/api/send-mail`** accepte : `client_ids`, `objet`, `corps`, `biens_ids` (optionnel), `mode` (`libre|biens`), `destinataires_override`.
 Trace dans `envois` + `journal` après succès Mailjet.
 
-### 🆕 Fiche bien publique — `/bien/[id]`
-Page publique accessible à toute personne ayant le lien (pas d'auth).
-**Style Airbnb premium** : fond crème, arrondis 16-20px, sidebar sticky avec prix + CTA.
+**🆕 Template mail refondu (V3.1 — 2 juin 2026)** dans `buildHtml` :
+- **Une seule "feuille" blanche unifiée** sur fond beige `#e7e1d4` (en-tête navy + logo → message → annonce(s) → pied navy, tout lié). Séparations douces (fine barre dorée centrée, filets légers entre biens). ⚠️ Important : les messageries (Gmail) **suppriment les box-shadow** → on sépare par le **contraste** (feuille blanche sur beige), jamais par l'ombre.
+- **Logo dans l'en-tête** via `${SITE_URL}/logo_high_resolution_white.png` (repli sur l'alt "Emilio Immobilier" si images bloquées au 1er envoi).
+- 1 bien = grand visuel + stats + prix + **bouton "Consulter le bien" pleine largeur** (corrige le bouton tassé sur mobile). Plusieurs biens = liste photo-gauche + lien "Consulter".
+- **Textes par défaut reformulés** (FicheClient single + multi, et modèle "Sélection de biens" de PageMail) : ton "Suite à votre projet de recherche, je suis heureux de vous présenter…", ordre **visite → questions → retour pour affiner**.
+- Suivi désactivé (cf. §1 délivrabilité).
 
-Sections :
-- Header navy avec logo Emilio + badge "SÉLECTION PRIVÉE"
-- Titre + localisation + badge "Coup de cœur Emilio"
-- Carrousel photos (`PhotoCarousel.tsx`) avec navigation, compteur, dots, galerie modale plein écran
-- Infos rapides avec séparateurs verticaux (surface, pièces, chambres, étage, expo)
-- Description complète
-- Équipements (grid cartes blanches arrondies + icône dorée)
-- Performance énergétique (DPE + GES côte à côte avec étiquettes officielles)
-- Informations complémentaires (table année/état/charges/taxe)
-- Sidebar sticky droite : prix FAI + prix/m² + CTA "Demander une visite" + tel + avatar AR
-- Section contact bas
-- Footer navy
+### 🆕 Fiche bien publique — `/bien/[id]` (REFONTE premium V3.1 — 2 juin 2026)
+Page publique accessible à toute personne ayant le lien (pas d'auth).
+**Refonte complète** : design premium navy/or sur fond crème `#f3eee3`, chaque section en **carte blanche détachée** (ombre douce + en-tête à pastille dorée et icône Tabler).
+
+⚠️ Changement de layout majeur : passage de 2 colonnes (sidebar sticky) à **UNE seule colonne centrée (max 900px)** — la sidebar laissait un grand vide à droite quand le contenu était long.
+
+Sections (de haut en bas) :
+- Header navy avec **logo blanc agrandi** (`/logo_high_resolution_white.png`, hauteur 56px) + badge "SÉLECTION PRIVÉE"
+- Titre + localisation (📍 or)
+- Carrousel photos `PhotoCarousel.tsx` (nav, compteur, dots) — **clic sur une photo = plein écran** (image en grand, flèches ‹ ›, compteur, fermeture croix/clic/Échap, navigation clavier ←/→). La galerie "Voir tout" ouvre aussi le plein écran au clic d'une vignette. Badge "Coup de cœur" **supprimé**.
+- **Barre prix pleine largeur** sous les photos (prix FAI + prix/m² à gauche · boutons "Demander une visite" + téléphone à droite ; passe en colonne sur mobile)
+- Carte **Infos rapides** (icônes or au-dessus : surface, pièces, chambres, étage, expo ; passe en grille 3 colonnes sur mobile)
+- Carte **À propos** : texte découpé en paragraphes + **"Lire la suite" replié par défaut** (composant `AboutPliable.tsx`, fondu en bas)
+- Carte **Équipements** (pastilles dorées + icône)
+- Carte **Performance énergétique** (DPE/GES badges colorés + chauffage/énergie)
+- Carte **Informations complémentaires** (icône or par ligne : année, état, charges, taxe)
+- Section contact navy (avatar AR + nom + CTA tel/mail)
+- Footer navy avec **logo agrandi** (44px)
+
+⚠️ Les descriptions copiées-collées peuvent contenir le nom du confrère source (ex. "Hosman vous propose…") → à nettoyer côté fiche bien.
 
 ### 🆕 Parsing texte amélioré (`/api/parse-texte-bien`)
 Prompt Claude enrichi pour extraire :
@@ -275,30 +294,13 @@ Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES
 
 ## 7. À FAIRE — PRIORITÉS
 
-### 🔴 Priorité 1 — Finitions envoi mail (en cours)
+### ✅ Priorité 1 — Finitions envoi mail (RÉSOLU — 2 juin 2026)
 
-**1. Améliorer la délivrabilité Mailjet** ⚠️ CRITIQUE
-- Les mails arrivent actuellement dans l'**onglet "Promotions" de Gmail**
-- Causes possibles : trop d'images, mots commerciaux dans l'objet, ratio texte/HTML, absence de DMARC, présence de boutons type marketing
-- Actions à tenter :
-  - **Ajouter DMARC** dans DNS OVH : `_dmarc TXT v=DMARC1; p=none; rua=mailto:arogelet@emilio-immo.com; aspf=r`
-  - **Ajouter CNAME `bnc3`** pointant vers `bnc3.mailjet.com.` (tracking bounces, comme sur Verimo)
-  - **Revoir le template HTML** : réduire les images, augmenter le ratio texte/code, supprimer les boutons trop marketing
-  - **Tester sur mail-tester.com** pour obtenir le score de délivrabilité (objectif > 9/10)
-  - **Éviter mots-piège** dans l'objet : pas de "GRATUIT", "OFFRE", emojis en début, mots commerciaux
-  - **Vérifier SPF strict** : `-all` (déjà fait) plutôt que `~all`
-  - Tester d'envoyer depuis une **adresse pro** vraiment validée (attendre validation `arogelet@emilio-immo.com`)
-  - Considérer **chauffer le domaine** : envoyer peu de mails au début, monter progressivement
+**1. Délivrabilité Mailjet** ✅ — DMARC ajouté, suivi désactivé, mail-tester 9,9/10 (détail §1 « Délivrabilité Mailjet — RÉSOLU »).
 
-**2. Améliorer l'affichage du mail / template envoyé**
-- Le mail HTML actuel a un design simple. À enrichir pour matcher le style Airbnb premium de la fiche bien publique
-- Travailler la cohérence visuelle mail ↔ page `/bien/[id]`
-- Tester sur Gmail web, iOS Mail, Outlook web
+**2. Template mail** ✅ — refondu en une feuille unifiée premium, logo intégré, bouton pleine largeur, textes par défaut reformulés (détail §4 « Template mail refondu »). À retester sur Gmail/iOS/Outlook à chaque évolution.
 
-**3. Améliorer la fiche bien publique mobile**
-- Vérifier que la navigation tactile du carrousel fonctionne
-- S'assurer que la modal "Voir tout" galerie reste utilisable
-- Tester le responsive du grid 2 colonnes (sidebar sticky)
+**3. Fiche bien publique mobile** ✅ — refonte 1 colonne centrée (plus de vide à droite), carrousel + plein écran tactile, "À propos" pliable, stats en grille mobile, logo agrandi (détail §4 « Fiche bien publique »).
 
 ### 🟠 Priorité 2 — Génération PDF sélection de biens
 - jsPDF + html2canvas (⚠️ **PAS encore dans package.json** — à installer ; la note précédente était erronée)
@@ -418,6 +420,16 @@ Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES
 - **Mail** : phrase de bas corrigée ("projet de recherche immobilière"), carte bien responsive sur mobile.
 - **Modales de saisie** non fermables au clic extérieur (contact, mandat, bien, création).
 
+### Session 2 juin 2026 (V3.1) — Refonte fiche bien publique + mail + CR dans l'onglet Biens
+- **Délivrabilité Mailjet finalisée** : DMARC (TXT sur `_dmarc`) + suivi désactivé dans `/api/send-mail` → mail-tester 9,9/10. CNAME `bnc3` écarté (inutile sans tracking).
+- **Refonte complète de `/bien/[id]`** en premium navy/or, **une seule colonne centrée** (max 900px) — supprime le grand vide à droite de l'ancienne sidebar. Chaque section en carte blanche détachée + en-tête à icône. Barre prix pleine largeur. Logo **agrandi** en haut (56px) et en bas (44px).
+- **`PhotoCarousel`** : ajout du **plein écran** (clic sur une photo → image en grand + flèches ‹ ›, compteur, clavier ←/→/Échap). La galerie "Voir tout" ouvre aussi le plein écran. Badge "Coup de cœur" retiré.
+- **`AboutPliable.tsx`** (nouveau composant client) : "À propos" découpé en paragraphes + "Lire la suite" replié par défaut (utile mobile).
+- **Mail refondu** en une feuille unifiée (en-tête/message/annonce/pied liés, séparations douces), logo dans l'en-tête, bouton "Consulter" pleine largeur. Leçon clé : Gmail supprime les ombres → séparer par contraste (blanc sur beige), pas par box-shadow.
+- **Textes par défaut des mails reformulés** (single + multi FicheClient + modèle PageMail) : ton chaleureux, ordre visite → questions → retour.
+- **Compte-rendu de visite affiché sous chaque bien** dans l'onglet Biens (encadré vert : date, ⭐/5, avis, commentaire) — évite l'aller-retour vers l'onglet Visites. Le système visites/CR existait déjà (table `visites` : note_etoiles, commentaire, avis_client) ; seul l'affichage a été ajouté, **aucune migration SQL**.
+- **Aucun changement de base de données cette session.**
+
 ### ⚠️ POINT SÉCURITÉ IMPORTANT (soulevé le 30 mai)
 **RLS désactivé sur toutes les tables Supabase.** N'importe qui avec la clé anon publique (visible côté client) peut lire/modifier toutes les données clients. Risque RGPD/confidentialité réel. **À traiter en session dédiée** : activer le RLS sur toutes les tables d'un coup avec les bonnes policies, puis vérifier que l'app fonctionne. Même nature que la faille identifiée sur Verimo. La table `recherches` a été créée "without RLS" pour rester cohérente avec l'existant.
 
@@ -425,7 +437,7 @@ Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES
 1. **Tester en prod** le multi-recherches (créer 2ᵉ recherche, basculer, vérifier non-mélange des biens, suppression).
 2. **API d'agrégation d'annonces** (voir §14) : tester essais gratuits Stream Estate / MoteurImmo / Yanport, vérifier couverture Paris/92 + CGU re-stockage/envoi client.
 3. **Scoring de compatibilité** (voir §14) : couche 1 (math, gratuit) faisable tout de suite, couche 2 (IA sur description) après branchement API.
-4. **Délivrabilité Mailjet** (toujours en attente) : DMARC + bnc3 + tests.
+4. ~~**Délivrabilité Mailjet**~~ ✅ FAIT (2 juin) : DMARC + suivi désactivé, mail-tester 9,9/10.
 5. **RLS** (sécurité, voir ci-dessus).
 
 ---
