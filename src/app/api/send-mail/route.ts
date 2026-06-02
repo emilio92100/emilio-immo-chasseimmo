@@ -26,6 +26,7 @@ interface BienLite {
   surface?: number | null;
   nb_pieces?: number | null;
   nb_chambres?: number | null;
+  etage?: number | null;
   prix_vendeur?: number | null;
   prix_acquereur?: number | null;
   photos?: string[] | null;
@@ -46,40 +47,76 @@ function escapeHtml(s: string) {
 }
 
 function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): string {
-  const corpsHtml = escapeHtml(opts.corps).replace(/\n/g, '<br/>');
+  const { corps, biens } = opts;
+  const corpsHtml = escapeHtml(corps).replace(/\n/g, '<br/>');
+  const single = biens.length === 1;
 
-  const bienCards = opts.biens.map(b => {
-    const prix = b.prix_acquereur || b.prix_vendeur;
-    const labelPrix = b.prix_acquereur ? 'Prix FAI' : 'Prix';
-    const photo = Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null;
-    const titre = b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` de ${b.surface}m²` : ''}`;
-    const localisation = [b.code_postal, b.ville].filter(Boolean).join(' ');
-    const carac = [
-      b.surface && `${b.surface} m²`,
-      b.nb_pieces && `${b.nb_pieces} pièces`,
-      b.nb_chambres && `${b.nb_chambres} chambres`,
-    ].filter(Boolean).join(' · ');
+  const photoOf = (b: BienLite) => (Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null);
+  const titreOf = (b: BienLite) => b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` de ${b.surface} m²` : ''}`;
+  const locOf = (b: BienLite) => [b.code_postal, b.ville].filter(Boolean).join(' ');
+  const prixOf = (b: BienLite) => b.prix_acquereur || b.prix_vendeur;
+  const etageOf = (b: BienLite) => {
+    const e = (b as { etage?: number | null }).etage;
+    if (e === 0) return 'RDC';
+    if (e) return `${e}ème étage`;
+    return '';
+  };
 
+  function bigCard(b: BienLite): string {
+    const photo = photoOf(b);
+    const prix = prixOf(b);
+    const loc = locOf(b);
+    const etageTxt = etageOf(b);
+    const stats: string[] = [];
+    if (b.surface) stats.push(`<div style="font-size:16px;font-weight:700;color:${BLEU};">${b.surface} m²</div><div style="font-size:11px;color:#9aa6ba;margin-top:1px;">Surface</div>`);
+    if (b.nb_pieces) stats.push(`<div style="font-size:16px;font-weight:700;color:${BLEU};">${b.nb_pieces} pièce${b.nb_pieces > 1 ? 's' : ''}</div><div style="font-size:11px;color:#9aa6ba;margin-top:1px;">${b.nb_chambres ? `Dont ${b.nb_chambres} ch.` : '&nbsp;'}</div>`);
+    if (etageTxt) stats.push(`<div style="font-size:16px;font-weight:700;color:${BLEU};">${etageTxt}</div><div style="font-size:11px;color:#9aa6ba;margin-top:1px;">&nbsp;</div>`);
+    const statCells = stats.map((s, i) => `${i > 0 ? '<td width="1" style="background:#f0ece3;"></td>' : ''}<td align="center" style="padding:14px 4px;">${s}</td>`).join('');
     return `
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="bcard" style="margin-bottom:16px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-        <tr>
-          ${photo ? `
-          <td width="180" class="bphoto" style="vertical-align:top;">
-            <img src="${escapeHtml(photo)}" alt="" width="180" class="bimg" style="width:180px;height:180px;object-fit:cover;display:block;border:0;" />
-          </td>
-          ` : ''}
-          <td class="bcontent" style="padding:18px 20px;vertical-align:top;">
-            <div style="font-size:11px;color:${DORE};letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Bien sélectionné</div>
-            <div style="font-size:17px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titre)}</div>
-            ${localisation ? `<div style="font-size:13px;color:#64748b;margin-bottom:10px;">📍 ${escapeHtml(localisation)}</div>` : ''}
-            ${carac ? `<div style="font-size:13px;color:#475569;margin-bottom:12px;">${escapeHtml(carac)}</div>` : ''}
-            ${prix ? `<div style="font-size:20px;font-weight:800;color:${BLEU};margin-bottom:14px;">${fmt(prix)} €${b.prix_acquereur ? ` <span style="font-size:11px;color:#94a3b8;font-weight:500;">${labelPrix}</span>` : ''}</div>` : ''}
-            <a href="${SITE_URL}/bien/${b.id}" style="display:inline-block;background:${BLEU};color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:600;">Consulter le bien →</a>
-          </td>
-        </tr>
-      </table>
-    `;
-  }).join('');
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #ece7dc;">
+        <tr><td style="padding:0;">
+          ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="600" style="width:100%;max-width:600px;height:auto;display:block;border:0;" />` : `<div style="height:235px;background:${BLEU};"></div>`}
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <div style="font-size:19px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titreOf(b))}</div>
+          ${loc ? `<div style="font-size:13px;color:#7a879b;margin-bottom:18px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : '<div style="height:6px;"></div>'}
+          ${statCells ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;margin-bottom:18px;"><tr>${statCells}</tr></table>` : ''}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="vertical-align:middle;">
+              ${prix ? `<div style="font-size:25px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;margin-top:5px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
+            </td>
+            <td align="right" style="vertical-align:middle;">
+              <a href="${SITE_URL}/bien/${b.id}" style="display:inline-block;background:${BLEU};color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:10px;font-size:14px;font-weight:600;">Voir le bien &rarr;</a>
+            </td>
+          </tr></table>
+        </td></tr>
+      </table>`;
+  }
+
+  function compactCard(b: BienLite): string {
+    const photo = photoOf(b);
+    const prix = prixOf(b);
+    const loc = locOf(b);
+    const etageTxt = etageOf(b);
+    const carac = [b.surface ? `${b.surface} m²` : '', b.nb_pieces ? `${b.nb_pieces} pièce${b.nb_pieces > 1 ? 's' : ''}` : '', etageTxt].filter(Boolean).join(' · ');
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bcard" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #ece7dc;margin-bottom:14px;"><tr>
+        <td width="150" class="bphoto" style="padding:0;vertical-align:top;">
+          ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="150" class="bimg" style="width:150px;height:128px;object-fit:cover;display:block;border:0;" />` : `<div class="bimg" style="width:150px;height:128px;background:${BLEU};"></div>`}
+        </td>
+        <td class="bcontent" style="padding:14px 18px;vertical-align:top;">
+          <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:3px;">${escapeHtml(titreOf(b))}</div>
+          ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:8px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
+          ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:10px;">${escapeHtml(carac)}</div>` : ''}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="vertical-align:middle;">${prix ? `<span style="font-size:17px;font-weight:800;color:${BLEU};">${fmt(prix)} €</span>` : ''}</td>
+            <td align="right" style="vertical-align:middle;"><a href="${SITE_URL}/bien/${b.id}" style="color:${BLEU};font-size:13px;font-weight:600;text-decoration:none;border:1px solid ${BLEU};padding:7px 14px;border-radius:8px;">Voir &rarr;</a></td>
+          </tr></table>
+        </td>
+      </tr></table>`;
+  }
+
+  const cardsHtml = single ? bigCard(biens[0]) : biens.map(compactCard).join('');
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -89,63 +126,40 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
 <title>Emilio Immobilier</title>
 <style>
   @media only screen and (max-width:600px) {
+    .wrap { width:100% !important; }
+    .px { padding-left:20px !important; padding-right:20px !important; }
     .bphoto, .bcontent { display:block !important; width:100% !important; }
     .bphoto .bimg { width:100% !important; height:200px !important; }
-    .bcontent { text-align:center !important; padding:18px 22px 22px !important; }
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:${FOND};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${FOND};">
-    <tr><td align="center" style="padding:32px 12px;">
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;width:100%;">
+<body style="margin:0;padding:0;background:${FOND};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};">
+    <tr><td align="center" style="padding:28px 12px;">
+      <table role="presentation" width="600" class="wrap" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#f7f4ed;border-radius:16px;overflow:hidden;">
 
-        <!-- HEADER -->
-        <tr><td style="background:${BLEU};border-radius:12px 12px 0 0;padding:28px 32px;border-bottom:3px solid ${DORE};">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-            <tr>
-              <td>
-                <img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="44" style="height:44px;width:auto;display:block;border:0;" />
-              </td>
-              <td align="right" style="color:#ffffff;">
-                <div style="font-size:10px;color:${DORE};letter-spacing:1.5px;text-transform:uppercase;font-weight:700;">Chasseur immobilier</div>
-                <div style="font-size:13px;opacity:0.85;margin-top:2px;">Sélection privée</div>
-              </td>
-            </tr>
-          </table>
+        <tr><td style="background:${BLEU};padding:20px 30px;border-bottom:2px solid ${DORE};">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:17px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">Emilio <span style="color:${DORE};">Immobilier</span></td>
+            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">SÉLECTION PRIVÉE</td>
+          </tr></table>
         </td></tr>
 
-        <!-- MESSAGE -->
-        <tr><td style="background:#ffffff;padding:32px;">
-          <div style="font-size:15px;color:#334155;line-height:1.7;">${corpsHtml}</div>
+        <tr><td class="px" style="padding:30px 30px 6px;">
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.7;">${corpsHtml}</div>
         </td></tr>
 
-        ${opts.biens.length > 0 ? `
-        <!-- BIENS -->
-        <tr><td style="background:#ffffff;padding:0 24px 24px 24px;">
-          <div style="font-size:11px;color:${DORE};letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:14px;padding-top:8px;border-top:1px solid #f1f5f9;padding-top:24px;">
-            ${opts.biens.length === 1 ? 'Le bien' : `Les ${opts.biens.length} biens`} que je vous propose
-          </div>
-          ${bienCards}
-        </td></tr>
-        ` : ''}
+        ${biens.length > 0 ? `<tr><td class="px" style="padding:20px 30px 6px;">${cardsHtml}</td></tr>` : ''}
 
-        <!-- CONTACT BAR -->
-        <tr><td style="background:${BLEU};padding:24px 32px;text-align:center;">
-          <div style="font-size:11px;color:${DORE};letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Une question ?</div>
-          <div style="font-size:14px;color:#ffffff;margin-bottom:14px;">Je reste à votre disposition</div>
-          <a href="tel:+33658957632" style="display:inline-block;background:${DORE};color:${BLEU};text-decoration:none;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;margin:0 4px;">📞 06 58 95 76 32</a>
-          <a href="mailto:arogelet@emilio-immo.com" style="display:inline-block;background:rgba(255,255,255,0.1);color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:600;margin:0 4px;border:1px solid rgba(255,255,255,0.3);">✉️ Me répondre</a>
+        <tr><td class="px" style="padding:14px 30px 26px;">
+          <div style="font-size:13.5px;color:#3a4a5f;line-height:1.6;">Bien à vous,<br/><span style="font-weight:700;color:${BLEU};">Alexandre Rogelet</span> — Votre chasseur immobilier</div>
         </td></tr>
 
-        <!-- FOOTER -->
-        <tr><td style="background:${BLEU};border-radius:0 0 12px 12px;padding:20px 32px;text-align:center;border-top:1px solid rgba(201,168,76,0.2);">
-          <div style="color:${DORE};font-size:13px;font-weight:700;margin-bottom:4px;">Emilio Immobilier</div>
-          <div style="color:rgba(255,255,255,0.5);font-size:11px;">Chasse immobilière sur mesure · Paris &amp; région</div>
-        </td></tr>
-
-        <tr><td style="padding:16px;text-align:center;color:#94a3b8;font-size:11px;">
-          Cet email vous est adressé personnellement dans le cadre de votre projet de recherche immobilière.
+        <tr><td style="background:${BLEU};padding:18px 30px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="color:rgba(255,255,255,0.55);font-size:11px;">Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine</td>
+            <td align="right" style="color:${DORE};font-size:14px;font-weight:700;">06 58 95 76 32</td>
+          </tr></table>
         </td></tr>
 
       </table>
@@ -154,6 +168,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
 </body>
 </html>`;
 }
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -196,7 +211,7 @@ export async function POST(req: NextRequest) {
     if (mode !== 'libre') {
       let query = supabase
         .from('biens')
-        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, prix_vendeur, prix_acquereur, photos, badge_retour')
+        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour')
         .in('client_id', client_ids)
         .order('created_at', { ascending: false });
 
