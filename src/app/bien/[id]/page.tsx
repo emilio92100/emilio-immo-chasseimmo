@@ -100,7 +100,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       {/* HEADER */}
       <header style={{ background: BLEU, padding: '16px 0', borderBottom: `2px solid ${DORE}` }}>
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={190} height={44} style={{ height: 38, width: 'auto' }} priority />
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={280} height={64} style={{ height: 56, width: 'auto' }} priority />
           <div style={{ color: DORE, fontSize: 11, letterSpacing: 2.5, fontWeight: 500 }}>SÉLECTION PRIVÉE</div>
         </div>
       </header>
@@ -263,7 +263,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       {/* FOOTER */}
       <footer style={{ background: BLEU_FONCE, padding: '24px 20px', borderTop: '1px solid rgba(201,168,76,0.2)', marginTop: 40 }}>
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={150} height={34} style={{ height: 30, width: 'auto' }} />
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={220} height={50} style={{ height: 44, width: 'auto' }} />
           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
             Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine · Document confidentiel
           </div>
