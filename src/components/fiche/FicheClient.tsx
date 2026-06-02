@@ -3,23 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
-
-const QUARTIERS: Record<string, { ville: string; quartiers: string[] }> = {
-  '75001': { ville: 'Paris 1er', quartiers: ['Saint-Germain-l\'Auxerrois','Les Halles','Palais Royal','Place Vendôme'] },
-  '75006': { ville: 'Paris 6ème', quartiers: ['Saint-Germain-des-Prés','Luxembourg','Vavin','Notre-Dame-des-Champs','Saint-Sulpice'] },
-  '75007': { ville: 'Paris 7ème', quartiers: ['Saint-Thomas-d\'Aquin','Invalides','École Militaire','Gros-Caillou','Tour Eiffel'] },
-  '75008': { ville: 'Paris 8ème', quartiers: ['Champs-Élysées','Faubourg du Roule','Madeleine','Europe'] },
-  '75015': { ville: 'Paris 15ème', quartiers: ['Grenelle','Javel','Saint-Lambert','Necker','Beaugrenelle','Convention','Commerce','Falguière','Brancion'] },
-  '75016': { ville: 'Paris 16ème', quartiers: ['Auteuil','Muette','Porte Dauphine','Chaillot','Victor Hugo','Trocadéro'] },
-  '75017': { ville: 'Paris 17ème', quartiers: ['Ternes','Plaine de Monceau','Batignolles','Epinettes'] },
-  '92100': { ville: 'Boulogne-Billancourt', quartiers: ['Parchamp-Albert Kahn','Silly-Gallieni','Renault-Billancourt','Point-du-Jour','Vaillant-Marcel Sembat','Jean-Jaurès-Reine'] },
-  '92200': { ville: 'Neuilly-sur-Seine', quartiers: ['Neuilly Centre','Bagatelle','Roule','Pont de Neuilly'] },
-  '92300': { ville: 'Levallois-Perret', quartiers: ['Centre Levallois','Pont de Levallois','Victor Hugo'] },
-  '92400': { ville: 'Courbevoie', quartiers: ['Becon','La Défense','Centre Courbevoie'] },
-  '92500': { ville: 'Rueil-Malmaison', quartiers: ['Centre Rueil','Jonchères','Buzenval'] },
-  '92600': { ville: 'Asnières-sur-Seine', quartiers: ['Centre Asnières','Bords de Seine'] },
-  '92800': { ville: 'Puteaux', quartiers: ['Centre Puteaux','La Défense','Île de Puteaux'] },
-};
+import SecteurPicker from '@/components/shared/SecteurPicker';
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
@@ -318,8 +302,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
-  const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
-  const [secteurCustomQ, setSecteurCustomQ] = useState('');
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
   const [url, setUrl] = useState('');
@@ -328,9 +310,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [bienMode, setBienMode] = useState<'url'|'texte'>('url');
   const [texteAnnonce, setTexteAnnonce] = useState('');
   const [photosInput, setPhotosInput] = useState('');
-  const [cpQ, setCpQ] = useState('');
-  const [cpSug, setCpSug] = useState<any[]>([]);
-  const [selCP, setSelCP] = useState('');
   const [txData, setTxData] = useState<any>({});
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
@@ -447,23 +426,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (data) setClient(data as Client);
   }
 
-  async function searchCP(q: string) {
-    setCpQ(q);
-    if (q.length < 2) { setCpSug([]); return; }
-    const local = Object.entries(QUARTIERS).filter(([cp, info]) => cp.includes(q) || info.ville.toLowerCase().includes(q.toLowerCase())).map(([cp, info]) => ({ cp, ville: info.ville }));
-    if (local.length > 0) { setCpSug(local.slice(0, 6)); return; }
-    try {
-      const r = await fetch(`https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,codesPostaux&boost=population&limit=8`);
-      const data = await r.json();
-      setCpSug(data.flatMap((d: any) => d.codesPostaux.map((cp: string) => ({ cp, ville: d.nom }))).slice(0, 6));
-    } catch { setCpSug([]); }
-  }
-
-  function addSecteur(cp: string, ville: string, quartier?: string) {
-    const label = quartier ? `${quartier} (${ville})` : `${ville} (${cp})`;
-    if (!crit.secteurs.includes(label)) setCrit(f => ({ ...f, secteurs: [...f.secteurs, label] }));
-    setCpQ(''); setCpSug([]); setSelCP('');
-  }
 
   async function saveContact() {
     setSaving(true);
@@ -1811,41 +1773,7 @@ Emilio Immobilier
               </div>
               <div>
                 <label className={styles.lbl}>Secteurs / Quartiers</label>
-                <div style={{ position: 'relative' }}>
-                  <input className={styles.inp} value={cpQ} onChange={e => searchCP(e.target.value)} placeholder="Tapez un code postal ou une ville (ex: 92100, Neuilly...)" />
-                  {cpSug.length > 0 && (
-                    <div className={styles.suggestions}>
-                      {cpSug.map((s, i) => (<div key={i} className={styles.suggItem} onClick={() => { const info = QUARTIERS[s.cp]; if (info?.quartiers) { setSecteurVilleActive({cp: s.cp, ville: info.ville}); } else { setSecteurVilleActive({cp: s.cp, ville: s.ville}); } setCpSug([]); setCpQ(''); setSecteurCustomQ(''); }}><strong>{s.cp}</strong> — {s.ville}{QUARTIERS[s.cp] ? ' 📍 quartiers disponibles' : ''}</div>))}
-                    </div>
-                  )}
-                </div>
-                {secteurVilleActive && (
-                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>📍 {secteurVilleActive.ville} ({secteurVilleActive.cp})</div>
-                      <button onClick={() => { setSecteurVilleActive(null); setSecteurCustomQ(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                      <button onClick={() => addSecteur(secteurVilleActive.cp, secteurVilleActive.ville)} style={{ fontSize: 12, padding: '5px 14px', borderRadius: 20, border: '1px solid #1a2332', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✓ Toute la ville</button>
-                      {QUARTIERS[secteurVilleActive.cp]?.quartiers.map(q => { const label = `${q} (${secteurVilleActive.ville})`; const already = crit.secteurs.includes(label); return (<button key={q} onClick={() => already ? setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==label)})) : addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, q)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: `1px solid ${already ? '#10b981' : '#e2e8f0'}`, background: already ? '#ecfdf5' : 'white', color: already ? '#10b981' : '#64748b', cursor: 'pointer', fontFamily: 'inherit', fontWeight: already ? 600 : 400, transition: 'all 0.12s' }}>{already ? '✓ ' : ''}{q}</button>); })}
-                      {!QUARTIERS[secteurVilleActive.cp] && <div style={{fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                      <input className={styles.inp} value={secteurCustomQ} onChange={e => setSecteurCustomQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && secteurCustomQ.trim()) { e.preventDefault(); addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, secteurCustomQ.trim()); setSecteurCustomQ(''); } }} placeholder={`Ajouter un quartier de ${secteurVilleActive.ville}...`} style={{ flex: 1 }} />
-                      <button type="button" onClick={() => { if (secteurCustomQ.trim()) { addSecteur(secteurVilleActive.cp, secteurVilleActive.ville, secteurCustomQ.trim()); setSecteurCustomQ(''); } }} style={{ fontSize: 12, padding: '0 16px', borderRadius: 10, border: 'none', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Ajouter</button>
-                    </div>
-                    <div style={{fontSize:11,color:'#94a3b8'}}>💡 Vous pouvez sélectionner plusieurs quartiers puis chercher une autre ville</div>
-                  </div>
-                )}
-                {crit.secteurs.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                    {crit.secteurs.map(s => (<span key={s} className={styles.secteurTag}>{s} <span onClick={() => setCrit(f=>({...f,secteurs:f.secteurs.filter(x=>x!==s)}))} style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span></span>))}
-                  </div>
-                )}
-                <div style={{ marginTop: 10 }}>
-                  <input className={styles.inp} placeholder="Ou saisir un secteur libre (ex: Triangle d'Or, Proche RER...)" onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) { const v = (e.target as HTMLInputElement).value.trim(); if (!crit.secteurs.includes(v)) setCrit(f=>({...f,secteurs:[...f.secteurs,v]})); (e.target as HTMLInputElement).value = ''; } }} />
-                  <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Appuyez sur Entrée pour ajouter un secteur personnalisé</div>
-                </div>
+                <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
               </div>
               <div className={styles.formRow}>
                 <div>
