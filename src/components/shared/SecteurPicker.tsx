@@ -15,6 +15,7 @@ export default function SecteurPicker({
   const [cpQ, setCpQ] = useState('');
   const [cpSug, setCpSug] = useState<CpSuggestion[]>([]);
   const [villeActive, setVilleActive] = useState<{ cp: string; ville: string } | null>(null);
+  const [customQ, setCustomQ] = useState('');
 
   async function handleSearch(q: string) {
     setCpQ(q);
@@ -46,7 +47,7 @@ export default function SecteurPicker({
             {cpSug.map((s, i) => (
               <div
                 key={i}
-                onClick={() => { setVilleActive({ cp: s.cp, ville: QUARTIERS[s.cp]?.ville || s.ville }); setCpSug([]); setCpQ(''); }}
+                onClick={() => { setVilleActive({ cp: s.cp, ville: QUARTIERS[s.cp]?.ville || s.ville }); setCpSug([]); setCpQ(''); setCustomQ(''); }}
                 style={sugItem}
                 onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
@@ -63,7 +64,7 @@ export default function SecteurPicker({
         <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 8, border: '1px solid #e3e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>📍 {villeActive.ville} ({villeActive.cp})</div>
-            <button type="button" onClick={() => setVilleActive(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
+            <button type="button" onClick={() => { setVilleActive(null); setCustomQ(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>Fermer ✕</button>
           </div>
           <div style={{ fontSize: 12.5, color: '#3730a3', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '7px 11px', marginBottom: 10 }}>
             👆 Cliquez sur <strong>« Toute la ville »</strong> ou sur un ou plusieurs <strong>quartiers</strong> pour les ajouter à la recherche.
@@ -85,6 +86,16 @@ export default function SecteurPicker({
               );
             })}
             {!QUARTIERS[villeActive.cp] && <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>Aucun quartier prédéfini — la ville entière sera ajoutée</div>}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <input
+              value={customQ}
+              onChange={(e) => setCustomQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && customQ.trim()) { e.preventDefault(); add(villeActive.cp, villeActive.ville, customQ.trim()); setCustomQ(''); } }}
+              placeholder={`Ajouter un quartier de ${villeActive.ville}...`}
+              style={{ ...inpStyle, flex: 1 }}
+            />
+            <button type="button" onClick={() => { if (customQ.trim()) { add(villeActive.cp, villeActive.ville, customQ.trim()); setCustomQ(''); } }} style={{ fontSize: 12, padding: '0 16px', borderRadius: 10, border: 'none', background: '#1a2332', color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Ajouter</button>
           </div>
           <div style={{ fontSize: 11, color: '#94a3b8' }}>💡 Sélectionnez plusieurs quartiers puis cherchez une autre ville</div>
         </div>
