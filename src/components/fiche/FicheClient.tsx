@@ -1202,16 +1202,16 @@ Emilio Immobilier
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Type + Budget sur même ligne */}
-                  {(cr.type_bien || cr.budget_min) && (
-                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  {(cr.type_bien || cr.budget_min || cr.budget_max) && (
+                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       {cr.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.type_bien}</div></div>}
+                      {(cr.budget_min || cr.budget_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Budget</div><div style={{ fontSize: 22, fontWeight: 800, color: '#c9a84c', lineHeight: 1.1 }}>{cr.budget_min && cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)} k€` : cr.budget_max ? `Jusqu'à ${(cr.budget_max/1000).toFixed(0)} k€` : `À partir de ${(cr.budget_min/1000).toFixed(0)} k€`}</div></div>}
                       </div>
                   )}
                   {/* Autres critères chiffrés */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {cr.budget_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Budget</div><div style={{ fontSize: 15, fontWeight: 700, color: '#c9a84c' }}>{cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)}k€` : `min ${(cr.budget_min/1000).toFixed(0)}k€`}</div></div>}
-                    {cr.surface_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
-                    {cr.nb_pieces_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
+                    {(cr.surface_min || cr.surface_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_min && cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : cr.surface_max ? `max ${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
+                    {(cr.nb_pieces_min || cr.nb_pieces_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : cr.nb_pieces_max ? `max ${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
                     {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
                     {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
                     {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
@@ -1306,6 +1306,23 @@ Emilio Immobilier
             )}
           </div>
         </div>
+
+        {/* SITUATION ACTUELLE DE L'ACHETEUR (propriétaire / locataire) */}
+        {(client as any).statut_occupation && (() => {
+          const occ = client as any;
+          const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
+          const estProprio = occ.statut_occupation === 'proprietaire';
+          return (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 14, padding: '14px 18px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.8, width: '100%' }}>🏠 Situation actuelle</div>
+              <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{labelStatut}</div></div>
+              {estProprio && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien actuel</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
+              {estProprio && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
+              {estProprio && occ.bien_actuel_a_vendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
+              {estProprio && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#475569', lineHeight: 1.5 }}><span style={{ color: '#94a3b8', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+            </div>
+          );
+        })()}
 
         {/* ONGLETS en haut */}
         <div className={styles.tabs}>
