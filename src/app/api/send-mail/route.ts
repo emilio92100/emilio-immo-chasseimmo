@@ -51,9 +51,6 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
   const corpsHtml = escapeHtml(corps).replace(/\n/g, '<br/>');
   const single = biens.length === 1;
 
-  const BEIGE = '#e7e1d4';
-  const BORD = '#e3d8c4';
-
   const photoOf = (b: BienLite) => (Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null);
   const titreOf = (b: BienLite) => b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` de ${b.surface} m²` : ''}`;
   const locOf = (b: BienLite) => [b.code_postal, b.ville].filter(Boolean).join(' ');
@@ -65,7 +62,11 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
     return '';
   };
 
-  function bigCard(b: BienLite): string {
+  // Séparateur doux (petite barre dorée centrée) pour lier les sections
+  const softDivider = `<tr><td align="center" style="padding:18px 28px 0;"><div style="width:46px;height:2px;background:${DORE};opacity:0.55;line-height:2px;font-size:0;">&nbsp;</div></td></tr>`;
+  const hairline = `<tr><td style="padding:0 28px;"><div style="border-top:1px solid #eee5d6;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
+
+  function singleBloc(b: BienLite): string {
     const photo = photoOf(b);
     const prix = prixOf(b);
     const loc = locOf(b);
@@ -75,45 +76,47 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
     if (b.nb_pieces) cells.push({ v: `${b.nb_pieces}`, l: b.nb_pieces > 1 ? 'Pièces' : 'Pièce' });
     if (b.nb_chambres) cells.push({ v: `${b.nb_chambres}`, l: b.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
     if (etageTxt) cells.push({ v: etageTxt, l: 'Étage' });
-    const statsRow = cells.map((c, i) => `${i > 0 ? '<td width="1" style="background:#f0ece3;"></td>' : ''}<td align="center" style="padding:4px 6px;"><div style="font-size:17px;font-weight:700;color:${BLEU};">${c.v}</div><div style="font-size:11px;color:#9aa6ba;margin-top:2px;">${c.l}</div></td>`).join('');
+    const statsRow = cells.map((c, i) => `${i > 0 ? '<td width="1" style="background:#f0ece3;"></td>' : ''}<td align="center" style="padding:10px 6px;"><div style="font-size:17px;font-weight:700;color:${BLEU};">${c.v}</div><div style="font-size:11px;color:#9aa6ba;margin-top:2px;">${c.l}</div></td>`).join('');
     return `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border:1px solid ${BORD};border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:0;">
-          ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="600" style="width:100%;max-width:600px;height:auto;display:block;border:0;" />` : `<div style="height:220px;background:${BLEU};"></div>`}
-        </td></tr>
-        <tr><td style="padding:24px 26px;">
-          <div style="font-size:19px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titreOf(b))}</div>
-          ${loc ? `<div style="font-size:13px;color:#7a879b;margin-bottom:18px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : '<div style="height:8px;"></div>'}
-          ${statsRow ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;margin-bottom:20px;"><tr>${statsRow}</tr></table>` : ''}
-          ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;letter-spacing:0.3px;margin:6px 0 20px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : '<div style="height:8px;"></div>'}
-          <a href="${SITE_URL}/bien/${b.id}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
-        </td></tr>
-      </table>`;
+      ${photo ? `<tr><td style="padding:0;"><img src="${escapeHtml(photo)}" alt="" width="600" style="width:100%;max-width:600px;height:auto;display:block;border:0;" /></td></tr>` : ''}
+      <tr><td style="padding:24px 28px 8px;">
+        <div style="font-size:20px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titreOf(b))}</div>
+        ${loc ? `<div style="font-size:13px;color:#7a879b;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
+      </td></tr>
+      ${statsRow ? `<tr><td style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
+      <tr><td style="padding:18px 28px 6px;">
+        ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
+        <a href="${SITE_URL}/bien/${b.id}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
+      </td></tr>`;
   }
 
-  function compactCard(b: BienLite): string {
+  function multiItem(b: BienLite, idx: number, total: number): string {
     const photo = photoOf(b);
     const prix = prixOf(b);
     const loc = locOf(b);
     const etageTxt = etageOf(b);
     const carac = [b.surface ? `${b.surface} m²` : '', b.nb_pieces ? `${b.nb_pieces} p.` : '', b.nb_chambres ? `${b.nb_chambres} ch.` : '', etageTxt ? `${etageTxt} ét.` : ''].filter(Boolean).join(' · ');
     return `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bcard" style="background:#ffffff;border:1px solid ${BORD};border-radius:14px;overflow:hidden;margin-bottom:14px;"><tr>
-        <td width="160" class="bphoto" style="padding:0;vertical-align:top;">
-          ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="160" class="bimg" style="width:160px;height:100%;min-height:140px;object-fit:cover;display:block;border:0;" />` : `<div class="bimg" style="width:160px;height:140px;background:${BLEU};"></div>`}
-        </td>
-        <td class="bcontent" style="padding:16px 18px;vertical-align:top;">
-          <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:3px;">${escapeHtml(titreOf(b))}</div>
-          ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:8px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
-          ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:12px;">${escapeHtml(carac)}</div>` : ''}
-          ${prix ? `<div style="font-size:18px;font-weight:800;color:${BLEU};margin-bottom:12px;">${fmt(prix)} €</div>` : ''}
-          <a href="${SITE_URL}/bien/${b.id}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:11px;border-radius:9px;font-size:13px;font-weight:600;">Consulter &rarr;</a>
-        </td>
-      </tr></table>`;
+      <tr><td style="padding:${idx === 0 ? '20' : '18'}px 28px 18px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td width="150" class="miphoto" style="vertical-align:top;">
+            ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="150" class="miimg" style="width:150px;height:115px;object-fit:cover;display:block;border-radius:10px;border:0;" />` : `<div class="miimg" style="width:150px;height:115px;background:${BLEU};border-radius:10px;"></div>`}
+          </td>
+          <td class="mibody" style="vertical-align:top;padding-left:16px;">
+            <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:3px;">${escapeHtml(titreOf(b))}</div>
+            ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
+            ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
+            ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:8px;">${fmt(prix)} €</div>` : ''}
+            <a href="${SITE_URL}/bien/${b.id}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      ${idx < total - 1 ? hairline : ''}`;
   }
 
-  const cardsHtml = single ? bigCard(biens[0]) : biens.map(compactCard).join('');
-  const spacer = '<tr><td height="14" style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>';
+  const propertyRows = single
+    ? singleBloc(biens[0])
+    : biens.map((b, i) => multiItem(b, i, biens.length)).join('');
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -123,39 +126,39 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
 <title>Emilio Immobilier</title>
 <style>
   @media only screen and (max-width:600px) {
-    .wrap { width:100% !important; }
-    .px { padding-left:18px !important; padding-right:18px !important; }
-    .bphoto, .bcontent { display:block !important; width:100% !important; }
-    .bphoto .bimg { width:100% !important; height:190px !important; }
+    .sheet { width:100% !important; }
+    .miphoto, .mibody { display:block !important; width:100% !important; padding-left:0 !important; }
+    .miphoto .miimg { width:100% !important; height:190px !important; margin-bottom:12px; }
   }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="600" class="wrap" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+    <tr><td align="center" style="padding:26px 12px;">
 
-        <!-- HEADER -->
-        <tr><td style="background:${BLEU};border-radius:16px;border-bottom:3px solid ${DORE};padding:20px 28px;">
+      <!-- FEUILLE UNIQUE -->
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+
+        <!-- En-tête -->
+        <tr><td style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="36" style="height:36px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">SÉLECTION PRIVÉE</td>
           </tr></table>
         </td></tr>
-        ${spacer}
 
-        <!-- MESSAGE -->
-        <tr><td class="px" style="background:#ffffff;border:1px solid ${BORD};border-radius:16px;padding:26px 28px;">
+        <!-- Message -->
+        <tr><td style="padding:26px 28px 4px;">
           <div style="font-size:14.5px;color:#3a4a5f;line-height:1.7;">${corpsHtml}</div>
         </td></tr>
-        ${biens.length > 0 ? spacer : ''}
 
-        <!-- BIENS -->
-        ${biens.length > 0 ? `<tr><td>${cardsHtml}</td></tr>` : ''}
-        ${spacer}
+        ${biens.length > 0 ? softDivider : ''}
 
-        <!-- FOOTER -->
-        <tr><td style="background:${BLEU};border-radius:16px;padding:20px 28px;">
+        <!-- Annonce(s) -->
+        ${propertyRows}
+
+        <!-- Pied -->
+        <tr><td style="background:${BLEU};padding:20px 28px;margin-top:10px;">
           <table role="presentation" width="100%"><tr>
             <td>
               <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
@@ -166,11 +169,13 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
         </td></tr>
 
       </table>
+
     </td></tr>
   </table>
 </body>
 </html>`;
 }
+
 
 
 
