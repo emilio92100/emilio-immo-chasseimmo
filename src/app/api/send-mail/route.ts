@@ -138,7 +138,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
         <!-- HEADER -->
         <tr><td style="background:${BLEU};border-radius:16px;border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">Emilio <span style="color:${DORE};">Immobilier</span></td>
+            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="36" style="height:36px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">SÉLECTION PRIVÉE</td>
           </tr></table>
         </td></tr>
