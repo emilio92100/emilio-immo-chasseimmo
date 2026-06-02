@@ -1205,7 +1205,7 @@ Emilio Immobilier
                   {(cr.type_bien || cr.budget_min || cr.budget_max) && (
                     <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       {cr.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.type_bien}</div></div>}
-                      {(cr.budget_min || cr.budget_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Budget</div><div style={{ fontSize: 22, fontWeight: 800, color: '#c9a84c', lineHeight: 1.1 }}>{cr.budget_min && cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)} k€` : cr.budget_max ? `Jusqu'à ${(cr.budget_max/1000).toFixed(0)} k€` : `À partir de ${(cr.budget_min/1000).toFixed(0)} k€`}</div></div>}
+                      {(cr.budget_min || cr.budget_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Budget</div><div style={{ fontSize: 22, fontWeight: 800, color: '#c9a84c', lineHeight: 1.1 }}>{cr.budget_min && cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)} k€` : cr.budget_max ? `Jusqu'à ${(cr.budget_max/1000).toFixed(0)} k€` : `À partir de ${((cr.budget_min||0)/1000).toFixed(0)} k€`}</div></div>}
                       </div>
                   )}
                   {/* Autres critères chiffrés */}
