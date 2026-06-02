@@ -246,6 +246,8 @@ export async function POST(req: NextRequest) {
               TextPart: text,
               HTMLPart: html,
               CustomID: `chasse-${client.id}-${Date.now()}`,
+              TrackOpens: 'disabled',
+              TrackClicks: 'disabled',
             }],
           }),
         });
