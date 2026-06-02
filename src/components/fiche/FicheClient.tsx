@@ -316,7 +316,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showBien, setShowBien] = useState(false);
   const [showAction, setShowAction] = useState(false);
 
-  const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' });
+  const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'' });
   const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
@@ -475,8 +475,17 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if ((client.adresse||'') !== (cf.adresse||'')) changes.push(`Adresse mise à jour`);
     if (JSON.stringify(client.emails||[]) !== JSON.stringify(newEmails)) changes.push(`Email modifié`);
     if (JSON.stringify(client.telephones||[]) !== JSON.stringify(newTels)) changes.push(`Téléphone modifié`);
+    if (((client as any).statut_occupation||'') !== cf.statut_occupation) changes.push(`Situation actuelle modifiée`);
 
-    const { data } = await supabase.from('clients').update({ prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels }).eq('id', client.id).select().single();
+    const { data } = await supabase.from('clients').update({
+      prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels,
+      statut_occupation: cf.statut_occupation||null,
+      bien_actuel_type: cf.statut_occupation === 'proprietaire' ? (cf.bien_actuel_type||null) : null,
+      bien_actuel_surface: cf.statut_occupation === 'proprietaire' && cf.bien_actuel_surface ? parseInt(cf.bien_actuel_surface) : null,
+      bien_actuel_valeur: cf.statut_occupation === 'proprietaire' && cf.bien_actuel_valeur ? parseInt(cf.bien_actuel_valeur) : null,
+      bien_actuel_a_vendre: cf.statut_occupation === 'proprietaire' ? cf.bien_actuel_a_vendre : false,
+      bien_actuel_notes: cf.statut_occupation === 'proprietaire' ? (cf.bien_actuel_notes||null) : null,
+    }).eq('id', client.id).select().single();
     if (data) {
       setClient(data as Client);
     }
@@ -1141,7 +1150,7 @@ Emilio Immobilier
                 <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9 }}>▼</span>
               </div>
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{client.reference} · {jours}j de suivi</span>
-              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'' }); setShowContact(true); }} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
+              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'' }); setShowContact(true); }} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
             </div>
             {/* Infos contact inline */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
@@ -1717,6 +1726,29 @@ Emilio Immobilier
               <div><label className={styles.lbl}>Adresse</label><input className={styles.inp} value={cf.adresse} onChange={e => setCf(f => ({ ...f, adresse: e.target.value }))} /></div>
               <div className={styles.formRow}><div><label className={styles.lbl}>Email principal</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Email secondaire</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div></div>
               <div className={styles.formRow}><div><label className={styles.lbl}>Tél. principal</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div><div><label className={styles.lbl}>Tél. secondaire</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
+
+              {/* Situation actuelle (propriétaire / locataire) */}
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 8, paddingTop: 12 }}>
+                <label className={styles.lbl}>🏠 Situation actuelle</label>
+                <select className={styles.inp} value={cf.statut_occupation} onChange={e => setCf(f => ({ ...f, statut_occupation: e.target.value }))}>
+                  <option value="">— Non renseigné —</option>
+                  <option value="proprietaire">Propriétaire</option>
+                  <option value="locataire">Locataire</option>
+                  <option value="heberge">Hébergé</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              {cf.statut_occupation === 'proprietaire' && (
+                <>
+                  <div className={styles.formRow}>
+                    <div><label className={styles.lbl}>Type de bien actuel</label><input className={styles.inp} value={cf.bien_actuel_type} onChange={e => setCf(f => ({ ...f, bien_actuel_type: e.target.value }))} placeholder="Appartement 3P" /></div>
+                    <div><label className={styles.lbl}>Surface (m²)</label><input className={styles.inp} type="number" value={cf.bien_actuel_surface} onChange={e => setCf(f => ({ ...f, bien_actuel_surface: e.target.value }))} placeholder="65" /></div>
+                  </div>
+                  <div><label className={styles.lbl}>Valeur estimée (€)</label><input className={styles.inp} type="number" value={cf.bien_actuel_valeur} onChange={e => setCf(f => ({ ...f, bien_actuel_valeur: e.target.value }))} placeholder="450000" /></div>
+                  <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_a_vendre: !f.bien_actuel_a_vendre }))} style={{ marginTop: 10, padding: '8px 14px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_a_vendre ? '#ea580c' : '#e2e8f0'}`, background: cf.bien_actuel_a_vendre ? '#fff7ed' : 'white', color: cf.bien_actuel_a_vendre ? '#ea580c' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Souhaite vendre ce bien</button>
+                  <div style={{ marginTop: 10 }}><label className={styles.lbl}>Précisions sur le bien actuel</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} placeholder="État, étage, contexte de vente..." /></div>
+                </>
+              )}
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowContact(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveContact} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
