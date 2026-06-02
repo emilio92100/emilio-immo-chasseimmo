@@ -316,7 +316,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showBien, setShowBien] = useState(false);
   const [showAction, setShowAction] = useState(false);
 
-  const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'' });
+  const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [secteurVilleActive, setSecteurVilleActive] = useState<{cp:string,ville:string}|null>(null);
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
@@ -480,11 +480,12 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const { data } = await supabase.from('clients').update({
       prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels,
       statut_occupation: cf.statut_occupation||null,
-      bien_actuel_type: cf.statut_occupation === 'proprietaire' ? (cf.bien_actuel_type||null) : null,
-      bien_actuel_surface: cf.statut_occupation === 'proprietaire' && cf.bien_actuel_surface ? parseInt(cf.bien_actuel_surface) : null,
-      bien_actuel_valeur: cf.statut_occupation === 'proprietaire' && cf.bien_actuel_valeur ? parseInt(cf.bien_actuel_valeur) : null,
-      bien_actuel_a_vendre: cf.statut_occupation === 'proprietaire' ? cf.bien_actuel_a_vendre : false,
-      bien_actuel_notes: cf.statut_occupation === 'proprietaire' ? (cf.bien_actuel_notes||null) : null,
+      bien_actuel_a_vendre: cf.bien_actuel_a_vendre,
+      bien_actuel_type: cf.bien_actuel_a_vendre ? (cf.bien_actuel_type||null) : null,
+      bien_actuel_surface: cf.bien_actuel_a_vendre && cf.bien_actuel_surface ? parseInt(cf.bien_actuel_surface) : null,
+      bien_actuel_valeur: cf.bien_actuel_a_vendre && cf.bien_actuel_valeur ? parseInt(cf.bien_actuel_valeur) : null,
+      bien_actuel_adresse: cf.bien_actuel_a_vendre && !cf.bien_actuel_meme_adresse ? (cf.bien_actuel_adresse||null) : null,
+      bien_actuel_notes: cf.bien_actuel_a_vendre ? (cf.bien_actuel_notes||null) : null,
     }).eq('id', client.id).select().single();
     if (data) {
       setClient(data as Client);
@@ -1150,7 +1151,7 @@ Emilio Immobilier
                 <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9 }}>▼</span>
               </div>
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{client.reference} · {jours}j de suivi</span>
-              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'' }); setShowContact(true); }} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
+              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
             </div>
             {/* Infos contact inline */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
@@ -1316,19 +1317,20 @@ Emilio Immobilier
           </div>
         </div>
 
-        {/* SITUATION ACTUELLE DE L'ACHETEUR (propriétaire / locataire) */}
-        {(client as any).statut_occupation && (() => {
+        {/* SITUATION ACTUELLE DE L'ACHETEUR + bien à vendre éventuel */}
+        {((client as any).statut_occupation || (client as any).bien_actuel_a_vendre) && (() => {
           const occ = client as any;
           const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
-          const estProprio = occ.statut_occupation === 'proprietaire';
+          const aVendre = !!occ.bien_actuel_a_vendre;
           return (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 14, padding: '14px 18px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.8, width: '100%' }}>🏠 Situation actuelle</div>
-              <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{labelStatut}</div></div>
-              {estProprio && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien actuel</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
-              {estProprio && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
-              {estProprio && occ.bien_actuel_a_vendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
-              {estProprio && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#475569', lineHeight: 1.5 }}><span style={{ color: '#94a3b8', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+              {occ.statut_occupation && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{labelStatut}</div></div>}
+              {aVendre && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien à vendre</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
+              {aVendre && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
+              {aVendre && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Adresse du bien</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'}</div></div>}
+              {aVendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
+              {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#475569', lineHeight: 1.5 }}><span style={{ color: '#94a3b8', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
             </div>
           );
         })()}
@@ -1738,16 +1740,21 @@ Emilio Immobilier
                   <option value="autre">Autre</option>
                 </select>
               </div>
-              {cf.statut_occupation === 'proprietaire' && (
-                <>
+              {/* Bien à vendre — interrupteur indépendant du statut */}
+              <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_a_vendre: !f.bien_actuel_a_vendre }))} style={{ marginTop: 10, padding: '8px 14px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_a_vendre ? '#ea580c' : '#e2e8f0'}`, background: cf.bien_actuel_a_vendre ? '#fff7ed' : 'white', color: cf.bien_actuel_a_vendre ? '#ea580c' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Projet de vente / bien à vendre (mandat potentiel)</button>
+              {cf.bien_actuel_a_vendre && (
+                <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div className={styles.formRow}>
-                    <div><label className={styles.lbl}>Type de bien actuel</label><input className={styles.inp} value={cf.bien_actuel_type} onChange={e => setCf(f => ({ ...f, bien_actuel_type: e.target.value }))} placeholder="Appartement 3P" /></div>
+                    <div><label className={styles.lbl}>Type de bien</label><input className={styles.inp} value={cf.bien_actuel_type} onChange={e => setCf(f => ({ ...f, bien_actuel_type: e.target.value }))} placeholder="Appartement 3P" /></div>
                     <div><label className={styles.lbl}>Surface (m²)</label><input className={styles.inp} type="number" value={cf.bien_actuel_surface} onChange={e => setCf(f => ({ ...f, bien_actuel_surface: e.target.value }))} placeholder="65" /></div>
                   </div>
                   <div><label className={styles.lbl}>Valeur estimée (€)</label><input className={styles.inp} type="number" value={cf.bien_actuel_valeur} onChange={e => setCf(f => ({ ...f, bien_actuel_valeur: e.target.value }))} placeholder="450000" /></div>
-                  <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_a_vendre: !f.bien_actuel_a_vendre }))} style={{ marginTop: 10, padding: '8px 14px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_a_vendre ? '#ea580c' : '#e2e8f0'}`, background: cf.bien_actuel_a_vendre ? '#fff7ed' : 'white', color: cf.bien_actuel_a_vendre ? '#ea580c' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Souhaite vendre ce bien</button>
-                  <div style={{ marginTop: 10 }}><label className={styles.lbl}>Précisions sur le bien actuel</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} placeholder="État, étage, contexte de vente..." /></div>
-                </>
+                  <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_meme_adresse: !f.bien_actuel_meme_adresse }))} style={{ alignSelf: 'flex-start', padding: '7px 13px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#e2e8f0'}`, background: cf.bien_actuel_meme_adresse ? '#f0f9ff' : 'white', color: cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_meme_adresse ? '✓ ' : ''}📍 Bien à la même adresse que le contact</button>
+                  {!cf.bien_actuel_meme_adresse && (
+                    <div><label className={styles.lbl}>Adresse du bien à vendre</label><input className={styles.inp} value={cf.bien_actuel_adresse} onChange={e => setCf(f => ({ ...f, bien_actuel_adresse: e.target.value }))} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                  )}
+                  <div><label className={styles.lbl}>Précisions sur le bien à vendre</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} placeholder="État, étage, contexte de vente..." /></div>
+                </div>
               )}
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowContact(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveContact} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
