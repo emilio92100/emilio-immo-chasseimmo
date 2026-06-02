@@ -1076,6 +1076,14 @@ Emilio Immobilier
     refuse:           { label: '❌ Refusé',            color: '#ef4444', bg: '#fef2f2' },
   };
 
+  const AVIS_CR: Record<string, { label: string; color: string; bg: string }> = {
+    tres_interesse: { label: '🔥 Très intéressé', color: '#c2410c', bg: '#fff7ed' },
+    interesse:      { label: '👍 Intéressé',      color: '#15803d', bg: '#f0fdf4' },
+    a_voir:         { label: '🤔 À revoir',        color: '#7c3aed', bg: '#f5f3ff' },
+    pas_interesse:  { label: '👎 Pas intéressé',   color: '#b91c1c', bg: '#fef2f2' },
+    elimine:        { label: '❌ Éliminé',          color: '#991b1b', bg: '#fef2f2' },
+  };
+
   const ETAPES_LABELS: Record<string, string> = {
     offre: '1 — Offre', negociation: '2 — Négociation',
     offre_acceptee: '3 — Offre acceptée', compromis: '4 — Compromis', acte: '5 — Acte'
@@ -1315,6 +1323,11 @@ Emilio Immobilier
               <div className={styles.emptyTab}><div style={{ fontSize: 40, marginBottom: 12 }}>🏠</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucun bien proposé</div><div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 18 }}>Collez une URL d'annonce SeLoger, LeBonCoin, PAP...</div><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien par URL</button></div>
             ) : biens.map(b => {
               const badge = BADGES[b.badge_retour] || BADGES.propose;
+              const visitesBien = visites
+                .filter(v => v.bien_id === b.id && v.statut === 'effectuee')
+                .sort((a, c) => (c.date_visite || '').localeCompare(a.date_visite || ''));
+              const cr = visitesBien[0];
+              const avis = cr?.avis_client ? AVIS_CR[cr.avis_client] : null;
               return (
                 <div key={b.id} className={styles.bienCard}>
                   <div className={styles.bienPhoto}>{b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}</div>
@@ -1345,6 +1358,22 @@ Emilio Immobilier
                         <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Visite</button>
                       </div>
                     </div>
+                    {cr && (
+                      <div style={{ marginTop: 12, background: '#f6faf7', border: '1px solid #d6ebdd', borderRadius: 12, padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: cr.commentaire ? 8 : 0, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#10b981' }}>📋 Compte-rendu de visite</span>
+                            {cr.date_visite && <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(cr.date_visite).toLocaleDateString('fr-FR')}</span>}
+                            {visitesBien.length > 1 && <span style={{ fontSize: 11, color: '#94a3b8' }}>· {visitesBien.length} visites</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {cr.note_etoiles > 0 && <span style={{ fontSize: 13 }}>{'⭐'.repeat(cr.note_etoiles)}<span style={{ fontSize: 11, color: '#94a3b8' }}> {cr.note_etoiles}/5</span></span>}
+                            {avis && <span style={{ fontSize: 12, fontWeight: 700, color: avis.color, background: avis.bg, border: `1px solid ${avis.color}25`, padding: '3px 10px', borderRadius: 20 }}>{avis.label}</span>}
+                          </div>
+                        </div>
+                        {cr.commentaire && <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.55 }}>{cr.commentaire}</div>}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
