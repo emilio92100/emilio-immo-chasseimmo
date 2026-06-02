@@ -863,11 +863,11 @@ Description originale : ${editBienForm.description}`,
       objet: `Proposition immobilière — ${titre}`,
       corps: `Bonjour ${client.prenom},
 
-Je vous transmets les détails de ce bien qui correspond à vos critères de recherche.
+Suite à votre projet de recherche, je suis heureux de vous présenter un bien susceptible de répondre à vos critères.
 
 Vous trouverez ci-dessous l'aperçu et le bouton pour consulter la fiche complète.
 
-N'hésitez pas à me contacter pour plus d'informations ou pour organiser une visite.
+N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez la moindre question, ou à me faire un retour afin d'affiner votre recherche si certains points ne vous conviennent pas.
 
 Cordialement,
 Alexandre ROGELET
@@ -890,11 +890,11 @@ Emilio Immobilier
       objet: `Sélection de biens — Vos recherches immobilières`,
       corps: `Bonjour ${client.prenom},
 
-J'ai le plaisir de vous transmettre une sélection de biens qui correspondent à vos critères de recherche.
+Suite à votre projet de recherche, je suis heureux de vous présenter une sélection de biens susceptibles de répondre à vos critères.
 
-Vous trouverez ci-dessous le détail de chacun. Cliquez sur "Consulter le bien" pour accéder à la fiche complète.
+Vous trouverez le détail de chacun ci-dessous, avec un bouton pour consulter la fiche complète.
 
-Je reste à votre disposition pour toute question ou pour organiser des visites.
+N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez des questions, ou à me faire un retour afin d'affiner votre recherche si certains biens ne vous conviennent pas.
 
 Cordialement,
 Alexandre ROGELET
