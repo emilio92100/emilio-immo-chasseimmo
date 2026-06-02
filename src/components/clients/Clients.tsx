@@ -36,6 +36,7 @@ const initForm = {
   statut: 'prospect' as StatutClient, chaleur: 'tiede',
   statut_occupation: '', bien_actuel_type: '', bien_actuel_surface: '',
   bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
+  bien_actuel_adresse: '', bien_actuel_meme_adresse: true,
   type_bien: [] as string[],
   budget_min: '', budget_max: '',
   surface_min: '', surface_max: '',
@@ -140,11 +141,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         adresse: adresse || null,
         emails, telephones, statut: form.statut, chaleur: form.chaleur,
         statut_occupation: form.statut_occupation || null,
-        bien_actuel_type: form.statut_occupation === 'proprietaire' ? (form.bien_actuel_type || null) : null,
-        bien_actuel_surface: form.statut_occupation === 'proprietaire' && form.bien_actuel_surface ? parseInt(form.bien_actuel_surface) : null,
-        bien_actuel_valeur: form.statut_occupation === 'proprietaire' && form.bien_actuel_valeur ? parseInt(form.bien_actuel_valeur) : null,
-        bien_actuel_a_vendre: form.statut_occupation === 'proprietaire' ? form.bien_actuel_a_vendre : false,
-        bien_actuel_notes: form.statut_occupation === 'proprietaire' ? (form.bien_actuel_notes || null) : null,
+        bien_actuel_a_vendre: form.bien_actuel_a_vendre,
+        bien_actuel_type: form.bien_actuel_a_vendre ? (form.bien_actuel_type || null) : null,
+        bien_actuel_surface: form.bien_actuel_a_vendre && form.bien_actuel_surface ? parseInt(form.bien_actuel_surface) : null,
+        bien_actuel_valeur: form.bien_actuel_a_vendre && form.bien_actuel_valeur ? parseInt(form.bien_actuel_valeur) : null,
+        bien_actuel_adresse: form.bien_actuel_a_vendre && !form.bien_actuel_meme_adresse ? (form.bien_actuel_adresse || null) : null,
+        bien_actuel_notes: form.bien_actuel_a_vendre ? (form.bien_actuel_notes || null) : null,
         notes: form.notes || null,
         est_vendeur: false,
       }).select().single();
@@ -421,16 +423,21 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                           <option value="autre">Autre</option>
                         </select>
                       </div>
-                      {form.statut_occupation === 'proprietaire' && (
-                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                          <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 700 }}>💡 Bien possédé — mandat de vente potentiel si vous lui trouvez son achat</div>
+                      {/* Bien à vendre — indépendant du statut (locataire peut avoir un bien à vendre ailleurs) */}
+                      <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c')}>{form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Projet de vente / bien à vendre (mandat potentiel)</button>
+                      {form.bien_actuel_a_vendre && (
+                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                          <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 700 }}>💡 Mandat de vente potentiel si vous lui trouvez son achat</div>
                           <div className={styles.formRow}>
                             <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} placeholder="Appartement 3P" /></div>
                             <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} placeholder="65" /></div>
                           </div>
                           <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} placeholder="450000" /></div>
-                          <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c')}>{form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Souhaite vendre ce bien</button>
-                          <div className={styles.formGroup}><label className={styles.label}>Précisions sur le bien actuel</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, particularités, contexte de vente..." rows={2} /></div>
+                          <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9')}>{form.bien_actuel_meme_adresse ? '✓ ' : ''}📍 Bien à la même adresse que le contact</button>
+                          {!form.bien_actuel_meme_adresse && (
+                            <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à vendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                          )}
+                          <div className={styles.formGroup}><label className={styles.label}>Précisions sur le bien à vendre</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, particularités, contexte de vente..." rows={2} /></div>
                         </div>
                       )}
                     </Bloc>
