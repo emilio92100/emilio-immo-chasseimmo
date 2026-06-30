@@ -8,9 +8,34 @@ export default function PageRecherche({ onNavigate }: { onNavigate: (page: strin
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from('clients').select('*').eq('statut', 'actif')
-      .order('updated_at', { ascending: false })
-      .then(({ data }) => { setClients(data || []); setLoading(false); });
+    (async () => {
+      const { data: cl } = await supabase.from('clients').select('*').eq('statut', 'actif')
+        .order('updated_at', { ascending: false });
+      const clientsList = cl || [];
+
+      // V3 : critères = table `recherches`. On fusionne la recherche active (sinon la 1ère) sur chaque client.
+      const ids = clientsList.map(c => c.id);
+      let recherches: any[] = [];
+      if (ids.length) {
+        const { data: rs } = await supabase.from('recherches').select('*')
+          .in('client_id', ids).order('created_at', { ascending: true });
+        recherches = rs || [];
+      }
+      const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur'];
+      const merged = clientsList.map(c => {
+        const rechs = recherches.filter(r => r.client_id === c.id);
+        const display = rechs.find(r => r.active) || rechs[0];
+        if (!display) return c;
+        const crit: Record<string, unknown> = {};
+        for (const f of CRIT_FIELDS) {
+          if (display[f] !== undefined && display[f] !== null) crit[f] = display[f];
+        }
+        return { ...c, ...crit };
+      });
+
+      setClients(merged);
+      setLoading(false);
+    })();
   }, []);
 
   return (
