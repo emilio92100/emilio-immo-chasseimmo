@@ -23,7 +23,7 @@ const TINT = 'rgba(201,168,76,0.12)';
 
 const CARD: React.CSSProperties = { background: '#ffffff', border: `1px solid ${LIGNE}`, borderRadius: 18, padding: '26px 28px', boxShadow: '0 6px 26px rgba(26,35,50,0.06)', marginBottom: 18 };
 
-const CARD_SEC: React.CSSProperties = { ...CARD, position: 'relative', paddingTop: 40 };
+const CARD_SEC: React.CSSProperties = { ...CARD, position: 'relative', paddingTop: 40, marginTop: 36 };
 
 const DPE_COLORS: Record<string, { bg: string; label: string }> = {
   A: { bg: '#00a651', label: 'Excellent' },
