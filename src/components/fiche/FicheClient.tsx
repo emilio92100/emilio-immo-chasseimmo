@@ -286,7 +286,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
   const [tab, setTab] = useState('biens');
-  const [suiviFiltre, setSuiviFiltre] = useState('tout');
+  const [suiviFiltre, setSuiviFiltre] = useState('appel');
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
   const [transaction, setTransaction] = useState<any>(null);
@@ -1073,11 +1073,23 @@ Emilio Immobilier
   const suiviEvents = journal
     .filter(j => !COMM_JOURNAL_TYPES.includes(j.type))
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
+  // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
+  const COMM_EVENT_TYPES = ['email_libre', 'envoi_externe'];
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', ...COMM_EVENT_TYPES];
+  const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
+  const suiviGroupes: Record<string, { label: string; items: any[] }> = {
+    appel:          { label: '📞 Appels',         items: evType(['appel']) },
+    rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
+    note:           { label: '📝 Notes',          items: evType(['note']) },
+    relance:        { label: '🔔 Relances',       items: evType(['relance_manuelle']) },
+    communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
+    systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
+  };
   const suiviItems = (
-    suiviFiltre === 'communications' ? suiviComms
-    : suiviFiltre === 'evenements' ? suiviEvents
-    : [...suiviComms, ...suiviEvents]
-  ).sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+    suiviFiltre === 'tout'
+      ? [...suiviComms, ...suiviEvents]
+      : (suiviGroupes[suiviFiltre]?.items || [])
+  ).slice().sort((a: any, b: any) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const suiviCount = suiviComms.length + suiviEvents.length;
 
   const TABS = [
@@ -1666,16 +1678,20 @@ Emilio Immobilier
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[
-                  { id: 'tout', label: 'Tout' },
-                  { id: 'communications', label: '✉️ Communications' },
-                  { id: 'evenements', label: '📌 Événements' },
+                  { id: 'tout', label: 'Tout', count: suiviCount },
+                  { id: 'appel', label: suiviGroupes.appel.label, count: suiviGroupes.appel.items.length },
+                  { id: 'rdv', label: suiviGroupes.rdv.label, count: suiviGroupes.rdv.items.length },
+                  { id: 'note', label: suiviGroupes.note.label, count: suiviGroupes.note.items.length },
+                  { id: 'relance', label: suiviGroupes.relance.label, count: suiviGroupes.relance.items.length },
+                  { id: 'communications', label: suiviGroupes.communications.label, count: suiviGroupes.communications.items.length },
+                  { id: 'systeme', label: suiviGroupes.systeme.label, count: suiviGroupes.systeme.items.length },
                 ].map(f => (
                   <button
                     key={f.id}
                     onClick={() => setSuiviFiltre(f.id)}
                     style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid', borderColor: suiviFiltre === f.id ? '#1a2332' : '#e3e8f0', background: suiviFiltre === f.id ? '#1a2332' : 'white', color: suiviFiltre === f.id ? 'white' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
                   >
-                    {f.label}
+                    {f.label}{f.count ? ` (${f.count})` : ''}
                   </button>
                 ))}
               </div>
@@ -1686,6 +1702,7 @@ Emilio Immobilier
               <div className={styles.emptyTab}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>🗂️</div>
                 <div style={{ fontWeight: 700, color: '#1a2332' }}>Rien à afficher</div>
+                {suiviFiltre !== 'tout' && <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Aucun élément dans « {suiviGroupes[suiviFiltre]?.label} ». Clique sur « Tout » pour l'historique complet.</div>}
               </div>
             ) : suiviItems.map((it, i) => {
               const last = i === suiviItems.length - 1;
