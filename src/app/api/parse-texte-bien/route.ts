@@ -60,7 +60,7 @@ Réponds avec ce JSON exact :
   "ges_emissions": "émissions GES en kg CO₂/m².an (entier)",
   "chauffage": "type de chauffage (central, individuel, électrique...)",
   "source_energie": "source d'énergie (gaz, électrique, fioul, pompe à chaleur...)",
-  "prix_vendeur": "prix de vente en € (entier, sans espaces ni virgules)",
+  "prix_vendeur": "le PRIX PRINCIPAL affiché en gros dans l'annonce (le prix de vente annoncé, généralement FAI). TOUJOURS prendre CE prix affiché en grand. NE JAMAIS utiliser le prix 'hors honoraires' / 'net vendeur' / 'hors frais d'agence', même si une ventilation honoraires (prix net + commission) est détaillée plus bas dans l'annonce. Entier, sans espaces ni virgules.",
   "charges_trimestrielles": "charges de copropriété en € par trimestre (entier)",
   "taxe_fonciere": "taxe foncière annuelle en € (entier)",
   "etat_general": "état (neuf, refait, à rafraîchir, à rénover, entretenu...)",
