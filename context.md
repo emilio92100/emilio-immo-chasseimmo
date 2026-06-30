@@ -1,8 +1,10 @@
 # CONTEXTE PROJET — Emilio Immobilier
-## CRM Immobilier sur mesure — Version 3.0
-### Mis à jour le 2 juin 2026
+## CRM Immobilier sur mesure — Version 3.2
+### Mis à jour le 30 juin 2026
 
 > **⚡ Nouveauté majeure V3.0 : architecture multi-recherches.** Un client peut désormais avoir **plusieurs recherches en parallèle** (ex. RP Paris + invest Lyon), chacune avec ses propres critères, biens, visites et envois. Voir §13 pour les détails. Formulaire de création refondu en assistant 3 étapes. Onglets Historique + Journal fusionnés en « Suivi ».
+
+> **🆕 Session 30 juin 2026 (V3.2).** Reformulation IA fiabilisée (endpoint dédié `/api/reformuler-bien` + reformulation auto à la création, retrait du nom de confrère). Prix sourcé = prix affiché en gros (jamais le « hors honoraires »). Onglet Suivi refondu (filtres par type d'action, défaut « Appels », actions rattachables à un bien via `journal.bien_id`). Badges critères corrigés sur les listes Clients + Recherche en cours (lecture depuis `recherches`). En-têtes de blocs de la fiche bien publique en étiquette dorée « à cheval ». Détails en §12.
 
 ---
 
@@ -126,6 +128,9 @@ Fichier SQL : `migration_biens.sql` à la racine du repo
 - `selection_biens` : envoi de plusieurs biens
 - `compte_rendu_visite` : format `"Avis : 🔥 ... | Note : ⭐⭐⭐ | commentaire"` (pipe)
 
+### 🆕 Colonne `journal.bien_id` (V3.2)
+Une action de suivi (journal) peut être rattachée à un bien. Colonne `bien_id` uuid → `biens(id)` **ON DELETE SET NULL** (supprimer un bien ne supprime pas l'historique, le lien se vide) + index `idx_journal_bien_id`. Fichier SQL : `migration_journal_bien.sql`. Renseignée via le sélecteur « 🏠 Concerne un bien » de la modale « Ajouter une action » ; affichée en pastille dorée dans la timeline Suivi. `saveAction` fait un insert direct dans `journal` (avec `recherche_id`) au lieu de passer par `addJournal`.
+
 ---
 
 ## 3. STRUCTURE FICHIERS
@@ -135,13 +140,14 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── extract-bien/route.ts
-│   │   ├── parse-texte-bien/route.ts
+│   │   ├── parse-texte-bien/route.ts       # prix = prix affiché en gros, jamais hors honoraires (V3.2)
+│   │   ├── reformuler-bien/route.ts        # 🆕 V3.2 reformulation IA dédiée (retire confrère)
 │   │   ├── upload-photos/route.ts
 │   │   └── send-mail/route.ts           # + recherche_id stampé sur envois (V3)
 │   └── bien/
 │       ├── layout.tsx
 │       └── [id]/
-│           ├── page.tsx                 # REFONTE premium 1 colonne centrée (V3.1 — 2 juin)
+│           ├── page.tsx                 # REFONTE premium 1 colonne (V3.1) · en-têtes étiquette dorée à cheval (V3.2)
 │           ├── PhotoCarousel.tsx        # + plein écran lightbox flèches/clavier (V3.1)
 │           └── AboutPliable.tsx         # 🆕 "À propos" pliable (Lire la suite) — client component
 ├── components/
@@ -156,7 +162,8 @@ src/
 ├── migration_biens.sql
 ├── migration_clients_criteres.sql       # 🆕 V2.2 (état/expo/séjour/étage max/urgence/financement/apport)
 ├── migration_recherches.sql             # 🆕 V3.0 (table recherches + migration données)
-└── migration_clients_occupation.sql     # 🆕 V3.0 (propriétaire/locataire)
+├── migration_clients_occupation.sql     # 🆕 V3.0 (propriétaire/locataire)
+└── migration_journal_bien.sql           # 🆕 V3.2 (journal.bien_id → action liée à un bien)
 ```
 
 ---
@@ -169,13 +176,13 @@ src/
 - **Bloc critères** (lit la recherche active, plus `client.*`)
 - **Mandat compact** à droite (gère `sans_mandat`)
 - **🆕 Onglets** : Biens / Visites / Transaction / **Suivi** — tous filtrés sur la recherche active, avec animation douce au changement d'onglet et de recherche
-- **🆕 Onglet Suivi** (V3) : fusion de Historique + Journal. Timeline unique avec 3 filtres (Tout / ✉️ Communications / 📌 Événements). Déduplication : les types de journal faisant doublon avec les envois (`mail_envoye`, `envoi_bien`, `visite_effectuee`) sont exclus. Journal dégraissé : ne logue plus les micro-modifs contact/critères/mandat.
+- **🆕 Onglet Suivi** (V3, refondu V3.2) : fusion de Historique + Journal. Timeline unique avec **filtres par type d'action** alignés sur la modale « Ajouter une action » : `Tout · 📞 Appels · 🤝 RDV · 📝 Notes · 🔔 Relances · ✉️ Communications · 🔄 Système`, chacun avec son compteur. **Filtre par défaut = 📞 Appels** (usage principal). `✉️ Communications` = envois + journal `email_libre`/`envoi_externe` ; `🔄 Système` = events auto (statut_change, bien_ajoute…). Déduplication : les types de journal faisant doublon avec les envois (`mail_envoye`, `envoi_bien`, `visite_effectuee`) sont exclus. Une action peut être **rattachée à un bien** (`journal.bien_id`) → pastille dorée du bien dans la timeline. État vide contextuel selon le filtre actif.
 
 ### Onglet Biens
 - Ajout URL (Claude HTML) ou copier-coller texte
 - Photos → Supabase Storage permanentes
 - Drag & drop réordonnement
-- Bouton ✨ Reformuler description avec IA
+- **Reformulation IA de la description** (V3.2) : endpoint dédié `/api/reformuler-bien` (et non plus `parse-texte-bien`, qui était conçu pour *conserver* le texte). Lancée **automatiquement à la création** d'un bien (collage texte ET URL) ET via le bouton ✨ dans la fiche. Le prompt retire le nom du confrère/agence (+ tél, email, réf), supprime les formules commerciales, garde fidèlement le statut « compris dans le prix » / « en sus » **par élément** (sans le transférer ni l'inventer), et ne réécrit jamais le prix/honoraires.
 - **🆕 Formulaire d'ajout/édition refondu en 7 sections** :
   - 📍 Identification (titre, type, source, ville, CP, quartier)
   - 📐 Caractéristiques (surface, pièces, chambres, sdb, wc, étage/total, année, expo, état)
@@ -217,7 +224,7 @@ Trace dans `envois` + `journal` après succès Mailjet.
 
 ### 🆕 Fiche bien publique — `/bien/[id]` (REFONTE premium V3.1 — 2 juin 2026)
 Page publique accessible à toute personne ayant le lien (pas d'auth).
-**Refonte complète** : design premium navy/or sur fond crème `#f3eee3`, chaque section en **carte blanche détachée** (ombre douce + en-tête à pastille dorée et icône Tabler).
+**Refonte complète** : design premium navy/or sur fond crème `#f3eee3`, chaque section en **carte blanche détachée** (ombre douce). **En-têtes de blocs (V3.2)** : étiquette dorée « à cheval » sur le bord supérieur de la carte (composant `SectionHead` en pastille absolue `top:-16` + style `CARD_SEC` = `position:relative`, `paddingTop:40`, `marginTop:36` pour ne pas chevaucher le bloc du dessus).
 
 ⚠️ Changement de layout majeur : passage de 2 colonnes (sidebar sticky) à **UNE seule colonne centrée (max 900px)** — la sidebar laissait un grand vide à droite quand le contenu était long.
 
@@ -234,7 +241,7 @@ Sections (de haut en bas) :
 - Section contact navy (avatar AR + nom + CTA tel/mail)
 - Footer navy avec **logo agrandi** (44px)
 
-⚠️ Les descriptions copiées-collées peuvent contenir le nom du confrère source (ex. "Hosman vous propose…") → à nettoyer côté fiche bien.
+✅ (V3.2 — RÉSOLU) Le nom du confrère source (ex. "Hosman vous propose…") est désormais retiré automatiquement par la reformulation IA déclenchée à la création du bien.
 
 ### 🆕 Parsing texte amélioré (`/api/parse-texte-bien`)
 Prompt Claude enrichi pour extraire :
@@ -279,7 +286,8 @@ Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES
 | Route | Fonction | Prérequis |
 |---|---|---|
 | `/api/extract-bien` | URL → Claude analyse HTML → JSON | ANTHROPIC_API_KEY |
-| `/api/parse-texte-bien` | Texte → Claude structure (enrichi) → JSON | ANTHROPIC_API_KEY |
+| `/api/parse-texte-bien` | Texte → Claude structure (enrichi) → JSON. **Prix = prix affiché en gros, jamais le « hors honoraires »** (V3.2) | ANTHROPIC_API_KEY |
+| `/api/reformuler-bien` 🆕 | Description → Claude reformule (retire confrère, garde compris/en sus, ne touche pas au prix) → texte | ANTHROPIC_API_KEY |
 | `/api/upload-photos` | URLs externes → Supabase Storage | SUPABASE_SERVICE_ROLE_KEY |
 | `/api/send-mail` | Mailjet envoi mail libre ou avec biens | MAILJET_API_KEY + SECRET |
 | `/api/bien-from-bookmarklet` | ⚠️ Dormant (bookmarklet Chrome abandonné) | — |
@@ -429,6 +437,17 @@ Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES
 - **Textes par défaut des mails reformulés** (single + multi FicheClient + modèle PageMail) : ton chaleureux, ordre visite → questions → retour.
 - **Compte-rendu de visite affiché sous chaque bien** dans l'onglet Biens (encadré vert : date, ⭐/5, avis, commentaire) — évite l'aller-retour vers l'onglet Visites. Le système visites/CR existait déjà (table `visites` : note_etoiles, commentaire, avis_client) ; seul l'affichage a été ajouté, **aucune migration SQL**.
 - **Aucun changement de base de données cette session.**
+
+### Session 30 juin 2026 (V3.2) — Reformulation IA, prix sourcé, Suivi refondu, badges, en-têtes fiche bien
+**Pas de changement d'architecture. Une seule migration SQL (`journal.bien_id`).**
+- **Reformulation IA fiabilisée** : nouvel endpoint dédié `/api/reformuler-bien`. Avant, le bouton ✨ tapait sur `parse-texte-bien` (conçu pour *conserver* le texte) → il ne reformulait pas. Le nouveau prompt retire le nom du confrère/agence (+ tél, email, réf), supprime les formules commerciales, garde fidèlement « compris dans le prix » / « en sus » **par élément** (sans transfert ni invention), ne réécrit pas le prix/honoraires. **Reformulation automatique à la création** du bien (collage texte ET URL), en plus du bouton ✨ dans la fiche.
+- **Prix sourcé = prix affiché en gros** : prompt `parse-texte-bien` corrigé pour toujours prendre le prix annoncé (FAI), jamais le « hors honoraires » même si la ventilation net + commission est détaillée. Raison métier : Alexandre pose SA commission par-dessus (inter avec le confrère, ou mandat de recherche s'il refuse).
+- **Honoraires** : à l'ouverture d'une fiche bien, le champ commission ne se force plus à 3,5 % (`commission_val: b.commission_val ?? ''`) → reste vide/0, prix acquéreur = prix vendeur tant que non saisi. (À la création, c'était déjà 0.)
+- **Action de suivi rattachable à un bien** : migration `migration_journal_bien.sql` (`journal.bien_id` uuid → biens, ON DELETE SET NULL + index). Sélecteur « 🏠 Concerne un bien » dans la modale, insert direct (avec `recherche_id`), pastille dorée du bien dans la timeline.
+- **Onglet Suivi refondu** : filtres = types d'action (`Tout · 📞 Appels · 🤝 RDV · 📝 Notes · 🔔 Relances · ✉️ Communications · 🔄 Système`) avec compteurs, **défaut = Appels**, état vide contextuel. Remplace les anciens filtres Communications/Événements.
+- **Badges critères corrigés** (`Clients.tsx` + `PageRecherche.tsx`) : les clients créés en V3 (critères dans `recherches`, plus dans `clients.*`) n'affichaient aucun badge dans les listes. Les deux listes fusionnent désormais les critères de la **recherche active** (sinon la 1ère) du client pour le récap.
+- **Fiche bien publique `/bien/[id]`** : en-têtes de blocs en **étiquette dorée « à cheval »** sur le bord supérieur (Option 1 retenue parmi 4 propositions en preview) — `SectionHead` en pastille absolue, style `CARD_SEC` (`position:relative`, `paddingTop:40`, `marginTop:36`).
+- **Fichiers** — NEW : `api/reformuler-bien/route.ts`, `migration_journal_bien.sql`. MODIF : `api/parse-texte-bien/route.ts`, `components/fiche/FicheClient.tsx`, `components/clients/Clients.tsx`, `components/pages/PageRecherche.tsx`, `app/bien/[id]/page.tsx`.
 
 ### ⚠️ POINT SÉCURITÉ IMPORTANT (soulevé le 30 mai)
 **RLS désactivé sur toutes les tables Supabase.** N'importe qui avec la clé anon publique (visible côté client) peut lire/modifier toutes les données clients. Risque RGPD/confidentialité réel. **À traiter en session dédiée** : activer le RLS sur toutes les tables d'un coup avec les bonnes policies, puis vérifier que l'app fonctionne. Même nature que la faille identifiée sur Verimo. La table `recherches` a été créée "without RLS" pour rester cohérente avec l'existant.
