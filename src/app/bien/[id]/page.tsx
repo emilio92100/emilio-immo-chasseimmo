@@ -23,6 +23,8 @@ const TINT = 'rgba(201,168,76,0.12)';
 
 const CARD: React.CSSProperties = { background: '#ffffff', border: `1px solid ${LIGNE}`, borderRadius: 18, padding: '26px 28px', boxShadow: '0 6px 26px rgba(26,35,50,0.06)', marginBottom: 18 };
 
+const CARD_SEC: React.CSSProperties = { ...CARD, position: 'relative', paddingTop: 40 };
+
 const DPE_COLORS: Record<string, { bg: string; label: string }> = {
   A: { bg: '#00a651', label: 'Excellent' },
   B: { bg: '#52b947', label: 'Très bon' },
@@ -40,11 +42,9 @@ function fmt(n?: number | null) {
 
 function SectionHead({ icon, title }: { icon: string; title: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 18 }}>
-      <span style={{ width: 36, height: 36, borderRadius: 10, background: TINT, display: 'flex', alignItems: 'center', justifyContent: 'center', color: DORE, flex: 'none' }}>
-        <i className={`ti ${icon}`} style={{ fontSize: 20 }} aria-hidden="true" />
-      </span>
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: BLEU }}>{title}</h2>
+    <div style={{ position: 'absolute', top: -16, left: 24, display: 'inline-flex', alignItems: 'center', gap: 8, background: DORE, color: '#3a2e06', fontWeight: 600, fontSize: 15, padding: '8px 16px', borderRadius: 30, boxShadow: '0 4px 14px rgba(201,168,76,0.32)' }}>
+      <i className={`ti ${icon}`} style={{ fontSize: 18 }} aria-hidden="true" />
+      <span>{title}</span>
     </div>
   );
 }
@@ -161,7 +161,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
         {/* À PROPOS (pliable) */}
         {bien.description && (
-          <div style={CARD}>
+          <div style={CARD_SEC}>
             <SectionHead icon="ti-home" title="À propos de ce bien" />
             <AboutPliable text={bien.description} />
           </div>
@@ -169,7 +169,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
         {/* ÉQUIPEMENTS */}
         {features.length > 0 && (
-          <div style={CARD}>
+          <div style={CARD_SEC}>
             <SectionHead icon="ti-sparkles" title="Équipements et caractéristiques" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '18px 16px' }}>
               {features.map((f, i) => (
@@ -186,7 +186,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
         {/* PERFORMANCE ÉNERGÉTIQUE */}
         {(dpeInfo || gesInfo) && (
-          <div style={CARD}>
+          <div style={CARD_SEC}>
             <SectionHead icon="ti-bolt" title="Performance énergétique" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 14 }}>
               {dpeInfo && (
@@ -221,7 +221,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
         {/* INFOS COMPLÉMENTAIRES */}
         {infos.length > 0 && (
-          <div style={{ ...CARD, marginBottom: 0 }}>
+          <div style={{ ...CARD_SEC, marginBottom: 0 }}>
             <SectionHead icon="ti-info-circle" title="Informations complémentaires" />
             <div>
               {infos.map((row, i) => (
