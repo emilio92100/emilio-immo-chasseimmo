@@ -303,7 +303,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
-  const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '' });
+  const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '' });
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
@@ -570,8 +570,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
       }
       if (data.bien) {
         const photosManual = photosInput.split('\n').map((s: string) => s.trim()).filter((s: string) => s.startsWith('http'));
+        // Reformulation automatique de la description dès la création (retire nom d'agence, prix/inclusions)
+        let description = data.bien.description || '';
+        if (description && description.trim().length >= 20) {
+          const ref = await callReformuler(description);
+          if (ref.description) description = ref.description;
+        }
         setBienForm({
           ...data.bien,
+          description,
           url: url || '',
           commission_type: 'pourcentage',
           commission_val: '',
@@ -594,7 +601,14 @@ export default function FicheClient({ client: init, onBack }: Props) {
     try {
       const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
       const data = await res.json();
-      if (data.bien) { setBienForm({ ...data.bien, url, commission_type: 'pourcentage', commission_val: '', _partial: data.partial, _reason: data.reason }); }
+      if (data.bien) {
+        let description = data.bien.description || '';
+        if (description && description.trim().length >= 20) {
+          const ref = await callReformuler(description);
+          if (ref.description) description = ref.description;
+        }
+        setBienForm({ ...data.bien, description, url, commission_type: 'pourcentage', commission_val: '', _partial: data.partial, _reason: data.reason });
+      }
       else { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
     } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
     setExtracting(false);
@@ -718,24 +732,28 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
   }
 
-  async function reformulerDescription() {
-    if (!editBienForm?.description) { alert('Aucune description à reformuler.'); return; }
-    setReformuling(true);
+  async function callReformuler(description: string): Promise<{ description?: string; error?: string }> {
     try {
       const res = await fetch('/api/reformuler-bien', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: editBienForm.description }),
+        body: JSON.stringify({ description }),
       });
-      const data = await res.json();
-      if (data.description) {
-        setEditBienForm((f: any) => ({ ...f, description: data.description }));
-      } else if (data.error === 'no_key') {
-        alert('Reformulation indisponible — clé Anthropic non configurée.');
-      } else {
-        alert(`Reformulation impossible (${data.error || 'erreur inconnue'}).`);
-      }
-    } catch { alert('Erreur lors de la reformulation.'); }
+      return await res.json();
+    } catch { return { error: 'network' }; }
+  }
+
+  async function reformulerDescription() {
+    if (!editBienForm?.description) { alert('Aucune description à reformuler.'); return; }
+    setReformuling(true);
+    const data = await callReformuler(editBienForm.description);
+    if (data.description) {
+      setEditBienForm((f: any) => ({ ...f, description: data.description }));
+    } else if (data.error === 'no_key') {
+      alert('Reformulation indisponible — clé Anthropic non configurée.');
+    } else {
+      alert(`Reformulation impossible (${data.error || 'erreur inconnue'}).`);
+    }
     setReformuling(false);
   }
 
@@ -743,7 +761,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const b = biens.find(x => x.id === bienId);
     if (!b) return;
     setFicheBienId(bienId);
-    setEditBienForm({ ...b, commission_val: b.commission_val || 3.5, commission_type: b.commission_type || 'pourcentage' });
+    setEditBienForm({ ...b, commission_val: b.commission_val ?? '', commission_type: b.commission_type || 'pourcentage' });
     setNewPhotoUrl('');
     setShowFicheBien(true);
   }
@@ -1009,8 +1027,16 @@ Emilio Immobilier
   async function saveAction() {
     const typeLabels: Record<string, string> = { appel: 'Appel passé', rdv: 'RDV physique', note: 'Note', relance_manuelle: 'Relance manuelle', envoi_externe: 'Envoi externe', email_libre: 'Email envoyé' };
     const titre = actionF.titre.trim() || typeLabels[actionF.type] || 'Action';
-    await addJournal(client.id, actionF.type, titre, actionF.description);
-    setShowAction(false); setActionF({ type: 'note', titre: '', description: '' }); load();
+    await supabase.from('journal').insert({
+      client_id: client.id,
+      recherche_id: rechercheId,
+      type: actionF.type,
+      titre,
+      description: actionF.description || null,
+      bien_id: actionF.bien_id || null,
+      metadata: {},
+    });
+    setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '' }); load();
   }
 
   async function saveTxField(field: string, value: any) {
@@ -1696,6 +1722,9 @@ Emilio Immobilier
                   <div style={{ flex: 1, paddingTop: 4 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
                     {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
+                    {j.bien_id && (() => { const b = biens.find(x => x.id === j.bien_id); return b ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '3px 10px', borderRadius: 8, background: '#faf6ee', border: '1px solid #e8dcc0', fontSize: 12, color: '#92702a', fontWeight: 600 }}>🏠 {b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`}</div>
+                    ) : null; })()}
                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(j.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
                 </div>
@@ -2523,6 +2552,18 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
+              {biens.length > 0 && (
+                <div>
+                  <label className={styles.lbl}>🏠 Concerne un bien <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label>
+                  <select className={styles.inp} value={actionF.bien_id} onChange={e => setActionF(f => ({ ...f, bien_id: e.target.value }))}>
+                    <option value="">— Aucun (suivi général) —</option>
+                    {biens.map(b => (
+                      <option key={b.id} value={b.id}>{(b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`)}{b.prix_acquereur ? ` · ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>💡 Ex : « Appel — visite non aboutie » rattaché au bien concerné, pour un meilleur suivi.</div>
+                </div>
+              )}
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button>
