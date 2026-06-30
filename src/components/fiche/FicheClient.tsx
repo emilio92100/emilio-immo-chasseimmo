@@ -722,24 +722,18 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (!editBienForm?.description) { alert('Aucune description à reformuler.'); return; }
     setReformuling(true);
     try {
-      const res = await fetch('/api/parse-texte-bien', {
+      const res = await fetch('/api/reformuler-bien', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          texte: `Reformule cette description de bien immobilier en langage professionnel de chasseur immobilier. 
-Sois concis, valorisant, orienté acquéreur. Max 5 phrases percutantes. Pas de liste à puces. 
-Ne répète pas les chiffres (surface, pièces) déjà dans les caractéristiques.
-Description originale : ${editBienForm.description}`,
-          url: '',
-        }),
+        body: JSON.stringify({ description: editBienForm.description }),
       });
       const data = await res.json();
-      // On utilise la description retournée par Claude
-      if (data.bien?.description) {
-        setEditBienForm((f: any) => ({ ...f, description: data.bien.description }));
-      } else {
-        // Fallback : appel direct sans passer par parse-texte-bien
+      if (data.description) {
+        setEditBienForm((f: any) => ({ ...f, description: data.description }));
+      } else if (data.error === 'no_key') {
         alert('Reformulation indisponible — clé Anthropic non configurée.');
+      } else {
+        alert(`Reformulation impossible (${data.error || 'erreur inconnue'}).`);
       }
     } catch { alert('Erreur lors de la reformulation.'); }
     setReformuling(false);
