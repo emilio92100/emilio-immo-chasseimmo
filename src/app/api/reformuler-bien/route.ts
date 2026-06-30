@@ -16,11 +16,15 @@ export async function POST(req: NextRequest) {
 
 RÈGLES STRICTES :
 - Supprime TOUTE mention d'agence, de confrère, de cabinet, de mandataire et leur nom (ex. "Hosman vous propose", "L'agence X", "Votre conseiller Y", "Coldwell...", "Century 21..."). Aucun nom de société ne doit rester.
-- Supprime aussi : numéros de téléphone, emails, sites web, références d'annonce, mentions d'honoraires/commission, "à la charge de l'acquéreur/vendeur".
+- Supprime aussi : numéros de téléphone, emails, sites web, références d'annonce.
+- Ne réécris PAS le montant du prix, ni les honoraires, ni la commission (ils sont gérés ailleurs dans la fiche).
+- En revanche, CONSERVE fidèlement le statut "compris dans le prix" / "inclus" OU "en sus" / "en supplément" / "en option" d'un élément (cave, parking, box, lot, mobilier...) — mais UNIQUEMENT s'il est écrit noir sur blanc dans l'annonce d'origine.
+- Rattache CHAQUE statut à l'élément EXACT concerné. Ne transfère JAMAIS le statut d'un élément à un autre et ne le déduis jamais : si seul le parking est indiqué "en sus", n'écris RIEN sur le statut de la cave (ni "comprise", ni "en sus").
+- Si l'annonce ne précise pas si un élément est compris ou en sus, n'en dis rien.
 - Supprime les formules commerciales creuses ("coup de cœur assuré", "à visiter sans tarder", "ne tardez pas", "rare sur le secteur"...).
 - Ton sobre, valorisant, factuel, orienté acquéreur. Pas de superlatifs excessifs.
 - 3 à 5 phrases maximum. Pas de liste à puces. Pas de titre. Pas de markdown.
-- Reste strictement fidèle aux informations données : n'invente rien.
+- Reste strictement fidèle aux informations données : n'invente rien, ne déduis rien. Si une information n'est pas explicitement écrite, ne l'écris pas.
 - Ne répète pas inutilement les chiffres (surface, nombre de pièces) déjà affichés ailleurs dans la fiche.
 
 Réponds UNIQUEMENT avec le texte reformulé, sans guillemets, sans préambule.
