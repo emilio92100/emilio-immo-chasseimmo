@@ -1,9 +1,10 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
+import OngletVeille from './OngletVeille';
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
@@ -286,6 +287,19 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
   const [tab, setTab] = useState('biens');
+  const [veilleCount, setVeilleCount] = useState(0);
+
+  const chargerVeilleCount = useCallback(async () => {
+    if (!rechercheId) { setVeilleCount(0); return; }
+    const { count } = await supabase
+      .from('veille_propositions')
+      .select('id', { count: 'exact', head: true })
+      .eq('recherche_id', rechercheId)
+      .eq('statut', 'nouveau');
+    setVeilleCount(count || 0);
+  }, [rechercheId]);
+
+  useEffect(() => { chargerVeilleCount(); }, [chargerVeilleCount]);
   const [suiviFiltre, setSuiviFiltre] = useState('appel');
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
@@ -1093,6 +1107,7 @@ Emilio Immobilier
   const suiviCount = suiviComms.length + suiviEvents.length;
 
   const TABS = [
+    { id: 'veille', label: `🔎 Veille${veilleCount ? ` (${veilleCount})` : ''}` },
     { id: 'biens', label: `🏠 Biens (${biens.length})` },
     { id: 'visites', label: `📅 Visites (${visites.length})` },
     { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
@@ -1668,6 +1683,15 @@ Emilio Immobilier
                   </div>
                 )}
               </div>
+        )}
+
+        {/* TAB VEILLE */}
+        {tab === 'veille' && (
+          <OngletVeille
+            clientId={client.id}
+            rechercheId={rechercheId}
+            onChange={() => { load(); chargerVeilleCount(); }}
+          />
         )}
 
         {/* TAB SUIVI (fusion Historique + Journal) */}
