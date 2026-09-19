@@ -15,6 +15,80 @@ const NAVY = '#1a2332';
 const OR = '#c9a84c';
 const BORD = '#e3e8f0';
 
+
+/* ══ Briques visuelles partagées ═══════════════════════════════ */
+
+const DPE_COULEURS: Record<string, { bg: string; fg: string }> = {
+  A: { bg: '#319834', fg: '#ffffff' },
+  B: { bg: '#4ab84a', fg: '#ffffff' },
+  C: { bg: '#a8d84a', fg: '#1a2332' },
+  D: { bg: '#f7e017', fg: '#1a2332' },
+  E: { bg: '#f5b912', fg: '#1a2332' },
+  F: { bg: '#ee8235', fg: '#ffffff' },
+  G: { bg: '#e2231a', fg: '#ffffff' },
+};
+
+export function Dpe({ lettre, label = 'DPE' }: { lettre?: string | null; label?: string }) {
+  if (!lettre) return null;
+  const L = String(lettre).toUpperCase().slice(0, 1);
+  const c = DPE_COULEURS[L];
+  if (!c) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 7, padding: '2px 8px 2px 4px', fontSize: 11.5, fontWeight: 700, color: '#64748b' }}>
+      <span style={{ background: c.bg, color: c.fg, borderRadius: 5, width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{L}</span>
+      {label}
+    </span>
+  );
+}
+
+export function Chip({ children, ton = 'neutre' }: { children: React.ReactNode; ton?: 'neutre' | 'vert' | 'or' | 'ambre' | 'violet' }) {
+  const t = {
+    neutre: { bg: '#f7f9fc', fg: '#475569', bd: BORD },
+    vert: { bg: '#f0fdf4', fg: '#15803d', bd: '#bbf7d0' },
+    or: { bg: '#fdfaf1', fg: '#a17d2c', bd: '#ecdcb4' },
+    ambre: { bg: '#fffbeb', fg: '#92400e', bd: '#fde68a' },
+    violet: { bg: '#f5f3ff', fg: '#7c3aed', bd: '#ddd6fe' },
+  }[ton];
+  return (
+    <span style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}`, padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</span>
+  );
+}
+
+/** Petit bouton discret en forme de bloc (Annonce d'origine, Détail, Parcours…). */
+export function BoutonLien({ children, onClick, href, actif }: { children: React.ReactNode; onClick?: () => void; href?: string; actif?: boolean }) {
+  const st: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    background: actif ? '#1a2332' : '#f7f9fc',
+    color: actif ? 'white' : '#475569',
+    border: `1px solid ${actif ? '#1a2332' : BORD}`,
+    borderRadius: 9, padding: '6px 12px', fontSize: 12.5, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', transition: 'all .14s',
+  };
+  if (href) {
+    return <a href={href} target="_blank" rel="noopener noreferrer" style={st}
+      onMouseEnter={e => { e.currentTarget.style.background = '#eef2f7'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = '#f7f9fc'; }}>{children}</a>;
+  }
+  return <button type="button" onClick={onClick} style={st}
+    onMouseEnter={e => { if (!actif) e.currentTarget.style.background = '#eef2f7'; }}
+    onMouseLeave={e => { if (!actif) e.currentTarget.style.background = '#f7f9fc'; }}>{children}</button>;
+}
+
+/** Grille à trois colonnes : photo · contenu · actions. minmax(0,1fr) évite le débordement. */
+export const GRILLE_CARTE: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '244px minmax(0, 1fr) 186px',
+  alignItems: 'stretch',
+};
+
+export const CARTE: React.CSSProperties = {
+  background: 'white',
+  border: `1px solid ${BORD}`,
+  borderRadius: 18,
+  overflow: 'hidden',
+  boxShadow: '0 1px 2px rgba(16,24,40,.04), 0 8px 24px -16px rgba(16,24,40,.18)',
+};
+
 /* ══ Chronologie ═══════════════════════════════════════════════ */
 
 const PUCES: Record<string, { c: string; l: string }> = {
@@ -248,8 +322,11 @@ export function ModaleEnvoi({
   bien: any; clientId: string; client: any;
   onFerme: () => void; onEnvoye: () => void; onMail: (bienId: string) => void;
 }) {
-  const [pct, setPct] = useState<string>(
-    bien.commission_type === 'pourcentage' && bien.commission_val ? String(bien.commission_val) : '3'
+  const [type, setType] = useState<'pourcentage' | 'fixe'>(
+    bien.commission_type === 'fixe' ? 'fixe' : 'pourcentage'
+  );
+  const [valeur, setValeur] = useState<string>(
+    bien.commission_val ? String(bien.commission_val) : (bien.commission_type === 'fixe' ? '25000' : '3')
   );
   const [visible, setVisible] = useState(false);
   const [envoi, setEnvoi] = useState(false);
@@ -258,9 +335,10 @@ export function ModaleEnvoi({
   useEffect(() => { const t = setTimeout(() => setVisible(true), 10); return () => clearTimeout(t); }, []);
 
   const base = Number(bien.prix_vendeur) || 0;
-  const taux = parseFloat(pct.replace(',', '.')) || 0;
-  const honoraires = Math.round(base * (taux / 100));
+  const v = parseFloat(String(valeur).replace(',', '.')) || 0;
+  const honoraires = type === 'pourcentage' ? Math.round(base * (v / 100)) : Math.round(v);
   const total = base + honoraires;
+  const pctEquivalent = base > 0 ? ((honoraires / base) * 100) : 0;
 
   async function marquerEnvoye(canal: string) {
     setEnvoi(true);
@@ -268,16 +346,16 @@ export function ModaleEnvoi({
       etape: 'presente',
       envoye_le: new Date().toISOString(),
       canal_envoi: canal,
-      commission_type: 'pourcentage',
-      commission_val: taux,
+      commission_type: type,
+      commission_val: v,
       prix_acquereur: total,
       badge_retour: 'propose',
     }).eq('id', bien.id);
     await supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id,
       type: 'envoi_bien',
-      titre: `Envoyé au client (${canal === 'mail' ? 'mail' : canal === 'whatsapp' ? 'WhatsApp' : 'lien'})`,
-      description: `Prix présenté ${total.toLocaleString('fr-FR')} € (dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de chasse)`,
+      titre: `Envoyé au client · ${canal === 'mail' ? 'mail' : canal === 'whatsapp' ? 'WhatsApp' : 'lien'}`,
+      description: `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de chasse`,
       metadata: {},
     });
     setEnvoi(false);
@@ -292,13 +370,11 @@ export function ModaleEnvoi({
     window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
     onFerme();
   }
-
   async function viaLien() {
     try { await navigator.clipboard.writeText(lien); setCopie(true); } catch { /* ignore */ }
     await marquerEnvoye('lien');
-    setTimeout(onFerme, 700);
+    setTimeout(onFerme, 800);
   }
-
   async function viaMail() {
     await marquerEnvoye('mail');
     onFerme();
@@ -309,77 +385,116 @@ export function ModaleEnvoi({
     <button type="button" onClick={action} disabled={envoi}
       style={{
         display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left',
-        background: 'white', border: `1px solid ${BORD}`, borderRadius: 14, padding: '14px 16px',
-        cursor: 'pointer', fontFamily: 'inherit', transition: 'all .14s',
+        background: 'white', border: `1.5px solid ${BORD}`, borderRadius: 14, padding: '13px 15px',
+        cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .15s',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(3px)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.transform = 'none'; }}>
-      <span style={{ fontSize: 22, lineHeight: 1 }}>{icone}</span>
-      <span style={{ flexGrow: 1 }}>
+      onMouseEnter={(e) => { if (!envoi) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.background = '#fbfcfe'; } }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = 'white'; }}>
+      <span style={{ width: 38, height: 38, borderRadius: 11, background: `${teinte}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>{icone}</span>
+      <span style={{ flexGrow: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: NAVY }}>{titre}</span>
-        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{sous}</span>
+        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', marginTop: 1 }}>{sous}</span>
       </span>
-      <span style={{ color: '#cbd5e1', fontSize: 18 }}>›</span>
+      <span style={{ color: '#cbd5e1', fontSize: 19, flexShrink: 0 }}>›</span>
     </button>
   );
+
+  const ongletType = (id: 'pourcentage' | 'fixe', label: string) => {
+    const actif = type === id;
+    return (
+      <button type="button" onClick={() => { setType(id); setValeur(id === 'pourcentage' ? '3' : '25000'); }}
+        style={{
+          flex: 1, background: actif ? 'white' : 'transparent',
+          color: actif ? NAVY : '#94a3b8', border: 'none', borderRadius: 8,
+          padding: '7px 0', fontSize: 13, fontWeight: actif ? 800 : 600,
+          cursor: 'pointer', fontFamily: 'inherit',
+          boxShadow: actif ? '0 1px 3px rgba(16,24,40,.12)' : 'none', transition: 'all .14s',
+        }}>{label}</button>
+    );
+  };
 
   return (
     <div onClick={onFerme}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        opacity: visible ? 1 : 0, transition: 'opacity .18s ease',
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', backdropFilter: 'blur(2px)', zIndex: 200,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto',
+        opacity: visible ? 1 : 0, transition: 'opacity .2s ease',
       }}>
       <div onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: 20, width: '100%', maxWidth: 520,
-          boxShadow: '0 24px 64px rgba(15,23,42,.28)', overflow: 'hidden',
-          transform: visible ? 'translateY(0) scale(1)' : 'translateY(14px) scale(.97)',
-          transition: 'transform .22s cubic-bezier(.2,.9,.3,1)',
+          background: 'white', borderRadius: 22, width: '100%', maxWidth: 540,
+          boxShadow: '0 28px 70px rgba(15,23,42,.32)', overflow: 'hidden',
+          transform: visible ? 'translateY(0) scale(1)' : 'translateY(16px) scale(.96)',
+          transition: 'transform .26s cubic-bezier(.2,.9,.3,1)',
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
 
-        <div style={{ background: NAVY, padding: '18px 22px' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: .9 }}>
-            Envoyer à {client?.prenom || 'votre client'}
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: 'white', marginTop: 4 }}>
-            {bien.titre || `${bien.type_bien || 'Bien'} — ${bien.ville || ''}`}
+        <div style={{ background: NAVY, padding: '20px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
+          {bien.photos?.[0] && (
+            <img src={bien.photos[0]} alt="" style={{ width: 54, height: 54, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>
+              Envoyer à {client?.prenom || 'votre client'}
+            </div>
+            <div style={{ fontSize: 16.5, fontWeight: 800, color: 'white', marginTop: 3, lineHeight: 1.3 }}>
+              {bien.titre || `${bien.type_bien || 'Bien'} — ${bien.ville || ''}`}
+            </div>
           </div>
         </div>
 
-        {/* commission */}
-        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${BORD}`, background: '#fbfcfe' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#475569', marginBottom: 9 }}>
+        <div style={{ padding: '18px 24px', borderBottom: `1px solid ${BORD}`, background: '#fbfcfe' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 13 }}>
             <span>Prix de l&apos;annonce</span>
-            <span style={{ fontWeight: 700, color: NAVY }}>{base.toLocaleString('fr-FR')} €</span>
+            <span style={{ fontWeight: 700, color: NAVY, fontSize: 15 }}>{base.toLocaleString('fr-FR')} €</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 11 }}>
-            <label htmlFor="pct" style={{ fontSize: 13.5, color: '#475569' }}>Tes honoraires de chasse</label>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input id="pct" type="number" step="0.1" min="0" value={pct} onChange={(e) => setPct(e.target.value)}
-                style={{ width: 68, border: `1px solid ${BORD}`, borderRadius: 9, padding: '7px 10px', fontSize: 14, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#64748b' }}>%</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: NAVY, minWidth: 92, textAlign: 'right' }}>
-                + {honoraires.toLocaleString('fr-FR')} €
+
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .9, marginBottom: 8 }}>
+            Tes honoraires de chasse
+          </div>
+
+          <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 13 }}>
+            <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 10, padding: 3, width: 168, flexShrink: 0 }}>
+              {ongletType('pourcentage', '% du prix')}
+              {ongletType('fixe', 'Montant fixe')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexGrow: 1 }}>
+              <input type="number" step={type === 'pourcentage' ? '0.1' : '500'} min="0"
+                value={valeur} onChange={(e) => setValeur(e.target.value)}
+                style={{
+                  width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 10, padding: '9px 12px',
+                  fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none',
+                }} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 16 }}>
+                {type === 'pourcentage' ? '%' : '€'}
               </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 12 }}>
+            <span>Soit</span>
+            <span style={{ fontWeight: 700, color: NAVY }}>
+              + {honoraires.toLocaleString('fr-FR')} €
+              {type === 'fixe' && base > 0 && (
+                <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 12.5 }}> ({pctEquivalent.toFixed(1)} %)</span>
+              )}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 11, borderTop: `1px solid ${BORD}` }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: OR, letterSpacing: -.4 }}>{total.toLocaleString('fr-FR')} €</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 13, borderTop: `2px solid ${BORD}` }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
+            <span style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.6 }}>{total.toLocaleString('fr-FR')} €</span>
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5, textAlign: 'right' }}>tout compris, honoraires inclus</div>
+          <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>tout compris, honoraires de chasse inclus</div>
         </div>
 
-        {/* canaux */}
-        <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {canal('✉️', 'Par mail', 'Ouvre ta fenêtre d’envoi habituelle', viaMail, '#3b82f6')}
           {canal('💬', 'WhatsApp', 'Message pré-rempli avec le lien', viaWhatsapp, '#25d366')}
           {canal('🔗', copie ? 'Lien copié ✓' : 'Copier le lien', bien.pdf_url ? 'Le PDF client' : 'La fiche du bien', viaLien, OR)}
         </div>
 
-        <div style={{ padding: '12px 22px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#94a3b8' }}>Le bien passera dans « Présentés »</span>
           <button type="button" onClick={onFerme}
             style={{ background: 'white', border: `1px solid ${BORD}`, color: '#64748b', borderRadius: 10, padding: '9px 18px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
