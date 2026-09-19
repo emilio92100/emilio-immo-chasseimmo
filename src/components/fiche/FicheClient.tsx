@@ -1121,13 +1121,14 @@ Emilio Immobilier
   const presentes  = biens.filter((b: any) => b.etape === 'presente');
 
   const TABS = [
-    { id: 'veille', label: `🔎 Veille${veilleCount ? ` (${veilleCount})` : ''}` },
-    { id: 'selection', label: `📋 Sélection (${enSelection.length})` },
-    { id: 'presentes', label: `📤 Présentés (${presentes.length})` },
-    { id: 'visites', label: `📅 Visites (${visites.length})` },
-    { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
-    { id: 'suivi', label: `🗂️ Suivi (${suiviCount})` },
+    { id: 'veille',      icone: '🔎', nom: 'Veille',       compte: veilleCount,      dore: true },
+    { id: 'selection',   icone: '📋', nom: 'Sélection',    compte: enSelection.length },
+    { id: 'presentes',   icone: '📤', nom: 'Présentés',    compte: presentes.length },
+    { id: 'visites',     icone: '📅', nom: 'Visites',      compte: visites.length },
+    { id: 'transaction', icone: '💼', nom: transaction && transaction.etape_actuelle === 'finalise' ? 'Transaction ✅' : 'Transaction', compte: null },
+    { id: 'suivi',       icone: '🗂️', nom: 'Suivi',        compte: suiviCount },
   ];
+
 
   const BADGES: Record<string, { label: string; color: string; bg: string }> = {
     propose:          { label: '📋 Proposé',         color: '#64748b', bg: '#f8fafc' },
@@ -1237,6 +1238,24 @@ Emilio Immobilier
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
           )}
         </div>
+        {/* SITUATION ACTUELLE DE L'ACHETEUR + bien à vendre éventuel */}
+        {((client as any).statut_occupation || (client as any).bien_actuel_a_vendre) && (() => {
+          const occ = client as any;
+          const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
+          const aVendre = !!occ.bien_actuel_a_vendre;
+          return (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 14, padding: '14px 18px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.8, width: '100%' }}>🏠 Situation actuelle</div>
+              {occ.statut_occupation && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{labelStatut}</div></div>}
+              {aVendre && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien à vendre</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
+              {aVendre && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
+              {aVendre && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Adresse du bien</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'}</div></div>}
+              {aVendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
+              {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#475569', lineHeight: 1.5 }}><span style={{ color: '#94a3b8', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+            </div>
+          );
+        })()}
+
         {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
         <div className={styles.infoRow}>
           <div className={styles.infoCard} style={{ flex: 2 }}>
@@ -1350,27 +1369,35 @@ Emilio Immobilier
           </div>
         </div>
 
-        {/* SITUATION ACTUELLE DE L'ACHETEUR + bien à vendre éventuel */}
-        {((client as any).statut_occupation || (client as any).bien_actuel_a_vendre) && (() => {
-          const occ = client as any;
-          const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
-          const aVendre = !!occ.bien_actuel_a_vendre;
-          return (
-            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 14, padding: '14px 18px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.8, width: '100%' }}>🏠 Situation actuelle</div>
-              {occ.statut_occupation && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{labelStatut}</div></div>}
-              {aVendre && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien à vendre</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
-              {aVendre && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
-              {aVendre && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Adresse du bien</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'}</div></div>}
-              {aVendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
-              {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#475569', lineHeight: 1.5 }}><span style={{ color: '#94a3b8', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
-            </div>
-          );
-        })()}
 
         {/* ONGLETS en haut */}
-        <div className={styles.tabs}>
-          {TABS.map(t => <button key={t.id} className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
+      <style>{`
+        @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes emilioPouls { 0%, 100% { opacity: .45; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.25); } }
+        .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
+        .emilio-onglet { position: relative; display: inline-flex; align-items: center; gap: 8px; background: transparent; border: none; border-radius: 11px; padding: 10px 16px; font-size: 13.5px; font-weight: 600; color: #64748b; cursor: pointer; font-family: inherit; transition: color .18s ease, background .18s ease; white-space: nowrap; }
+        .emilio-onglet:hover { color: #1a2332; background: #eef2f7; }
+        .emilio-onglet[data-actif="true"] { color: #ffffff; background: #1a2332; font-weight: 800; box-shadow: 0 4px 14px -6px rgba(26,35,50,.7); }
+        .emilio-onglet[data-actif="true"] .emilio-pouls { animation: emilioPouls 1.9s ease-in-out infinite; }
+        .emilio-pouls { width: 7px; height: 7px; border-radius: 50%; background: #c9a84c; display: inline-block; }
+        .emilio-compteur { background: rgba(148,163,184,.18); color: #64748b; border-radius: 20px; padding: 1px 8px; font-size: 11.5px; font-weight: 800; }
+        .emilio-onglet[data-actif="true"] .emilio-compteur { background: rgba(255,255,255,.16); color: #ffffff; }
+        .emilio-onglet .emilio-compteur.dore { background: #c9a84c; color: #ffffff; }
+      `}</style>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, padding: 5, marginBottom: 16, boxShadow: '0 1px 2px rgba(16,24,40,.04)' }}>
+          {TABS.map(t => {
+            const actif = tab === t.id;
+            return (
+              <button key={t.id} type="button" className="emilio-onglet" data-actif={actif} onClick={() => setTab(t.id)}>
+                {actif && <span className="emilio-pouls" />}
+                <span>{t.icone}</span>
+                <span>{t.nom}</span>
+                {t.compte != null && t.compte > 0 && (
+                  <span className={`emilio-compteur${t.dore ? ' dore' : ''}`}>{t.compte}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <style>{`
@@ -1709,33 +1736,35 @@ Emilio Immobilier
 
         {/* TAB SÉLECTION */}
         {tab === 'selection' && (
-          <OngletBiens
+          <div key="p-selection" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="selection"
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={(id) => openEnvoiBien(id)}
             onFiche={(id) => openFicheBien(id)}
             onVisite={(id) => planifierVisite(id)}
-          />
+          /></div>
         )}
 
         {/* TAB PRÉSENTÉS */}
         {tab === 'presentes' && (
-          <OngletBiens
+          <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={(id) => openEnvoiBien(id)}
             onFiche={(id) => openFicheBien(id)}
             onVisite={(id) => planifierVisite(id)}
-          />
+          /></div>
         )}
 
         {/* TAB VEILLE */}
         {tab === 'veille' && (
-          <OngletVeille
-            clientId={client.id}
-            rechercheId={rechercheId}
-            onChange={() => { load(); chargerVeilleCount(); }}
-          />
+          <div key="p-veille" className="emilio-panneau">
+            <OngletVeille
+              clientId={client.id}
+              rechercheId={rechercheId}
+              onChange={() => { load(); chargerVeilleCount(); }}
+            />
+          </div>
         )}
 
         {/* TAB SUIVI (fusion Historique + Journal) */}
