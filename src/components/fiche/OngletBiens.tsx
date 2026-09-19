@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Frise, ModaleObservation, ModaleEnvoi, Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE } from './ParcoursBien';
+import { Frise, ModaleObservation, ModaleEnvoi, Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE, Galerie, StylesEmilio } from './ParcoursBien';
 
 /**
  * Deux onglets pour un seul composant :
@@ -41,7 +41,6 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [obs, setObs] = useState<any>(null);
   const [envoi, setEnvoi] = useState<any>(null);
   const [tick, setTick] = useState(0);
-  const [photoIdx, setPhotoIdx] = useState<Record<string, number>>({});
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -97,6 +96,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <StylesEmilio />
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>
@@ -109,28 +109,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
       {biens.map((b) => {
         const photos: string[] = b.photos || [];
-        const idx = photoIdx[b.id] || 0;
         const r = RETOURS[b.badge_retour] || RETOURS.propose;
         const ouvert = frise === b.id;
         const honoraires = b.prix_acquereur && b.prix_vendeur ? b.prix_acquereur - b.prix_vendeur : 0;
 
         return (
-          <div key={b.id} style={CARTE}>
+          <div key={b.id} className="emi-carte" style={CARTE}>
             <div style={GRILLE_CARTE}>
 
-              <div style={{ position: 'relative', background: '#e8edf3', minHeight: 190 }}>
-                {photos[idx] && (
-                  <img src={photos[idx]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
-                )}
-                {photos.length > 1 && (
-                  <>
-                    <button type="button" aria-label="Précédente" onClick={() => setPhotoIdx(v => ({ ...v, [b.id]: (idx - 1 + photos.length) % photos.length }))} style={nav('left')}>‹</button>
-                    <button type="button" aria-label="Suivante" onClick={() => setPhotoIdx(v => ({ ...v, [b.id]: (idx + 1) % photos.length }))} style={nav('right')}>›</button>
-                    <span style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(15,23,42,.72)', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 700 }}>{idx + 1} / {photos.length}</span>
-                  </>
-                )}
-              </div>
+              <Galerie photos={photos} hauteur={182} />
 
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -256,11 +243,3 @@ function btn(bg: string, fg: string, bd?: string): React.CSSProperties {
 }
 const lien: React.CSSProperties = { fontSize: 12.5, color: '#3b82f6', textDecoration: 'none', fontWeight: 600 };
 const lienBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 };
-function nav(cote: 'left' | 'right'): React.CSSProperties {
-  return {
-    position: 'absolute', top: '50%', transform: 'translateY(-50%)', [cote]: 6,
-    width: 26, height: 26, borderRadius: '50%', background: 'rgba(26,35,50,.6)', color: 'white',
-    border: 'none', cursor: 'pointer', fontSize: 16, fontFamily: 'inherit',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-  } as React.CSSProperties;
-}
