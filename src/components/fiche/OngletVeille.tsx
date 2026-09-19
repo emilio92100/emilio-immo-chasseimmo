@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
-import { Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE } from './ParcoursBien';
+import { Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE, Galerie, ModaleScore, StylesEmilio } from './ParcoursBien';
 
 /**
  * Onglet Veille — les biens trouvés par la veille, en attente d'arbitrage.
@@ -24,8 +24,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   const [ecartEnCours, setEcartEnCours] = useState<string | null>(null);
   const [motif, setMotif] = useState('');
   const [enTraitement, setEnTraitement] = useState<string | null>(null);
-  const [volet, setVolet] = useState<Record<string, 'detail' | 'score' | null>>({});
-  const [photoIdx, setPhotoIdx] = useState<Record<string, number>>({});
+  const [volet, setVolet] = useState<Record<string, 'detail' | null>>({});
+  const [scoreOuvert, setScoreOuvert] = useState<any>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -122,6 +122,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <StylesEmilio />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
@@ -155,7 +156,6 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
 
       {props_.map((p) => {
         const photos: string[] = p.photos || [];
-        const idx = photoIdx[p.id] || 0;
         const v = volet[p.id] || null;
         const enEcart = ecartEnCours === p.id;
         const baisse = p.prix_initial && p.prix ? p.prix_initial - p.prix : 0;
@@ -163,42 +163,28 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
         const fort = (p.score || 0) >= 85;
 
         return (
-          <div key={p.id} style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1, transition: 'opacity .2s' }}>
+          <div key={p.id} className="emi-carte" style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1 }}>
             <div style={GRILLE_CARTE}>
 
-              <div style={{ position: 'relative', background: '#e8edf3', minHeight: 208 }}>
-                {photos[idx] && (
-                  <img src={photos[idx]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
-                )}
-                {photos.length > 1 && (
-                  <>
-                    <button type="button" aria-label="Photo précédente" onClick={() => setPhotoIdx(s => ({ ...s, [p.id]: (idx - 1 + photos.length) % photos.length }))} style={nav('left')}>‹</button>
-                    <button type="button" aria-label="Photo suivante" onClick={() => setPhotoIdx(s => ({ ...s, [p.id]: (idx + 1) % photos.length }))} style={nav('right')}>›</button>
-                    <span style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(15,23,42,.72)', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 700 }}>
-                      {idx + 1} / {photos.length}
-                    </span>
-                  </>
-                )}
+              <Galerie photos={photos} hauteur={196} coin={<>
                 {p.score != null && (
-                  <button type="button" onClick={() => setVolet(s => ({ ...s, [p.id]: v === 'score' ? null : 'score' }))}
-                    title="Comment ce score est calculé"
+                  <button type="button" onClick={() => setScoreOuvert(p)} title="Comment ce score est calculé"
                     style={{
-                      position: 'absolute', top: 10, left: 10,
-                      background: fort ? OR : 'rgba(15,23,42,.78)', color: 'white',
-                      borderRadius: 9, padding: '5px 10px', fontSize: 12, fontWeight: 800,
+                      position: 'absolute', top: 10, left: 10, zIndex: 3,
+                      background: fort ? OR : 'rgba(15,23,42,.8)', color: 'white',
+                      borderRadius: 9, padding: '5px 9px', fontSize: 12, fontWeight: 800,
                       border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      boxShadow: '0 2px 8px rgba(15,23,42,.24)',
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      boxShadow: '0 3px 10px rgba(15,23,42,.3)',
                     }}>
-                    {p.score}<span style={{ opacity: 0.7, fontWeight: 600 }}>/100</span>
+                    {p.score}<span style={{ opacity: .65, fontWeight: 600 }}>/100</span>
                     <span style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,.75)', fontSize: 9.5, lineHeight: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>i</span>
                   </button>
                 )}
                 {p.est_particulier && (
-                  <span style={{ position: 'absolute', top: 10, right: 10, background: '#10b981', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 800 }}>Particulier</span>
+                  <span style={{ position: 'absolute', top: 10, right: 10, zIndex: 3, background: '#10b981', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 800 }}>Particulier</span>
                 )}
-              </div>
+              </>} />
 
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
 
@@ -286,22 +272,6 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
               </div>
             </div>
 
-            {v === 'score' && (
-              <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 20px' }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-                  Score de correspondance — {p.score}/100
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, lineHeight: 1.65 }}>
-                  <div style={{ color: '#475569' }}><strong style={{ color: NAVY }}>Base</strong> — les critères durs de la recherche : budget, surface, chambres, secteur.</div>
-                  {!!p.points_forts?.length && <div style={{ color: '#15803d' }}><strong>Ce qui rapporte</strong> — {p.points_forts.join(' · ')}</div>}
-                  {!!p.points_attention?.length && <div style={{ color: '#92400e' }}><strong>Ce qui coûte</strong> — {p.points_attention.join(' · ')}</div>}
-                  <div style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 3 }}>
-                    Au-dessus de 85, le bien coche tout ce qui compte pour ce client. Entre 70 et 85, il mérite un regard malgré un point qui accroche. En dessous, je ne te le propose pas.
-                  </div>
-                </div>
-              </div>
-            )}
-
             {v === 'detail' && p.description && (
               <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 20px', fontSize: 13.5, color: '#334155', lineHeight: 1.75, whiteSpace: 'pre-line' }}>
                 {p.description}
@@ -323,6 +293,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
           </div>
         );
       })}
+
+      {scoreOuvert && <ModaleScore p={scoreOuvert} onFerme={() => setScoreOuvert(null)} />}
 
       {voirEcartees && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 6 }}>
@@ -351,12 +323,4 @@ function btn(bg: string, fg: string, bd?: string): React.CSSProperties {
     textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
     width: '100%', boxSizing: 'border-box',
   };
-}
-function nav(cote: 'left' | 'right'): React.CSSProperties {
-  return {
-    position: 'absolute', top: '50%', transform: 'translateY(-50%)', [cote]: 8,
-    width: 28, height: 28, borderRadius: '50%', background: 'rgba(15,23,42,.6)', color: 'white',
-    border: 'none', cursor: 'pointer', fontSize: 17, fontFamily: 'inherit',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-  } as React.CSSProperties;
 }
