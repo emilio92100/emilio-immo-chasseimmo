@@ -6,7 +6,13 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
-import { Onglets } from './ParcoursBien';
+import { Onglets, StylesEmilio, Icone } from './ParcoursBien';
+
+const lienEntete: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600,
+  color: 'rgba(255,255,255,.88)', textDecoration: 'none', fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
+};
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
@@ -1122,12 +1128,12 @@ Emilio Immobilier
   const presentes  = biens.filter((b: any) => b.etape === 'presente');
 
   const TABS = [
-    { id: 'veille',      icone: '🔎', nom: 'Veille',       compte: veilleCount,      dore: true },
-    { id: 'selection',   icone: '📋', nom: 'Sélection',    compte: enSelection.length },
-    { id: 'presentes',   icone: '📤', nom: 'Présentés',    compte: presentes.length },
-    { id: 'visites',     icone: '📅', nom: 'Visites',      compte: visites.length },
-    { id: 'transaction', icone: '💼', nom: transaction && transaction.etape_actuelle === 'finalise' ? 'Transaction ✅' : 'Transaction', compte: null },
-    { id: 'suivi',       icone: '🗂️', nom: 'Suivi',        compte: suiviCount },
+    { id: 'veille',      icone: 'loupe',      nom: 'Veille',    compte: veilleCount, dore: true },
+    { id: 'selection',   icone: 'liste',      nom: 'Sélection', compte: enSelection.length },
+    { id: 'presentes',   icone: 'envoi',      nom: 'Présentés', compte: presentes.length },
+    { id: 'visites',     icone: 'calendrier', nom: 'Visites',   compte: visites.length },
+    { id: 'transaction', icone: 'mallette',   nom: transaction && transaction.etape_actuelle === 'finalise' ? 'Transaction \u2713' : 'Transaction', compte: null },
+    { id: 'suivi',       icone: 'dossier',    nom: 'Suivi',     compte: suiviCount },
   ];
 
 
@@ -1176,58 +1182,104 @@ Emilio Immobilier
         const aSituation = !!(occ.statut_occupation || occ.bien_actuel_a_vendre);
         const aVendre = !!occ.bien_actuel_a_vendre;
         const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
-        const teinte = (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' || (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444';
-        const Bloc = ({ lib, val, fort }: { lib: string; val: React.ReactNode; fort?: boolean }) => (
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 0.9, marginBottom: 3 }}>{lib}</div>
-            <div style={{ fontSize: 15, fontWeight: fort ? 800 : 700, color: fort ? '#c9a84c' : '#1a2332' }}>{val}</div>
+        const st = client.statut as string;
+        const teinte = st === 'actif' ? '#34d399' : st === 'prospect' ? '#a78bfa' : st === 'suspendu' || st === 'offre_ecrite' ? '#fbbf24' : st === 'bien_trouve' ? '#60a5fa' : '#f87171';
+        const tels = (client.telephones || []).filter(Boolean);
+        const mails = (client.emails || []).filter(Boolean);
+
+        const kpis = [
+          { val: biens.length, l: 'Biens', or: false },
+          { val: visites.filter(v => v.statut === 'effectuee').length, l: 'Visites', or: false },
+          { val: biens.filter(b => b.badge_retour === 'offre_faite').length, l: 'Offres', or: true },
+          { val: jours, l: 'Jours de suivi', or: false },
+        ];
+
+        const Champ = ({ lib, val, premier }: { lib: string; val: React.ReactNode; premier?: boolean }) => (
+          <div style={{ padding: premier ? '2px 26px 2px 0' : '2px 26px', borderLeft: premier ? 'none' : '1px solid #edf1f6' }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>{lib}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332', letterSpacing: -0.1 }}>{val}</div>
           </div>
         );
 
         return (
-          <div style={{ background: '#f8fafc', padding: '14px 24px 0' }}>
+          <div style={{ background: '#f8fafc', padding: '16px 24px 0' }}>
 
-            {/* le bloc identité, en navy arrondi */}
+            {/* le bloc identité */}
             <div style={{
-              position: 'relative', borderRadius: 24, overflow: 'hidden',
-              background: 'linear-gradient(135deg, #263650 0%, #18222f 54%, #1e2a3b 100%)',
-              boxShadow: '0 20px 44px -28px rgba(16,24,40,.85)',
-              padding: aSituation ? '22px 26px 42px' : '22px 26px 24px',
+              position: 'relative', borderRadius: 22, overflow: 'hidden',
+              background: 'linear-gradient(152deg, #22304a 0%, #16202e 58%, #1b2635 100%)',
+              border: '1px solid rgba(201,168,76,.2)',
+              boxShadow: '0 24px 50px -32px rgba(10,16,26,.9)',
+              padding: aSituation ? '24px 28px 40px' : '24px 28px 26px',
             }}>
-              <span aria-hidden style={{ position: 'absolute', top: -110, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.24), transparent 62%)', pointerEvents: 'none' }} />
-              <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg, transparent, rgba(201,168,76,.75), transparent)' }} />
+              <span aria-hidden style={{ position: 'absolute', top: -140, right: -90, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.17), transparent 64%)', pointerEvents: 'none' }} />
+              <span aria-hidden style={{ position: 'absolute', bottom: -160, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(96,165,250,.07), transparent 66%)', pointerEvents: 'none' }} />
 
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: '1 1 380px', minWidth: 0 }}>
-                  <div style={{ width: 58, height: 58, borderRadius: 18, background: 'rgba(255,255,255,.08)', border: `2px solid ${teinte}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 23, fontWeight: 800, color: 'white', fontFamily: "'Plus Jakarta Sans',sans-serif", flexShrink: 0, boxShadow: `0 10px 24px -12px ${teinte}` }}>{client.prenom[0]}</div>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 26, flexWrap: 'wrap' }}>
+
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 17, flex: '1 1 420px', minWidth: 0 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{
+                      width: 58, height: 58, borderRadius: '50%',
+                      background: 'linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.02))',
+                      border: '1px solid rgba(201,168,76,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 23, fontWeight: 800, color: '#c9a84c', fontFamily: "'Plus Jakarta Sans',sans-serif", letterSpacing: .5,
+                    }}>{client.prenom[0]}{client.nom?.[0] || ''}</div>
+                    <span style={{ position: 'absolute', right: 1, bottom: 1, width: 13, height: 13, borderRadius: '50%', background: teinte, border: '2.5px solid #1a2431' }} />
+                  </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 7 }}>
-                      <div className={styles.clientName} style={{ color: 'white', letterSpacing: -0.4 }}>{client.prenom} {client.nom}</div>
-                      <div style={{ position: 'relative' }}>
-                        <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '5px 28px 5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${teinte}55`, background: `${teinte}1f`, color: teinte, appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
-                          <option value="prospect">🟣 Prospect</option><option value="actif">🟢 Actif</option><option value="suspendu">⏸️ Suspendu</option><option value="offre_ecrite">✍️ Offre écrite</option><option value="bien_trouve">✅ Bien trouvé</option><option value="perdu">🔴 Perdu</option>
-                        </select>
-                        <span style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9, color: teinte }}>▼</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
+                        {client.prenom} {client.nom}
                       </div>
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{client.reference} · {jours}j de suivi</span>
-                      <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }} style={{ fontSize: 11.5, color: 'rgba(255,255,255,.45)', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 9, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
+                      <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                        <span style={{ position: 'absolute', left: 11, width: 6, height: 6, borderRadius: '50%', background: teinte, pointerEvents: 'none' }} />
+                        <select value={client.statut} onChange={e => changeStatut(e.target.value)}
+                          style={{ padding: '5px 26px 5px 24px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
+                          <option value="prospect">Prospect</option><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="offre_ecrite">Offre écrite</option><option value="bien_trouve">Bien trouvé</option><option value="perdu">Perdu</option>
+                        </select>
+                        <span style={{ position: 'absolute', right: 10, pointerEvents: 'none', fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                      {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 13.5, color: 'white', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, padding: '5px 12px' }}>📞 {t}</a>)}
-                      {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 13.5, color: '#c9a84c', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(201,168,76,.1)', border: '1px solid rgba(201,168,76,.25)', borderRadius: 10, padding: '5px 12px' }}>✉️ {e}</a>)}
-                      {client.adresse && <span style={{ fontSize: 13, color: 'rgba(255,255,255,.62)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>📍 {client.adresse}</span>}
-                      {!client.telephones?.length && !client.emails?.length && <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>Aucun contact renseigné</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
+                        {client.reference} · suivi depuis {jours} jours
+                      </span>
+                      <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.42)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <Icone nom="crayon" taille={12} /> Modifier
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 9, alignItems: 'center', marginTop: 14 }}>
+                      {tels.map((t) => (
+                        <a key={t} href={`tel:${t}`} style={lienEntete}>
+                          <Icone nom="tel" taille={14} /> {t}
+                        </a>
+                      ))}
+                      {mails.map((e) => (
+                        <a key={e} href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
+                          <Icone nom="mail" taille={14} /> {e}
+                        </a>
+                      ))}
+                      {client.adresse && (
+                        <span style={{ ...lienEntete, color: 'rgba(255,255,255,.55)' }}>
+                          <Icone nom="lieu" taille={14} /> {client.adresse}
+                        </span>
+                      )}
+                      {!tels.length && !mails.length && <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)' }}>Aucun contact renseigné</span>}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-                  {[{val: biens.length, l:'Biens présentés', or:false},{val: visites.filter(v=>v.statut==='effectuee').length, l:'Visites effectuées', or:false},{val: biens.filter(b=>b.badge_retour==='offre_faite').length, l:'Offre(s)', or:true},{val:`${jours}j`, l:'Suivi', or:false}].map((s, i) => (
-                    <div key={i} style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 15, padding: '11px 16px', textAlign: 'center', minWidth: 78 }}>
-                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 23, lineHeight: 1, color: s.or ? '#c9a84c' : 'white' }}>{s.val}</div>
-                      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.5)', marginTop: 5, fontWeight: 600 }}>{s.l}</div>
+                {/* les compteurs, un seul panneau divisé */}
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,.045)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
+                  {kpis.map((s, i) => (
+                    <div key={s.l} style={{ padding: '13px 21px', textAlign: 'center', minWidth: 78, borderLeft: i ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, lineHeight: 1, letterSpacing: -.8, color: s.or && s.val ? '#c9a84c' : s.val ? 'white' : 'rgba(255,255,255,.3)' }}>{s.val}</div>
+                      <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.42)', marginTop: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .9 }}>{s.l}</div>
                     </div>
                   ))}
                 </div>
@@ -1236,18 +1288,27 @@ Emilio Immobilier
 
             {/* la situation actuelle, posée à cheval sur le bloc du dessus */}
             {aSituation && (
-              <div style={{ position: 'relative', margin: '-24px 18px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 18, padding: '19px 22px 15px', boxShadow: '0 18px 36px -26px rgba(16,24,40,.7)' }}>
-                <span style={{ position: 'absolute', top: -11, left: 22, background: '#1a2332', color: '#c9a84c', borderRadius: 20, padding: '4px 14px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.1, boxShadow: '0 8px 18px -8px rgba(26,35,50,.95)' }}>
+              <div style={{ position: 'relative', margin: '-22px 20px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: '18px 22px 15px', boxShadow: '0 20px 40px -30px rgba(16,24,40,.8)' }}>
+                <span style={{ position: 'absolute', top: -10, left: 22, background: 'linear-gradient(135deg,#22304a,#16202e)', color: '#c9a84c', borderRadius: 20, padding: '4px 14px', fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, border: '1px solid rgba(201,168,76,.3)', boxShadow: '0 8px 18px -10px rgba(16,24,40,.9)' }}>
                   Situation actuelle
                 </span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'center' }}>
-                  {occ.statut_occupation && <Bloc lib="Statut" val={labelStatut} />}
-                  {aVendre && occ.bien_actuel_type && <Bloc lib="Bien à vendre" val={`${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`} />}
-                  {aVendre && occ.bien_actuel_valeur && <Bloc lib="Valeur estimée" fort val={`${occ.bien_actuel_valeur.toLocaleString('fr-FR')} €`} />}
-                  {aVendre && <Bloc lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
-                  {aVendre && <span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '6px 13px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, marginLeft: 'auto' }}>🏷️ Mandat de vente potentiel</span>}
-                  {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#64748b', lineHeight: 1.55, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}><span style={{ color: '#9aa8bd', fontWeight: 700 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', rowGap: 12 }}>
+                  {occ.statut_occupation && <Champ lib="Statut" val={labelStatut} premier />}
+                  {aVendre && occ.bien_actuel_type && <Champ lib="Bien à vendre" val={`${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`} premier={!occ.statut_occupation} />}
+                  {aVendre && occ.bien_actuel_valeur && <Champ lib="Valeur estimée" val={<span style={{ color: '#c9a84c', fontWeight: 800 }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</span>} />}
+                  {aVendre && <Champ lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
+                  {aVendre && (
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fffaf3', color: '#b45309', border: '1px solid #f3dcb8', padding: '7px 14px', borderRadius: 11, fontSize: 12.5, fontWeight: 700 }}>
+                      <Icone nom="etiquette" taille={14} /> Mandat de vente potentiel
+                    </span>
+                  )}
                 </div>
+                {aVendre && occ.bien_actuel_notes && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginRight: 8 }}>Précisions</span>
+                    {occ.bien_actuel_notes}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1411,6 +1472,7 @@ Emilio Immobilier
         .fiche-tab > * { animation: ficheTabIn .54s cubic-bezier(.16,1,.3,1) both; }
       `}</style>
 
+        <StylesEmilio />
         <Onglets items={TABS} actif={tab} onChange={setTab} />
 
         <div key={`${rechercheId}-${tab}`} className="fiche-tab">
