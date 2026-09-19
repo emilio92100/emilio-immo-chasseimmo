@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Frise, ModaleObservation, ModaleEnvoi } from './ParcoursBien';
+import { Frise, ModaleObservation, ModaleEnvoi, Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE } from './ParcoursBien';
 
 /**
  * Deux onglets pour un seul composant :
@@ -115,10 +115,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         const honoraires = b.prix_acquereur && b.prix_vendeur ? b.prix_acquereur - b.prix_vendeur : 0;
 
         return (
-          <div key={b.id} style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(16,24,40,.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'wrap' }}>
+          <div key={b.id} style={CARTE}>
+            <div style={GRILLE_CARTE}>
 
-              <div style={{ width: 208, minWidth: 208, minHeight: 156, position: 'relative', background: '#e8edf3' }}>
+              <div style={{ position: 'relative', background: '#e8edf3', minHeight: 190 }}>
                 {photos[idx] && (
                   <img src={photos[idx]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
@@ -127,12 +127,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   <>
                     <button type="button" aria-label="Précédente" onClick={() => setPhotoIdx(v => ({ ...v, [b.id]: (idx - 1 + photos.length) % photos.length }))} style={nav('left')}>‹</button>
                     <button type="button" aria-label="Suivante" onClick={() => setPhotoIdx(v => ({ ...v, [b.id]: (idx + 1) % photos.length }))} style={nav('right')}>›</button>
-                    <span style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(26,35,50,.82)', color: 'white', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{idx + 1}/{photos.length}</span>
+                    <span style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(15,23,42,.72)', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 700 }}>{idx + 1} / {photos.length}</span>
                   </>
                 )}
               </div>
 
-              <div style={{ flexGrow: 1, minWidth: 300, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 16.5, fontWeight: 800, color: NAVY, lineHeight: 1.3 }}>
                     {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
@@ -149,14 +149,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 13, flexWrap: 'wrap', fontSize: 13.5, color: '#475569' }}>
-                  {b.surface && <span style={{ fontWeight: 700, color: NAVY }}>{b.surface} m²</span>}
-                  {b.nb_pieces && <span>{b.nb_pieces} pièces</span>}
-                  {b.nb_chambres && <span>{b.nb_chambres} ch.</span>}
-                  {b.etage != null && <span>{b.etage === 0 ? 'RDC' : `${b.etage}ᵉ`}</span>}
-                  {b.annee_construction && <span>immeuble {b.annee_construction}</span>}
-                  {b.dpe && <span style={{ border: `1px solid ${BORD}`, borderRadius: 5, padding: '0 6px', fontWeight: 800, color: NAVY }}>DPE {b.dpe}</span>}
-                  {b.est_particulier && <span style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: 6, padding: '1px 8px', fontWeight: 700 }}>Particulier</span>}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 13.5, color: '#475569' }}>
+                  {b.surface && <span style={{ fontWeight: 800, color: NAVY, fontSize: 14.5 }}>{b.surface} m²</span>}
+                  {b.nb_pieces ? <><Sep />{b.nb_pieces} pièces</> : null}
+                  {b.nb_chambres ? <><Sep />{b.nb_chambres} chambres</> : null}
+                  {b.etage != null ? <><Sep />{b.etage === 0 ? 'RDC' : `${b.etage}ᵉ étage`}</> : null}
+                  {b.annee_construction ? <><Sep />immeuble {b.annee_construction}</> : null}
+                  <Dpe lettre={b.dpe} />
+                  <Dpe lettre={b.ges} label="GES" />
+                  {b.est_particulier && <Chip ton="vert">Particulier</Chip>}
                 </div>
 
                 {mode === 'presentes' && (
@@ -179,16 +180,16 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 'auto', paddingTop: 4 }}>
-                  {b.url && <a href={b.url} target="_blank" rel="noopener noreferrer" style={lien}>Annonce d&apos;origine</a>}
-                  <button type="button" onClick={() => onFiche(b.id)} style={lienBtn}>Détail</button>
-                  <button type="button" onClick={() => setFrise(ouvert ? null : b.id)} style={lienBtn}>
-                    {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
-                  </button>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 'auto', paddingTop: 4 }}>
+                  {b.url && <BoutonLien href={b.url}>↗&nbsp; Annonce d&apos;origine</BoutonLien>}
+                  <BoutonLien onClick={() => onFiche(b.id)}>✎&nbsp; Détail</BoutonLien>
+                  <BoutonLien onClick={() => setFrise(ouvert ? null : b.id)} actif={ouvert}>
+                    ◷&nbsp; {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
+                  </BoutonLien>
                 </div>
               </div>
 
-              <div style={{ width: 180, minWidth: 180, borderLeft: `1px solid ${BORD}`, background: '#fbfcfe', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+              <div style={{ borderLeft: `1px solid ${BORD}`, background: '#fbfcfe', padding: 16, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
                 {mode === 'selection' ? (
                   <>
                     {b.pdf_statut === 'pret' && b.pdf_url ? (
@@ -241,6 +242,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     </div>
   );
 }
+
+function Sep() { return <span style={{ color: '#dbe3ec' }}>·</span>; }
 
 /* styles */
 function btn(bg: string, fg: string, bd?: string): React.CSSProperties {
