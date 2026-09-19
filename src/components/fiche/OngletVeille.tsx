@@ -1,17 +1,16 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
-import { Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE, Galerie, ModaleScore, StylesEmilio } from './ParcoursBien';
+import {
+  Chip, BoutonLien, CARTE, Vignettes, Specs, BandeauMarche, ModaleScore,
+  StylesEmilio, Icone, Action, NAVY, OR, BORD,
+} from './ParcoursBien';
 
 /**
  * Onglet Veille — les biens trouvés par la veille, en attente d'arbitrage.
  *   Retenir → passe dans l'onglet Sélection
  *   Écarter → sort de la liste, avec un motif relu par la veille suivante
  */
-
-const NAVY = '#1a2332';
-const OR = '#c9a84c';
-const BORD = '#e3e8f0';
 
 interface Props { clientId: string; rechercheId: string; onChange?: () => void; }
 
@@ -24,7 +23,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   const [ecartEnCours, setEcartEnCours] = useState<string | null>(null);
   const [motif, setMotif] = useState('');
   const [enTraitement, setEnTraitement] = useState<string | null>(null);
-  const [volet, setVolet] = useState<Record<string, 'detail' | null>>({});
+  const [descriptif, setDescriptif] = useState<Record<string, boolean>>({});
   const [scoreOuvert, setScoreOuvert] = useState<any>(null);
 
   const charger = useCallback(async () => {
@@ -60,16 +59,24 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       client_id: clientId, recherche_id: rechercheId, url: p.url || null,
       titre: p.titre, ville: p.ville, code_postal: p.code_postal,
       quartier: p.quartier || null, adresse: p.adresse || p.adresse_probable || null,
+      adresse_probable: p.adresse_probable || null, situation: p.situation || null,
       type_bien: p.type_bien, surface: p.surface, nb_pieces: p.nb_pieces, nb_chambres: p.nb_chambres,
+      surface_sejour: p.surface_sejour || null, surface_exterieur: p.surface_exterieur || null,
       etage: p.etage, etage_total: p.etage_total, annee_construction: p.annee_construction,
       exposition: p.exposition || null, dpe: p.dpe || null, ges: p.ges || null,
-      parking: p.parking || false, balcon: p.balcon || false, terrasse: p.terrasse || false,
+      parking: p.parking || false, nb_parking: p.nb_parking || null,
+      balcon: p.balcon || false, terrasse: p.terrasse || false,
       jardin: p.jardin || false, cave: p.cave || false, ascenseur: p.ascenseur || false,
       gardien: p.gardien || false, description: p.description, prix_vendeur: p.prix,
       commission_type: 'pourcentage', commission_val: null, prix_acquereur: p.prix,
       nb_lots: p.nb_lots, photos: p.photos || [],
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
       etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
+      // infos marché — elles suivent le bien dans la Sélection
+      date_publication: p.date_publication || null, prix_initial: p.prix_initial || null,
+      nb_baisses: p.nb_baisses || null, nb_agences: p.nb_agences || null,
+      historique_prix: p.historique_prix || [], date_derniere_baisse: p.date_derniere_baisse || null,
+      score: p.score ?? null, points_forts: p.points_forts || null, points_attention: p.points_attention || null,
     }).select().single();
 
     if (error || !bien) { alert("Impossible d'ajouter ce bien : " + (error?.message || '')); setEnTraitement(null); return; }
@@ -98,15 +105,6 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   }
 
   const euros = (n: any) => (n == null ? '—' : Number(n).toLocaleString('fr-FR') + ' €');
-
-  const duree = (d: string | null) => {
-    if (!d) return null;
-    const m = Math.round((Date.now() - new Date(d).getTime()) / 2.628e9);
-    if (m < 1) return "moins d'un mois";
-    if (m === 1) return '1 mois';
-    if (m < 24) return `${m} mois`;
-    return `${Math.floor(m / 12)} ans`;
-  };
 
   const quandPassage = () => {
     if (!passage?.termine_le) return null;
@@ -155,131 +153,132 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       )}
 
       {props_.map((p) => {
-        const photos: string[] = p.photos || [];
-        const v = volet[p.id] || null;
         const enEcart = ecartEnCours === p.id;
-        const baisse = p.prix_initial && p.prix ? p.prix_initial - p.prix : 0;
-        const baissePct = p.prix_initial && p.prix ? Math.round((baisse / p.prix_initial) * 100) : 0;
         const fort = (p.score || 0) >= 85;
+        const ouvertDesc = !!descriptif[p.id];
+        const atouts: React.ReactNode[] = [];
+        if (p.terrasse && !p.surface_exterieur) atouts.push(<Chip key="t" ton="or">Terrasse</Chip>);
+        if (p.balcon && !p.surface_exterieur) atouts.push(<Chip key="b">Balcon</Chip>);
+        if (p.jardin && !p.surface_exterieur) atouts.push(<Chip key="j">Jardin</Chip>);
+        if (p.parking) atouts.push(<Chip key="p">{p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking'}</Chip>);
+        if (p.ascenseur) atouts.push(<Chip key="a">Ascenseur</Chip>);
+        if (p.cave) atouts.push(<Chip key="c">Cave</Chip>);
+        if (p.gardien) atouts.push(<Chip key="g">Gardien</Chip>);
+        if (p.exposition) atouts.push(<Chip key="e">Exposé {p.exposition}</Chip>);
 
         return (
           <div key={p.id} className="emi-carte" style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1 }}>
-            <div style={GRILLE_CARTE}>
 
-              <Galerie photos={photos} hauteur={196} coin={<>
+            {/* ── le bandeau de photos ─────────────────────── */}
+            <Vignettes photos={p.photos || []}
+              coinGauche={p.est_particulier
+                ? <span style={{ background: '#10b981', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800, boxShadow: '0 4px 12px -4px rgba(16,185,129,.9)' }}>Particulier</span>
+                : undefined} />
+
+            {/* ── titre, adresse, prix ─────────────────────── */}
+            <div style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
+                  {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
+                </div>
+                {(p.adresse_probable || p.situation || p.quartier || p.ville) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 13.5, color: '#64748b', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#a9b6c8', display: 'flex' }}><Icone nom="lieu" taille={15} /></span>
+                    <span style={{ fontWeight: 600 }}>
+                      {p.adresse_probable || p.quartier || p.ville}
+                      {p.situation ? ` — ${p.situation}` : ''}
+                    </span>
+                    {p.adresse_probable && (
+                      <span style={{ fontSize: 10.5, color: '#a9b6c8', border: `1px solid ${BORD}`, borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>
+                        adresse probable
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7, flexShrink: 0 }}>
                 {p.score != null && (
                   <button type="button" onClick={() => setScoreOuvert(p)} title="Comment ce score est calculé"
                     style={{
-                      position: 'absolute', top: 10, left: 10, zIndex: 3,
-                      background: fort ? OR : 'rgba(15,23,42,.8)', color: 'white',
-                      borderRadius: 9, padding: '5px 9px', fontSize: 12, fontWeight: 800,
-                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      boxShadow: '0 3px 10px rgba(15,23,42,.3)',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: fort ? '#fdfaf1' : '#f7f9fc', color: fort ? '#a17d2c' : '#64748b',
+                      border: `1px solid ${fort ? '#ecdcb4' : BORD}`, borderRadius: 20,
+                      padding: '4px 10px 4px 11px', fontSize: 12, fontWeight: 800,
+                      cursor: 'pointer', fontFamily: 'inherit',
                     }}>
-                    {p.score}<span style={{ opacity: .65, fontWeight: 600 }}>/100</span>
-                    <span style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,.75)', fontSize: 9.5, lineHeight: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>i</span>
+                    {p.score}<span style={{ opacity: .6, fontWeight: 600 }}>/100</span>
+                    <span style={{ opacity: .7, display: 'flex' }}><Icone nom="info" taille={13} epaisseur={2} /></span>
                   </button>
                 )}
-                {p.est_particulier && (
-                  <span style={{ position: 'absolute', top: 10, right: 10, zIndex: 3, background: '#10b981', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 800 }}>Particulier</span>
-                )}
-              </>} />
-
-              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, justifyContent: 'space-between' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 17.5, fontWeight: 800, color: NAVY, lineHeight: 1.3 }}>
-                      {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
-                    </div>
-                    {(p.adresse_probable || p.situation) && (
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5, fontSize: 13, color: '#64748b', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#94a3b8' }}>◉</span>
-                        <span>{p.adresse_probable}{p.adresse_probable && p.situation ? ' — ' : ''}{p.situation}</span>
-                        {p.adresse_probable && <span style={{ fontSize: 11, color: '#cbd5e1', fontStyle: 'italic' }}>adresse probable</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 23, fontWeight: 800, color: OR, letterSpacing: -0.6, lineHeight: 1.1 }}>{euros(p.prix)}</div>
-                    {p.prix && p.surface && (
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
-                        {Math.round(p.prix / Number(p.surface)).toLocaleString('fr-FR')} €/m²
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13.5, color: '#475569' }}>
-                  {p.surface && <span style={{ fontWeight: 800, color: NAVY, fontSize: 14.5 }}>{p.surface} m²</span>}
-                  {p.nb_pieces ? <><Sep />{p.nb_pieces} pièces</> : null}
-                  {p.nb_chambres ? <><Sep />{p.nb_chambres} chambres</> : null}
-                  {p.surface_sejour ? <><Sep />séjour {p.surface_sejour} m²</> : null}
-                  {p.etage != null ? <><Sep />{p.etage === 0 ? 'RDC' : `${p.etage}ᵉ étage`}{p.etage_total ? `/${p.etage_total}` : ''}</> : null}
-                  {p.annee_construction ? <><Sep />immeuble {p.annee_construction}</> : null}
-                  {p.nb_lots ? <><Sep />{p.nb_lots} lots</> : null}
-                  <Dpe lettre={p.dpe} />
-                  <Dpe lettre={p.ges} label="GES" />
-                </div>
-
-                {(p.date_publication || p.nb_agences || p.prix_initial) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 11, padding: '8px 12px' }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Marché</span>
-                    {p.date_publication && <Chip>en ligne depuis {duree(p.date_publication)}</Chip>}
-                    {baisse > 0 && <Chip ton={baissePct >= 8 ? 'vert' : 'neutre'}>− {baisse.toLocaleString('fr-FR')} € ({baissePct} %)</Chip>}
-                    {p.nb_baisses ? <Chip>{p.nb_baisses} baisses</Chip> : null}
-                    {p.nb_agences ? <Chip ton={p.nb_agences >= 3 ? 'vert' : 'neutre'}>{p.nb_agences} agence{p.nb_agences > 1 ? 's' : ''}</Chip> : null}
-                    {p.agence && <Chip>{p.agence}</Chip>}
+                <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1 }}>{euros(p.prix)}</div>
+                {p.prix && p.surface && (
+                  <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
+                    {Math.round(p.prix / Number(p.surface)).toLocaleString('fr-FR')} €/m²
                   </div>
                 )}
-
-                {!!p.points_forts?.length && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                    <span style={{ color: '#16a34a', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>✓</span>
-                    <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600, lineHeight: 1.6 }}>{p.points_forts.join(' · ')}</span>
-                  </div>
-                )}
-                {!!p.points_attention?.length && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                    <span style={{ color: '#d97706', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>!</span>
-                    <span style={{ fontSize: 13.5, color: '#92400e', fontWeight: 600, lineHeight: 1.6 }}>{p.points_attention.join(' · ')}</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 4, alignItems: 'center' }}>
-                  {p.terrasse && <Chip ton="or">Terrasse{p.surface_exterieur ? ` ${p.surface_exterieur} m²` : ''}</Chip>}
-                  {p.balcon && <Chip>Balcon</Chip>}
-                  {p.jardin && <Chip>Jardin</Chip>}
-                  {p.parking && <Chip>{p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking'}</Chip>}
-                  {p.ascenseur && <Chip>Ascenseur</Chip>}
-                  {p.cave && <Chip>Cave</Chip>}
-                  {p.exposition && <Chip>Exposé {p.exposition}</Chip>}
-                  {p.portail && <Chip>{p.portail}</Chip>}
-                  {p.description && (
-                    <BoutonLien onClick={() => setVolet(s => ({ ...s, [p.id]: v === 'detail' ? null : 'detail' }))} actif={v === 'detail'}>
-                      {v === 'detail' ? 'Masquer le descriptif' : 'Lire le descriptif'}
-                    </BoutonLien>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ borderLeft: `1px solid ${BORD}`, background: '#fbfcfe', padding: 16, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
-                <a href={p.url} target="_blank" rel="noopener noreferrer" style={btn(NAVY, 'white')}>Voir l&apos;annonce</a>
-                <button type="button" onClick={() => retenir(p)} disabled={!!enTraitement} style={btn(OR, 'white')}>✓&nbsp; Retenir</button>
-                <button type="button" onClick={() => { setEcartEnCours(enEcart ? null : p.id); setMotif(''); }} disabled={!!enTraitement}
-                  style={btn(enEcart ? '#eef2f7' : 'white', enEcart ? NAVY : '#64748b', BORD)}>✕&nbsp; Écarter</button>
               </div>
             </div>
 
-            {v === 'detail' && p.description && (
-              <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 20px', fontSize: 13.5, color: '#334155', lineHeight: 1.75, whiteSpace: 'pre-line' }}>
-                {p.description}
+            {/* ── caractéristiques + marché ────────────────── */}
+            <div style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              <Specs p={p} />
+              <BandeauMarche p={p} />
+
+              {!!p.points_forts?.length && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                  <span style={{ color: '#16a34a', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>✓</span>
+                  <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600, lineHeight: 1.6 }}>{p.points_forts.join(' · ')}</span>
+                </div>
+              )}
+              {!!p.points_attention?.length && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                  <span style={{ color: '#d97706', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>!</span>
+                  <span style={{ fontSize: 13.5, color: '#92400e', fontWeight: 600, lineHeight: 1.6 }}>{p.points_attention.join(' · ')}</span>
+                </div>
+              )}
+
+              {(atouts.length > 0 || p.description) && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {atouts}
+                  {p.description && (
+                    <BoutonLien onClick={() => setDescriptif(s => ({ ...s, [p.id]: !ouvertDesc }))} actif={ouvertDesc}>
+                      {ouvertDesc ? 'Masquer le descriptif' : 'Lire le descriptif'}
+                    </BoutonLien>
+                  )}
+                </div>
+              )}
+
+              {p.description && (
+                <div className="emi-volet" data-ouvert={ouvertDesc}>
+                  <div>
+                    <div style={{ background: '#fbfcfe', border: `1px solid ${BORD}`, borderRadius: 12, padding: '13px 15px', fontSize: 13.5, color: '#334155', lineHeight: 1.75, whiteSpace: 'pre-line' }}>
+                      {p.description}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── pied de carte : les actions ──────────────── */}
+            <div style={{
+              borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '11px 18px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: 12, color: '#9aa8bd', fontWeight: 600 }}>
+                {p.type_bien || 'Bien'}{p.code_postal ? ` · ${p.code_postal}` : ''}{p.portail ? ` · repéré sur ${p.portail}` : ''}
+              </span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {p.url && <Action href={p.url} ton="neutre">↗&nbsp; Voir l&apos;annonce</Action>}
+                <Action onClick={() => { setEcartEnCours(enEcart ? null : p.id); setMotif(''); }} disabled={!!enTraitement} ton="neutre">
+                  ✕&nbsp; Écarter
+                </Action>
+                <Action onClick={() => retenir(p)} disabled={!!enTraitement} ton="or">✓&nbsp; Retenir</Action>
               </div>
-            )}
+            </div>
 
             {enEcart && (
-              <div style={{ borderTop: `1px solid ${BORD}`, background: '#fffbeb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ borderTop: `1px solid ${BORD}`, background: '#fffbeb', padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <label htmlFor={`m-${p.id}`} style={{ fontSize: 10.5, fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.9 }}>Pourquoi l&apos;écarter ?</label>
                 <input id={`m-${p.id}`} type="text" value={motif} autoFocus
                   onChange={e => setMotif(e.target.value)} onKeyDown={e => e.key === 'Enter' && ecarter(p)}
@@ -312,15 +311,4 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       )}
     </div>
   );
-}
-
-function Sep() { return <span style={{ color: '#dbe3ec' }}>·</span>; }
-
-function btn(bg: string, fg: string, bd?: string): React.CSSProperties {
-  return {
-    background: bg, color: fg, border: bd ? `1px solid ${bd}` : 'none', borderRadius: 10,
-    padding: '11px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-    textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    width: '100%', boxSizing: 'border-box',
-  };
 }
