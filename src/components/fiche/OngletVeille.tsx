@@ -88,6 +88,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   const [enTraitement, setEnTraitement] = useState<string | null>(null);
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [photoIdx, setPhotoIdx] = useState<Record<string, number>>({});
+  const [scoreOuvert, setScoreOuvert] = useState<string | null>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -132,6 +133,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       commission_type: 'pourcentage', commission_val: null, prix_acquereur: p.prix,
       nb_lots: p.nb_lots, photos: p.photos || [],
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
+      etape: 'selection', yanport_id: (p as any).yanport_id || null, est_particulier: (p as any).est_particulier || false,
     }).select().single();
 
     if (error || !bien) { alert("Impossible d'ajouter ce bien : " + (error?.message || '')); setEnTraitement(null); return; }
@@ -218,9 +220,12 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
               </>
             )}
             {p.score != null && (
-              <span style={{ position: 'absolute', top: 8, left: 8, background: p.score >= 85 ? OR : 'rgba(26,35,50,.82)', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 800 }}>
+              <button type="button" onClick={() => setScoreOuvert(scoreOuvert === p.id ? null : p.id)}
+                title="Comment ce score est calculé"
+                style={{ position: 'absolute', top: 8, left: 8, background: p.score >= 85 ? OR : 'rgba(26,35,50,.82)', color: 'white', borderRadius: 7, padding: '3px 9px', fontSize: 11, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {p.score}/100
-              </span>
+                <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,.7)', fontSize: 9, lineHeight: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>i</span>
+              </button>
             )}
           </div>
 
@@ -319,6 +324,32 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
             )}
           </div>
         </div>
+
+        {scoreOuvert === p.id && (
+          <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '14px 18px' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .9, marginBottom: 9 }}>
+              Score de correspondance — {p.score}/100
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13.5, lineHeight: 1.6 }}>
+              <div style={{ color: '#475569' }}>
+                <strong style={{ color: NAVY }}>Base</strong> — les critères durs de la recherche : budget, surface, nombre de chambres, secteur.
+              </div>
+              {!!p.points_forts?.length && (
+                <div style={{ color: '#15803d' }}>
+                  <strong>Ce qui rapporte</strong> — {p.points_forts.join(' · ')}
+                </div>
+              )}
+              {!!p.points_attention?.length && (
+                <div style={{ color: '#92400e' }}>
+                  <strong>Ce qui coûte</strong> — {p.points_attention.join(' · ')}
+                </div>
+              )}
+              <div style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 2 }}>
+                Au-dessus de 85, le bien coche tout ce qui compte pour ce client. Entre 70 et 85, il mérite un regard malgré un point qui accroche. En dessous, je ne te le propose pas.
+              </div>
+            </div>
+          </div>
+        )}
 
         {estOuvert && p.description && (
           <div style={{ borderTop: `1px solid ${BORD}`, padding: '14px 18px', background: '#fbfcfe', fontSize: 13.5, color: '#334155', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
