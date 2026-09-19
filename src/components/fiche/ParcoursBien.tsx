@@ -1,17 +1,18 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
  *
- *  <Modale>             fenêtre en plein écran, rendue hors du conteneur
- *  <Galerie>            photos avec fondu entre les vues
- *  <Frise>              chronologie d'un bien
- *  <ModaleObservation>  retour du client
- *  <ModaleEnvoi>        honoraires + canal d'envoi
- *  <ModaleScore>        explication du score de correspondance
+ *  <Icone>          jeu de pictos au trait
+ *  <Vignettes>      bandeau de photos carrées + visionneuse
+ *  <Specs>          surface / pièces / chambres / séjour… en pictos
+ *  <BandeauMarche>  ancienneté + baisses de prix, avec volet dépliant et graphique
+ *  <Modale>         fenêtre plein écran, rendue hors du conteneur
+ *  <Frise>          chronologie d'un bien
+ *  <ModaleObservation> / <ModaleEnvoi> / <ModaleScore>
  */
 
 export const NAVY = '#1a2332';
@@ -32,25 +33,86 @@ export function StylesEmilio() {
       .emi-panneau { animation: emiEntree .32s cubic-bezier(.16,1,.3,1) both }
       .emi-panneau > * { animation: emiEntree .38s cubic-bezier(.16,1,.3,1) both }
       .emi-pouls { width:7px; height:7px; border-radius:50%; background:${OR}; display:inline-block; animation: emiPouls 1.9s ease-in-out infinite }
-      .emi-carte { transition: box-shadow .22s ease, transform .22s ease }
-      .emi-carte:hover { box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 18px 40px -22px rgba(16,24,40,.35) }
-      .emi-nav { opacity: 0; transition: opacity .2s ease }
-      .emi-galerie:hover .emi-nav { opacity: 1 }
-      .emi-onglet { position:relative; display:inline-flex; align-items:center; gap:8px; background:transparent; border:none;
+      .emi-carte { transition: box-shadow .24s ease, transform .24s ease, border-color .24s ease }
+      .emi-carte:hover { box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 20px 44px -24px rgba(16,24,40,.38) }
+
+      /* ── bandeau de photos ─────────────────────────────── */
+      .emi-vignette { position:relative; flex:1 1 0; min-width:88px; max-width:158px; aspect-ratio:1/1;
+        border-radius:12px; overflow:hidden; background:#e8edf3; cursor:zoom-in; border:none; padding:0;
+        transition: transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s ease }
+      .emi-vignette img { width:100%; height:100%; object-fit:cover; display:block;
+        transition: transform .5s cubic-bezier(.16,1,.3,1), filter .24s ease }
+      .emi-vignette:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -12px rgba(16,24,40,.5); z-index:2 }
+      .emi-vignette:hover img { transform: scale(1.07) }
+      .emi-bande { display:flex; gap:7px; align-items:stretch }
+
+      /* ── volet dépliant ────────────────────────────────── */
+      .emi-volet { display:grid; grid-template-rows:0fr; opacity:0;
+        transition: grid-template-rows .4s cubic-bezier(.16,1,.3,1), opacity .3s ease, margin-top .4s cubic-bezier(.16,1,.3,1) }
+      .emi-volet[data-ouvert="true"] { grid-template-rows:1fr; opacity:1; margin-top:9px }
+      .emi-volet > div { overflow:hidden; min-height:0 }
+      .emi-chevron { transition: transform .32s cubic-bezier(.16,1,.3,1); display:inline-block }
+      .emi-chevron[data-ouvert="true"] { transform: rotate(180deg) }
+
+      /* ── puce cliquable du bandeau marché ──────────────── */
+      .emi-puce { display:inline-flex; align-items:center; gap:6px; border-radius:9px; padding:5px 10px;
+        font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; white-space:nowrap;
+        transition: all .18s cubic-bezier(.16,1,.3,1) }
+      .emi-puce:hover { transform: translateY(-1px) }
+
+      /* ── onglets ───────────────────────────────────────── */
+      .emi-onglet { position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; background:transparent; border:none;
         border-radius:11px; padding:10px 15px; font-size:13.5px; font-weight:600; color:#64748b; cursor:pointer;
-        font-family:inherit; white-space:nowrap; transition: color .2s ease, background .2s ease, transform .2s ease }
-      .emi-onglet:hover { color:${NAVY}; background:#eef2f7; transform: translateY(-1px) }
-      .emi-onglet[data-actif="true"] { color:#fff; background:${NAVY}; font-weight:800; box-shadow: 0 6px 18px -8px rgba(26,35,50,.85) }
-      .emi-compteur { background:rgba(148,163,184,.18); color:#64748b; border-radius:20px; padding:1px 8px; font-size:11.5px; font-weight:800; transition: all .2s ease }
-      .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(255,255,255,.16); color:#fff }
+        font-family:inherit; white-space:nowrap; transition: color .32s cubic-bezier(.16,1,.3,1) }
+      .emi-onglet:hover { color:${NAVY} }
+      .emi-onglet[data-actif="true"] { color:#fff; font-weight:800 }
+      .emi-compteur { background:rgba(148,163,184,.18); color:#64748b; border-radius:20px; padding:1px 8px; font-size:11.5px; font-weight:800; transition: all .32s cubic-bezier(.16,1,.3,1) }
+      .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(255,255,255,.18); color:#fff }
       .emi-onglet .emi-compteur.dore { background:${OR}; color:#fff }
     `}</style>
   );
 }
 
+/* ══ Pictos ════════════════════════════════════════════════════ */
+
+const TRAITS: Record<string, string[]> = {
+  surface: ['M4 9V5a1 1 0 0 1 1-1h4', 'M20 9V5a1 1 0 0 0-1-1h-4', 'M4 15v4a1 1 0 0 0 1 1h4', 'M20 15v4a1 1 0 0 1-1 1h-4'],
+  pieces: ['M3 3h18v18H3z', 'M3 10h8', 'M11 3v18'],
+  lit: ['M2 18v-6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6', 'M2 15h20', 'M6 10V8a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2', 'M2 18v2', 'M22 18v2'],
+  sofa: ['M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4', 'M3 13a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5H3z', 'M6 18v2', 'M18 18v2'],
+  immeuble: ['M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16', 'M3 21h18', 'M9.5 7h1', 'M13.5 7h1', 'M9.5 11h1', 'M13.5 11h1', 'M9.5 15h1', 'M13.5 15h1'],
+  calendrier: ['M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
+  soleil: ['c:12,12,4', 'M12 4V2', 'M12 22v-2', 'M4 12H2', 'M22 12h-2', 'M5.6 5.6 4.2 4.2', 'M19.8 4.2l-1.4 1.4', 'M5.6 18.4l-1.4 1.4', 'M18.4 18.4l1.4 1.4'],
+  lots: ['M12 2 2 7l10 5 10-5z', 'M2 12l10 5 10-5', 'M2 17l10 5 10-5'],
+  horloge: ['c:12,12,9', 'M12 7.5V12l3 2'],
+  baisse: ['M22 17 14 9l-4 4-8-8', 'M16 17h6v-6'],
+  maison: ['M3 21h18', 'M5 21V9.5L12 4l7 5.5V21', 'M10 21v-6h4v6'],
+  lieu: ['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z', 'c:12,10,2.6'],
+  info: ['c:12,12,9.2', 'M12 16.5V11', 'M12 7.8h.01'],
+  chevron: ['m6 9.5 6 6 6-6'],
+  euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
+};
+
+export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
+  const traits = TRAITS[nom];
+  if (!traits) return null;
+  return (
+    <svg width={taille} height={taille} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={epaisseur} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: 'block' }}>
+      {traits.map((t, i) => {
+        if (t.startsWith('c:')) {
+          const [cx, cy, r] = t.slice(2).split(',');
+          return <circle key={i} cx={cx} cy={cy} r={r} />;
+        }
+        return <path key={i} d={t} />;
+      })}
+    </svg>
+  );
+}
+
 /* ══ Fenêtre ═══════════════════════════════════════════════════ */
 
-export function Modale({ children, onFerme, largeur = 560 }: { children: React.ReactNode; onFerme: () => void; largeur?: number }) {
+export function Modale({ children, onFerme, largeur = 560, nu }: { children: React.ReactNode; onFerme: () => void; largeur?: number; nu?: boolean }) {
   const [monte, setMonte] = useState(false);
   useEffect(() => {
     setMonte(true);
@@ -67,14 +129,14 @@ export function Modale({ children, onFerme, largeur = 560 }: { children: React.R
     <div className="emi-voile" onClick={onFerme}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(12,18,30,.55)', backdropFilter: 'blur(3px)',
+        background: nu ? 'rgba(8,12,20,.9)' : 'rgba(12,18,30,.55)', backdropFilter: 'blur(3px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 24, overflowY: 'auto',
       }}>
       <div className="emi-fenetre" onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: 22, width: '100%', maxWidth: largeur,
-          boxShadow: '0 32px 80px rgba(12,18,30,.4)', overflow: 'hidden',
+          background: nu ? 'transparent' : 'white', borderRadius: 22, width: '100%', maxWidth: largeur,
+          boxShadow: nu ? 'none' : '0 32px 80px rgba(12,18,30,.4)', overflow: nu ? 'visible' : 'hidden',
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", margin: 'auto',
         }}>
         {children}
@@ -106,13 +168,14 @@ export function Dpe({ lettre, label = 'DPE' }: { lettre?: string | null; label?:
   );
 }
 
-export function Chip({ children, ton = 'neutre' }: { children: React.ReactNode; ton?: 'neutre' | 'vert' | 'or' | 'ambre' | 'violet' }) {
+export function Chip({ children, ton = 'neutre' }: { children: React.ReactNode; ton?: 'neutre' | 'vert' | 'or' | 'ambre' | 'violet' | 'rouge' }) {
   const t = {
     neutre: { bg: '#f7f9fc', fg: '#64748b', bd: BORD },
     vert: { bg: '#f0fdf4', fg: '#15803d', bd: '#bbf7d0' },
     or: { bg: '#fdfaf1', fg: '#a17d2c', bd: '#ecdcb4' },
     ambre: { bg: '#fffbeb', fg: '#92400e', bd: '#fde68a' },
     violet: { bg: '#f5f3ff', fg: '#7c3aed', bd: '#ddd6fe' },
+    rouge: { bg: '#fef2f2', fg: '#b91c1c', bd: '#fecaca' },
   }[ton];
   return <span style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}`, padding: '3px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</span>;
 }
@@ -131,15 +194,115 @@ export function BoutonLien({ children, onClick, href, actif }: { children: React
 }
 
 export const CARTE: React.CSSProperties = {
-  background: 'white', border: `1px solid ${BORD}`, borderRadius: 16, overflow: 'hidden',
+  background: 'white', border: `1px solid ${BORD}`, borderRadius: 18, overflow: 'hidden',
   boxShadow: '0 1px 2px rgba(16,24,40,.04), 0 10px 26px -20px rgba(16,24,40,.28)',
 };
 
+/* conservé pour compatibilité, plus utilisé par les cartes */
 export const GRILLE_CARTE: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: '196px minmax(0, 1fr) 172px', alignItems: 'stretch',
 };
 
-/* ══ Galerie avec fondu ════════════════════════════════════════ */
+/* ══ Bandeau de photos carrées + visionneuse ═══════════════════ */
+
+export function Vignettes({ photos, max = 7, coinGauche, coinDroit }: {
+  photos: string[]; max?: number; coinGauche?: React.ReactNode; coinDroit?: React.ReactNode;
+}) {
+  const [lb, setLb] = useState<number | null>(null);
+  const nettes = (photos || []).filter(Boolean);
+  const visibles = nettes.slice(0, max);
+  const reste = nettes.length - visibles.length;
+
+  if (!nettes.length) {
+    return (
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{ height: 96, borderRadius: 12, background: '#f1f5f9', border: `1px dashed ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12.5, fontWeight: 600 }}>
+          Pas de photo dans l&apos;annonce
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ padding: '14px 16px 0', position: 'relative' }}>
+        <div className="emi-bande">
+          {visibles.map((u, i) => {
+            const dernier = i === visibles.length - 1 && reste > 0;
+            return (
+              <button key={u + i} type="button" className="emi-vignette" onClick={() => setLb(i)}
+                aria-label={`Photo ${i + 1}`}>
+                <img src={u} alt="" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                {dernier && (
+                  <span style={{
+                    position: 'absolute', inset: 0, background: 'rgba(12,18,30,.62)', color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 17, fontWeight: 800, letterSpacing: -.4, backdropFilter: 'blur(1px)',
+                  }}>+{reste + 1}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {coinGauche && <div style={{ position: 'absolute', top: 22, left: 24, zIndex: 3 }}>{coinGauche}</div>}
+        {coinDroit && <div style={{ position: 'absolute', top: 22, right: 24, zIndex: 3 }}>{coinDroit}</div>}
+      </div>
+      {lb !== null && <Visionneuse photos={nettes} depart={lb} onFerme={() => setLb(null)} />}
+    </>
+  );
+}
+
+function Visionneuse({ photos, depart, onFerme }: { photos: string[]; depart: number; onFerme: () => void }) {
+  const [i, setI] = useState(depart);
+  const aller = useCallback((d: number) => setI((n) => (n + d + photos.length) % photos.length), [photos.length]);
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') aller(1);
+      if (e.key === 'ArrowLeft') aller(-1);
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [aller]);
+
+  const fleche = (cote: 'left' | 'right'): React.CSSProperties => ({
+    position: 'absolute', top: '50%', transform: 'translateY(-50%)', [cote]: -6,
+    width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,.14)', color: 'white',
+    border: '1px solid rgba(255,255,255,.22)', cursor: 'pointer', fontSize: 21, fontFamily: 'inherit',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, backdropFilter: 'blur(6px)', zIndex: 3,
+  } as React.CSSProperties);
+
+  return (
+    <Modale onFerme={onFerme} largeur={1040} nu>
+      <div style={{ position: 'relative' }}>
+        <img src={photos[i]} alt="" style={{ width: '100%', maxHeight: '76vh', objectFit: 'contain', borderRadius: 16, display: 'block' }} />
+        {photos.length > 1 && (
+          <>
+            <button type="button" onClick={() => aller(-1)} style={fleche('left')} aria-label="Précédente">‹</button>
+            <button type="button" onClick={() => aller(1)} style={fleche('right')} aria-label="Suivante">›</button>
+          </>
+        )}
+        <div style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(8,12,20,.6)', color: 'white', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 700, backdropFilter: 'blur(6px)' }}>
+          {i + 1} / {photos.length}
+        </div>
+      </div>
+      <div className="emi-bande" style={{ marginTop: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {photos.slice(0, 14).map((u, n) => (
+          <button key={u + n} type="button" onClick={() => setI(n)}
+            style={{
+              width: 58, height: 58, borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer',
+              border: n === i ? `2px solid ${OR}` : '2px solid rgba(255,255,255,.18)',
+              opacity: n === i ? 1 : .55, transition: 'all .2s ease', flex: '0 0 auto', background: '#000',
+            }}>
+            <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </button>
+        ))}
+      </div>
+    </Modale>
+  );
+}
+
+/* ══ Galerie avec fondu (conservée, fiche publique) ════════════ */
 
 export function Galerie({ photos, hauteur = 168, coin }: { photos: string[]; hauteur?: number; coin?: React.ReactNode }) {
   const [idx, setIdx] = useState(0);
@@ -153,38 +316,390 @@ export function Galerie({ photos, hauteur = 168, coin }: { photos: string[]; hau
           style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
             opacity: i === idx ? 1 : 0, transition: 'opacity .38s cubic-bezier(.4,0,.2,1)',
-            transform: i === idx ? 'scale(1)' : 'scale(1.015)',
           }}
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
       ))}
       {total > 1 && (
-        <>
-          <button type="button" aria-label="Photo précédente" className="emi-nav" onClick={() => aller(-1)} style={nav('left')}>‹</button>
-          <button type="button" aria-label="Photo suivante" className="emi-nav" onClick={() => aller(1)} style={nav('right')}>›</button>
-          <div style={{ position: 'absolute', bottom: 9, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 4 }}>
-            {photos.slice(0, 10).map((_, i) => (
-              <span key={i} style={{
-                width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
-                background: i === idx ? 'white' : 'rgba(255,255,255,.55)',
-                transition: 'width .3s cubic-bezier(.16,1,.3,1), background .3s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,.35)',
-              }} />
-            ))}
-          </div>
-        </>
+        <div style={{ position: 'absolute', bottom: 9, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 4 }}>
+          {photos.slice(0, 10).map((_, i) => (
+            <button key={i} type="button" onClick={() => setIdx(i)} aria-label={`Photo ${i + 1}`} style={{
+              width: i === idx ? 14 : 5, height: 5, borderRadius: 3, border: 'none', padding: 0, cursor: 'pointer',
+              background: i === idx ? 'white' : 'rgba(255,255,255,.55)',
+              transition: 'width .3s cubic-bezier(.16,1,.3,1), background .3s ease',
+            }} />
+          ))}
+        </div>
+      )}
+      {total > 1 && (
+        <button type="button" onClick={() => aller(1)} aria-label="Photo suivante" style={{
+          position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', width: 26, height: 26,
+          borderRadius: '50%', background: 'rgba(15,23,42,.55)', color: 'white', border: 'none', cursor: 'pointer',
+          fontSize: 16, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+        }}>›</button>
       )}
       {coin}
     </div>
   );
 }
 
-function nav(cote: 'left' | 'right'): React.CSSProperties {
-  return {
-    position: 'absolute', top: '50%', transform: 'translateY(-50%)', [cote]: 8,
-    width: 26, height: 26, borderRadius: '50%', background: 'rgba(15,23,42,.55)', color: 'white',
-    border: 'none', cursor: 'pointer', fontSize: 16, fontFamily: 'inherit', zIndex: 2,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, backdropFilter: 'blur(3px)',
-  } as React.CSSProperties;
+/* ══ Caractéristiques en pictos ════════════════════════════════ */
+
+function Tuile({ icone, contenu, val, lib, ton }: {
+  icone?: string; contenu?: React.ReactNode; val: React.ReactNode; lib: string; ton?: 'or' | 'neutre';
+}) {
+  const dore = ton === 'or';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 9,
+      background: dore ? '#fdfaf1' : '#f7f9fc',
+      border: `1px solid ${dore ? '#ecdcb4' : BORD}`,
+      borderRadius: 13, padding: '7px 13px 7px 8px', minWidth: 0,
+    }}>
+      <span style={{
+        width: 31, height: 31, borderRadius: 10, background: 'white',
+        border: `1px solid ${dore ? '#ecdcb4' : BORD}`, color: dore ? OR : '#7b8ba3',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>{contenu ?? (icone ? <Icone nom={icone} /> : null)}</span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: NAVY, lineHeight: 1.15, letterSpacing: -.2, whiteSpace: 'nowrap' }}>{val}</span>
+        <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .7, marginTop: 1, whiteSpace: 'nowrap' }}>{lib}</span>
+      </span>
+    </div>
+  );
+}
+
+export function Specs({ p }: { p: any }) {
+  const t: React.ReactNode[] = [];
+  const k = (n: string) => `sp-${n}`;
+
+  if (p.surface) t.push(<Tuile key={k('s')} icone="surface" val={`${p.surface} m²`} lib="Surface" ton="or" />);
+  if (p.nb_pieces) t.push(<Tuile key={k('p')} icone="pieces" val={p.nb_pieces} lib={p.nb_pieces > 1 ? 'Pièces' : 'Pièce'} />);
+  if (p.nb_chambres) t.push(<Tuile key={k('c')} icone="lit" val={p.nb_chambres} lib={p.nb_chambres > 1 ? 'Chambres' : 'Chambre'} />);
+  if (p.surface_sejour) t.push(<Tuile key={k('j')} icone="sofa" val={`${p.surface_sejour} m²`} lib="Séjour" />);
+  if (p.etage != null) t.push(
+    <Tuile key={k('e')} icone="immeuble"
+      val={p.etage === 0 ? 'RDC' : `${p.etage}ᵉ`}
+      lib={p.etage_total ? `sur ${p.etage_total}` : 'Étage'} />
+  );
+  if (p.surface_exterieur) t.push(
+    <Tuile key={k('x')} icone="soleil" ton="or" val={`${p.surface_exterieur} m²`}
+      lib={p.terrasse ? 'Terrasse' : p.jardin ? 'Jardin' : 'Balcon'} />
+  );
+  if (p.annee_construction) t.push(<Tuile key={k('a')} icone="calendrier" val={p.annee_construction} lib="Immeuble" />);
+  if (p.nb_lots) t.push(<Tuile key={k('l')} icone="lots" val={p.nb_lots} lib="Lots" />);
+
+  const lettre = (v: string, lab: string) => {
+    const L = String(v).toUpperCase().slice(0, 1);
+    const c = DPE_COULEURS[L];
+    if (!c) return null;
+    return (
+      <Tuile key={k(lab)} lib={lab} val={L}
+        contenu={<span style={{ background: c.bg, color: c.fg, width: 22, height: 22, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800 }}>{L}</span>} />
+    );
+  };
+  if (p.dpe) { const n = lettre(p.dpe, 'DPE'); if (n) t.push(n); }
+  if (p.ges) { const n = lettre(p.ges, 'GES'); if (n) t.push(n); }
+
+  if (!t.length) return null;
+  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>;
+}
+
+/* ══ Marché : ancienneté, baisses, graphique ═══════════════════ */
+
+const MOIS = ['janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+function jour(d: any) {
+  const x = new Date(d);
+  if (isNaN(x.getTime())) return '—';
+  return `${x.getDate()} ${MOIS[x.getMonth()]} ${x.getFullYear()}`;
+}
+function courtJour(d: any) {
+  const x = new Date(d);
+  if (isNaN(x.getTime())) return '';
+  return `${MOIS[x.getMonth()].replace('.', '')} ${String(x.getFullYear()).slice(2)}`;
+}
+export function anciennete(d: any) {
+  if (!d) return null;
+  const m = Math.round((Date.now() - new Date(d).getTime()) / 2.628e9);
+  if (isNaN(m)) return null;
+  if (m < 1) return "moins d'un mois";
+  if (m === 1) return '1 mois';
+  if (m < 24) return `${m} mois`;
+  const a = Math.floor(m / 12); const r = m % 12;
+  return r >= 6 ? `${a} ans et demi` : `${a} ans`;
+}
+
+export type PointPrix = { date: string; prix: number };
+
+/** Reconstruit une série exploitable, même si Yanport n'a donné que le prix initial. */
+export function seriePrix(p: any): PointPrix[] {
+  const brut = Array.isArray(p?.historique_prix) ? p.historique_prix : [];
+  const pts: PointPrix[] = brut
+    .map((x: any) => ({ date: String(x?.date ?? x?.d ?? ''), prix: Number(x?.prix ?? x?.p ?? x?.price) }))
+    .filter((x: PointPrix) => x.date && isFinite(x.prix) && x.prix > 0)
+    .sort((a: PointPrix, b: PointPrix) => a.date.localeCompare(b.date));
+  if (pts.length >= 2) return pts;
+
+  const out: PointPrix[] = [];
+  const iso = (d: any) => { const x = new Date(d); return isNaN(x.getTime()) ? '' : x.toISOString().slice(0, 10); };
+  if (p?.date_publication && p?.prix_initial) out.push({ date: iso(p.date_publication), prix: Number(p.prix_initial) });
+  if (p?.prix) out.push({ date: iso(p.date_derniere_baisse) || new Date().toISOString().slice(0, 10), prix: Number(p.prix) });
+  const ok = out.filter(x => x.date && isFinite(x.prix) && x.prix > 0);
+  return ok.length >= 2 && ok[0].prix !== ok[1].prix ? ok : pts;
+}
+
+export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hauteur?: number }) {
+  if (points.length < 2) return null;
+  const L = 640, H = hauteur, hg = 14, hd = 14, ht = 24, hb = 26;
+
+  const t0 = new Date(points[0].date).getTime();
+  const tFin = Math.max(new Date(points[points.length - 1].date).getTime(), Date.now());
+  const span = Math.max(tFin - t0, 86400000);
+  const prix = points.map(p => p.prix);
+  const pMin = Math.min(...prix), pMax = Math.max(...prix);
+  const marge = Math.max((pMax - pMin) * 0.25, pMax * 0.012);
+
+  const X = (d: string | number) => hg + ((new Date(d).getTime() - t0) / span) * (L - hg - hd);
+  const Y = (v: number) => ht + (1 - (v - (pMin - marge)) / ((pMax + marge) - (pMin - marge))) * (H - ht - hb);
+
+  // courbe en escalier : le prix tient jusqu'à la baisse suivante
+  let d = `M ${X(points[0].date).toFixed(1)} ${Y(points[0].prix).toFixed(1)}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` L ${X(points[i].date).toFixed(1)} ${Y(points[i - 1].prix).toFixed(1)}`;
+    d += ` L ${X(points[i].date).toFixed(1)} ${Y(points[i].prix).toFixed(1)}`;
+  }
+  d += ` L ${X(Date.now()).toFixed(1)} ${Y(points[points.length - 1].prix).toFixed(1)}`;
+  const aire = `${d} L ${X(Date.now()).toFixed(1)} ${(H - hb).toFixed(1)} L ${X(points[0].date).toFixed(1)} ${(H - hb).toFixed(1)} Z`;
+
+  const id = 'g' + Math.abs(points[0].prix + points.length);
+  const dernier = points[points.length - 1];
+
+  return (
+    <svg viewBox={`0 0 ${L} ${H}`} width="100%" height={H} style={{ display: 'block', overflow: 'visible' }}>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={OR} stopOpacity=".26" />
+          <stop offset="100%" stopColor={OR} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <line x1={hg} y1={H - hb} x2={L - hd} y2={H - hb} stroke={BORD} strokeWidth="1" />
+      <path d={aire} fill={`url(#${id})`} />
+      <path d={d} fill="none" stroke={OR} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => {
+        const x = X(p.date), y = Y(p.prix);
+        const fin = i === points.length - 1;
+        return (
+          <g key={i}>
+            <circle cx={x} cy={y} r={fin ? 5.5 : 4.5} fill="white" stroke={fin ? NAVY : OR} strokeWidth="2.4" />
+            <text x={Math.min(Math.max(x, 34), L - 34)} y={H - hb + 16} textAnchor="middle"
+              fontSize="11" fontWeight="600" fill="#94a3b8" fontFamily="inherit">{courtJour(p.date)}</text>
+          </g>
+        );
+      })}
+      <text x={Math.min(Math.max(X(points[0].date), 40), L - 40)} y={Y(points[0].prix) - 12} textAnchor="middle"
+        fontSize="12" fontWeight="800" fill="#94a3b8" fontFamily="inherit">
+        {Math.round(points[0].prix / 1000)} k€
+      </text>
+      <text x={Math.min(Math.max(X(dernier.date), 40), L - 40)} y={Y(dernier.prix) + 20} textAnchor="middle"
+        fontSize="12.5" fontWeight="800" fill={NAVY} fontFamily="inherit">
+        {Math.round(dernier.prix / 1000)} k€
+      </text>
+    </svg>
+  );
+}
+
+function Puce({ children, icone, onClick, ouvert, ton = 'neutre' }: {
+  children: React.ReactNode; icone?: string; onClick?: () => void; ouvert?: boolean;
+  ton?: 'neutre' | 'vert' | 'or';
+}) {
+  const t = {
+    neutre: { bg: 'white', fg: '#475569', bd: BORD, ic: '#94a3b8' },
+    vert: { bg: '#f0fdf4', fg: '#15803d', bd: '#bbf7d0', ic: '#16a34a' },
+    or: { bg: '#fdfaf1', fg: '#a17d2c', bd: '#ecdcb4', ic: OR },
+  }[ton];
+  const contenu = (
+    <>
+      {icone && <span style={{ color: t.ic, display: 'flex' }}><Icone nom={icone} taille={14} epaisseur={1.9} /></span>}
+      {children}
+      {onClick && <span className="emi-chevron" data-ouvert={!!ouvert} style={{ color: t.ic, display: 'flex' }}><Icone nom="chevron" taille={13} epaisseur={2.2} /></span>}
+    </>
+  );
+  const st: React.CSSProperties = {
+    background: ouvert ? NAVY : t.bg, color: ouvert ? 'white' : t.fg,
+    border: `1px solid ${ouvert ? NAVY : t.bd}`,
+    boxShadow: ouvert ? '0 6px 16px -8px rgba(26,35,50,.9)' : 'none',
+  };
+  if (!onClick) return <span className="emi-puce" style={{ ...st, cursor: 'default' }}>{contenu}</span>;
+  return <button type="button" className="emi-puce" onClick={onClick} style={st}>{contenu}</button>;
+}
+
+export function BandeauMarche({ p }: { p: any }) {
+  const [ouvert, setOuvert] = useState<null | 'date' | 'prix'>(null);
+  const pts = seriePrix(p);
+  const baisse = p.prix_initial && p.prix ? Number(p.prix_initial) - Number(p.prix) : 0;
+  const baissePct = baisse > 0 && p.prix_initial ? (baisse / Number(p.prix_initial)) * 100 : 0;
+  const nbBaisses = p.nb_baisses || Math.max(pts.length - 1, 0);
+  const aDuPrix = pts.length >= 2 || nbBaisses > 0;
+
+  if (!p.date_publication && !nbBaisses && !p.nb_agences && !p.agence && !p.portail) return null;
+
+  const bascule = (v: 'date' | 'prix') => setOuvert(o => (o === v ? null : v));
+
+  return (
+    <div style={{ background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 14, padding: '9px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Marché</span>
+
+        {p.date_publication && (
+          <Puce icone="horloge" onClick={() => bascule('date')} ouvert={ouvert === 'date'}>
+            en ligne depuis {anciennete(p.date_publication)}
+          </Puce>
+        )}
+
+        {aDuPrix && (
+          <Puce icone="baisse" ton={baissePct >= 8 ? 'vert' : 'neutre'}
+            onClick={() => bascule('prix')} ouvert={ouvert === 'prix'}>
+            {nbBaisses > 0 ? `${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}` : 'Historique du prix'}
+            {baisse > 0 && ` · − ${baisse.toLocaleString('fr-FR')} €`}
+          </Puce>
+        )}
+
+        {p.nb_agences ? (
+          <Puce icone="maison" ton={p.nb_agences >= 3 ? 'vert' : 'neutre'}>
+            {p.nb_agences} agence{p.nb_agences > 1 ? 's' : ''}
+          </Puce>
+        ) : null}
+        {p.agence && <Puce>{p.agence}</Puce>}
+        {p.portail && <Puce>{p.portail}</Puce>}
+      </div>
+
+      {/* volet : la date exacte */}
+      <div className="emi-volet" data-ouvert={ouvert === 'date'}>
+        <div>
+          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 22 }}>
+            <Ligne lib="Première mise en ligne" val={jour(p.date_publication)} />
+            <Ligne lib="Sur le marché depuis" val={anciennete(p.date_publication) || '—'} />
+            {p.date_derniere_baisse && <Ligne lib="Dernier changement de prix" val={jour(p.date_derniere_baisse)} />}
+            {p.agence && <Ligne lib="Mandat" val={p.agence} />}
+          </div>
+        </div>
+      </div>
+
+      {/* volet : l'historique du prix */}
+      <div className="emi-volet" data-ouvert={ouvert === 'prix'}>
+        <div>
+          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px 8px' }}>
+            {pts.length >= 2 ? (
+              <>
+                <GraphePrix points={pts} />
+                <div style={{ marginTop: 6 }}>
+                  {pts.map((x, i) => {
+                    const d = i === 0 ? 0 : x.prix - pts[i - 1].prix;
+                    const pc = i === 0 || !pts[i - 1].prix ? 0 : (d / pts[i - 1].prix) * 100;
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '7px 2px',
+                        borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', fontSize: 13,
+                      }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#cbd5e1' : d < 0 ? '#16a34a' : '#ef4444', flexShrink: 0 }} />
+                        <span style={{ color: '#64748b', minWidth: 112 }}>{jour(x.date)}</span>
+                        <span style={{ fontWeight: 800, color: NAVY, minWidth: 104 }}>{x.prix.toLocaleString('fr-FR')} €</span>
+                        {i === 0
+                          ? <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>prix de mise en ligne</span>
+                          : <span style={{ fontWeight: 700, color: d < 0 ? '#15803d' : '#b91c1c' }}>
+                              {d < 0 ? '−' : '+'} {Math.abs(d).toLocaleString('fr-FR')} €
+                              <span style={{ fontWeight: 600, opacity: .7 }}> ({pc > 0 ? '+' : ''}{pc.toFixed(1).replace('.', ',')} %)</span>
+                            </span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {baisse > 0 && (
+                  <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
+                      Depuis la mise en ligne
+                    </span>
+                    <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>
+                      − {baisse.toLocaleString('fr-FR')} €
+                      <span style={{ fontSize: 13, fontWeight: 700, opacity: .75 }}> ({baissePct.toFixed(1).replace('.', ',')} %)</span>
+                    </span>
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>Source : Yanport</div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
+                {nbBaisses > 0
+                  ? `Yanport signale ${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}, mais le détail n'a pas encore été récupéré. La prochaine veille le complétera.`
+                  : "Aucun historique de prix récupéré pour l'instant."}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Ligne({ lib, val }: { lib: string; val: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 3 }}>{lib}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>{val}</div>
+    </div>
+  );
+}
+
+/* ══ Onglets glissants ═════════════════════════════════════════ */
+
+export function Onglets({ items, actif, onChange }: {
+  items: { id: string; icone: string; nom: string; compte?: number | null; dore?: boolean }[];
+  actif: string; onChange: (id: string) => void;
+}) {
+  const boite = useRef<HTMLDivElement>(null);
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [curseur, setCurseur] = useState<{ x: number; w: number; h: number } | null>(null);
+
+  const mesurer = useCallback(() => {
+    const b = refs.current[actif]; const c = boite.current;
+    if (!b || !c) return;
+    setCurseur({ x: b.offsetLeft, w: b.offsetWidth, h: b.offsetHeight });
+  }, [actif]);
+
+  useLayoutEffect(() => { mesurer(); }, [mesurer, items.length]);
+  useEffect(() => {
+    const t = setTimeout(mesurer, 60);
+    window.addEventListener('resize', mesurer);
+    return () => { clearTimeout(t); window.removeEventListener('resize', mesurer); };
+  }, [mesurer]);
+
+  return (
+    <div ref={boite} style={{
+      position: 'relative', display: 'flex', gap: 2, flexWrap: 'wrap', background: 'white',
+      border: `1px solid ${BORD}`, borderRadius: 16, padding: 5, marginBottom: 16,
+      boxShadow: '0 1px 2px rgba(16,24,40,.04)',
+    }}>
+      {curseur && (
+        <span aria-hidden style={{
+          position: 'absolute', top: 5, left: 0, height: curseur.h, width: curseur.w,
+          transform: `translateX(${curseur.x}px)`, background: NAVY, borderRadius: 11, zIndex: 0,
+          boxShadow: '0 8px 20px -10px rgba(26,35,50,.9)',
+          transition: 'transform .46s cubic-bezier(.16,1,.3,1), width .46s cubic-bezier(.16,1,.3,1)',
+        }} />
+      )}
+      {items.map(t => (
+        <button key={t.id} type="button" className="emi-onglet" data-actif={actif === t.id}
+          ref={el => { refs.current[t.id] = el; }} onClick={() => onChange(t.id)}>
+          {actif === t.id && <span className="emi-pouls" />}
+          <span>{t.icone}</span>
+          <span>{t.nom}</span>
+          {t.compte != null && t.compte > 0 && (
+            <span className={`emi-compteur${t.dore && actif !== t.id ? ' dore' : ''}`}>{t.compte}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ══ Chronologie ═══════════════════════════════════════════════ */
@@ -227,7 +742,7 @@ export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: num
 
   return (
     <div style={{ position: 'relative', paddingLeft: 26 }}>
-      <div style={{ position: 'absolute', left: 10, top: 10, bottom: 10, width: 2, background: `linear-gradient(${BORD}, ${BORD})`, borderRadius: 2 }} />
+      <div style={{ position: 'absolute', left: 10, top: 10, bottom: 10, width: 2, background: BORD, borderRadius: 2 }} />
       {lignes.map((l, n) => {
         const p = PUCES[l.type] || { c: '#cbd5e1', l: l.type, i: '•' };
         const d = new Date(l.created_at);
@@ -261,7 +776,7 @@ export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
   const teinte = score >= 85 ? '#10b981' : score >= 70 ? OR : '#94a3b8';
   const mention = score >= 85 ? 'Coche tout ce qui compte' : score >= 70 ? 'Mérite un regard' : 'À la limite';
 
-  const Ligne = ({ icone, titre, texte, couleur }: any) => (
+  const Lgn = ({ icone, titre, texte, couleur }: any) => (
     <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
       <span style={{ width: 34, height: 34, borderRadius: 10, background: `${couleur}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icone}</span>
       <div style={{ minWidth: 0 }}>
@@ -292,13 +807,13 @@ export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
       </div>
 
       <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Ligne icone="🎯" titre="La base" couleur="#3b82f6"
+        <Lgn icone="🎯" titre="La base" couleur="#3b82f6"
           texte="Les critères durs de la recherche : budget, surface, nombre de chambres, secteur. Un bien qui n'en coche pas un ne remonte pas jusqu'ici." />
         {!!p.points_forts?.length && (
-          <Ligne icone="✓" titre="Ce qui rapporte des points" couleur="#15803d" texte={p.points_forts.join(' · ')} />
+          <Lgn icone="✓" titre="Ce qui rapporte des points" couleur="#15803d" texte={p.points_forts.join(' · ')} />
         )}
         {!!p.points_attention?.length && (
-          <Ligne icone="!" titre="Ce qui en coûte" couleur="#b45309" texte={p.points_attention.join(' · ')} />
+          <Lgn icone="!" titre="Ce qui en coûte" couleur="#b45309" texte={p.points_attention.join(' · ')} />
         )}
       </div>
 
@@ -309,7 +824,7 @@ export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
             { min: '70–85', t: 'Un point accroche', c: OR },
             { min: '< 70', t: 'Non proposé', c: '#cbd5e1' },
           ].map(x => (
-            <div key={x.min} style={{ flex: 1, textAlign: 'center', background: 'white', border: `1px solid ${score >= 85 && x.min === '85+' || (score >= 70 && score < 85 && x.min === '70–85') ? x.c : BORD}`, borderRadius: 11, padding: '9px 6px' }}>
+            <div key={x.min} style={{ flex: 1, textAlign: 'center', background: 'white', border: `1px solid ${(score >= 85 && x.min === '85+') || (score >= 70 && score < 85 && x.min === '70–85') ? x.c : BORD}`, borderRadius: 11, padding: '9px 6px' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: x.c }}>{x.min}</div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{x.t}</div>
             </div>
@@ -581,3 +1096,31 @@ const btnPrincipal: React.CSSProperties = {
   background: NAVY, color: 'white', border: 'none', borderRadius: 11,
   padding: '10px 22px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
 };
+
+/* ══ Bouton d'action de carte ══════════════════════════════════ */
+
+export function Action({ children, onClick, href, ton = 'neutre', disabled }: {
+  children: React.ReactNode; onClick?: () => void; href?: string;
+  ton?: 'navy' | 'or' | 'neutre' | 'violet'; disabled?: boolean;
+}) {
+  const t = {
+    navy: { bg: NAVY, fg: 'white', bd: NAVY },
+    or: { bg: OR, fg: 'white', bd: OR },
+    violet: { bg: '#f5f3ff', fg: '#7c3aed', bd: '#ddd6fe' },
+    neutre: { bg: 'white', fg: '#475569', bd: BORD },
+  }[ton];
+  const st: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    background: t.bg, color: t.fg, border: `1px solid ${t.bd}`, borderRadius: 11,
+    padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+    textDecoration: 'none', cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap',
+    opacity: disabled ? .5 : 1, transition: 'transform .16s ease, box-shadow .16s ease, background .16s ease',
+  };
+  const surv = (e: any, entre: boolean) => {
+    if (disabled) return;
+    e.currentTarget.style.transform = entre ? 'translateY(-1.5px)' : 'none';
+    e.currentTarget.style.boxShadow = entre ? '0 10px 20px -12px rgba(16,24,40,.6)' : 'none';
+  };
+  if (href) return <a href={href} target="_blank" rel="noopener noreferrer" style={st} onMouseEnter={e => surv(e, true)} onMouseLeave={e => surv(e, false)}>{children}</a>;
+  return <button type="button" onClick={onClick} disabled={disabled} style={st} onMouseEnter={e => surv(e, true)} onMouseLeave={e => surv(e, false)}>{children}</button>;
+}
