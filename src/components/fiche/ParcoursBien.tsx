@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 
@@ -61,11 +61,14 @@ export function StylesEmilio() {
       .emi-puce:hover { transform: translateY(-1px) }
 
       /* ── onglets ───────────────────────────────────────── */
-      .emi-onglet { position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; background:transparent; border:none;
-        border-radius:11px; padding:10px 15px; font-size:13.5px; font-weight:600; color:#64748b; cursor:pointer;
-        font-family:inherit; white-space:nowrap; transition: color .32s cubic-bezier(.16,1,.3,1) }
-      .emi-onglet:hover { color:${NAVY} }
-      .emi-onglet[data-actif="true"] { color:#fff; font-weight:800 }
+      .emi-onglet { position:relative; display:inline-flex; align-items:center; gap:8px; background:transparent; border:none;
+        border-radius:12px; padding:10px 16px; font-size:13.5px; font-weight:600; color:#64748b; cursor:pointer;
+        font-family:inherit; white-space:nowrap;
+        transition: background .34s cubic-bezier(.16,1,.3,1), color .34s cubic-bezier(.16,1,.3,1),
+                    box-shadow .34s cubic-bezier(.16,1,.3,1), transform .24s cubic-bezier(.16,1,.3,1) }
+      .emi-onglet:hover { color:${NAVY}; background:#eef2f7 }
+      .emi-onglet[data-actif="true"] { color:#fff; font-weight:800; background:${NAVY};
+        box-shadow: 0 10px 22px -12px rgba(26,35,50,.95); transform: translateY(-1px) }
       .emi-compteur { background:rgba(148,163,184,.18); color:#64748b; border-radius:20px; padding:1px 8px; font-size:11.5px; font-weight:800; transition: all .32s cubic-bezier(.16,1,.3,1) }
       .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(255,255,255,.18); color:#fff }
       .emi-onglet .emi-compteur.dore { background:${OR}; color:#fff }
@@ -90,7 +93,16 @@ const TRAITS: Record<string, string[]> = {
   lieu: ['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z', 'c:12,10,2.6'],
   info: ['c:12,12,9.2', 'M12 16.5V11', 'M12 7.8h.01'],
   chevron: ['m6 9.5 6 6 6-6'],
+  tel: ['M6.2 3h3.1l1.5 3.9-2 1.3a13.4 13.4 0 0 0 6.9 6.9l1.3-2 3.9 1.5v3.1a1.9 1.9 0 0 1-2.1 1.9A17.6 17.6 0 0 1 3.1 5.1 1.9 1.9 0 0 1 5 3z'],
+  mail: ['M3 7.2a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'm3.6 7.6 8.4 5.8 8.4-5.8'],
+  crayon: ['M12.5 20H21', 'M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6 3.4 19.8l1.2-4z'],
+  etiquette: ['M20.6 13.4 13 21a2 2 0 0 1-2.8 0L3.6 14.4A2 2 0 0 1 3 13V5a2 2 0 0 1 2-2h8a2 2 0 0 1 1.4.6l6.2 6.2a2 2 0 0 1 0 2.8z', 'c:7.6,7.6,1.3'],
   euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
+  loupe: ['c:10.8,10.8,7', 'm20.5 20.5-4.7-4.7'],
+  liste: ['M8.6 4.6H6a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6.6a2 2 0 0 0-2-2h-2.6', 'M8.6 2.8h6.8v3.6H8.6z', 'M8.5 11.5h7', 'M8.5 15.5h4.5'],
+  envoi: ['M21.4 2.6 2.6 10.3l7.2 2.9 2.9 7.2z', 'M21.4 2.6 9.8 13.2'],
+  mallette: ['M3 9.4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 7.4V5.6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.8', 'M3 13.4h18'],
+  dossier: ['M3 6.6a2 2 0 0 1 2-2h4.2l2.2 2.6H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -656,42 +668,19 @@ export function Onglets({ items, actif, onChange }: {
   items: { id: string; icone: string; nom: string; compte?: number | null; dore?: boolean }[];
   actif: string; onChange: (id: string) => void;
 }) {
-  const boite = useRef<HTMLDivElement>(null);
-  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [curseur, setCurseur] = useState<{ x: number; w: number; h: number } | null>(null);
-
-  const mesurer = useCallback(() => {
-    const b = refs.current[actif]; const c = boite.current;
-    if (!b || !c) return;
-    setCurseur({ x: b.offsetLeft, w: b.offsetWidth, h: b.offsetHeight });
-  }, [actif]);
-
-  useLayoutEffect(() => { mesurer(); }, [mesurer, items.length]);
-  useEffect(() => {
-    const t = setTimeout(mesurer, 60);
-    window.addEventListener('resize', mesurer);
-    return () => { clearTimeout(t); window.removeEventListener('resize', mesurer); };
-  }, [mesurer]);
-
   return (
-    <div ref={boite} style={{
-      position: 'relative', display: 'flex', gap: 2, flexWrap: 'wrap', background: 'white',
+    <div style={{
+      display: 'flex', gap: 3, flexWrap: 'wrap', background: 'white',
       border: `1px solid ${BORD}`, borderRadius: 16, padding: 5, marginBottom: 16,
       boxShadow: '0 1px 2px rgba(16,24,40,.04)',
     }}>
-      {curseur && (
-        <span aria-hidden style={{
-          position: 'absolute', top: 5, left: 0, height: curseur.h, width: curseur.w,
-          transform: `translateX(${curseur.x}px)`, background: NAVY, borderRadius: 11, zIndex: 0,
-          boxShadow: '0 8px 20px -10px rgba(26,35,50,.9)',
-          transition: 'transform .46s cubic-bezier(.16,1,.3,1), width .46s cubic-bezier(.16,1,.3,1)',
-        }} />
-      )}
       {items.map(t => (
         <button key={t.id} type="button" className="emi-onglet" data-actif={actif === t.id}
-          ref={el => { refs.current[t.id] = el; }} onClick={() => onChange(t.id)}>
+          onClick={() => onChange(t.id)}>
           {actif === t.id && <span className="emi-pouls" />}
-          <span>{t.icone}</span>
+          <span style={{ display: 'flex', opacity: actif === t.id ? 1 : .62 }}>
+            <Icone nom={t.icone} taille={16} epaisseur={actif === t.id ? 2 : 1.8} />
+          </span>
           <span>{t.nom}</span>
           {t.compte != null && t.compte > 0 && (
             <span className={`emi-compteur${t.dore && actif !== t.id ? ' dore' : ''}`}>{t.compte}</span>
