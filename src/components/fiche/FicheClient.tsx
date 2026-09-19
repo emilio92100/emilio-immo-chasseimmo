@@ -6,6 +6,7 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
+import { Onglets } from './ParcoursBien';
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
@@ -1169,61 +1170,89 @@ Emilio Immobilier
         </div>
       </div>
 
-      <div className={styles.identiteBar} style={{ background: '#1a2332', borderBottom: 'none', borderRadius: 0 }}>
-        {/* Avatar + Nom + Contact inline */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: 1 }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', border: `3px solid ${(client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#1a2332', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>{client.prenom[0]}</div>
+      {/* ══ IDENTITÉ + SITUATION — deux blocs qui s'emboîtent ══════════ */}
+      {(() => {
+        const occ = client as any;
+        const aSituation = !!(occ.statut_occupation || occ.bien_actuel_a_vendre);
+        const aVendre = !!occ.bien_actuel_a_vendre;
+        const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
+        const teinte = (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' || (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444';
+        const Bloc = ({ lib, val, fort }: { lib: string; val: React.ReactNode; fort?: boolean }) => (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 0.9, marginBottom: 3 }}>{lib}</div>
+            <div style={{ fontSize: 15, fontWeight: fort ? 800 : 700, color: fort ? '#c9a84c' : '#1a2332' }}>{val}</div>
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-              <div className={styles.clientName} style={{ color: 'white' }}>{client.prenom} {client.nom}</div>
-              <div style={{ position: 'relative' }}>
-                <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '5px 28px 5px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid #e2e8f0', background: (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'offre_ecrite' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', color: (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'offre_ecrite' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
-                  <option value="prospect">🟣 Prospect</option><option value="actif">🟢 Actif</option><option value="suspendu">⏸️ Suspendu</option><option value="offre_ecrite">✍️ Offre écrite</option><option value="bien_trouve">✅ Bien trouvé</option><option value="perdu">🔴 Perdu</option>
-                </select>
-                <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9 }}>▼</span>
-              </div>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)' }}>{client.reference} · {jours}j de suivi</span>
-              <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }} style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
-            </div>
-            {/* Infos contact inline */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 14, color: 'white', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>📞 {t}</a>)}
-              {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 14, color: '#c9a84c', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>✉️ {e}</a>)}
-              {client.adresse && <span style={{ fontSize: 13, color: 'rgba(255,255,255,.65)', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {client.adresse}</span>}
-              {!client.telephones?.length && !client.emails?.length && <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>Aucun contact renseigné</span>}
-            </div>
-          </div>
-        </div>
-        {/* KPIs */}
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          {[{val: biens.length, l:'Biens présentés',c:'#1a2332'},{val: visites.filter(v=>v.statut==='effectuee').length,l:'Visites effectuées',c:'#1a2332'},{val: biens.filter(b=>b.badge_retour==='offre_faite').length,l:'Offre(s)',c:'#c9a84c'},{val:`${jours}j`,l:'Suivi',c:'#1a2332'}].map((s, i) => (
-            <div key={i} className={styles.syntheseItem} style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 12 }}>
-              <div className={styles.syntheseVal} style={{ color: s.c === '#c9a84c' ? '#c9a84c' : 'white' }}>{s.val}</div>
-              <div className={styles.syntheseLabel} style={{ color: 'rgba(255,255,255,.5)' }}>{s.l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+        );
 
-        {/* SITUATION ACTUELLE DE L'ACHETEUR + bien à vendre éventuel */}
-        {((client as any).statut_occupation || (client as any).bien_actuel_a_vendre) && (() => {
-          const occ = client as any;
-          const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
-          const aVendre = !!occ.bien_actuel_a_vendre;
-          return (
-            <div style={{ background: '#22304a', padding: '12px 34px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', borderBottom: '1px solid #e3e8f0' }}>
-              <div style={{ fontSize: 10.5, fontWeight: 800, color: '#c9a84c', textTransform: 'uppercase', letterSpacing: 1 }}>Situation actuelle</div>
-              {occ.statut_occupation && <div><div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.42)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Statut</div><div style={{ fontSize: 14.5, fontWeight: 700, color: 'white' }}>{labelStatut}</div></div>}
-              {aVendre && occ.bien_actuel_type && <div><div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.42)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien à vendre</div><div style={{ fontSize: 14.5, fontWeight: 600, color: 'rgba(255,255,255,.88)' }}>{occ.bien_actuel_type}{occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface}m²` : ''}</div></div>}
-              {aVendre && occ.bien_actuel_valeur && <div><div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.42)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Valeur estimée</div><div style={{ fontSize: 14.5, fontWeight: 700, color: 'white' }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</div></div>}
-              {aVendre && <div><div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.42)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Adresse du bien</div><div style={{ fontSize: 14.5, fontWeight: 600, color: 'rgba(255,255,255,.88)' }}>{occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'}</div></div>}
-              {aVendre && <div style={{ alignSelf: 'center' }}><span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '5px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>🏷️ Mandat de vente potentiel</span></div>}
-              {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: 'rgba(255,255,255,.7)', lineHeight: 1.5 }}><span style={{ color: 'rgba(255,255,255,.45)', fontWeight: 600 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+        return (
+          <div style={{ background: '#f8fafc', padding: '14px 24px 0' }}>
+
+            {/* le bloc identité, en navy arrondi */}
+            <div style={{
+              position: 'relative', borderRadius: 24, overflow: 'hidden',
+              background: 'linear-gradient(135deg, #263650 0%, #18222f 54%, #1e2a3b 100%)',
+              boxShadow: '0 20px 44px -28px rgba(16,24,40,.85)',
+              padding: aSituation ? '22px 26px 42px' : '22px 26px 24px',
+            }}>
+              <span aria-hidden style={{ position: 'absolute', top: -110, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.24), transparent 62%)', pointerEvents: 'none' }} />
+              <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg, transparent, rgba(201,168,76,.75), transparent)' }} />
+
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: '1 1 380px', minWidth: 0 }}>
+                  <div style={{ width: 58, height: 58, borderRadius: 18, background: 'rgba(255,255,255,.08)', border: `2px solid ${teinte}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 23, fontWeight: 800, color: 'white', fontFamily: "'Plus Jakarta Sans',sans-serif", flexShrink: 0, boxShadow: `0 10px 24px -12px ${teinte}` }}>{client.prenom[0]}</div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 7 }}>
+                      <div className={styles.clientName} style={{ color: 'white', letterSpacing: -0.4 }}>{client.prenom} {client.nom}</div>
+                      <div style={{ position: 'relative' }}>
+                        <select value={client.statut} onChange={e => changeStatut(e.target.value)} style={{ padding: '5px 28px 5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${teinte}55`, background: `${teinte}1f`, color: teinte, appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
+                          <option value="prospect">🟣 Prospect</option><option value="actif">🟢 Actif</option><option value="suspendu">⏸️ Suspendu</option><option value="offre_ecrite">✍️ Offre écrite</option><option value="bien_trouve">✅ Bien trouvé</option><option value="perdu">🔴 Perdu</option>
+                        </select>
+                        <span style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 9, color: teinte }}>▼</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{client.reference} · {jours}j de suivi</span>
+                      <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }} style={{ fontSize: 11.5, color: 'rgba(255,255,255,.45)', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 9, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✏️ Modifier</button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      {client.telephones?.filter(Boolean).map(t => <a key={t} href={`tel:${t}`} style={{ fontSize: 13.5, color: 'white', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, padding: '5px 12px' }}>📞 {t}</a>)}
+                      {client.emails?.filter(Boolean).map(e => <a key={e} href={`mailto:${e}`} style={{ fontSize: 13.5, color: '#c9a84c', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(201,168,76,.1)', border: '1px solid rgba(201,168,76,.25)', borderRadius: 10, padding: '5px 12px' }}>✉️ {e}</a>)}
+                      {client.adresse && <span style={{ fontSize: 13, color: 'rgba(255,255,255,.62)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>📍 {client.adresse}</span>}
+                      {!client.telephones?.length && !client.emails?.length && <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>Aucun contact renseigné</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                  {[{val: biens.length, l:'Biens présentés', or:false},{val: visites.filter(v=>v.statut==='effectuee').length, l:'Visites effectuées', or:false},{val: biens.filter(b=>b.badge_retour==='offre_faite').length, l:'Offre(s)', or:true},{val:`${jours}j`, l:'Suivi', or:false}].map((s, i) => (
+                    <div key={i} style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 15, padding: '11px 16px', textAlign: 'center', minWidth: 78 }}>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 23, lineHeight: 1, color: s.or ? '#c9a84c' : 'white' }}>{s.val}</div>
+                      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.5)', marginTop: 5, fontWeight: 600 }}>{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          );
-        })()}
+
+            {/* la situation actuelle, posée à cheval sur le bloc du dessus */}
+            {aSituation && (
+              <div style={{ position: 'relative', margin: '-24px 18px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 18, padding: '19px 22px 15px', boxShadow: '0 18px 36px -26px rgba(16,24,40,.7)' }}>
+                <span style={{ position: 'absolute', top: -11, left: 22, background: '#1a2332', color: '#c9a84c', borderRadius: 20, padding: '4px 14px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.1, boxShadow: '0 8px 18px -8px rgba(26,35,50,.95)' }}>
+                  Situation actuelle
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'center' }}>
+                  {occ.statut_occupation && <Bloc lib="Statut" val={labelStatut} />}
+                  {aVendre && occ.bien_actuel_type && <Bloc lib="Bien à vendre" val={`${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`} />}
+                  {aVendre && occ.bien_actuel_valeur && <Bloc lib="Valeur estimée" fort val={`${occ.bien_actuel_valeur.toLocaleString('fr-FR')} €`} />}
+                  {aVendre && <Bloc lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
+                  {aVendre && <span style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '6px 13px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, marginLeft: 'auto' }}>🏷️ Mandat de vente potentiel</span>}
+                  {aVendre && occ.bien_actuel_notes && <div style={{ width: '100%', fontSize: 13, color: '#64748b', lineHeight: 1.55, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}><span style={{ color: '#9aa8bd', fontWeight: 700 }}>Précisions : </span>{occ.bien_actuel_notes}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div className={styles.contentWrap}>
         {/* SÉLECTEUR DE RECHERCHE */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -1373,37 +1402,18 @@ Emilio Immobilier
         {/* ONGLETS en haut */}
       <style>{`
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-        @keyframes emilioPouls { 0%, 100% { opacity: .45; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.25); } }
         .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
-        .emilio-onglet { position: relative; display: inline-flex; align-items: center; gap: 8px; background: transparent; border: none; border-radius: 11px; padding: 10px 16px; font-size: 13.5px; font-weight: 600; color: #64748b; cursor: pointer; font-family: inherit; transition: color .18s ease, background .18s ease; white-space: nowrap; }
-        .emilio-onglet:hover { color: #1a2332; background: #eef2f7; }
-        .emilio-onglet[data-actif="true"] { color: #ffffff; background: #1a2332; font-weight: 800; box-shadow: 0 4px 14px -6px rgba(26,35,50,.7); }
-        .emilio-onglet[data-actif="true"] .emilio-pouls { animation: emilioPouls 1.9s ease-in-out infinite; }
-        .emilio-pouls { width: 7px; height: 7px; border-radius: 50%; background: #c9a84c; display: inline-block; }
-        .emilio-compteur { background: rgba(148,163,184,.18); color: #64748b; border-radius: 20px; padding: 1px 8px; font-size: 11.5px; font-weight: 800; }
-        .emilio-onglet[data-actif="true"] .emilio-compteur { background: rgba(255,255,255,.16); color: #ffffff; }
-        .emilio-onglet .emilio-compteur.dore { background: #c9a84c; color: #ffffff; }
+        @keyframes ficheTabIn {
+          from { opacity: 0; transform: translateY(16px) scale(.993); }
+          to   { opacity: 1; transform: none; }
+        }
+        .fiche-tab { animation: ficheTabIn .46s cubic-bezier(.16,1,.3,1) both; }
+        .fiche-tab > * { animation: ficheTabIn .54s cubic-bezier(.16,1,.3,1) both; }
       `}</style>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, padding: 5, marginBottom: 16, boxShadow: '0 1px 2px rgba(16,24,40,.04)' }}>
-          {TABS.map(t => {
-            const actif = tab === t.id;
-            return (
-              <button key={t.id} type="button" className="emilio-onglet" data-actif={actif} onClick={() => setTab(t.id)}>
-                {actif && <span className="emilio-pouls" />}
-                <span>{t.icone}</span>
-                <span>{t.nom}</span>
-                {t.compte != null && t.compte > 0 && (
-                  <span className={`emilio-compteur${t.dore ? ' dore' : ''}`}>{t.compte}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
 
-        <style>{`
-          @keyframes ficheTabIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        `}</style>
-        <div key={`${rechercheId}-${tab}`} style={{ animation: 'ficheTabIn 0.22s ease' }}>
+        <Onglets items={TABS} actif={tab} onChange={setTab} />
+
+        <div key={`${rechercheId}-${tab}`} className="fiche-tab">
 
         {/* TAB BIENS */}
         {tab === 'biens' && (
