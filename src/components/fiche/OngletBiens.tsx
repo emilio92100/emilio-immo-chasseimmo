@@ -1,7 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Frise, ModaleObservation, ModaleEnvoi, Dpe, Chip, BoutonLien, GRILLE_CARTE, CARTE, Galerie, StylesEmilio } from './ParcoursBien';
+import {
+  Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
+  Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
+} from './ParcoursBien';
 
 /**
  * Deux onglets pour un seul composant :
@@ -9,10 +12,6 @@ import { Frise, ModaleObservation, ModaleEnvoi, Dpe, Chip, BoutonLien, GRILLE_CA
  *   mode="selection" → ce que tu as retenu, pas encore envoyé
  *   mode="presentes" → ce que le client a reçu
  */
-
-const NAVY = '#1a2332';
-const OR = '#c9a84c';
-const BORD = '#e3e8f0';
 
 const RETOURS: Record<string, { l: string; c: string; bg: string; bd: string; i: string }> = {
   propose: { l: 'En attente de retour', c: '#64748b', bg: '#f7f9fc', bd: BORD, i: '⏳' },
@@ -80,7 +79,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
   if (biens.length === 0) {
     return (
-      <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 16, padding: '44px 20px', textAlign: 'center' }}>
+      <div style={{ ...CARTE, padding: '44px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 10 }}>{mode === 'selection' ? '📋' : '📤'}</div>
         <div style={{ fontWeight: 700, color: NAVY, fontSize: 15, marginBottom: 4 }}>
           {mode === 'selection' ? 'Aucun bien en sélection' : 'Rien n’a encore été envoyé'}
@@ -95,111 +94,130 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <StylesEmilio />
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>
+        <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
           {biens.length} bien{biens.length > 1 ? 's' : ''} {mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}
         </span>
-        <span style={{ fontSize: 13, color: '#64748b' }}>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
           {mode === 'selection' ? 'Prépare le PDF, fixe tes honoraires, puis envoie.' : 'Note le retour du client sur chacun.'}
         </span>
       </div>
 
       {biens.map((b) => {
-        const photos: string[] = b.photos || [];
         const r = RETOURS[b.badge_retour] || RETOURS.propose;
         const ouvert = frise === b.id;
         const honoraires = b.prix_acquereur && b.prix_vendeur ? b.prix_acquereur - b.prix_vendeur : 0;
+        const prixAff = b.prix_acquereur || b.prix_vendeur;
+        // BandeauMarche lit `prix` : on lui donne le prix vendeur, celui du marché
+        const marche = { ...b, prix: b.prix_vendeur, agence: b.agence_nom, portail: b.source_portail };
+        const atouts: React.ReactNode[] = [];
+        if (b.terrasse && !b.surface_exterieur) atouts.push(<Chip key="t" ton="or">Terrasse</Chip>);
+        if (b.balcon && !b.surface_exterieur) atouts.push(<Chip key="b">Balcon</Chip>);
+        if (b.jardin && !b.surface_exterieur) atouts.push(<Chip key="j">Jardin</Chip>);
+        if (b.parking) atouts.push(<Chip key="p">{b.nb_parking > 1 ? `${b.nb_parking} parkings` : 'Parking'}</Chip>);
+        if (b.ascenseur) atouts.push(<Chip key="a">Ascenseur</Chip>);
+        if (b.cave) atouts.push(<Chip key="c">Cave</Chip>);
+        if (b.est_particulier) atouts.push(<Chip key="x" ton="vert">Particulier</Chip>);
 
         return (
           <div key={b.id} className="emi-carte" style={CARTE}>
-            <div style={GRILLE_CARTE}>
 
-              <Galerie photos={photos} hauteur={182} />
+            <Vignettes photos={b.photos || []}
+              coinGauche={mode === 'presentes'
+                ? <span style={{ background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, boxShadow: '0 4px 12px -6px rgba(16,24,40,.5)' }}>{r.i} {r.l}</span>
+                : undefined} />
 
-              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 16.5, fontWeight: 800, color: NAVY, lineHeight: 1.3 }}>
-                    {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 21, fontWeight: 800, color: OR, letterSpacing: -.4 }}>
-                      {euros(b.prix_acquereur || b.prix_vendeur)}
-                    </div>
-                    {honoraires > 0 && (
-                      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                        dont {honoraires.toLocaleString('fr-FR')} € d&apos;honoraires
-                      </div>
-                    )}
-                  </div>
+            {/* ── titre, adresse, prix ─────────────────────── */}
+            <div style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
+                  {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
                 </div>
-
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 13.5, color: '#475569' }}>
-                  {b.surface && <span style={{ fontWeight: 800, color: NAVY, fontSize: 14.5 }}>{b.surface} m²</span>}
-                  {b.nb_pieces ? <><Sep />{b.nb_pieces} pièces</> : null}
-                  {b.nb_chambres ? <><Sep />{b.nb_chambres} chambres</> : null}
-                  {b.etage != null ? <><Sep />{b.etage === 0 ? 'RDC' : `${b.etage}ᵉ étage`}</> : null}
-                  {b.annee_construction ? <><Sep />immeuble {b.annee_construction}</> : null}
-                  <Dpe lettre={b.dpe} />
-                  <Dpe lettre={b.ges} label="GES" />
-                  {b.est_particulier && <Chip ton="vert">Particulier</Chip>}
-                </div>
-
-                {mode === 'presentes' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '5px 13px', fontSize: 13, fontWeight: 700 }}>
-                      {r.i} {r.l}
+                {(b.adresse || b.adresse_probable || b.quartier || b.ville) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 13.5, color: '#64748b', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#a9b6c8', display: 'flex' }}><Icone nom="lieu" taille={15} /></span>
+                    <span style={{ fontWeight: 600 }}>
+                      {b.adresse || b.adresse_probable || b.quartier || b.ville}
+                      {b.situation ? ` — ${b.situation}` : ''}
                     </span>
-                    {b.envoye_le && (
-                      <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
-                        envoyé le {new Date(b.envoye_le).toLocaleDateString('fr-FR')}
-                        {b.canal_envoi ? ` · ${b.canal_envoi === 'mail' ? 'par mail' : b.canal_envoi === 'whatsapp' ? 'WhatsApp' : 'lien'}` : ''}
-                      </span>
-                    )}
                   </div>
                 )}
-
-                {b.retour_client && (
-                  <div style={{ background: r.bg, border: `1px solid ${r.bd}`, borderLeft: `3px solid ${r.c}`, borderRadius: 10, padding: '8px 12px', fontSize: 13.5, color: r.c, fontStyle: 'italic' }}>
-                    « {b.retour_client} »
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 'auto', paddingTop: 4 }}>
-                  {b.url && <BoutonLien href={b.url}>↗&nbsp; Annonce d&apos;origine</BoutonLien>}
-                  <BoutonLien onClick={() => onFiche(b.id)}>✎&nbsp; Détail</BoutonLien>
-                  <BoutonLien onClick={() => setFrise(ouvert ? null : b.id)} actif={ouvert}>
-                    ◷&nbsp; {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
-                  </BoutonLien>
-                </div>
               </div>
 
-              <div style={{ borderLeft: `1px solid ${BORD}`, background: '#fbfcfe', padding: 16, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
+                {honoraires > 0
+                  ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>dont {honoraires.toLocaleString('fr-FR')} € d&apos;honoraires</div>
+                  : prixAff && b.surface
+                    ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²</div>
+                    : null}
+                {mode === 'presentes' && b.envoye_le && (
+                  <div style={{ fontSize: 11.5, color: '#a9b6c8' }}>
+                    envoyé le {new Date(b.envoye_le).toLocaleDateString('fr-FR')}
+                    {b.canal_envoi ? ` · ${b.canal_envoi === 'mail' ? 'mail' : b.canal_envoi === 'whatsapp' ? 'WhatsApp' : 'lien'}` : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── caractéristiques, marché, retour ─────────── */}
+            <div style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              <Specs p={b} />
+              <BandeauMarche p={marche} />
+
+              {b.retour_client && (
+                <div style={{ background: r.bg, border: `1px solid ${r.bd}`, borderLeft: `3px solid ${r.c}`, borderRadius: 11, padding: '9px 13px', fontSize: 13.5, color: r.c, fontStyle: 'italic' }}>
+                  « {b.retour_client} »
+                  {b.retour_le && <span style={{ fontStyle: 'normal', opacity: .6, fontSize: 11.5 }}> — {new Date(b.retour_le).toLocaleDateString('fr-FR')}</span>}
+                </div>
+              )}
+
+              {atouts.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{atouts}</div>
+              )}
+
+              {b.pdf_message && (
+                <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', lineHeight: 1.5 }}>
+                  {b.pdf_message}
+                </div>
+              )}
+            </div>
+
+            {/* ── pied de carte : les actions ──────────────── */}
+            <div style={{
+              borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '11px 18px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {b.url && <BoutonLien href={b.url}>↗&nbsp; Annonce d&apos;origine</BoutonLien>}
+                <BoutonLien onClick={() => onFiche(b.id)}>✎&nbsp; Détail</BoutonLien>
+                <BoutonLien onClick={() => setFrise(ouvert ? null : b.id)} actif={ouvert}>
+                  ◷&nbsp; {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
+                </BoutonLien>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {mode === 'selection' ? (
                   <>
                     {b.pdf_statut === 'pret' && b.pdf_url ? (
-                      <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={btn('#f7f9fc', NAVY, BORD)}>📄 Consulter le PDF</a>
+                      <Action href={b.pdf_url} ton="neutre">📄&nbsp; PDF prêt — consulter</Action>
                     ) : b.pdf_statut === 'demande' ? (
-                      <span style={{ ...btn('#fdfaf1', '#a17d2c', '#ecdcb4'), cursor: 'default' }}>⏳ En fabrication</span>
+                      <Action ton="neutre" disabled>⏳&nbsp; PDF en fabrication</Action>
                     ) : (
-                      <button type="button" onClick={() => demanderPdf(b.id)} style={btn('#f7f9fc', NAVY, BORD)}>📄 Préparer le PDF</button>
+                      <Action onClick={() => demanderPdf(b.id)} ton="neutre">📄&nbsp; Préparer le PDF</Action>
                     )}
-                    <button type="button" onClick={() => setEnvoi(b)} style={btn(OR, 'white')}>📤 Envoyer</button>
-                    {b.pdf_message && (
-                      <div style={{ fontSize: 11.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 9px', lineHeight: 1.45 }}>
-                        {b.pdf_message}
-                      </div>
-                    )}
+                    <Action onClick={() => setEnvoi(b)} ton="or">📤&nbsp; Envoyer</Action>
                   </>
                 ) : (
                   <>
-                    <button type="button" onClick={() => setObs(b)} style={btn(NAVY, 'white')}>💬 Observation</button>
-                    <button type="button" onClick={() => onVisite(b.id)} style={btn('#f5f3ff', '#7c3aed', '#ddd6fe')}>📅 Planifier une visite</button>
-                    {b.pdf_url && <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={btn('#f7f9fc', NAVY, BORD)}>📄 Le PDF</a>}
+                    {b.pdf_url && <Action href={b.pdf_url} ton="neutre">📄&nbsp; Le PDF</Action>}
+                    <Action onClick={() => onVisite(b.id)} ton="violet">📅&nbsp; Planifier une visite</Action>
+                    <Action onClick={() => setObs(b)} ton="navy">💬&nbsp; Observation</Action>
                     <button type="button" onClick={() => renvoyerEnSelection(b.id)}
-                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ background: 'none', border: 'none', color: '#a9b6c8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Remettre en sélection
                     </button>
                   </>
@@ -207,14 +225,16 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               </div>
             </div>
 
-            {ouvert && (
-              <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 18px 10px' }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .9, marginBottom: 8 }}>
-                  Parcours du bien
+            <div className="emi-volet" data-ouvert={ouvert}>
+              <div>
+                <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 18px 12px' }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .9, marginBottom: 9 }}>
+                    Parcours du bien
+                  </div>
+                  {ouvert && <Frise bienId={b.id} rafraichir={tick} />}
                 </div>
-                <Frise bienId={b.id} rafraichir={tick} />
               </div>
-            )}
+            </div>
           </div>
         );
       })}
@@ -229,17 +249,3 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     </div>
   );
 }
-
-function Sep() { return <span style={{ color: '#dbe3ec' }}>·</span>; }
-
-/* styles */
-function btn(bg: string, fg: string, bd?: string): React.CSSProperties {
-  return {
-    background: bg, color: fg, border: bd ? `1px solid ${bd}` : 'none', borderRadius: 10,
-    padding: '10px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-    textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    width: '100%', boxSizing: 'border-box', textAlign: 'center',
-  };
-}
-const lien: React.CSSProperties = { fontSize: 12.5, color: '#3b82f6', textDecoration: 'none', fontWeight: 600 };
-const lienBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 };
