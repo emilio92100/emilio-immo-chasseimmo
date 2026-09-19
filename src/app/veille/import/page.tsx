@@ -209,9 +209,81 @@ export default function PageImportVeille() {
       return { ok: true, majs: data?.length || 0 };
     }
 
+    /** File d'attente des PDF demandés depuis le CRM. */
+    async function pdfEnAttente() {
+      const { data, error } = await supabase
+        .from('biens')
+        .select('id, titre, ville, url, prix_acquereur, surface, nb_pieces, nb_chambres, photos, description, client_id, recherche_id, clients(prenom, nom)')
+        .eq('pdf_statut', 'demande')
+        .order('pdf_demande_le', { ascending: true })
+        .limit(10);
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, biens: data || [] };
+    }
+
+    /** Réception du PDF par morceaux (le fichier est assemblé côté page). */
+    const morceaux: Record<string, string[]> = {};
+
+    function pdfMorceau(bienId: string, index: number, total: number, data: string) {
+      if (!morceaux[bienId]) morceaux[bienId] = new Array(total).fill('');
+      morceaux[bienId][index] = data;
+      const recus = morceaux[bienId].filter((m) => m).length;
+      if (index === 0) log(`PDF en réception (${total} morceaux)…`);
+      return { ok: true, recus, total };
+    }
+
+    async function pdfTermine(bienId: string, nomFichier: string, message?: string) {
+      try {
+        const parts = morceaux[bienId];
+        if (!parts || parts.some((p) => !p)) {
+          return { ok: false, error: 'morceaux manquants' };
+        }
+        const b64 = parts.join('');
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+
+        const chemin = `pdf/${bienId}/${Date.now()}-${nomFichier}`;
+        const { error: upErr } = await supabase.storage
+          .from('photos-biens')
+          .upload(chemin, blob, { contentType: 'application/pdf', upsert: true });
+        if (upErr) {
+          await supabase.from('biens').update({ pdf_statut: 'echec', pdf_message: upErr.message }).eq('id', bienId);
+          log('Dépôt du PDF impossible : ' + upErr.message, false);
+          return { ok: false, error: upErr.message };
+        }
+        const { data: pub } = supabase.storage.from('photos-biens').getPublicUrl(chemin);
+        await supabase.from('biens').update({
+          pdf_statut: 'pret',
+          pdf_pret_le: new Date().toISOString(),
+          pdf_url: pub.publicUrl,
+          pdf_message: message || null,
+        }).eq('id', bienId);
+        delete morceaux[bienId];
+        log(`PDF prêt : ${nomFichier}`);
+        return { ok: true, url: pub.publicUrl };
+      } catch (e: any) {
+        log('Échec du PDF : ' + e.message, false);
+        return { ok: false, error: e.message };
+      }
+    }
+
+    /** Remplace les photos d'un bien par des versions nettoyées. */
+    async function majPhotosBien(bienId: string, photos: string[]) {
+      const { error } = await supabase.from('biens').update({ photos }).eq('id', bienId);
+      if (error) return { ok: false, error: error.message };
+      log(`Photos mises à jour (${photos.length})`);
+      return { ok: true };
+    }
+
     (window as any).veilleLire = veilleLire;
     (window as any).veilleDeposer = veilleDeposer;
     (window as any).veilleMaj = veilleMaj;
+    (window as any).pdfEnAttente = pdfEnAttente;
+    (window as any).pdfMorceau = pdfMorceau;
+    (window as any).pdfTermine = pdfTermine;
+    (window as any).majPhotosBien = majPhotosBien;
     (window as any).__VEILLE_PRETE__ = true;
     setPret(true);
 
@@ -226,6 +298,10 @@ export default function PageImportVeille() {
       delete (window as any).veilleLire;
       delete (window as any).veilleDeposer;
       delete (window as any).veilleMaj;
+      delete (window as any).pdfEnAttente;
+      delete (window as any).pdfMorceau;
+      delete (window as any).pdfTermine;
+      delete (window as any).majPhotosBien;
       delete (window as any).__VEILLE_PRETE__;
     };
   }, [log]);
