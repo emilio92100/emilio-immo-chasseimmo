@@ -5,6 +5,7 @@ import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import OngletVeille from './OngletVeille';
+import OngletBiens from './OngletBiens';
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
@@ -400,7 +401,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (data) {
       setRecherches(rs => [...rs, data as Recherche]);
       setRechercheId((data as Recherche).id);
-      setTab('biens');
+      setTab('selection');
     }
   }
 
@@ -420,7 +421,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (error) { alert('Erreur : ' + error.message); return; }
     const reste = recherches.filter(x => x.id !== r.id);
     setRecherches(reste);
-    if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('biens'); }
+    if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('selection'); }
     setShowRechercheMenu(false);
   }
 
@@ -700,6 +701,16 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }).select().single();
     await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'');
     setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
+  }
+
+  async function demanderPdf(bienId: string) {
+    await supabase.from('biens').update({
+      pdf_statut: 'demande',
+      pdf_demande_le: new Date().toISOString(),
+      pdf_url: null,
+      pdf_message: null,
+    }).eq('id', bienId);
+    load();
   }
 
   async function changeBadge(bienId: string, badge: string) {
@@ -1106,9 +1117,13 @@ Emilio Immobilier
   ).slice().sort((a: any, b: any) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const suiviCount = suiviComms.length + suiviEvents.length;
 
+  const enSelection = biens.filter((b: any) => (b.etape || 'selection') === 'selection');
+  const presentes  = biens.filter((b: any) => b.etape === 'presente');
+
   const TABS = [
     { id: 'veille', label: `🔎 Veille${veilleCount ? ` (${veilleCount})` : ''}` },
-    { id: 'biens', label: `🏠 Biens (${biens.length})` },
+    { id: 'selection', label: `📋 Sélection (${enSelection.length})` },
+    { id: 'presentes', label: `📤 Présentés (${presentes.length})` },
     { id: 'visites', label: `📅 Visites (${visites.length})` },
     { id: 'transaction', label: transaction ? `📋 Transaction${transaction.etape_actuelle === 'finalise' ? ' ✅' : ''}` : '📋 Transaction' },
     { id: 'suivi', label: `🗂️ Suivi (${suiviCount})` },
@@ -1205,7 +1220,7 @@ Emilio Immobilier
               <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
                 {recherches.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
-                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('biens'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('selection'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                       <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
                       {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
                     </button>
@@ -1403,6 +1418,13 @@ Emilio Immobilier
                         <button onClick={() => openFicheBien(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>✏️ Détail</button>
                         <button onClick={() => openEnvoiBien(b.id)} style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📤 Envoyer</button>
                         <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Visite</button>
+                        {b.pdf_statut === 'pret' && b.pdf_url ? (
+                          <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, background: '#1a2332', color: 'white', border: '1px solid #1a2332', padding: '4px 12px', borderRadius: 20, fontWeight: 600, textDecoration: 'none' }}>📄 PDF client</a>
+                        ) : b.pdf_statut === 'demande' ? (
+                          <span style={{ fontSize: 12, background: '#fdfaf1', color: '#a17d2c', border: '1px solid #ecdcb4', padding: '4px 12px', borderRadius: 20, fontWeight: 600 }}>⏳ PDF en préparation</span>
+                        ) : (
+                          <button onClick={() => demanderPdf(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📄 Préparer le PDF</button>
+                        )}
                       </div>
                     </div>
                     {cr && (
@@ -1683,6 +1705,28 @@ Emilio Immobilier
                   </div>
                 )}
               </div>
+        )}
+
+        {/* TAB SÉLECTION */}
+        {tab === 'selection' && (
+          <OngletBiens
+            clientId={client.id} rechercheId={rechercheId} client={client} mode="selection"
+            onChange={() => { load(); chargerVeilleCount(); }}
+            onMail={(id) => openEnvoiBien(id)}
+            onFiche={(id) => openFicheBien(id)}
+            onVisite={(id) => planifierVisite(id)}
+          />
+        )}
+
+        {/* TAB PRÉSENTÉS */}
+        {tab === 'presentes' && (
+          <OngletBiens
+            clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
+            onChange={() => { load(); chargerVeilleCount(); }}
+            onMail={(id) => openEnvoiBien(id)}
+            onFiche={(id) => openFicheBien(id)}
+            onVisite={(id) => planifierVisite(id)}
+          />
         )}
 
         {/* TAB VEILLE */}
