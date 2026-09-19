@@ -193,8 +193,25 @@ export default function PageImportVeille() {
       }
     }
 
+    /** Mise à jour d'une proposition existante (enrichissement Yanport). */
+    async function veilleMaj(url: string, champs: Record<string, unknown>) {
+      if (!url) return { ok: false, error: 'url manquante' };
+      const { data, error } = await supabase
+        .from('veille_propositions')
+        .update(champs)
+        .eq('url', url)
+        .select('id, titre');
+      if (error) {
+        log('Maj impossible : ' + error.message, false);
+        return { ok: false, error: error.message };
+      }
+      log(`Mise à jour : ${data?.[0]?.titre || url}`);
+      return { ok: true, majs: data?.length || 0 };
+    }
+
     (window as any).veilleLire = veilleLire;
     (window as any).veilleDeposer = veilleDeposer;
+    (window as any).veilleMaj = veilleMaj;
     (window as any).__VEILLE_PRETE__ = true;
     setPret(true);
 
@@ -208,6 +225,7 @@ export default function PageImportVeille() {
     return () => {
       delete (window as any).veilleLire;
       delete (window as any).veilleDeposer;
+      delete (window as any).veilleMaj;
       delete (window as any).__VEILLE_PRETE__;
     };
   }, [log]);
