@@ -111,6 +111,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           const x = Number(v);
           return Number.isFinite(x) && x >= min && x <= max ? Math.round(x) : null;
         };
+        /* Le client peut aussi VIDER un critère. On n'écrit donc une colonne que
+           si son champ figure dans l'envoi — l'absence vaut « ne touche à rien »,
+           null vaut « efface ». */
+        const present = (k: string) => Object.prototype.hasOwnProperty.call(c, k);
+        const parmi = (v: unknown, liste: string[]) => (typeof v === 'string' && liste.includes(v) ? v : null);
         const maj: Record<string, unknown> = {
           budget_min: n(c.budgetMin, 50_000, 20_000_000),
           budget_max: n(c.budgetMax, 50_000, 20_000_000),
@@ -119,6 +124,37 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           chambres_min: n(c.chambresMin, 0, 20),
           transport_minutes: n(c.transportMinutes, 1, 60),
         };
+        const poser = (colonne: string, champ: string, valeur: unknown) => {
+          if (present(champ)) maj[colonne] = valeur;
+        };
+        poser('surface_max', 'surfaceMax', n(c.surfaceMax, 5, 5_000));
+        poser('surface_sejour_min', 'surfaceSejourMin', n(c.surfaceSejourMin, 5, 500));
+        poser('nb_pieces_max', 'piecesMax', n(c.piecesMax, 1, 30));
+        poser('annee_construction_min', 'anneeMin', n(c.anneeMin, 1700, 2100));
+        poser('etage_min', 'etageMin', n(c.etageMin, 0, 60));
+        poser('etage_max', 'etageMax', n(c.etageMax, 0, 60));
+        poser('etage_max_sans_ascenseur', 'etageMaxSansAscenseur', n(c.etageMaxSansAscenseur, 0, 20));
+        poser('exterieur_surface_min', 'exterieurSurfaceMin', n(c.exterieurSurfaceMin, 1, 5_000));
+        poser('apport', 'apport', n(c.apport, 0, 20_000_000));
+        poser('rdc_exclu', 'rdcExclu', !!c.rdcExclu);
+        poser('dernier_etage', 'dernierEtage', !!c.dernierEtage);
+        poser('etat_souhaite', 'etatSouhaite', parmi(c.etatSouhaite, ['a_renover', 'travaux_legers', 'bon_etat', 'refait_neuf']));
+        poser('financement', 'financement', parmi(c.financement, ['cash', 'pret_valide', 'pret_en_cours', 'a_monter']));
+        poser('urgence', 'urgence', parmi(c.urgence, ['immediate', '3_mois', '6_mois', 'annee']));
+        poser('cuisine_type', 'cuisineType', parmi(c.cuisineType, ['ouverte', 'separee']));
+        poser('dpe_max', 'dpeMax', parmi(c.dpeMax, ['A', 'B', 'C', 'D', 'E', 'F', 'G']));
+
+        if (Array.isArray(c.typesBien)) {
+          const types = (c.typesBien as unknown[])
+            .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && x.length <= 40)
+            .map((x) => x.trim()).slice(0, 10);
+          maj.type_bien = types.length ? types.join(', ') : null;
+        }
+        if (typeof c.exposition === 'string') {
+          const connues = ['sud', 'est', 'ouest', 'nord', 'traversant'];
+          const l = c.exposition.split(',').map((x: string) => x.trim()).filter((x: string) => connues.includes(x));
+          maj.exposition_souhaitee = l.length ? l.join(', ') : null;
+        }
         if (Array.isArray(c.transportArrets)) {
           maj.transport_arrets = (c.transportArrets as Record<string, unknown>[])
             .filter((a) => a && typeof a.nom === 'string' && a.nom.length <= 120)
@@ -140,25 +176,37 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         if (Array.isArray(c.secteurs)) {
           maj.secteurs = c.secteurs.filter((s: unknown) => typeof s === 'string').slice(0, 20);
         }
-        if (Array.isArray(c.equip)) {
+
+        const CLES_EXIGENCES = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur',
+          'gardien', 'interphone', 'digicode', 'exterieur', 'cuisine'];
+        const BOOLEENS = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur', 'gardien'];
+        if (c.exigences && typeof c.exigences === 'object' && !Array.isArray(c.exigences)) {
+          /* Le client règle lui-même « souhaité » / « indispensable » : c'est lui qui fait foi,
+             et les anciennes colonnes booléennes suivent. */
+          const src = c.exigences as Record<string, unknown>;
+          const ex: Record<string, string> = {};
+          CLES_EXIGENCES.forEach((k) => {
+            if (src[k] === 'souhaite' || src[k] === 'indispensable') ex[k] = src[k] as string;
+          });
+          maj.exigences = ex;
+          BOOLEENS.forEach((k) => { maj[k] = !!ex[k]; });
+        } else if (Array.isArray(c.equip)) {
+          /* Ancien format, simples cases à cocher : on garde la nuance déjà posée par le chasseur. */
           const e = c.equip as string[];
-          maj.terrasse = e.includes('Terrasse'); maj.balcon = e.includes('Balcon');
-          maj.jardin = e.includes('Jardin');     maj.parking = e.includes('Parking');
-          maj.ascenseur = e.includes('Ascenseur'); maj.cave = e.includes('Cave');
-          maj.gardien = e.includes('Gardien');
-          // Le client ne voit que « coché / pas coché ». On tient les niveaux du CRM
-          // en phase avec ses cases, sans écraser la nuance posée par le chasseur :
-          // décoché → on retire, coché sans niveau → « souhaité ».
           const ex = { ...((recherche.exigences || {}) as Record<string, string>) };
           ([['terrasse', 'Terrasse'], ['balcon', 'Balcon'], ['jardin', 'Jardin'], ['parking', 'Parking'],
             ['ascenseur', 'Ascenseur'], ['cave', 'Cave'], ['gardien', 'Gardien']] as [string, string][])
-            .forEach(([cle, libelle]) => {
-              if (e.includes(libelle)) { if (!ex[cle]) ex[cle] = 'souhaite'; }
-              else delete ex[cle];
+            .forEach(([cle, lib]) => {
+              maj[cle] = e.includes(lib);
+              if (e.includes(lib)) { if (!ex[cle]) ex[cle] = 'souhaite'; } else delete ex[cle];
             });
           maj.exigences = ex;
         }
-        Object.keys(maj).forEach(k => maj[k] === null && delete maj[k]);
+
+        /* Ces quatre-là ont toujours une valeur dans l'écran client : un null
+           signifie un envoi bancal, pas une volonté d'effacer. */
+        (['surface_min', 'nb_pieces_min', 'chambres_min', 'budget_max'] as const)
+          .forEach((k) => { if (maj[k] === null) delete maj[k]; });
         maj.updated_at = new Date().toISOString();
 
         await supabase.from('recherches').update(maj).eq('id', recherche.id);
