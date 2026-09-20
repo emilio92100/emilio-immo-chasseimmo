@@ -96,6 +96,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   return (
     <div style={{ minHeight: '100vh', background: CREME, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+      <style>{`html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch}`}</style>
 
       {/* HEADER */}
       <header style={{ background: BLEU, padding: '16px 0', borderBottom: `2px solid ${DORE}` }}>
