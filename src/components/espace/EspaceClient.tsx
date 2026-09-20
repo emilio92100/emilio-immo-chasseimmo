@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
+import { LIGNES, MODES, ligneDe } from '@/lib/lignes';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -618,8 +619,9 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
             ? <div className="gros tab">{crit.transportMinutes} <small>minutes à pied maximum d&apos;une station</small></div>
             : null}
           {crit.transportLignes?.length
-            ? <div className="pastilles" style={{ marginTop: crit.transportMinutes ? 12 : 0 }}>
-                {crit.transportLignes.map((l: string) => <span className="past" key={l}>{l}</span>)}
+            ? <div className="pastilles" style={{ marginTop: crit.transportMinutes ? 12 : 0, alignItems: 'center' }}>
+                {crit.transportLignes.map((l: string) =>
+                  ligneDe(l) ? <Pastille id={l} key={l} t={28} /> : <span className="past" key={l}>{l}</span>)}
               </div>
             : null}
         </div>
@@ -639,6 +641,76 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       </div>
       <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
     </Vue>
+  );
+}
+
+/* La pastille officielle d'une ligne — même code couleur que sur les plans. */
+function Pastille({ id, t = 26 }: { id: string; t?: number }) {
+  const g = ligneDe(id);
+  if (!g) return <span className="past">{id}</span>;
+  const rond = g.mode === 'metro' || g.mode === 'rer';
+  return (
+    <span className="ligne-p" style={{
+      background: g.couleur, color: g.texte, width: rond ? t : 'auto', height: t,
+      minWidth: t, borderRadius: rond ? '50%' : Math.round(t / 3),
+      fontSize: Math.round(t * (g.court.length > 2 ? 0.38 : 0.46)),
+      padding: rond ? 0 : `0 ${Math.round(t / 3.4)}px`,
+    }}>{g.court}</span>
+  );
+}
+
+/* Les lignes souhaitées : on coche dans le référentiel IDFM, et on peut
+   ajouter une station au clavier (« Marcel Sembat »). */
+function Lignes({ choix, onChange }: { choix: string[]; onChange: (v: string[]) => void }) {
+  const [station, setStation] = useState('');
+  const libres = choix.filter(x => !ligneDe(x));
+  const prise = (id: string) => choix.some(x => x.toLowerCase() === id.toLowerCase());
+  const basculer = (id: string) =>
+    onChange(prise(id) ? choix.filter(x => x.toLowerCase() !== id.toLowerCase()) : [...choix, id].slice(0, 14));
+
+  return (
+    <div className="lignes">
+      {MODES.map(m => {
+        const dispo = LIGNES.filter(x => x.mode === m.cle);
+        return (
+          <div className="lignes-mode" key={m.cle}>
+            <div className="lignes-t">{m.nom}</div>
+            <div className="lignes-g">
+              {dispo.map(x => (
+                <button type="button" key={x.id} className="lignes-b" aria-pressed={prise(x.id)}
+                  onClick={() => basculer(x.id)} aria-label={x.id}>
+                  <Pastille id={x.id} t={28} />
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="loc-ajout" style={{ marginTop: 12 }}>
+        <input value={station} placeholder="Une station en particulier ? ex. Marcel Sembat"
+          onChange={e => setStation(e.target.value)}
+          onKeyDown={e => {
+            const v = station.trim();
+            if (e.key === 'Enter' && v) { e.preventDefault(); onChange([...choix, v].slice(0, 14)); setStation(''); }
+          }} />
+        <button type="button" className="loc-plus" onClick={() => {
+          const v = station.trim(); if (!v) return;
+          onChange([...choix, v].slice(0, 14)); setStation('');
+        }}>Ajouter</button>
+      </div>
+
+      {!!libres.length && (
+        <div className="pastilles" style={{ marginTop: 10 }}>
+          {libres.map(x => (
+            <span className="past" key={x}>{x}
+              <button type="button" className="past-x" onClick={() => onChange(choix.filter(y => y !== x))}
+                aria-label={`Retirer ${x}`}><Ico n="croix" t={10} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1053,6 +1125,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     budgetMax: crit.budgetMax || 1000000,
     surfaceMin: crit.surfaceMin || 60,
     transportMinutes: crit.transportMinutes || 0,
+    lignes: [...(crit.transportLignes || [])],
     piecesMin: crit.piecesMin || 3,
     chambresMin: crit.chambresMin || 2,
     secteurs: [...crit.secteurs], equip: [...crit.equip],
@@ -1104,22 +1177,20 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <div className="choix">{[1, 2, 3, 4, 5].map(n => (
           <button key={n} className="ch" aria-pressed={t.chambresMin === n} onClick={() => setT(v => ({ ...v, chambresMin: n }))}>{n}{n === 5 ? '+' : ''}</button>))}</div>
 
-        <label className="lab">Où chercher</label>
-        <Localisation secteurs={t.secteurs} onChange={(v) => setT(x => ({ ...x, secteurs: v }))} />
-
-        <label className="lab">Temps à pied jusqu&apos;à une station</label>
-        <div className="pas"><button className="rond" onClick={() => pas('transportMinutes', -1)}>−</button>
-          <span className="val tab">{t.transportMinutes ? t.transportMinutes + ' min max' : 'Peu importe'}</span>
-          <button className="rond" onClick={() => pas('transportMinutes', 1)}>+</button></div>
-        {!!crit.transportLignes?.length && (
-          <div className="rappel-lignes">
-            <Ico n="verrou" t={12} /> Lignes notées par Alexandre&nbsp;: {crit.transportLignes.join(' · ')}
-          </div>
-        )}
-
         <label className="lab">Souhaités</label>
         <div className="choix">{EQUIPS.map(e => (
           <button key={e} className="ch or" aria-pressed={t.equip.includes(e)} onClick={() => bascule('equip', e)}>{e}</button>))}</div>
+
+        <div className="sep-crit"><span>Où chercher</span><i /></div>
+        <Localisation secteurs={t.secteurs} onChange={(v) => setT(x => ({ ...x, secteurs: v }))} />
+
+        <div className="sep-crit"><span>Transports</span><i /></div>
+        <div className="borne">Temps à pied jusqu&apos;à une station</div>
+        <div className="pas"><button className="rond" onClick={() => pas('transportMinutes', -1)}>−</button>
+          <span className="val tab">{t.transportMinutes ? t.transportMinutes + ' min max' : 'Peu importe'}</span>
+          <button className="rond" onClick={() => pas('transportMinutes', 1)}>+</button></div>
+        <div className="borne">Lignes souhaitées</div>
+        <Lignes choix={t.lignes} onChange={(v) => setT(x => ({ ...x, lignes: v }))} />
 
         <BtnEnvoi enCours={enr} libelle="Enregistrer" enCoursTexte="Enregistrement…"
           style={{ marginTop: 22 }} onClick={async () => {
@@ -1135,9 +1206,12 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
           if (t.transportMinutes !== (crit.transportMinutes || 0)) {
             c.push(t.transportMinutes ? t.transportMinutes + ' min à pied max' : 'plus de contrainte de transport');
           }
+          if (t.lignes.join() !== (crit.transportLignes || []).join()) {
+            c.push(t.lignes.length ? 'lignes : ' + t.lignes.join(' · ') : 'plus de ligne imposée');
+          }
           setEnr(true);
           await onEnregistrer({ ...crit, ...t, budgetMin: t.budgetMin || null,
-            transportMinutes: t.transportMinutes || null }, c);
+            transportMinutes: t.transportMinutes || null, transportLignes: t.lignes }, c);
         }} />
       </div>
     </>
@@ -1719,6 +1793,24 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 .loc-sug b{font-weight:800; color:var(--plume)}
 .loc-sug em{margin-left:auto; font-style:normal; font-size:10.5px; font-weight:700; color:var(--or-fonce)}
 
+/* — pastilles de lignes, aux couleurs officielles IDFM — */
+.ligne-p{display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;
+  font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; line-height:1; letter-spacing:-.2px}
+.lignes{display:flex; flex-direction:column; gap:12px}
+.lignes-t{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:800; margin-bottom:7px}
+.lignes-g{display:flex; flex-wrap:wrap; gap:7px}
+.lignes-b{padding:3px; border-radius:50%; border:2px solid transparent; background:none;
+  opacity:.42; filter:saturate(.35); transition:opacity .18s, filter .18s, border-color .18s}
+.lignes-b[aria-pressed="true"]{opacity:1; filter:none; border-color:var(--encre)}
+.lignes-b:hover{opacity:1; filter:none}
+.past-x{margin-left:6px; opacity:.5; background:none; border:0; color:inherit; padding:0;
+  display:inline-flex; vertical-align:middle}
+.past-x:hover{opacity:1; color:var(--brique)}
+.sep-crit{display:flex; align-items:center; gap:12px; margin:24px 0 14px}
+.sep-crit span{font-size:10.5px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+  color:var(--plume-clair)}
+.sep-crit i{flex:1; height:1px; background:var(--trait)}
 .rappel-lignes{display:flex; align-items:center; gap:7px; margin-top:9px; font-size:12px;
   color:var(--plume-clair); font-weight:600}
 .borne{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--plume-clair);
