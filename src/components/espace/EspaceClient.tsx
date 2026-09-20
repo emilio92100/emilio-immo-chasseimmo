@@ -1,6 +1,7 @@
 'use client';
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -24,6 +25,7 @@ type Criteres = {
   budgetMin: number | null; budgetMax: number | null; surfaceMin: number | null;
   piecesMin: number | null; chambresMin: number | null; secteurs: string[];
   typeBien: string | null; equip: string[]; notes: string;
+  transportMinutes: number | null; transportLignes: string[];
 };
 type Props = {
   token: string;
@@ -64,7 +66,27 @@ const AVIS: Record<string, { e: string; n: string; c: string }> = {
   souhaite_visiter: { e: '👀', n: 'Je veux visiter', c: 'visite' },
   refuse: { e: '👎', n: 'Pas pour moi', c: 'non' },
 };
-const SECTEURS_BOULOGNE = ['Vaillant-Marcel Sembat','Parchamp–Albert Kahn','Reine–Mairie','Prince–Marmottan','Silly-Gallieni','Billancourt–Rives de Seine'];
+/* Les secteurs sont écrits par le CRM sous la forme « Quartier (Ville) »,
+   ou « Ville » seule quand toute la ville est prise. On relit ce format —
+   on n'invente aucune liste ici, elle vient de src/lib/secteurs.ts. */
+const normVille = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+const lireSecteur = (label: string) => {
+  const m = label.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  return m ? { quartier: m[1].trim(), ville: m[2].trim() } : { quartier: null as string | null, ville: label.trim() };
+};
+const grouperSecteurs = (liste: string[]) => {
+  const villes: { ville: string; quartiers: string[] }[] = [];
+  for (const s of liste) {
+    const { ville, quartier } = lireSecteur(s);
+    let v = villes.find(x => normVille(x.ville) === normVille(ville));
+    if (!v) { v = { ville, quartiers: [] }; villes.push(v); }
+    if (quartier && !v.quartiers.some(q => normVille(q) === normVille(quartier))) v.quartiers.push(quartier);
+  }
+  return villes;
+};
+const cpDeVille = (ville: string) =>
+  Object.keys(QUARTIERS).find(cp => normVille(QUARTIERS[cp].ville) === normVille(ville)) || null;
+
 const EQUIPS = ['Terrasse','Balcon','Jardin','Parking','Ascenseur','Cave','Gardien'];
 
 const T: Record<string, string[]> = {
@@ -576,10 +598,33 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       </div>
       {!!crit.secteurs.length && (
         <div className="bloc">
-          <div className="t"><Ico n="lieu" t={15} /> Secteurs</div>
-          <div className="pastilles">{crit.secteurs.map((s: string) => <span className="past" key={s}>{s}</span>)}</div>
+          <div className="t"><Ico n="lieu" t={15} /> Où je cherche</div>
+          <div className="villes">
+            {grouperSecteurs(crit.secteurs).map(v => (
+              <div className="ville" key={v.ville}>
+                <div className="ville-n">{v.ville}</div>
+                {v.quartiers.length
+                  ? <div className="pastilles">{v.quartiers.map(q => <span className="past" key={q}>{q}</span>)}</div>
+                  : <div className="ville-tout">Toute la ville</div>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
+      {(crit.transportMinutes || crit.transportLignes?.length) ? (
+        <div className="bloc">
+          <div className="t"><Ico n="horloge" t={15} /> Transports</div>
+          {crit.transportMinutes
+            ? <div className="gros tab">{crit.transportMinutes} <small>minutes à pied maximum d&apos;une station</small></div>
+            : null}
+          {crit.transportLignes?.length
+            ? <div className="pastilles" style={{ marginTop: crit.transportMinutes ? 12 : 0 }}>
+                {crit.transportLignes.map((l: string) => <span className="past" key={l}>{l}</span>)}
+              </div>
+            : null}
+        </div>
+      ) : null}
+
       <div className="precisions">
         <div className="k">
           <span><Ico n="crayon" t={13} /> Précisions sur votre recherche</span>
@@ -594,6 +639,106 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       </div>
       <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
     </Vue>
+  );
+}
+
+/* Où chercher — une carte par ville, ses quartiers en dessous.
+   Même format et mêmes listes que le CRM (src/lib/secteurs.ts) : ce que le
+   client coche ici est directement relisible par la chasse. */
+function Localisation({ secteurs, onChange }: { secteurs: string[]; onChange: (s: string[]) => void }) {
+  const [q, setQ] = useState('');
+  const [sug, setSug] = useState<CpSuggestion[]>([]);
+  const [libre, setLibre] = useState<Record<string, string>>({});
+  const villes = grouperSecteurs(secteurs);
+
+  const chercher = async (v: string) => {
+    setQ(v);
+    if (v.trim().length < 2) { setSug([]); return; }
+    try { setSug((await searchCommune(v)).slice(0, 6)); } catch { setSug([]); }
+  };
+
+  /* On réécrit d'un bloc les entrées d'une ville : aucun quartier coché
+     signifie « toute la ville ». */
+  const majVille = (ville: string, quartiers: string[]) => {
+    const autres = secteurs.filter(x => normVille(lireSecteur(x).ville) !== normVille(ville));
+    const neufs = quartiers.length ? quartiers.map(x => `${x} (${ville})`) : [ville];
+    onChange([...autres, ...neufs].slice(0, 20));
+  };
+  const retirerVille = (ville: string) =>
+    onChange(secteurs.filter(x => normVille(lireSecteur(x).ville) !== normVille(ville)));
+  const ajouterVille = (ville: string) => {
+    setQ(''); setSug([]);
+    if (villes.some(v => normVille(v.ville) === normVille(ville))) return;
+    onChange([...secteurs, ville].slice(0, 20));
+  };
+
+  return (
+    <div className="loc">
+      {villes.map(v => {
+        const cp = cpDeVille(v.ville);
+        const proposes = cp ? QUARTIERS[cp].quartiers : [];
+        const tous = [...proposes];
+        for (const qt of v.quartiers) if (!tous.some(x => normVille(x) === normVille(qt))) tous.push(qt);
+        const coche = (qt: string) => v.quartiers.some(x => normVille(x) === normVille(qt));
+        return (
+          <div className="loc-ville" key={v.ville}>
+            <div className="loc-tete">
+              <span className="loc-n">{v.ville}{cp ? <em> · {cp}</em> : null}</span>
+              <button type="button" className="loc-x" onClick={() => retirerVille(v.ville)}
+                aria-label={`Retirer ${v.ville}`}><Ico n="croix" t={12} /> Retirer</button>
+            </div>
+
+            <div className="choix">
+              <button type="button" className="ch" aria-pressed={v.quartiers.length === 0}
+                onClick={() => majVille(v.ville, [])}>Toute la ville</button>
+              {tous.map(qt => (
+                <button type="button" key={qt} className="ch" aria-pressed={coche(qt)}
+                  onClick={() => majVille(v.ville, coche(qt)
+                    ? v.quartiers.filter(x => normVille(x) !== normVille(qt))
+                    : [...v.quartiers, qt])}>{qt}</button>
+              ))}
+            </div>
+
+            <div className="loc-ajout">
+              <input value={libre[v.ville] || ''} placeholder={`Autre quartier de ${v.ville}…`}
+                onChange={e => setLibre(l => ({ ...l, [v.ville]: e.target.value }))}
+                onKeyDown={e => {
+                  const val = (libre[v.ville] || '').trim();
+                  if (e.key === 'Enter' && val) {
+                    e.preventDefault();
+                    majVille(v.ville, [...v.quartiers, val]);
+                    setLibre(l => ({ ...l, [v.ville]: '' }));
+                  }
+                }} />
+              <button type="button" className="loc-plus" onClick={() => {
+                const val = (libre[v.ville] || '').trim();
+                if (!val) return;
+                majVille(v.ville, [...v.quartiers, val]);
+                setLibre(l => ({ ...l, [v.ville]: '' }));
+              }}>Ajouter</button>
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="loc-ville loc-neuve">
+        <div className="loc-n2">Ajouter une ville</div>
+        <div className="loc-rech">
+          <input value={q} onChange={e => chercher(e.target.value)}
+            placeholder="Code postal ou nom de ville — ex. 92200, Neuilly…" />
+          {!!sug.length && (
+            <div className="loc-sug">
+              {sug.map((x, i) => (
+                <button type="button" key={x.cp + i} onClick={() => ajouterVille(QUARTIERS[x.cp]?.ville || x.ville)}>
+                  <b>{x.cp}</b> {QUARTIERS[x.cp]?.ville || x.ville}
+                  {QUARTIERS[x.cp] ? <em>quartiers proposés</em> : null}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -907,6 +1052,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     budgetMin: crit.budgetMin || 0,
     budgetMax: crit.budgetMax || 1000000,
     surfaceMin: crit.surfaceMin || 60,
+    transportMinutes: crit.transportMinutes || 0,
     piecesMin: crit.piecesMin || 3,
     chambresMin: crit.chambresMin || 2,
     secteurs: [...crit.secteurs], equip: [...crit.equip],
@@ -916,8 +1062,8 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   const pas = (cle: string, d: number) => {
     setT(v => {
       const n = { ...v } as any;
-      const p = cle === 'surfaceMin' ? 5 : 25000;
-      const plancher = cle === 'surfaceMin' ? 20 : (cle === 'budgetMin' ? 0 : 50000);
+      const p = cle === 'surfaceMin' ? 5 : (cle === 'transportMinutes' ? 1 : 25000);
+      const plancher = cle === 'surfaceMin' ? 20 : (cle === 'transportMinutes' ? 0 : (cle === 'budgetMin' ? 0 : 50000));
       n[cle] = Math.max(plancher, n[cle] + d * p);
       if (n.budgetMin && n.budgetMin > n.budgetMax) {
         if (cle === 'budgetMin') n.budgetMin = n.budgetMax; else n.budgetMax = n.budgetMin;
@@ -927,20 +1073,6 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   };
   const bascule = (cle: 'secteurs' | 'equip', v: string) =>
     setT(x => ({ ...x, [cle]: x[cle].includes(v) ? x[cle].filter(y => y !== v) : [...x[cle], v] }));
-
-  /* « Parchamp-Albert Kahn (Boulogne-Billancourt) » et « Parchamp-Albert Kahn »
-     sont le même quartier : on garde l'orthographe du dossier, une seule fois. */
-  const secteurs = (() => {
-    const clef = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s*\(.*?\)\s*/g, '').replace(/[^a-z]/g, '');
-    const vus = new Set<string>(); const liste: string[] = [];
-    for (const x of [...crit.secteurs, ...SECTEURS_BOULOGNE] as string[]) {
-      const k = clef(x);
-      if (!k || vus.has(k)) continue;
-      vus.add(k); liste.push(x);
-    }
-    return liste;
-  })();
 
   return (
     <>
@@ -972,9 +1104,18 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <div className="choix">{[1, 2, 3, 4, 5].map(n => (
           <button key={n} className="ch" aria-pressed={t.chambresMin === n} onClick={() => setT(v => ({ ...v, chambresMin: n }))}>{n}{n === 5 ? '+' : ''}</button>))}</div>
 
-        <label className="lab">Secteurs</label>
-        <div className="choix">{secteurs.map(s => (
-          <button key={s} className="ch" aria-pressed={t.secteurs.includes(s)} onClick={() => bascule('secteurs', s)}>{s}</button>))}</div>
+        <label className="lab">Où chercher</label>
+        <Localisation secteurs={t.secteurs} onChange={(v) => setT(x => ({ ...x, secteurs: v }))} />
+
+        <label className="lab">Temps à pied jusqu&apos;à une station</label>
+        <div className="pas"><button className="rond" onClick={() => pas('transportMinutes', -1)}>−</button>
+          <span className="val tab">{t.transportMinutes ? t.transportMinutes + ' min max' : 'Peu importe'}</span>
+          <button className="rond" onClick={() => pas('transportMinutes', 1)}>+</button></div>
+        {!!crit.transportLignes?.length && (
+          <div className="rappel-lignes">
+            <Ico n="verrou" t={12} /> Lignes notées par Alexandre&nbsp;: {crit.transportLignes.join(' · ')}
+          </div>
+        )}
 
         <label className="lab">Souhaités</label>
         <div className="choix">{EQUIPS.map(e => (
@@ -991,8 +1132,12 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
           if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
           if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
           if (t.equip.join() !== crit.equip.join()) c.push('équipements souhaités');
+          if (t.transportMinutes !== (crit.transportMinutes || 0)) {
+            c.push(t.transportMinutes ? t.transportMinutes + ' min à pied max' : 'plus de contrainte de transport');
+          }
           setEnr(true);
-          await onEnregistrer({ ...crit, ...t, budgetMin: t.budgetMin || null }, c);
+          await onEnregistrer({ ...crit, ...t, budgetMin: t.budgetMin || null,
+            transportMinutes: t.transportMinutes || null }, c);
         }} />
       </div>
     </>
@@ -1535,6 +1680,47 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   font-size:19px; line-height:1; display:flex; align-items:center; justify-content:center; flex:0 0 auto;
   transition:transform .16s cubic-bezier(.16,1,.3,1)}
 .rond:active{transform:scale(.87)}
+/* — où je cherche : une ville, ses quartiers — */
+.villes{display:flex; flex-direction:column; gap:14px}
+.ville-n{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800;
+  color:var(--encre); margin-bottom:9px; letter-spacing:-.2px}
+.ville-tout{font-size:13px; color:var(--plume); font-style:italic}
+.ville + .ville{border-top:1px solid var(--trait); padding-top:14px}
+
+/* — le sélecteur, dans « Mes critères ont évolué » — */
+.loc{display:flex; flex-direction:column; gap:12px}
+.loc-ville{background:var(--fond); border:1px solid var(--trait); border-radius:16px; padding:14px}
+.loc-tete{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px}
+.loc-n{font-family:'Plus Jakarta Sans',sans-serif; font-size:15.5px; font-weight:800; color:var(--encre)}
+.loc-n em{font-style:normal; font-size:12px; font-weight:700; color:var(--plume-clair)}
+.loc-n2{font-family:'Plus Jakarta Sans',sans-serif; font-size:13.5px; font-weight:800;
+  color:var(--plume); margin-bottom:10px}
+.loc-x{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700;
+  color:var(--plume-clair); background:var(--carte); border:1px solid var(--trait);
+  border-radius:99px; padding:5px 11px}
+.loc-x:hover{color:var(--brique); border-color:var(--brique-trait); background:var(--brique-fond)}
+.loc-ajout{display:flex; gap:7px; margin-top:10px}
+.loc-ajout input{flex:1; border:1px solid var(--trait-fort); border-radius:11px; padding:10px 12px;
+  font-size:13.5px; font-family:inherit; background:var(--carte); color:var(--encre)}
+.loc-ajout input:focus{outline:none; border-color:var(--or)}
+.loc-plus{flex:0 0 auto; border-radius:11px; padding:0 15px; font-size:12.5px; font-weight:800;
+  font-family:'Plus Jakarta Sans',sans-serif; background:var(--encre); color:#fff; border:0}
+.loc-neuve{border-style:dashed}
+.loc-rech{position:relative}
+.loc-rech input{width:100%; border:1px solid var(--trait-fort); border-radius:11px; padding:11px 12px;
+  font-size:13.5px; font-family:inherit; background:var(--carte); color:var(--encre)}
+.loc-rech input:focus{outline:none; border-color:var(--or)}
+.loc-sug{position:absolute; left:0; right:0; top:calc(100% + 6px); z-index:4; background:var(--carte);
+  border:1px solid var(--trait); border-radius:13px; box-shadow:var(--ombre-f); overflow:hidden}
+.loc-sug button{display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:11px 13px; font-size:13.5px; color:var(--encre); background:none; border:0}
+.loc-sug button + button{border-top:1px solid var(--trait)}
+.loc-sug button:hover{background:var(--fond)}
+.loc-sug b{font-weight:800; color:var(--plume)}
+.loc-sug em{margin-left:auto; font-style:normal; font-size:10.5px; font-weight:700; color:var(--or-fonce)}
+
+.rappel-lignes{display:flex; align-items:center; gap:7px; margin-top:9px; font-size:12px;
+  color:var(--plume-clair); font-weight:600}
 .borne{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--plume-clair);
   font-weight:800; margin:12px 0 7px}
 .jauge{height:6px; border-radius:99px; background:var(--trait); margin-top:11px; overflow:hidden}
