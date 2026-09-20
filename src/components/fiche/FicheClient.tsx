@@ -4,7 +4,8 @@ import { supabase, addJournal } from '@/lib/supabase';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
-import { LIGNES, MODES, ligneDe } from '@/lib/lignes';
+import ArretPicker from '@/components/shared/ArretPicker';
+import type { Arret } from '@/lib/arrets';
 
 /* En-tête de section dans la pop-up « Critères de recherche ». */
 const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; note?: string }) => (
@@ -16,19 +17,6 @@ const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; note?: 
   </div>
 );
 
-/* La pastille d'une ligne, aux couleurs officielles IDFM. */
-const PastilleLigne = ({ id, t = 28 }: { id: string; t?: number }) => {
-  const g = ligneDe(id);
-  if (!g) return null;
-  const rond = g.mode === 'metro' || g.mode === 'rer';
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      background: g.couleur, color: g.texte, width: rond ? t : undefined, height: t, minWidth: t,
-      borderRadius: rond ? '50%' : Math.round(t / 3), fontWeight: 800, lineHeight: 1,
-      fontSize: Math.round(t * (g.court.length > 2 ? 0.38 : 0.46)),
-      padding: rond ? 0 : `0 ${Math.round(t / 3.4)}px`, fontFamily: 'inherit' }}>{g.court}</span>
-  );
-};
 
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
@@ -349,7 +337,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
-  const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
+  const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], transport_arrets: [] as Arret[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '' });
   const [url, setUrl] = useState('');
@@ -399,6 +387,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
       nb_pieces_min: r.nb_pieces_min?.toString() || '', nb_pieces_max: r.nb_pieces_max?.toString() || '',
       chambres_min: r.chambres_min?.toString() || '', secteurs: r.secteurs || [],
       transport_minutes: r.transport_minutes?.toString() || '', transport_lignes: r.transport_lignes || [],
+      transport_arrets: (r.transport_arrets || []) as Arret[],
       notes: r.notes || '',
       parking: r.parking || false, balcon: r.balcon || false, terrasse: r.terrasse || false, jardin: r.jardin || false,
       cave: r.cave || false, ascenseur: r.ascenseur || false, gardien: r.gardien || false,
@@ -521,6 +510,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
       secteurs: crit.secteurs, notes: crit.notes || null,
       transport_minutes: crit.transport_minutes ? parseInt(crit.transport_minutes) : null,
       transport_lignes: crit.transport_lignes,
+      transport_arrets: crit.transport_arrets,
       parking: crit.parking, cave: crit.cave, balcon: crit.balcon,
       terrasse: crit.terrasse, jardin: crit.jardin, ascenseur: crit.ascenseur,
       gardien: crit.gardien, interphone: (crit as any).interphone || false,
@@ -1400,7 +1390,7 @@ Emilio Immobilier
                     {(cr.surface_min || cr.surface_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_min && cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : cr.surface_max ? `max ${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
                     {(cr.nb_pieces_min || cr.nb_pieces_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : cr.nb_pieces_max ? `max ${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
                     {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
-                    {(cr.transport_minutes || cr.transport_lignes?.length) ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{[cr.transport_minutes ? `${cr.transport_minutes} min à pied max` : null, cr.transport_lignes?.length ? cr.transport_lignes.join(' · ') : null].filter(Boolean).join(' — ')}</div></div> : null}
+                    {cr.transport_arrets?.length ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.transport_arrets.map((a: any) => `${a.nom} (${a.minutes || 10} min)`).join(' · ')}</div></div> : (cr.transport_minutes ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`${cr.transport_minutes} min à pied max`}</div></div> : null)}
                     {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
                     {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
                     {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
@@ -2074,62 +2064,33 @@ Emilio Immobilier
                 {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
               </div>
 
-              <SectionCrit ico="⚡" titre="PERFORMANCE ÉNERGÉTIQUE" note="DPE maximum accepté" />
+              <SectionCrit ico="⚡" titre="PERFORMANCE ÉNERGÉTIQUE" note="la plus mauvaise lettre acceptée" />
               <div style={{ display: 'flex', gap: 6 }}>
-                {['A','B','C','D','E','F','G'].map(d => (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>))}
+                {['A','B','C','D','E','F','G'].map(d => {
+                  const lettres = ['A','B','C','D','E','F','G'];
+                  const passe = crit.dpe_max ? lettres.indexOf(d) <= lettres.indexOf(crit.dpe_max) : false;
+                  const choisi = crit.dpe_max === d;
+                  return (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${choisi ? '#1a2332' : passe ? '#bbf7d0' : '#e2e8f0'}`, background: choisi ? '#1a2332' : passe ? '#f0fdf4' : 'white', color: choisi ? 'white' : passe ? '#15803d' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>);
+                })}
               </div>
+              {crit.dpe_max ? (() => {
+                const lettres = ['A','B','C','D','E','F','G'];
+                const i = lettres.indexOf(crit.dpe_max);
+                const ok = lettres.slice(0, i + 1).join(' '); const ko = lettres.slice(i + 1).join(' ');
+                return <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>
+                  Vous gardez <b style={{ color: '#15803d' }}>{ok}</b>
+                  {ko ? <> · vous écartez <b style={{ color: '#dc2626' }}>{ko}</b></> : null}
+                </div>;
+              })() : <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>Aucune exigence — toutes les lettres passent.</div>}
 
               <SectionCrit ico="📍" titre="OÙ CHERCHER" note="ville puis quartiers" />
               <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
 
-              <SectionCrit ico="🚇" titre="TRANSPORTS" />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13.5, color: '#64748b', fontWeight: 600 }}>À moins de</span>
-                <input className={styles.inp} type="number" min={1} max={60} style={{ width: 86 }}
-                  value={crit.transport_minutes}
-                  onChange={e => setCrit(f => ({ ...f, transport_minutes: e.target.value }))} placeholder="10" />
-                <span style={{ fontSize: 13.5, color: '#64748b', fontWeight: 600 }}>minutes à pied d&apos;une station</span>
-              </div>
-              <div>
-                <label className={styles.lbl}>Lignes souhaitées</label>
-                {MODES.map(m => (
-                  <div key={m.cle} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8', marginBottom: 6 }}>{m.nom}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                      {LIGNES.filter(x => x.mode === m.cle).map(x => {
-                        const sel = crit.transport_lignes.some(v => v.toLowerCase() === x.id.toLowerCase());
-                        return (
-                          <button type="button" key={x.id} title={x.id}
-                            onClick={() => setCrit(f => ({ ...f, transport_lignes: sel ? f.transport_lignes.filter(v => v.toLowerCase() !== x.id.toLowerCase()) : [...f.transport_lignes, x.id] }))}
-                            style={{ padding: 3, borderRadius: '50%', border: `2px solid ${sel ? '#1a2332' : 'transparent'}`, background: 'none', cursor: 'pointer', opacity: sel ? 1 : 0.42, filter: sel ? 'none' : 'saturate(0.35)', transition: 'all 0.15s', lineHeight: 0 }}>
-                            <PastilleLigne id={x.id} t={28} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                <input className={styles.inp} placeholder="Une station en particulier ? ex : Marcel Sembat (Entrée pour ajouter)"
-                  onKeyDown={e => {
-                    const v = (e.target as HTMLInputElement).value.trim();
-                    if (e.key === 'Enter' && v) {
-                      e.preventDefault();
-                      if (!crit.transport_lignes.includes(v)) setCrit(f => ({ ...f, transport_lignes: [...f.transport_lignes, v] }));
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }} />
-                {crit.transport_lignes.filter(v => !ligneDe(v)).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    {crit.transport_lignes.filter(v => !ligneDe(v)).map(l => (
-                      <span key={l} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #e3e8f0', background: '#f8fafc', color: '#1a2332', fontWeight: 600 }}>
-                        {l} <span onClick={() => setCrit(f => ({ ...f, transport_lignes: f.transport_lignes.filter(x => x !== l) }))}
-                          style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Ce critère est relu à chaque chasse — il ne filtre pas automatiquement.</div>
-              </div>
+              <SectionCrit ico="🚇" titre="TRANSPORTS" note="cherchez un arrêt, puis réglez le temps à pied" />
+              <ArretPicker
+                arrets={crit.transport_arrets}
+                onChange={(v) => setCrit(f => ({ ...f, transport_arrets: v }))}
+                minutesDefaut={crit.transport_minutes ? parseInt(crit.transport_minutes) : 10} />
 
               <SectionCrit ico="🗒️" titre="CONTEXTE DU PROJET" />
               <div>
