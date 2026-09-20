@@ -61,7 +61,7 @@ function depuis(d?: string | null) {
   const h = (Date.now() - x.getTime()) / 3600000;
   if (h < 1) return "à l'instant";
   if (h < 5) return `il y a ${Math.round(h)} h`;
-  if (x.toDateString() === new Date().toDateString()) return 'ce matin';
+  if (x.toDateString() === new Date().toDateString()) return "aujourd'hui";
   if (h < 48) return 'hier';
   return `${x.getDate()} ${MOIS[x.getMonth()]}`;
 }
@@ -70,7 +70,7 @@ function heure(d?: string | null) {
   const x = new Date(d); if (isNaN(x.getTime())) return '';
   const auj = x.toDateString() === new Date().toDateString();
   const h = x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
-  return auj ? `ce matin à ${h}` : `le ${x.getDate()} ${MOIS[x.getMonth()]} à ${h}`;
+  return auj ? `aujourd'hui à ${h}` : `le ${x.getDate()} ${MOIS[x.getMonth()]} à ${h}`;
 }
 
 const DPEC: Record<string, string> = { A:'#319834', B:'#4ab84a', C:'#a8d84a', D:'#f7e017', E:'#f5b912', F:'#ee8235', G:'#e2231a' };
@@ -296,11 +296,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     montrer(<GrandOk
       titre="C'est noté, merci"
       texte={avis === 'refuse'
-        ? "Votre retour part directement dans votre dossier. La chasse de demain matin en tiendra compte pour ne plus vous proposer ce type de bien."
+        ? "Votre retour part directement dans votre dossier. Les prochaines propositions en tiendront compte pour ne plus vous montrer ce type de bien."
         : avis === 'souhaite_visiter'
           ? "Alexandre est prévenu. Il vous rappelle pour caler la visite."
           : "Alexandre est prévenu. Il va vous en chercher d'autres dans le même esprit."}
-      rappel="Chacun de vos retours est relu avant la chasse du lendemain."
+      rappel="Chacun de vos retours est relu, et oriente les propositions suivantes."
       onFermer={fermer} />, 'pleine');
   }
 
@@ -332,7 +332,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       await envoyer('message', { texte });
       montrer(<GrandOk titre="Votre message est bien parti"
         texte="Votre conseiller vient d'en être informé. Il le lit et vous recontacte rapidement pour en parler avec vous."
-        rappel="En attendant, la recherche continue tous les matins sur vos critères actuels."
+        rappel="En attendant, la recherche se poursuit chaque jour sur vos critères actuels."
         onFermer={fermer} />);
     }} />);
   }
@@ -393,12 +393,19 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             <Vue icone="etoile" titre="Nouveaux biens pour vous" aller={aller}
               sous={neufs.length
                 ? `${neufs.length} bien${neufs.length > 1 ? 's' : ''} retenu${neufs.length > 1 ? 's' : ''} pour vous depuis votre dernière visite, du plus récent au plus ancien. Ouvrez-les, puis dites-moi ce que vous en pensez.`
-                : 'Rien de nouveau depuis votre dernière visite.'}>
+                : 'Rien de nouveau depuis votre dernière visite. Votre dossier est repris chaque jour, vous n\'êtes pas en attente.'}>
               <Liste biens={neufs} onOuvrir={ouvrirBien}
-                vide="Rien de nouveau.<br>La prochaine chasse tourne demain matin." />
-              {!!passage?.lues && (
+                vide="Rien de nouveau pour le moment.<br>Nous cherchons pour vous tous les jours : dès qu'un bien correspond à ce que vous voulez, il s'affiche ici." />
+              {/* Le détail du travail de la veille n'a de sens que s'il a donné
+                  quelque chose. Sinon on dit l'inverse, mais on le dit. */}
+              {neufs.length > 0 && !!passage?.lues && (
                 <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
-                  <span>Ces biens sont ceux qui ont passé tous vos critères ce matin, sur {passage.lues} annonces lues.</span>
+                  <span>Ces biens sont ceux qui ont passé tous vos critères, sur {passage.lues} annonces lues lors du dernier passage.</span>
+                </div>
+              )}
+              {neufs.length === 0 && !!passage?.lues && (
+                <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
+                  <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères. Aucune n&apos;était assez juste pour vous être présentée&nbsp;— mieux vaut ne rien vous envoyer que de vous faire perdre du temps.</span>
                 </div>
               )}
             </Vue>
@@ -430,7 +437,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         </div>
 
         <div className="pied">
-          <b>Emilio Immobilier</b> · RT Conseils · CPI 9201 2020 000 045 344<br />
+          <b>Emilio Immobilier</b><br />
+          Numéro de carte professionnelle&nbsp;: CPI 9201 2020 000 045 344<br />
           Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine
         </div>
       </div>
@@ -453,19 +461,19 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       <div className="hero">
         <div className="sur">Votre espace personnel</div>
         <h2>Bienvenue, {client.prenom}</h2>
-        <p>Votre recherche est suivie <b>tous les matins</b>. Ici, rien à retenir et rien à installer&nbsp;:
+        <p>Votre recherche est suivie <b>au quotidien</b>. Ici, rien à retenir et rien à installer&nbsp;:
           vous ouvrez le lien, vous voyez où en est votre projet.</p>
         <div className="puces">
           <span><span className="k"><Ico n="check" t={15} /></span>Les biens retenus pour vous, dès qu&apos;ils sortent</span>
-          <span><span className="k"><Ico n="check" t={15} /></span>Ce que la chasse a lu ce matin, et ce qu&apos;elle a écarté</span>
+          <span><span className="k"><Ico n="check" t={15} /></span>Ce que nous avons passé en revue pour vous, et ce que nous avons écarté</span>
           <span><span className="k"><Ico n="check" t={15} /></span>Vos critères, que vous pouvez faire évoluer vous-même</span>
         </div>
-        <div className="prochaine"><span className="pouls" style={{ background: 'currentColor' }} /> Prochaine chasse demain matin</div>
+        <div className="prochaine"><span className="pouls" style={{ background: 'currentColor' }} /> Votre dossier est repris chaque jour</div>
       </div>
 
       <div className="bandeau-chiffres">
         <div className="bc"><div className="n or tab">{neufs.length}</div><div className="l">à découvrir</div></div>
-        <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">lues ce matin</div></div>
+        <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">annonces lues</div></div>
         <div className="bc"><div className="n tab">{client.jours ?? '—'}</div><div className="l">jours de suivi</div></div>
       </div>
       </div>
@@ -500,10 +508,21 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           <div className="tete-case"><span className="ico"><Ico n="horloge" t={21} /></span>
             {!!(vus.length || donnes.length) && <span className={'badge' + (vus.length ? '' : ' gris')}>{vus.length || donnes.length}</span>}</div>
           <div><h3>Mes derniers biens consultés</h3>
-            <p>{vus.length ? `${vus.length} attend${vus.length > 1 ? 'ent' : ''} votre avis` : 'Vos avis et vos retours'}</p></div>
+            <p>{vus.length
+              ? `${vus.length} bien${vus.length > 1 ? 's' : ''} attend${vus.length > 1 ? 'ent' : ''} votre avis`
+              : donnes.length
+                ? `${donnes.length} bien${donnes.length > 1 ? 's' : ''} déjà ouvert${donnes.length > 1 ? 's' : ''}, avec vos retours`
+                : 'Vos avis et vos retours'}</p></div>
+          {/* Un intitulé d'avis tout seul (« Je veux visiter ») ne veut rien dire :
+              on dit de quel bien il s'agit et qu'il s'agit de SON retour. */}
           {dernier && (
-            <div className="apercu"><span className="apl"><span className="pt">▣</span>
-              <b>{dernier.avis && AVIS[dernier.avis] ? AVIS[dernier.avis].n : 'En attente'}</b></span></div>
+            <div className="apercu">
+              <span className="apl"><span className="pt">▣</span>
+                <b>{dernier.avis && AVIS[dernier.avis]
+                  ? `${AVIS[dernier.avis].e} ${AVIS[dernier.avis].n}`
+                  : 'Votre avis est attendu'}</b></span>
+              <span className="apl-s">{dernier.avis ? 'Votre dernier retour · ' : 'Dernier bien ouvert · '}{dernier.titre}</span>
+            </div>
           )}
           <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
         </button>
@@ -540,15 +559,15 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       <div className="sep"><span>Votre chasseur</span><i /></div>
       <div className="chasseur">
         <div className="av">AR</div>
-        <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous tous les matins</p></div>
+        <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
         <a className="tel" href="tel:0658957632"><Ico n="tel" t={15} /> Appeler</a>
       </div>
 
       <div className="engage" style={{ marginTop: 12 }}>
         <div className="t">Mon engagement</div>
-        <div><span className="k"><Ico n="check" t={15} /></span><span>Une chasse tous les matins&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
+        <div><span className="k"><Ico n="check" t={15} /></span><span>Une recherche menée chaque jour&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
         <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
-        <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu avant la chasse du lendemain.</span></div>
+        <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
       </div>
 
       <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
@@ -616,9 +635,9 @@ function Marche({ passage, semaine, maxLues, aller }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
   return (
     <Vue icone="graph" titre="Le marché sur vos critères" aller={aller}
-      sous="Ce que la chasse a parcouru pour vous. Elle tourne tous les matins, sur les principaux portails immobiliers, notre carnet d'adresses de confrères et de partenaires, et notre base off-market.">
+      sous="Ce que nous avons parcouru pour vous. La recherche est menée chaque jour, sur les principaux portails immobiliers, notre carnet d'adresses de confrères et de partenaires, et notre base off-market.">
       <div className="entonnoir">
-        <div className="ent-t">Ce matin, sur vos critères</div>
+        <div className="ent-t">Au dernier passage, sur vos critères</div>
         {(() => {
           const lues = passage?.lues ?? 0;
           const ec = passage?.ecartees ?? 0;
@@ -645,7 +664,7 @@ function Marche({ passage, semaine, maxLues, aller }: any) {
           );
         })()}
       </div>
-      <p className="note">Chaque matin, la chasse relit l&apos;intégralité du marché sur vos critères.
+      <p className="note">Chaque jour, nous relisons l&apos;intégralité du marché sur vos critères.
         Ce qui ne correspond pas est écarté&nbsp;— vous ne voyez que ce qui mérite votre temps.</p>
       {semaine.length > 1 && (
         <div className="graphe">
@@ -1741,6 +1760,7 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   display:flex; align-items:center; justify-content:center}
 .apl .pt img{width:100%; height:100%; object-fit:cover}
 .apl b{color:var(--encre); font-weight:700}
+.apl-s{font-size:12px; color:var(--plume-clair); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:35px; margin-top:-3px}
 .mini{display:flex; align-items:flex-end; gap:4px; height:34px}
 .mini i{flex:1; background:var(--or-trait); border-radius:3px 3px 0 0; min-height:4px;
   animation:pousse .7s cubic-bezier(.16,1,.3,1) both; transform-origin:bottom}
