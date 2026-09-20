@@ -92,3 +92,49 @@
 .modalFooter { padding: 14px 22px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
 
 .mandatCompact { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+
+/* ═══ Critères de recherche — mode « étape par étape » ═══ */
+
+/* Bascule « Tout afficher » / « Étape par étape ». */
+.critBasc { display: inline-flex; background: #f1f5f9; border-radius: 10px; padding: 3px; gap: 3px; }
+.critBascBtn { border: none; background: transparent; color: #64748b; font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: background 0.18s, color 0.18s, box-shadow 0.18s; white-space: nowrap; }
+.critBascBtn:hover { color: #1a2332; }
+.critBascOn { background: white; color: #1a2332; box-shadow: 0 1px 3px rgba(15,22,35,0.12); }
+
+/* Frise : une pastille par étape, celle en cours s'ouvre pour afficher son nom. */
+.critFrise { display: flex; align-items: center; gap: 4px; padding: 14px 22px 0; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+.critFrise::-webkit-scrollbar { display: none; }
+.critPuce { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 9px; border-radius: 999px; border: 1.5px solid #e3e8f0; background: white; color: #94a3b8; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; overflow: hidden; max-width: 36px; transition: max-width 0.3s cubic-bezier(0.34,1.25,0.64,1), background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s; }
+.critPuce:hover { border-color: #c9a84c; }
+.critPuceIco { font-size: 15px; line-height: 1; flex-shrink: 0; }
+.critPuceTxt { white-space: nowrap; opacity: 0; transition: opacity 0.18s 0.08s; }
+.critPuceOn { max-width: 280px; border-color: #1a2332; background: #1a2332; color: white; box-shadow: 0 4px 12px rgba(26,35,50,0.22); }
+.critPuceOn .critPuceTxt { opacity: 1; }
+.critPuceFait { border-color: #e2cf9a; background: #fdf9ef; color: #9a7d2e; }
+.critTrait { flex: 1 1 10px; min-width: 10px; height: 2px; border-radius: 2px; background: #e3e8f0; transition: background 0.25s; }
+.critTraitFait { background: #d8bf76; }
+
+/* Panneau d'étape : glisse de la droite en « Suivant », de la gauche en « Précédent ». */
+@keyframes critAvant { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes critArriere { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: translateX(0); } }
+.critCorps { overflow-x: hidden; min-height: 300px; }
+.critPanneau { display: flex; flex-direction: column; gap: 14px; }
+.critAvant { animation: critAvant 0.3s cubic-bezier(0.22,0.8,0.3,1) both; }
+.critArriere { animation: critArriere 0.3s cubic-bezier(0.22,0.8,0.3,1) both; }
+
+/* En-tête de l'étape en cours. */
+.critEnTete { display: flex; align-items: center; gap: 12px; padding-bottom: 13px; border-bottom: 1px solid #e3e8f0; }
+.critEnTeteIco { width: 42px; height: 42px; border-radius: 13px; background: linear-gradient(135deg, #1a2332, #2f3f57); color: white; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(26,35,50,0.2); }
+.critEnTeteT { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 15.5px; color: #1a2332; letter-spacing: 0.3px; }
+.critEnTeteS { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.critCompteur { margin-left: auto; font-size: 10.5px; font-weight: 800; color: #c9a84c; letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0; }
+
+/* Pied de page en mode étapes : Précédent à gauche, Suivant / Sauvegarder à droite. */
+.critNav { justify-content: space-between; align-items: center; }
+.critNavD { display: flex; gap: 8px; align-items: center; }
+
+@media (max-width: 720px) {
+  .critFrise { padding: 12px 16px 0; }
+  .critPuceOn { max-width: 200px; }
+  .critEnTeteIco { width: 36px; height: 36px; border-radius: 11px; font-size: 17px; }
+}
