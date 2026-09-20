@@ -323,7 +323,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
-  const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
+  const [crit, setCrit] = useState({ types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '' });
   const [url, setUrl] = useState('');
@@ -371,7 +371,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
       budget_min: r.budget_min?.toString() || '', budget_max: r.budget_max?.toString() || '',
       surface_min: r.surface_min?.toString() || '', surface_max: r.surface_max?.toString() || '',
       nb_pieces_min: r.nb_pieces_min?.toString() || '', nb_pieces_max: r.nb_pieces_max?.toString() || '',
-      chambres_min: r.chambres_min?.toString() || '', secteurs: r.secteurs || [], notes: r.notes || '',
+      chambres_min: r.chambres_min?.toString() || '', secteurs: r.secteurs || [],
+      transport_minutes: r.transport_minutes?.toString() || '', transport_lignes: r.transport_lignes || [],
+      notes: r.notes || '',
       parking: r.parking || false, balcon: r.balcon || false, terrasse: r.terrasse || false, jardin: r.jardin || false,
       cave: r.cave || false, ascenseur: r.ascenseur || false, gardien: r.gardien || false,
       interphone: r.interphone || false, digicode: r.digicode || false,
@@ -491,6 +493,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
       nb_pieces_max: crit.nb_pieces_max ? parseInt(crit.nb_pieces_max) : null,
       chambres_min: crit.chambres_min ? parseInt(crit.chambres_min) : null,
       secteurs: crit.secteurs, notes: crit.notes || null,
+      transport_minutes: crit.transport_minutes ? parseInt(crit.transport_minutes) : null,
+      transport_lignes: crit.transport_lignes,
       parking: crit.parking, cave: crit.cave, balcon: crit.balcon,
       terrasse: crit.terrasse, jardin: crit.jardin, ascenseur: crit.ascenseur,
       gardien: crit.gardien, interphone: (crit as any).interphone || false,
@@ -1370,6 +1374,7 @@ Emilio Immobilier
                     {(cr.surface_min || cr.surface_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_min && cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : cr.surface_max ? `max ${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
                     {(cr.nb_pieces_min || cr.nb_pieces_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : cr.nb_pieces_max ? `max ${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
                     {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
+                    {(cr.transport_minutes || cr.transport_lignes?.length) ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{[cr.transport_minutes ? `${cr.transport_minutes} min à pied max` : null, cr.transport_lignes?.length ? cr.transport_lignes.join(' · ') : null].filter(Boolean).join(' — ')}</div></div> : null}
                     {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
                     {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
                     {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
@@ -2013,6 +2018,38 @@ Emilio Immobilier
               <div>
                 <label className={styles.lbl}>Secteurs / Quartiers</label>
                 <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
+              </div>
+              <div>
+                <label className={styles.lbl}>Transports</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, color: '#64748b' }}>À moins de</span>
+                  <input className={styles.inp} type="number" min={1} max={60} style={{ width: 90 }}
+                    value={crit.transport_minutes}
+                    onChange={e => setCrit(f => ({ ...f, transport_minutes: e.target.value }))}
+                    placeholder="10" />
+                  <span style={{ fontSize: 13, color: '#64748b' }}>minutes à pied d&apos;une station</span>
+                </div>
+                <input className={styles.inp}
+                  placeholder="Lignes ou stations souhaitées — ex : M9, Marcel Sembat, T2 (Entrée pour ajouter)"
+                  onKeyDown={e => {
+                    const v = (e.target as HTMLInputElement).value.trim();
+                    if (e.key === 'Enter' && v) {
+                      e.preventDefault();
+                      if (!crit.transport_lignes.includes(v)) setCrit(f => ({ ...f, transport_lignes: [...f.transport_lignes, v] }));
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }} />
+                {crit.transport_lignes.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {crit.transport_lignes.map(l => (
+                      <span key={l} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #e3e8f0', background: '#f8fafc', color: '#1a2332', fontWeight: 600 }}>
+                        {l} <span onClick={() => setCrit(f => ({ ...f, transport_lignes: f.transport_lignes.filter(x => x !== l) }))}
+                          style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Ce critère est relu à chaque chasse — il ne filtre pas automatiquement.</div>
               </div>
               <div className={styles.formRow}>
                 <div>
