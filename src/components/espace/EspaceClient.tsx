@@ -317,11 +317,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       await envoyer('criteres', { criteres: nv });
       /* La note est celle du chasseur : le client ne la réécrit pas, il demande. */
       if (demandeNote) await envoyer('message', { texte: 'Demande sur la note de la recherche : ' + demandeNote });
-      montrer(<GrandOk titre="Vos critères sont à jour"
-        texte="Merci d'avoir pris le temps de les préciser. Votre recherche est modifiée dès à présent, et la chasse de demain matin partira sur ces nouvelles bases."
+      montrer(<GrandOk titre="C'est enregistré, merci"
+        texte="Merci d'avoir pris le temps de mettre à jour vos critères. Votre conseiller en est informé : il les intègre à votre recherche, et les biens qui vous seront proposés à partir de maintenant tiendront compte de ces changements. Si un point mérite d'être précisé de vive voix, il vous rappelle."
         rappel={[
-          changements.length ? '<b>Ce qui a changé :</b><br>' + changements.join(' · ') : 'Alexandre est prévenu du changement.',
-          demandeNote ? 'Votre demande sur ses précisions lui a été transmise.' : '',
+          changements.length ? '<b>Ce qui a changé :</b><br>' + changements.join(' · ') : 'Votre conseiller est prévenu du changement.',
+          demandeNote ? 'Votre demande concernant ses précisions lui a également été transmise.' : '',
         ].filter(Boolean).join('<br><br>')}
         onFermer={fermer} />);
     }} />, 'pleine');
@@ -331,8 +331,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     montrer(<Message onFermer={fermer} onEnvoi={async (texte: string) => {
       await envoyer('message', { texte });
       montrer(<GrandOk titre="Votre message est bien parti"
-        texte="Alexandre vient d'être prévenu. Il relit vos précisions et vous recontacte rapidement pour en parler avec vous."
-        rappel="En attendant, la chasse continue tous les matins sur vos critères actuels."
+        texte="Votre conseiller vient d'en être informé. Il le lit et vous recontacte rapidement pour en parler avec vous."
+        rappel="En attendant, la recherche continue tous les matins sur vos critères actuels."
         onFermer={fermer} />);
     }} />);
   }
