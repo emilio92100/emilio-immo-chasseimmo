@@ -511,8 +511,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                       <h3>{g.titre}</h3>
                       <span className={'n' + (g.id === 'attente' ? ' or' : '')}>{par[g.id].length}</span>
                     </div>
-                    {g.note && <div className="relance"><Ico n="horloge" t={18} /><span>{g.note}</span></div>}
-                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
+                    {/* Le mot d'explication et les biens qu'il vise sont dans le
+                        même cadre : sinon on ne sait pas de quoi il parle. */}
+                    {g.note ? (
+                      <div className={'gr-cadre' + (g.id === 'attente' ? ' urgent' : '')}>
+                        <div className="gr-note"><Ico n="horloge" t={17} /><span>{g.note}</span></div>
+                        <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
+                      </div>
+                    ) : (
+                      <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
+                    )}
                   </div>
                 ))}
               </>)}
@@ -588,11 +596,14 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           <div className="tete-case"><span className="ico"><Ico n="horloge" t={21} /></span>
             {!!(vus.length || donnes.length) && <span className={'badge' + (vus.length ? '' : ' gris')}>{vus.length || donnes.length}</span>}</div>
           <div><h3>Mes derniers biens consultés</h3>
-            <p>{vus.length
-              ? `${vus.length} bien${vus.length > 1 ? 's' : ''} attend${vus.length > 1 ? 'ent' : ''} votre avis`
-              : donnes.length
+            {vus.length ? (
+              /* Une demande d'action ne se met pas en gris clair : elle s'annonce. */
+              <span className="alerte-avis">⏳ {vus.length} bien{vus.length > 1 ? 's' : ''} attend{vus.length > 1 ? 'ent' : ''} votre avis</span>
+            ) : (
+              <p>{donnes.length
                 ? `${donnes.length} bien${donnes.length > 1 ? 's' : ''} déjà ouvert${donnes.length > 1 ? 's' : ''}, avec vos retours`
-                : 'Vos avis et vos retours'}</p></div>
+                : 'Vos avis et vos retours'}</p>
+            )}</div>
           {/* Un intitulé d'avis tout seul (« Je veux visiter ») ne veut rien dire :
               on dit de quel bien il s'agit et qu'il s'agit de SON retour. */}
           {dernier && (
@@ -2507,18 +2518,44 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 
 
 /* ═══ Biens consultés : filtres et groupes ═══ */
-.filtres{display:flex; gap:7px; overflow-x:auto; padding-bottom:4px; margin-bottom:4px;
+/* Un seul bandeau, les choix collés les uns aux autres : c'est un même
+   réglage à plusieurs positions, pas six boutons indépendants. */
+.filtres{display:flex; gap:2px; overflow-x:auto; margin-bottom:4px; padding:4px;
+  background:var(--fond); border:1px solid var(--trait); border-radius:99px;
   scrollbar-width:none; -webkit-overflow-scrolling:touch}
 .filtres::-webkit-scrollbar{display:none}
 .fc{flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; border-radius:99px;
-  padding:8px 13px; font-family:inherit; font-size:12.5px; font-weight:700; white-space:nowrap;
-  background:var(--carte); border:1.5px solid var(--trait); color:var(--plume);
-  transition:background .16s, border-color .16s, color .16s}
+  padding:8px 14px; font-family:inherit; font-size:12.5px; font-weight:700; white-space:nowrap;
+  background:transparent; border:none; color:var(--plume);
+  transition:background .18s, color .18s}
+.fc:hover{background:rgba(255,255,255,.72); color:var(--encre)}
 .fc .fe{font-size:13px; line-height:1}
-.fc i{font-style:normal; font-size:11px; font-weight:800; background:var(--fond); color:var(--plume-clair);
-  border-radius:99px; padding:1px 7px}
-.fc.on{background:var(--encre); border-color:var(--encre); color:#fff}
-.fc.on i{background:rgba(255,255,255,.16); color:#fff}
+.fc i{font-style:normal; font-size:11px; font-weight:800; background:rgba(148,163,184,.2);
+  color:var(--plume-clair); border-radius:99px; padding:1px 7px}
+.fc.on{background:var(--encre); color:#fff; box-shadow:0 4px 10px -6px rgba(16,24,40,.9)}
+.fc.on i{background:rgba(255,255,255,.18); color:#fff}
+.fc.on:hover{background:var(--encre); color:#fff}
+/* Sur un écran étroit, le bandeau passe sur deux lignes plutôt que de cacher
+   la moitié des choix derrière un défilement qui ne se voit pas. */
+@media(max-width:560px){
+  .filtres{flex-wrap:wrap; overflow:visible; border-radius:22px; gap:3px}
+  .fc{padding:7px 12px; font-size:12px}
+}
+
+/* Le message d'un groupe et ses biens, dans un même cadre. */
+.gr-cadre{border:1px solid var(--trait); border-radius:18px; padding:12px; background:var(--carte);
+  display:flex; flex-direction:column; gap:11px}
+.gr-cadre.urgent{border-color:var(--or-trait); background:var(--or-fond)}
+.gr-note{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.55;
+  color:var(--plume); padding:2px 3px 0}
+.gr-cadre.urgent .gr-note{color:var(--or-fonce)}
+.gr-note svg{flex:0 0 auto; margin-top:1px}
+
+/* La demande d'avis sur la carte d'accueil. */
+.alerte-avis{display:inline-flex; align-items:flex-start; gap:6px; margin-top:3px;
+  background:var(--ambre-fond); border:1px solid var(--ambre-trait); color:var(--ambre);
+  border-radius:12px; padding:6px 10px; font-size:12px; font-weight:800; line-height:1.38}
+.case.large .alerte-avis, .vue-large .alerte-avis{border-radius:99px; padding:5px 12px; font-size:12.5px}
 .groupe + .groupe{margin-top:26px}
 .bloc-titre .ge{font-size:16px; line-height:1}
 .etiq.fait{background:var(--or-fond); color:var(--or-fonce); border-color:var(--or-trait)}
