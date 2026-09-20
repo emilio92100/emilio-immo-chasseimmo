@@ -545,7 +545,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             );
           })()}
           {vue === 'marche' && (
-            <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} biens={biens} crit={crit} />
+            <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} biens={biens} crit={crit}
+              onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'recherche' && (
             <Recherche crit={crit} aller={aller} onCriteres={ouvrirCriteres} onMessage={ouvrirMessage} />
@@ -765,13 +766,15 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
   );
 }
 
-function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
+function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
   const lues = passage?.totalLues ?? 0;
-  const ret = passage?.totalRetenues ?? 0;
   const nbRech = passage?.nbPassages ?? 0;
-  /* « 1 sur 40 » : on le dit dans l'autre sens, celui qui parle — combien on
-     écarte pour en garder une. */
+  /* Le nombre de biens retenus, c'est le nombre de biens posés dans l'espace,
+     point. Pas le compteur interne de la veille : les deux se mettent à
+     diverger dès qu'un bien est ajouté à la main, et le client se retrouvait
+     avec deux chiffres différents sur la même page. */
+  const ret = (biens || []).length;
   const sur = ret > 0 ? Math.round(lues / ret) : 0;
 
   const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
@@ -800,21 +803,27 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
           <div className="tuiles">
             <div className="tu">
               <span className="tu-i"><Ico n="note" t={19} /></span>
-              <span className="tu-c"><b className="tab">{lues.toLocaleString('fr-FR')}</b>
+              <span className="tu-c">
+                <b className="tab"><span className="nv">{lues.toLocaleString('fr-FR')}<BtnAide cle="lues" onAide={onAide} /></span></b>
                 <span>annonce{lues > 1 ? 's' : ''} lue{lues > 1 ? 's' : ''}</span></span></div>
             <div className="tu">
               <span className="tu-i"><Ico n="loupe" t={19} /></span>
-              <span className="tu-c"><b className="tab">{nbRech.toLocaleString('fr-FR')}</b>
-                <span>recherche{nbRech > 1 ? 's' : ''} lancée{nbRech > 1 ? 's' : ''}</span></span></div>
+              <span className="tu-c">
+                <b className="tab"><span className="nv">{nbRech.toLocaleString('fr-FR')}<BtnAide cle="recherches" onAide={onAide} /></span></b>
+                <span>recherche{nbRech > 1 ? 's' : ''} menée{nbRech > 1 ? 's' : ''} par nous</span></span></div>
             <div className="tu or">
               <span className="tu-i"><Ico n="etoile" t={19} /></span>
-              <span className="tu-c"><b className="tab">{ret.toLocaleString('fr-FR')}</b>
+              <span className="tu-c">
+                <b className="tab"><span className="nv">{ret.toLocaleString('fr-FR')}<BtnAide cle="retenus" onAide={onAide} /></span></b>
                 <span>bien{ret > 1 ? 's' : ''} retenu{ret > 1 ? 's' : ''} pour vous</span></span></div>
           </div>
           {sur > 1 && (
             <div className="gr-note">
-              Autrement dit&nbsp;: sur <b>{sur.toLocaleString('fr-FR')} annonces</b>, <b>une seule</b> vous est présentée.
-              Les {(sur - 1).toLocaleString('fr-FR')} autres sont écartées avant d&apos;arriver jusqu&apos;à vous.
+              <span>Sur les <b>{lues.toLocaleString('fr-FR')} annonces</b> que nous avons lues depuis l&apos;ouverture
+                de votre dossier, <b>{ret.toLocaleString('fr-FR')}</b> {ret > 1 ? 'ont' : 'a'} été
+                retenue{ret > 1 ? 's' : ''} et déposée{ret > 1 ? 's' : ''} ici&nbsp;— soit
+                <b> une sur {sur.toLocaleString('fr-FR')}</b>. Tout le reste a été écarté avant d&apos;arriver
+                jusqu&apos;à vous.</span>
             </div>
           )}
         </div>
@@ -837,17 +846,17 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
               <>
                 <div className="ent">
                   <div className="ent-h"><b className="tab">{l || '—'}</b>
-                    <span>annonce{l > 1 ? 's' : ''} lue{l > 1 ? 's' : ''} sur le marché</span></div>
+                    <span>annonce{l > 1 ? 's' : ''} lue{l > 1 ? 's' : ''} lors de cette recherche</span></div>
                   <div className="ent-b"><i style={{ width: '100%' }} /></div>
                 </div>
                 <div className="ent">
                   <div className="ent-h"><b className="tab pale">{ec || '—'}</b>
-                    <span>écartée{ec > 1 ? 's' : ''}</span></div>
+                    <span className="nv-l">écartée{ec > 1 ? 's' : ''}<BtnAide cle="ecartees" onAide={onAide} /></span></div>
                   <div className="ent-b"><i className="pale" style={{ width: pc(ec) + '%' }} /></div>
                 </div>
                 <div className="ent">
                   <div className="ent-h"><b className="tab or">{re || '—'}</b>
-                    <span className="or">retenue{re > 1 ? 's' : ''} et déposée{re > 1 ? 's' : ''} dans votre espace</span></div>
+                    <span className="or">retenue{re > 1 ? 's' : ''} ce jour-là, et ajoutée{re > 1 ? 's' : ''} à votre espace</span></div>
                   <div className="ent-b"><i className="or" style={{ width: pc(re) + '%' }} /></div>
                 </div>
               </>
@@ -855,9 +864,9 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
           })()}
         </div>
         <div className="gr-note">
-          Une annonce est écartée dès qu&apos;<b>un seul</b> de vos critères n&apos;est pas respecté&nbsp;:
-          le budget, la surface, le nombre de pièces, le secteur, l&apos;étage… Nous ne vous montrons
-          que ce qui passe tout.
+          <span>Il suffit qu&apos;<b>un seul</b> de vos critères ne soit pas respecté pour qu&apos;une annonce
+            soit écartée&nbsp;: le budget, la surface, le nombre de pièces, le secteur, l&apos;étage…
+            Vous ne voyez ici que ce qui les passe tous.</span>
         </div>
       </div>
 
@@ -867,7 +876,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
           <div className="gr-tete">
             <span className="ge"><Ico n="maison" t={16} /></span>
             <h3>Les biens retenus pour vous</h3>
-            <span className="gn">{prix.length}</span>
+            <span className="gn">{ret}</span>
           </div>
           <div className="tuiles">
             <div className="tu">
@@ -879,16 +888,18 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
             {moyM2 > 0 && (
               <div className="tu">
                 <span className="tu-i"><Ico n="regle" t={19} /></span>
-                <span className="tu-c"><b className="tab">{moyM2.toLocaleString('fr-FR')} €</b>
+                <span className="tu-c">
+                  <b className="tab"><span className="nv">{moyM2.toLocaleString('fr-FR')} €<BtnAide cle="m2" onAide={onAide} /></span></b>
                   <span>du m² en moyenne</span></span></div>
             )}
           </div>
           <div className="gr-note">
-            Ce sont les {prix.length} biens déposés dans votre espace depuis l&apos;ouverture de votre dossier.
-            {bmax > 0 && (sous === prix.length
-              ? <> Tous tiennent dans votre budget de <b>{EUR(bmax)}</b>.</>
-              : <> <b>{sous} sur {prix.length}</b> tiennent dans votre budget de {EUR(bmax)}&nbsp;; les autres
-                vous ont été montrés parce qu&apos;ils le valaient.</>)}
+            <span>Ces trois chiffres viennent des biens déposés dans votre espace, et sont recalculés
+              à chaque nouveau bien&nbsp;: ils ne peuvent pas être périmés.
+              {bmax > 0 && (sous === prix.length
+                ? <> Tous tiennent dans votre budget de <b>{EUR(bmax)}</b>.</>
+                : <> <b>{sous} sur {prix.length}</b> tiennent dans votre budget de {EUR(bmax)}&nbsp;; les autres
+                  vous ont été montrés parce qu&apos;ils le valaient.</>)}</span>
           </div>
         </div>
       )}
@@ -898,12 +909,14 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
         <div className="gr-tete">
           <span className="ge"><Ico n="calendrier" t={16} /></span>
           <h3>Jour après jour</h3>
-          {semaine.length > 1 && <span className="gn">{total} cette semaine</span>}
+          <BtnAide cle="rythme" onAide={onAide} />
         </div>
         {semaine.length > 1 ? (
           <>
-            <div className="gr-note">Chaque barre, c&apos;est le nombre d&apos;annonces parcourues ce jour-là
-              sur vos secteurs et votre budget. La barre dorée est celle d&apos;aujourd&apos;hui.</div>
+            <div className="gr-note"><span><b>{total.toLocaleString('fr-FR')} annonces</b> parcourues sur
+              les {semaine.length} derniers jours de recherche. Chaque barre, c&apos;est ce que nous avons
+              regardé ce jour-là sur vos secteurs et votre budget&nbsp;; la dorée est celle
+              d&apos;aujourd&apos;hui.</span></div>
             <div className="barres">
               {semaine.map((d: any, i: number) => {
                 const j = d.quand ? JOURS[new Date(d.quand).getDay()] : '·';
@@ -1915,6 +1928,51 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
       'Ce total ne fait que monter, un peu plus à chaque journée de recherche.',
     ],
   },
+  recherches: {
+    ico: 'loupe', sur: 'Notre travail', titre: 'Ce que veut dire « recherche menée »',
+    texte: "C'est le nombre de fois où nous avons repris votre dossier et repassé le marché en revue.",
+    puces: [
+      'C’est nous qui la lançons, pas vous : vous n’avez rien à déclencher, rien à surveiller.',
+      'Une recherche, c’est un tour complet : les portails, les annonces de confrères, notre carnet d’adresses et notre base off-market, filtrés sur vos critères à vous.',
+      'Elle est reprise chaque jour, y compris les jours où rien ne sort : c’est ce qui fait monter ce compteur.',
+    ],
+  },
+  retenus: {
+    ico: 'etoile', sur: 'Ce qui vous arrive', titre: 'Ce que veut dire « bien retenu pour vous »',
+    texte: "C'est le nombre de biens que nous avons jugés dignes de vous être montrés, et que vous retrouvez dans cet espace.",
+    puces: [
+      'Un bien n’arrive ici que s’il passe tous vos critères — ou s’il en vaut vraiment la peine, et nous vous disons alors pourquoi.',
+      'C’est exactement ce que vous avez sous les yeux : ce chiffre est le nombre de biens présents dans votre espace, ni plus ni moins.',
+      'Il monte lentement, et c’est normal : c’est le signe qu’on ne vous envoie pas tout et n’importe quoi.',
+    ],
+  },
+  ecartees: {
+    ico: 'croix', sur: 'Le tri', titre: 'Ce que veut dire « écartée »',
+    texte: "Une annonce écartée est une annonce que nous avons lue et qui ne correspondait pas à votre recherche.",
+    puces: [
+      'Il suffit qu’un seul de vos critères ne soit pas respecté : le budget dépassé, la surface trop juste, le mauvais secteur, un étage sans ascenseur…',
+      'Nous ne les gardons pas une par une : ce qui est conservé, c’est le compte, pour que vous voyiez le volume de tri fait pour vous.',
+      'Si vous trouvez qu’on écarte trop, ou pas assez, dites-le : vos critères se modifient depuis « Rappel de ma recherche ».',
+    ],
+  },
+  m2: {
+    ico: 'regle', sur: 'Vos repères', titre: 'Ce que veut dire « du m² en moyenne »',
+    texte: "C'est la moyenne du prix au mètre carré des biens présents dans votre espace.",
+    puces: [
+      'Elle est calculée sur vos biens à vous, pas sur une statistique de quartier : elle dit le prix du marché tel que vous le rencontrez.',
+      'Elle est recalculée à chaque bien déposé : elle ne peut pas être périmée.',
+      'Elle sert de repère pour situer un bien : nettement en dessous, il y a souvent une raison ; nettement au-dessus, elle doit se justifier.',
+    ],
+  },
+  rythme: {
+    ico: 'calendrier', sur: 'Le rythme', titre: 'Ce que montre « jour après jour »',
+    texte: "Chaque barre, c'est le nombre d'annonces que nous avons parcourues ce jour-là sur vos critères.",
+    puces: [
+      'Les barres bougent d’un jour à l’autre : le marché ne sort pas le même volume tous les jours, le lundi et le samedi n’ont rien à voir.',
+      'Une barre basse ne veut pas dire qu’on a moins travaillé : elle veut dire qu’il est sorti moins d’annonces à regarder.',
+      'La barre dorée est celle d’aujourd’hui.',
+    ],
+  },
   jours: {
     ico: 'horloge', sur: 'Votre dossier', titre: 'Ce que veut dire « jours de suivi »',
     texte: "C'est le nombre de jours écoulés depuis l'ouverture de votre dossier chez nous.",
@@ -2824,7 +2882,7 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   border-bottom:1px solid var(--trait)}
 .gr-tete .ge{font-size:17px; line-height:1}
 .gr-tete h3{margin:0; font-size:15.5px; font-weight:800; letter-spacing:-.2px}
-.gr-tete .gn{margin-left:auto; font-size:11.5px; font-weight:800; border-radius:99px; padding:2px 9px;
+.gr-tete .gn{margin-left:auto; white-space:nowrap; font-size:11.5px; font-weight:800; border-radius:99px; padding:2px 9px;
   background:var(--fond); color:var(--plume)}
 .gr-note{font-size:12.5px; line-height:1.55; color:var(--plume); padding:1px 3px 0}
 
@@ -2937,9 +2995,13 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 
 
 /* ═══ La page « marché » : des blocs colorés, pas des tableaux blancs ═══ */
+/* Le chapeau chevauche la première carte : il la coiffe au lieu de la
+   toucher. Sans ça, deux bords se collaient et ça faisait bavure. */
 .intro-m{display:flex; gap:12px; align-items:flex-start; margin-top:16px; background:var(--carte);
-  border:1px solid var(--trait); border-radius:18px; padding:14px 16px; box-shadow:var(--ombre);
-  font-size:13.5px; line-height:1.65; color:var(--plume)}
+  border:1px solid var(--trait); border-radius:18px; padding:15px 16px 16px; box-shadow:var(--ombre-f);
+  font-size:13.5px; line-height:1.65; color:var(--plume);
+  position:relative; z-index:2; margin-bottom:-22px}
+.intro-m + .gr-cadre{padding-top:34px}
 .im-i{flex:0 0 auto; width:32px; height:32px; border-radius:10px; display:flex;
   align-items:center; justify-content:center; background:var(--fond); color:var(--plume)}
 
@@ -2981,6 +3043,16 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
    différentes, c'était un arc-en-ciel : ici le fond se tait et l'or
    ne souligne que le chiffre qui compte. */
 .gr-cadre.c-net{border-color:var(--trait); background:var(--carte); box-shadow:var(--ombre)}
+/* La note de bas de carte est un commentaire, pas la suite du contenu :
+   un filet et de l'air la détachent de ce qu'elle explique. */
+.gr-cadre.c-net .tuiles + .gr-note,
+.gr-cadre.c-net .entonnoir + .gr-note{margin-top:15px; padding-top:13px; border-top:1px solid var(--trait)}
+.gr-cadre.c-net .gr-tete + .gr-note{margin-top:13px}
+/* le « ? » se pose en exposant, à droite du chiffre, sans le décentrer */
+.tu .nv, .nv-l{position:relative; display:inline-block}
+.tu .nv .aide-pt{position:absolute; left:100%; top:-4px; margin-left:4px}
+.nv-l .aide-pt{position:absolute; left:100%; top:-1px; margin-left:5px}
+.gr-tete .aide-pt{margin-left:-4px}
 .gr-cadre.c-net .gr-tete{border-color:var(--trait); background:none; padding-bottom:12px}
 .gr-cadre.c-net .gr-tete h3{color:var(--encre)}
 .gr-cadre.c-net .gr-note{color:var(--plume)}
