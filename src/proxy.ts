@@ -10,6 +10,8 @@ import type { NextRequest } from 'next/server';
  * Tout est protégé SAUF :
  *  - /login et /api/login          (sinon on boucle)
  *  - /bien/...                     (fiches publiques envoyées aux clients)
+ *  - /espace/...                   (l'espace acheteur, protégé par son propre lien)
+ *  - /api/espace/...               (ce que cet espace écrit : chaque route vérifie le lien)
  *  - les fichiers statiques
  */
 
@@ -17,7 +19,7 @@ const COOKIE = 'emilio_acces';
 
 // Chemins accessibles sans code
 const PUBLIC_PATHS = ['/login', '/api/login'];
-const PUBLIC_PREFIXES = ['/bien/'];
+const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/'];
 
 async function sha256(texte: string): Promise<string> {
   const data = new TextEncoder().encode(texte);
