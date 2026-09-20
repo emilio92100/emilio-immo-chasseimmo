@@ -222,12 +222,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
         await supabase.from('recherches').update(maj).eq('id', recherche.id);
 
+        /* Ce résumé est ce qu'Alexandre lit dans « Historique client » : il doit
+           dire en une ligne ce que le client a touché, pas seulement le budget. */
+        const eur = (v: unknown) => Number(v).toLocaleString('fr-FR') + ' €';
         const resume = [
-          maj.budget_min && maj.budget_max
-            ? `budget ${Number(maj.budget_min).toLocaleString('fr-FR')} – ${Number(maj.budget_max).toLocaleString('fr-FR')} €` : null,
+          maj.type_bien ? `type : ${maj.type_bien}` : null,
+          maj.budget_min && maj.budget_max ? `budget ${eur(maj.budget_min)} – ${eur(maj.budget_max)}`
+            : maj.budget_max ? `budget jusqu'à ${eur(maj.budget_max)}` : null,
           maj.surface_min ? `${maj.surface_min} m² min` : null,
+          maj.surface_max ? `${maj.surface_max} m² max` : null,
           maj.nb_pieces_min ? `${maj.nb_pieces_min} pièces min` : null,
           maj.chambres_min != null ? `${maj.chambres_min} chambres min` : null,
+          maj.etage_min || maj.etage_max || maj.etage_max_sans_ascenseur ? 'étage' : null,
+          maj.exposition_souhaitee ? `exposition ${maj.exposition_souhaitee}` : null,
+          'exigences' in maj ? 'équipements' : null,
+          maj.cuisine_type ? `cuisine ${maj.cuisine_type}` : null,
+          maj.dpe_max ? `DPE ${maj.dpe_max} max` : null,
+          Array.isArray(maj.secteurs) ? `${(maj.secteurs as string[]).length} secteurs` : null,
+          Array.isArray(maj.transport_arrets)
+            ? ((maj.transport_arrets as { nom: string; minutes: number }[]).length
+              ? 'transports : ' + (maj.transport_arrets as { nom: string; minutes: number }[]).map(a => `${a.nom} (${a.minutes} min)`).join(', ')
+              : 'plus de contrainte de transport') : null,
+          maj.apport ? `apport ${eur(maj.apport)}` : null,
+          maj.financement ? `financement ${maj.financement}` : null,
+          maj.urgence ? `échéance ${maj.urgence}` : null,
         ].filter(Boolean).join(' · ');
 
         await supabase.from('journal').insert({
