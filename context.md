@@ -1,516 +1,640 @@
-# CONTEXTE PROJET — Emilio Immobilier
-## CRM Immobilier sur mesure — Version 3.2
-### Mis à jour le 30 juin 2026
+# CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-> **⚡ Nouveauté majeure V3.0 : architecture multi-recherches.** Un client peut désormais avoir **plusieurs recherches en parallèle** (ex. RP Paris + invest Lyon), chacune avec ses propres critères, biens, visites et envois. Voir §13 pour les détails. Formulaire de création refondu en assistant 3 étapes. Onglets Historique + Journal fusionnés en « Suivi ».
+**Version 3.3 · 20 septembre 2026**
 
-> **🆕 Session 30 juin 2026 (V3.2).** Reformulation IA fiabilisée (endpoint dédié `/api/reformuler-bien` + reformulation auto à la création, retrait du nom de confrère). Prix sourcé = prix affiché en gros (jamais le « hors honoraires »). Onglet Suivi refondu (filtres par type d'action, défaut « Appels », actions rattachables à un bien via `journal.bien_id`). Badges critères corrigés sur les listes Clients + Recherche en cours (lecture depuis `recherches`). En-têtes de blocs de la fiche bien publique en étiquette dorée « à cheval ». Détails en §12.
+Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
+Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
 
 ---
 
-## 0. IDENTITÉ & VISION
+## 0. En deux minutes
 
-| Champ | Valeur |
+Alexandre Rogelet dirige **Emilio Immobilier**, agence indépendante sur Paris et les Hauts-de-Seine
+(carte professionnelle CPI 9201 2020 000 045 344). Il fait de la vente classique et de la
+**chasse immobilière** : un acquéreur lui confie une recherche, il écume le marché pour lui.
+
+Ce dépôt est le CRM sur mesure qui remplace Immofacile — sauf pour la diffusion portails, qui reste
+sur Immofacile faute de partenariats techniques reproductibles.
+
+L'outil a **trois faces** :
+
+| Face | Adresse | Qui la voit |
+|---|---|---|
+| Le CRM | `/` — derrière un code d'accès | Alexandre seul |
+| La fiche d'un bien | `/bien/<id>` — publique | Toute personne ayant le lien |
+| L'espace acheteur | `/espace/<token>` — publique | Le client, via son lien privé |
+
+Ce dépôt n'a **aucun rapport** avec Verimo (SaaS d'analyse de documents) ni avec les comptes
+Tonton Immo / Emilio Immo (réseaux sociaux).
+
+---
+
+## 1. Stack et accès
+
+| Service | Usage |
 |---|---|
-| Fondateur | Alexandre ROGELET |
-| Entreprise | Emilio Immobilier |
-| Email | arogelet@emilio-immo.com |
-| Téléphone | 06 58 95 76 32 |
-| Activité | Agence immobilière — Paris & 92 (vente + chasse immobilière) |
+| Next.js **16.2.3** + TypeScript | Framework |
+| Vercel | Hébergement · https://emilio-immo-chasseimmo.vercel.app |
+| Supabase | Base de données + Storage · projet `eutxmrdcykztjdyydmuo` |
+| GitHub | `emilio92100/emilio-immo-chasseimmo` |
+| Claude API | Extraction d'annonces + reformulation |
+| Mailjet | Email transactionnel |
+| geo.api.gouv.fr · api-adresse.data.gouv.fr | Autocomplétion communes et adresses |
 
-### Contexte métier
-Emilio Immobilier est une agence immobilière qui fait de la **vente classique** (mandats vendeurs, mise en vente de biens) et de la **chasse immobilière** (mandats de recherche pour acquéreurs). Un client peut être vendeur, acheteur, ou les deux.
+**Polices** : Plus Jakarta Sans (titres) · DM Sans (corps), toutes deux importées dans
+`src/styles/globals.css`. ⚠️ La fiche bien publique déclare `Inter` dans sa pile de polices mais
+**ne la charge nulle part** : en pratique elle s'affiche dans la police système.
+Elle tire par ailleurs les icônes Tabler d'un CDN tiers (`cdn.jsdelivr.net`, version `@latest`
+non épinglée) — sur une page vue par les clients.
+**Storage** : un seul bucket, `photos-biens` (public). Les PDF y sont aussi déposés, sous le préfixe
+`pdf/` — le nom du bucket est donc trompeur.
 
-### Pourquoi ce CRM custom
-Le CRM actuel (Immofacile) ne convient pas en termes d'UX et de design. L'objectif est de **remplacer Immofacile** par ce CRM sur mesure, beau, fluide et adapté au workflow réel de l'agence. Immofacile est conservé **uniquement pour la diffusion portails** car ces portails nécessitent des partenariats techniques non reproductibles par un développeur indépendant.
+**Variables d'environnement Vercel** : `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` ·
+`SUPABASE_SERVICE_ROLE_KEY` · `ANTHROPIC_API_KEY` · `MAILJET_API_KEY` · `MAILJET_API_SECRET` ·
+`MAILJET_FROM_EMAIL` · `MAILJET_FROM_NAME` · `NEXT_PUBLIC_SITE_URL` · `EMILIO_ACCESS_CODE`.
 
-### Périmètre du CRM
-- **Gestion clients** : acquéreurs, vendeurs, ou les deux — avec critères de recherche (acquéreurs) et biens en mandat (vendeurs)
-- **Gestion biens** : biens sourcés (pour la chasse) + biens en mandat (propres à l'agence)
-- **Visites, transactions, suivi complet** du cycle de vie
-- **Communication** : mails Mailjet + fiches publiques visuelles
-- **Dashboard & statistiques**
-- ❌ **PAS de diffusion portails** — reste sur Immofacile
+### Le portail d'accès — `src/proxy.ts`
 
-### Ce qui n'a aucun rapport
-Ce CRM est indépendant de Verimo (SaaS d'analyse) et Tonton/Emilio Immo (réseaux sociaux).
+Next 16 a renommé `middleware.ts` en **`proxy.ts`**, placé dans `src/` au même niveau que `app/`,
+et l'export s'appelle `proxy()`. Tout est derrière un code d'accès unique (cookie `emilio_acces`,
+haché en SHA-256, code dans `EMILIO_ACCESS_CODE`), **sauf** :
 
----
+- `PUBLIC_PATHS = ['/login', '/api/login']`
+- `PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/']`
 
-## 1. STACK TECHNIQUE
+⚠️ **Toute nouvelle route publique doit être ajoutée là**, sinon elle redirige vers `/login`.
 
-| Service | Usage | Statut |
-|---|---|---|
-| Next.js 16 + TypeScript | Framework frontend | ✅ Déployé |
-| Vercel | Hébergement | ✅ Actif |
-| Supabase | Base de données + Storage | ✅ Connecté |
-| GitHub | Repo source | ✅ emilio92100/emilio-immo-chasseimmo |
-| Claude API (Anthropic) | Extraction texte + reformulation | ✅ Clé configurée Vercel |
-| Mailjet | Email transactionnel | ✅ Configuré + DNS validé |
-| geo.api.gouv.fr | Autocomplétion villes/communes | ✅ Intégré |
-| api-adresse.data.gouv.fr | Autocomplétion adresse client (création) | ✅ Intégré (V3) |
+### Couleurs
 
-**URL prod :** https://emilio-immo-chasseimmo.vercel.app
-**Polices :** Plus Jakarta Sans (titres) + DM Sans (corps) + Inter (page publique bien)
-
-### Supabase
-- Project ID : eutxmrdcykztjdyydmuo
-- Bucket Storage : `photos-biens` (public) ✅
-- Env vars Vercel : NEXT_PUBLIC_SUPABASE_URL ✅ · NEXT_PUBLIC_SUPABASE_ANON_KEY ✅ · ANTHROPIC_API_KEY ✅ · SUPABASE_SERVICE_ROLE_KEY ✅ · **MAILJET_API_KEY ✅** · **MAILJET_API_SECRET ✅** · **MAILJET_FROM_EMAIL ✅** · **MAILJET_FROM_NAME ✅** · **NEXT_PUBLIC_SITE_URL ✅**
-
-### Mailjet — Configuration (session 26 mai 2026)
-- Domaine `emilio-immo.com` validé dans Mailjet ✅
-- Adresse d'envoi `arogelet@emilio-immo.com` validée et opérationnelle (envois en prod OK)
-- **DNS OVH configurés** :
-  - TXT validation domaine : `mailjet._57401e37`
-  - SPF (type TXT, pas SPF !) : `v=spf1 include:mx.ovh.com include:spf.mailjet.com -all`
-  - DKIM : `mailjet._domainkey`
-- Coexistence avec Roundcube OVH : maintenue via `include:mx.ovh.com`
-- ⚠️ **Piège DNS résolu** : OVH avait par défaut un type **SPF** (déprécié RFC 7208) — recréer en **TXT** pour que Mailjet le reconnaisse
-
-### Délivrabilité Mailjet — RÉSOLU (session 2 juin 2026)
-- **DMARC ajouté** dans OVH (formulaire type DMARC → enregistre un TXT sur `_dmarc`) : `v=DMARC1; p=none; pct=100; rua=mailto:arogelet@emilio-immo.com; sp=none; aspf=r`
-- **Suivi désactivé** dans `/api/send-mail` (`TrackOpens: 'disabled'` + `TrackClicks: 'disabled'`) → supprime pixel de tracking + réécriture des liens = moins de signaux "Promotions"
-- CNAME `bnc3` volontairement **non ajouté** (inutile sans tracking)
-- **mail-tester.com = 9,9/10** (SPF/DKIM/DMARC tous verts). Reste éventuel Principal vs Promotions = dépend du comportement client, pas d'un défaut technique.
-
-### Design System
-- Navy : `#1a2332` · Or : `#c9a84c` · Fond : `#f8fafc`
-- Fiche bien publique : fond crème `#f7f4ed`, arrondis 16-20px (style Airbnb premium)
-- Animations modals : fadeIn 0.18s + slideUp 0.22s cubic-bezier(0.34,1.56,0.64,1)
+Marine `#1a2332` · Or `#c9a84c` · Fond `#f8fafc` · Fiche bien publique sur crème `#f3eee3`.
+Un seul accent par écran : l'or souligne ce qui compte, rien d'autre.
 
 ---
 
-## 2. TABLES SUPABASE
+## 2. Modèle de données
 
-`clients`, **`recherches` 🆕**, `biens`, `visites`, `transactions`, `relances`, `envois`, `journal`, `partenaires`, `parametres`
+Les colonnes listées sont celles **réellement lues ou écrites par le code**
+(vérifié fichier par fichier, septembre 2026).
 
-### 🆕 Table `recherches` (V3.0 — 30 mai 2026)
-**Le niveau intermédiaire central de l'architecture.** Un client a une ou plusieurs recherches. Tous les **critères de recherche** vivent désormais ici (plus sur `clients`).
-- Identité : `id`, `client_id` (FK→clients, CASCADE), `nom` (déf. "Recherche principale"), `active`
-- Critères bien : `type_bien` (texte, multi joint par virgule), `budget_min/max`, `surface_min/max`, `nb_pieces_min/max`, `chambres_min`, `surface_sejour_min`, `secteurs` (text[])
-- Critères fins : `etage_min/max`, `rdc_exclu`, `dernier_etage`, `dpe_max`, `annee_construction_min`, `etat_souhaite`, `exposition_souhaitee` (multi joint par virgule)
-- Équipements : `parking`, `cave`, `balcon`, `terrasse`, `jardin`, `ascenseur`, `gardien`, `interphone`, `digicode`
-- Profil d'achat : `urgence`, `financement`, `apport`
-- Mandat : `sans_mandat`, `mandat_date_signature`, `mandat_duree`, `mandat_honoraires`, `mandat_date_expiration`
-- `notes` (= "Précisions sur la recherche"), `created_at`, `updated_at`
+### L'architecture, en une phrase
 
-**`recherche_id` ajouté aux 6 tables liées** : `biens`, `visites`, `transactions`, `envois`, `relances` (CASCADE) et `journal` (SET NULL). Tout le contenu d'un dossier est rattaché à une recherche.
-
-Fichier SQL : `migration_recherches.sql` (exécuté en prod le 30 mai — table créée, données migrées : chaque client existant a reçu sa "Recherche principale" avec ses critères recopiés, tous biens/visites/envois rattachés, 0 orphelin).
-
-### 🆕 Colonnes clients — propriétaire/locataire (V3.0)
-`statut_occupation` (proprietaire/locataire/heberge/autre), et si propriétaire : `bien_actuel_type`, `bien_actuel_surface`, `bien_actuel_valeur`, `bien_actuel_a_vendre` (= **mandat de vente potentiel**), `bien_actuel_notes`.
-Fichier SQL : `migration_clients_occupation.sql`
-
-### Colonnes clients étendues (V2.x — désormais DÉPRÉCIÉES pour les critères)
-chambres_min, parking, balcon, terrasse, jardin, cave, ascenseur, gardien, interphone, digicode, rdc_exclu, dernier_etage, etage_min, dpe_max, annee_construction_min, + (V2.2) etage_max, etat_souhaite, exposition_souhaitee, surface_sejour_min, urgence, financement, apport.
-⚠️ **Ces colonnes existent toujours sur `clients` (filet de sécurité, non supprimées) mais ne sont plus ni lues ni écrites** — la source de vérité des critères est maintenant `recherches`. Nettoyage à planifier plus tard.
-
-### 🆕 Colonnes biens étendues (session 26 mai 2026)
-Migration SQL exécutée pour ajouter à la table `biens` :
-- **DPE/GES** : `ges`, `dpe_conso` (kWh/m²/an), `ges_emissions` (kg CO₂/m²/an)
-- **Caractéristiques** : `exposition`, `nb_salles_bain`, `nb_wc`, `etage_total`, `annee_construction`, `quartier`, `etat_general`, `traversant`
-- **Énergie** : `chauffage`, `source_energie`
-- **Surfaces annexes** : `surface_balcon`, `surface_terrasse`, `surface_jardin`
-- **Financier** : `charges_trimestrielles`, `taxe_fonciere`
-- **Équipements booléens** : `balcon`, `terrasse`, `cave`, `ascenseur`, `gardien`, `cuisine_equipee`, `climatisation`, `jardin`
-- **Divers** : `nb_lots`
-
-Fichier SQL : `migration_biens.sql` à la racine du repo
-
-### Format secteurs en BDD
-`"Parchamp-Albert Kahn (Boulogne-Billancourt)"` → groupés par ville
-
-### Table envois — types
-- `mail_libre` : mail texte simple sans biens
-- `envoi_bien` : envoi d'un seul bien
-- `selection_biens` : envoi de plusieurs biens
-- `compte_rendu_visite` : format `"Avis : 🔥 ... | Note : ⭐⭐⭐ | commentaire"` (pipe)
-
-### 🆕 Colonne `journal.bien_id` (V3.2)
-Une action de suivi (journal) peut être rattachée à un bien. Colonne `bien_id` uuid → `biens(id)` **ON DELETE SET NULL** (supprimer un bien ne supprime pas l'historique, le lien se vide) + index `idx_journal_bien_id`. Fichier SQL : `migration_journal_bien.sql`. Renseignée via le sélecteur « 🏠 Concerne un bien » de la modale « Ajouter une action » ; affichée en pastille dorée dans la timeline Suivi. `saveAction` fait un insert direct dans `journal` (avec `recherche_id`) au lieu de passer par `addJournal`.
-
----
-
-## 3. STRUCTURE FICHIERS
-
-```
-src/
-├── app/
-│   ├── api/
-│   │   ├── extract-bien/route.ts
-│   │   ├── parse-texte-bien/route.ts       # prix = prix affiché en gros, jamais hors honoraires (V3.2)
-│   │   ├── reformuler-bien/route.ts        # 🆕 V3.2 reformulation IA dédiée (retire confrère)
-│   │   ├── upload-photos/route.ts
-│   │   └── send-mail/route.ts           # + recherche_id stampé sur envois (V3)
-│   └── bien/
-│       ├── layout.tsx
-│       └── [id]/
-│           ├── page.tsx                 # REFONTE premium 1 colonne (V3.1) · en-têtes étiquette dorée à cheval (V3.2)
-│           ├── PhotoCarousel.tsx        # + plein écran lightbox flèches/clavier (V3.1)
-│           └── AboutPliable.tsx         # 🆕 "À propos" pliable (Lire la suite) — client component
-├── components/
-│   ├── clients/Clients.tsx              # création refondue en wizard 3 étapes + multi-recherches (V3)
-│   ├── fiche/FicheClient.tsx            # ~2500 lignes — sélecteur recherche, onglet Suivi, critères→recherches (V3)
-│   ├── shared/SecteurPicker.tsx         # 🆕 sélecteur secteurs partagé (création + édition)
-│   ├── layout/
-│   └── pages/
-├── lib/
-│   ├── supabase.ts                      # + type Recherche, champs propriétaire (V3)
-│   └── secteurs.ts                      # 🆕 données QUARTIERS + recherche commune geo.api.gouv
-├── migration_biens.sql
-├── migration_clients_criteres.sql       # 🆕 V2.2 (état/expo/séjour/étage max/urgence/financement/apport)
-├── migration_recherches.sql             # 🆕 V3.0 (table recherches + migration données)
-├── migration_clients_occupation.sql     # 🆕 V3.0 (propriétaire/locataire)
-└── migration_journal_bien.sql           # 🆕 V3.2 (journal.bien_id → action liée à un bien)
-```
-
----
-
-## 4. FONCTIONNALITÉS LIVRÉES
-
-### Fiche Client — Structure
-- **Header** : avatar (cercle + initiale + anneau statut) · Contact inline cliquable · KPIs · Bouton 📤 Envoyer (popup) · Relance J+5 · Action · Ajouter un bien
-- **🆕 Sélecteur « Recherche active ▾ »** (V3) : menu déroulant en haut de fiche pour basculer entre les recherches du client, en créer une nouvelle (prompt nom), renommer, ou supprimer (🗑️ par recherche, visible si ≥2 ; suppression cascade biens/visites/envois avec confirmation ; impossible de supprimer la dernière). Se ferme au clic extérieur.
-- **Bloc critères** (lit la recherche active, plus `client.*`)
-- **Mandat compact** à droite (gère `sans_mandat`)
-- **🆕 Onglets** : Biens / Visites / Transaction / **Suivi** — tous filtrés sur la recherche active, avec animation douce au changement d'onglet et de recherche
-- **🆕 Onglet Suivi** (V3, refondu V3.2) : fusion de Historique + Journal. Timeline unique avec **filtres par type d'action** alignés sur la modale « Ajouter une action » : `Tout · 📞 Appels · 🤝 RDV · 📝 Notes · 🔔 Relances · ✉️ Communications · 🔄 Système`, chacun avec son compteur. **Filtre par défaut = 📞 Appels** (usage principal). `✉️ Communications` = envois + journal `email_libre`/`envoi_externe` ; `🔄 Système` = events auto (statut_change, bien_ajoute…). Déduplication : les types de journal faisant doublon avec les envois (`mail_envoye`, `envoi_bien`, `visite_effectuee`) sont exclus. Une action peut être **rattachée à un bien** (`journal.bien_id`) → pastille dorée du bien dans la timeline. État vide contextuel selon le filtre actif.
-
-### Onglet Biens
-- Ajout URL (Claude HTML) ou copier-coller texte
-- Photos → Supabase Storage permanentes
-- Drag & drop réordonnement
-- **Reformulation IA de la description** (V3.2) : endpoint dédié `/api/reformuler-bien` (et non plus `parse-texte-bien`, qui était conçu pour *conserver* le texte). Lancée **automatiquement à la création** d'un bien (collage texte ET URL) ET via le bouton ✨ dans la fiche. Le prompt retire le nom du confrère/agence (+ tél, email, réf), supprime les formules commerciales, garde fidèlement le statut « compris dans le prix » / « en sus » **par élément** (sans le transférer ni l'inventer), et ne réécrit jamais le prix/honoraires.
-- **🆕 Formulaire d'ajout/édition refondu en 7 sections** :
-  - 📍 Identification (titre, type, source, ville, CP, quartier)
-  - 📐 Caractéristiques (surface, pièces, chambres, sdb, wc, étage/total, année, expo, état)
-  - ✨ Équipements (chips cliquables — parking/ascenseur/cave/balcon/terrasse/jardin/gardien/cuisine éq./clim/traversant)
-  - 🔋 Performance énergétique (DPE + conso, GES + émissions, chauffage, source énergie)
-  - 💰 Prix & Charges (prix vendeur, commission, prix FAI auto, prix/m² auto, charges trim, taxe foncière)
-  - 🏢 Agence / Vendeur
-  - 📝 Description
-- **🆕 Compte-rendu de visite affiché sous le bien (V3.1 — 2 juin)** : dès qu'un bien a une visite `effectuee`, son CR s'affiche directement dans la liste de l'onglet Biens (encadré vert doux : date, note ⭐/5, pastille avis client, commentaire). Plus besoin d'aller dans l'onglet Visites. Affiche le **dernier** CR + compteur si plusieurs visites. Table de correspondance `AVIS_CR` dans FicheClient.
-
-### 🆕 Envoi de mails (session 26 mai 2026)
-Tous branchés sur Mailjet via `/api/send-mail`.
-
-**4 modes d'envoi** :
-
-1. **PageMail** (page "Nouveau mail" globale) : mode `libre`
-   - Mail texte avec signature, sans bien
-   - Sélection multi-clients
-
-2. **Fiche client → 📤 Envoyer (à côté d'un bien)** : mode `unique`
-   - Un bien pré-sélectionné
-   - Mail avec carte du bien + bouton "Consulter le bien"
-
-3. **Fiche client → 📤 Envoyer (haut) → Sélection de biens** : mode `multi`
-   - Popup avec checkboxes (biens non refusés pré-cochés)
-   - Boutons "Tout sélectionner / désélectionner"
-
-4. **Fiche client → 📤 Envoyer (haut) → Mail libre** : mode `libre`
-
-**API `/api/send-mail`** accepte : `client_ids`, `objet`, `corps`, `biens_ids` (optionnel), `mode` (`libre|biens`), `destinataires_override`.
-Trace dans `envois` + `journal` après succès Mailjet.
-
-**🆕 Template mail refondu (V3.1 — 2 juin 2026)** dans `buildHtml` :
-- **Une seule "feuille" blanche unifiée** sur fond beige `#e7e1d4` (en-tête navy + logo → message → annonce(s) → pied navy, tout lié). Séparations douces (fine barre dorée centrée, filets légers entre biens). ⚠️ Important : les messageries (Gmail) **suppriment les box-shadow** → on sépare par le **contraste** (feuille blanche sur beige), jamais par l'ombre.
-- **Logo dans l'en-tête** via `${SITE_URL}/logo_high_resolution_white.png` (repli sur l'alt "Emilio Immobilier" si images bloquées au 1er envoi).
-- 1 bien = grand visuel + stats + prix + **bouton "Consulter le bien" pleine largeur** (corrige le bouton tassé sur mobile). Plusieurs biens = liste photo-gauche + lien "Consulter".
-- **Textes par défaut reformulés** (FicheClient single + multi, et modèle "Sélection de biens" de PageMail) : ton "Suite à votre projet de recherche, je suis heureux de vous présenter…", ordre **visite → questions → retour pour affiner**.
-- Suivi désactivé (cf. §1 délivrabilité).
-
-### 🆕 Fiche bien publique — `/bien/[id]` (REFONTE premium V3.1 — 2 juin 2026)
-Page publique accessible à toute personne ayant le lien (pas d'auth).
-**Refonte complète** : design premium navy/or sur fond crème `#f3eee3`, chaque section en **carte blanche détachée** (ombre douce). **En-têtes de blocs (V3.2)** : étiquette dorée « à cheval » sur le bord supérieur de la carte (composant `SectionHead` en pastille absolue `top:-16` + style `CARD_SEC` = `position:relative`, `paddingTop:40`, `marginTop:36` pour ne pas chevaucher le bloc du dessus).
-
-⚠️ Changement de layout majeur : passage de 2 colonnes (sidebar sticky) à **UNE seule colonne centrée (max 900px)** — la sidebar laissait un grand vide à droite quand le contenu était long.
-
-Sections (de haut en bas) :
-- Header navy avec **logo blanc agrandi** (`/logo_high_resolution_white.png`, hauteur 56px) + badge "SÉLECTION PRIVÉE"
-- Titre + localisation (📍 or)
-- Carrousel photos `PhotoCarousel.tsx` (nav, compteur, dots) — **clic sur une photo = plein écran** (image en grand, flèches ‹ ›, compteur, fermeture croix/clic/Échap, navigation clavier ←/→). La galerie "Voir tout" ouvre aussi le plein écran au clic d'une vignette. Badge "Coup de cœur" **supprimé**.
-- **Barre prix pleine largeur** sous les photos (prix FAI + prix/m² à gauche · boutons "Demander une visite" + téléphone à droite ; passe en colonne sur mobile)
-- Carte **Infos rapides** (icônes or au-dessus : surface, pièces, chambres, étage, expo ; passe en grille 3 colonnes sur mobile)
-- Carte **À propos** : texte découpé en paragraphes + **"Lire la suite" replié par défaut** (composant `AboutPliable.tsx`, fondu en bas)
-- Carte **Équipements** (pastilles dorées + icône)
-- Carte **Performance énergétique** (DPE/GES badges colorés + chauffage/énergie)
-- Carte **Informations complémentaires** (icône or par ligne : année, état, charges, taxe)
-- Section contact navy (avatar AR + nom + CTA tel/mail)
-- Footer navy avec **logo agrandi** (44px)
-
-✅ (V3.2 — RÉSOLU) Le nom du confrère source (ex. "Hosman vous propose…") est désormais retiré automatiquement par la reformulation IA déclenchée à la création du bien.
-
-### 🆕 Parsing texte amélioré (`/api/parse-texte-bien`)
-Prompt Claude enrichi pour extraire :
-- DPE/GES avec conso/émissions, exposition, nb sdb/wc, étage/total, année construction
-- Chauffage, source énergie, charges trimestrielles, taxe foncière
-- État général, équipements booléens, quartier, surfaces balcon/terrasse
-
-Post-traitement regex pour combler les champs souvent oubliés par l'IA (DPE/GES par lettre, conso kWh, émissions kg CO₂, charges, taxe foncière).
-
-### Autres onglets
-- **Visites** : À venir / Effectuées (avec CR : étoiles, avis, commentaire)
-- **Transaction** : 5 étapes, contre-offres détaillées
-- **Suivi** (ex-Historique + Journal, fusionnés en V3) : voir structure fiche ci-dessus
-
-### Pages principales
-- **Mes Clients** · **Recherche en cours** · **Visites globale**
-- **Nouveau mail** : 6 modèles pré-rédigés (dont "Sélection de biens"), tous clients searchables
-
----
-
-## 5. RÈGLES D'AFFICHAGE FIGÉES
-
-### Min/Max
-- `32–80m²` (les deux), `min 32m²` ou `max 80m²` (un seul)
-
-### Prix
-- Carte bien : Acquéreur (gros, doré) + vendeur+commission (petit, gris)
-- Fiche publique `/bien/[id]` : Prix FAI uniquement (vendeur masqué)
-
-### Jours mandat
-- "X jours restants" · "Expiré" · Badge alerte si < 15j
-
-### Modals
-- fadeIn+slideUp · overlay blur
-- **Modales de saisie NON fermables au clic extérieur** (contact, mandat, bien, création client) — fermeture via ✕/Annuler uniquement
-- Menu déroulant « Recherche active » : se ferme au clic extérieur (overlay invisible)
-
----
-
-## 6. API ROUTES
-
-| Route | Fonction | Prérequis |
-|---|---|---|
-| `/api/extract-bien` | URL → Claude analyse HTML → JSON | ANTHROPIC_API_KEY |
-| `/api/parse-texte-bien` | Texte → Claude structure (enrichi) → JSON. **Prix = prix affiché en gros, jamais le « hors honoraires »** (V3.2) | ANTHROPIC_API_KEY |
-| `/api/reformuler-bien` 🆕 | Description → Claude reformule (retire confrère, garde compris/en sus, ne touche pas au prix) → texte | ANTHROPIC_API_KEY |
-| `/api/upload-photos` | URLs externes → Supabase Storage | SUPABASE_SERVICE_ROLE_KEY |
-| `/api/send-mail` | Mailjet envoi mail libre ou avec biens | MAILJET_API_KEY + SECRET |
-| `/api/bien-from-bookmarklet` | ⚠️ Dormant (bookmarklet Chrome abandonné) | — |
-
-**SeLoger** : bloqué Cloudflare → copier-coller recommandé. LeBonCoin/PAP/Orpi : OK.
-
-### Limites copier-coller SeLoger
-- **DPE en image SVG** : extrait par regex désormais, sinon correction manuelle dans formulaire enrichi
-- **Biens similaires en bas** : texte tronqué à ~12000 chars
-
----
-
-## 7. À FAIRE — PRIORITÉS
-
-### ✅ Priorité 1 — Finitions envoi mail (RÉSOLU — 2 juin 2026)
-
-**1. Délivrabilité Mailjet** ✅ — DMARC ajouté, suivi désactivé, mail-tester 9,9/10 (détail §1 « Délivrabilité Mailjet — RÉSOLU »).
-
-**2. Template mail** ✅ — refondu en une feuille unifiée premium, logo intégré, bouton pleine largeur, textes par défaut reformulés (détail §4 « Template mail refondu »). À retester sur Gmail/iOS/Outlook à chaque évolution.
-
-**3. Fiche bien publique mobile** ✅ — refonte 1 colonne centrée (plus de vide à droite), carrousel + plein écran tactile, "À propos" pliable, stats en grille mobile, logo agrandi (détail §4 « Fiche bien publique »).
-
-### 🟠 Priorité 2 — Génération PDF sélection de biens
-- jsPDF + html2canvas (⚠️ **PAS encore dans package.json** — à installer ; la note précédente était erronée)
-- Page de garde + fiche par bien + footer
-- Note conseiller par bien
-- Sauvegarde PDF Storage + relance J+5 auto
-- **Joindre le PDF aux mails Mailjet** (attachment)
-
-### 🟠 Priorité 3 — Extension CRM complet (vendeurs)
-- Fiche client unifiée vendeur/acheteur
-- Gestion des biens en mandat (≠ biens sourcés)
-- Pipeline de vente
-
-### 🟡 Priorité 4 — Enrichissements
-- **Matching biens → clients** : scoring de compatibilité (voir §14 pour le plan détaillé)
-- **Relances automatiques** post-envoi mail/PDF
-- **KPI "Biens présentés"** incrémenté à l'envoi
-- **Dashboard enrichi** : KPIs, graphiques, pipeline, CA
-- **Page connexion** : Supabase Auth
-
-### 🟢 V3
-- PDF C-R visites · PDF Présentation services
-- Export Excel mensuel/annuel
-- Extension Chrome (photos SeLoger)
-- Multi-utilisateur
-- Actions groupées
-- Corbeille archivage J+30
-- Stats "Mon activité"
-
----
-
-## 8. POINTS DE VIGILANCE TECHNIQUE
-
-- **SeLoger bloqué** : toujours copier-coller
-- **Photos Storage** : SUPABASE_SERVICE_ROLE_KEY + bucket `photos-biens` public
-- **ANTHROPIC_API_KEY** : requise extraction + reformulation
-- **MAILJET_API_KEY/SECRET** : requises pour `/api/send-mail` (sinon 500)
-- **saveCompteRendu** : insère dans `visites` ET `envois`
-- **SRU** : alerte J+10 après compromis
-- **Drag & drop photos** : useRef (pas objet littéral)
-- **🆕 SPF DNS** : type **TXT** (pas SPF déprécié) pour Mailjet
-- **🆕 Page bien publique** : layout dédié `src/app/bien/layout.tsx` qui override `overflow: hidden` du CSS global
-
----
-
-## 9. WORKFLOW ENVOI MAIL (V2.1 — Mailjet branché)
-
-### Envoi simple bien
-1. Fiche client → 📤 Envoyer (à côté d'un bien)
-2. Pré-rempli (objet, corps, destinataires = client.emails)
-3. Modifiable
-4. Envoi → `/api/send-mail` → Mailjet
-5. Trace dans `envois` (type `envoi_bien`) + `journal`
-6. Mail HTML reçu avec carte bien + bouton "Consulter le bien" → `/bien/[id]`
-
-### Envoi sélection
-1. Fiche client → 📤 Envoyer (en haut) → Sélection de biens
-2. Popup avec checkboxes (biens non refusés pré-cochés)
-3. Modifier sélection + objet/corps
-4. Envoi → toutes les cartes dans le mail
-
-### Mail libre
-- PageMail : multi-clients, texte simple
-- FicheClient → 📤 Envoyer → Mail libre : un client, texte simple
-
----
-
-## 10. HORS PÉRIMÈTRE
-
-- Diffusion portails → reste Immofacile
-- Scraping automatique
-- Suppression filigrane photos
-- Location (vente uniquement)
-- Signature électronique
-- Mode hors ligne
-
----
-
-## 11. DISCUSSIONS HORS-PROJET — Site public Emilio Immo
-
-### SEO local par arrondissement (12 mai 2026)
-- Stratégie SEO sur le site public, pas le CRM. Pages dédiées par arrondissement, contenu unique. Délai Google : 3-6 mois.
-- Google Maps : adresse physique vérifiée requise (coworking 50-150€/mois, domiciliation, etc.). Un seul profil Google Business par adresse.
-- Alternative payante : Google Ads géolocalisé.
-
----
-
-## 12. HISTORIQUE DES SESSIONS
-
-### Session 12 mai 2026 (V1.2)
-- Journal anti-bruit (saveContact, saveCriteres, saveMandat, changeStatut)
-- Bug fixes : `agence_tel` manquant dans INSERT saveBien, `nb_chambres` manquant dans UPDATE saveFicheBien
-- UI : padding-bottom contentWrap 16→80px
-- Bookmarklet Chrome abandonné (3 fichiers laissés dormants)
-
-### Session 26 mai 2026 (V2.1) — Envoi mail + Fiche bien publique
-- **Mailjet branché** : DNS OVH configurés (TXT validation + SPF en TXT correct + DKIM), domaine validé
-- **API `/api/send-mail`** créée avec support multi-mode (libre/biens, unique/multi)
-- **4 modes d'envoi** branchés : PageMail (libre), FicheClient bien unique, FicheClient sélection multi, FicheClient mail libre
-- **Page publique `/bien/[id]`** créée avec layout dédié, style Airbnb premium
-- **PhotoCarousel** : composant client avec galerie modale plein écran
-- **Migration SQL biens** : 24 nouvelles colonnes (DPE/GES détaillés, expo, charges, taxe, équipements...)
-- **Parsing texte Claude enrichi** + post-traitement regex
-- **Formulaire d'ajout/édition bien refondu** en 7 sections claires
-- **Découverte importante** : OVH crée SPF en type "SPF" déprécié → recréer en TXT pour que Mailjet le reconnaisse
-- **Bug fix scroll** : layout dédié `bien/layout.tsx` qui override `overflow: hidden` global
-
-### Session 30 mai 2026 (V3.0) — Architecture multi-recherches + refonte création
-**Gros chantier validé en prod.** Voir §13 pour les détails complets.
-- **Table `recherches`** créée + `recherche_id` sur 6 tables + migration des données existantes (0 perte, 0 orphelin vérifié). Critères déplacés de `clients` vers `recherches`.
-- **FicheClient** : sélecteur « Recherche active ▾ » (créer/renommer/supprimer), tous onglets filtrés par recherche active, critères + mandat lus/écrits sur la recherche, inserts (biens/visites/transactions/envois/relances) stampés `recherche_id`.
-- **Onglet Suivi** : fusion Historique + Journal (timeline + 3 filtres, déduplication, journal dégraissé).
-- **Formulaire de création refondu en wizard 3 étapes** (Identité / Recherche / Profil & mandat) : pop-up animé, transitions entre étapes, menus déroulants stylés (chevron doré, fond blanc), nom non obligatoire, mandat optionnel (toggle "sans mandat").
-- **Champs propriétaire/locataire** (statut occupation + bien possédé = mandat de vente potentiel).
-- **Enrichissement critères** (V2.2, même session) : état souhaité, exposition (multi-choix), surface séjour min, étage max, urgence, financement, apport. Type de bien en multi-sélection (maison + appartement possibles).
-- **Composant partagé `SecteurPicker`** + `lib/secteurs.ts` : autocomplétion ville/CP (geo.api.gouv) + quartiers prédéfinis, message d'aide "cliquez sur Toute la ville". Adresse client en autocomplétion (api-adresse.data.gouv).
-- **Mail** : phrase de bas corrigée ("projet de recherche immobilière"), carte bien responsive sur mobile.
-- **Modales de saisie** non fermables au clic extérieur (contact, mandat, bien, création).
-
-### Session 2 juin 2026 (V3.1) — Refonte fiche bien publique + mail + CR dans l'onglet Biens
-- **Délivrabilité Mailjet finalisée** : DMARC (TXT sur `_dmarc`) + suivi désactivé dans `/api/send-mail` → mail-tester 9,9/10. CNAME `bnc3` écarté (inutile sans tracking).
-- **Refonte complète de `/bien/[id]`** en premium navy/or, **une seule colonne centrée** (max 900px) — supprime le grand vide à droite de l'ancienne sidebar. Chaque section en carte blanche détachée + en-tête à icône. Barre prix pleine largeur. Logo **agrandi** en haut (56px) et en bas (44px).
-- **`PhotoCarousel`** : ajout du **plein écran** (clic sur une photo → image en grand + flèches ‹ ›, compteur, clavier ←/→/Échap). La galerie "Voir tout" ouvre aussi le plein écran. Badge "Coup de cœur" retiré.
-- **`AboutPliable.tsx`** (nouveau composant client) : "À propos" découpé en paragraphes + "Lire la suite" replié par défaut (utile mobile).
-- **Mail refondu** en une feuille unifiée (en-tête/message/annonce/pied liés, séparations douces), logo dans l'en-tête, bouton "Consulter" pleine largeur. Leçon clé : Gmail supprime les ombres → séparer par contraste (blanc sur beige), pas par box-shadow.
-- **Textes par défaut des mails reformulés** (single + multi FicheClient + modèle PageMail) : ton chaleureux, ordre visite → questions → retour.
-- **Compte-rendu de visite affiché sous chaque bien** dans l'onglet Biens (encadré vert : date, ⭐/5, avis, commentaire) — évite l'aller-retour vers l'onglet Visites. Le système visites/CR existait déjà (table `visites` : note_etoiles, commentaire, avis_client) ; seul l'affichage a été ajouté, **aucune migration SQL**.
-- **Aucun changement de base de données cette session.**
-
-### Session 30 juin 2026 (V3.2) — Reformulation IA, prix sourcé, Suivi refondu, badges, en-têtes fiche bien
-**Pas de changement d'architecture. Une seule migration SQL (`journal.bien_id`).**
-- **Reformulation IA fiabilisée** : nouvel endpoint dédié `/api/reformuler-bien`. Avant, le bouton ✨ tapait sur `parse-texte-bien` (conçu pour *conserver* le texte) → il ne reformulait pas. Le nouveau prompt retire le nom du confrère/agence (+ tél, email, réf), supprime les formules commerciales, garde fidèlement « compris dans le prix » / « en sus » **par élément** (sans transfert ni invention), ne réécrit pas le prix/honoraires. **Reformulation automatique à la création** du bien (collage texte ET URL), en plus du bouton ✨ dans la fiche.
-- **Prix sourcé = prix affiché en gros** : prompt `parse-texte-bien` corrigé pour toujours prendre le prix annoncé (FAI), jamais le « hors honoraires » même si la ventilation net + commission est détaillée. Raison métier : Alexandre pose SA commission par-dessus (inter avec le confrère, ou mandat de recherche s'il refuse).
-- **Honoraires** : à l'ouverture d'une fiche bien, le champ commission ne se force plus à 3,5 % (`commission_val: b.commission_val ?? ''`) → reste vide/0, prix acquéreur = prix vendeur tant que non saisi. (À la création, c'était déjà 0.)
-- **Action de suivi rattachable à un bien** : migration `migration_journal_bien.sql` (`journal.bien_id` uuid → biens, ON DELETE SET NULL + index). Sélecteur « 🏠 Concerne un bien » dans la modale, insert direct (avec `recherche_id`), pastille dorée du bien dans la timeline.
-- **Onglet Suivi refondu** : filtres = types d'action (`Tout · 📞 Appels · 🤝 RDV · 📝 Notes · 🔔 Relances · ✉️ Communications · 🔄 Système`) avec compteurs, **défaut = Appels**, état vide contextuel. Remplace les anciens filtres Communications/Événements.
-- **Badges critères corrigés** (`Clients.tsx` + `PageRecherche.tsx`) : les clients créés en V3 (critères dans `recherches`, plus dans `clients.*`) n'affichaient aucun badge dans les listes. Les deux listes fusionnent désormais les critères de la **recherche active** (sinon la 1ère) du client pour le récap.
-- **Fiche bien publique `/bien/[id]`** : en-têtes de blocs en **étiquette dorée « à cheval »** sur le bord supérieur (Option 1 retenue parmi 4 propositions en preview) — `SectionHead` en pastille absolue, style `CARD_SEC` (`position:relative`, `paddingTop:40`, `marginTop:36`).
-- **Fichiers** — NEW : `api/reformuler-bien/route.ts`, `migration_journal_bien.sql`. MODIF : `api/parse-texte-bien/route.ts`, `components/fiche/FicheClient.tsx`, `components/clients/Clients.tsx`, `components/pages/PageRecherche.tsx`, `app/bien/[id]/page.tsx`.
-
-### ⚠️ POINT SÉCURITÉ IMPORTANT (soulevé le 30 mai)
-**RLS désactivé sur toutes les tables Supabase.** N'importe qui avec la clé anon publique (visible côté client) peut lire/modifier toutes les données clients. Risque RGPD/confidentialité réel. **À traiter en session dédiée** : activer le RLS sur toutes les tables d'un coup avec les bonnes policies, puis vérifier que l'app fonctionne. Même nature que la faille identifiée sur Verimo. La table `recherches` a été créée "without RLS" pour rester cohérente avec l'existant.
-
-### ⏳ Reste à faire en priorité immédiate
-1. **Tester en prod** le multi-recherches (créer 2ᵉ recherche, basculer, vérifier non-mélange des biens, suppression).
-2. **API d'agrégation d'annonces** (voir §14) : tester essais gratuits Stream Estate / MoteurImmo / Yanport, vérifier couverture Paris/92 + CGU re-stockage/envoi client.
-3. **Scoring de compatibilité** (voir §14) : couche 1 (math, gratuit) faisable tout de suite, couche 2 (IA sur description) après branchement API.
-4. ~~**Délivrabilité Mailjet**~~ ✅ FAIT (2 juin) : DMARC + suivi désactivé, mail-tester 9,9/10.
-5. **RLS** (sécurité, voir ci-dessus).
-
----
-
-## 13. ARCHITECTURE MULTI-RECHERCHES (V3.0 — référence)
-
-### Modèle
-Avant : `Client → biens` (un client = une recherche, critères sur la fiche client).
-Maintenant : **`Client → Recherche(s) → biens`**. Un client peut avoir plusieurs recherches parallèles, chacune avec ses critères, biens, visites, envois, transactions.
+**`Client → Recherche(s) → biens`.** Un client peut mener plusieurs recherches en parallèle
+(résidence principale + investissement, par exemple), chacune avec ses propres critères, biens,
+visites, envois et transaction.
 
 ```
 Client (identité, contact, statut, chaleur, propriétaire/locataire)
-   └── Recherche 1 « RP Paris 3P »  (budget, secteurs, critères, mandat…)
-   │        └── biens / visites / envois / transaction rattachés
-   └── Recherche 2 « Invest Lyon »   (autres critères)
-            └── ses propres biens / visites / envois
+   ├── Recherche 1 « RP Boulogne »   (budget, secteurs, critères, mandat, token d'espace…)
+   │      └── biens · visites · envois · relances · transaction
+   └── Recherche 2 « Invest Lyon »
+          └── ses propres biens, visites, envois…
 ```
 
-### Règles de décision (cadre l'usage)
-- **Critères communs quel que soit le type** (ex. maison OU appartement, peu importe, mêmes budget/secteurs) → **une seule recherche**, cocher plusieurs types de bien.
-- **Critères différents selon le type** (jardin pour maison, balcon/dernier étage pour appart) → **deux recherches** (une par type). Le formulaire de création affiche un encart d'aide quand >1 type est coché pour le rappeler.
+**Règle de décision** : critères communs quel que soit le type de bien → **une seule recherche**,
+plusieurs types cochés. Critères différents selon le type (jardin pour la maison, balcon pour
+l'appartement) → **deux recherches**. Le formulaire de création rappelle cette règle quand plus
+d'un type est coché.
 
-### Affichage
-- Liste Clients = **une carte par client** (Option A retenue), pas par recherche. M. Dupont apparaît une fois.
-- Bascule entre recherches via **menu déroulant** « Recherche active ▾ » dans la fiche.
+⚠️ **Biens, visites, transactions et envois se filtrent sur `recherche_id`.** Un de ces
+enregistrements inséré sans `recherche_id` existe en base et n'apparaît nulle part — c'est le bug
+qui a tué le bouton Emilio pendant quatre mois.
 
-### Points techniques clés
-- `crit` et `mandat` (états locaux FicheClient) sont **resynchronisés via useEffect** quand `rechercheId` change (lecture depuis `rechercheActive`). États initiaux désormais vides — la recherche active est la source de vérité.
-- Alias `cr = rechercheActive || {secteurs:[]}` utilisé dans le bloc d'affichage des critères et du mandat.
-- `loadRecherches()` charge les recherches du client ; `load()` charge biens/visites/transaction/envois filtrés sur `recherche_id` (journal reste filtré sur `client_id`).
-- Création client (Clients.tsx) : insère le client PUIS crée sa "Recherche principale" avec tous les critères saisis.
-- Suppression recherche : cascade SQL (supprime biens/visites/envois/transactions/relances liés), bloquée si c'est la dernière.
+**Deux exceptions, subies et non voulues** : l'onglet Suivi charge le `journal` sur `client_id`
+(il mélange donc les recherches d'un même client), et les `relances` ne sont filtrées sur
+`recherche_id` nulle part — la colonne est écrite et jamais lue. Voir §6.17, où les deux se
+compensent.
+
+### `clients`
+
+Identité et contact : `reference`, `prenom`, `nom`, `adresse`, `emails[]`, `telephones[]`,
+`statut`, `chaleur`, `notes`, `est_vendeur`.
+Occupation : `statut_occupation` (proprietaire / locataire / heberge / autre) et, si propriétaire,
+`bien_actuel_type`, `bien_actuel_surface`, `bien_actuel_valeur`, `bien_actuel_adresse`,
+`bien_actuel_a_vendre` (= **mandat de vente potentiel**), `bien_actuel_notes`.
+
+⚠️ **Colonnes de critères mortes.** `type_bien`, `budget_min`, `budget_max`, `secteurs`,
+`surface_*`, `chambres_min`, `parking`, `cave`, `mandat_*` et consorts existent encore sur
+`clients` mais **ne sont plus écrites depuis la V3.0** — la source de vérité est `recherches`.
+`Clients.tsx` compense en fusionnant en mémoire ; `Topbar.tsx` non, et affiche donc des critères
+périmés dans la recherche globale (voir §6).
+
+### `recherches` — le pivot
+
+- Identité : `id`, `client_id` (FK, CASCADE), `nom`, `active`
+- Bien : `type_bien` (multi, joint par virgule), `budget_min/max`, `surface_min/max`,
+  `surface_sejour_min`, `nb_pieces_min/max`, `chambres_min`, `secteurs` (text[])
+- Fins : `etage_min/max`, `etage_max_sans_ascenseur`, `rdc_exclu`, `dernier_etage`, `dpe_max`,
+  `annee_construction_min`, `etat_souhaite`, `exposition_souhaitee`, `cuisine_type`,
+  `exterieur_surface_min`
+- Équipements booléens : `parking`, `cave`, `balcon`, `terrasse`, `jardin`, `ascenseur`,
+  `gardien`, `interphone`, `digicode`
+- **`exigences`** (jsonb) : le niveau de chaque équipement —
+  `{ parking: 'indispensable', terrasse: 'souhaite' }`. Les booléens ci-dessus en sont dérivés.
+- Transports : `transport_minutes`, `transport_lignes` (text[]),
+  `transport_arrets` (jsonb : `{nom, ville, lignes[], minutes}`)
+- Profil d'achat : `urgence`, `financement`, `apport`
+- Mandat : `sans_mandat`, `mandat_date_signature`, `mandat_duree`, `mandat_honoraires`,
+  `mandat_date_expiration`
+- Espace acheteur : **`token_espace`** (64 caractères tirés au hasard — *c'est* l'identification),
+  `espace_actif`, `espace_ouvert_le`, `historique_vu_le`
+- `notes` (= « Précisions sur la recherche »), `created_at`, `updated_at`
+
+⚠️ `token_espace` et `espace_actif` sont **lus** partout et **jamais écrits** par le code de `src/` :
+ils viennent de la migration SQL et de la valeur par défaut de la colonne.
+
+### `biens`
+
+Un bien appartient à une recherche et traverse des **étapes** :
+
+| `etape` | Signification | Où il s'affiche |
+|---|---|---|
+| `selection` | Retenu, pas encore envoyé | Onglet Sélection |
+| `presente` | Déposé dans l'espace du client | Onglet Présentés + espace acheteur |
+
+`badge_retour` porte la réponse du client :
+`propose` → `interesse` · `souhaite_visiter` · `visite` · `offre_faite` · `refuse`.
+
+Suivi de lecture : `envoye_le`, `vu_le` (première ouverture seulement), `nb_vues`,
+`retour_client` (son commentaire), `retour_le`.
+Descriptif : titre, ville, CP, quartier, adresse, surfaces, pièces, chambres, étage, exposition,
+DPE/GES avec conso et émissions, chauffage, équipements booléens, charges, taxe foncière,
+prix vendeur / commission / prix acquéreur, photos, agence source.
+Marché (rempli par la veille) : `date_publication`, `prix_initial`, `nb_baisses`, `nb_agences`,
+`historique_prix`, `date_derniere_baisse`, `score`, `points_forts`, `points_attention`.
+PDF : `pdf_statut`, `pdf_demande_le`, `pdf_pret_le`, `pdf_url`, `pdf_message`.
+Divers : `url` (clé de tous les contrôles de doublon), `canal_envoi`, `source_portail`,
+`est_particulier`, `adresse_probable`, `situation`, `nb_lots`, `nb_parking`, `surface_exterieur`.
+
+### `veille_propositions` — les annonces en attente de tri
+
+`client_id`, `recherche_id`, `url`, `portail`, `statut` (`nouveau` / `retenu` / `ecarte`),
+`motif_ecart`, `decide_le`, `bien_id` (rempli quand on retient), plus tout le descriptif de
+l'annonce et les infos de marché.
+« Retenir » crée le bien (ou retrouve celui qui a la même URL) et passe la proposition à `retenu`.
+
+### `veille_passages` — le compteur de travail
+
+Une ligne par tour de veille : `recherche_id`, `demarre_le`, `termine_le`, `nb_lues`,
+`nb_proposees`, `nb_ecartees`, `statut`, `message`.
+C'est la source des chiffres « annonces lues » de l'espace acheteur.
+
+⚠️ **Deux sortes d'écarts, à ne pas confondre.** Quand Alexandre écarte une proposition à la main
+dans l'onglet Veille, le motif est conservé (`veille_propositions.motif_ecart`), réaffiché, et
+renvoyé à la veille suivante pour qu'elle en tienne compte. En revanche, **les annonces écartées
+automatiquement ne sont que comptées** (`nb_ecartees`) : celles-là n'existent nulle part
+individuellement. C'est pourquoi l'espace acheteur ne peut pas dire *pourquoi* telle annonce a été
+écartée — il ne peut que dire combien.
+
+### `espace_evenements` — ce que le client fait chez lui
+
+`recherche_id`, `client_id`, `bien_id`, `type` (`ouverture`, `fiche`, `avis`, `criteres`,
+`message`, `partage`), `detail`, `created_at`.
+Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfler la table.
+
+### Les autres
+
+- **`visites`** : `recherche_id`, `bien_id`, `statut` (`a_venir` / `effectuee` / `annulee`),
+  `date_visite`, `heure`, `contact_agence`, `commentaire`, `note_etoiles`, `avis_client`
+- **`journal`** : le fil de suivi — `client_id`, `recherche_id`, `bien_id`, `type`, `titre`,
+  `description`, `metadata`
+- **`envois`** : `type` (`mail_libre` · `envoi_bien` · `selection_biens` · `compte_rendu_visite`),
+  `objet`, `corps`, `destinataires`, `biens_ids`, `sms_envoye`
+- **`relances`** : `type`, `statut`, **`date_echeance`**, **`note`**
+  ⚠️ Le type déclare `en_attente | cloturee | **reportee**`, mais `reportee` n'est **jamais écrite**
+  et aucun écran ne la lit : le bouton « Reporter » ne déplace que `date_echeance`. Qui se fierait
+  au type et écrirait `reportee` ferait disparaître la relance de toutes les listes.
+  ⚠️ Les noms de colonnes sont `date_echeance` et `note`, **pas** `date_relance` ni `motif`, et
+  les lecteurs filtrent sur `statut = 'en_attente'`. Une erreur ici ne se voit pas : la relance
+  n'est simplement jamais créée.
+- **`transactions`** : 5 étapes, offre, contre-offres, compromis, SRU, prêt, acte, honoraires
+- **`parametres`** : couples `cle` / `valeur`
+- **`partenaires`** : déclarée, pas utilisée par le code actuel
+
+### Colonnes écrites mais jamais relues
+
+`biens.yanport_id`, `biens.score` / `points_forts` / `points_attention` (copiés depuis la veille
+mais affichés seulement côté `veille_propositions`), `biens.nb_salles_bain` / `nb_wc` / `agence_tel`
+(relus dans le formulaire d'édition, mais affichés dans **aucune** vue en lecture : ni la carte, ni
+la fiche publique, ni le mail), `transactions.honoraires_ttc` (recalculé à l'écran),
+`envois.biens_ids` et `envois.sms_envoye`, `veille_passages.statut` et `message`,
+`clients.est_vendeur`, `parametres.updated_at`.
+Rien d'urgent, mais à savoir avant de bâtir dessus.
+
+### ⚠️ Les types TypeScript ne décrivent plus le schéma
+
+`src/lib/supabase.ts` ne déclare que trois interfaces (`Client`, `Recherche`, `Relance`) et elles
+ont pris du retard : `Recherche` n'a ni `token_espace`, ni `espace_actif`, ni `espace_ouvert_le` ;
+`Client` n'a pas `bien_actuel_adresse`. D'où les `(client as any)` semés dans `FicheClient.tsx`.
+**Conséquence** : le contrôle de type ne protège plus contre une faute de frappe sur ces colonnes —
+exactement le scénario qui a rendu les relances muettes. Toutes les autres tables sont utilisées
+sans typage, en `select('*')`.
 
 ---
 
-## 14. PISTES EN COURS — Sourcing annonces & matching (discussions 30 mai 2026)
+## 3. Les écrans
 
-### API d'agrégation d'annonces (pour sourcer des biens automatiquement)
-Objectif : listing temps réel des annonces dans le CRM + import en 1 clic + alertes auto par client, pour réduire le travail manuel de sourcing. Le copier-coller actuel est conservé en secours.
+### Le CRM
 
-**Faire soi-même le scraping = écarté** : portails (SeLoger/LBC) interdisent le scraping (CGU), défenses anti-bot (Cloudflare), coût/maintenance prohibitifs pour un solo. On achète à une API : le droit d'usage légal + l'infra + la déduplication + du JSON propre.
+Navigation (`Sidebar.tsx`), en trois sections :
+**Principal** — Dashboard · Clients · Recherche en cours ·
+**Suivi** — Visites · Relances · Nouveau mail ·
+**Analyse** — Mon activité · Paramètres.
+La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
+accessible que par son adresse directe.
 
-**Acteurs comparés (mai 2026)** :
-- **Stream Estate (ex-Melo.io)** — `docs.stream.estate` / API sur `api.stream.estate` (header `X-API-KEY`). 1500+ sources, déduplication native, **webhooks** (nouvelle annonce, baisse prix, expiration). JSON très riche (prix, surface, pièces, GPS, métro, contact agence, DPE, photos). Concepts : Property (bien unique) / Advert (annonce = 1 publication) / Event (changement) / Search (recherche enregistrée → alertes). Tarif : pay-as-you-go ~0,01€/annonce, Starter ~99€/mois/15000 annonces. API dispo dès le pay-as-you-go. ⚠️ Le comparatif qui le classe n°1 a un conflit d'intérêt déclaré.
-- **MoteurImmo** — meilleur rapport qualité/prix pour un chasseur. Dashboard 9/19/39€/mois, 57 plateformes, temps réel, adresse exacte, DVF. API "moins chère du marché", payée à l'annonce, webhook/email. Prix exact après création de compte.
-- **Yanport** — **déjà utilisé par Alexandre** pour chercher des biens. Fait aussi du sourcing (produit Agent 360 : veille multi-portails, dédup >95%, alertes temps réel) en plus de l'estimation. A une API. À vérifier côté Alexandre : (1) son offre inclut-elle l'API ? (2) l'API expose-t-elle les annonces elles-mêmes ou seulement les indicateurs de marché ?
-- **Fluximmo** — écarté (pas de déduplication).
+**Fiche client** — le cœur de l'outil.
+En-tête (avatar, contact cliquable, indicateurs, Envoyer, Relance J+5, Action, Ajouter un bien),
+sélecteur **« Recherche active ▾ »** (bascule, création, renommage, suppression en cascade —
+impossible de supprimer la dernière), bloc critères, mandat compact, puis les onglets :
 
-**Plan recommandé** : tester les dashboards (essais gratuits) sur la zone réelle Paris/92 AVANT de coder, vérifier couverture + fraîcheur + CGU (re-stockage + envoi client en marque blanche autorisés ?), PUIS intégrer l'API du gagnant (clé côté serveur, route `/api/.../search` + bouton importer + mapping JSON→table biens + photos vers Storage + webhooks pour alertes auto).
+| Onglet | Contenu |
+|---|---|
+| **Veille** | Les propositions à trier : Retenir → crée le bien en Sélection · Écarter avec motif |
+| **Sélection** | Biens retenus, pas encore envoyés. Demande de PDF, envoi au client |
+| **Présentés** | Biens déposés dans l'espace, **regroupés par réponse du client** |
+| **Visites** | À venir / Effectuées, avec compte rendu (étoiles, avis, commentaire) |
+| **Transaction** | 5 étapes, contre-offres détaillées |
+| **Suivi** | Fil unique. Sept filtres : Tout · Appels · RDV · Notes · Relances · **Messages client** (venus de l'espace) · Communications · Système. **Défaut = Appels.** Une action peut être rattachée à un bien |
 
-### Scoring de compatibilité bien ↔ recherche
-Afficher un % de compatibilité (et une explication) entre une annonce et les critères d'une recherche.
-- **Couche 1 — critères durs (math, gratuit, faisable tout de suite)** : pondération des champs structurés (budget, secteur, pièces, chambres, étage, équipements…). Critères éliminatoires + critères à points. Marche déjà sur les champs structurés.
-- **Couche 2 — critères subtils (IA, après branchement API)** : envoyer critères + **notes libres ("Précisions sur la recherche")** + description de l'annonce à Claude pour repérer RDC/expo/état/calme/travaux et scorer + expliquer. Lancée seulement sur les biens ayant passé un seuil en couche 1 (économie d'appels).
-- Score final = mélange pondéré couche 1 + couche 2.
-- Les notes libres de la recherche sont une **instruction de matching en langage naturel** (ex. "évite RDC et périph, adore les vieux immeubles avec moulures").
-- Note granularité secteurs : "Toute la ville" = matching fiable via CP ; "Quartier (Ville)" = matching plus fin, nécessitera de croiser avec GPS de l'annonce.
+L'**assistant de critères** s'ouvre depuis le bloc critères : 9 étapes, dans cet ordre —
+`bien · surfaces · étage · équipements · énergie · lieu · transports · budget · contexte`.
+**Le budget est à la fin**, avec le secteur et les transports : c'est un choix d'Alexandre, ne pas
+le remonter. Bascule « tout d'un coup / étape par étape » retenue dans `localStorage`.
+Chaque équipement a trois niveaux : rien · souhaité · indispensable.
+
+**Le bouton Emilio** (`/bookmarklet`) — un favori Chrome, pas une extension. Sur n'importe quelle
+annonce, un clic ouvre une fenêtre qui lit la page, en extrait le bien via Claude, et demande :
+le client, la recherche (seulement s'il en a plusieurs), puis **Mettre en sélection** ou
+**Mettre en veille**. Contrôle de doublon des deux côtés.
+
+### La fiche bien publique — `/bien/<id>`
+
+Une colonne centrée (900 px max) sur fond crème, chaque section en carte blanche avec son
+**en-tête en étiquette dorée à cheval** sur le bord supérieur.
+Header navy avec logo · titre et localisation · carrousel avec plein écran (flèches, clavier,
+Échap) · barre de prix pleine largeur · un bandeau de chiffres sans titre · puis quatre cartes
+titrées : « À propos de ce bien » (pliable) · « Équipements et caractéristiques » ·
+« Performance énergétique » · « Informations complémentaires » · contact · pied de page.
+
+Le prix affiché est `prix_acquereur || prix_vendeur` : **si la commission n'a pas été saisie, c'est
+le prix vendeur qui s'affiche**, sous le libellé « Prix ». Ce n'est donc « FAI uniquement » que si
+la commission est renseignée.
+
+### L'espace acheteur — `/espace/<token>`
+
+Sans compte ni mot de passe : le lien tiré sur 64 caractères **est** l'identification. Tout est lu
+côté serveur ; le navigateur du client ne reçoit que ce qui le regarde.
+
+Accueil : la prochaine visite (avec ajout à l'agenda) · trois chiffres avec leur « ? » ·
+Nouveaux biens · Mes derniers biens consultés · Le marché sur vos critères · Rappel de ma recherche.
+
+**Mes derniers biens consultés** — regroupés par réponse, chaque groupe dans un cadre de couleur :
+En attente · À visiter · Visités · Ça me plaît · Pas pour moi. Le client donne son avis
+(`interesse` / `souhaite_visiter` / `refuse`), puis une question adaptée lui est posée
+(« Qu'est-ce qui vous a plu ? », « Quelles sont vos disponibilités ? »).
+
+**Le marché sur vos critères** — trois chiffres qui **s'additionnent** : annonces lues → écartées →
+retenues, les écartées calculées par soustraction pour qu'ils ne puissent pas se contredire.
+Puis la dernière recherche en entonnoir, les prix des biens retenus, et le rythme jour par jour.
+Chaque chiffre porte un « ? » qui dit ce qu'il est et ce qu'il n'est pas.
+
+**Agenda** — `/api/espace/agenda` sert un `.ics` (RFC 5545 : CRLF, échappement, repli des lignes
+longues sinon Outlook refuse, heure locale flottante, rappel à ‑2 h), plus un lien Google Agenda.
+⚠️ Le repli compte les **caractères**, pas les octets : un titre ou une adresse chargés en accents
+peut encore dépasser les 75 octets de la norme. Voir §6.18.
+
+**La note du chasseur est en lecture seule** : c'est un message d'Alexandre. Le client demande une
+modification, il ne la fait pas.
+
+---
+
+## 4. Règles d'écriture de l'espace acheteur
+
+Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
+
+- **Aucun mot de métier** : ni « chasse », ni « chasseur », ni « veille », ni « passage », ni
+  « prospect ». Le client ne les comprend pas, et certains le placent du mauvais côté de la relation.
+- **Jamais deux nombres qui peuvent se contredire sur la même page.** Un fait, une source.
+- **Un même mot ne désigne pas deux choses** : « annonces lues » depuis l'ouverture et « annonces
+  lues » de la dernière recherche se distinguent sur chaque ligne, pas seulement dans le titre.
+- **Tout chiffre non évident porte un « ? »** avec une explication qui dit ce qu'il n'est pas.
+- **Aucun bloc vide sans explication** : dire pourquoi, et quand il se remplira.
+- **Ne jamais laisser entendre que le marché lui donne tort.** Les comparaisons de prix agressives
+  sont contre-productives pour Alexandre. Les données de marché brutes ont leur place dans le CRM,
+  pas dans l'espace client.
+
+---
+
+## 5. Routes API
+
+| Route | Accès | Rôle | Exige |
+|---|---|---|---|
+| `POST /api/login` · `DELETE` | **publique** | Vérifie le code, pose le cookie SHA-256 | `EMILIO_ACCESS_CODE` |
+| `POST /api/espace/<action>` | **publique** | Tout ce que l'espace acheteur écrit ; la serrure est le token | Supabase |
+| `GET /api/espace/agenda` | **publique** | Le `.ics` d'une visite, si elle appartient au token | Supabase |
+| `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex) | `ANTHROPIC_API_KEY` facultative |
+| `POST /api/parse-texte-bien` | portail | Texte collé → Claude → JSON. **Prix = prix affiché en gros**, jamais le « hors honoraires » | idem |
+| `POST /api/reformuler-bien` | portail | Réécrit la description : retire confrère, téléphone, formules commerciales. Ne touche pas au prix | `ANTHROPIC_API_KEY` |
+| `POST /api/bien-from-bookmarklet` | portail | HTML d'annonce → photos par regex + champs via Claude Haiku | `ANTHROPIC_API_KEY` |
+| `POST /api/send-mail` | portail | Envoi Mailjet, mode `libre` ou avec biens | Mailjet |
+| `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
+| `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
+
+### Les actions de `/api/espace/<action>`
+
+Préalable commun : `token` d'au moins 32 caractères, `recherches.token_espace` existant,
+`espace_actif` différent de `false`.
+
+| Action | Effet |
+|---|---|
+| `vue` | Incrémente `nb_vues`, pose `vu_le` à la première ouverture seulement, écrit un événement au plus une fois par bien et par demi-heure |
+| `retour` | L'avis du client : `badge_retour`, `retour_client`, `retour_le`, une ligne de journal, un événement |
+| `criteres` | Met à jour la recherche. Sémantique : **absent = on ne touche à rien, null = on efface**, pour toutes les colonnes. Quatre exceptions toujours présentes à l'écran client — `surface_min`, `nb_pieces_min`, `chambres_min`, `budget_max` — où un `null` est ignoré. Si l'envoi ne contient rien d'exploitable, la route ne écrit rien du tout |
+| `message` | Texte libre (1500 caractères max) → journal + **relance à J+1** + événement |
+| `partage` | Envoie la fiche d'un bien à un tiers par Mailjet. Plafonné à 5 partages par lien et par 24 h. **Seule action à exiger `MAILJET_API_KEY` et `MAILJET_API_SECRET`** — sans elles, 500 |
+
+**Sourcing** : SeLoger bloque le téléchargement direct (Cloudflare) → copier-coller ou bouton Emilio.
+LeBonCoin, PAP, Orpi passent. Le DPE en image SVG est récupéré par regex, sinon saisie manuelle.
+
+---
+
+## 6. Anomalies connues
+
+Relevé du 20 septembre 2026, vérifié ligne par ligne dans le code, puis **recontrôlé par une
+seconde lecture indépendante** qui a trouvé quinze erreurs dans la première version de ce
+chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
+
+### Graves — perte ou corruption de données
+
+1. **`/veille/import` · `veilleMaj(url, champs)` filtre uniquement sur `url`**, sans
+   `recherche_id`. Une annonce proposée à deux clients voit **toutes ses lignes écrasées d'un coup**,
+   alors que tout le reste du flux est cloisonné par recherche.
+2. **Les écritures Supabase sans remontée d'erreur, partout.** `addJournal` ne vérifie jamais rien
+   (dix-huit appels). `/api/espace/<action>` ne vérifie **aucune** de ses écritures et répond
+   `{ ok: true }` même si toutes ont échoué. Idem dans `FicheClient` (une trentaine de points),
+   `ParcoursBien`, `OngletBiens`, `OngletVeille`, `PageRelances`, `PageMail`, `send-mail`.
+   `PageVisites` est à moitié corrigé : l'enregistrement du compte rendu remonte son erreur, mais
+   ni l'insert dans `envois`, ni l'update du bien, ni l'annulation.
+   C'est la famille de bugs qui a rendu les relances muettes pendant des semaines : ça dit
+   « enregistré », il n'y a pas d'erreur, et rien ne se passe.
+3. **`Clients.tsx` — l'insert de la recherche n'est pas vérifié** alors que celui du client l'est.
+   En cas d'échec, le client existe **sans aucune recherche** : sa fiche ne peut rien afficher.
+4. **`PageParametres` — `save()` ne vérifie rien** et affiche « ✅ Sauvegardé ! » quoi qu'il arrive.
+   Pire : les valeurs par défaut affichées à l'écran ne sont jamais persistées si le champ n'est pas
+   touché — le bouton n'enregistre donc pas ce qu'on voit.
+
+### Sécurité
+
+5. **RLS désactivé sur toutes les tables** (état constaté en mai 2026 ; **invérifiable depuis le
+   dépôt**, qui ne contient aucun fichier SQL — à reconfirmer dans Supabase). Le code est cohérent
+   avec cet état : tout passe par la clé anonyme côté navigateur. Si c'est toujours vrai, quiconque
+   détient cette clé — visible dans le navigateur — peut lire et modifier toutes les données
+   clients. Risque RGPD réel, **devenu plus urgent depuis que l'espace acheteur et la fiche bien
+   sont des pages publiques.** À traiter en session dédiée : activer le RLS partout d'un coup avec
+   les bonnes policies, puis vérifier que l'application fonctionne encore.
+6. **`PageParametres` écrit des secrets en clair** dans `parametres.valeur` : le mot de passe
+   (`login`, `nouveau_mdp`) **et les clés Mailjet** (`mailjet_api_key`, `mailjet_secret_key`).
+   Aucun n'est utilisé — l'authentification repose sur `EMILIO_ACCESS_CODE` et l'envoi de mails sur
+   les variables d'environnement. Ces champs sont donc morts, trompeurs, et lisibles avec la clé
+   anonyme tant que le RLS est désactivé. À supprimer.
+7. **La recherche globale de `Topbar`** injecte la saisie telle quelle dans un filtre
+   `.or(...ilike...)` sans échapper les virgules ni les parenthèses.
+
+### Écrans morts ou trompeurs
+
+8. **Dashboard** : « Sélections ce mois », « Visites effectuées » et « CA mois en cours » affichent
+   `0` en dur, sans aucune requête. Les cartes « Transactions en cours », « Visites à venir » et
+   « Activité récente » sont des blocs vides permanents — alors que les données existent et sont
+   déjà requêtées ailleurs.
+9. **Mon activité** : « CA total HT » est `0 €` en dur. « Envois réalisés » compte **toutes** les
+   lignes de `envois`, y compris les comptes rendus de visite qui ne sont jamais envoyés — le
+   chiffre est gonflé.
+10. **Relances** : le bouton « Voir fiche » ouvre la **liste** des clients, jamais la fiche du
+    client concerné. Et « Reporter +5j » repart d'aujourd'hui, pas de l'échéance existante.
+11. **Topbar** : lit `clients.type_bien`, `budget_min`, `budget_max`, `secteurs` — colonnes mortes
+    depuis la V3.0. Affiche donc des critères périmés dans la recherche globale.
+12. **Sidebar et page « Recherche en cours »** : le badge compte les **clients actifs**, pas les
+    recherches. Les compteurs ne se rafraîchissent qu'au changement de page, jamais après une
+    action. Et la page elle-même n'affiche **qu'une recherche par client** (l'active, sinon la
+    première) : les recherches secondaires y sont invisibles, sans le moindre indice.
+13. **Les variables de personnalisation des mails ne fonctionnent pas.** `/api/send-mail` ne
+    remplace que **`{{prénom}}`, avec l'accent**. Or la page Paramètres annonce `{{prenom}}`,
+    `{{nom}}`, `{{reference}}` et `{{conseiller}}` — **aucune de ces quatre n'est jamais
+    substituée**. Un mail bâti sur un modèle des Paramètres part chez le client avec
+    `{{prenom}}` écrit en toutes lettres.
+    Par ailleurs `PageMail` code sa signature en dur et ignore le paramètre `signature_email` de la
+    base ; et la case « SMS » n'envoie rien, elle écrit seulement une trace dans le journal.
+14. **`OngletVeille`** : si `rechercheId` est vide, l'onglet reste bloqué sur « Chargement… »
+    indéfiniment. Double journalisation à chaque « Retenir » (un insert direct **plus** un
+    `addJournal`). Et `charges_trimestrielles`, `taxe_fonciere`, `date_annonce` sont perdus au
+    passage proposition → bien.
+15. **`PageVisites`** : l'insert d'un `compte_rendu_visite` dans `envois` n'envoie rien mais pollue
+    le compteur d'envois. Les visites `annulee` ne s'affichent nulle part tout en comptant dans le
+    total, donc l'état vide ne s'affiche pas si la seule visite est annulée.
+16. **Incohérences de type** : le statut `offre_ecrite` est écrit par `FicheClient` et filtré par
+    `PageMail`, mais absent du type `StatutClient` et de la table de couleurs de `Topbar`.
+    `Client.raison_perte`, `Relance.bien_id` et `Relance.resultat` sont déclarés et jamais utilisés.
+
+17. **Le journal et les relances échappent à `recherche_id`, et les deux erreurs se compensent.**
+    `addJournal()` n'écrit **ni** `recherche_id` **ni** `bien_id` (ses dix-huit appels produisent
+    donc des lignes orphelines), et l'onglet Suivi charge le journal sur `client_id` — ce qui les
+    rattrape par accident, au prix de mélanger toutes les recherches d'un même client.
+    ⚠️ **Corriger l'un sans l'autre fait disparaître l'historique.** Les relances, elles, portent un
+    `recherche_id` qui n'est jamais relu.
+
+18. **Le repli des lignes du `.ics` compte les caractères, pas les octets.** Un titre ou une adresse
+    chargés en accents peut donc produire une ligne de plus de 75 octets — exactement ce
+    qu'Outlook refuse, et la raison pour laquelle ce repli a été écrit.
+
+19. **Des envois partent sans `recherche_id`** sur deux chemins vivants : le compte rendu de visite
+    (`PageVisites`) et `PageMail`, qui n'en envoie jamais. Ces lignes n'apparaîtront dans aucun
+    onglet Suivi.
+
+20. **Plusieurs recherches peuvent être `active` en même temps.** `creerRecherche()` insère
+    `active: true` sans passer les autres à `false` (et sans vérifier son erreur). Les écrans qui
+    font `find(r => r.active)` prennent alors la première venue, et `/veille/import` renvoie
+    **toutes** les recherches actives — donc la veille peut tourner deux fois sur le même client.
+
+21. **L'espace acheteur peut désynchroniser `interphone` et `digicode`.** Ces deux clés sont
+    acceptées dans `exigences` par l'API mais absentes de la table `BOOLEENS` : les colonnes
+    booléennes restent figées sur ce que le CRM avait écrit, et divergent du jsonb.
+
+22. **`outils/espaces-jsx.py` ne sort jamais en code 0** sur ce dépôt : quatre faux positifs connus
+    subsistent (`FicheClient.tsx:1498`, `ParcoursBien.tsx:295`, `send-mail/route.ts:244` et `:317`
+    — des `>` de comparaison et un attribut de balise). Inutilisable tel quel en pré-commit ; à
+    lire à l'œil.
+
+---
+
+## 7. Ce qui reste à faire
+
+### ✅ Corrigé le 20 septembre
+
+**L'espace acheteur effaçait le budget minimum et le temps de transport du client.** Dans
+`/api/espace/criteres`, six colonnes étaient écrites sans condition : un champ absent de l'envoi
+valait `null`, donc « efface ». Quatre étaient repêchées, **`budget_min` et `transport_minutes` ne
+l'étaient pas**. Le bug était *latent* — l'assistant envoie aujourd'hui l'objet complet, donc rien
+n'a été perdu — mais le premier envoi partiel aurait vidé ces deux champs sans un mot. Les six
+passent désormais par le même mécanisme que les autres, et un envoi vide n'écrit plus rien.
+
+### Décidé, pas encore construit
+
+1. **SMS à chaque dépôt de bien** — un SMS au client quand un bien arrive dans son espace, avec le
+   lien. Voie retenue : **API SMS d'OVH** (~0,045 € le SMS), **un seul SMS groupé par client et par
+   fenêtre de 2 h**, case à cocher dans la fenêtre d'envoi.
+   ❌ **WhatsApp écarté** : la plateforme Business exige une vérification d'entreprise Meta et des
+   modèles de message approuvés hors de la fenêtre de 24 h.
+2. **RLS Supabase** — voir §6.5. Le plus urgent.
+3. **Données de marché DVF, dans le CRM uniquement** (jamais dans l'espace client) :
+   `https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/communes/{dept}/{insee}.csv` — structure
+   vérifiée, 2021 à 2025 disponibles. ⚠️ `api.cquest.org` renvoie des 502, écarté.
+4. **Mandat de recherche avec signature électronique** (Yousign) — nécessite un avis juridique
+   (loi Hoguet).
+5. **Tester en production le multi-recherches** : créer une deuxième recherche, basculer, vérifier
+   que les biens ne se mélangent pas, supprimer.
+
+### Plus tard
+
+- **PDF d'une sélection de biens** : jsPDF + html2canvas (⚠️ pas encore dans `package.json`),
+  page de garde, fiche par bien, note du conseiller, dépôt dans le Storage, pièce jointe Mailjet.
+- **Scoring de compatibilité bien ↔ recherche.** Couche 1 : critères durs, pondération des champs
+  structurés, faisable tout de suite et gratuit. Couche 2 : envoyer les critères, **les notes libres
+  de la recherche** et la description de l'annonce à Claude pour repérer ce qui ne se met pas en
+  colonne (calme, travaux, exposition, état), seulement sur les biens ayant passé un seuil en
+  couche 1. Les notes libres sont une consigne de matching en langage naturel.
+- **Extension du CRM aux vendeurs** : fiche unifiée, biens en mandat, pipeline de vente.
+- Relances automatiques après envoi · Dashboard réellement branché · Export Excel ·
+  Corbeille avec archivage à J+30 · Multi-utilisateur.
+
+### Sourcing automatique d'annonces — comparatif de mai 2026
+
+Le scraping maison est **écarté** : CGU des portails, défenses anti-bot, coût de maintenance
+prohibitif en solo. On achète à une API le droit d'usage, l'infrastructure, la déduplication.
+
+- **Stream Estate** (ex-Melo.io) — 1500+ sources, déduplication native, webhooks (nouvelle annonce,
+  baisse de prix, expiration). ~0,01 €/annonce, Starter ~99 €/mois. ⚠️ Le comparatif qui le classe
+  premier a un conflit d'intérêt déclaré.
+- **MoteurImmo** — meilleur rapport qualité/prix pour un chasseur. 9/19/39 €/mois, 57 plateformes,
+  adresse exacte, DVF.
+- **Yanport** — **déjà utilisé par Alexandre**. À vérifier auprès de lui : son offre inclut-elle
+  l'API, et cette API expose-t-elle les annonces ou seulement les indicateurs de marché ?
+- **Fluximmo** — écarté, pas de déduplication.
+
+Avant de coder : tester les essais gratuits sur Paris/92, vérifier la couverture réelle, la
+fraîcheur, et les CGU (le re-stockage et l'envoi au client en marque blanche sont-ils autorisés ?).
+
+---
+
+## 8. Mailjet — la configuration qui a coûté cher
+
+Domaine `emilio-immo.com` validé, envois depuis `arogelet@emilio-immo.com`.
+
+**DNS chez OVH** : TXT de validation `mailjet._57401e37` · SPF **de type TXT**
+`v=spf1 include:mx.ovh.com include:spf.mailjet.com -all` · DKIM `mailjet._domainkey` ·
+DMARC sur `_dmarc` : `v=DMARC1; p=none; pct=100; rua=mailto:arogelet@emilio-immo.com; sp=none; aspf=r`.
+
+⚠️ **Le piège** : OVH propose par défaut un enregistrement de type **SPF**, déprécié depuis la
+RFC 7208. Mailjet ne le reconnaît pas — il faut le recréer en **TXT**.
+La coexistence avec la messagerie OVH tient grâce à `include:mx.ovh.com`.
+
+**Suivi désactivé** dans `/api/send-mail` (`TrackOpens` et `TrackClicks` sur `disabled`) : cela
+supprime le pixel de traçage et la réécriture des liens, donc moins de signaux « Promotions ».
+Le CNAME `bnc3` n'a volontairement pas été ajouté, inutile sans traçage.
+Résultat mail-tester : **9,9/10**.
+
+**Le gabarit** : une seule feuille blanche sur fond beige `#e7e1d4`, en-tête navy avec logo, puis
+le message, puis les biens, puis le pied navy. ⚠️ Gmail **supprime les ombres portées** : on sépare
+par le contraste, jamais par l'ombre. Un bien = grand visuel + bouton pleine largeur ;
+plusieurs biens = liste photo à gauche.
+
+---
+
+## 9. Règles d'affichage figées
+
+- **Min/max** : `32–80 m²` si les deux, `min 32 m²` ou `max 80 m²` si un seul.
+- **Prix** : carte bien = prix acquéreur en gros doré, prix vendeur + commission en petit gris.
+  Fiche publique = prix FAI seulement.
+- **Jours de mandat** : « X jours restants » · « Expiré » · alerte sous 15 jours.
+- **Modales de saisie non fermables au clic extérieur** (contact, mandat, bien, création client) —
+  fermeture par ✕ ou Annuler uniquement. Le menu « Recherche active », lui, se ferme au clic
+  extérieur.
+- **Le prix sourcé est le prix affiché en gros** (FAI), jamais le « hors honoraires », même quand
+  la ventilation net + commission est détaillée. Raison métier : Alexandre pose **sa** commission
+  par-dessus.
+
+---
+
+## 10. Hors périmètre
+
+- **Pas de diffusion portails** — reste sur Immofacile, faute de partenariats techniques
+  reproductibles par un développeur indépendant.
+- Pas de comptabilité, pas de signature électronique (pour l'instant), pas de multi-agence.
+
+---
+
+## 11. Historique
+
+### V1 → V2 (mai 2026)
+Journal anti-bruit. Envoi de mails branché sur Mailjet avec quatre modes (libre, un bien, sélection,
+mail libre depuis la fiche). Fiche bien publique `/bien/[id]`. Colonnes `biens` étendues
+(DPE/GES détaillés, caractéristiques, énergie, surfaces annexes, financier, équipements).
+
+### V3.0 — 30 mai 2026 · architecture multi-recherches
+Le changement structurant. Les critères quittent `clients` pour la nouvelle table `recherches`,
+et `recherche_id` est ajouté à `biens`, `visites`, `transactions`, `envois`, `relances` (CASCADE)
+et `journal` (SET NULL). Migration exécutée en production : chaque client a reçu sa
+« Recherche principale » avec ses critères recopiés, zéro orphelin.
+Création client refondue en assistant 3 étapes. Historique + Journal fusionnés en « Suivi ».
+Liste Clients = une carte par client, pas par recherche.
+
+### V3.1 — 2 juin 2026
+Délivrabilité Mailjet résolue (DMARC, suivi désactivé, 9,9/10). Gabarit de mail refondu en feuille
+unifiée. Fiche bien publique repassée de deux colonnes à **une seule colonne centrée** — la barre
+latérale laissait un grand vide à droite sur les contenus longs.
+
+### V3.2 — 30 juin 2026
+Reformulation IA fiabilisée : endpoint dédié `/api/reformuler-bien` (le bouton tapait avant sur
+`parse-texte-bien`, conçu pour *conserver* le texte — il ne reformulait donc pas). Le prix sourcé
+devient le prix affiché en gros. Onglet Suivi refondu avec filtres par type d'action. Action
+rattachable à un bien (`journal.bien_id`). En-têtes de la fiche bien publique en étiquette dorée
+à cheval.
+
+### V3.3 — 19-20 septembre 2026 · l'espace acheteur
+
+Le plus gros ajout depuis la V3.0. Le client n'est plus seulement destinataire de mails : il a son
+espace.
+
+- **Espace acheteur `/espace/<token>`** (~3 000 lignes dans `EspaceClient.tsx`) — voir §3.
+- **Avis client** remontant dans l'onglet Présentés, regroupés par réponse.
+- **Agenda `.ics`** + lien Google Agenda.
+- **Assistant de critères en 9 étapes**, budget à la fin, disponible côté CRM et côté client.
+- **Exigences à 3 niveaux**, étage maximum sans ascenseur, cuisine ouverte ou séparée, surface
+  minimale d'extérieur.
+- **`SecteurPicker` réécrit** : un bloc par commune, tiroir « + Quartier ». Format de stockage
+  inchangé (`"Quartier (Ville)"`).
+- **Transports** : `ArretPicker`, `lib/lignes.ts`, `lib/arrets.ts`.
+- **Veille outillée** : `veille_passages`, `veille_propositions`, onglet Veille, `/veille/import`.
+- **Historique client** : `historique_vu_le` + pastille « non lu » sur les changements venus de
+  l'espace.
+
+**Six bugs silencieux trouvés en vérifiant, aucun signalé par Alexandre :**
+
+1. L'onglet par défaut de la fiche pointait sur un identifiant (`biens`) qui n'existait plus.
+2. `nb_vues` ne pouvait jamais dépasser 1 : l'envoi était conditionné à `etat === 'neuf'`.
+3. Les insertions dans `relances` utilisaient `date_relance` / `motif` / `statut:'a_faire'` au lieu
+   de `date_echeance` / `note` / `en_attente` → **aucune relance n'avait jamais été créée**, sans
+   la moindre erreur visible.
+4. `saveCriteres` avalait ses erreurs et refermait la fenêtre comme si tout allait bien.
+5. **Le bouton Emilio était mort depuis le 30 mai** : il enregistrait le bien sans `recherche_id`
+   ni `etape`. Le bien partait en base et n'apparaissait nulle part.
+6. **Les espaces JSX mangées par SWC** (voir `AGENTS.md`) : 20 endroits dans 7 fichiers, dont
+   « suivi depuis 21jours », « 4 500€commission », et « 3· Voir tout » sur la fiche bien publique.
+
+**Refonte de « Le marché sur vos critères »**, en plusieurs passes sur retour direct : trois
+chiffres qui s'additionnent, un « ? » sur chacun, état vide expliqué, palette ramenée à marine +
+or + blanc, émojis remplacés par les icônes dessinées.
+
+**Nouveaux fichiers** : `app/espace/[token]/page.tsx` · `components/espace/EspaceClient.tsx` ·
+`app/api/espace/[action]/route.ts` · `app/api/espace/agenda/route.ts` ·
+`components/shared/ArretPicker.tsx` · `lib/arrets.ts` · `lib/lignes.ts` · `src/proxy.ts` ·
+`outils/espaces-jsx.py`.
