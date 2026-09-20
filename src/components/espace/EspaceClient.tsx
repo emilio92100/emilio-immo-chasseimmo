@@ -248,8 +248,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   function ouvrirBien(b: Bien) {
     if (b.etat === 'neuf') {
       setBiens(l => l.map(x => x.id === b.id ? { ...x, etat: 'vu', vuLe: new Date().toISOString() } : x));
-      envoyer('vue', { bien_id: b.id });
     }
+    /* Chaque ouverture compte, pas seulement la première : c'est ce qui dit
+       à Alexandre qu'un bien a été rouvert trois fois dans la semaine. */
+    envoyer('vue', { bien_id: b.id });
     montrer(<FicheBien b={b} client={client} onFermer={fermer}
       onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
   }
