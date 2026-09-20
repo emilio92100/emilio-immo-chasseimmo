@@ -64,16 +64,20 @@ export function StylesEmilio() {
       .emi-puce:hover { transform: translateY(-1px) }
 
       /* ── onglets ───────────────────────────────────────── */
-      .emi-onglet { position:relative; display:inline-flex; align-items:center; gap:8px; background:transparent; border:none;
-        border-radius:12px; padding:10px 16px; font-size:13.5px; font-weight:600; color:#64748b; cursor:pointer;
-        font-family:inherit; white-space:nowrap;
-        transition: background .34s cubic-bezier(.16,1,.3,1), color .34s cubic-bezier(.16,1,.3,1),
-                    box-shadow .34s cubic-bezier(.16,1,.3,1), transform .24s cubic-bezier(.16,1,.3,1) }
-      .emi-onglet:hover { color:${NAVY}; background:#eef2f7 }
-      .emi-onglet[data-actif="true"] { color:#fff; font-weight:800; background:${NAVY};
-        box-shadow: 0 10px 22px -12px rgba(26,35,50,.95); transform: translateY(-1px) }
+      /* L'onglet actif descend d'un pixel sur la bordure du panneau : les deux
+         se touchent, on est « dedans ». Le liseré doré marque l'onglet choisi. */
+      .emi-onglet { position:relative; display:inline-flex; align-items:center; gap:8px; background:transparent;
+        border:1px solid transparent; border-bottom:none; margin-bottom:-1px;
+        border-radius:11px 11px 0 0; padding:11px 16px 12px; font-size:13.5px; font-weight:600;
+        color:#64748b; cursor:pointer; font-family:inherit; white-space:nowrap;
+        transition: background .28s cubic-bezier(.16,1,.3,1), color .28s cubic-bezier(.16,1,.3,1) }
+      .emi-onglet:hover { color:${NAVY}; background:rgba(255,255,255,.62) }
+      .emi-onglet[data-actif="true"] { color:${NAVY}; font-weight:800; background:#f7f9fc;
+        border-color:${BORD}; padding-top:9px }
+      .emi-onglet[data-actif="true"]::before { content:""; position:absolute; left:-1px; right:-1px; top:-1px;
+        height:3px; border-radius:3px 3px 0 0; background:${OR} }
       .emi-compteur { background:rgba(148,163,184,.18); color:#64748b; border-radius:20px; padding:1px 8px; font-size:11.5px; font-weight:800; transition: all .32s cubic-bezier(.16,1,.3,1) }
-      .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(255,255,255,.18); color:#fff }
+      .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(26,35,50,.1); color:${NAVY} }
       .emi-onglet .emi-compteur.dore { background:${OR}; color:#fff }
     `}</style>
   );
@@ -673,9 +677,9 @@ export function Onglets({ items, actif, onChange }: {
 }) {
   return (
     <div style={{
-      display: 'flex', gap: 3, flexWrap: 'wrap', background: 'white',
-      border: `1px solid ${BORD}`, borderRadius: 16, padding: 5, marginBottom: 16,
-      boxShadow: '0 1px 2px rgba(16,24,40,.04)',
+      display: 'flex', gap: 3, flexWrap: 'wrap', background: '#eef2f7',
+      border: `1px solid ${BORD}`, borderBottom: 'none',
+      borderRadius: '16px 16px 0 0', padding: '6px 6px 0', marginBottom: 0,
     }}>
       {items.map(t => (
         <button key={t.id} type="button" className="emi-onglet" data-actif={actif === t.id}
