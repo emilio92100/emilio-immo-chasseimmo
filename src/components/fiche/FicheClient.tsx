@@ -1315,7 +1315,7 @@ Emilio Immobilier
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
-          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); await supabase.from('relances').insert({ client_id: client.id, recherche_id: rechercheId, date_relance: date.toISOString().split('T')[0], motif: 'Relance manuelle', statut: 'a_faire' }); await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
+          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); const { error } = await supabase.from('relances').insert({ client_id: client.id, recherche_id: rechercheId, type: 'manuelle', statut: 'en_attente', date_echeance: date.toISOString(), note: 'Relance manuelle' }); if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; } await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
           <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
         </div>
