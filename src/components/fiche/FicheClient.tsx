@@ -430,6 +430,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [transaction, setTransaction] = useState<any>(null);
   const [envois, setEnvois] = useState<any[]>([]);
   const [journal, setJournal] = useState<any[]>([]);
+  /* Ce que le client a fait de son côté : modifications de critères et messages.
+     Le bloc « Critères » porte une pastille tant qu'Alexandre ne les a pas lus. */
+  const [histoEvts, setHistoEvts] = useState<any[]>([]);
+  const [showHisto, setShowHisto] = useState(false);
+
+  /* Non lus = ce que le client a fait depuis la dernière fois qu'on a ouvert l'historique. */
+  const vuLe = rechercheActive?.historique_vu_le ? new Date(rechercheActive.historique_vu_le).getTime() : 0;
+  const histoNonVus = histoEvts.filter(e => new Date(e.created_at).getTime() > vuLe).length;
+
+  async function ouvrirHistorique() {
+    setShowHisto(true);
+    if (!rechercheId || histoNonVus === 0) return;
+    const maintenant = new Date().toISOString();
+    const { data } = await supabase.from('recherches')
+      .update({ historique_vu_le: maintenant }).eq('id', rechercheId).select().single();
+    if (data) setRecherches(rs => rs.map(r => (r.id === rechercheId ? (data as Recherche) : r)));
+  }
   const [saving, setSaving] = useState(false);
 
   const [showContact, setShowContact] = useState(false);
@@ -440,7 +457,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [sensCrit, setSensCrit] = useState<1 | -1>(1);
   useEffect(() => { try { const m = localStorage.getItem('emilio_mode_criteres'); if (m === 'etapes' || m === 'tout') setModeCrit(m); } catch { /* stockage indisponible */ } }, []);
   const changerModeCrit = (m: 'tout' | 'etapes') => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); try { localStorage.setItem('emilio_mode_criteres', m); } catch { /* stockage indisponible */ } };
-  const ouvrirCriteres = () => { setEtapeCrit(0); setSensCrit(1); setShowCriteres(true); };
+  const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
   const [showBien, setShowBien] = useState(false);
   const [showAction, setShowAction] = useState(false);
@@ -563,14 +580,17 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function load() {
-    const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }] = await Promise.all([
+    const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }, { data: h }] = await Promise.all([
       supabase.from('biens').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
       supabase.from('visites').select('*').eq('recherche_id', rechercheId).order('date_visite'),
       supabase.from('transactions').select('*').eq('recherche_id', rechercheId).maybeSingle(),
       supabase.from('envois').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
       supabase.from('journal').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+      supabase.from('espace_evenements').select('*').eq('recherche_id', rechercheId)
+        .in('type', ['criteres', 'message']).order('created_at', { ascending: false }).limit(40),
     ]);
     setBiens(b||[]); setVisites(v||[]); setTransaction(t); setEnvois(e||[]); setJournal(j||[]);
+    setHistoEvts(h||[]);
   }
 
   async function refresh() {
@@ -1499,7 +1519,24 @@ Emilio Immobilier
         {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
         <div className={styles.infoRow}>
           <div className={styles.infoCard} style={{ flex: 2 }}>
-            <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={ouvrirCriteres}>✏️ Modifier</button></div>
+            <div className={styles.infoCardHeader}>
+              <span>🎯 Critères de recherche</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <button className={styles.editBtn} onClick={ouvrirHistorique}
+                  title="Ce que le client a changé ou demandé depuis son espace"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                    color: histoNonVus ? '#1a2332' : undefined, fontWeight: histoNonVus ? 700 : 600 }}>
+                  🕑 Historique client
+                  {histoNonVus > 0 && (
+                    <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                      background: '#ef4444', color: 'white', fontSize: 10.5, fontWeight: 800,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 0 0 3px rgba(239,68,68,.16)' }}>{histoNonVus}</span>
+                  )}
+                </button>
+                <button className={styles.editBtn} onClick={() => ouvrirCriteres()}>✏️ Modifier</button>
+              </span>
+            </div>
             <div className={styles.infoCardBody}>
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1593,7 +1630,7 @@ Emilio Immobilier
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ color: '#94a3b8', fontSize: 13 }}>Aucun critère défini</span>
-                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={ouvrirCriteres}>+ Définir</button>
+                  <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => ouvrirCriteres()}>+ Définir</button>
                 </div>
               )}
             </div>
@@ -2123,6 +2160,59 @@ Emilio Immobilier
               )}
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowContact(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveContact} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
+          </div>
+        </div>
+      )}
+
+      {showHisto && (
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 620 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>🕑 Historique client</h2>
+              <button className={styles.modalClose} onClick={() => setShowHisto(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: -4 }}>
+                Ce que {client.prenom || 'le client'} a changé ou demandé depuis son espace.
+              </div>
+              {histoEvts.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13.5, padding: '26px 0' }}>
+                  Rien pour l&apos;instant — il n&apos;a encore rien modifié ni écrit.
+                </div>
+              ) : histoEvts.map(ev => {
+                const msg = ev.type === 'message';
+                const neuf = new Date(ev.created_at).getTime() > vuLe;
+                const d = new Date(ev.created_at);
+                return (
+                  <div key={ev.id} style={{
+                    display: 'flex', gap: 11, padding: '11px 13px', borderRadius: 12,
+                    border: `1px solid ${neuf ? '#fed7aa' : '#e3e8f0'}`,
+                    background: neuf ? '#fffaf3' : 'white',
+                  }}>
+                    <span style={{ fontSize: 17, lineHeight: 1.2 }}>{msg ? '💬' : '🎯'}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                        <b style={{ fontSize: 13.5, color: '#1a2332' }}>
+                          {msg ? 'Il vous a écrit' : 'Il a modifié ses critères'}
+                        </b>
+                        {neuf && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#c2410c', background: '#ffedd5', borderRadius: 6, padding: '2px 6px' }}>Nouveau</span>}
+                        <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          {d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {ev.detail && (
+                        <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{ev.detail}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className={`${styles.modalFooter} ${styles.critNav}`}>
+              <button className={styles.btn} onClick={() => { setShowHisto(false); ouvrirCriteres(8); }}
+                title="La note est la vôtre : c'est vous qui la réécrivez pour lui">✏️ Modifier ma note</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowHisto(false)}>Fermer</button>
+            </div>
           </div>
         </div>
       )}
