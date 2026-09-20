@@ -119,6 +119,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           chambres_min: n(c.chambresMin, 0, 20),
           transport_minutes: n(c.transportMinutes, 1, 60),
         };
+        if (Array.isArray(c.transportArrets)) {
+          maj.transport_arrets = (c.transportArrets as Record<string, unknown>[])
+            .filter((a) => a && typeof a.nom === 'string' && a.nom.length <= 120)
+            .slice(0, 8)
+            .map((a) => ({
+              nom: String(a.nom).trim(),
+              ville: typeof a.ville === 'string' ? a.ville.slice(0, 80) : '',
+              lignes: Array.isArray(a.lignes)
+                ? (a.lignes as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 10) : [],
+              minutes: Math.max(1, Math.min(60, Number(a.minutes) || 10)),
+            }));
+        }
         if (Array.isArray(c.transportLignes)) {
           maj.transport_lignes = (c.transportLignes as unknown[])
             .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && x.length <= 60)
