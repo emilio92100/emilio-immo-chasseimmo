@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     // ─── la serrure : le lien doit exister et l'espace être actif ───
     const { data: recherche } = await supabase
       .from('recherches')
-      .select('id, client_id, espace_actif, secteurs, notes')
+      .select('id, client_id, espace_actif, secteurs, notes, exigences')
       .eq('token_espace', token)
       .maybeSingle();
 
@@ -146,6 +146,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           maj.jardin = e.includes('Jardin');     maj.parking = e.includes('Parking');
           maj.ascenseur = e.includes('Ascenseur'); maj.cave = e.includes('Cave');
           maj.gardien = e.includes('Gardien');
+          // Le client ne voit que « coché / pas coché ». On tient les niveaux du CRM
+          // en phase avec ses cases, sans écraser la nuance posée par le chasseur :
+          // décoché → on retire, coché sans niveau → « souhaité ».
+          const ex = { ...((recherche.exigences || {}) as Record<string, string>) };
+          ([['terrasse', 'Terrasse'], ['balcon', 'Balcon'], ['jardin', 'Jardin'], ['parking', 'Parking'],
+            ['ascenseur', 'Ascenseur'], ['cave', 'Cave'], ['gardien', 'Gardien']] as [string, string][])
+            .forEach(([cle, libelle]) => {
+              if (e.includes(libelle)) { if (!ex[cle]) ex[cle] = 'souhaite'; }
+              else delete ex[cle];
+            });
+          maj.exigences = ex;
         }
         Object.keys(maj).forEach(k => maj[k] === null && delete maj[k]);
         maj.updated_at = new Date().toISOString();
