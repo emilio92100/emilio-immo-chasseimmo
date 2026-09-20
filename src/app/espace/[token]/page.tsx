@@ -41,7 +41,7 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
   if (!recherche || recherche.espace_actif === false) notFound();
   const client = (recherche as any).clients;
 
-  const [biensRes, passagesRes, totalRes] = await Promise.all([
+  const [biensRes, passagesRes, totalRes, visitesRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
     supabase.from('veille_passages').select('*').eq('recherche_id', recherche.id)
@@ -49,6 +49,10 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     /* Tous les passages du dossier, pour le total d'annonces lues. On ne tire
        qu'une colonne d'entiers : même après des années, c'est quelques kilo-octets. */
     supabase.from('veille_passages').select('nb_lues').eq('recherche_id', recherche.id),
+    /* Les visites calées et pas encore faites : c'est ce que le client attend
+       de voir en premier quand il ouvre son espace. */
+    supabase.from('visites').select('*').eq('recherche_id', recherche.id)
+      .eq('statut', 'a_venir').order('date_visite', { ascending: true }),
   ]);
   const totalLues = (totalRes.data || []).reduce((t, x) => t + (x.nb_lues || 0), 0);
 
@@ -68,6 +72,23 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     avis: b.badge_retour, commentaire: b.retour_client, retourLe: b.retour_le,
     etat: ETAT(b),
   }));
+
+  /* Une visite sans date ne sert à rien à l'écran, et une visite passée depuis
+     plus d'un jour non plus : le compte rendu prend le relais côté CRM. */
+  const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const visites = (visitesRes.data || [])
+    .filter((v) => v.date_visite && String(v.date_visite).slice(0, 10) >= hier)
+    .map((v) => {
+      const b = (biensRes.data || []).find((x) => x.id === v.bien_id);
+      return {
+        id: v.id,
+        date: v.date_visite as string,
+        heure: (v.heure as string) || null,
+        titre: b?.titre || `${b?.type_bien || 'Bien'} — ${b?.ville || ''}`,
+        adresse: [b?.adresse || b?.adresse_probable || b?.quartier, b?.ville].filter(Boolean).join(', '),
+        bienId: v.bien_id as string | null,
+      };
+    });
 
   const passages = passagesRes.data || [];
   const dernier = passages[0] || null;
@@ -140,6 +161,7 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
       semaine={passages.slice().reverse().map((p) => ({
         quand: p.termine_le, lues: p.nb_lues || 0,
       }))}
+      visites={visites}
     />
   );
 }
