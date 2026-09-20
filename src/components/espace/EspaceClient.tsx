@@ -208,6 +208,14 @@ function ChampNum({ val, onChange, suffixe, aide }: {
   );
 }
 
+/* Le petit « ? » posé après un intitulé de chiffre. */
+function BtnAide({ cle, onAide }: { cle: string; onAide: (c: string) => void }) {
+  return (
+    <button type="button" className="aide-pt" aria-label="Que veut dire ce chiffre ?"
+      onClick={(e) => { e.stopPropagation(); onAide(cle); }}>?</button>
+  );
+}
+
 /* En-tête d'une catégorie, côté acheteur : pastille d'icône + titre lisible. */
 function CatE({ ico, titre, sous, children }: { ico: string; titre: string; sous?: string; children: React.ReactNode }) {
   return (
@@ -453,7 +461,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller}
-              onBienvenue={ouvrirBienvenue} />
+              onBienvenue={ouvrirBienvenue}
+              onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'neufs' && (
             <Vue icone="etoile" titre="Nouveaux biens pour vous" aller={aller}
@@ -552,15 +561,18 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
       <div className="col-a">
       <div className="bandeau-chiffres">
-        <div className="bc"><div className="n or tab">{neufs.length}</div><div className="l">à découvrir</div></div>
-        <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">annonces lues</div></div>
-        <div className="bc"><div className="n tab">{client.jours ?? '—'}</div><div className="l">jours de suivi</div></div>
+        <div className="bc"><div className="n or tab">{neufs.length}</div>
+          <div className="l">à découvrir<BtnAide cle="decouvrir" onAide={onAide} /></div></div>
+        <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div>
+          <div className="l">annonces lues<BtnAide cle="lues" onAide={onAide} /></div></div>
+        <div className="bc"><div className="n tab">{client.jours ?? '—'}</div>
+          <div className="l">jours de suivi<BtnAide cle="jours" onAide={onAide} /></div></div>
       </div>
       </div>
 
@@ -1696,6 +1708,56 @@ function Message({ onFermer, onEnvoi }: any) {
   );
 }
 
+/* Les trois chiffres de l'accueil ne parlent pas d'eux-mêmes : « 119 annonces
+   lues », lues par qui, et pour quoi faire ? Chacun a son explication, derrière
+   un point d'interrogation. On dit ce que le chiffre est, et ce qu'il n'est pas. */
+const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: string; puces: string[] }> = {
+  decouvrir: {
+    ico: 'etoile', sur: 'Vos nouveautés', titre: 'Ce que veut dire « à découvrir »',
+    texte: "C'est le nombre de biens retenus pour vous que vous n'avez pas encore ouverts.",
+    puces: [
+      'Dès qu’un bien passe tous vos critères, il arrive ici et le compteur monte.',
+      'Il redescend à mesure que vous les ouvrez : ceux-là partent dans « Mes derniers biens consultés ».',
+      'À zéro, vous êtes à jour — rien ne vous attend, et rien ne s’est perdu.',
+    ],
+  },
+  lues: {
+    ico: 'loupe', sur: 'Le travail de fond', titre: 'Ce que veut dire « annonces lues »',
+    texte: "À chaque passage, nous passons en revue les annonces qui sortent sur votre secteur et dans votre gamme de prix — portails immobiliers, confrères et partenaires, base off-market. Ce chiffre, c'est le nombre d'annonces ouvertes et lues en détail lors du dernier passage.",
+    puces: [
+      'Ce ne sont pas des biens qui vous correspondent : c’est la base que nous avons examinée pour en trouver.',
+      'Chacune est comparée à vos critères, un par un. La très grande majorité est écartée — c’est normal, et c’est le travail.',
+      'Le chiffre repart de zéro à chaque passage : c’est une photo du dernier, pas un total depuis le début.',
+    ],
+  },
+  jours: {
+    ico: 'horloge', sur: 'Votre dossier', titre: 'Ce que veut dire « jours de suivi »',
+    texte: "C'est le nombre de jours écoulés depuis l'ouverture de votre dossier chez nous.",
+    puces: [
+      'La recherche est reprise chaque jour depuis cette date, y compris les jours où rien n’est retenu.',
+      'Une recherche aboutit rarement en une semaine : compter en jours permet de voir où en est le projet, sans se raconter d’histoires.',
+      'Tout ce qui a été fait depuis reste consultable dans « Mes derniers biens consultés ».',
+    ],
+  },
+};
+
+function Explication({ a, onFermer }: { a: typeof AIDES[string]; onFermer: () => void }) {
+  return (
+    <div className="bienv">
+      <div className="bienv-sceau"><Ico n={a.ico} t={28} /></div>
+      <div className="bienv-sur">{a.sur}</div>
+      <h3>{a.titre}</h3>
+      <p>{a.texte}</p>
+      <div className="puces">
+        {a.puces.map((t, i) => (
+          <span key={i}><span className="k"><Ico n="check" t={15} /></span><span>{t}</span></span>
+        ))}
+      </div>
+      <button className="btn or" style={{ marginTop: 22, width: '100%' }} onClick={onFermer}>J&apos;ai compris</button>
+    </div>
+  );
+}
+
 /* La présentation de l'espace. Elle s'ouvre toute seule à la première visite,
    puis se retrouve derrière « Comment ça marche ? ». Elle ne reste pas en
    permanence sur la page d'accueil : on la lit une fois, elle a fait son office. */
@@ -1850,7 +1912,13 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .bc{flex:1; background:var(--carte); padding:14px 10px; text-align:center}
 .bc .n{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:21px; letter-spacing:-.8px; line-height:1}
 .bc .n.or{color:var(--or-fonce)}
-.bc .l{font-size:10px; letter-spacing:.7px; text-transform:uppercase; color:var(--plume-clair); font-weight:700; margin-top:6px}
+.bc .l{font-size:10px; letter-spacing:.7px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:700; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:5px}
+.aide-pt{width:16px; height:16px; flex:0 0 auto; border-radius:50%; border:1px solid var(--trait-fort);
+  background:var(--carte); color:var(--plume-clair); font-family:inherit; font-size:10px; font-weight:800;
+  line-height:1; display:inline-flex; align-items:center; justify-content:center; padding:0;
+  transition:color .15s, border-color .15s, background .15s}
+.aide-pt:hover{color:var(--or-fonce); border-color:var(--or-trait); background:var(--or-fond)}
 .sep{display:flex; align-items:center; gap:12px; margin:26px 0 14px}
 .sep span{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase; color:var(--plume-clair)}
 .sep i{flex:1; height:1px; background:var(--trait)}
