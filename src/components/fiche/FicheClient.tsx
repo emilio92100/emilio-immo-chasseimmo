@@ -1487,17 +1487,21 @@ Emilio Immobilier
           </div>
         )}
 
-        {/* SÉLECTEUR DE RECHERCHE — juste au-dessus des critères qu'il commande */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        {/* SÉLECTEUR DE RECHERCHE — posé SUR le bloc des critères, comme un
+            onglet de classeur : on doit voir que l'un commande l'autre. */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: -1, flexWrap: 'wrap', position: 'relative', zIndex: 3 }}>
           <div style={{ position: 'relative' }}>
             {showRechercheMenu && <div onClick={() => setShowRechercheMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />}
-            <button onClick={() => setShowRechercheMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6 }}>Recherche active</span>
+            <button onClick={() => setShowRechercheMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid #e3e8f0', borderBottom: 'none', borderRadius: '13px 13px 0 0', padding: '10px 18px 11px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 3, background: '#c9a84c' }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                {recherches.length > 1 ? 'Recherche active' : 'Recherche principale'}
+              </span>
               <span style={{ fontSize: 15, fontWeight: 800, color: '#1a2332' }}>{rechercheActive?.nom || '—'}</span>
               <span style={{ color: '#94a3b8', fontSize: 12 }}>▾</span>
             </button>
             {showRechercheMenu && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 1, background: 'white', border: '1px solid #e3e8f0', borderRadius: '0 12px 12px 12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
                 {recherches.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
                     <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('presentes'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -1514,13 +1518,14 @@ Emilio Immobilier
             )}
           </div>
           {rechercheActive && (
-            <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
+            <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline', paddingBottom: 12 }}>Renommer</button>
           )}
         </div>
 
         {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
         <div className={styles.infoRow}>
-          <div className={styles.infoCard} style={{ flex: 2 }}>
+          {/* coin supérieur gauche carré : c'est là que vient se poser le sélecteur */}
+          <div className={styles.infoCard} style={{ flex: 2, borderTopLeftRadius: 0 }}>
             <div className={styles.infoCardHeader}>
               <span>🎯 Critères de recherche</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1671,10 +1676,10 @@ Emilio Immobilier
       <style>{`
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
-        @keyframes ficheTabIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes ficheTabIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
         /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
            pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
-        .fiche-tab { animation: ficheTabIn .32s ease both; min-height: 240px;
+        .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; min-height: 240px;
           background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
           border-radius: 0 0 16px 16px; padding: 16px; }
         @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
