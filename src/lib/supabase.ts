@@ -42,6 +42,7 @@ export interface Recherche {
   ascenseur?: boolean
   gardien?: boolean
   interphone?: boolean
+  historique_vu_le?: string
   exigences?: Record<string, 'souhaite' | 'indispensable'>
   etage_max_sans_ascenseur?: number
   cuisine_type?: string
