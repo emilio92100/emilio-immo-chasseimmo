@@ -106,6 +106,26 @@ function Ico({ n, t = 22 }: { n: string; t?: number }) {
   );
 }
 
+/* Échap ferme la couche la plus haute : plein écran, puis pop-up, puis feuille.
+   Une petite pile suffit — le dernier inscrit est celui qui répond. */
+const PILE_ECHAP: Array<() => void> = [];
+function useEchap(actif: boolean, onEchap: () => void) {
+  useEffect(() => {
+    if (!actif) return;
+    PILE_ECHAP.push(onEchap);
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (PILE_ECHAP[PILE_ECHAP.length - 1] === onEchap) { e.stopPropagation(); onEchap(); }
+    };
+    window.addEventListener('keydown', auClavier);
+    return () => {
+      const i = PILE_ECHAP.lastIndexOf(onEchap);
+      if (i >= 0) PILE_ECHAP.splice(i, 1);
+      window.removeEventListener('keydown', auClavier);
+    };
+  }, [actif, onEchap]);
+}
+
 /* ══ composant ════════════════════════════════════ */
 export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine }: Props) {
   const [vue, setVue] = useState('accueil');
@@ -128,6 +148,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const montrer = (n: React.ReactNode, v = '') => { setFeuille(n); setVariante(v); setOuvert(true); };
   const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setVariante(''); }, 320); };
   const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  const fermerRef = useCallback(() => {
+    setOuvert(false);
+    setTimeout(() => { setFeuille(null); setVariante(''); }, 320);
+  }, []);
+  useEchap(ouvert, fermerRef);
 
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
@@ -519,16 +545,20 @@ function Marche({ passage, semaine, maxLues, aller }: any) {
 }
 
 function Recherche({ crit, aller, onCriteres, onMessage }: any) {
-  const lo = 400000, hi = 3000000;
-  const bmin = crit.budgetMin || Math.max(lo, (crit.budgetMax || 1000000) * 0.75);
-  const bmax = crit.budgetMax || bmin * 1.3;
+  /* On n'invente rien : s'il n'y a pas de minimum, on écrit « jusqu'à ». */
+  const bmin: number | null = crit.budgetMin || null;
+  const bmax: number | null = crit.budgetMax || null;
   return (
     <Vue icone="cible" titre="Rappel de ma recherche" aller={aller}
       sous="Ce qu'Alexandre a noté de votre projet. Tout ce qui est chiffré, vous pouvez le faire évoluer vous-même.">
       <div className="bloc">
         <div className="t"><Ico n="euro" t={15} /> Budget</div>
-        <div className="gros tab">{EUR(bmin)} <small>à</small> {EUR(bmax)}</div>
-        <div className="jauge"><i style={{ marginLeft: (bmin - lo) / (hi - lo) * 100 + '%', width: (bmax - bmin) / (hi - lo) * 100 + '%' }} /></div>
+        <div className="gros tab">
+          {bmin && bmax ? <>{EUR(bmin)} <small>à</small> {EUR(bmax)}</>
+            : bmax ? <><small>Jusqu&apos;à</small> {EUR(bmax)}</>
+              : bmin ? <><small>À partir de</small> {EUR(bmin)}</>
+                : <small>À préciser ensemble</small>}
+        </div>
       </div>
       <div className="bloc">
         <div className="t"><Ico n="maison" t={15} /> Le bien</div>
@@ -578,14 +608,18 @@ function Galerie({ photos, onAgrandir }: { photos: string[]; onAgrandir: (n: num
 
   const surDefilement = () => {
     const el = bande.current;
-    if (!el || !el.clientWidth) return;
-    const n = Math.round(el.scrollLeft / el.clientWidth);
+    if (!el) return;
+    const un = el.firstElementChild as HTMLElement | null;
+    const l = un?.clientWidth || el.clientWidth;
+    if (!l) return;
+    const n = Math.max(0, Math.min(photos.length - 1, Math.round(el.scrollLeft / l)));
     setI((v) => (v === n ? v : n));
   };
   const versPhoto = (n: number) => {
     const el = bande.current;
     if (!el) return;
-    el.scrollTo({ left: n * el.clientWidth, behavior: 'smooth' });
+    const c = el.children[n] as HTMLElement | undefined;
+    el.scrollTo({ left: c ? c.offsetLeft : 0, behavior: 'smooth' });
   };
 
   if (!photos.length) {
@@ -648,15 +682,16 @@ function PleinEcran({ photos, depart, onFermer }: { photos: string[]; depart: nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEchap(true, onFermer);
+
   useEffect(() => {
     const auClavier = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFermer();
       if (e.key === 'ArrowRight') cases.current[Math.min(i + 1, photos.length - 1)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
       if (e.key === 'ArrowLeft') cases.current[Math.max(i - 1, 0)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     };
     window.addEventListener('keydown', auClavier);
     return () => window.removeEventListener('keydown', auClavier);
-  }, [onFermer, i, photos.length]);
+  }, [i, photos.length]);
 
   const surDefilement = () => {
     const el = bande.current;
@@ -728,10 +763,12 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
 
   return (
     <>
+      <div className="barre-retour">
+        <button type="button" className="retour-f" onClick={onFermer} aria-label="Revenir à la liste">
+          <Ico n="retour" t={18} />
+        </button>
+      </div>
       <Galerie photos={photos} onAgrandir={setPlein} />
-      <button type="button" className="retour-f" onClick={onFermer} aria-label="Revenir à la liste">
-        <Ico n="retour" t={18} />
-      </button>
       {plein !== null && (
         <PleinEcran photos={photos} depart={plein} onFermer={() => setPlein(null)} />
       )}
@@ -796,11 +833,8 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
   const [etat, setEtat] = useState<'saisie' | 'envoi' | 'ok' | 'ko'>('saisie');
   const lien = typeof window !== 'undefined' ? `${window.location.origin}/bien/${b.id}` : '';
 
-  useEffect(() => {
-    const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape' && etat !== 'envoi') onFermer(); };
-    window.addEventListener('keydown', auClavier);
-    return () => window.removeEventListener('keydown', auClavier);
-  }, [onFermer, etat]);
+  const fermerSiPossible = useCallback(() => { if (etat !== 'envoi') onFermer(); }, [etat, onFermer]);
+  useEchap(true, fermerSiPossible);
 
   async function partir() {
     if (!/.+@.+\..+/.test(mail.trim())) { setErreur(true); return; }
@@ -870,21 +904,23 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
 function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   const [enr, setEnr] = useState(false);
   const [t, setT] = useState({
-    budgetMin: crit.budgetMin || Math.round((crit.budgetMax || 1000000) * 0.75 / 25000) * 25000,
-    budgetMax: crit.budgetMax || 1500000,
+    budgetMin: crit.budgetMin || 0,
+    budgetMax: crit.budgetMax || 1000000,
     surfaceMin: crit.surfaceMin || 60,
     piecesMin: crit.piecesMin || 3,
     chambresMin: crit.chambresMin || 2,
     secteurs: [...crit.secteurs], equip: [...crit.equip],
   });
-  const lo = 400000, hi = 3000000;
+  /* Une borne ne tire plus l'autre : on bloque seulement quand elles se
+     croisent, et on retient celle que l'on est en train de bouger. */
   const pas = (cle: string, d: number) => {
     setT(v => {
       const n = { ...v } as any;
       const p = cle === 'surfaceMin' ? 5 : 25000;
-      n[cle] = Math.max(cle === 'surfaceMin' ? 20 : 300000, n[cle] + d * p);
-      if (n.budgetMin > n.budgetMax - 100000) {
-        if (cle === 'budgetMin') n.budgetMax = n.budgetMin + 100000; else n.budgetMin = n.budgetMax - 100000;
+      const plancher = cle === 'surfaceMin' ? 20 : (cle === 'budgetMin' ? 0 : 50000);
+      n[cle] = Math.max(plancher, n[cle] + d * p);
+      if (n.budgetMin && n.budgetMin > n.budgetMax) {
+        if (cle === 'budgetMin') n.budgetMin = n.budgetMax; else n.budgetMax = n.budgetMin;
       }
       return n;
     });
@@ -892,7 +928,19 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   const bascule = (cle: 'secteurs' | 'equip', v: string) =>
     setT(x => ({ ...x, [cle]: x[cle].includes(v) ? x[cle].filter(y => y !== v) : [...x[cle], v] }));
 
-  const secteurs = Array.from(new Set([...crit.secteurs, ...SECTEURS_BOULOGNE]));
+  /* « Parchamp-Albert Kahn (Boulogne-Billancourt) » et « Parchamp-Albert Kahn »
+     sont le même quartier : on garde l'orthographe du dossier, une seule fois. */
+  const secteurs = (() => {
+    const clef = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s*\(.*?\)\s*/g, '').replace(/[^a-z]/g, '');
+    const vus = new Set<string>(); const liste: string[] = [];
+    for (const x of [...crit.secteurs, ...SECTEURS_BOULOGNE] as string[]) {
+      const k = clef(x);
+      if (!k || vus.has(k)) continue;
+      vus.add(k); liste.push(x);
+    }
+    return liste;
+  })();
 
   return (
     <>
@@ -902,14 +950,14 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
       </div>
       <div className="corps-f">
         <label className="lab">Budget</label>
+        <div className="borne">Minimum</div>
         <div className="pas"><button className="rond" onClick={() => pas('budgetMin', -1)}>−</button>
-          <span className="val tab">{EUR(t.budgetMin)}</span>
+          <span className="val tab">{t.budgetMin ? EUR(t.budgetMin) : 'Aucun'}</span>
           <button className="rond" onClick={() => pas('budgetMin', 1)}>+</button></div>
-        <div style={{ height: 8 }} />
+        <div className="borne">Maximum</div>
         <div className="pas"><button className="rond" onClick={() => pas('budgetMax', -1)}>−</button>
           <span className="val tab">{EUR(t.budgetMax)}</span>
           <button className="rond" onClick={() => pas('budgetMax', 1)}>+</button></div>
-        <div className="jauge"><i style={{ marginLeft: (t.budgetMin - lo) / (hi - lo) * 100 + '%', width: (t.budgetMax - t.budgetMin) / (hi - lo) * 100 + '%' }} /></div>
 
         <label className="lab">Surface minimum</label>
         <div className="pas"><button className="rond" onClick={() => pas('surfaceMin', -1)}>−</button>
@@ -935,14 +983,16 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <BtnEnvoi enCours={enr} libelle="Enregistrer" enCoursTexte="Enregistrement…"
           style={{ marginTop: 22 }} onClick={async () => {
           const c: string[] = [];
-          if (t.budgetMin !== crit.budgetMin || t.budgetMax !== crit.budgetMax) c.push('budget ' + EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax));
+          if ((t.budgetMin || null) !== (crit.budgetMin || null) || t.budgetMax !== crit.budgetMax) {
+            c.push('budget ' + (t.budgetMin ? EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax) : 'jusqu’à ' + EUR(t.budgetMax)));
+          }
           if (t.surfaceMin !== crit.surfaceMin) c.push(t.surfaceMin + ' m² minimum');
           if (t.piecesMin !== crit.piecesMin) c.push(t.piecesMin + ' pièces minimum');
           if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
           if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
           if (t.equip.join() !== crit.equip.join()) c.push('équipements souhaités');
           setEnr(true);
-          await onEnregistrer({ ...crit, ...t }, c);
+          await onEnregistrer({ ...crit, ...t, budgetMin: t.budgetMin || null }, c);
         }} />
       </div>
     </>
@@ -1345,7 +1395,7 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; scrollbar-width:none}
 .bande::-webkit-scrollbar{display:none}
 /* scroll-snap-stop:always = une photo par geste, jamais trois d'un coup */
-.bande .photo-g{flex:0 0 100%; scroll-snap-align:center; scroll-snap-stop:always;
+.bande .photo-g{flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always;
   width:100%; aspect-ratio:3/2; padding:0; border:0;
   background:transparent; display:block; overflow:hidden; cursor:zoom-in}
 .bande .photo-g img{width:100%; height:100%; object-fit:cover; display:block}
@@ -1367,10 +1417,12 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-size:11.5px; font-weight:700; padding:6px 11px; border-radius:99px;
   backdrop-filter:blur(5px); pointer-events:none}
 
-/* — retour : posé sur la photo, toujours visible —
-   .feuille porte un transform : un position:fixed ici se cale sur elle
-   et ne bouge donc pas quand le contenu défile. C'est exactement ce qu'on veut. */
-.retour-f{position:fixed; z-index:5; top:calc(12px + env(safe-area-inset-top,0px)); left:12px;
+/* — retour : posé sur la photo et jamais emporté par le défilement —
+   un position:fixed se comporterait comme un absolute (la feuille porte un
+   transform) et filerait avec le contenu : on passe par un rail collant de
+   hauteur nulle, placé en tout premier dans la feuille. */
+.barre-retour{position:sticky; top:0; z-index:6; height:0}
+.retour-f{position:absolute; z-index:6; top:calc(12px + env(safe-area-inset-top,0px)); left:12px;
   width:42px; height:42px; border-radius:50%; border:0; color:#fff; background:rgba(12,17,24,.48);
   backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center;
   box-shadow:0 8px 20px -8px rgba(0,0,0,.65)}
@@ -1483,6 +1535,8 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   font-size:19px; line-height:1; display:flex; align-items:center; justify-content:center; flex:0 0 auto;
   transition:transform .16s cubic-bezier(.16,1,.3,1)}
 .rond:active{transform:scale(.87)}
+.borne{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:800; margin:12px 0 7px}
 .jauge{height:6px; border-radius:99px; background:var(--trait); margin-top:11px; overflow:hidden}
 .jauge i{display:block; height:100%; background:var(--or); border-radius:99px;
   transition:width .42s cubic-bezier(.16,1,.3,1), margin-left .42s cubic-bezier(.16,1,.3,1)}
@@ -1552,20 +1606,22 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .page{max-width:1280px}
 }
 
-/* La fiche d'un bien sur ordinateur : large, en deux colonnes,
-   la photo à gauche sur toute la hauteur, le texte qui défile à droite. */
+/* La fiche d'un bien sur ordinateur : une largeur confortable, une seule
+   colonne qui défile, et en haut une bande de trois photos côte à côte —
+   pas une photo géante. */
 @media(min-width:900px){
-  .feuille.fiche{width:min(1060px,94vw); max-height:88vh; height:auto;
-    display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);
-    overflow:hidden; padding-bottom:0}
-  .feuille.fiche > .galerie{height:100%; min-height:0; overflow:hidden}
-  .feuille.fiche > .galerie .bande{height:100%}
-  .feuille.fiche > .galerie .bande .photo-g{aspect-ratio:auto; height:100%; cursor:zoom-in}
-  .feuille.fiche .fiche-droite{overflow-y:auto; overscroll-behavior:contain;
-    min-height:0; padding-bottom:26px}
+  .feuille.fiche{width:min(1000px,92vw); max-height:86vh; height:auto;
+    overflow-y:auto; overscroll-behavior:contain; padding-bottom:26px}
+  .feuille.fiche .galerie{border-radius:24px 24px 0 0; overflow:hidden}
+  .feuille.fiche .bande{gap:2px}
+  .feuille.fiche .bande .photo-g{flex:0 0 calc(33.333% - 2px); aspect-ratio:4/3; cursor:zoom-in}
   .feuille.fiche .retour-f{top:14px; left:14px}
-  .feuille.fiche .compteur{top:14px; left:62px; right:auto}
-  .feuille.fiche .points{bottom:14px}
+  .feuille.fiche .compteur{top:14px; left:66px; right:auto}
+  .feuille.fiche .points{display:none}
+  .feuille.fiche .bandeau-prix{padding:22px 26px 0}
+  .feuille.fiche .tete-f{padding:14px 26px 12px}
+  .feuille.fiche .corps-f{padding:0 26px}
+  .feuille.fiche .corps-f .txt{max-width:74ch}
 }
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
