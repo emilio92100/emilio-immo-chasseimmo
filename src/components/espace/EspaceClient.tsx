@@ -45,7 +45,7 @@ type Props = {
   client: { prenom: string; nom: string; reference: string; jours: number | null };
   criteres: Criteres;
   biens: Bien[];
-  passage: { quand: string | null; lues: number | null; proposees: number | null; ecartees: number | null } | null;
+  passage: { quand: string | null; lues: number | null; proposees: number | null; ecartees: number | null; totalLues?: number } | null;
   semaine: { quand: string | null; lues: number }[];
 };
 
@@ -569,7 +569,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       <div className="bandeau-chiffres">
         <div className="bc"><div className="n or tab"><span className="nv">{neufs.length}<BtnAide cle="decouvrir" onAide={onAide} /></span></div>
           <div className="l">à découvrir</div></div>
-        <div className="bc"><div className="n tab"><span className="nv">{passage?.lues ?? '—'}<BtnAide cle="lues" onAide={onAide} /></span></div>
+        {/* Le total du dossier, pas le dernier passage : ce chiffre ne redescend
+            jamais, il dit le travail fourni depuis le début. */}
+        <div className="bc"><div className="n tab"><span className="nv">{(passage?.totalLues ?? passage?.lues)?.toLocaleString('fr-FR') ?? '—'}<BtnAide cle="lues" onAide={onAide} /></span></div>
           <div className="l">annonces lues</div></div>
         <div className="bc"><div className="n tab"><span className="nv">{client.jours ?? '—'}<BtnAide cle="jours" onAide={onAide} /></span></div>
           <div className="l">jours de suivi</div></div>
@@ -1723,11 +1725,12 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
   },
   lues: {
     ico: 'loupe', sur: 'Le travail de fond', titre: 'Ce que veut dire « annonces lues »',
-    texte: "À chaque passage, nous passons en revue les annonces qui sortent sur votre secteur et dans votre gamme de prix — portails immobiliers, confrères et partenaires, base off-market. Ce chiffre, c'est le nombre d'annonces ouvertes et lues en détail lors du dernier passage.",
+    texte: "C'est le nombre total d'annonces que nous avons ouvertes et lues en détail pour vous depuis l'ouverture de votre dossier. Chaque jour, nous passons en revue ce qui sort sur votre secteur et dans votre gamme de prix : portails immobiliers, confrères et partenaires, base off-market.",
     puces: [
-      'Ce ne sont pas des biens qui vous correspondent : c’est la base que nous avons examinée pour en trouver.',
-      'Chacune est comparée à vos critères, un par un. La très grande majorité est écartée — c’est normal, et c’est le travail.',
-      'Le chiffre repart de zéro à chaque passage : c’est une photo du dernier, pas un total depuis le début.',
+      'Ce ne sont pas des biens qui vous correspondent : c’est tout ce que nous avons regardé pour en trouver.',
+      'Chaque annonce est comparée à vos critères, un par un. La très grande majorité est écartée — c’est normal, et c’est précisément le travail.',
+      'Ce total ne fait que monter : il s’ajoute un peu plus à chaque journée de recherche.',
+      'Pour voir le rythme des derniers jours, ouvrez « Le marché sur vos critères » : le détail y est jour par jour.',
     ],
   },
   jours: {
