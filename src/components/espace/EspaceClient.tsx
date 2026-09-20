@@ -492,12 +492,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               {neufs.length === 0 && !!passage?.lues && (
                 <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
                   {passage.proposees ? (
-                    <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères
-                      et {passage.proposees} bien{passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} pour vous.
+                    <span>Lors du dernier passage, {passage.lues}{' '}annonces ont été passées en revue
+                      sur vos critères et {passage.proposees} bien{passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'}{' '}pour vous.
                       Vous {passage.proposees > 1 ? 'les ' : "l'"}avez déjà ouvert{passage.proposees > 1 ? 's' : ''}&nbsp;:
                       {passage.proposees > 1 ? ' ils vous attendent' : ' il vous attend'} dans «&nbsp;Mes derniers biens consultés&nbsp;».</span>
                   ) : (
-                    <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères.
+                    <span>Lors du dernier passage, {passage.lues}{' '}annonces ont été passées en revue sur vos critères.
                       Aucune n&apos;a passé tous vos critères cette fois-ci&nbsp;— mieux vaut ne rien vous envoyer
                       que de vous faire perdre du temps.</span>
                   )}
@@ -689,7 +689,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       </div>
 
       <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
-        <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b> Il vous ouvre votre espace sans mot de passe
+        <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
           — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
           il verra exactement la même chose.</span></div>
       </div>
@@ -769,12 +769,15 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
 function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
   const lues = passage?.totalLues ?? 0;
-  const nbRech = passage?.nbPassages ?? 0;
   /* Le nombre de biens retenus, c'est le nombre de biens posés dans l'espace,
      point. Pas le compteur interne de la veille : les deux se mettent à
      diverger dès qu'un bien est ajouté à la main, et le client se retrouvait
      avec deux chiffres différents sur la même page. */
   const ret = (biens || []).length;
+  /* Les écartées se déduisent, elles ne se lisent pas : un second compteur
+     finirait par ne plus tomber juste avec les deux autres, et le client
+     verrait trois nombres qui ne s'additionnent pas. */
+  const ecart = Math.max(0, lues - ret);
   const sur = ret > 0 ? Math.round(lues / ret) : 0;
 
   const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
@@ -805,12 +808,12 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
               <span className="tu-i"><Ico n="note" t={19} /></span>
               <span className="tu-c">
                 <b className="tab"><span className="nv">{lues.toLocaleString('fr-FR')}<BtnAide cle="lues" onAide={onAide} /></span></b>
-                <span>annonce{lues > 1 ? 's' : ''} lue{lues > 1 ? 's' : ''}</span></span></div>
-            <div className="tu">
-              <span className="tu-i"><Ico n="loupe" t={19} /></span>
+                <span>annonce{lues > 1 ? 's' : ''} lue{lues > 1 ? 's' : ''} pour vous</span></span></div>
+            <div className="tu gris">
+              <span className="tu-i"><Ico n="croix" t={19} /></span>
               <span className="tu-c">
-                <b className="tab"><span className="nv">{nbRech.toLocaleString('fr-FR')}<BtnAide cle="recherches" onAide={onAide} /></span></b>
-                <span>recherche{nbRech > 1 ? 's' : ''} menée{nbRech > 1 ? 's' : ''} par nous</span></span></div>
+                <b className="tab"><span className="nv">{ecart.toLocaleString('fr-FR')}<BtnAide cle="ecartees" onAide={onAide} /></span></b>
+                <span>écartée{ecart > 1 ? 's' : ''} avant vous</span></span></div>
             <div className="tu or">
               <span className="tu-i"><Ico n="etoile" t={19} /></span>
               <span className="tu-c">
@@ -819,11 +822,12 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           </div>
           {sur > 1 && (
             <div className="gr-note">
-              <span>Sur les <b>{lues.toLocaleString('fr-FR')} annonces</b> que nous avons lues depuis l&apos;ouverture
-                de votre dossier, <b>{ret.toLocaleString('fr-FR')}</b> {ret > 1 ? 'ont' : 'a'} été
-                retenue{ret > 1 ? 's' : ''} et déposée{ret > 1 ? 's' : ''} ici&nbsp;— soit
-                <b> une sur {sur.toLocaleString('fr-FR')}</b>. Tout le reste a été écarté avant d&apos;arriver
-                jusqu&apos;à vous.</span>
+              <span>Les trois chiffres s&apos;additionnent&nbsp;:{' '}
+                <b>{lues.toLocaleString('fr-FR')}</b>{' '}annonces lues,{' '}
+                <b>{ecart.toLocaleString('fr-FR')}</b>{' '}écartées parce qu&apos;au moins un de vos critères
+                n&apos;y était pas,{' '}<b>{ret.toLocaleString('fr-FR')}</b>{' '}
+                déposée{ret > 1 ? 's' : ''} dans votre espace. Soit{' '}
+                <b>une annonce retenue sur {sur.toLocaleString('fr-FR')}</b>.</span>
             </div>
           )}
         </div>
@@ -864,7 +868,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           })()}
         </div>
         <div className="gr-note">
-          <span>Il suffit qu&apos;<b>un seul</b> de vos critères ne soit pas respecté pour qu&apos;une annonce
+          <span>Il suffit qu&apos;<b>un seul</b>{' '}de vos critères ne soit pas respecté pour qu&apos;une annonce
             soit écartée&nbsp;: le budget, la surface, le nombre de pièces, le secteur, l&apos;étage…
             Vous ne voyez ici que ce qui les passe tous.</span>
         </div>
@@ -913,8 +917,8 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
         </div>
         {semaine.length > 1 ? (
           <>
-            <div className="gr-note"><span><b>{total.toLocaleString('fr-FR')} annonces</b> parcourues sur
-              les {semaine.length} derniers jours de recherche. Chaque barre, c&apos;est ce que nous avons
+            <div className="gr-note"><span><b>{total.toLocaleString('fr-FR')} annonces</b>{' '}parcourues
+              sur les {semaine.length}{' '}derniers jours de recherche. Chaque barre, c&apos;est ce que nous avons
               regardé ce jour-là sur vos secteurs et votre budget&nbsp;; la dorée est celle
               d&apos;aujourd&apos;hui.</span></div>
             <div className="barres">
@@ -1926,15 +1930,6 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
       'Chaque jour, nous passons en revue ce qui sort sur votre secteur : portails, confrères, off-market.',
       'Ce ne sont pas des biens qui vous correspondent : c’est tout ce que nous avons regardé pour en trouver. La grande majorité est écartée.',
       'Ce total ne fait que monter, un peu plus à chaque journée de recherche.',
-    ],
-  },
-  recherches: {
-    ico: 'loupe', sur: 'Notre travail', titre: 'Ce que veut dire « recherche menée »',
-    texte: "C'est le nombre de fois où nous avons repris votre dossier et repassé le marché en revue.",
-    puces: [
-      'C’est nous qui la lançons, pas vous : vous n’avez rien à déclencher, rien à surveiller.',
-      'Une recherche, c’est un tour complet : les portails, les annonces de confrères, notre carnet d’adresses et notre base off-market, filtrés sur vos critères à vous.',
-      'Elle est reprise chaque jour, y compris les jours où rien ne sort : c’est ce qui fait monter ce compteur.',
     ],
   },
   retenus: {
@@ -3019,6 +3014,9 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .tu b{color:var(--encre)}
 .tu .tu-c > span{color:var(--plume-clair)}
 .tu .tu-i{color:var(--plume); background:var(--fond)}
+/* l'entonnoir se lit de gauche à droite : lu (encre) → écarté (gris) → retenu (or) */
+.tu.gris b{color:var(--plume-clair)}
+.tu.gris .tu-i{color:var(--plume-clair)}
 /* une seule tuile porte l'or : celle qui dit ce qu'on a retenu pour vous */
 .tu.or{background:var(--or-fond); border-color:var(--or-trait)}
 .tu.or b{color:var(--or-fonce)}
