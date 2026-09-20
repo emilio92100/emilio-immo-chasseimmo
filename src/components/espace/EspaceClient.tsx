@@ -1725,12 +1725,11 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
   },
   lues: {
     ico: 'loupe', sur: 'Le travail de fond', titre: 'Ce que veut dire « annonces lues »',
-    texte: "C'est le nombre total d'annonces que nous avons ouvertes et lues en détail pour vous depuis l'ouverture de votre dossier. Chaque jour, nous passons en revue ce qui sort sur votre secteur et dans votre gamme de prix : portails immobiliers, confrères et partenaires, base off-market.",
+    texte: "Le nombre d'annonces que nous avons lues pour vous depuis l'ouverture de votre dossier.",
     puces: [
-      'Ce ne sont pas des biens qui vous correspondent : c’est tout ce que nous avons regardé pour en trouver.',
-      'Chaque annonce est comparée à vos critères, un par un. La très grande majorité est écartée — c’est normal, et c’est précisément le travail.',
-      'Ce total ne fait que monter : il s’ajoute un peu plus à chaque journée de recherche.',
-      'Pour voir le rythme des derniers jours, ouvrez « Le marché sur vos critères » : le détail y est jour par jour.',
+      'Chaque jour, nous passons en revue ce qui sort sur votre secteur : portails, confrères, off-market.',
+      'Ce ne sont pas des biens qui vous correspondent : c’est tout ce que nous avons regardé pour en trouver. La grande majorité est écartée.',
+      'Ce total ne fait que monter, un peu plus à chaque journée de recherche.',
     ],
   },
   jours: {
