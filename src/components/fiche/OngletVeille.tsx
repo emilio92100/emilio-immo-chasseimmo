@@ -115,14 +115,14 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   };
 
   if (chargement) {
-    return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement de la veille…</div>;
+    return <div style={{ padding: 48, textAlign: 'center', color: '#b6c1d1', fontSize: 14, minHeight: 200 }}>Chargement de la veille…</div>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <StylesEmilio />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+      <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -0.3 }}>
             {props_.length === 0 ? 'Aucun bien à valider' : `${props_.length} bien${props_.length > 1 ? 's' : ''} à valider`}
@@ -143,7 +143,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       </div>
 
       {props_.length === 0 && !voirEcartees && (
-        <div style={{ ...CARTE, padding: '48px 20px', textAlign: 'center' }}>
+        <div className="emi-arrivee" style={{ ...CARTE, padding: '48px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 30, marginBottom: 12 }}>🔎</div>
           <div style={{ fontWeight: 700, color: NAVY, marginBottom: 5, fontSize: 15.5 }}>Rien de nouveau pour l&apos;instant</div>
           <div style={{ color: '#94a3b8', fontSize: 13.5 }}>
@@ -152,7 +152,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
         </div>
       )}
 
-      {props_.map((p) => {
+      {props_.map((p, idx) => {
         const enEcart = ecartEnCours === p.id;
         const fort = (p.score || 0) >= 85;
         const ouvertDesc = !!descriptif[p.id];
@@ -167,7 +167,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
         if (p.exposition) atouts.push(<Chip key="e">Exposé {p.exposition}</Chip>);
 
         return (
-          <div key={p.id} className="emi-carte" style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1 }}>
+          <div key={p.id} className="emi-carte emi-arrivee"
+            style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1, animationDelay: Math.min(idx, 6) * 55 + 'ms' }}>
 
             {/* ── le bandeau de photos ─────────────────────── */}
             <Vignettes photos={p.photos || []}
