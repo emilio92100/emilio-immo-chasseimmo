@@ -2,7 +2,6 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
-import { ligneDe } from '@/lib/lignes';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
 
@@ -25,9 +24,20 @@ type Bien = {
   etat: string;
 };
 type Criteres = {
-  budgetMin: number | null; budgetMax: number | null; surfaceMin: number | null;
-  piecesMin: number | null; chambresMin: number | null; secteurs: string[];
-  typeBien: string | null; equip: string[]; notes: string;
+  budgetMin: number | null; budgetMax: number | null;
+  surfaceMin: number | null; surfaceMax: number | null; surfaceSejourMin: number | null;
+  piecesMin: number | null; piecesMax: number | null; chambresMin: number | null;
+  secteurs: string[];
+  typeBien: string | null; typesBien: string[];
+  etatSouhaite: string | null; anneeMin: number | null;
+  etageMin: number | null; etageMax: number | null;
+  rdcExclu: boolean; dernierEtage: boolean; etageMaxSansAscenseur: number | null;
+  exposition: string;
+  equip: string[]; exigences: Record<string, string>;
+  cuisineType: string | null; exterieurSurfaceMin: number | null;
+  dpeMax: string | null;
+  apport: number | null; financement: string | null; urgence: string | null;
+  notes: string;
   transportMinutes: number | null; transportLignes: string[]; transportArrets: Arret[];
 };
 type Props = {
@@ -90,7 +100,52 @@ const grouperSecteurs = (liste: string[]) => {
 const cpDeVille = (ville: string) =>
   Object.keys(QUARTIERS).find(cp => normVille(QUARTIERS[cp].ville) === normVille(ville)) || null;
 
-const EQUIPS = ['Terrasse','Balcon','Jardin','Parking','Ascenseur','Cave','Gardien'];
+
+/* Mêmes intitulés que le CRM : ce que le client lit ici est ce qu'Alexandre voit. */
+const TYPES_E = ['Appartement', 'Maison', 'Loft', 'Duplex', 'Terrain', 'Autre'];
+const ETATS_E: [string, string][] = [['a_renover','À rénover'],['travaux_legers','Travaux légers'],['bon_etat','Bon état'],['refait_neuf','Refait à neuf']];
+const EXPO_E: [string, string, string][] = [['sud','Sud','☀️'],['est','Est','🌅'],['ouest','Ouest','🌇'],['nord','Nord','❄️'],['traversant','Traversant','↔️']];
+/* clé technique (colonne en base) ↔ libellé lisible ↔ emoji */
+const EQUIP_E: [string, string, string][] = [
+  ['parking','Parking','🅿️'], ['cave','Cave','📦'], ['balcon','Balcon','🌿'],
+  ['terrasse','Terrasse','☀️'], ['jardin','Jardin','🌳'], ['ascenseur','Ascenseur','🛗'],
+  ['gardien','Gardien','👮'],
+];
+const URGENCES_E: [string, string][] = [['immediate','Immédiate'],['3_mois','Sous 3 mois'],['6_mois','Sous 6 mois'],['annee',"Dans l'année"]];
+const FINANCEMENTS_E: [string, string][] = [['cash','Cash'],['pret_valide','Prêt validé'],['pret_en_cours','Prêt en cours'],['a_monter','À monter']];
+const LETTRES_DPE = ['A','B','C','D','E','F','G'];
+const libelle = (table: [string, string][], v?: string | null) => table.find(x => x[0] === v)?.[1] || null;
+
+/* Un champ nombre : vide par défaut, jamais d'exemple grisé pris pour une valeur. */
+function ChampNum({ val, onChange, suffixe, aide }: {
+  val: string; onChange: (v: string) => void; suffixe?: string; aide?: string;
+}) {
+  return (
+    <div className="champ-n">
+      <input type="number" inputMode="numeric" value={val} onChange={(e) => onChange(e.target.value)} />
+      {suffixe ? <span className="sfx">{suffixe}</span> : null}
+      {aide ? <span className="aide">{aide}</span> : null}
+    </div>
+  );
+}
+
+/* En-tête d'une catégorie, côté acheteur : pastille d'icône + titre lisible. */
+function CatE({ ico, titre, sous, children }: { ico: string; titre: string; sous?: string; children: React.ReactNode }) {
+  return (
+    <div className="bloc cat">
+      <div className="cat-h">
+        <span className="cat-i"><Ico n={ico} t={19} /></span>
+        <span className="cat-tt"><b>{titre}</b>{sous ? <i>{sous}</i> : null}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* Une pastille d'équipement : dorée et marquée quand c'est indispensable. */
+function PastilleE({ texte, fort }: { texte: string; fort?: boolean }) {
+  return <span className={'past' + (fort ? ' indis' : ' or')}>{texte}{fort ? <i className="mk">indispensable</i> : null}</span>;
+}
 
 const T: Record<string, string[]> = {
   etoile:['M12 2.8l2.5 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.2l-5.2 2.8 1.1-5.9-4.3-4.1 5.9-.8z'],
@@ -109,6 +164,12 @@ const T: Record<string, string[]> = {
   pdf:['M12 3v12','m7.5 11 4.5 4.5 4.5-4.5','M4 20h16'],
   partage:['M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7','M12 3v13','m7.5 7.5 4.5-4.5 4.5 4.5'],
   mail:['M3.6 6.6h16.8v10.8H3.6z','m3.6 7 8.4 5.9 8.4-5.9'],
+  regle:['M3 8.5h18v7H3z','M7 8.5v3','M11 8.5v3','M15 8.5v3','M19 8.5v3'],
+  immeuble:['M4 21V4h9v17','M13 10h7v11','M7 8h2','M7 12h2','M7 16h2','M16 14h1','M16 18h1'],
+  etincelle:['M11 3l1.7 4.6L17 9.3l-4.3 1.7L11 15.6 9.3 11 5 9.3l4.3-1.7z','M18 15l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z'],
+  eclair:['M13 2 4.8 13.4h5.9L9.8 22 19.2 10.4H13z'],
+  train:['M7.5 4h9a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z','M4.5 10h15','M8.6 13.6h.01','M15.4 13.6h.01','M8.5 16.5 6.5 20','M15.5 16.5l2 3.5'],
+  note:['M6.5 3h8l4.5 4.5V20a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z','M14.5 3v4.5H19','M9 12.5h6','M9 16h4'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -216,14 +277,19 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }, [envoyer]);
 
   function ouvrirCriteres() {
-    montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[]) => {
+    montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
       setCrit(nv);
       await envoyer('criteres', { criteres: nv });
+      /* La note est celle du chasseur : le client ne la réécrit pas, il demande. */
+      if (demandeNote) await envoyer('message', { texte: 'Demande sur la note de la recherche : ' + demandeNote });
       montrer(<GrandOk titre="Vos critères sont à jour"
         texte="Merci d'avoir pris le temps de les préciser. Votre recherche est modifiée dès à présent, et la chasse de demain matin partira sur ces nouvelles bases."
-        rappel={changements.length ? '<b>Ce qui a changé :</b><br>' + changements.join(' · ') : 'Alexandre est prévenu du changement.'}
+        rappel={[
+          changements.length ? '<b>Ce qui a changé :</b><br>' + changements.join(' · ') : 'Alexandre est prévenu du changement.',
+          demandeNote ? 'Votre demande sur ses précisions lui a été transmise.' : '',
+        ].filter(Boolean).join('<br><br>')}
         onFermer={fermer} />);
-    }} />);
+    }} />, 'pleine');
   }
 
   function ouvrirMessage() {
@@ -573,35 +639,99 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
   /* On n'invente rien : s'il n'y a pas de minimum, on écrit « jusqu'à ». */
   const bmin: number | null = crit.budgetMin || null;
   const bmax: number | null = crit.budgetMax || null;
+  const ex: Record<string, string> = crit.exigences || {};
+  const expos: string[] = (crit.exposition || '').split(',').map((x: string) => x.trim()).filter(Boolean);
+  const types: string[] = crit.typesBien?.length ? crit.typesBien : (crit.typeBien ? [crit.typeBien] : []);
+  const iDpe = crit.dpeMax ? LETTRES_DPE.indexOf(crit.dpeMax) : -1;
+
+  /* Les équipements retenus, dans l'ordre du CRM, avec leur niveau. */
+  const equips: { texte: string; fort: boolean }[] = [];
+  EQUIP_E.forEach(([cle, lib, ico]) => {
+    if (crit.equip.includes(lib) || ex[cle]) equips.push({ texte: `${ico} ${lib}`, fort: ex[cle] === 'indispensable' });
+  });
+  if (ex.exterieur) equips.push({ texte: `🌤️ Extérieur${crit.exterieurSurfaceMin ? ` de ${crit.exterieurSurfaceMin} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
+  if (crit.cuisineType) equips.push({ texte: `🍳 Cuisine ${crit.cuisineType === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
+
+  const etage = [
+    crit.etageMin ? `à partir du ${crit.etageMin}e` : '',
+    crit.etageMax ? `jusqu'au ${crit.etageMax}e` : '',
+    crit.rdcExclu ? 'pas de rez-de-chaussée' : '',
+    crit.dernierEtage ? 'dernier étage recherché' : '',
+    crit.etageMaxSansAscenseur ? `${crit.etageMaxSansAscenseur}e maximum sans ascenseur` : '',
+  ].filter(Boolean);
+
+  const aQuelqueChose = types.length || crit.etatSouhaite || crit.anneeMin;
+
   return (
     <Vue icone="cible" titre="Rappel de ma recherche" aller={aller}
-      sous="Ce qu'Alexandre a noté de votre projet. Tout ce qui est chiffré, vous pouvez le faire évoluer vous-même.">
-      <div className="bloc">
-        <div className="t"><Ico n="euro" t={15} /> Budget</div>
-        <div className="gros tab">
-          {bmin && bmax ? <>{EUR(bmin)} <small>à</small> {EUR(bmax)}</>
-            : bmax ? <><small>Jusqu&apos;à</small> {EUR(bmax)}</>
-              : bmin ? <><small>À partir de</small> {EUR(bmin)}</>
-                : <small>À préciser ensemble</small>}
-        </div>
-      </div>
-      <div className="bloc">
-        <div className="t"><Ico n="maison" t={15} /> Le bien</div>
+      sous="Ce qu'Alexandre a noté de votre projet, catégorie par catégorie. Vous pouvez le faire évoluer vous-même à tout moment.">
+
+      {/* 1 — Le bien recherché */}
+      {aQuelqueChose ? (
+        <CatE ico="maison" titre="Le bien recherché" sous="type et état">
+          {types.length ? <div className="pastilles">{types.map((t: string) => <span className="past or" key={t}>{t}</span>)}</div> : null}
+          {(crit.etatSouhaite || crit.anneeMin) && (
+            <div className="duo-l">
+              {crit.etatSouhaite && <div className="lig"><span className="k">État souhaité</span><span className="v">{libelle(ETATS_E, crit.etatSouhaite) || crit.etatSouhaite}</span></div>}
+              {crit.anneeMin ? <div className="lig"><span className="k">Construit après</span><span className="v tab">{crit.anneeMin}</span></div> : null}
+            </div>
+          )}
+        </CatE>
+      ) : null}
+
+      {/* 2 — Surfaces & volumes */}
+      <CatE ico="regle" titre="Surfaces & volumes" sous="la taille du bien">
         <div className="trio">
           <div className="mini-t"><div className="v tab">{crit.surfaceMin ? crit.surfaceMin + ' m²' : '—'}</div><div className="l">surface min.</div></div>
           <div className="mini-t"><div className="v tab">{crit.piecesMin ?? '—'}</div><div className="l">pièces min.</div></div>
           <div className="mini-t"><div className="v tab">{crit.chambresMin ?? '—'}</div><div className="l">chambres min.</div></div>
         </div>
-        {!!crit.equip.length && (
-          <div style={{ marginTop: 14 }}>
-            <div className="t" style={{ marginBottom: 9 }}>Souhaités</div>
-            <div className="pastilles">{crit.equip.map((e: string) => <span className="past or" key={e}>{e}</span>)}</div>
+        {(crit.surfaceMax || crit.surfaceSejourMin || crit.piecesMax) && (
+          <div className="duo-l">
+            {crit.surfaceMax ? <div className="lig"><span className="k">Surface maximum</span><span className="v tab">{crit.surfaceMax} m²</span></div> : null}
+            {crit.piecesMax ? <div className="lig"><span className="k">Pièces maximum</span><span className="v tab">{crit.piecesMax}</span></div> : null}
+            {crit.surfaceSejourMin ? <div className="lig"><span className="k">Séjour d&apos;au moins</span><span className="v tab">{crit.surfaceSejourMin} m²</span></div> : null}
           </div>
         )}
-      </div>
+      </CatE>
+
+      {/* 3 — Étage & exposition */}
+      {(etage.length || expos.length) ? (
+        <CatE ico="immeuble" titre="Étage & exposition" sous="où se trouve le bien dans l'immeuble">
+          {etage.length ? <div className="pastilles">{etage.map(e => <span className="past" key={e}>{e}</span>)}</div> : null}
+          {expos.length ? (
+            <div style={{ marginTop: etage.length ? 12 : 0 }}>
+              <div className="ss-t">Exposition souhaitée</div>
+              <div className="pastilles">{expos.map(e => {
+                const t = EXPO_E.find(x => x[0] === e);
+                return <span className="past or" key={e}>{t ? `${t[2]} ${t[1]}` : e}</span>;
+              })}</div>
+            </div>
+          ) : null}
+        </CatE>
+      ) : null}
+
+      {/* 4 — Équipements */}
+      {equips.length ? (
+        <CatE ico="etincelle" titre="Équipements" sous="ce qui compte pour vous">
+          <div className="pastilles">{equips.map(e => <PastilleE key={e.texte} texte={e.texte} fort={e.fort} />)}</div>
+          {equips.some(e => e.fort) && <div className="note-cat">Ce qui est marqué <b>indispensable</b> n&apos;est jamais mis de côté : un bien qui ne l&apos;a pas ne vous est pas présenté.</div>}
+        </CatE>
+      ) : null}
+
+      {/* 5 — Performance énergétique */}
+      {crit.dpeMax ? (
+        <CatE ico="eclair" titre="Performance énergétique" sous="la plus mauvaise lettre acceptée">
+          <div className="dpe-r">{LETTRES_DPE.map((d, i) => (
+            <span key={d} className={'dpe-l' + (i <= iDpe ? ' ok' : '') + (d === crit.dpeMax ? ' pt' : '')}>{d}</span>
+          ))}</div>
+          <div className="note-cat">Vous gardez <b>{LETTRES_DPE.slice(0, iDpe + 1).join(' ')}</b>{iDpe < 6 ? <> — les logements classés {LETTRES_DPE.slice(iDpe + 1).join(' ')} sont écartés.</> : '.'}</div>
+        </CatE>
+      ) : null}
+
+      {/* 6 — Où je cherche */}
       {!!crit.secteurs.length && (
-        <div className="bloc">
-          <div className="t"><Ico n="lieu" t={15} /> Où je cherche</div>
+        <CatE ico="lieu" titre="Où je cherche" sous="vos communes et quartiers">
           <div className="villes">
             {grouperSecteurs(crit.secteurs).map(v => (
               <div className="ville" key={v.ville}>
@@ -612,11 +742,12 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
               </div>
             ))}
           </div>
-        </div>
+        </CatE>
       )}
+
+      {/* 7 — Transports */}
       {crit.transportArrets?.length ? (
-        <div className="bloc">
-          <div className="t"><Ico n="horloge" t={15} /> Transports</div>
+        <CatE ico="train" titre="Transports" sous="vos arrêts et le temps à pied">
           <div className="arrets-v">
             {crit.transportArrets.map((a: Arret, i: number) => (
               <div className="arret-v" key={a.nom + i}>
@@ -628,31 +759,54 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
               </div>
             ))}
           </div>
-        </div>
+        </CatE>
       ) : crit.transportMinutes ? (
-        <div className="bloc">
-          <div className="t"><Ico n="horloge" t={15} /> Transports</div>
+        <CatE ico="train" titre="Transports" sous="temps à pied maximum">
           <div className="gros tab">{crit.transportMinutes} <small>minutes à pied maximum d&apos;une station</small></div>
-        </div>
+        </CatE>
       ) : null}
 
-      <div className="precisions">
-        <div className="k">
-          <span><Ico n="crayon" t={13} /> Précisions sur votre recherche</span>
-          <span className="cadenas"><Ico n="verrou" t={11} /> Noté par Alexandre</span>
+      {/* 8 — Budget */}
+      <CatE ico="euro" titre="Budget" sous="votre enveloppe">
+        <div className="gros tab">
+          {bmin && bmax ? <>{EUR(bmin)} <small>à</small> {EUR(bmax)}</>
+            : bmax ? <><small>Jusqu&apos;à</small> {EUR(bmax)}</>
+              : bmin ? <><small>À partir de</small> {EUR(bmin)}</>
+                : <small>À préciser ensemble</small>}
         </div>
-        <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
-        <button className="cta-prec" onClick={onMessage}>
-          <span><b>Une précision à ajouter ou à retirer&nbsp;?</b>
-            <span className="s">Dites-le-lui, il met à jour et vous recontacte.</span></span>
-          <span className="chev"><Ico n="fleche" t={18} /></span>
-        </button>
-      </div>
+        {(crit.apport || crit.financement) && (
+          <div className="duo-l">
+            {crit.apport ? <div className="lig"><span className="k">Apport</span><span className="v tab">{EUR(crit.apport)}</span></div> : null}
+            {crit.financement && <div className="lig"><span className="k">Financement</span><span className="v">{libelle(FINANCEMENTS_E, crit.financement) || crit.financement}</span></div>}
+          </div>
+        )}
+      </CatE>
+
+      {/* 9 — Mon projet + la note d'Alexandre, en lecture seule */}
+      <CatE ico="note" titre="Mon projet" sous="échéance et précisions">
+        {crit.urgence && (
+          <div className="duo-l" style={{ marginTop: 0 }}>
+            <div className="lig"><span className="k">Échéance souhaitée</span><span className="v">{libelle(URGENCES_E, crit.urgence) || crit.urgence}</span></div>
+          </div>
+        )}
+        <div className="precisions" style={{ marginTop: crit.urgence ? 14 : 4 }}>
+          <div className="k">
+            <span><Ico n="crayon" t={13} /> Précisions sur votre recherche</span>
+            <span className="cadenas"><Ico n="verrou" t={11} /> Noté par Alexandre</span>
+          </div>
+          <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
+          <button className="cta-prec" onClick={onMessage}>
+            <span><b>Une précision à ajouter ou à retirer&nbsp;?</b>
+              <span className="s">Dites-le-lui, il met à jour et vous recontacte.</span></span>
+            <span className="chev"><Ico n="fleche" t={18} /></span>
+          </button>
+        </div>
+      </CatE>
+
       <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
     </Vue>
   );
 }
-
 /* Où chercher — une carte par ville, ses quartiers en dessous.
    Même format et mêmes listes que le CRM (src/lib/secteurs.ts) : ce que le
    client coche ici est directement relisible par la chasse. */
@@ -1057,25 +1211,50 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
   );
 }
 
+/* « Mes critères ont évolué » — le même parcours que le CRM d'Alexandre,
+   mais en neuf étapes, pensées pour un pouce sur un téléphone.
+   On peut sauter directement à la catégorie que l'on veut changer. */
 function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   const [enr, setEnr] = useState(false);
+  const [etape, setEtape] = useState(0);
+  const [sens, setSens] = useState<1 | -1>(1);
+  const [demandeNote, setDemandeNote] = useState('');
   const [t, setT] = useState({
+    typesBien: [...(crit.typesBien || [])] as string[],
+    etatSouhaite: crit.etatSouhaite || '',
+    anneeMin: crit.anneeMin ? String(crit.anneeMin) : '',
     budgetMin: crit.budgetMin || 0,
     budgetMax: crit.budgetMax || 1000000,
+    apport: crit.apport ? String(crit.apport) : '',
+    financement: crit.financement || '',
     surfaceMin: crit.surfaceMin || 60,
-    transportMinutes: crit.transportMinutes || 0,
-    arrets: [...(crit.transportArrets || [])] as Arret[],
+    surfaceMax: crit.surfaceMax ? String(crit.surfaceMax) : '',
+    surfaceSejourMin: crit.surfaceSejourMin ? String(crit.surfaceSejourMin) : '',
     piecesMin: crit.piecesMin || 3,
     chambresMin: crit.chambresMin || 2,
-    secteurs: [...crit.secteurs], equip: [...crit.equip],
+    etageMin: crit.etageMin ? String(crit.etageMin) : '',
+    etageMax: crit.etageMax ? String(crit.etageMax) : '',
+    rdcExclu: !!crit.rdcExclu,
+    dernierEtage: !!crit.dernierEtage,
+    etageMaxSansAscenseur: crit.etageMaxSansAscenseur ? String(crit.etageMaxSansAscenseur) : '',
+    exposition: crit.exposition || '',
+    exigences: { ...(crit.exigences || {}) } as Record<string, string>,
+    cuisineType: crit.cuisineType || '',
+    exterieurSurfaceMin: crit.exterieurSurfaceMin ? String(crit.exterieurSurfaceMin) : '',
+    dpeMax: crit.dpeMax || '',
+    urgence: crit.urgence || '',
+    transportMinutes: crit.transportMinutes || 0,
+    arrets: [...(crit.transportArrets || [])] as Arret[],
+    secteurs: [...crit.secteurs],
   });
+
   /* Une borne ne tire plus l'autre : on bloque seulement quand elles se
      croisent, et on retient celle que l'on est en train de bouger. */
   const pas = (cle: string, d: number) => {
     setT(v => {
       const n = { ...v } as any;
-      const p = cle === 'surfaceMin' ? 5 : (cle === 'transportMinutes' ? 1 : 25000);
-      const plancher = cle === 'surfaceMin' ? 20 : (cle === 'transportMinutes' ? 0 : (cle === 'budgetMin' ? 0 : 50000));
+      const p = cle === 'surfaceMin' ? 5 : 25000;
+      const plancher = cle === 'surfaceMin' ? 20 : (cle === 'budgetMin' ? 0 : 50000);
       n[cle] = Math.max(plancher, n[cle] + d * p);
       if (n.budgetMin && n.budgetMin > n.budgetMax) {
         if (cle === 'budgetMin') n.budgetMin = n.budgetMax; else n.budgetMax = n.budgetMin;
@@ -1083,17 +1262,141 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
       return n;
     });
   };
-  const bascule = (cle: 'secteurs' | 'equip', v: string) =>
-    setT(x => ({ ...x, [cle]: x[cle].includes(v) ? x[cle].filter(y => y !== v) : [...x[cle], v] }));
+  const basculeType = (v: string) =>
+    setT(x => ({ ...x, typesBien: x.typesBien.includes(v) ? x.typesBien.filter((y: string) => y !== v) : [...x.typesBien, v] }));
+  const expos: string[] = t.exposition.split(',').map((x: string) => x.trim()).filter(Boolean);
+  const basculeExpo = (k: string) =>
+    setT(x => ({ ...x, exposition: (expos.includes(k) ? expos.filter((y: string) => y !== k) : [...expos, k]).join(', ') }));
+  const niv = (k: string) => t.exigences[k] || '';
+  const setNiv = (k: string, n: string) => setT(x => {
+    const e = { ...x.exigences };
+    if (n) e[k] = n; else delete e[k];
+    return { ...x, exigences: e };
+  });
+  const tourner = (k: string) => { const c = ['', 'souhaite', 'indispensable']; setNiv(k, c[(c.indexOf(niv(k)) + 1) % 3]); };
 
-  return (
-    <>
-      <div className="tete-f">
-        <div><div className="sur">Votre recherche</div><h3>Ce qui a changé</h3></div>
-        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
-      </div>
-      <div className="corps-f">
-        <label className="lab">Budget</label>
+  const num = (cle: string) => (v: string) => setT(x => ({ ...x, [cle]: v }));
+
+  const ETAPES: { id: string; ico: string; titre: string; sous: string; contenu: React.ReactNode }[] = [
+    {
+      id: 'bien', ico: 'maison', titre: 'Le bien recherché', sous: 'Quel type de bien, dans quel état',
+      contenu: (<>
+        <label className="lab">Type de bien <i>plusieurs choix possibles</i></label>
+        <div className="choix">{TYPES_E.map(x => (
+          <button key={x} className="ch or" aria-pressed={t.typesBien.includes(x)} onClick={() => basculeType(x)}>{x}</button>))}</div>
+        <label className="lab">État souhaité</label>
+        <div className="choix">{ETATS_E.map(([k, l]) => (
+          <button key={k} className="ch" aria-pressed={t.etatSouhaite === k} onClick={() => setT(x => ({ ...x, etatSouhaite: x.etatSouhaite === k ? '' : k }))}>{l}</button>))}</div>
+        <label className="lab">Construit après</label>
+        <ChampNum val={t.anneeMin} onChange={num('anneeMin')} aide="Laissez vide si l’année n’a pas d’importance" />
+      </>),
+    },
+    {
+      id: 'surfaces', ico: 'regle', titre: 'Surfaces & volumes', sous: 'La taille du bien',
+      contenu: (<>
+        <label className="lab">Surface minimum</label>
+        <div className="pas"><button className="rond" onClick={() => pas('surfaceMin', -1)}>−</button>
+          <span className="val tab">{t.surfaceMin} m²</span>
+          <button className="rond" onClick={() => pas('surfaceMin', 1)}>+</button></div>
+        <label className="lab">Surface maximum</label>
+        <ChampNum val={t.surfaceMax} onChange={num('surfaceMax')} suffixe="m²" aide="Vide = pas de plafond" />
+        <label className="lab">Pièces minimum</label>
+        <div className="choix">{[2, 3, 4, 5, 6].map(n => (
+          <button key={n} className="ch" aria-pressed={t.piecesMin === n} onClick={() => setT(v => ({ ...v, piecesMin: n }))}>{n}{n === 6 ? '+' : ''}</button>))}</div>
+        <label className="lab">Chambres minimum</label>
+        <div className="choix">{[1, 2, 3, 4, 5].map(n => (
+          <button key={n} className="ch" aria-pressed={t.chambresMin === n} onClick={() => setT(v => ({ ...v, chambresMin: n }))}>{n}{n === 5 ? '+' : ''}</button>))}</div>
+        <label className="lab">Séjour d’au moins</label>
+        <ChampNum val={t.surfaceSejourMin} onChange={num('surfaceSejourMin')} suffixe="m²" aide="Vide si vous n’avez pas d’exigence sur le séjour" />
+      </>),
+    },
+    {
+      id: 'etage', ico: 'immeuble', titre: 'Étage & exposition', sous: 'La place dans l’immeuble et l’orientation',
+      contenu: (<>
+        <label className="lab">Étage</label>
+        <div className="duo-n">
+          <div><div className="borne">À partir du</div><ChampNum val={t.etageMin} onChange={num('etageMin')} suffixe="e" /></div>
+          <div><div className="borne">Jusqu’au</div><ChampNum val={t.etageMax} onChange={num('etageMax')} suffixe="e" /></div>
+        </div>
+        <div className="choix" style={{ marginTop: 12 }}>
+          <button className="ch" aria-pressed={t.rdcExclu} onClick={() => setT(x => ({ ...x, rdcExclu: !x.rdcExclu }))}>Pas de rez-de-chaussée</button>
+          <button className="ch" aria-pressed={t.dernierEtage} onClick={() => setT(x => ({ ...x, dernierEtage: !x.dernierEtage }))}>Dernier étage</button>
+        </div>
+        <label className="lab">Ascenseur</label>
+        <div className="choix">
+          <button className={'ch niv' + (niv('ascenseur') ? ' n' + niv('ascenseur') : '')} aria-pressed={!!niv('ascenseur')} onClick={() => tourner('ascenseur')}>
+            🛗 Ascenseur{niv('ascenseur') ? <i className="mk">{niv('ascenseur') === 'indispensable' ? 'indispensable' : 'souhaité'}</i> : null}
+          </button>
+        </div>
+        {niv('ascenseur') !== 'indispensable' && (
+          <>
+            <div className="borne" style={{ marginTop: 12 }}>Sans ascenseur, j’accepte jusqu’au</div>
+            <ChampNum val={t.etageMaxSansAscenseur} onChange={num('etageMaxSansAscenseur')} suffixe="e étage" aide="Vide si monter à pied ne vous dérange pas" />
+          </>
+        )}
+        <label className="lab">Exposition souhaitée <i>plusieurs choix possibles</i></label>
+        <div className="choix">{EXPO_E.map(([k, l, i]) => (
+          <button key={k} className="ch or" aria-pressed={expos.includes(k)} onClick={() => basculeExpo(k)}>{i} {l}</button>))}</div>
+      </>),
+    },
+    {
+      id: 'equip', ico: 'etincelle', titre: 'Équipements', sous: 'Ce qui ferait plaisir, et ce sans quoi c’est non',
+      contenu: (<>
+        <label className="lab">Appuyez une fois pour « souhaité », deux fois pour « indispensable »</label>
+        <div className="choix">{EQUIP_E.filter(([k]) => k !== 'ascenseur').map(([k, l, i]) => (
+          <button key={k} className={'ch niv' + (niv(k) ? ' n' + niv(k) : '')} aria-pressed={!!niv(k)} onClick={() => tourner(k)}>
+            {i} {l}{niv(k) ? <i className="mk">{niv(k) === 'indispensable' ? 'indispensable' : 'souhaité'}</i> : null}
+          </button>))}</div>
+        <label className="lab">Un extérieur</label>
+        <div className="choix">
+          <button className={'ch niv' + (niv('exterieur') ? ' n' + niv('exterieur') : '')} aria-pressed={!!niv('exterieur')} onClick={() => tourner('exterieur')}>
+            🌤️ Balcon, terrasse ou jardin{niv('exterieur') ? <i className="mk">{niv('exterieur') === 'indispensable' ? 'indispensable' : 'souhaité'}</i> : null}
+          </button>
+        </div>
+        {niv('exterieur') ? (<>
+          <div className="borne" style={{ marginTop: 12 }}>D’au moins</div>
+          <ChampNum val={t.exterieurSurfaceMin} onChange={num('exterieurSurfaceMin')} suffixe="m²" aide="Vide si la taille importe peu" />
+        </>) : null}
+        <label className="lab">Cuisine</label>
+        <div className="choix">
+          {[['', 'Indifférent'], ['ouverte', 'Ouverte sur le séjour'], ['separee', 'Séparée']].map(([k, l]) => (
+            <button key={k || 'ind'} className="ch" aria-pressed={t.cuisineType === k} onClick={() => setT(x => ({ ...x, cuisineType: k }))}>{l}</button>))}
+        </div>
+        {t.cuisineType ? (
+          <div className="choix" style={{ marginTop: 9 }}>
+            {[['souhaite', 'Simple préférence'], ['indispensable', 'Indispensable']].map(([k, l]) => (
+              <button key={k} className="ch or" aria-pressed={niv('cuisine') === k} onClick={() => setNiv('cuisine', niv('cuisine') === k ? '' : k)}>{l}</button>))}
+          </div>
+        ) : null}
+      </>),
+    },
+    {
+      id: 'energie', ico: 'eclair', titre: 'Performance énergétique', sous: 'La plus mauvaise lettre que vous acceptez',
+      contenu: (<>
+        <div className="dpe-choix">{LETTRES_DPE.map(d => {
+          const i = LETTRES_DPE.indexOf(t.dpeMax);
+          const passe = t.dpeMax ? LETTRES_DPE.indexOf(d) <= i : false;
+          return <button key={d} className={'dpe-b' + (passe ? ' ok' : '') + (t.dpeMax === d ? ' pt' : '')}
+            onClick={() => setT(x => ({ ...x, dpeMax: x.dpeMax === d ? '' : d }))}>{d}</button>;
+        })}</div>
+        <p className="txt" style={{ marginTop: 12 }}>
+          {t.dpeMax
+            ? <>Vous gardez <b>{LETTRES_DPE.slice(0, LETTRES_DPE.indexOf(t.dpeMax) + 1).join(' ')}</b>{LETTRES_DPE.indexOf(t.dpeMax) < 6 ? <> et écartez {LETTRES_DPE.slice(LETTRES_DPE.indexOf(t.dpeMax) + 1).join(' ')}.</> : '.'}</>
+            : <>Aucune exigence — toutes les étiquettes passent.</>}
+        </p>
+      </>),
+    },
+    {
+      id: 'lieu', ico: 'lieu', titre: 'Où je cherche', sous: 'Vos communes, puis vos quartiers',
+      contenu: <Localisation secteurs={t.secteurs} onChange={(v) => setT(x => ({ ...x, secteurs: v }))} />,
+    },
+    {
+      id: 'transports', ico: 'train', titre: 'Transports', sous: 'Cherchez un arrêt, puis réglez le temps à pied',
+      contenu: <ArretPicker arrets={t.arrets} onChange={(v) => setT(x => ({ ...x, arrets: v }))} minutesDefaut={t.transportMinutes || 10} />,
+    },
+    {
+      id: 'budget', ico: 'euro', titre: 'Budget', sous: 'Votre enveloppe et son financement',
+      contenu: (<>
         <div className="borne">Minimum</div>
         <div className="pas"><button className="rond" onClick={() => pas('budgetMin', -1)}>−</button>
           <span className="val tab">{t.budgetMin ? EUR(t.budgetMin) : 'Aucun'}</span>
@@ -1102,57 +1405,110 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <div className="pas"><button className="rond" onClick={() => pas('budgetMax', -1)}>−</button>
           <span className="val tab">{EUR(t.budgetMax)}</span>
           <button className="rond" onClick={() => pas('budgetMax', 1)}>+</button></div>
+        <label className="lab">Apport</label>
+        <ChampNum val={t.apport} onChange={num('apport')} suffixe="€" aide="Vide si vous préférez ne pas le préciser ici" />
+        <label className="lab">Financement</label>
+        <div className="choix">{FINANCEMENTS_E.map(([k, l]) => (
+          <button key={k} className="ch" aria-pressed={t.financement === k} onClick={() => setT(x => ({ ...x, financement: x.financement === k ? '' : k }))}>{l}</button>))}</div>
+      </>),
+    },
+    {
+      id: 'projet', ico: 'note', titre: 'Mon projet', sous: 'Votre échéance, et la note d’Alexandre',
+      contenu: (<>
+        <label className="lab">Échéance souhaitée</label>
+        <div className="choix">{URGENCES_E.map(([k, l]) => (
+          <button key={k} className="ch" aria-pressed={t.urgence === k} onClick={() => setT(x => ({ ...x, urgence: x.urgence === k ? '' : k }))}>{l}</button>))}</div>
+        <div className="note-verr">
+          <div className="k"><span><Ico n="verrou" t={12} /> Précisions notées par Alexandre</span></div>
+          <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
+          <div className="pq">Cette note lui appartient : vous ne pouvez pas la modifier vous-même. Dites-lui ce que vous voudriez y changer, il s’en occupe.</div>
+          <textarea rows={3} value={demandeNote} onChange={e => setDemandeNote(e.target.value)}
+            placeholder="Ce que je voudrais qu’Alexandre corrige dans cette note… (facultatif)" />
+        </div>
+      </>),
+    },
+  ];
 
-        <label className="lab">Surface minimum</label>
-        <div className="pas"><button className="rond" onClick={() => pas('surfaceMin', -1)}>−</button>
-          <span className="val tab">{t.surfaceMin} m²</span>
-          <button className="rond" onClick={() => pas('surfaceMin', 1)}>+</button></div>
+  const nb = ETAPES.length;
+  const i = Math.min(Math.max(etape, 0), nb - 1);
+  const e = ETAPES[i];
+  const aller = (n: number) => { setSens(n > i ? 1 : -1); setEtape(Math.max(0, Math.min(nb - 1, n))); };
+  /* La frise défile : on ramène toujours l'étape en cours sous les yeux. */
+  const friseRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = friseRef.current?.querySelector('.fp.on');
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [i]);
 
-        <label className="lab">Pièces minimum</label>
-        <div className="choix">{[2, 3, 4, 5, 6].map(n => (
-          <button key={n} className="ch" aria-pressed={t.piecesMin === n} onClick={() => setT(v => ({ ...v, piecesMin: n }))}>{n}{n === 6 ? '+' : ''}</button>))}</div>
+  async function enregistrer() {
+    const c: string[] = [];
+    if ((t.budgetMin || null) !== (crit.budgetMin || null) || t.budgetMax !== crit.budgetMax) {
+      c.push('budget ' + (t.budgetMin ? EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax) : 'jusqu’à ' + EUR(t.budgetMax)));
+    }
+    if (t.surfaceMin !== crit.surfaceMin) c.push(t.surfaceMin + ' m² minimum');
+    if (t.piecesMin !== crit.piecesMin) c.push(t.piecesMin + ' pièces minimum');
+    if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
+    if (t.typesBien.join() !== (crit.typesBien || []).join()) c.push(t.typesBien.length ? 'type de bien : ' + t.typesBien.join(', ') : 'plus de contrainte de type');
+    if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
+    if (JSON.stringify(t.exigences) !== JSON.stringify(crit.exigences || {})) c.push('équipements souhaités');
+    if ((t.dpeMax || '') !== (crit.dpeMax || '')) c.push(t.dpeMax ? 'DPE ' + t.dpeMax + ' maximum' : 'plus de contrainte de DPE');
+    if (t.exposition !== (crit.exposition || '')) c.push('exposition');
+    const arretsAvant = (crit.transportArrets || []).map((a: Arret) => a.nom + a.minutes).join();
+    if (t.arrets.map(a => a.nom + a.minutes).join() !== arretsAvant) {
+      c.push(t.arrets.length
+        ? 'transports : ' + t.arrets.map(a => `${a.nom} (${a.minutes || 10} min)`).join(' · ')
+        : 'plus de contrainte de transport');
+    }
+    const nombre = (v: string) => (v.trim() === '' ? null : Number(v));
+    setEnr(true);
+    await onEnregistrer({
+      ...crit, ...t,
+      budgetMin: t.budgetMin || null,
+      apport: nombre(t.apport), anneeMin: nombre(t.anneeMin),
+      surfaceMax: nombre(t.surfaceMax), surfaceSejourMin: nombre(t.surfaceSejourMin),
+      etageMin: nombre(t.etageMin), etageMax: nombre(t.etageMax),
+      etageMaxSansAscenseur: nombre(t.etageMaxSansAscenseur),
+      exterieurSurfaceMin: nombre(t.exterieurSurfaceMin),
+      equip: EQUIP_E.filter(([k]) => t.exigences[k]).map(([, l]) => l),
+      transportMinutes: t.transportMinutes || null,
+      transportArrets: t.arrets,
+    }, c, demandeNote.trim());
+  }
 
-        <label className="lab">Chambres minimum</label>
-        <div className="choix">{[1, 2, 3, 4, 5].map(n => (
-          <button key={n} className="ch" aria-pressed={t.chambresMin === n} onClick={() => setT(v => ({ ...v, chambresMin: n }))}>{n}{n === 5 ? '+' : ''}</button>))}</div>
+  return (
+    <>
+      <div className="tete-f">
+        <div><div className="sur">Votre recherche</div><h3>{e.titre}</h3></div>
+        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+      </div>
 
-        <label className="lab">Souhaités</label>
-        <div className="choix">{EQUIPS.map(e => (
-          <button key={e} className="ch or" aria-pressed={t.equip.includes(e)} onClick={() => bascule('equip', e)}>{e}</button>))}</div>
+      <div className="frise-e" ref={friseRef}>
+        {ETAPES.map((s, k) => (
+          <button key={s.id} type="button" aria-label={s.titre} title={s.titre}
+            className={'fp' + (k === i ? ' on' : k < i ? ' fait' : '')} onClick={() => aller(k)}>
+            <Ico n={s.ico} t={15} />
+            <span>{s.titre}</span>
+          </button>
+        ))}
+      </div>
 
-        <div className="sep-crit"><span>Où chercher</span><i /></div>
-        <Localisation secteurs={t.secteurs} onChange={(v) => setT(x => ({ ...x, secteurs: v }))} />
+      <div className="corps-f corps-e">
+        <div key={e.id} className={'pan-e ' + (sens === 1 ? 'av' : 'ar')}>
+          <p className="sous-e">{e.sous}</p>
+          {e.contenu}
+        </div>
+      </div>
 
-        <div className="sep-crit"><span>Transports</span><i /></div>
-        <ArretPicker arrets={t.arrets} onChange={(v) => setT(x => ({ ...x, arrets: v }))}
-          minutesDefaut={t.transportMinutes || 10} />
-
-        <BtnEnvoi enCours={enr} libelle="Enregistrer" enCoursTexte="Enregistrement…"
-          style={{ marginTop: 22 }} onClick={async () => {
-          const c: string[] = [];
-          if ((t.budgetMin || null) !== (crit.budgetMin || null) || t.budgetMax !== crit.budgetMax) {
-            c.push('budget ' + (t.budgetMin ? EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax) : 'jusqu’à ' + EUR(t.budgetMax)));
-          }
-          if (t.surfaceMin !== crit.surfaceMin) c.push(t.surfaceMin + ' m² minimum');
-          if (t.piecesMin !== crit.piecesMin) c.push(t.piecesMin + ' pièces minimum');
-          if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
-          if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
-          if (t.equip.join() !== crit.equip.join()) c.push('équipements souhaités');
-          const arretsAvant = (crit.transportArrets || []).map((a: Arret) => a.nom + a.minutes).join();
-          if (t.arrets.map(a => a.nom + a.minutes).join() !== arretsAvant) {
-            c.push(t.arrets.length
-              ? 'transports : ' + t.arrets.map(a => `${a.nom} (${a.minutes || 10} min)`).join(' · ')
-              : 'plus de contrainte de transport');
-          }
-          setEnr(true);
-          await onEnregistrer({ ...crit, ...t, budgetMin: t.budgetMin || null,
-            transportMinutes: t.transportMinutes || null, transportArrets: t.arrets }, c);
-        }} />
+      <div className="nav-e">
+        <button className="btn" onClick={() => (i === 0 ? onFermer() : aller(i - 1))}>{i === 0 ? 'Annuler' : '← Précédent'}</button>
+        <span className="cpt">{i + 1} / {nb}</span>
+        {i < nb - 1
+          ? <button className="btn or" onClick={() => aller(i + 1)}>Suivant →</button>
+          : <BtnEnvoi enCours={enr} libelle="Enregistrer" enCoursTexte="Enregistrement…" onClick={enregistrer} />}
       </div>
     </>
   );
 }
-
 function Message({ onFermer, onEnvoi }: any) {
   const [txt, setTxt] = useState('');
   const [envoi, setEnvoi] = useState(false);
@@ -1833,4 +2189,95 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 }
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
+
+/* ═══ Récapitulatif de recherche : une catégorie = un bloc lisible ═══ */
+.bloc.cat{padding:0}
+.cat + .cat{margin-top:14px}
+.cat-h{display:flex; align-items:center; gap:12px; padding:15px 18px;
+  border-bottom:1px solid var(--trait); background:linear-gradient(180deg,#fbfcfe,#fff)}
+.cat-i{width:38px; height:38px; border-radius:12px; flex:0 0 auto; display:flex;
+  align-items:center; justify-content:center; color:#fff;
+  background:linear-gradient(140deg,#33486c,#25364f); box-shadow:0 8px 16px -10px rgba(16,24,40,.9)}
+.cat-tt{display:flex; flex-direction:column; min-width:0}
+.cat-tt b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16.5px; font-weight:800; letter-spacing:-.3px}
+.cat-tt i{font-style:normal; font-size:12px; color:var(--plume-clair); margin-top:1px}
+.bloc.cat > *:not(.cat-h){padding-left:18px; padding-right:18px}
+.bloc.cat > *:not(.cat-h):first-of-type{padding-top:0}
+.bloc.cat > .trio, .bloc.cat > .pastilles, .bloc.cat > .gros,
+.bloc.cat > .villes, .bloc.cat > .arrets-v, .bloc.cat > .dpe-r{margin-top:15px}
+.bloc.cat > *:last-child{padding-bottom:17px}
+.ss-t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:800; margin-bottom:8px}
+.duo-l{margin-top:13px; border-top:1px solid var(--trait); padding-top:11px}
+.lig{display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding:4px 0}
+.lig .k{font-size:13px; color:var(--plume)}
+.lig .v{font-size:14.5px; font-weight:800}
+.note-cat{margin-top:11px; font-size:12.5px; color:var(--plume); line-height:1.55}
+.past.indis{background:var(--encre); border-color:var(--or); color:#f2dfa6; font-weight:700}
+.past .mk{font-style:normal; font-size:8.5px; letter-spacing:.9px; text-transform:uppercase;
+  background:var(--or); color:#fff; border-radius:6px; padding:2px 5px; margin-left:7px}
+.dpe-r{display:flex; gap:5px; flex-wrap:wrap}
+.dpe-l{width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:13px; border:1px solid var(--trait); color:var(--plume-clair); background:var(--fond)}
+.dpe-l.ok{border-color:var(--vert-trait); background:var(--vert-fond); color:var(--vert)}
+.dpe-l.pt{border-color:var(--encre); background:var(--encre); color:#fff}
+
+/* ═══ « Mes critères ont évolué » : l'assistant en neuf étapes ═══ */
+.frise-e{display:flex; gap:6px; overflow-x:auto; padding:2px 20px 12px; scrollbar-width:none;
+  -webkit-overflow-scrolling:touch}
+.frise-e::-webkit-scrollbar{display:none}
+.fp{flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 10px;
+  border-radius:99px; border:1.5px solid var(--trait); background:var(--carte); color:var(--plume-clair);
+  font-size:12.5px; font-weight:700; max-width:38px; overflow:hidden; white-space:nowrap;
+  transition:max-width .3s cubic-bezier(.34,1.25,.64,1), background .2s, color .2s, border-color .2s}
+.fp span{opacity:0; transition:opacity .18s .06s}
+.fp.on{max-width:260px; border-color:var(--encre); background:var(--encre); color:#fff}
+.fp.on span{opacity:1}
+.fp.fait{border-color:var(--or-trait); background:var(--or-fond); color:var(--or-fonce)}
+.corps-e{overflow-x:hidden; min-height:230px}
+.sous-e{margin:0 0 14px; font-size:13.5px; color:var(--plume); line-height:1.5}
+@keyframes pan-av{from{opacity:0; transform:translateX(26px)} to{opacity:1; transform:translateX(0)}}
+@keyframes pan-ar{from{opacity:0; transform:translateX(-26px)} to{opacity:1; transform:translateX(0)}}
+.pan-e.av{animation:pan-av .3s cubic-bezier(.22,.8,.3,1) both}
+.pan-e.ar{animation:pan-ar .3s cubic-bezier(.22,.8,.3,1) both}
+.nav-e{position:sticky; bottom:0; display:flex; align-items:center; gap:10px; justify-content:space-between;
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom,0px)); margin-top:18px;
+  background:linear-gradient(180deg,rgba(255,255,255,.72),var(--carte) 42%); border-top:1px solid var(--trait);
+  backdrop-filter:blur(6px)}
+.nav-e .btn{padding:11px 16px; font-size:14px}
+.nav-e .cpt{font-size:11px; font-weight:800; letter-spacing:1.2px; color:var(--or-fonce); white-space:nowrap; flex:0 0 auto}
+.nav-e .btn{flex:0 1 auto; white-space:nowrap}
+label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:11px;
+  color:var(--plume-clair); font-weight:600; margin-left:7px}
+.champ-n{position:relative; display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.champ-n input{flex:0 0 118px; width:118px; background:var(--fond); border:1.5px solid var(--trait);
+  border-radius:12px; padding:11px 13px; font-size:16px; font-family:inherit; font-weight:700;
+  color:var(--encre); outline:none}
+.champ-n input:focus{border-color:var(--or)}
+.champ-n .sfx{font-size:14px; font-weight:700; color:var(--plume)}
+.champ-n .aide{flex:1 1 100%; font-size:11.5px; color:var(--plume-clair)}
+.duo-n{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.duo-n > *{min-width:0}
+.ch.niv{position:relative}
+.ch.niv.nsouhaite{border-color:var(--vert-trait); background:var(--vert-fond); color:var(--vert)}
+.ch.niv.nindispensable{border-color:var(--or); background:var(--encre); color:#f2dfa6}
+.ch .mk{font-style:normal; font-size:8.5px; letter-spacing:.9px; text-transform:uppercase;
+  margin-left:8px; opacity:.9; font-weight:800}
+.dpe-choix{display:flex; gap:7px; flex-wrap:wrap}
+.dpe-b{width:44px; height:44px; border-radius:13px; border:1.5px solid var(--trait); background:var(--fond);
+  color:var(--plume); font-weight:800; font-size:16px}
+.dpe-b.ok{border-color:var(--vert-trait); background:var(--vert-fond); color:var(--vert)}
+.dpe-b.pt{border-color:var(--encre); background:var(--encre); color:#fff}
+.note-verr{margin-top:20px; background:var(--fond); border:1px solid var(--trait); border-radius:16px; padding:14px}
+.note-verr .k{display:flex; align-items:center; gap:7px; font-size:10px; letter-spacing:1.2px;
+  text-transform:uppercase; color:var(--plume-clair); font-weight:800}
+.note-verr .k span{display:inline-flex; align-items:center; gap:6px}
+.note-verr .corps{margin:10px 0 0; padding:11px 13px; background:var(--carte); border:1px solid var(--trait);
+  border-left:3px solid var(--or); border-radius:12px; font-size:14px; line-height:1.6; color:var(--encre)}
+.note-verr .pq{margin-top:10px; font-size:12px; color:var(--plume); line-height:1.5}
+.note-verr textarea{width:100%; margin-top:9px; background:var(--carte); border:1.5px solid var(--trait);
+  border-radius:12px; padding:11px 13px; font-size:15px; font-family:inherit; color:var(--encre);
+  outline:none; resize:vertical}
+.note-verr textarea:focus{border-color:var(--or)}
+
 `;
