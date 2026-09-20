@@ -824,8 +824,8 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
             <div className="gr-note">
               <span>Les trois chiffres s&apos;additionnent&nbsp;:{' '}
                 <b>{lues.toLocaleString('fr-FR')}</b>{' '}annonces lues,{' '}
-                <b>{ecart.toLocaleString('fr-FR')}</b>{' '}écartées parce qu&apos;au moins un de vos critères
-                n&apos;y était pas,{' '}<b>{ret.toLocaleString('fr-FR')}</b>{' '}
+                <b>{ecart.toLocaleString('fr-FR')}</b>{' '}qui ne vous correspondaient pas,{' '}
+                <b>{ret.toLocaleString('fr-FR')}</b>{' '}
                 déposée{ret > 1 ? 's' : ''} dans votre espace. Soit{' '}
                 <b>une annonce retenue sur {sur.toLocaleString('fr-FR')}</b>.</span>
             </div>
@@ -868,9 +868,10 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           })()}
         </div>
         <div className="gr-note">
-          <span>Il suffit qu&apos;<b>un seul</b>{' '}de vos critères ne soit pas respecté pour qu&apos;une annonce
-            soit écartée&nbsp;: le budget, la surface, le nombre de pièces, le secteur, l&apos;étage…
-            Vous ne voyez ici que ce qui les passe tous.</span>
+          {/* Une ligne, pas un paragraphe : le détail est derrière le « ? » de
+              « écartées », juste au-dessus. La page se lit d'un coup d'œil. */}
+          <span>Vos critères guident la recherche, ils ne l&apos;enferment pas&nbsp;: il nous arrive
+            d&apos;aller au-delà quand un bien le mérite.</span>
         </div>
       </div>
 
@@ -1943,9 +1944,10 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
   },
   ecartees: {
     ico: 'croix', sur: 'Le tri', titre: 'Ce que veut dire « écartée »',
-    texte: "Une annonce écartée est une annonce que nous avons lue et qui ne correspondait pas à votre recherche.",
+    texte: "Une annonce écartée est une annonce que nous avons lue et qui ne méritait pas de vous être présentée.",
     puces: [
-      'Il suffit qu’un seul de vos critères ne soit pas respecté : le budget dépassé, la surface trop juste, le mauvais secteur, un étage sans ascenseur…',
+      'Le plus souvent, elle s’éloignait trop de ce que vous cherchez : le budget, la surface, le secteur, l’étage.',
+      'Mais vos critères ne sont pas une barrière. Quelques mètres carrés de moins, un étage imprévu, un prix un peu au-dessus quand il y a de la négociation à aller chercher : si le reste y est, nous vous le présentons quand même, en vous disant pourquoi.',
       'Nous ne les gardons pas une par une : ce qui est conservé, c’est le compte, pour que vous voyiez le volume de tri fait pour vous.',
       'Si vous trouvez qu’on écarte trop, ou pas assez, dites-le : vos critères se modifient depuis « Rappel de ma recherche ».',
     ],
