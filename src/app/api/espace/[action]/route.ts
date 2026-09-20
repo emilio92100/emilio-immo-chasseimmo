@@ -117,6 +117,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           surface_min: n(c.surfaceMin, 5, 2_000),
           nb_pieces_min: n(c.piecesMin, 1, 20),
           chambres_min: n(c.chambresMin, 0, 20),
+          transport_minutes: n(c.transportMinutes, 1, 60),
         };
         if (Array.isArray(c.secteurs)) {
           maj.secteurs = c.secteurs.filter((s: unknown) => typeof s === 'string').slice(0, 20);
