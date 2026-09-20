@@ -25,6 +25,7 @@ export interface Recherche {
   secteurs: string[]
   transport_minutes?: number
   transport_lignes?: string[]
+  transport_arrets?: { nom: string; ville: string; lignes: string[]; minutes?: number }[]
   etage_min?: number
   etage_max?: number
   rdc_exclu?: boolean
