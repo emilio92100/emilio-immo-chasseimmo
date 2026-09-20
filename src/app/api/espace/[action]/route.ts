@@ -119,6 +119,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           chambres_min: n(c.chambresMin, 0, 20),
           transport_minutes: n(c.transportMinutes, 1, 60),
         };
+        if (Array.isArray(c.transportLignes)) {
+          maj.transport_lignes = (c.transportLignes as unknown[])
+            .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && x.length <= 60)
+            .map((x) => x.trim())
+            .slice(0, 14);
+        }
         if (Array.isArray(c.secteurs)) {
           maj.secteurs = c.secteurs.filter((s: unknown) => typeof s === 'string').slice(0, 20);
         }
