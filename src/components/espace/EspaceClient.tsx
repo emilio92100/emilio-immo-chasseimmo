@@ -83,6 +83,16 @@ const T: Record<string, string[]> = {
   verrou:['M5 11.5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z','M8 9.5V7a4 4 0 0 1 8 0v2.5'],
   pdf:['M12 3v12','m7.5 11 4.5 4.5 4.5-4.5','M4 20h16'],
   partage:['M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7','M12 3v13','m7.5 7.5 4.5-4.5 4.5 4.5'],
+  mail:['M3.6 6.6h16.8v10.8H3.6z','m3.6 7 8.4 5.9 8.4-5.9'],
+};
+
+/* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
+const AGENT = {
+  nom: 'Alexandre Rogelet',
+  role: 'Votre chasseur · Emilio Immobilier',
+  tel: '06 58 95 76 32',
+  telUrl: '+33658957632',
+  mail: 'arogelet@emilio-immo.com',
 };
 function Ico({ n, t = 22 }: { n: string; t?: number }) {
   const d = T[n]; if (!d) return null;
@@ -182,22 +192,40 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       <style>{CSS}</style>
 
       <div className="chapeau">
-        <div className="marque">
-          <span className="motmarque">EMILIO IMMOBILIER</span>
-          <span className="confid">Espace privé</span>
-        </div>
-        <div className="ident">
-          <div className="mono">{(client.prenom[0] || '') + (client.nom[0] || '')}</div>
-          <div>
-            <h1>{client.prenom} {client.nom}</h1>
-            <div className="ref">
-              Dossier {client.reference}{client.jours ? ` · suivi depuis ${client.jours} jours` : ''}
+        <div className="dedans">
+          <div className="marque">
+            <span className="motmarque">EMILIO IMMOBILIER</span>
+            <span className="confid">Espace privé</span>
+          </div>
+
+          <div className="rangee">
+            <div className="ident">
+              <div className="mono">{(client.prenom[0] || '') + (client.nom[0] || '')}</div>
+              <div>
+                <h1>{client.prenom} {client.nom}</h1>
+                <div className="ref">
+                  Dossier {client.reference}{client.jours ? ` · suivi depuis ${client.jours} jours` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div className="agent">
+              <div className="agent-id">
+                <span className="agent-sur">Suivi par</span>
+                <b>{AGENT.nom}</b>
+                <span className="agent-role">{AGENT.role}</span>
+              </div>
+              <div className="agent-act">
+                <a className="act" href={'tel:' + AGENT.telUrl}><Ico n="tel" t={15} /><span>Appeler</span></a>
+                <a className="act fant" href={'mailto:' + AGENT.mail}><Ico n="mail" t={15} /><span>Écrire</span></a>
+              </div>
             </div>
           </div>
+
+          {passage?.quand && (
+            <div className="veilleligne"><span className="pouls" /> Dernière chasse {heure(passage.quand)}</div>
+          )}
         </div>
-        {passage?.quand && (
-          <div className="veilleligne"><span className="pouls" /> Dernière chasse {heure(passage.quand)}</div>
-        )}
       </div>
 
       <div className="page">
@@ -265,7 +293,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller }: any) {
   const dernier = donnes[0] || vus[0];
   return (
-    <>
+    <div className="accueil">
+      <div className="col-a">
       <div className="hero">
         <div className="sur">Votre espace personnel</div>
         <h2>Bienvenue, {client.prenom}</h2>
@@ -284,7 +313,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">lues ce matin</div></div>
         <div className="bc"><div className="n tab">{client.jours ?? '—'}</div><div className="l">jours de suivi</div></div>
       </div>
+      </div>
 
+      <div className="col-b">
       <div className="sep"><span>Votre espace</span><i /></div>
 
       <div className="grille">
@@ -345,6 +376,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         </button>
       </div>
 
+      </div>
+
+      <div className="col-c">
       <div className="sep"><span>Votre chasseur</span><i /></div>
       <div className="chasseur">
         <div className="av">AR</div>
@@ -363,7 +397,8 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b> Il vous ouvre votre espace sans mot de passe
           — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
           il verra exactement la même chose.</span></div>
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -936,12 +971,38 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .marque{position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px}
 .motmarque{font-family:'Plus Jakarta Sans',sans-serif; font-size:11px; font-weight:800; letter-spacing:2.2px; color:var(--or)}
 .confid{font-size:9.5px; letter-spacing:1.3px; color:rgba(255,255,255,.42); text-transform:uppercase; font-weight:700}
-.ident{position:relative; margin-top:20px; display:flex; align-items:center; gap:14px}
+.chapeau .dedans{position:relative; max-width:680px; margin:0 auto}
+.rangee{position:relative; margin-top:18px; display:flex; flex-direction:column; gap:13px}
+.ident{position:relative; display:flex; align-items:center; gap:13px}
 .mono{width:48px; height:48px; border-radius:50%; background:rgba(255,255,255,.08);
   border:1px solid rgba(201,168,76,.45); display:flex; align-items:center; justify-content:center;
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px; color:var(--or); flex:0 0 auto}
-.ident h1{margin:0; font-size:23px; font-weight:800; color:#fff; line-height:1.15}
-.ident .ref{font-size:12px; color:rgba(255,255,255,.45); margin-top:2px}
+.ident h1{margin:0; font-size:19.5px; font-weight:800; color:#fff; line-height:1.18; letter-spacing:-.2px}
+.ident .ref{font-size:11.5px; color:rgba(255,255,255,.45); margin-top:3px}
+
+/* — le chasseur qui suit le dossier — */
+.agent{display:flex; align-items:center; justify-content:space-between; gap:12px;
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
+  border-radius:16px; padding:11px 12px 11px 14px}
+.agent-id{min-width:0}
+.agent-sur{display:block; font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase;
+  color:var(--or); font-weight:800}
+.agent-id b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:14.5px;
+  font-weight:800; color:#fff; margin-top:3px; line-height:1.2}
+.agent-role{display:block; font-size:11px; color:rgba(255,255,255,.45); margin-top:3px}
+.agent-act{display:flex; gap:8px; flex:0 0 auto}
+.act{display:inline-flex; align-items:center; gap:7px; border-radius:99px; padding:9px 14px;
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:12.5px; font-weight:800;
+  text-decoration:none; white-space:nowrap; background:var(--or); color:#1a2332;
+  border:1px solid transparent; transition:transform .16s cubic-bezier(.16,1,.3,1), background .2s}
+.act.fant{background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); color:#fff}
+.act:active{transform:scale(.96)}
+/* Sur téléphone, les deux boutons passent sous le nom et gardent leur libellé. */
+@media(max-width:519px){
+  .agent{flex-direction:column; align-items:stretch; gap:12px; padding:13px 14px}
+  .agent-act{width:100%}
+  .act{flex:1; justify-content:center; padding:11px 14px}
+}
 .veilleligne{position:relative; margin-top:16px; display:inline-flex; align-items:center; gap:9px;
   background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
   border-radius:99px; padding:7px 15px 7px 12px; font-size:12.5px; color:rgba(255,255,255,.85)}
@@ -950,6 +1011,9 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 @keyframes pouls{0%{box-shadow:0 0 0 0 rgba(95,211,155,.5)}70%{box-shadow:0 0 0 9px rgba(95,211,155,0)}100%{box-shadow:0 0 0 0 rgba(95,211,155,0)}}
 
 .page{max-width:680px; margin:0 auto; padding:0 20px 80px}
+.accueil{display:block}
+
+/* Les règles grand écran sont regroupées en fin de feuille (voir plus bas). */
 @keyframes monte{from{opacity:0; transform:translateY(18px)}to{opacity:1; transform:none}}
 .vue > *{animation:monte .5s cubic-bezier(.16,1,.3,1) both}
 .vue > *:nth-child(2){animation-delay:.06s} .vue > *:nth-child(3){animation-delay:.12s}
@@ -1343,5 +1407,47 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 .grandok .rappel b{color:var(--encre)}
 .pied{text-align:center; padding:34px 20px 10px; color:var(--plume-clair); font-size:12px; line-height:1.8}
 .pied b{color:var(--plume); font-weight:700}
+/* À partir de la tablette, la page s'élargit et le client et son chasseur
+   tiennent sur une ligne. Le sous-titre du chasseur saute pour rester compact. */
+@media(min-width:760px){
+  .chapeau{padding:22px 30px 26px}
+  .chapeau .dedans{max-width:900px}
+  .page{max-width:900px; padding:0 30px 84px}
+  .rangee{flex-direction:row; align-items:center; justify-content:space-between; gap:20px}
+  .ident h1{font-size:22px; white-space:nowrap}
+  .agent-role{display:none}
+}
+
+/* Sur écran d'ordinateur, la page s'étale au lieu de rester en colonne. */
+@media(min-width:1024px){
+  .chapeau{padding:24px 40px 28px}
+  .chapeau .dedans{max-width:1160px}
+  .ident h1{font-size:24px}
+  .mono{width:52px; height:52px; font-size:19px}
+  .agent{min-width:340px; padding:12px 13px 12px 17px}
+  .agent-role{display:block}
+
+  .page{max-width:1160px; padding:0 40px 90px}
+  /* Colonne gauche : la présentation, puis le chasseur et l'engagement.
+     Colonne droite : les cartes, qui tiennent sur les deux rangées. */
+  .accueil{display:grid; grid-template-columns:minmax(0,.94fr) minmax(0,1.06fr);
+    column-gap:30px; row-gap:0; align-items:start; margin-top:26px}
+  .accueil .col-a{grid-column:1; grid-row:1}
+  .accueil .col-c{grid-column:1; grid-row:2}
+  .accueil .col-b{grid-column:2; grid-row:1 / span 2}
+  .accueil .hero{margin-top:0}
+  .accueil .col-b .sep{margin-top:2px}
+  .grille{gap:16px}
+  /* les listes de biens passent sur deux colonnes */
+  .liste{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:stretch}
+  .tuiles{grid-template-columns:repeat(4,1fr)}
+  .sous-vue{max-width:820px}
+  .relance{max-width:820px}
+}
+@media(min-width:1440px){
+  .chapeau .dedans{max-width:1280px}
+  .page{max-width:1280px}
+}
+
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
 `;
