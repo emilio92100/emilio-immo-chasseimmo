@@ -65,6 +65,17 @@ function depuis(d?: string | null) {
   if (h < 48) return 'hier';
   return `${x.getDate()} ${MOIS[x.getMonth()]}`;
 }
+/* Version courte pour le téléphone : le bandeau n'a pas la place d'écrire
+   « aujourd'hui » quand l'heure suffit. */
+function heureCourte(d?: string | null) {
+  if (!d) return '';
+  const x = new Date(d); if (isNaN(x.getTime())) return '';
+  if (x.toDateString() === new Date().toDateString()) {
+    return 'à ' + x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+  }
+  return `le ${x.getDate()} ${MOIS[x.getMonth()]}`;
+}
+
 function heure(d?: string | null) {
   if (!d) return '';
   const x = new Date(d); if (isNaN(x.getTime())) return '';
@@ -134,11 +145,6 @@ const FINANCEMENTS_E: [string, string, string][] = [
   ['mixte_pret_relais', 'Mixte · prêt + prêt relais', '🔀'],
 ];
 const LETTRES_DPE = ['A','B','C','D','E','F','G'];
-const libelle = (table: [string, string, string][], v?: string | null) => {
-  const l = table.find(x => x[0] === v);
-  return l ? `${l[2]} ${l[1]}` : (v || null);
-};
-
 /* Une valeur du récapitulatif : petite carte avec son icône, plutôt qu'une ligne nue. */
 function Fait({ ico, lib, val }: { ico: string; lib: string; val: React.ReactNode }) {
   return (
@@ -311,6 +317,24 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return !!r?.ok;
   }, [envoyer]);
 
+  /* La présentation s'ouvre une seule fois par appareil. Le petit délai laisse
+     la page se poser : elle arrive comme un accueil, pas comme une interruption. */
+  const CLE_BIENVENUE = 'emilio_bienvenue';
+  const ouvrirBienvenue = useCallback(() => {
+    montrer(<Bienvenue client={client} onFermer={() => {
+      try { localStorage.setItem(CLE_BIENVENUE, '1'); } catch { /* stockage indisponible */ }
+      fermer();
+    }} />, 'pleine');
+  }, [client]);
+
+  useEffect(() => {
+    let deja = true;
+    try { deja = localStorage.getItem(CLE_BIENVENUE) === '1'; } catch { deja = false; }
+    if (deja) return;
+    const t = setTimeout(() => ouvrirBienvenue(), 900);
+    return () => clearTimeout(t);
+  }, [ouvrirBienvenue]);
+
   function ouvrirCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
       setCrit(nv);
@@ -372,7 +396,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               {passage?.quand && (
                 <div className="veilleligne"><span className="pouls" />
                   {/* un seul bloc de texte : sinon le « gap » du flex écarte chaque mot */}
-                  <span><span className="mot-l">Dernière chasse</span><span className="mot-c">Actualisé</span><span className="sur-dossier"> sur votre dossier</span> {heure(passage.quand)}</span></div>
+                  <span><span className="mot-l">Dernière chasse</span><span className="mot-c">Actualisé</span><span className="sur-dossier"> sur votre dossier</span>{' '}<span className="mot-l">{heure(passage.quand)}</span><span className="mot-c">{heureCourte(passage.quand)}</span></span></div>
               )}
               <div className="agent-act">
                 <a className="act" href={'tel:' + AGENT.telUrl}><Ico n="tel" t={15} /><span>Appeler</span></a>
@@ -387,7 +411,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         <div className="vue" key={vue}>
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
-              passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} />
+              passage={passage} semaine={semaine} maxLues={maxLues} aller={aller}
+              onBienvenue={ouvrirBienvenue} />
           )}
           {vue === 'neufs' && (
             <Vue icone="etoile" titre="Nouveaux biens pour vous" aller={aller}
@@ -453,24 +478,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
       <div className="col-a">
-      <div className="hero">
-        <div className="sur">Votre espace personnel</div>
-        <h2>Bienvenue, {client.prenom}</h2>
-        <p>Votre recherche est suivie <b>au quotidien</b>. Ici, rien à retenir et rien à installer&nbsp;:
-          vous ouvrez le lien, vous voyez où en est votre projet.</p>
-        <div className="puces">
-          <span><span className="k"><Ico n="check" t={15} /></span>Les biens retenus pour vous, dès qu&apos;ils sortent</span>
-          <span><span className="k"><Ico n="check" t={15} /></span>Ce que nous avons passé en revue pour vous, et ce que nous avons écarté</span>
-          <span><span className="k"><Ico n="check" t={15} /></span>Vos critères, que vous pouvez faire évoluer vous-même</span>
-        </div>
-        <div className="prochaine"><span className="pouls" style={{ background: 'currentColor' }} /> Votre dossier est repris chaque jour</div>
-      </div>
-
       <div className="bandeau-chiffres">
         <div className="bc"><div className="n or tab">{neufs.length}</div><div className="l">à découvrir</div></div>
         <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">annonces lues</div></div>
@@ -479,7 +491,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       </div>
 
       <div className="col-b">
-      <div className="sep"><span>Votre espace</span><i /></div>
+      <div className="sep"><span>Votre espace</span><i />
+        <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
+      </div>
 
       <div className="grille">
         <button className={'case large' + (neufs.length ? ' phare' : '')} onClick={() => aller('neufs')}>
@@ -1586,6 +1600,30 @@ function Message({ onFermer, onEnvoi }: any) {
   );
 }
 
+/* La présentation de l'espace. Elle s'ouvre toute seule à la première visite,
+   puis se retrouve derrière « Comment ça marche ? ». Elle ne reste pas en
+   permanence sur la page d'accueil : on la lit une fois, elle a fait son office. */
+function Bienvenue({ client, onFermer }: any) {
+  return (
+    <div className="bienv">
+      <div className="bienv-sceau"><Ico n="cible" t={30} /></div>
+      <div className="bienv-sur">Votre espace personnel</div>
+      <h3>Bienvenue, {client.prenom}</h3>
+      <p>Cet espace a été créé rien que pour votre recherche. Il est privé, il n&apos;y a ni compte
+        ni mot de passe&nbsp;: le lien vous suffit, et vous pouvez y revenir quand vous voulez.</p>
+      {/* chaque puce = une icône + UN bloc de texte, sinon le flex écarte les mots */}
+      <div className="puces">
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Nous cherchons pour vous <b>au quotidien</b>, sur les portails, notre carnet d&apos;adresses et notre base off-market.</span></span>
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Les biens retenus arrivent ici dès qu&apos;ils sortent&nbsp;— avec ce que nous avons lu, et ce que nous avons écarté.</span></span>
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Vos critères sont les vôtres&nbsp;: vous les faites évoluer vous-même, votre conseiller en est informé.</span></span>
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Un avis en un clic sur chaque bien&nbsp;— c&apos;est ce qui affine la suite de la recherche.</span></span>
+      </div>
+      <button className="btn or" style={{ marginTop: 22, width: '100%' }} onClick={onFermer}>J&apos;ai compris</button>
+      <div className="bienv-pied">Vous pourrez la revoir à tout moment avec «&nbsp;Comment ça marche&nbsp;?&nbsp;»</div>
+    </div>
+  );
+}
+
 function GrandOk({ titre, texte, rappel, onFermer }: any) {
   return (
     <div className="grandok">
@@ -1706,7 +1744,8 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .hero p{position:relative; margin:0; color:var(--plume); font-size:14.5px; line-height:1.7}
 .hero p b{color:var(--encre); font-weight:700}
 .puces{position:relative; display:flex; flex-direction:column; gap:10px; margin-top:18px; padding-top:18px; border-top:1px solid var(--trait)}
-.puces span{display:flex; align-items:flex-start; gap:10px; font-size:13.5px; color:var(--encre); line-height:1.5}
+.puces > span{display:flex; align-items:flex-start; gap:10px; font-size:13.5px; color:var(--encre); line-height:1.5}
+.puces > span > span:not(.k){display:block; min-width:0}
 .puces .k{color:var(--vert); flex:0 0 auto; margin-top:1px}
 .prochaine{position:relative; display:inline-flex; align-items:center; gap:9px; margin-top:18px;
   background:var(--vert-fond); border:1px solid var(--vert-trait); border-radius:99px;
@@ -2373,5 +2412,29 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   .hero{margin-top:14px; padding:18px 16px; border-radius:18px}
   .retour{margin-top:14px}
 }
+
+
+/* ═══ La présentation de l'espace (première visite) ═══ */
+.bienv{padding:8px 20px 24px; text-align:center}
+.bienv-sceau{width:66px; height:66px; border-radius:50%; margin:6px auto 16px;
+  display:flex; align-items:center; justify-content:center; color:var(--or);
+  background:var(--or-fond); border:1px solid var(--or-trait)}
+.bienv-sur{font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--or-fonce); font-weight:800}
+.bienv h3{margin:8px 0 12px; font-size:25px; font-weight:800; line-height:1.15}
+.bienv > p{margin:0; color:var(--plume); font-size:14.5px; line-height:1.7}
+.bienv .puces{text-align:left; margin-top:20px; padding-top:18px}
+.bienv .puces span{font-size:13.5px}
+.bienv .puces b{font-weight:700}
+.bienv-pied{margin-top:12px; font-size:11.5px; color:var(--plume-clair)}
+@media(min-width:640px){ .bienv{padding:8px 26px 26px} }
+@media(max-width:639px){
+  .feuille.pleine .bienv{min-height:100dvh; display:flex; flex-direction:column; justify-content:center}
+}
+
+/* Le lien discret qui la rouvre, au bout du séparateur « Votre espace ». */
+.lien-aide{flex:0 0 auto; font-family:inherit; font-size:11.5px; font-weight:700;
+  color:var(--plume-clair); border:1px solid var(--trait); background:var(--carte);
+  border-radius:99px; padding:4px 11px; white-space:nowrap; transition:color .15s, border-color .15s}
+.lien-aide:hover{color:var(--or-fonce); border-color:var(--or-trait)}
 
 `;
