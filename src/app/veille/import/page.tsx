@@ -158,6 +158,22 @@ export default function PageImportVeille() {
               points_attention: p.points_attention || [],
               score: p.score ?? null,
               statut: 'nouveau',
+
+              // ─── Histoire du bien sur le marché (Yanport) ───
+              // Ces champs suivent la proposition jusqu'à la fiche bien
+              // quand tu cliques sur « Retenir » : c'est ce qui alimente
+              // la frise des prix et le « en vente depuis ».
+              yanport_id: p.yanport_id || null,
+              est_particulier: !!p.est_particulier,
+              agence: p.agence || null,
+              adresse_probable: p.adresse_probable || null,
+              situation: p.situation || null,
+              date_publication: p.date_publication || p.date_annonce || null,
+              prix_initial: p.prix_initial ?? null,
+              nb_baisses: p.nb_baisses ?? null,
+              nb_agences: p.nb_agences ?? null,
+              historique_prix: p.historique_prix || [],
+              date_derniere_baisse: p.date_derniere_baisse || null,
             });
 
             if (error) {
