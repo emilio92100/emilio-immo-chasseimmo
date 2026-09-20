@@ -161,6 +161,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                     {b.canal_envoi ? ` · ${b.canal_envoi === 'mail' ? 'mail' : b.canal_envoi === 'whatsapp' ? 'WhatsApp' : 'lien'}` : ''}
                   </div>
                 )}
+                {mode === 'presentes' && (
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: b.nb_vues ? '#2563eb' : '#cbd5e1' }}>
+                    {b.nb_vues ? `👁️ ouvert ${b.nb_vues} fois par le client` : '👁️ jamais ouvert'}
+                  </div>
+                )}
               </div>
             </div>
 
