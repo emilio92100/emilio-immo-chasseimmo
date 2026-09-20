@@ -1410,11 +1410,11 @@ Emilio Immobilier
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
-                        {client.reference} · suivi depuis {jours} jours
+                        {client.reference} · suivi depuis {jours}{' '}jours
                       </span>
                       <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.42)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <Icone nom="crayon" taille={12} /> Modifier
+                        <Icone nom="crayon" taille={12} />{' '}Modifier
                       </button>
                     </div>
 
@@ -1464,7 +1464,7 @@ Emilio Immobilier
                   {aVendre && <Champ lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
                   {aVendre && (
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fffaf3', color: '#b45309', border: '1px solid #f3dcb8', padding: '7px 14px', borderRadius: 11, fontSize: 12.5, fontWeight: 700 }}>
-                      <Icone nom="etiquette" taille={14} /> Mandat de vente potentiel
+                      <Icone nom="etiquette" taille={14} />{' '}Mandat de vente potentiel
                     </span>
                   )}
                 </div>
@@ -1712,7 +1712,7 @@ Emilio Immobilier
                         <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: '#c9a84c' }}>{b.prix_acquereur ? `${b.prix_acquereur.toLocaleString('fr-FR')}€` : '—'}</div>
                         {b.prix_vendeur && b.commission_val && (
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                            {b.prix_vendeur.toLocaleString('fr-FR')}€ + {b.commission_type === 'pourcentage' ? `${b.commission_val}%` : `${b.commission_val.toLocaleString('fr-FR')}€`} commission
+                            {b.prix_vendeur.toLocaleString('fr-FR')}€ + {b.commission_type === 'pourcentage' ? `${b.commission_val}%` : `${b.commission_val.toLocaleString('fr-FR')}€`}{' '}commission
                           </div>
                         )}
                       </div>
@@ -2185,7 +2185,7 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody}>
               <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: -4 }}>
-                Ce que {client.prenom || 'le client'} a changé ou demandé depuis son espace.
+                Ce que {client.prenom || 'le client'}{' '}a changé ou demandé depuis son espace.
               </div>
               {histoEvts.length === 0 ? (
                 <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13.5, padding: '26px 0' }}>
