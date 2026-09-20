@@ -113,7 +113,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const [crit, setCrit] = useState(criteres);
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
-  const [pleine, setPleine] = useState(false);
+  const [variante, setVariante] = useState('');
 
   const envoyer = useCallback(async (route: string, corps: Record<string, unknown>) => {
     try {
@@ -125,8 +125,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     } catch { return { ok: false }; }
   }, [token]);
 
-  const montrer = (n: React.ReactNode, plein = false) => { setFeuille(n); setPleine(plein); setOuvert(true); };
-  const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setPleine(false); }, 320); };
+  const montrer = (n: React.ReactNode, v = '') => { setFeuille(n); setVariante(v); setOuvert(true); };
+  const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setVariante(''); }, 320); };
   const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
@@ -139,7 +139,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       envoyer('vue', { bien_id: b.id });
     }
     montrer(<FicheBien b={b} client={client} onFermer={fermer}
-      onAvis={enregistrerAvis} onPartager={partagerBien} />, true);
+      onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
   }
 
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
@@ -154,7 +154,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           ? "Alexandre est prévenu. Il vous rappelle pour caler la visite."
           : "Alexandre est prévenu. Il va vous en chercher d'autres dans le même esprit."}
       rappel="Chacun de vos retours est relu avant la chasse du lendemain."
-      onFermer={fermer} />, true);
+      onFermer={fermer} />, 'pleine');
   }
 
   /* Le partage s'ouvre par-dessus la fiche, en pop-up : on ne perd pas le bien
@@ -223,7 +223,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           </div>
 
           {passage?.quand && (
-            <div className="veilleligne"><span className="pouls" /> Dernière chasse {heure(passage.quand)}</div>
+            <div className="veilleligne"><span className="pouls" /> Dernière chasse<span className="sur-dossier"> sur votre dossier</span> {heure(passage.quand)}</div>
           )}
         </div>
       </div>
@@ -281,9 +281,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       </div>
 
       <div className={'voile' + (ouvert ? ' on' : '')} onClick={fermer} />
-      <div className={'feuille' + (ouvert ? ' on' : '') + (pleine ? ' pleine' : '')}
+      <div className={'feuille' + (ouvert ? ' on' : '') + (variante ? ' ' + variante : '')}
         role="dialog" aria-modal="true">
-        {!pleine && <div className="poignee" />}{feuille}
+        {!variante && <div className="poignee" />}{feuille}
       </div>
     </>
   );
@@ -357,10 +357,13 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
           <div><h3>Le marché sur vos critères</h3>
             <p>{semaine.reduce((s: number, x: any) => s + x.lues, 0)} annonces lues cette semaine</p></div>
-          <div className="mini">{semaine.map((d: any, i: number) => (
-            <i key={i} className={i === semaine.length - 1 ? 'fort' : ''}
-              style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
-          ))}</div>
+          <div className="apm">
+            <div className="apm-t">Annonces lues · 7 derniers jours</div>
+            <div className="mini">{semaine.map((d: any, i: number) => (
+              <i key={i} className={i === semaine.length - 1 ? 'fort' : ''}
+                style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
+            ))}</div>
+          </div>
           <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
         </button>
 
@@ -459,18 +462,44 @@ function Marche({ passage, semaine, maxLues, aller }: any) {
   return (
     <Vue icone="graph" titre="Le marché sur vos critères" aller={aller}
       sous="Ce que la chasse a parcouru pour vous. Elle tourne tous les matins, sur les principaux portails immobiliers, notre carnet d'adresses de confrères et de partenaires, et notre base off-market.">
-      <div className="tuiles">
-        <div className="tuile"><div className="n tab">{passage?.lues ?? '—'}</div><div className="l">annonces lues ce matin</div></div>
-        <div className="tuile"><div className="n tab or">{passage?.proposees ?? '—'}</div><div className="l">retenues pour vous</div></div>
-        <div className="tuile"><div className="n tab pale">{passage?.ecartees ?? '—'}</div><div className="l">écartées</div></div>
-        <div className="tuile"><div className="n tab">{total}</div><div className="l">lues cette semaine</div></div>
+      <div className="entonnoir">
+        <div className="ent-t">Ce matin, sur vos critères</div>
+        {(() => {
+          const lues = passage?.lues ?? 0;
+          const ec = passage?.ecartees ?? 0;
+          const re = passage?.proposees ?? 0;
+          const pc = (n: number) => lues ? Math.max(5, Math.round(n / lues * 100)) : 0;
+          return (
+            <>
+              <div className="ent">
+                <div className="ent-h"><b className="tab">{passage?.lues ?? '—'}</b>
+                  <span>annonces lues sur le marché</span></div>
+                <div className="ent-b"><i style={{ width: '100%' }} /></div>
+              </div>
+              <div className="ent">
+                <div className="ent-h"><b className="tab pale">{passage?.ecartees ?? '—'}</b>
+                  <span>écartées&nbsp;: elles ne passaient pas vos critères</span></div>
+                <div className="ent-b"><i className="pale" style={{ width: pc(ec) + '%' }} /></div>
+              </div>
+              <div className="ent">
+                <div className="ent-h"><b className="tab or">{passage?.proposees ?? '—'}</b>
+                  <span className="or">retenues et déposées dans votre espace</span></div>
+                <div className="ent-b"><i className="or" style={{ width: pc(re) + '%' }} /></div>
+              </div>
+            </>
+          );
+        })()}
       </div>
-      <p className="note">Chaque matin, la chasse relit l&apos;intégralité du marché sur votre secteur.
-        Ce qui ne passe pas vos critères est écarté avant même de vous être montré&nbsp;— vous ne voyez
-        que ce qui mérite votre temps.</p>
+      <p className="note">Chaque matin, la chasse relit l&apos;intégralité du marché sur vos critères.
+        Ce qui ne correspond pas est écarté&nbsp;— vous ne voyez que ce qui mérite votre temps.</p>
       {semaine.length > 1 && (
         <div className="graphe">
-          <div className="bloc-titre" style={{ margin: 0 }}><h3>Annonces lues, jour par jour</h3></div>
+          <div className="bloc-titre" style={{ margin: 0 }}>
+            <h3>Annonces lues, jour par jour</h3>
+            <span className="n">{total} cette semaine</span>
+          </div>
+          <p className="legende">Chaque barre, c&apos;est le nombre d&apos;annonces parcourues ce jour-là
+            sur vos secteurs et votre budget. La barre dorée est celle d&apos;aujourd&apos;hui.</p>
           <div className="barres">
             {semaine.map((d: any, i: number) => {
               const j = d.quand ? JOURS[new Date(d.quand).getDay()] : '·';
@@ -522,9 +551,11 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
         </div>
       )}
       <div className="precisions">
-        <span className="k"><Ico n="crayon" t={13} /> Précisions sur votre recherche — notées par votre chasseur</span>
-        <div className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</div>
-        <div className="verrou"><Ico n="verrou" t={13} /> Ce texte est la note d&apos;Alexandre. Vous ne pouvez pas le modifier vous-même.</div>
+        <div className="k">
+          <span><Ico n="crayon" t={13} /> Précisions sur votre recherche</span>
+          <span className="cadenas"><Ico n="verrou" t={11} /> Noté par Alexandre</span>
+        </div>
+        <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
         <button className="cta-prec" onClick={onMessage}>
           <span><b>Une précision à ajouter ou à retirer&nbsp;?</b>
             <span className="s">Dites-le-lui, il met à jour et vous recontacte.</span></span>
@@ -582,6 +613,10 @@ function Galerie({ photos, onAgrandir }: { photos: string[]; onAgrandir: (n: num
       </div>
       {photos.length > 1 && (
         <>
+          <button type="button" className="fl g" aria-label="Photo précédente"
+            onClick={() => versPhoto(Math.max(0, i - 1))}><Ico n="retour" t={18} /></button>
+          <button type="button" className="fl d" aria-label="Photo suivante"
+            onClick={() => versPhoto(Math.min(photos.length - 1, i + 1))}><Ico n="fleche" t={18} /></button>
           <div className="compteur tab"><Ico n="loupe" t={12} />{i + 1}/{photos.length}</div>
           {photos.length <= 8 && (
             <div className="points">{photos.map((_, n) => (
@@ -639,6 +674,16 @@ function PleinEcran({ photos, depart, onFermer }: { photos: string[]; depart: nu
           </div>
         ))}
       </div>
+      {photos.length > 1 && (
+        <>
+          <button type="button" className="fl g" aria-label="Photo précédente"
+            onClick={() => cases.current[Math.max(0, i - 1)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })}>
+            <Ico n="retour" t={20} /></button>
+          <button type="button" className="fl d" aria-label="Photo suivante"
+            onClick={() => cases.current[Math.min(photos.length - 1, i + 1)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })}>
+            <Ico n="fleche" t={20} /></button>
+        </>
+      )}
       <div className="barre-pe">
         <span className="tab">{i + 1} / {photos.length}</span>
         <button type="button" className="ferme-pe" onClick={onFermer} aria-label="Fermer les photos">
@@ -694,6 +739,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
         <ModalePartage b={b} client={client} onFermer={() => setPartage(false)}
           onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
+      <div className="fiche-droite">
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
@@ -737,6 +783,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
             ? <a className="btn fant" href={b.pdfUrl} target="_blank" rel="noopener noreferrer"><Ico n="pdf" t={16} /> La fiche PDF</a>
             : null}
         </div>
+      </div>
       </div>
     </>
   );
@@ -997,15 +1044,23 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   border:1px solid transparent; transition:transform .16s cubic-bezier(.16,1,.3,1), background .2s}
 .act.fant{background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); color:#fff}
 .act:active{transform:scale(.96)}
-/* Sur téléphone, les deux boutons passent sous le nom et gardent leur libellé. */
-@media(max-width:519px){
-  .agent{flex-direction:column; align-items:stretch; gap:12px; padding:13px 14px}
-  .agent-act{width:100%}
-  .act{flex:1; justify-content:center; padding:11px 14px}
+/* Sur téléphone, le chasseur tient sur une seule ligne discrète sous le nom
+   du client : il est présent dans toutes les vues, il ne doit pas peser. */
+@media(max-width:759px){
+  .agent{background:none; border:0; border-top:1px solid rgba(255,255,255,.13);
+    border-radius:0; padding:11px 0 0; gap:10px}
+  .agent-id{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+  .agent-sur{font-size:9px; letter-spacing:1.1px; color:rgba(255,255,255,.4)}
+  .agent-id b{font-size:12.5px; margin-top:0; color:rgba(255,255,255,.92)}
+  .agent-role{display:none}
+  .agent-act{gap:7px}
+  .act{width:33px; height:33px; padding:0; border-radius:50%; justify-content:center}
+  .act span{display:none}
 }
 .veilleligne{position:relative; margin-top:16px; display:inline-flex; align-items:center; gap:9px;
   background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
   border-radius:99px; padding:7px 15px 7px 12px; font-size:12.5px; color:rgba(255,255,255,.85)}
+.sur-dossier{display:none}
 .pouls{width:7px; height:7px; border-radius:50%; background:#5fd39b; flex:0 0 auto;
   box-shadow:0 0 0 0 rgba(95,211,155,.6); animation:pouls 2.6s ease-out infinite}
 @keyframes pouls{0%{box-shadow:0 0 0 0 rgba(95,211,155,.5)}70%{box-shadow:0 0 0 9px rgba(95,211,155,0)}100%{box-shadow:0 0 0 0 rgba(95,211,155,0)}}
@@ -1166,6 +1221,29 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .tuile .n.or{color:var(--or-fonce)} .tuile .n.pale{color:var(--plume-clair)}
 .tuile .l{font-size:10.5px; letter-spacing:.9px; text-transform:uppercase; color:var(--plume-clair); margin-top:8px; font-weight:700}
 .note{font-size:14px; color:var(--plume); margin-top:16px; line-height:1.7}
+.legende{font-size:12.5px; color:var(--plume-clair); line-height:1.6; margin:10px 0 0}
+
+/* l'aperçu du marché sur la carte d'accueil */
+.apm-t{font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:800; margin-bottom:8px}
+
+/* l'entonnoir : lues → écartées → retenues */
+.entonnoir{background:var(--carte); border:1px solid var(--trait); border-radius:18px;
+  padding:18px; box-shadow:var(--ombre)}
+.ent-t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:800; margin-bottom:15px}
+.ent + .ent{margin-top:14px}
+.ent-h{display:flex; align-items:baseline; gap:9px; font-size:13.5px; color:var(--plume); line-height:1.4}
+.ent-h b{font-family:'Plus Jakarta Sans',sans-serif; font-size:21px; font-weight:800;
+  letter-spacing:-.7px; color:var(--encre); flex:0 0 auto}
+.ent-h b.or, .ent-h .or{color:var(--or-fonce)}
+.ent-h b.pale{color:var(--plume-clair)}
+.ent-b{height:8px; border-radius:99px; background:var(--fond); margin-top:8px; overflow:hidden}
+.ent-b i{display:block; height:100%; border-radius:99px; background:var(--encre2);
+  animation:etire .8s cubic-bezier(.16,1,.3,1) both; transform-origin:left}
+.ent-b i.pale{background:var(--trait-fort)}
+.ent-b i.or{background:linear-gradient(90deg,var(--or),var(--ambre))}
+@keyframes etire{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .graphe{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:18px; box-shadow:var(--ombre); margin-top:12px}
 .barres{display:flex; align-items:flex-end; gap:7px; height:110px; margin-top:14px}
 .barre{flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; height:100%; justify-content:flex-end}
@@ -1189,11 +1267,17 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .past{background:var(--fond); border:1px solid var(--trait); border-radius:99px; padding:6px 13px; font-size:13px; font-weight:600}
 .past.or{background:var(--or-fond); border-color:var(--or-trait); color:var(--or-fonce); font-weight:700}
 .precisions{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:18px; margin-top:12px; box-shadow:var(--ombre)}
-.precisions .k{display:flex; align-items:center; gap:8px; font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase;
-  color:var(--plume-clair); font-weight:800; margin-bottom:12px}
-.precisions .corps{background:var(--fond); border:1px solid var(--trait); border-radius:14px;
-  padding:15px 16px; font-size:14px; line-height:1.75; color:var(--plume); white-space:pre-line}
-.precisions .verrou{display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--plume-clair); margin-top:11px; font-weight:600}
+.precisions .k{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase;
+  color:var(--plume-clair); font-weight:800; margin-bottom:13px}
+.precisions .k > span:first-child{display:flex; align-items:center; gap:8px}
+.cadenas{display:inline-flex; align-items:center; gap:5px; background:var(--fond);
+  border:1px solid var(--trait); border-radius:99px; padding:4px 10px; font-size:9.5px;
+  letter-spacing:.7px; color:var(--plume-clair); font-weight:800; text-transform:uppercase}
+/* une note citée, pas un champ de saisie : trait doré à gauche, pas de cadre */
+.precisions .corps{margin:0; background:none; border:0; border-left:3px solid var(--or-trait);
+  border-radius:0; padding:3px 0 3px 16px; font-size:14.5px; line-height:1.78;
+  color:var(--encre); white-space:pre-line}
 .cta-prec{display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%;
   margin-top:14px; background:var(--or-fond); border:1px solid var(--or-trait); border-radius:14px;
   padding:14px 16px; text-align:left;
@@ -1226,7 +1310,7 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .feuille.on{transform:translateY(0)}
 /* une fiche bien occupe tout l'écran : plus de bandeau de fond au-dessus */
 @media(max-width:639px){
-  .feuille.pleine{top:0; height:100vh; height:100dvh; max-height:none; border-radius:0;
+  .feuille.pleine, .feuille.fiche{top:0; height:100vh; height:100dvh; max-height:none; border-radius:0;
     padding-bottom:calc(26px + env(safe-area-inset-bottom,0px))}
   .feuille.pleine .grandok{min-height:100dvh; display:flex; flex-direction:column;
     align-items:center; justify-content:center; padding:24px}
@@ -1265,6 +1349,19 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   width:100%; aspect-ratio:3/2; padding:0; border:0;
   background:transparent; display:block; overflow:hidden; cursor:zoom-in}
 .bande .photo-g img{width:100%; height:100%; object-fit:cover; display:block}
+/* Sur ordinateur il n'y a pas de doigt : on donne des flèches. */
+.fl{display:none; position:absolute; top:50%; transform:translateY(-50%); z-index:3;
+  width:38px; height:38px; border-radius:50%; border:0; color:#fff; background:rgba(12,17,24,.5);
+  align-items:center; justify-content:center; backdrop-filter:blur(5px);
+  transition:background .2s, transform .16s}
+.fl.g{left:10px} .fl.d{right:10px}
+.fl:hover{background:rgba(12,17,24,.72)}
+.fl:active{transform:translateY(-50%) scale(.93)}
+@media(hover:hover) and (pointer:fine){ .fl{display:flex} }
+.plein .fl{width:46px; height:46px; background:rgba(255,255,255,.14)}
+.plein .fl:hover{background:rgba(255,255,255,.26)}
+.plein .fl.g{left:18px} .plein .fl.d{right:18px}
+
 .compteur{position:absolute; top:calc(12px + env(safe-area-inset-top,0px)); right:12px; z-index:2;
   display:flex; align-items:center; gap:5px; background:rgba(12,17,24,.5); color:#fff;
   font-size:11.5px; font-weight:700; padding:6px 11px; border-radius:99px;
@@ -1415,7 +1512,11 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .page{max-width:900px; padding:0 30px 84px}
   .rangee{flex-direction:row; align-items:center; justify-content:space-between; gap:20px}
   .ident h1{font-size:22px; white-space:nowrap}
+  .agent{padding:9px 10px 9px 14px}
+  .agent-id b{font-size:13px}
   .agent-role{display:none}
+  .act{padding:8px 12px; font-size:12px}
+  .sur-dossier{display:inline}
 }
 
 /* Sur écran d'ordinateur, la page s'étale au lieu de rester en colonne. */
@@ -1424,8 +1525,10 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .chapeau .dedans{max-width:1160px}
   .ident h1{font-size:24px}
   .mono{width:52px; height:52px; font-size:19px}
-  .agent{min-width:340px; padding:12px 13px 12px 17px}
-  .agent-role{display:block}
+  .agent{min-width:320px; padding:10px 11px 10px 16px}
+  .agent-id b{font-size:13.5px}
+  .agent-role{display:block; font-size:10.5px}
+  .act{padding:8px 13px; font-size:12px}
 
   .page{max-width:1160px; padding:0 40px 90px}
   /* Colonne gauche : la présentation, puis le chasseur et l'engagement.
@@ -1447,6 +1550,22 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 @media(min-width:1440px){
   .chapeau .dedans{max-width:1280px}
   .page{max-width:1280px}
+}
+
+/* La fiche d'un bien sur ordinateur : large, en deux colonnes,
+   la photo à gauche sur toute la hauteur, le texte qui défile à droite. */
+@media(min-width:900px){
+  .feuille.fiche{width:min(1060px,94vw); max-height:88vh; height:auto;
+    display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);
+    overflow:hidden; padding-bottom:0}
+  .feuille.fiche > .galerie{height:100%; min-height:0; overflow:hidden}
+  .feuille.fiche > .galerie .bande{height:100%}
+  .feuille.fiche > .galerie .bande .photo-g{aspect-ratio:auto; height:100%; cursor:zoom-in}
+  .feuille.fiche .fiche-droite{overflow-y:auto; overscroll-behavior:contain;
+    min-height:0; padding-bottom:26px}
+  .feuille.fiche .retour-f{top:14px; left:14px}
+  .feuille.fiche .compteur{top:14px; left:62px; right:auto}
+  .feuille.fiche .points{bottom:14px}
 }
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
