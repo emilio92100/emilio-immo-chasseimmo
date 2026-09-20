@@ -6,7 +6,7 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
-import { Onglets, StylesEmilio, Icone } from './ParcoursBien';
+import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 
 const lienEntete: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600,
@@ -1343,6 +1343,11 @@ Emilio Immobilier
           </div>
           {rechercheActive && (
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
+          )}
+          {rechercheActive && (
+            <div style={{ flexBasis: '100%', marginTop: 4 }}>
+              <LienEspace recherche={rechercheActive} client={client} />
+            </div>
           )}
         </div>
 
