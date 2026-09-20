@@ -936,7 +936,7 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
               placeholder="Ses mots à lui, si tu veux les garder…"
               style={{ border: `1px solid ${BORD}`, borderRadius: 12, padding: '11px 13px', fontSize: 14, color: NAVY, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
             <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span>🔎</span> La veille relit ça demain matin pour affiner la recherche.
+              <span>🔎</span>{' '}La veille relit ça demain matin pour affiner la recherche.
             </div>
           </div>
         )}
