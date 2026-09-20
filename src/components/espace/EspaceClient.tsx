@@ -367,16 +367,19 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                 <b>{AGENT.nom}</b>
                 <span className="agent-role">{AGENT.role}</span>
               </div>
+              {/* Sur téléphone, la pastille de veille se glisse sur la même ligne que
+                  l'agent : une ligne gagnée sur un écran où tout compte. */}
+              {passage?.quand && (
+                <div className="veilleligne"><span className="pouls" />
+                  {/* un seul bloc de texte : sinon le « gap » du flex écarte chaque mot */}
+                  <span><span className="mot-l">Dernière chasse</span><span className="mot-c">Actualisé</span><span className="sur-dossier"> sur votre dossier</span> {heure(passage.quand)}</span></div>
+              )}
               <div className="agent-act">
                 <a className="act" href={'tel:' + AGENT.telUrl}><Ico n="tel" t={15} /><span>Appeler</span></a>
                 <a className="act fant" href={'mailto:' + AGENT.mail}><Ico n="mail" t={15} /><span>Écrire</span></a>
               </div>
             </div>
           </div>
-
-          {passage?.quand && (
-            <div className="veilleligne"><span className="pouls" /> Dernière chasse<span className="sur-dossier"> sur votre dossier</span> {heure(passage.quand)}</div>
-          )}
         </div>
       </div>
 
@@ -1623,10 +1626,10 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .ident .ref{font-size:11.5px; color:rgba(255,255,255,.45); margin-top:3px}
 
 /* — le chasseur qui suit le dossier — */
-.agent{display:flex; align-items:center; justify-content:space-between; gap:12px;
+.agent{display:flex; align-items:center; gap:12px;
   background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
   border-radius:16px; padding:11px 12px 11px 14px}
-.agent-id{min-width:0}
+.agent-id{min-width:0; margin-right:auto}
 .agent-sur{display:block; font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase;
   color:var(--or); font-weight:800}
 .agent-id b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:14.5px;
@@ -1652,10 +1655,12 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   .act{width:33px; height:33px; padding:0; border-radius:50%; justify-content:center}
   .act span{display:none}
 }
-.veilleligne{position:relative; margin-top:16px; display:inline-flex; align-items:center; gap:9px;
+.veilleligne{position:relative; display:inline-flex; align-items:center; gap:9px;
   background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
   border-radius:99px; padding:7px 15px 7px 12px; font-size:12.5px; color:rgba(255,255,255,.85)}
 .sur-dossier{display:none}
+.mot-c{display:none}
+.veilleligne{white-space:nowrap}
 .pouls{width:7px; height:7px; border-radius:50%; background:#5fd39b; flex:0 0 auto;
   box-shadow:0 0 0 0 rgba(95,211,155,.6); animation:pouls 2.6s ease-out infinite}
 @keyframes pouls{0%{box-shadow:0 0 0 0 rgba(95,211,155,.5)}70%{box-shadow:0 0 0 9px rgba(95,211,155,0)}100%{box-shadow:0 0 0 0 rgba(95,211,155,0)}}
@@ -2319,5 +2324,34 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   border-radius:12px; padding:11px 13px; font-size:15px; font-family:inherit; color:var(--encre);
   outline:none; resize:vertical}
 .note-verr textarea:focus{border-color:var(--or)}
+
+
+/* ═══ Téléphone : le bandeau ne doit pas manger l'écran ═══
+   Il est présent sur toutes les vues, donc chaque pixel qu'il prend est
+   un pixel en moins pour les biens. On le réduit franchement. */
+@media(max-width:759px){
+  .chapeau{padding:11px 16px 12px}
+  .chapeau::after{top:-110px; right:-70px; width:230px; height:230px}
+  .motmarque{font-size:9.5px; letter-spacing:1.8px}
+  .confid{font-size:8.5px; letter-spacing:1px}
+  .rangee{margin-top:10px; gap:8px}
+  .ident{gap:10px}
+  .mono{width:34px; height:34px; font-size:13px; border-width:1px}
+  .ident h1{font-size:15.5px; line-height:1.15}
+  .ident .ref{font-size:10px; margin-top:1px}
+  .agent{padding:8px 0 0; gap:8px}
+  .agent-sur{font-size:8.5px; letter-spacing:1px}
+  .agent-id b{font-size:11.5px}
+  .act{width:29px; height:29px}
+  .veilleligne{padding:4px 9px 4px 8px; font-size:10px; gap:5px; min-width:0}
+  .mot-l{display:none}
+  .mot-c{display:inline}
+  .agent-id{flex-direction:column; align-items:flex-start; gap:1px}
+  .agent{flex-wrap:nowrap}
+  .pouls{width:6px; height:6px}
+  .page{padding:0 16px 70px}
+  .hero{margin-top:14px; padding:18px 16px; border-radius:18px}
+  .retour{margin-top:14px}
+}
 
 `;
