@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -103,6 +103,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const [crit, setCrit] = useState(criteres);
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
+  const [pleine, setPleine] = useState(false);
 
   const envoyer = useCallback(async (route: string, corps: Record<string, unknown>) => {
     try {
@@ -114,8 +115,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     } catch { return { ok: false }; }
   }, [token]);
 
-  const montrer = (n: React.ReactNode) => { setFeuille(n); setOuvert(true); };
-  const fermer = () => { setOuvert(false); setTimeout(() => setFeuille(null), 320); };
+  const montrer = (n: React.ReactNode, plein = false) => { setFeuille(n); setPleine(plein); setOuvert(true); };
+  const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setPleine(false); }, 320); };
   const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
@@ -127,7 +128,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       setBiens(l => l.map(x => x.id === b.id ? { ...x, etat: 'vu', vuLe: new Date().toISOString() } : x));
       envoyer('vue', { bien_id: b.id });
     }
-    montrer(<FicheBien b={b} onFermer={fermer} onAvis={enregistrerAvis} onPartage={ouvrirPartage} />);
+    montrer(<FicheBien b={b} client={client} onFermer={fermer}
+      onAvis={enregistrerAvis} onPartager={partagerBien} />, true);
   }
 
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
@@ -142,17 +144,15 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           ? "Alexandre est prévenu. Il vous rappelle pour caler la visite."
           : "Alexandre est prévenu. Il va vous en chercher d'autres dans le même esprit."}
       rappel="Chacun de vos retours est relu avant la chasse du lendemain."
-      onFermer={fermer} />);
+      onFermer={fermer} />, true);
   }
 
-  function ouvrirPartage(b: Bien) {
-    montrer(<Partage b={b} client={client} onFermer={fermer} onEnvoi={async (mail: string) => {
-      const r = await envoyer('partage', { bien_id: b.id, destinataire: mail });
-      montrer(<GrandOk titre="La fiche est partie"
-        texte={r?.ok ? `${mail} vient de recevoir la fiche du bien.` : `L'envoi n'a pas pu aboutir. Réessayez dans un instant, ou copiez le lien.`}
-        onFermer={fermer} />);
-    }} />);
-  }
+  /* Le partage s'ouvre par-dessus la fiche, en pop-up : on ne perd pas le bien
+     de vue, et le résultat de l'envoi s'affiche dans la pop-up elle-même. */
+  const partagerBien = useCallback(async (b: Bien, mail: string) => {
+    const r = await envoyer('partage', { bien_id: b.id, destinataire: mail });
+    return !!r?.ok;
+  }, [envoyer]);
 
   function ouvrirCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[]) => {
@@ -253,8 +253,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       </div>
 
       <div className={'voile' + (ouvert ? ' on' : '')} onClick={fermer} />
-      <div className={'feuille' + (ouvert ? ' on' : '')} role="dialog" aria-modal="true">
-        <div className="poignee" />{feuille}
+      <div className={'feuille' + (ouvert ? ' on' : '') + (pleine ? ' pleine' : '')}
+        role="dialog" aria-modal="true">
+        {!pleine && <div className="poignee" />}{feuille}
       </div>
     </>
   );
@@ -530,7 +531,7 @@ function Galerie({ photos, onAgrandir }: { photos: string[]; onAgrandir: (n: num
       <div className="bande" ref={bande} onScroll={surDefilement}>
         {photos.map((p, n) => (
           <button
-            type="button" className="case" key={n}
+            type="button" className="photo-g" key={n}
             aria-label={`Agrandir la photo ${n + 1}`}
             onPointerDown={(e) => { depart.current = { x: e.clientX, y: e.clientY }; }}
             onClick={(e) => {
@@ -560,48 +561,57 @@ function Galerie({ photos, onAgrandir }: { photos: string[]; onAgrandir: (n: num
 }
 
 /* Plein écran — rendu dans <body> par portail : la feuille porte un
-   transform, et un position:fixed à l'intérieur s'y trouverait enfermé. */
+   transform, et un position:fixed à l'intérieur s'y trouverait enfermé.
+   La bande est posée en absolu (inset:0) plutôt qu'en flex:1 — sur iOS
+   un flex:1 dans un conteneur fixed peut se résoudre à zéro, et on se
+   retrouve avec un écran noir qui ne défile pas. */
 function PleinEcran({ photos, depart, onFermer }: { photos: string[]; depart: number; onFermer: () => void }) {
   const bande = useRef<HTMLDivElement | null>(null);
+  const cases = useRef<(HTMLDivElement | null)[]>([]);
   const [i, setI] = useState(depart);
 
-  useEffect(() => {
-    const el = bande.current;
-    if (el && el.clientWidth) el.scrollLeft = depart * el.clientWidth;
-    const html = document.documentElement, body = document.body;
-    html.classList.add('plein-actif'); body.classList.add('plein-actif');
-    return () => { html.classList.remove('plein-actif'); body.classList.remove('plein-actif'); };
+  // On se place AVANT la peinture, et par scrollIntoView : poser un
+  // scrollLeft à la main se fait ré-aligner par le scroll-snap de Safari.
+  useLayoutEffect(() => {
+    const el = cases.current[depart];
+    if (el) el.scrollIntoView({ inline: 'center', block: 'nearest' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer(); };
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onFermer();
+      if (e.key === 'ArrowRight') cases.current[Math.min(i + 1, photos.length - 1)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      if (e.key === 'ArrowLeft') cases.current[Math.max(i - 1, 0)]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    };
     window.addEventListener('keydown', auClavier);
     return () => window.removeEventListener('keydown', auClavier);
-  }, [onFermer]);
+  }, [onFermer, i, photos.length]);
 
   const surDefilement = () => {
     const el = bande.current;
     if (!el || !el.clientWidth) return;
-    const n = Math.round(el.scrollLeft / el.clientWidth);
+    const n = Math.max(0, Math.min(photos.length - 1, Math.round(el.scrollLeft / el.clientWidth)));
     setI((v) => (v === n ? v : n));
   };
 
   return createPortal(
     <div className="plein" role="dialog" aria-modal="true">
-      <div className="barre">
+      <div className="bande-pe" ref={bande} onScroll={surDefilement}>
+        {photos.map((p, n) => (
+          <div className="photo-pe" key={n} ref={(el) => { cases.current[n] = el; }}>
+            <img src={p} alt="" draggable={false} />
+          </div>
+        ))}
+      </div>
+      <div className="barre-pe">
         <span className="tab">{i + 1} / {photos.length}</span>
-        <button type="button" className="fermeP" onClick={onFermer} aria-label="Fermer les photos">
+        <button type="button" className="ferme-pe" onClick={onFermer} aria-label="Fermer les photos">
           <Ico n="croix" t={15} />
         </button>
       </div>
-      <div className="bandeP" ref={bande} onScroll={surDefilement}>
-        {photos.map((p, n) => (
-          <div className="caseP" key={n}><img src={p} alt="" draggable={false} /></div>
-        ))}
-      </div>
       {photos.length > 1 && (
-        <div className="pointsP">{photos.slice(0, 14).map((_, n) => (
+        <div className="points-pe">{photos.slice(0, 14).map((_, n) => (
           <span key={n} className={n === i ? 'on' : ''} />
         ))}</div>
       )}
@@ -610,11 +620,26 @@ function PleinEcran({ photos, depart, onFermer }: { photos: string[]; depart: nu
   );
 }
 
+/* Bouton d'envoi : tant que ça part, on le dit. */
+function BtnEnvoi({ enCours, libelle, enCoursTexte = 'Envoi en cours…', classe = 'btn or', onClick, style }: {
+  enCours?: boolean; libelle: React.ReactNode; enCoursTexte?: string; classe?: string;
+  onClick?: () => void; style?: React.CSSProperties;
+}) {
+  return (
+    <button type="button" className={classe} disabled={!!enCours} aria-busy={!!enCours}
+      onClick={onClick} style={{ marginTop: 14, ...(style || {}) }}>
+      {enCours ? <><span className="tourne" aria-hidden="true" />{enCoursTexte}</> : libelle}
+    </button>
+  );
+}
+
 /* ══ feuilles ═════════════════════════════════════ */
-function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
+function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [avis, setAvis] = useState<string | null>(b.avis);
   const [com, setCom] = useState(b.commentaire || '');
   const [plein, setPlein] = useState<number | null>(null);
+  const [partage, setPartage] = useState(false);
+  const [envoiAvis, setEnvoiAvis] = useState(false);
   const photos: string[] = b.photos || [];
   const dpe = (l: string | null, t: string) => l && DPEC[l.toUpperCase()?.[0]] ? (
     <span className="dpe"><span className="l" style={{ background: DPEC[l.toUpperCase()[0]] }}>{l.toUpperCase()[0]}</span>
@@ -624,8 +649,15 @@ function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
   return (
     <>
       <Galerie photos={photos} onAgrandir={setPlein} />
+      <button type="button" className="retour-f" onClick={onFermer} aria-label="Revenir à la liste">
+        <Ico n="retour" t={18} />
+      </button>
       {plein !== null && (
         <PleinEcran photos={photos} depart={plein} onFermer={() => setPlein(null)} />
+      )}
+      {partage && (
+        <ModalePartage b={b} client={client} onFermer={() => setPartage(false)}
+          onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
@@ -635,7 +667,6 @@ function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
         <div><h3>{b.titre}</h3>
           {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
             <Ico n="lieu" t={13} /> {b.secteur}</div>}</div>
-        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
       </div>
       <div className="corps-f">
         <div className="specs">
@@ -661,12 +692,12 @@ function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
           <div style={{ marginTop: 12 }}>
             <textarea rows={2} value={com} onChange={e => setCom(e.target.value)}
               placeholder="Un mot, si vous voulez : ce qui vous plaît, ce qui bloque…" />
-            <button className="btn or" style={{ marginTop: 10 }} onClick={() => onAvis(b, avis, com.trim())}>
-              Envoyer mon avis</button>
+            <BtnEnvoi enCours={envoiAvis} libelle="Envoyer mon avis" style={{ marginTop: 10 }}
+              onClick={async () => { setEnvoiAvis(true); await onAvis(b, avis, com.trim()); }} />
           </div>
         )}
         <div className="duo">
-          <button className="btn fant" onClick={() => onPartage(b)}><Ico n="partage" t={16} /> Partager</button>
+          <button className="btn fant" onClick={() => setPartage(true)}><Ico n="partage" t={16} /> Partager</button>
           {b.pdfUrl
             ? <a className="btn fant" href={b.pdfUrl} target="_blank" rel="noopener noreferrer"><Ico n="pdf" t={16} /> La fiche PDF</a>
             : null}
@@ -676,43 +707,86 @@ function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
   );
 }
 
-function Partage({ b, client, onFermer, onEnvoi }: any) {
+function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
   const [mail, setMail] = useState('');
   const [erreur, setErreur] = useState(false);
+  const [copie, setCopie] = useState(false);
+  const [etat, setEtat] = useState<'saisie' | 'envoi' | 'ok' | 'ko'>('saisie');
   const lien = typeof window !== 'undefined' ? `${window.location.origin}/bien/${b.id}` : '';
-  return (
-    <>
-      <div className="tete-f">
-        <div><div className="sur">Partager ce bien</div><h3>{b.titre}</h3></div>
-        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape' && etat !== 'envoi') onFermer(); };
+    window.addEventListener('keydown', auClavier);
+    return () => window.removeEventListener('keydown', auClavier);
+  }, [onFermer, etat]);
+
+  async function partir() {
+    if (!/.+@.+\..+/.test(mail.trim())) { setErreur(true); return; }
+    setEtat('envoi');
+    const ok = await onEnvoyer(mail.trim());
+    setEtat(ok ? 'ok' : 'ko');
+  }
+
+  return createPortal(
+    <div className="pop" role="dialog" aria-modal="true">
+      <div className="pop-voile" onClick={() => { if (etat !== 'envoi') onFermer(); }} />
+      <div className="pop-carte">
+        {etat === 'ok' ? (
+          <div className="pop-fin">
+            <div className="rond-ok"><Ico n="check" t={32} /></div>
+            <h3>La fiche est partie</h3>
+            <p>{mail} vient de recevoir la fiche du bien.</p>
+            <button className="btn or" onClick={onFermer}>Parfait</button>
+          </div>
+        ) : (
+          <>
+            <div className="pop-tete">
+              <div><div className="sur">Partager ce bien</div><h3>{b.titre}</h3></div>
+              <button className="fermer" onClick={onFermer} aria-label="Fermer" disabled={etat === 'envoi'}>
+                <Ico n="croix" t={14} /></button>
+            </div>
+            <div className="pop-corps">
+              <label className="lab" htmlFor="mail-partage">À qui l&apos;envoyer&nbsp;?</label>
+              <input id="mail-partage" type="email" autoComplete="email" inputMode="email"
+                placeholder="son adresse e-mail" value={mail} disabled={etat === 'envoi'}
+                style={erreur ? { borderColor: 'var(--brique)' } : undefined}
+                onChange={e => { setMail(e.target.value); setErreur(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') partir(); }} />
+              {erreur && <div className="err">Il manque une adresse e-mail valide.</div>}
+
+              <div className="ape">
+                <div className="ape-t">Aperçu du message</div>
+                <div className="ape-l"><span>Objet</span>{client.prenom} vous partage un bien</div>
+                <div className="ape-c">Bonjour,<br />Voici un bien que je suis en train de regarder avec
+                  mon chasseur immobilier. Dites-moi ce que vous en pensez.<br /><br />
+                  <b>{b.titre}</b><br />
+                  {[b.surface && b.surface + ' m²', EUR(b.prix)].filter(Boolean).join(' · ')}<br />
+                  <span className="lien-ap">{lien}</span><br /><br />{client.prenom}</div>
+              </div>
+
+              {etat === 'ko' && <div className="err">L&apos;envoi n&apos;a pas abouti. Réessayez dans un instant, ou copiez le lien.</div>}
+
+              <BtnEnvoi enCours={etat === 'envoi'} onClick={partir}
+                libelle={<><Ico n="partage" t={16} /> Envoyer la fiche</>} />
+
+              <div style={{ textAlign: 'center' }}>
+                <button className="btn lien" onClick={() => {
+                  navigator.clipboard?.writeText(lien);
+                  setCopie(true); setTimeout(() => setCopie(false), 1800);
+                }}>{copie ? '✓ Lien copié' : 'ou copier le lien'}</button>
+              </div>
+              <p className="txt mention">Le message part au nom d&apos;Emilio Immobilier.</p>
+            </div>
+          </>
+        )}
       </div>
-      <div className="corps-f">
-        <label className="lab" htmlFor="mail">À qui l&apos;envoyer&nbsp;?</label>
-        <input id="mail" type="email" autoComplete="email" placeholder="son adresse e-mail"
-          value={mail} style={erreur ? { borderColor: 'var(--brique)' } : undefined}
-          onChange={e => { setMail(e.target.value); setErreur(false); }} />
-        <label className="lab">Objet</label>
-        <div className="fige">{client.prenom} vous partage un bien</div>
-        <label className="lab">Message</label>
-        <div className="fige">Bonjour,<br /><br />Voici un bien que je suis en train de regarder avec mon chasseur
-          immobilier. Dites-moi ce que vous en pensez.<br /><br />{b.titre}<br />
-          {[b.surface && b.surface + ' m²', EUR(b.prix)].filter(Boolean).join(' · ')}<br />
-          <span style={{ color: 'var(--or-fonce)' }}>{lien}</span><br /><br />{client.prenom}</div>
-        <p className="txt" style={{ fontSize: 12.5, color: 'var(--plume-clair)' }}>Le message part au nom d&apos;Emilio Immobilier.</p>
-        <button className="btn or" onClick={() => {
-          if (!/.+@.+\..+/.test(mail.trim())) { setErreur(true); return; }
-          onEnvoi(mail.trim());
-        }}>Envoyer</button>
-        <div style={{ textAlign: 'center' }}>
-          <button className="btn lien" onClick={() => { navigator.clipboard?.writeText(lien); onFermer(); }}>
-            ou copier le lien</button>
-        </div>
-      </div>
-    </>
+    </div>,
+    document.body,
   );
 }
 
 function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
+  const [enr, setEnr] = useState(false);
   const [t, setT] = useState({
     budgetMin: crit.budgetMin || Math.round((crit.budgetMax || 1000000) * 0.75 / 25000) * 25000,
     budgetMax: crit.budgetMax || 1500000,
@@ -776,7 +850,8 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <div className="choix">{EQUIPS.map(e => (
           <button key={e} className="ch or" aria-pressed={t.equip.includes(e)} onClick={() => bascule('equip', e)}>{e}</button>))}</div>
 
-        <button className="btn or" style={{ marginTop: 22 }} onClick={() => {
+        <BtnEnvoi enCours={enr} libelle="Enregistrer" enCoursTexte="Enregistrement…"
+          style={{ marginTop: 22 }} onClick={async () => {
           const c: string[] = [];
           if (t.budgetMin !== crit.budgetMin || t.budgetMax !== crit.budgetMax) c.push('budget ' + EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax));
           if (t.surfaceMin !== crit.surfaceMin) c.push(t.surfaceMin + ' m² minimum');
@@ -784,8 +859,9 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
           if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
           if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
           if (t.equip.join() !== crit.equip.join()) c.push('équipements souhaités');
-          onEnregistrer({ ...crit, ...t }, c);
-        }}>Enregistrer</button>
+          setEnr(true);
+          await onEnregistrer({ ...crit, ...t }, c);
+        }} />
       </div>
     </>
   );
@@ -793,6 +869,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
 
 function Message({ onFermer, onEnvoi }: any) {
   const [txt, setTxt] = useState('');
+  const [envoi, setEnvoi] = useState(false);
   return (
     <>
       <div className="tete-f">
@@ -803,8 +880,8 @@ function Message({ onFermer, onEnvoi }: any) {
         <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>Alexandre le reçoit tout de suite et vous rappelle.</p>
         <textarea rows={5} value={txt} onChange={e => setTxt(e.target.value)} autoFocus
           placeholder="Ex : finalement on pourrait regarder un peu plus loin, et on peut monter si le bien est refait." />
-        <button className="btn encre" style={{ marginTop: 12 }}
-          onClick={() => txt.trim() && onEnvoi(txt.trim())}>Envoyer</button>
+        <BtnEnvoi enCours={envoi} classe="btn encre" libelle="Envoyer" style={{ marginTop: 12 }}
+          onClick={async () => { if (!txt.trim()) return; setEnvoi(true); await onEnvoi(txt.trim()); }} />
       </div>
     </>
   );
@@ -1083,6 +1160,13 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   transform:translateY(102%); transition:transform .44s cubic-bezier(.16,1,.28,1);
   padding-bottom:calc(22px + env(safe-area-inset-bottom,0px)); box-shadow:0 -12px 40px rgba(12,17,24,.32)}
 .feuille.on{transform:translateY(0)}
+/* une fiche bien occupe tout l'écran : plus de bandeau de fond au-dessus */
+@media(max-width:639px){
+  .feuille.pleine{top:0; height:100vh; height:100dvh; max-height:none; border-radius:0;
+    padding-bottom:calc(26px + env(safe-area-inset-bottom,0px))}
+  .feuille.pleine .grandok{min-height:100dvh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px}
+}
 @media(min-width:640px){
   .feuille{left:50%; right:auto; bottom:auto; top:50%; width:570px; max-height:88vh; border-radius:24px;
     transform:translate(-50%,-44%) scale(.97); opacity:0}
@@ -1107,34 +1191,97 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .points button{position:relative}
 .points button::after{content:''; position:absolute; inset:-12px}
 
+/* — galerie dans la fiche — */
 .galerie{position:relative; background:linear-gradient(148deg,#3a5178,#22314c)}
 .bande{display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory;
   -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; scrollbar-width:none}
 .bande::-webkit-scrollbar{display:none}
-.bande .case{flex:0 0 100%; scroll-snap-align:center; width:100%; aspect-ratio:3/2; padding:0; border:0;
+/* scroll-snap-stop:always = une photo par geste, jamais trois d'un coup */
+.bande .photo-g{flex:0 0 100%; scroll-snap-align:center; scroll-snap-stop:always;
+  width:100%; aspect-ratio:3/2; padding:0; border:0;
   background:transparent; display:block; overflow:hidden; cursor:zoom-in}
-.bande .case img{width:100%; height:100%; object-fit:cover; display:block}
-.compteur{position:absolute; top:10px; right:10px; z-index:2; display:flex; align-items:center; gap:5px;
-  background:rgba(12,17,24,.5); color:#fff; font-size:11.5px; font-weight:700; padding:5px 10px;
-  border-radius:99px; backdrop-filter:blur(5px); pointer-events:none}
+.bande .photo-g img{width:100%; height:100%; object-fit:cover; display:block}
+.compteur{position:absolute; top:calc(12px + env(safe-area-inset-top,0px)); right:12px; z-index:2;
+  display:flex; align-items:center; gap:5px; background:rgba(12,17,24,.5); color:#fff;
+  font-size:11.5px; font-weight:700; padding:6px 11px; border-radius:99px;
+  backdrop-filter:blur(5px); pointer-events:none}
 
-.plein{position:fixed; inset:0; z-index:90; background:#0a0e14; display:flex; flex-direction:column}
-.plein .barre{position:absolute; top:0; left:0; right:0; z-index:2; display:flex; align-items:center;
-  justify-content:space-between; color:#fff; font-size:13px; font-weight:700;
-  padding:calc(12px + env(safe-area-inset-top,0px)) 14px 16px;
-  background:linear-gradient(180deg,rgba(0,0,0,.6),transparent)}
-.fermeP{width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,.18); color:#fff; border:0;
-  display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px)}
-.bandeP{flex:1; min-height:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory;
-  -webkit-overflow-scrolling:touch; overscroll-behavior:contain; scrollbar-width:none}
-.bandeP::-webkit-scrollbar{display:none}
-.caseP{flex:0 0 100%; scroll-snap-align:center; display:flex; align-items:center; justify-content:center}
-.caseP img{max-width:100%; max-height:100%; object-fit:contain; display:block}
-.pointsP{display:flex; justify-content:center; gap:5px; padding:14px 0 calc(18px + env(safe-area-inset-bottom,0px))}
-.pointsP span{width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.35);
+/* — retour : posé sur la photo, toujours visible —
+   .feuille porte un transform : un position:fixed ici se cale sur elle
+   et ne bouge donc pas quand le contenu défile. C'est exactement ce qu'on veut. */
+.retour-f{position:fixed; z-index:5; top:calc(12px + env(safe-area-inset-top,0px)); left:12px;
+  width:42px; height:42px; border-radius:50%; border:0; color:#fff; background:rgba(12,17,24,.48);
+  backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center;
+  box-shadow:0 8px 20px -8px rgba(0,0,0,.65)}
+.retour-f:active{transform:scale(.94)}
+
+/* — plein écran photos — */
+.plein{position:fixed; inset:0; z-index:90; background:#0a0e14}
+.bande-pe{position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden;
+  scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; touch-action:pan-x;
+  overscroll-behavior:contain; scrollbar-width:none}
+.bande-pe::-webkit-scrollbar{display:none}
+.photo-pe{flex:0 0 100%; width:100%; height:100%; scroll-snap-align:center; scroll-snap-stop:always;
+  display:flex; align-items:center; justify-content:center;
+  padding:calc(56px + env(safe-area-inset-top,0px)) 0 calc(46px + env(safe-area-inset-bottom,0px))}
+.photo-pe img{max-width:100%; max-height:100%; object-fit:contain; display:block}
+.barre-pe{position:absolute; top:0; left:0; right:0; z-index:2; display:flex; align-items:center;
+  justify-content:space-between; color:#fff; font-size:13px; font-weight:700; pointer-events:none;
+  padding:calc(12px + env(safe-area-inset-top,0px)) 14px 18px;
+  background:linear-gradient(180deg,rgba(0,0,0,.65),transparent)}
+.ferme-pe{pointer-events:auto; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,.2);
+  color:#fff; border:0; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px)}
+.points-pe{position:absolute; left:0; right:0; bottom:calc(16px + env(safe-area-inset-bottom,0px)); z-index:2;
+  display:flex; justify-content:center; gap:5px; pointer-events:none}
+.points-pe span{width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.35);
   transition:width .3s cubic-bezier(.16,1,.3,1), background .3s}
-.pointsP span.on{width:16px; background:#fff}
-html.plein-actif, body.plein-actif{overflow:hidden !important}
+.points-pe span.on{width:16px; background:#fff}
+
+/* — envoi en cours — */
+.tourne{width:15px; height:15px; border-radius:50%; display:inline-block;
+  border:2px solid rgba(255,255,255,.4); border-top-color:#fff; animation:tourne .7s linear infinite}
+.btn.fant .tourne{border-color:rgba(26,35,50,.22); border-top-color:var(--encre)}
+@keyframes tourne{to{transform:rotate(360deg)}}
+.btn[disabled]{opacity:.82; cursor:default}
+.btn[disabled]:active{transform:none}
+
+/* — pop-up (partage) — */
+.pop{position:fixed; inset:0; z-index:95; display:flex; align-items:flex-end; justify-content:center}
+.pop-voile{position:absolute; inset:0; background:rgba(10,14,22,.62); backdrop-filter:blur(4px);
+  animation:popVoile .26s ease both}
+.pop-carte{position:relative; width:100%; max-width:480px; background:var(--carte);
+  border-radius:24px 24px 0 0; max-height:92vh; max-height:92dvh; overflow-y:auto;
+  overscroll-behavior:contain; box-shadow:0 -14px 44px rgba(12,17,24,.34);
+  padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  animation:popBas .34s cubic-bezier(.16,1,.28,1) both}
+@media(min-width:640px){
+  .pop{align-items:center}
+  .pop-carte{border-radius:22px; max-height:88vh; animation-name:popCentre;
+    box-shadow:0 26px 70px rgba(12,17,24,.34)}
+}
+@keyframes popVoile{from{opacity:0} to{opacity:1}}
+@keyframes popBas{from{transform:translateY(100%)} to{transform:translateY(0)}}
+@keyframes popCentre{from{transform:scale(.96); opacity:0} to{transform:scale(1); opacity:1}}
+.pop-tete{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:20px 20px 12px}
+.pop-tete h3{margin:0; font-size:18px; font-weight:800; line-height:1.3}
+.pop-tete .sur{font-size:10px; letter-spacing:1.3px; text-transform:uppercase;
+  color:var(--plume-clair); font-weight:800; margin-bottom:5px}
+.pop-corps{padding:0 20px}
+.pop-fin{text-align:center; padding:28px 24px 10px}
+.pop-fin h3{margin:0 0 10px; font-size:20px; font-weight:800}
+.pop-fin p{margin:0 0 20px; color:var(--plume); font-size:14.5px; line-height:1.65}
+.pop-fin .rond-ok{width:68px; height:68px; border-radius:50%; margin:0 auto 18px; display:flex;
+  align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce);
+  border:1px solid var(--or-trait)}
+.ape{margin-top:14px; border:1px solid var(--trait); border-radius:15px; overflow:hidden; background:var(--fond)}
+.ape-t{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; font-weight:800;
+  color:var(--plume-clair); padding:12px 14px 0}
+.ape-l{display:flex; gap:8px; font-size:13px; padding:9px 14px 0; color:var(--encre); font-weight:700}
+.ape-l span{color:var(--plume-clair); font-weight:800; min-width:42px}
+.ape-c{font-size:13px; line-height:1.65; color:var(--plume); padding:10px 14px 14px}
+.ape-c .lien-ap{color:var(--or-fonce); word-break:break-all}
+.err{margin-top:8px; font-size:12.5px; font-weight:700; color:var(--brique)}
+.mention{font-size:12.5px; color:var(--plume-clair); text-align:center; margin-bottom:0}
 .bandeau-prix{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:16px 20px 0}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
