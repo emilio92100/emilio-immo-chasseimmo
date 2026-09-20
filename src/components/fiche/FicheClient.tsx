@@ -1188,7 +1188,7 @@ Emilio Immobilier
         const mails = (client.emails || []).filter(Boolean);
 
         const kpis = [
-          { val: biens.length, l: 'Biens', or: false },
+          { val: presentes.length, l: 'Propositions', or: false },
           { val: visites.filter(v => v.statut === 'effectuee').length, l: 'Visites', or: false },
           { val: biens.filter(b => b.badge_retour === 'offre_faite').length, l: 'Offres', or: true },
           { val: jours, l: 'Jours de suivi', or: false },
@@ -1207,13 +1207,13 @@ Emilio Immobilier
             {/* le bloc identité */}
             <div style={{
               position: 'relative', borderRadius: 22, overflow: 'hidden',
-              background: 'linear-gradient(152deg, #22304a 0%, #16202e 58%, #1b2635 100%)',
+              background: 'linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%)',
               border: '1px solid rgba(201,168,76,.2)',
-              boxShadow: '0 24px 50px -32px rgba(10,16,26,.9)',
+              boxShadow: '0 24px 50px -30px rgba(30,45,75,.75)',
               padding: aSituation ? '24px 28px 40px' : '24px 28px 26px',
             }}>
-              <span aria-hidden style={{ position: 'absolute', top: -140, right: -90, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.17), transparent 64%)', pointerEvents: 'none' }} />
-              <span aria-hidden style={{ position: 'absolute', bottom: -160, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(96,165,250,.07), transparent 66%)', pointerEvents: 'none' }} />
+              <span aria-hidden style={{ position: 'absolute', top: -140, right: -90, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.22), transparent 64%)', pointerEvents: 'none' }} />
+              <span aria-hidden style={{ position: 'absolute', bottom: -160, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(125,185,255,.12), transparent 66%)', pointerEvents: 'none' }} />
 
               <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 26, flexWrap: 'wrap' }}>
 
@@ -1225,7 +1225,7 @@ Emilio Immobilier
                       border: '1px solid rgba(201,168,76,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 23, fontWeight: 800, color: '#c9a84c', fontFamily: "'Plus Jakarta Sans',sans-serif", letterSpacing: .5,
                     }}>{client.prenom[0]}{client.nom?.[0] || ''}</div>
-                    <span style={{ position: 'absolute', right: 1, bottom: 1, width: 13, height: 13, borderRadius: '50%', background: teinte, border: '2.5px solid #1a2431' }} />
+                    <span style={{ position: 'absolute', right: 1, bottom: 1, width: 13, height: 13, borderRadius: '50%', background: teinte, border: '2.5px solid #2b3f63' }} />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1289,7 +1289,7 @@ Emilio Immobilier
             {/* la situation actuelle, posée à cheval sur le bloc du dessus */}
             {aSituation && (
               <div style={{ position: 'relative', margin: '-22px 20px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: '18px 22px 15px', boxShadow: '0 20px 40px -30px rgba(16,24,40,.8)' }}>
-                <span style={{ position: 'absolute', top: -10, left: 22, background: 'linear-gradient(135deg,#22304a,#16202e)', color: '#c9a84c', borderRadius: 20, padding: '4px 14px', fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, border: '1px solid rgba(201,168,76,.3)', boxShadow: '0 8px 18px -10px rgba(16,24,40,.9)' }}>
+                <span style={{ position: 'absolute', top: -10, left: 22, background: 'linear-gradient(135deg,#3a5178,#27395a)', color: '#e2c979', borderRadius: 20, padding: '4px 14px', fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, border: '1px solid rgba(201,168,76,.3)', boxShadow: '0 8px 18px -10px rgba(16,24,40,.9)' }}>
                   Situation actuelle
                 </span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', rowGap: 12 }}>
@@ -1464,12 +1464,8 @@ Emilio Immobilier
       <style>{`
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
-        @keyframes ficheTabIn {
-          from { opacity: 0; transform: translateY(16px) scale(.993); }
-          to   { opacity: 1; transform: none; }
-        }
-        .fiche-tab { animation: ficheTabIn .46s cubic-bezier(.16,1,.3,1) both; }
-        .fiche-tab > * { animation: ficheTabIn .54s cubic-bezier(.16,1,.3,1) both; }
+        @keyframes ficheTabIn { from { opacity: 0 } to { opacity: 1 } }
+        .fiche-tab { animation: ficheTabIn .32s ease both; min-height: 240px; }
       `}</style>
 
         <StylesEmilio />
