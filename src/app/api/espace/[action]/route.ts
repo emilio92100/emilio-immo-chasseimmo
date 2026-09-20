@@ -249,12 +249,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           type: 'message_client', titre: 'Message du client, depuis son espace',
           description: texte, metadata: {},
         });
+        /* Colonnes réelles de la table : date_echeance / note / statut « en_attente ».
+           C'est ce que lisent le tableau de bord et la page Relances. */
         const demain = new Date(); demain.setDate(demain.getDate() + 1);
         await supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
-          date_relance: demain.toISOString().split('T')[0],
-          motif: 'Message depuis l’espace : ' + texte.slice(0, 180),
-          statut: 'a_faire',
+          type: 'message_client', statut: 'en_attente',
+          date_echeance: demain.toISOString(),
+          note: 'Message depuis l’espace : ' + texte.slice(0, 180),
         });
         await evt('message', texte.slice(0, 300));
         return NextResponse.json({ ok: true });
