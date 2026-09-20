@@ -520,7 +520,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                       <span className="gn">{par[g.id].length}</span>
                     </div>
                     {g.note && <div className="gr-note">{g.note}</div>}
-                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
+                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" sansEtiq />
                   </div>
                 ))}
               </>)}
@@ -684,7 +684,9 @@ function Vue({ icone, titre, sous, aller, children }: any) {
   );
 }
 
-function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) => void; vide: string }) {
+/* `sansEtiq` : dans « Mes derniers biens consultés », la catégorie est déjà
+   écrite en grand au-dessus du groupe. La répéter sur chaque carte fait doublon. */
+function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (b: Bien) => void; vide: string; sansEtiq?: boolean }) {
   if (!biens.length) return vide ? <div className="vide-sec" dangerouslySetInnerHTML={{ __html: vide }} /> : null;
   return (
     <div className="liste">
@@ -707,7 +709,7 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
             </span>
             <span className="corps-bien">
               <span className="haut-bien">
-                {b.etat === 'neuf'
+                {sansEtiq ? null : b.etat === 'neuf'
                   ? <span className="etiq neuf">Nouveau</span>
                   : b.etat === 'avis' && a
                     ? <span className={'etiq ' + a.c}>{a.e} {a.n}</span>
