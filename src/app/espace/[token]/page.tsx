@@ -100,6 +100,8 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
         surfaceMin: recherche.surface_min, piecesMin: recherche.nb_pieces_min,
         chambresMin: recherche.chambres_min, secteurs: recherche.secteurs || [],
         typeBien: recherche.type_bien,
+        transportMinutes: recherche.transport_minutes ?? null,
+        transportLignes: recherche.transport_lignes || [],
         equip: [
           recherche.terrasse && 'Terrasse', recherche.balcon && 'Balcon', recherche.jardin && 'Jardin',
           recherche.parking && 'Parking', recherche.ascenseur && 'Ascenseur', recherche.cave && 'Cave',
