@@ -567,12 +567,12 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
     <div className="accueil">
       <div className="col-a">
       <div className="bandeau-chiffres">
-        <div className="bc"><div className="n or tab">{neufs.length}</div>
-          <div className="l">à découvrir<BtnAide cle="decouvrir" onAide={onAide} /></div></div>
-        <div className="bc"><div className="n tab">{passage?.lues ?? '—'}</div>
-          <div className="l">annonces lues<BtnAide cle="lues" onAide={onAide} /></div></div>
-        <div className="bc"><div className="n tab">{client.jours ?? '—'}</div>
-          <div className="l">jours de suivi<BtnAide cle="jours" onAide={onAide} /></div></div>
+        <div className="bc"><div className="n or tab"><span className="nv">{neufs.length}<BtnAide cle="decouvrir" onAide={onAide} /></span></div>
+          <div className="l">à découvrir</div></div>
+        <div className="bc"><div className="n tab"><span className="nv">{passage?.lues ?? '—'}<BtnAide cle="lues" onAide={onAide} /></span></div>
+          <div className="l">annonces lues</div></div>
+        <div className="bc"><div className="n tab"><span className="nv">{client.jours ?? '—'}<BtnAide cle="jours" onAide={onAide} /></span></div>
+          <div className="l">jours de suivi</div></div>
       </div>
       </div>
 
@@ -1910,11 +1910,16 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .bandeau-chiffres{display:flex; gap:1px; background:var(--trait); border:1px solid var(--trait);
   border-radius:16px; overflow:hidden; margin-top:20px; box-shadow:var(--ombre)}
 .bc{flex:1; background:var(--carte); padding:14px 10px; text-align:center}
-.bc .n{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:21px; letter-spacing:-.8px; line-height:1}
+/* Le « ? » est en exposant, HORS du flux : le chiffre reste donc parfaitement
+   centré au-dessus de son intitulé, la pastille déborde simplement à sa droite. */
+.bc .n{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:21px; letter-spacing:-.8px;
+  line-height:1; display:block}
+.bc .nv{position:relative; display:inline-block}
+.bc .nv .aide-pt{position:absolute; left:100%; top:-5px; margin-left:3px}
 .bc .n.or{color:var(--or-fonce)}
 .bc .l{font-size:10px; letter-spacing:.7px; text-transform:uppercase; color:var(--plume-clair);
-  font-weight:700; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:5px}
-.aide-pt{width:16px; height:16px; flex:0 0 auto; border-radius:50%; border:1px solid var(--trait-fort);
+  font-weight:700; margin-top:6px}
+.aide-pt{width:15px; height:15px; flex:0 0 auto; border-radius:50%; border:1px solid var(--trait-fort);
   background:var(--carte); color:var(--plume-clair); font-family:inherit; font-size:10px; font-weight:800;
   line-height:1; display:inline-flex; align-items:center; justify-content:center; padding:0;
   transition:color .15s, border-color .15s, background .15s}
