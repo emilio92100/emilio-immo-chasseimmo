@@ -124,14 +124,15 @@ const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string
    où elles comptent pour le client : ce qu'il attend de faire d'abord, puis
    ce qu'il a aimé, et seulement à la fin ce qu'il a écarté.
    « visite » vient du CRM (compte rendu de visite saisi par le chasseur). */
-const GROUPES: { id: string; e: string; court: string; titre: string; note?: string }[] = [
-  { id: 'attente', e: '⏳', court: 'En attente', titre: 'En attente de votre avis',
+const GROUPES: { id: string; e: string; court: string; titre: string; ton: string; note?: string }[] = [
+  { id: 'attente', e: '⏳', court: 'En attente', titre: 'En attente de votre avis', ton: 'c-or',
     note: 'Vous les avez ouverts sans nous dire ce que vous en pensiez. Un mot suffit — c’est ce qui oriente la suite de la recherche.' },
-  { id: 'souhaite_visiter', e: '👀', court: 'À visiter', titre: 'Je veux visiter',
+  { id: 'souhaite_visiter', e: '👀', court: 'À visiter', titre: 'Je veux visiter', ton: 'c-prune',
     note: 'Votre conseiller organise les visites. Envoyez-lui vos disponibilités si ce n’est pas déjà fait.' },
-  { id: 'visite', e: '🏠', court: 'Visités', titre: 'Visite effectuée' },
-  { id: 'interesse', e: '👍', court: 'Ça me plaît', titre: 'Ça me plaît' },
-  { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi',
+  { id: 'visite', e: '🏠', court: 'Visités', titre: 'Visite effectuée', ton: 'c-bleu' },
+  { id: 'interesse', e: '👍', court: 'Ça me plaît', titre: 'Ça me plaît', ton: 'c-vert',
+    note: 'Ce que vous gardez de côté. Dites-nous si vous voulez en visiter un, votre conseiller s’en occupe.' },
+  { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi', ton: 'c-brique',
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
 ];
 const groupeDe = (b: Bien) => (b.avis && GROUPES.some(g => g.id === b.avis) ? b.avis : 'attente');
@@ -504,23 +505,17 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                     </button>
                   ))}
                 </div>
+                {/* Une catégorie = une carte à sa couleur : titre, explication et
+                    biens dans le même cadre. On ne confond plus deux sections. */}
                 {montres.map(g => (
-                  <div className="groupe" key={g.id}>
-                    <div className="bloc-titre">
+                  <div className={'gr-cadre ' + g.ton} key={g.id}>
+                    <div className="gr-tete">
                       <span className="ge">{g.e}</span>
                       <h3>{g.titre}</h3>
-                      <span className={'n' + (g.id === 'attente' ? ' or' : '')}>{par[g.id].length}</span>
+                      <span className="gn">{par[g.id].length}</span>
                     </div>
-                    {/* Le mot d'explication et les biens qu'il vise sont dans le
-                        même cadre : sinon on ne sait pas de quoi il parle. */}
-                    {g.note ? (
-                      <div className={'gr-cadre' + (g.id === 'attente' ? ' urgent' : '')}>
-                        <div className="gr-note"><Ico n="horloge" t={17} /><span>{g.note}</span></div>
-                        <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
-                      </div>
-                    ) : (
-                      <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
-                    )}
+                    {g.note && <div className="gr-note">{g.note}</div>}
+                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
                   </div>
                 ))}
               </>)}
@@ -711,7 +706,12 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
               ].filter(Boolean).join(' · ')}</span>
               <div className="prix tab">{EUR(b.prix)}</div>
               {b.etat === 'avis' && b.commentaire && (
-                <div className="meta" style={{ marginTop: 6, fontStyle: 'italic' }}>« {b.commentaire} »</div>
+                /* Ce que le client a écrit lui appartient : on l'annonce et on le
+                   rend lisible, au lieu d'une ligne grise en italique tout en bas. */
+                <span className={'mon-com ' + (a ? a.c : '')}>
+                  <span className="mc-t">Votre commentaire</span>
+                  <span className="mc-c">« {b.commentaire} »</span>
+                </span>
               )}
             </span>
             <span className="fleche"><Ico n="fleche" t={19} /></span>
@@ -2542,14 +2542,57 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   .fc{padding:7px 12px; font-size:12px}
 }
 
-/* Le message d'un groupe et ses biens, dans un même cadre. */
-.gr-cadre{border:1px solid var(--trait); border-radius:18px; padding:12px; background:var(--carte);
-  display:flex; flex-direction:column; gap:11px}
-.gr-cadre.urgent{border-color:var(--or-trait); background:var(--or-fond)}
-.gr-note{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.55;
-  color:var(--plume); padding:2px 3px 0}
-.gr-cadre.urgent .gr-note{color:var(--or-fonce)}
-.gr-note svg{flex:0 0 auto; margin-top:1px}
+/* ═══ Une catégorie de biens consultés = une carte à sa couleur ═══ */
+.gr-cadre{border:1px solid var(--trait); border-radius:20px; padding:0 13px 13px;
+  background:var(--carte); display:flex; flex-direction:column; gap:11px; overflow:hidden}
+.gr-cadre + .gr-cadre{margin-top:16px}
+.gr-tete{display:flex; align-items:center; gap:10px; margin:0 -13px; padding:13px 15px;
+  border-bottom:1px solid var(--trait)}
+.gr-tete .ge{font-size:17px; line-height:1}
+.gr-tete h3{margin:0; font-size:15.5px; font-weight:800; letter-spacing:-.2px}
+.gr-tete .gn{margin-left:auto; font-size:11.5px; font-weight:800; border-radius:99px; padding:2px 9px;
+  background:var(--fond); color:var(--plume)}
+.gr-note{font-size:12.5px; line-height:1.55; color:var(--plume); padding:1px 3px 0}
+
+.gr-cadre.c-or{border-color:var(--or-trait); background:var(--or-fond)}
+.gr-cadre.c-or .gr-tete{border-color:var(--or-trait); background:rgba(201,168,76,.08)}
+.gr-cadre.c-or .gr-tete h3, .gr-cadre.c-or .gr-note{color:var(--or-fonce)}
+.gr-cadre.c-or .gn{background:var(--or); color:#fff}
+
+.gr-cadre.c-prune{border-color:var(--prune-trait); background:var(--prune-fond)}
+.gr-cadre.c-prune .gr-tete{border-color:var(--prune-trait); background:rgba(124,58,237,.06)}
+.gr-cadre.c-prune .gr-tete h3, .gr-cadre.c-prune .gr-note{color:var(--prune)}
+.gr-cadre.c-prune .gn{background:var(--prune); color:#fff}
+
+.gr-cadre.c-vert{border-color:var(--vert-trait); background:var(--vert-fond)}
+.gr-cadre.c-vert .gr-tete{border-color:var(--vert-trait); background:rgba(21,128,61,.06)}
+.gr-cadre.c-vert .gr-tete h3, .gr-cadre.c-vert .gr-note{color:var(--vert)}
+.gr-cadre.c-vert .gn{background:var(--vert); color:#fff}
+
+.gr-cadre.c-brique{border-color:var(--brique-trait); background:var(--brique-fond)}
+.gr-cadre.c-brique .gr-tete{border-color:var(--brique-trait); background:rgba(220,38,38,.05)}
+.gr-cadre.c-brique .gr-tete h3, .gr-cadre.c-brique .gr-note{color:var(--brique)}
+.gr-cadre.c-brique .gn{background:var(--brique); color:#fff}
+
+.gr-cadre.c-bleu{border-color:var(--bleu-trait); background:var(--bleu-fond)}
+.gr-cadre.c-bleu .gr-tete{border-color:var(--bleu-trait); background:rgba(37,99,235,.06)}
+.gr-cadre.c-bleu .gr-tete h3, .gr-cadre.c-bleu .gr-note{color:var(--bleu)}
+.gr-cadre.c-bleu .gn{background:var(--bleu); color:#fff}
+
+/* Ce que le client a écrit sur un bien. */
+.mon-com{display:block; margin-top:10px; padding:9px 12px; border-radius:12px;
+  background:var(--fond); border:1px solid var(--trait); border-left:3px solid var(--trait-fort)}
+.mon-com .mc-t{display:block; font-size:9.5px; font-weight:800; letter-spacing:1px;
+  text-transform:uppercase; color:var(--plume-clair)}
+.mon-com .mc-c{display:block; margin-top:3px; font-size:13.5px; line-height:1.55; color:var(--encre)}
+.mon-com.oui{background:var(--vert-fond); border-color:var(--vert-trait); border-left-color:var(--vert)}
+.mon-com.oui .mc-t{color:var(--vert)}
+.mon-com.visite{background:var(--prune-fond); border-color:var(--prune-trait); border-left-color:var(--prune)}
+.mon-com.visite .mc-t{color:var(--prune)}
+.mon-com.non{background:var(--brique-fond); border-color:var(--brique-trait); border-left-color:var(--brique)}
+.mon-com.non .mc-t{color:var(--brique)}
+.mon-com.fait{background:var(--or-fond); border-color:var(--or-trait); border-left-color:var(--or)}
+.mon-com.fait .mc-t{color:var(--or-fonce)}
 
 /* La demande d'avis sur la carte d'accueil. */
 .alerte-avis{display:inline-flex; align-items:flex-start; gap:6px; margin-top:3px;
