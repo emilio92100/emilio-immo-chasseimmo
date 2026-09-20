@@ -1,5 +1,6 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -499,11 +500,121 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
   );
 }
 
+/* ══ galerie photos ═══════════════════════════════ */
+/* Le défilement est natif (scroll-snap) : c'est le seul qui se comporte
+   correctement au doigt sur iOS comme sur Android. L'index suit la
+   position réelle de la bande, jamais l'inverse. */
+function Galerie({ photos, onAgrandir }: { photos: string[]; onAgrandir: (n: number) => void }) {
+  const bande = useRef<HTMLDivElement | null>(null);
+  const depart = useRef<{ x: number; y: number } | null>(null);
+  const [i, setI] = useState(0);
+
+  const surDefilement = () => {
+    const el = bande.current;
+    if (!el || !el.clientWidth) return;
+    const n = Math.round(el.scrollLeft / el.clientWidth);
+    setI((v) => (v === n ? v : n));
+  };
+  const versPhoto = (n: number) => {
+    const el = bande.current;
+    if (!el) return;
+    el.scrollTo({ left: n * el.clientWidth, behavior: 'smooth' });
+  };
+
+  if (!photos.length) {
+    return <div className="photo-h"><span style={{ fontSize: 30 }}>▣</span></div>;
+  }
+
+  return (
+    <div className="galerie">
+      <div className="bande" ref={bande} onScroll={surDefilement}>
+        {photos.map((p, n) => (
+          <button
+            type="button" className="case" key={n}
+            aria-label={`Agrandir la photo ${n + 1}`}
+            onPointerDown={(e) => { depart.current = { x: e.clientX, y: e.clientY }; }}
+            onClick={(e) => {
+              // un glissement n'est pas un clic
+              const d = depart.current;
+              if (d && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 12) return;
+              onAgrandir(n);
+            }}
+          >
+            <img src={p} alt="" loading={n < 2 ? 'eager' : 'lazy'} draggable={false} />
+          </button>
+        ))}
+      </div>
+      {photos.length > 1 && (
+        <>
+          <div className="compteur tab"><Ico n="loupe" t={12} />{i + 1}/{photos.length}</div>
+          {photos.length <= 8 && (
+            <div className="points">{photos.map((_, n) => (
+              <button type="button" key={n} onClick={() => versPhoto(n)}
+                className={n === i ? 'on' : ''} aria-label={`Photo ${n + 1}`} />
+            ))}</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Plein écran — rendu dans <body> par portail : la feuille porte un
+   transform, et un position:fixed à l'intérieur s'y trouverait enfermé. */
+function PleinEcran({ photos, depart, onFermer }: { photos: string[]; depart: number; onFermer: () => void }) {
+  const bande = useRef<HTMLDivElement | null>(null);
+  const [i, setI] = useState(depart);
+
+  useEffect(() => {
+    const el = bande.current;
+    if (el && el.clientWidth) el.scrollLeft = depart * el.clientWidth;
+    const html = document.documentElement, body = document.body;
+    html.classList.add('plein-actif'); body.classList.add('plein-actif');
+    return () => { html.classList.remove('plein-actif'); body.classList.remove('plein-actif'); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer(); };
+    window.addEventListener('keydown', auClavier);
+    return () => window.removeEventListener('keydown', auClavier);
+  }, [onFermer]);
+
+  const surDefilement = () => {
+    const el = bande.current;
+    if (!el || !el.clientWidth) return;
+    const n = Math.round(el.scrollLeft / el.clientWidth);
+    setI((v) => (v === n ? v : n));
+  };
+
+  return createPortal(
+    <div className="plein" role="dialog" aria-modal="true">
+      <div className="barre">
+        <span className="tab">{i + 1} / {photos.length}</span>
+        <button type="button" className="fermeP" onClick={onFermer} aria-label="Fermer les photos">
+          <Ico n="croix" t={15} />
+        </button>
+      </div>
+      <div className="bandeP" ref={bande} onScroll={surDefilement}>
+        {photos.map((p, n) => (
+          <div className="caseP" key={n}><img src={p} alt="" draggable={false} /></div>
+        ))}
+      </div>
+      {photos.length > 1 && (
+        <div className="pointsP">{photos.slice(0, 14).map((_, n) => (
+          <span key={n} className={n === i ? 'on' : ''} />
+        ))}</div>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
 /* ══ feuilles ═════════════════════════════════════ */
 function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
   const [avis, setAvis] = useState<string | null>(b.avis);
   const [com, setCom] = useState(b.commentaire || '');
-  const [i, setI] = useState(0);
+  const [plein, setPlein] = useState<number | null>(null);
   const photos: string[] = b.photos || [];
   const dpe = (l: string | null, t: string) => l && DPEC[l.toUpperCase()?.[0]] ? (
     <span className="dpe"><span className="l" style={{ background: DPEC[l.toUpperCase()[0]] }}>{l.toUpperCase()[0]}</span>
@@ -512,14 +623,10 @@ function FicheBien({ b, onFermer, onAvis, onPartage }: any) {
 
   return (
     <>
-      <div className="photo-h">
-        {photos[i] ? <img src={photos[i]} alt="" /> : <span style={{ fontSize: 30 }}>▣</span>}
-        {photos.length > 1 && (
-          <div className="points">{photos.slice(0, 10).map((_, n) => (
-            <button key={n} onClick={() => setI(n)} className={n === i ? 'on' : ''} aria-label={`Photo ${n + 1}`} />
-          ))}</div>
-        )}
-      </div>
+      <Galerie photos={photos} onAgrandir={setPlein} />
+      {plein !== null && (
+        <PleinEcran photos={photos} depart={plein} onFermer={() => setPlein(null)} />
+      )}
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
@@ -996,6 +1103,38 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .points button{width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.5); padding:0;
   transition:width .3s cubic-bezier(.16,1,.3,1), background .3s}
 .points button.on{width:16px; background:#fff}
+/* la pastille reste fine à l'oeil mais large au doigt */
+.points button{position:relative}
+.points button::after{content:''; position:absolute; inset:-12px}
+
+.galerie{position:relative; background:linear-gradient(148deg,#3a5178,#22314c)}
+.bande{display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; scrollbar-width:none}
+.bande::-webkit-scrollbar{display:none}
+.bande .case{flex:0 0 100%; scroll-snap-align:center; width:100%; aspect-ratio:3/2; padding:0; border:0;
+  background:transparent; display:block; overflow:hidden; cursor:zoom-in}
+.bande .case img{width:100%; height:100%; object-fit:cover; display:block}
+.compteur{position:absolute; top:10px; right:10px; z-index:2; display:flex; align-items:center; gap:5px;
+  background:rgba(12,17,24,.5); color:#fff; font-size:11.5px; font-weight:700; padding:5px 10px;
+  border-radius:99px; backdrop-filter:blur(5px); pointer-events:none}
+
+.plein{position:fixed; inset:0; z-index:90; background:#0a0e14; display:flex; flex-direction:column}
+.plein .barre{position:absolute; top:0; left:0; right:0; z-index:2; display:flex; align-items:center;
+  justify-content:space-between; color:#fff; font-size:13px; font-weight:700;
+  padding:calc(12px + env(safe-area-inset-top,0px)) 14px 16px;
+  background:linear-gradient(180deg,rgba(0,0,0,.6),transparent)}
+.fermeP{width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,.18); color:#fff; border:0;
+  display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px)}
+.bandeP{flex:1; min-height:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch; overscroll-behavior:contain; scrollbar-width:none}
+.bandeP::-webkit-scrollbar{display:none}
+.caseP{flex:0 0 100%; scroll-snap-align:center; display:flex; align-items:center; justify-content:center}
+.caseP img{max-width:100%; max-height:100%; object-fit:contain; display:block}
+.pointsP{display:flex; justify-content:center; gap:5px; padding:14px 0 calc(18px + env(safe-area-inset-bottom,0px))}
+.pointsP span{width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.35);
+  transition:width .3s cubic-bezier(.16,1,.3,1), background .3s}
+.pointsP span.on{width:16px; background:#fff}
+html.plein-actif, body.plein-actif{overflow:hidden !important}
 .bandeau-prix{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:16px 20px 0}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
