@@ -126,17 +126,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            null vaut « efface ». */
         const present = (k: string) => Object.prototype.hasOwnProperty.call(c, k);
         const parmi = (v: unknown, liste: string[]) => (typeof v === 'string' && liste.includes(v) ? v : null);
-        const maj: Record<string, unknown> = {
-          budget_min: n(c.budgetMin, 50_000, 20_000_000),
-          budget_max: n(c.budgetMax, 50_000, 20_000_000),
-          surface_min: n(c.surfaceMin, 5, 2_000),
-          nb_pieces_min: n(c.piecesMin, 1, 20),
-          chambres_min: n(c.chambresMin, 0, 20),
-          transport_minutes: n(c.transportMinutes, 1, 60),
-        };
+        /* Ces six-là passaient par une affectation directe : un champ absent de
+           l'envoi valait null, donc « efface ». L'assistant étape par étape
+           n'envoie que l'étape en cours — le budget minimum et le temps de
+           transport du client se vidaient tout seuls. Ils passent par poser()
+           comme les autres : absent = on ne touche à rien. */
+        const maj: Record<string, unknown> = {};
         const poser = (colonne: string, champ: string, valeur: unknown) => {
           if (present(champ)) maj[colonne] = valeur;
         };
+        poser('budget_min', 'budgetMin', n(c.budgetMin, 50_000, 20_000_000));
+        poser('budget_max', 'budgetMax', n(c.budgetMax, 50_000, 20_000_000));
+        poser('surface_min', 'surfaceMin', n(c.surfaceMin, 5, 2_000));
+        poser('nb_pieces_min', 'piecesMin', n(c.piecesMin, 1, 20));
+        poser('chambres_min', 'chambresMin', n(c.chambresMin, 0, 20));
+        poser('transport_minutes', 'transportMinutes', n(c.transportMinutes, 1, 60));
         poser('surface_max', 'surfaceMax', n(c.surfaceMax, 5, 5_000));
         poser('surface_sejour_min', 'surfaceSejourMin', n(c.surfaceSejourMin, 5, 500));
         poser('nb_pieces_max', 'piecesMax', n(c.piecesMax, 1, 30));
@@ -218,6 +222,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            signifie un envoi bancal, pas une volonté d'effacer. */
         (['surface_min', 'nb_pieces_min', 'chambres_min', 'budget_max'] as const)
           .forEach((k) => { if (maj[k] === null) delete maj[k]; });
+
+        /* Rien de valide dans l'envoi : on ne va pas écrire un updated_at seul. */
+        if (Object.keys(maj).length === 0) {
+          return NextResponse.json({ ok: true, rien: true });
+        }
         maj.updated_at = new Date().toISOString();
 
         await supabase.from('recherches').update(maj).eq('id', recherche.id);
