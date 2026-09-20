@@ -1102,9 +1102,20 @@ const btnPrincipal: React.CSSProperties = {
 
 /* ══ Le lien de l'espace acheteur ══════════════════════════════ */
 
+const EVT: Record<string, { i: string; l: string; c: string }> = {
+  ouverture: { i: '🔓', l: 'A ouvert son espace', c: '#3b82f6' },
+  fiche:     { i: '👁️', l: 'A consulté', c: '#3b82f6' },
+  avis:      { i: '💬', l: 'A donné son avis', c: '#10b981' },
+  partage:   { i: '↗️', l: 'A partagé une fiche', c: '#0ea5e9' },
+  message:   { i: '✉️', l: 'A écrit un message', c: OR },
+  criteres:  { i: '🎯', l: 'A modifié ses critères', c: '#8b5cf6' },
+};
+
 export function LienEspace({ recherche, client }: { recherche: any; client: any }) {
   const [copie, setCopie] = useState(false);
   const [ouvertures, setOuvertures] = useState<number | null>(null);
+  const [deplie, setDeplie] = useState(false);
+  const [evts, setEvts] = useState<any[] | null>(null);
 
   const token = recherche?.token_espace;
   const url = token && typeof window !== 'undefined' ? `${window.location.origin}/espace/${token}` : '';
@@ -1116,6 +1127,14 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
       .eq('recherche_id', recherche.id).eq('type', 'ouverture')
       .then(({ count }) => setOuvertures(count ?? 0));
   }, [recherche?.id]);
+
+  useEffect(() => {
+    if (!deplie || evts || !recherche?.id) return;
+    supabase.from('espace_evenements').select('*')
+      .eq('recherche_id', recherche.id)
+      .order('created_at', { ascending: false }).limit(30)
+      .then(({ data }) => setEvts(data || []));
+  }, [deplie, evts, recherche?.id]);
 
   if (!token) {
     return (
@@ -1143,10 +1162,10 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      background: 'white', border: `1px solid ${BORD}`, borderRadius: 13, padding: '9px 13px',
-      boxShadow: '0 1px 2px rgba(16,24,40,.04)',
+      background: 'white', border: `1px solid ${BORD}`, borderRadius: 13,
+      boxShadow: '0 1px 2px rgba(16,24,40,.04)', overflow: 'hidden',
     }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '9px 13px' }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
         Espace client
       </span>
@@ -1162,9 +1181,52 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
       <button type="button" onClick={whatsapp} style={btnEspace('#f0fdf4', '#15803d', '#bbf7d0')}>WhatsApp</button>
       <a href={url} target="_blank" rel="noopener noreferrer" style={btnEspace('#f7f9fc', '#475569', BORD)}>Ouvrir</a>
 
-      <span style={{ marginLeft: 'auto', fontSize: 12, color: derniere ? '#15803d' : '#94a3b8', fontWeight: 600 }}>
+      <button type="button" onClick={() => setDeplie(d => !d)}
+        style={{
+          marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7,
+          background: derniere ? '#f0fdf4' : '#f7f9fc', border: `1px solid ${derniere ? '#bbf7d0' : BORD}`,
+          borderRadius: 9, padding: '5px 11px', fontSize: 12, fontWeight: 700,
+          color: derniere ? '#15803d' : '#94a3b8', cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: derniere ? '#10b981' : '#cbd5e1' }} />
         {quand}{ouvertures ? ` · ${ouvertures} visite${ouvertures > 1 ? 's' : ''}` : ''}
-      </span>
+        <span style={{ transition: 'transform .25s', transform: deplie ? 'rotate(180deg)' : 'none', display: 'inline-flex' }}>
+          <Icone nom="chevron" taille={13} epaisseur={2.2} />
+        </span>
+      </button>
+    </div>
+
+    {deplie && (
+      <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '12px 15px', maxHeight: 340, overflowY: 'auto' }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          Ce qu&apos;il a fait dans son espace
+        </div>
+        {evts === null && <div style={{ fontSize: 13, color: '#94a3b8' }}>Chargement…</div>}
+        {evts?.length === 0 && (
+          <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+            Il n&apos;a jamais ouvert son espace. Envoie-lui le lien par WhatsApp.
+          </div>
+        )}
+        {evts?.map((e) => {
+          const t = EVT[e.type] || { i: '•', l: e.type, c: '#94a3b8' };
+          const d = new Date(e.created_at);
+          const auj = d.toDateString() === new Date().toDateString();
+          return (
+            <div key={e.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: `1px solid #f1f5f9` }}>
+              <span style={{ fontSize: 13, width: 18, flexShrink: 0 }}>{t.i}</span>
+              <span style={{ minWidth: 0, flexGrow: 1 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{t.l}</span>
+                {e.detail && <span style={{ fontSize: 13, color: '#475569' }}> — {e.detail}</span>}
+              </span>
+              <span style={{ fontSize: 11.5, color: '#94a3b8', flexShrink: 0, fontWeight: 600 }}>
+                {auj ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                     : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    )}
     </div>
   );
 }
