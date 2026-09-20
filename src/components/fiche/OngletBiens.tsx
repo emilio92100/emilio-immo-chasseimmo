@@ -74,12 +74,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const euros = (n: any) => (n == null ? '—' : Number(n).toLocaleString('fr-FR') + ' €');
 
   if (chargement) {
-    return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement…</div>;
+    return <div style={{ padding: 40, textAlign: 'center', color: '#b6c1d1', fontSize: 14, minHeight: 200 }}>Chargement…</div>;
   }
 
   if (biens.length === 0) {
     return (
-      <div style={{ ...CARTE, padding: '44px 20px', textAlign: 'center' }}>
+      <><StylesEmilio /><div className="emi-arrivee" style={{ ...CARTE, padding: '44px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 10 }}>{mode === 'selection' ? '📋' : '📤'}</div>
         <div style={{ fontWeight: 700, color: NAVY, fontSize: 15, marginBottom: 4 }}>
           {mode === 'selection' ? 'Aucun bien en sélection' : 'Rien n’a encore été envoyé'}
@@ -89,7 +89,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             ? 'Retiens un bien depuis l’onglet Veille et il apparaîtra ici.'
             : 'Les biens que tu envoies depuis la Sélection arrivent dans cet onglet.'}
         </div>
-      </div>
+      </div></>
     );
   }
 
@@ -97,7 +97,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <StylesEmilio />
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
+      <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
           {biens.length} bien{biens.length > 1 ? 's' : ''} {mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}
         </span>
@@ -106,7 +106,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         </span>
       </div>
 
-      {biens.map((b) => {
+      {biens.map((b, idx) => {
         const r = RETOURS[b.badge_retour] || RETOURS.propose;
         const ouvert = frise === b.id;
         const honoraires = b.prix_acquereur && b.prix_vendeur ? b.prix_acquereur - b.prix_vendeur : 0;
@@ -123,7 +123,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         if (b.est_particulier) atouts.push(<Chip key="x" ton="vert">Particulier</Chip>);
 
         return (
-          <div key={b.id} className="emi-carte" style={CARTE}>
+          <div key={b.id} className="emi-carte emi-arrivee"
+            style={{ ...CARTE, animationDelay: Math.min(idx, 6) * 55 + 'ms' }}>
 
             <Vignettes photos={b.photos || []}
               coinGauche={mode === 'presentes'
