@@ -704,6 +704,8 @@ const PUCES: Record<string, { c: string; l: string; i: string }> = {
   visite: { c: '#8b5cf6', l: 'Visite planifiée', i: '📅' },
   compte_rendu_visite: { c: '#8b5cf6', l: 'Compte-rendu de visite', i: '🔑' },
   offre_faite: { c: '#ef4444', l: 'Offre', i: '✍️' },
+  espace_fiche: { c: '#3b82f6', l: 'Fiche consultée', i: '👁️' },
+  espace_partage: { c: '#0ea5e9', l: 'Fiche partagée', i: '↗️' },
 };
 
 export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: number }) {
@@ -712,9 +714,11 @@ export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: num
 
   const charger = useCallback(async () => {
     setChargement(true);
-    const [j, v] = await Promise.all([
+    const [j, v, e] = await Promise.all([
       supabase.from('journal').select('*').eq('bien_id', bienId).order('created_at', { ascending: false }),
       supabase.from('visites').select('*').eq('bien_id', bienId).order('date_visite', { ascending: false }),
+      supabase.from('espace_evenements').select('*').eq('bien_id', bienId)
+        .in('type', ['fiche', 'partage']).order('created_at', { ascending: false }),
     ]);
     const dv = (v.data || []).map((x: any) => ({
       id: 'v-' + x.id,
@@ -723,7 +727,14 @@ export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: num
       description: x.commentaire || null,
       created_at: x.date_visite || x.created_at,
     }));
-    setLignes([...(j.data || []), ...dv].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    const de = (e.data || []).map((x: any) => ({
+      id: 'e-' + x.id,
+      type: x.type === 'partage' ? 'espace_partage' : 'espace_fiche',
+      titre: x.type === 'partage' ? 'Fiche partagée par le client' : 'Fiche consultée par le client',
+      description: x.type === 'partage' ? x.detail : null,
+      created_at: x.created_at,
+    }));
+    setLignes([...(j.data || []), ...dv, ...de].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
     setChargement(false);
   }, [bienId]);
 
@@ -1088,6 +1099,83 @@ const btnPrincipal: React.CSSProperties = {
   background: NAVY, color: 'white', border: 'none', borderRadius: 11,
   padding: '10px 22px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
 };
+
+/* ══ Le lien de l'espace acheteur ══════════════════════════════ */
+
+export function LienEspace({ recherche, client }: { recherche: any; client: any }) {
+  const [copie, setCopie] = useState(false);
+  const [ouvertures, setOuvertures] = useState<number | null>(null);
+
+  const token = recherche?.token_espace;
+  const url = token && typeof window !== 'undefined' ? `${window.location.origin}/espace/${token}` : '';
+
+  useEffect(() => {
+    if (!recherche?.id) return;
+    supabase.from('espace_evenements')
+      .select('id', { count: 'exact', head: true })
+      .eq('recherche_id', recherche.id).eq('type', 'ouverture')
+      .then(({ count }) => setOuvertures(count ?? 0));
+  }, [recherche?.id]);
+
+  if (!token) {
+    return (
+      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, color: '#92400e', fontWeight: 600 }}>
+        Cette recherche n&apos;a pas encore de lien d&apos;espace — lance la migration SQL de l&apos;espace acheteur.
+      </div>
+    );
+  }
+
+  const copier = async () => {
+    try { await navigator.clipboard.writeText(url); setCopie(true); setTimeout(() => setCopie(false), 2200); } catch { /* ignore */ }
+  };
+
+  const whatsapp = () => {
+    const txt = `Bonjour ${client?.prenom || ''}, voici votre espace de recherche, il est à jour tous les matins :\n${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
+  };
+
+  const derniere = recherche.espace_ouvert_le ? new Date(recherche.espace_ouvert_le) : null;
+  const quand = derniere
+    ? (derniere.toDateString() === new Date().toDateString()
+        ? `ouvert aujourd'hui à ${derniere.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+        : `ouvert le ${derniere.toLocaleDateString('fr-FR')}`)
+    : 'jamais ouvert';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      background: 'white', border: `1px solid ${BORD}`, borderRadius: 13, padding: '9px 13px',
+      boxShadow: '0 1px 2px rgba(16,24,40,.04)',
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
+        Espace client
+      </span>
+      <code style={{
+        fontSize: 11.5, color: '#64748b', background: '#f7f9fc', border: `1px solid ${BORD}`,
+        borderRadius: 7, padding: '4px 9px', maxWidth: 190, overflow: 'hidden',
+        textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace',
+      }}>/espace/{String(token).slice(0, 12)}…</code>
+
+      <button type="button" onClick={copier} style={btnEspace(copie ? '#ecfdf5' : '#f7f9fc', copie ? '#059669' : '#475569', copie ? '#a7f3d0' : BORD)}>
+        {copie ? '✓ Copié' : 'Copier le lien'}
+      </button>
+      <button type="button" onClick={whatsapp} style={btnEspace('#f0fdf4', '#15803d', '#bbf7d0')}>WhatsApp</button>
+      <a href={url} target="_blank" rel="noopener noreferrer" style={btnEspace('#f7f9fc', '#475569', BORD)}>Ouvrir</a>
+
+      <span style={{ marginLeft: 'auto', fontSize: 12, color: derniere ? '#15803d' : '#94a3b8', fontWeight: 600 }}>
+        {quand}{ouvertures ? ` · ${ouvertures} visite${ouvertures > 1 ? 's' : ''}` : ''}
+      </span>
+    </div>
+  );
+}
+
+function btnEspace(bg: string, fg: string, bd: string): React.CSSProperties {
+  return {
+    background: bg, color: fg, border: `1px solid ${bd}`, borderRadius: 9, padding: '5px 11px',
+    fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none',
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+  };
+}
 
 /* ══ Bouton d'action de carte ══════════════════════════════════ */
 
