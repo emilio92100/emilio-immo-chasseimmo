@@ -1214,7 +1214,13 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
         {evts?.map((e) => {
           const t = EVT[e.type] || { i: '•', l: e.type, c: '#94a3b8' };
           const d = new Date(e.created_at);
+          /* Avant on n'affichait que l'heure le jour même, et que la date les
+             autres jours : impossible de savoir si « 18:00 » c'était ce soir
+             ou la semaine dernière. Maintenant on donne les deux. */
           const auj = d.toDateString() === new Date().toDateString();
+          const hier = new Date(Date.now() - 86400000).toDateString() === d.toDateString();
+          const quand = (auj ? "aujourd'hui" : hier ? 'hier' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }))
+            + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
           return (
             <div key={e.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: `1px solid #f1f5f9` }}>
               <span style={{ fontSize: 13, width: 18, flexShrink: 0 }}>{t.i}</span>
@@ -1223,8 +1229,7 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
                 {e.detail && <span style={{ fontSize: 13, color: '#475569' }}> — {e.detail}</span>}
               </span>
               <span style={{ fontSize: 11.5, color: '#94a3b8', flexShrink: 0, fontWeight: 600 }}>
-                {auj ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                     : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                {quand}
               </span>
             </div>
           );
