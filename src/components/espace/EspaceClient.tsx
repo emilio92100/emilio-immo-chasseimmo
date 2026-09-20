@@ -102,8 +102,18 @@ const cpDeVille = (ville: string) =>
 
 
 /* Mêmes intitulés que le CRM : ce que le client lit ici est ce qu'Alexandre voit. */
-const TYPES_E = ['Appartement', 'Maison', 'Loft', 'Duplex', 'Terrain', 'Autre'];
-const ETATS_E: [string, string][] = [['a_renover','À rénover'],['travaux_legers','Travaux légers'],['bon_etat','Bon état'],['refait_neuf','Refait à neuf']];
+const TYPES_E: [string, string][] = [
+  ['Appartement', '🏢'], ['Maison', '🏡'], ['Loft', '🏗️'],
+  ['Duplex', '🪜'], ['Terrain', '🌱'], ['Autre', '✳️'],
+];
+const ICONE_TYPE: Record<string, string> = Object.fromEntries(TYPES_E);
+const ETATS_E: [string, string, string][] = [
+  ['a_renover', 'À rénover', '🔨'], ['travaux_legers', 'Travaux légers', '🧰'],
+  ['bon_etat', 'Bon état', '✨'], ['refait_neuf', 'Refait à neuf', '💎'],
+];
+const CUISINES_E: [string, string, string][] = [
+  ['', 'Indifférent', '🤷'], ['ouverte', 'Ouverte sur le séjour', '🍽️'], ['separee', 'Séparée', '🚪'],
+];
 const EXPO_E: [string, string, string][] = [['sud','Sud','☀️'],['est','Est','🌅'],['ouest','Ouest','🌇'],['nord','Nord','❄️'],['traversant','Traversant','↔️']];
 /* clé technique (colonne en base) ↔ libellé lisible ↔ emoji */
 const EQUIP_E: [string, string, string][] = [
@@ -111,10 +121,33 @@ const EQUIP_E: [string, string, string][] = [
   ['terrasse','Terrasse','☀️'], ['jardin','Jardin','🌳'], ['ascenseur','Ascenseur','🛗'],
   ['gardien','Gardien','👮'],
 ];
-const URGENCES_E: [string, string][] = [['immediate','Immédiate'],['3_mois','Sous 3 mois'],['6_mois','Sous 6 mois'],['annee',"Dans l'année"]];
-const FINANCEMENTS_E: [string, string][] = [['cash','Cash'],['pret_valide','Prêt validé'],['pret_en_cours','Prêt en cours'],['a_monter','À monter']];
+const URGENCES_E: [string, string, string][] = [
+  ['immediate', 'Immédiate', '🔥'], ['3_mois', 'Sous 3 mois', '⏱️'],
+  ['6_mois', 'Sous 6 mois', '📆'], ['annee', "Dans l'année", '🗓️'],
+];
+const FINANCEMENTS_E: [string, string, string][] = [
+  ['cash', 'Cash', '💵'], ['pret_valide', 'Prêt validé', '✅'],
+  ['pret_en_cours', 'Prêt en cours', '⏳'], ['a_monter', 'Prêt à monter', '📝'],
+  ['pret_relais', 'Prêt relais', '🔁'],
+  ['mixte_cash_pret', 'Mixte · cash + prêt', '🔀'],
+  ['mixte_cash_relais', 'Mixte · cash + prêt relais', '🔀'],
+  ['mixte_pret_relais', 'Mixte · prêt + prêt relais', '🔀'],
+];
 const LETTRES_DPE = ['A','B','C','D','E','F','G'];
-const libelle = (table: [string, string][], v?: string | null) => table.find(x => x[0] === v)?.[1] || null;
+const libelle = (table: [string, string, string][], v?: string | null) => {
+  const l = table.find(x => x[0] === v);
+  return l ? `${l[2]} ${l[1]}` : (v || null);
+};
+
+/* Une valeur du récapitulatif : petite carte avec son icône, plutôt qu'une ligne nue. */
+function Fait({ ico, lib, val }: { ico: string; lib: string; val: React.ReactNode }) {
+  return (
+    <div className="fait">
+      <span className="fi">{ico}</span>
+      <span className="ft"><i>{lib}</i><b>{val}</b></span>
+    </div>
+  );
+}
 
 /* Un champ nombre : vide par défaut, jamais d'exemple grisé pris pour une valeur. */
 function ChampNum({ val, onChange, suffixe, aide }: {
@@ -671,11 +704,11 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       {/* 1 — Le bien recherché */}
       {aQuelqueChose ? (
         <CatE ico="maison" titre="Le bien recherché" sous="type et état">
-          {types.length ? <div className="pastilles">{types.map((t: string) => <span className="past or" key={t}>{t}</span>)}</div> : null}
+          {types.length ? <div className="pastilles">{types.map((t: string) => <span className="past or" key={t}>{ICONE_TYPE[t] ? ICONE_TYPE[t] + ' ' : ''}{t}</span>)}</div> : null}
           {(crit.etatSouhaite || crit.anneeMin) && (
-            <div className="duo-l">
-              {crit.etatSouhaite && <div className="lig"><span className="k">État souhaité</span><span className="v">{libelle(ETATS_E, crit.etatSouhaite) || crit.etatSouhaite}</span></div>}
-              {crit.anneeMin ? <div className="lig"><span className="k">Construit après</span><span className="v tab">{crit.anneeMin}</span></div> : null}
+            <div className="faits">
+              {crit.etatSouhaite && <Fait ico={ETATS_E.find(x => x[0] === crit.etatSouhaite)?.[2] || '✨'} lib="État souhaité" val={(ETATS_E.find(x => x[0] === crit.etatSouhaite)?.[1]) || crit.etatSouhaite} />}
+              {crit.anneeMin ? <Fait ico="📅" lib="Construit après" val={<span className="tab">{crit.anneeMin}</span>} /> : null}
             </div>
           )}
         </CatE>
@@ -689,10 +722,10 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
           <div className="mini-t"><div className="v tab">{crit.chambresMin ?? '—'}</div><div className="l">chambres min.</div></div>
         </div>
         {(crit.surfaceMax || crit.surfaceSejourMin || crit.piecesMax) && (
-          <div className="duo-l">
-            {crit.surfaceMax ? <div className="lig"><span className="k">Surface maximum</span><span className="v tab">{crit.surfaceMax} m²</span></div> : null}
-            {crit.piecesMax ? <div className="lig"><span className="k">Pièces maximum</span><span className="v tab">{crit.piecesMax}</span></div> : null}
-            {crit.surfaceSejourMin ? <div className="lig"><span className="k">Séjour d&apos;au moins</span><span className="v tab">{crit.surfaceSejourMin} m²</span></div> : null}
+          <div className="faits">
+            {crit.surfaceMax ? <Fait ico="📏" lib="Surface maximum" val={<span className="tab">{crit.surfaceMax} m²</span>} /> : null}
+            {crit.piecesMax ? <Fait ico="🚪" lib="Pièces maximum" val={<span className="tab">{crit.piecesMax}</span>} /> : null}
+            {crit.surfaceSejourMin ? <Fait ico="🛋️" lib="Séjour d’au moins" val={<span className="tab">{crit.surfaceSejourMin} m²</span>} /> : null}
           </div>
         )}
       </CatE>
@@ -777,9 +810,9 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
                 : <small>À préciser ensemble</small>}
         </div>
         {(crit.apport || crit.financement) && (
-          <div className="duo-l">
-            {crit.apport ? <div className="lig"><span className="k">Apport</span><span className="v tab">{EUR(crit.apport)}</span></div> : null}
-            {crit.financement && <div className="lig"><span className="k">Financement</span><span className="v">{libelle(FINANCEMENTS_E, crit.financement) || crit.financement}</span></div>}
+          <div className="faits">
+            {crit.apport ? <Fait ico="🏦" lib="Apport" val={<span className="tab">{EUR(crit.apport)}</span>} /> : null}
+            {crit.financement && <Fait ico={FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[2] || '💳'} lib="Financement" val={(FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[1]) || crit.financement} />}
           </div>
         )}
       </CatE>
@@ -787,8 +820,8 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       {/* 9 — Mon projet + la note d'Alexandre, en lecture seule */}
       <CatE ico="note" titre="Mon projet" sous="échéance et précisions">
         {crit.urgence && (
-          <div className="duo-l" style={{ marginTop: 0 }}>
-            <div className="lig"><span className="k">Échéance souhaitée</span><span className="v">{libelle(URGENCES_E, crit.urgence) || crit.urgence}</span></div>
+          <div className="faits">
+            <Fait ico={URGENCES_E.find(x => x[0] === crit.urgence)?.[2] || '⏱️'} lib="Échéance souhaitée" val={(URGENCES_E.find(x => x[0] === crit.urgence)?.[1]) || crit.urgence} />
           </div>
         )}
         <div className="precisions" style={{ marginTop: crit.urgence ? 14 : 4 }}>
@@ -1284,12 +1317,12 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
       id: 'bien', ico: 'maison', titre: 'Le bien recherché', sous: 'Quel type de bien, dans quel état',
       contenu: (<>
         <label className="lab">Type de bien <i>plusieurs choix possibles</i></label>
-        <div className="choix">{TYPES_E.map(x => (
-          <button key={x} className="ch or" aria-pressed={t.typesBien.includes(x)} onClick={() => basculeType(x)}>{x}</button>))}</div>
+        <div className="choix">{TYPES_E.map(([x, i]) => (
+          <button key={x} className="ch or" aria-pressed={t.typesBien.includes(x)} onClick={() => basculeType(x)}>{i} {x}</button>))}</div>
         <label className="lab">État souhaité</label>
-        <div className="choix">{ETATS_E.map(([k, l]) => (
-          <button key={k} className="ch" aria-pressed={t.etatSouhaite === k} onClick={() => setT(x => ({ ...x, etatSouhaite: x.etatSouhaite === k ? '' : k }))}>{l}</button>))}</div>
-        <label className="lab">Construit après</label>
+        <div className="choix">{ETATS_E.map(([k, l, i]) => (
+          <button key={k} className="ch" aria-pressed={t.etatSouhaite === k} onClick={() => setT(x => ({ ...x, etatSouhaite: x.etatSouhaite === k ? '' : k }))}>{i} {l}</button>))}</div>
+        <label className="lab">📅 Construit après</label>
         <ChampNum val={t.anneeMin} onChange={num('anneeMin')} aide="Laissez vide si l’année n’a pas d’importance" />
       </>),
     },
@@ -1361,8 +1394,8 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         </>) : null}
         <label className="lab">Cuisine</label>
         <div className="choix">
-          {[['', 'Indifférent'], ['ouverte', 'Ouverte sur le séjour'], ['separee', 'Séparée']].map(([k, l]) => (
-            <button key={k || 'ind'} className="ch" aria-pressed={t.cuisineType === k} onClick={() => setT(x => ({ ...x, cuisineType: k }))}>{l}</button>))}
+          {CUISINES_E.map(([k, l, i]) => (
+            <button key={k || 'ind'} className="ch" aria-pressed={t.cuisineType === k} onClick={() => setT(x => ({ ...x, cuisineType: k }))}>{i} {l}</button>))}
         </div>
         {t.cuisineType ? (
           <div className="choix" style={{ marginTop: 9 }}>
@@ -1410,16 +1443,16 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <label className="lab">Apport</label>
         <ChampNum val={t.apport} onChange={num('apport')} suffixe="€" aide="Vide si vous préférez ne pas le préciser ici" />
         <label className="lab">Financement</label>
-        <div className="choix">{FINANCEMENTS_E.map(([k, l]) => (
-          <button key={k} className="ch" aria-pressed={t.financement === k} onClick={() => setT(x => ({ ...x, financement: x.financement === k ? '' : k }))}>{l}</button>))}</div>
+        <div className="choix">{FINANCEMENTS_E.map(([k, l, i]) => (
+          <button key={k} className="ch" aria-pressed={t.financement === k} onClick={() => setT(x => ({ ...x, financement: x.financement === k ? '' : k }))}>{i} {l}</button>))}</div>
       </>),
     },
     {
       id: 'projet', ico: 'note', titre: 'Mon projet', sous: 'Votre échéance, et la note d’Alexandre',
       contenu: (<>
         <label className="lab">Échéance souhaitée</label>
-        <div className="choix">{URGENCES_E.map(([k, l]) => (
-          <button key={k} className="ch" aria-pressed={t.urgence === k} onClick={() => setT(x => ({ ...x, urgence: x.urgence === k ? '' : k }))}>{l}</button>))}</div>
+        <div className="choix">{URGENCES_E.map(([k, l, i]) => (
+          <button key={k} className="ch" aria-pressed={t.urgence === k} onClick={() => setT(x => ({ ...x, urgence: x.urgence === k ? '' : k }))}>{i} {l}</button>))}</div>
         <div className="note-verr">
           <div className="k"><span><Ico n="verrou" t={12} /> Précisions notées par Alexandre</span></div>
           <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
@@ -2210,10 +2243,15 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 .bloc.cat > *:last-child{padding-bottom:17px}
 .ss-t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--plume-clair);
   font-weight:800; margin-bottom:8px}
-.duo-l{margin-top:13px; border-top:1px solid var(--trait); padding-top:11px}
-.lig{display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding:4px 0}
-.lig .k{font-size:13px; color:var(--plume)}
-.lig .v{font-size:14.5px; font-weight:800}
+.faits{margin-top:13px; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:9px}
+.fait{display:flex; align-items:center; gap:10px; background:var(--fond); border:1px solid var(--trait);
+  border-radius:14px; padding:11px 12px; min-width:0}
+.fait .fi{font-size:18px; line-height:1; flex:0 0 auto}
+.fait .ft{display:flex; flex-direction:column; min-width:0}
+.fait .ft i{font-style:normal; font-size:9.5px; letter-spacing:.9px; text-transform:uppercase;
+  color:var(--plume-clair); font-weight:800}
+.fait .ft b{font-size:14.5px; font-weight:800; margin-top:2px; overflow-wrap:anywhere}
+
 .note-cat{margin-top:11px; font-size:12.5px; color:var(--plume); line-height:1.55}
 .past.indis{background:var(--encre); border-color:var(--or); color:#f2dfa6; font-weight:700}
 .past .mk{font-style:normal; font-size:8.5px; letter-spacing:.9px; text-transform:uppercase;
