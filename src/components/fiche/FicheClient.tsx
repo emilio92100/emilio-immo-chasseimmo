@@ -4,6 +4,32 @@ import { supabase, addJournal } from '@/lib/supabase';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
+import { LIGNES, MODES, ligneDe } from '@/lib/lignes';
+
+/* En-tête de section dans la pop-up « Critères de recherche ». */
+const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; note?: string }) => (
+  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 -4px',
+    paddingBottom: 9, borderBottom: '1px solid #e3e8f0' }}>
+    <span style={{ fontSize: 16, lineHeight: 1 }}>{ico}</span>
+    <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1a2332', letterSpacing: 0.2 }}>{titre}</span>
+    {note ? <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{note}</span> : null}
+  </div>
+);
+
+/* La pastille d'une ligne, aux couleurs officielles IDFM. */
+const PastilleLigne = ({ id, t = 28 }: { id: string; t?: number }) => {
+  const g = ligneDe(id);
+  if (!g) return null;
+  const rond = g.mode === 'metro' || g.mode === 'rer';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      background: g.couleur, color: g.texte, width: rond ? t : undefined, height: t, minWidth: t,
+      borderRadius: rond ? '50%' : Math.round(t / 3), fontWeight: 800, lineHeight: 1,
+      fontSize: Math.round(t * (g.court.length > 2 ? 0.38 : 0.46)),
+      padding: rond ? 0 : `0 ${Math.round(t / 3.4)}px`, fontFamily: 'inherit' }}>{g.court}</span>
+  );
+};
+
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
@@ -1974,82 +2000,12 @@ Emilio Immobilier
           <div className={styles.modal} style={{ maxWidth: 740 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🎯 Critères de recherche</h2><button className={styles.modalClose} onClick={() => setShowCriteres(false)}>✕</button></div>
             <div className={styles.modalBody}>
+
+              <SectionCrit ico="🏠" titre="LE BIEN" note="plusieurs choix possibles" />
               <div>
-                <label className={styles.lbl}>Type(s) de bien <span style={{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#94a3b8'}}>(plusieurs choix possibles)</span></label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['Appartement','Maison','Loft','Duplex','Studio','Villa','Terrain','Autre'].map(t => { const sel = crit.types_bien.includes(t); return <button key={t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==t) : [...f.types_bien, t] }))} style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{t}</button>; })}
+                  {[{t:'Appartement',i:'🏢'},{t:'Maison',i:'🏡'},{t:'Loft',i:'🏗️'},{t:'Duplex',i:'🪜'},{t:'Studio',i:'🛋️'},{t:'Villa',i:'🌴'},{t:'Terrain',i:'🌱'},{t:'Autre',i:'✳️'}].map(o => { const sel = crit.types_bien.includes(o.t); return <button key={o.t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==o.t) : [...f.types_bien, o.t] }))} style={{ padding: '7px 15px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.i} {o.t}</button>; })}
                 </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Budget</label>
-                <div className={styles.formRow}>
-                  <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} placeholder="300 000" /></div>
-                  <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div>
-                </div>
-              </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
-                <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
-              </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Chambres minimum</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} placeholder="Ex: 2" /></div>
-                <div><label className={styles.lbl}>Année construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Étage</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
-                  <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage min :</label><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="Ex: 2" style={{width:80}} /></div>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}><label className={styles.lbl} style={{marginBottom:0}}>Étage max :</label><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} placeholder="Ex: 5" style={{width:80}} /></div>
-                </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Équipements souhaités</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
-                </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>DPE maximum accepté</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['A','B','C','D','E','F','G'].map(d => (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>))}
-                </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Secteurs / Quartiers</label>
-                <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
-              </div>
-              <div>
-                <label className={styles.lbl}>Transports</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, color: '#64748b' }}>À moins de</span>
-                  <input className={styles.inp} type="number" min={1} max={60} style={{ width: 90 }}
-                    value={crit.transport_minutes}
-                    onChange={e => setCrit(f => ({ ...f, transport_minutes: e.target.value }))}
-                    placeholder="10" />
-                  <span style={{ fontSize: 13, color: '#64748b' }}>minutes à pied d&apos;une station</span>
-                </div>
-                <input className={styles.inp}
-                  placeholder="Lignes ou stations souhaitées — ex : M9, Marcel Sembat, T2 (Entrée pour ajouter)"
-                  onKeyDown={e => {
-                    const v = (e.target as HTMLInputElement).value.trim();
-                    if (e.key === 'Enter' && v) {
-                      e.preventDefault();
-                      if (!crit.transport_lignes.includes(v)) setCrit(f => ({ ...f, transport_lignes: [...f.transport_lignes, v] }));
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }} />
-                {crit.transport_lignes.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    {crit.transport_lignes.map(l => (
-                      <span key={l} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #e3e8f0', background: '#f8fafc', color: '#1a2332', fontWeight: 600 }}>
-                        {l} <span onClick={() => setCrit(f => ({ ...f, transport_lignes: f.transport_lignes.filter(x => x !== l) }))}
-                          style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Ce critère est relu à chaque chasse — il ne filtre pas automatiquement.</div>
               </div>
               <div className={styles.formRow}>
                 <div>
@@ -2062,34 +2018,16 @@ Emilio Immobilier
                     <option value="refait_neuf">Refait à neuf</option>
                   </select>
                 </div>
-                <div>
-                  <label className={styles.lbl}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>(plusieurs possibles)</span></label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {[{k:'sud',l:'Sud'},{k:'est',l:'Est'},{k:'ouest',l:'Ouest'},{k:'nord',l:'Nord'},{k:'traversant',l:'Traversant'}].map(o => {
-                      const sel = crit.exposition_souhaitee.split(',').map(x=>x.trim()).filter(Boolean);
-                      const active = sel.includes(o.k);
-                      return (
-                        <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{active ? '✓ ' : ''}{o.l}</button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
+              </div>
+
+              <SectionCrit ico="💶" titre="BUDGET" />
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} placeholder="300 000" /></div>
+                <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div>
               </div>
               <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} placeholder="Ex: 25" /></div>
                 <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} placeholder="Ex: 100 000" /></div>
-              </div>
-              <div className={styles.formRow}>
-                <div>
-                  <label className={styles.lbl}>Urgence du projet</label>
-                  <select className={styles.inp} value={crit.urgence} onChange={e=>setCrit(f=>({...f,urgence:e.target.value}))}>
-                    <option value="">Non précisée</option>
-                    <option value="immediate">Immédiate</option>
-                    <option value="3_mois">Sous 3 mois</option>
-                    <option value="6_mois">Sous 6 mois</option>
-                    <option value="annee">Dans l'année</option>
-                  </select>
-                </div>
                 <div>
                   <label className={styles.lbl}>Financement</label>
                   <select className={styles.inp} value={crit.financement} onChange={e=>setCrit(f=>({...f,financement:e.target.value}))}>
@@ -2101,7 +2039,110 @@ Emilio Immobilier
                   </select>
                 </div>
               </div>
-              <div><label className={styles.lbl}>Notes libres</label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
+
+              <SectionCrit ico="📐" titre="SURFACES & VOLUMES" />
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
+                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} placeholder="Ex: 25" /></div>
+              </div>
+              <div className={styles.formRow}>
+                <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
+                <div><label className={styles.lbl}>Chambres min</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} placeholder="Ex: 2" /></div>
+              </div>
+
+              <SectionCrit ico="🏢" titre="ÉTAGE & EXPOSITION" />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
+                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage min</span><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="2" style={{width:80}} /></div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage max</span><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} placeholder="5" style={{width:80}} /></div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>(plusieurs possibles)</span></label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[{k:'sud',l:'Sud'},{k:'est',l:'Est'},{k:'ouest',l:'Ouest'},{k:'nord',l:'Nord'},{k:'traversant',l:'Traversant'}].map(o => {
+                    const sel = crit.exposition_souhaitee.split(',').map(x=>x.trim()).filter(Boolean);
+                    const active = sel.includes(o.k);
+                    return (
+                      <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{active ? '✓ ' : ''}{o.l}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <SectionCrit ico="✨" titre="ÉQUIPEMENTS SOUHAITÉS" />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[{k:'parking',l:'🅿️ Parking'},{k:'cave',l:'📦 Cave'},{k:'balcon',l:'🌿 Balcon'},{k:'terrasse',l:'☀️ Terrasse'},{k:'jardin',l:'🌳 Jardin'},{k:'ascenseur',l:'🛗 Ascenseur'},{k:'gardien',l:'👮 Gardien'},{k:'interphone',l:'🔔 Interphone'},{k:'digicode',l:'🔢 Digicode'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#10b981' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#ecfdf5' : 'white', color: (crit as any)[o.k] ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
+              </div>
+
+              <SectionCrit ico="⚡" titre="PERFORMANCE ÉNERGÉTIQUE" note="DPE maximum accepté" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['A','B','C','D','E','F','G'].map(d => (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${crit.dpe_max===d ? '#1a2332' : '#e2e8f0'}`, background: crit.dpe_max===d ? '#1a2332' : 'white', color: crit.dpe_max===d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>))}
+              </div>
+
+              <SectionCrit ico="📍" titre="OÙ CHERCHER" note="ville puis quartiers" />
+              <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
+
+              <SectionCrit ico="🚇" titre="TRANSPORTS" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13.5, color: '#64748b', fontWeight: 600 }}>À moins de</span>
+                <input className={styles.inp} type="number" min={1} max={60} style={{ width: 86 }}
+                  value={crit.transport_minutes}
+                  onChange={e => setCrit(f => ({ ...f, transport_minutes: e.target.value }))} placeholder="10" />
+                <span style={{ fontSize: 13.5, color: '#64748b', fontWeight: 600 }}>minutes à pied d&apos;une station</span>
+              </div>
+              <div>
+                <label className={styles.lbl}>Lignes souhaitées</label>
+                {MODES.map(m => (
+                  <div key={m.cle} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8', marginBottom: 6 }}>{m.nom}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                      {LIGNES.filter(x => x.mode === m.cle).map(x => {
+                        const sel = crit.transport_lignes.some(v => v.toLowerCase() === x.id.toLowerCase());
+                        return (
+                          <button type="button" key={x.id} title={x.id}
+                            onClick={() => setCrit(f => ({ ...f, transport_lignes: sel ? f.transport_lignes.filter(v => v.toLowerCase() !== x.id.toLowerCase()) : [...f.transport_lignes, x.id] }))}
+                            style={{ padding: 3, borderRadius: '50%', border: `2px solid ${sel ? '#1a2332' : 'transparent'}`, background: 'none', cursor: 'pointer', opacity: sel ? 1 : 0.42, filter: sel ? 'none' : 'saturate(0.35)', transition: 'all 0.15s', lineHeight: 0 }}>
+                            <PastilleLigne id={x.id} t={28} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <input className={styles.inp} placeholder="Une station en particulier ? ex : Marcel Sembat (Entrée pour ajouter)"
+                  onKeyDown={e => {
+                    const v = (e.target as HTMLInputElement).value.trim();
+                    if (e.key === 'Enter' && v) {
+                      e.preventDefault();
+                      if (!crit.transport_lignes.includes(v)) setCrit(f => ({ ...f, transport_lignes: [...f.transport_lignes, v] }));
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }} />
+                {crit.transport_lignes.filter(v => !ligneDe(v)).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {crit.transport_lignes.filter(v => !ligneDe(v)).map(l => (
+                      <span key={l} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, border: '1px solid #e3e8f0', background: '#f8fafc', color: '#1a2332', fontWeight: 600 }}>
+                        {l} <span onClick={() => setCrit(f => ({ ...f, transport_lignes: f.transport_lignes.filter(x => x !== l) }))}
+                          style={{ cursor: 'pointer', marginLeft: 5, opacity: 0.6 }}>✕</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Ce critère est relu à chaque chasse — il ne filtre pas automatiquement.</div>
+              </div>
+
+              <SectionCrit ico="🗒️" titre="CONTEXTE DU PROJET" />
+              <div>
+                <label className={styles.lbl}>Urgence du projet</label>
+                <select className={styles.inp} value={crit.urgence} onChange={e=>setCrit(f=>({...f,urgence:e.target.value}))}>
+                  <option value="">Non précisée</option>
+                  <option value="immediate">Immédiate</option>
+                  <option value="3_mois">Sous 3 mois</option>
+                  <option value="6_mois">Sous 6 mois</option>
+                  <option value="annee">Dans l&apos;année</option>
+                </select>
+              </div>
+              <div><label className={styles.lbl}>Notes libres <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>— visibles par le client dans son espace</span></label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowCriteres(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCriteres} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
