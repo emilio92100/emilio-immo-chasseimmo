@@ -65,24 +65,17 @@ function depuis(d?: string | null) {
   if (h < 48) return 'hier';
   return `${x.getDate()} ${MOIS[x.getMonth()]}`;
 }
-/* Version courte pour le téléphone : le bandeau n'a pas la place d'écrire
-   « aujourd'hui » quand l'heure suffit. */
-function heureCourte(d?: string | null) {
+/* Le bandeau dit la même chose partout : « Actualisé à 19 h 05 » le jour même,
+   « Actualisé le 14 sept. à 19 h 05 » ensuite. Pas de vocabulaire différent
+   entre le téléphone et l'ordinateur — c'est la même phrase pour tout le monde. */
+function actualiseLe(d?: string | null) {
   if (!d) return '';
   const x = new Date(d); if (isNaN(x.getTime())) return '';
-  if (x.toDateString() === new Date().toDateString()) {
-    return 'à ' + x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
-  }
-  return `le ${x.getDate()} ${MOIS[x.getMonth()]}`;
+  const h = 'à ' + x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+  if (x.toDateString() === new Date().toDateString()) return h;
+  return `le ${x.getDate()} ${MOIS[x.getMonth()]} ${h}`;
 }
 
-function heure(d?: string | null) {
-  if (!d) return '';
-  const x = new Date(d); if (isNaN(x.getTime())) return '';
-  const auj = x.toDateString() === new Date().toDateString();
-  const h = x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
-  return auj ? `aujourd'hui à ${h}` : `le ${x.getDate()} ${MOIS[x.getMonth()]} à ${h}`;
-}
 
 const DPEC: Record<string, string> = { A:'#319834', B:'#4ab84a', C:'#a8d84a', D:'#f7e017', E:'#f5b912', F:'#ee8235', G:'#e2231a' };
 const AVIS: Record<string, { e: string; n: string; c: string }> = {
@@ -261,7 +254,7 @@ const T: Record<string, string[]> = {
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
 const AGENT = {
   nom: 'Alexandre Rogelet',
-  role: 'Votre chasseur · Emilio Immobilier',
+  role: 'Votre conseiller · Emilio Immobilier',
   tel: '06 58 95 76 32',
   telUrl: '+33658957632',
   mail: 'arogelet@emilio-immo.com',
@@ -444,7 +437,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               {passage?.quand && (
                 <div className="veilleligne"><span className="pouls" />
                   {/* un seul bloc de texte : sinon le « gap » du flex écarte chaque mot */}
-                  <span><span className="mot-l">Dernière chasse</span><span className="mot-c">Actualisé</span><span className="sur-dossier"> sur votre dossier</span>{' '}<span className="mot-l">{heure(passage.quand)}</span><span className="mot-c">{heureCourte(passage.quand)}</span></span></div>
+                  <span>Actualisé {actualiseLe(passage.quand)}</span></div>
               )}
               <div className="agent-act">
                 <a className="act" href={'tel:' + AGENT.telUrl}><Ico n="tel" t={15} /><span>Appeler</span></a>
@@ -642,7 +635,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       </div>
 
       <div className="col-c">
-      <div className="sep"><span>Votre chasseur</span><i /></div>
+      <div className="sep"><span>Votre conseiller</span><i /></div>
       <div className="chasseur">
         <div className="av">AR</div>
         <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
@@ -685,12 +678,22 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
     <div className="liste">
       {biens.map(b => {
         const a = b.avis ? ETIQ[b.avis] : null;
-        return (
+        /* Une carte en hauteur : la bande de photos, puis le titre, puis le
+             prix, puis le commentaire. L'ancienne grille « vignette | texte »
+             s'étirait dès qu'un commentaire s'ajoutait, et la vignette flottait
+             au milieu d'un grand vide blanc. */
+          const vues = (b.photos || []).slice(0, 3);
+          const cases = vues.length ? vues : [null];
+          return (
           <button key={b.id} className={'bien' + (b.etat === 'neuf' ? ' neuf' : '')} onClick={() => onOuvrir(b)}>
-            <span className="vignette">{b.photos[0]
-              ? <img src={b.photos[0]} alt="" />
-              : <span style={{ fontSize: 18 }}>▣</span>}</span>
-            <span>
+            <span className={'bande-ph n' + cases.length}>
+              {cases.map((ph, i) => (
+                <span className="ph" key={i}>
+                  {ph ? <img src={ph} alt="" /> : <span className="ph-vide">▣</span>}
+                </span>
+              ))}
+            </span>
+            <span className="corps-bien">
               <span className="haut-bien">
                 {b.etat === 'neuf'
                   ? <span className="etiq neuf">Nouveau</span>
@@ -698,13 +701,14 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
                     ? <span className={'etiq ' + a.c}>{a.e} {a.n}</span>
                     : <span className="etiq vu">Vu</span>}
                 <span className="dat">{depuis(b.envoyeLe)}</span>
+                <span className="fleche"><Ico n="fleche" t={18} /></span>
               </span>
               <h4>{b.titre}</h4>
               <span className="meta">{[
                 b.surface && b.surface + ' m²', b.pieces && b.pieces + ' pièces',
                 b.chambres && b.chambres + ' chambres', b.secteur,
               ].filter(Boolean).join(' · ')}</span>
-              <div className="prix tab">{EUR(b.prix)}</div>
+              <span className="prix tab">{EUR(b.prix)}</span>
               {b.etat === 'avis' && b.commentaire && (
                 /* Ce que le client a écrit lui appartient : on l'annonce et on le
                    rend lisible, au lieu d'une ligne grise en italique tout en bas. */
@@ -714,9 +718,8 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
                 </span>
               )}
             </span>
-            <span className="fleche"><Ico n="fleche" t={19} /></span>
           </button>
-        );
+          );
       })}
     </div>
   );
@@ -1334,7 +1337,7 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
                 <div className="ape-t">Aperçu du message</div>
                 <div className="ape-l"><span>Objet</span>{client.prenom} vous partage un bien</div>
                 <div className="ape-c">Bonjour,<br />Voici un bien que je suis en train de regarder avec
-                  mon chasseur immobilier. Dites-moi ce que vous en pensez.<br /><br />
+                  mon conseiller immobilier. Dites-moi ce que vous en pensez.<br /><br />
                   <b>{b.titre}</b><br />
                   {[b.surface && b.surface + ' m²', EUR(b.prix)].filter(Boolean).join(' · ')}<br />
                   <span className="lien-ap">{lien}</span><br /><br />{client.prenom}</div>
@@ -1794,8 +1797,6 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .veilleligne{position:relative; display:inline-flex; align-items:center; gap:9px;
   background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
   border-radius:99px; padding:7px 15px 7px 12px; font-size:12.5px; color:rgba(255,255,255,.85)}
-.sur-dossier{display:none}
-.mot-c{display:none}
 .veilleligne{white-space:nowrap}
 .pouls{width:7px; height:7px; border-radius:50%; background:#5fd39b; flex:0 0 auto;
   box-shadow:0 0 0 0 rgba(95,211,155,.6); animation:pouls 2.6s ease-out infinite}
@@ -1920,26 +1921,36 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .bloc-titre .n.or{background:var(--ambre); color:#fff}
 
 .liste{display:flex; flex-direction:column; gap:11px}
-.bien{display:grid; grid-template-columns:88px minmax(0,1fr) auto; gap:14px; align-items:center;
-  background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:11px;
-  text-align:left; width:100%; box-shadow:var(--ombre); position:relative; overflow:hidden;
+.bien{display:block; background:var(--carte); border:1px solid var(--trait); border-radius:18px;
+  padding:0; text-align:left; width:100%; box-shadow:var(--ombre); position:relative; overflow:hidden;
   transition:transform .2s cubic-bezier(.16,1,.3,1), box-shadow .2s ease, border-color .2s ease}
 .bien:hover{transform:translateY(-3px); border-color:var(--trait-fort); box-shadow:var(--ombre-f)}
 .bien:hover .fleche{transform:translateX(4px)}
 .bien:active{transform:scale(.99)}
 .bien.neuf{border-color:var(--ambre-trait)}
-.bien.neuf::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--ambre)}
-.vignette{width:88px; height:88px; border-radius:13px; display:flex; align-items:center; justify-content:center;
-  flex:0 0 auto; overflow:hidden; background:linear-gradient(148deg,#3a5178,#22314c); color:rgba(255,255,255,.5)}
-.vignette img{width:100%; height:100%; object-fit:cover}
-.haut-bien{display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap}
+.bien.neuf::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--ambre); z-index:2}
+/* La bande de photos : une à trois vues côte à côte, en haut de la carte. */
+/* Hauteur fixe et mosaïque : une grande vue à gauche, deux petites empilées.
+   Sans hauteur imposée, les petites tuiles laissaient un vide gris sous elles. */
+.bande-ph{display:grid; gap:2px; background:var(--trait); height:158px}
+.bande-ph.n1{grid-template-columns:1fr}
+.bande-ph.n2{grid-template-columns:1fr 1fr}
+.bande-ph.n3{grid-template-columns:1.9fr 1fr; grid-template-rows:1fr 1fr}
+.bande-ph.n3 .ph:first-child{grid-row:span 2}
+.bande-ph .ph{display:flex; align-items:center; justify-content:center; overflow:hidden; min-height:0;
+  background:linear-gradient(148deg,#3a5178,#22314c); color:rgba(255,255,255,.45)}
+.bande-ph img{width:100%; height:100%; object-fit:cover; display:block}
+@media(min-width:760px){ .bande-ph{height:196px} }
+.ph-vide{font-size:20px}
+.corps-bien{display:block; padding:12px 14px 14px}
+.haut-bien{display:flex; align-items:center; gap:8px; margin-bottom:7px}
 .dat{font-size:11px; font-weight:700; color:var(--plume-clair)}
-.bien h4{margin:0 0 4px; font-size:15px; font-weight:800; line-height:1.3;
+.bien h4{margin:0 0 4px; font-size:15.5px; font-weight:800; line-height:1.3;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
-.bien .meta{font-size:12.5px; color:var(--plume); display:block}
-.bien .prix{font-family:'Plus Jakarta Sans',sans-serif; font-size:17.5px; font-weight:800; color:var(--or-fonce);
-  line-height:1; margin-top:7px; letter-spacing:-.5px}
-.fleche{color:var(--plume-clair); padding-right:4px; transition:transform .2s cubic-bezier(.16,1,.3,1)}
+.bien .meta{font-size:12.5px; color:var(--plume); display:block; line-height:1.5}
+.bien .prix{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:800;
+  color:var(--or-fonce); line-height:1.1; margin-top:9px; letter-spacing:-.5px}
+.fleche{margin-left:auto; color:var(--plume-clair); display:flex; transition:transform .2s cubic-bezier(.16,1,.3,1)}
 .etiq{display:inline-flex; align-items:center; gap:5px; border-radius:99px; padding:3px 10px;
   font-size:11px; font-weight:800; border:1px solid transparent}
 .etiq.neuf{background:var(--ambre); color:#fff}
@@ -2482,8 +2493,6 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   .agent-id b{font-size:11.5px}
   .act{width:29px; height:29px}
   .veilleligne{padding:4px 9px 4px 8px; font-size:10px; gap:5px; min-width:0}
-  .mot-l{display:none}
-  .mot-c{display:inline}
   .agent-id{flex-direction:column; align-items:flex-start; gap:1px}
   .agent{flex-wrap:nowrap}
   .pouls{width:6px; height:6px}
