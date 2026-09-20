@@ -717,6 +717,12 @@ function GrandOk({ titre, texte, rappel, onFermer }: any) {
 
 /* ══ styles ═══════════════════════════════════════ */
 const CSS = `
+/* Le CRM verrouille le défilement (html,body overflow:hidden dans globals.css)
+   parce que c'est une appli à écran fixe. L'espace client, lui, est une page
+   web classique : on rend la main au navigateur. */
+html, body{ height:auto !important; min-height:100% !important;
+  overflow-x:hidden !important; overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch }
 :root{
   --encre:#1a2332; --encre2:#2a3a52; --or:#c9a84c; --or-fonce:#a9822f;
   --fond:#f4f6fa; --carte:#fff; --trait:#e3e8f0; --trait-fort:#cfd7e3;
