@@ -410,7 +410,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showRechercheMenu, setShowRechercheMenu] = useState(false);
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
-  const [tab, setTab] = useState('biens');
+  const [tab, setTab] = useState('presentes');   // c'est là qu'on regarde en premier : ce que le client a reçu
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -1480,8 +1480,15 @@ Emilio Immobilier
         );
       })()}
       <div className={styles.contentWrap}>
-        {/* SÉLECTEUR DE RECHERCHE */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* LE LIEN DE L'ESPACE CLIENT, tout en haut */}
+        {rechercheActive && (
+          <div style={{ marginBottom: 16 }}>
+            <LienEspace recherche={rechercheActive} client={client} />
+          </div>
+        )}
+
+        {/* SÉLECTEUR DE RECHERCHE — juste au-dessus des critères qu'il commande */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
             {showRechercheMenu && <div onClick={() => setShowRechercheMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />}
             <button onClick={() => setShowRechercheMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -1493,7 +1500,7 @@ Emilio Immobilier
               <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
                 {recherches.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
-                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('selection'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('presentes'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                       <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
                       {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
                     </button>
@@ -1508,11 +1515,6 @@ Emilio Immobilier
           </div>
           {rechercheActive && (
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline' }}>Renommer</button>
-          )}
-          {rechercheActive && (
-            <div style={{ flexBasis: '100%', marginTop: 4 }}>
-              <LienEspace recherche={rechercheActive} client={client} />
-            </div>
           )}
         </div>
 
@@ -1670,7 +1672,12 @@ Emilio Immobilier
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
         @keyframes ficheTabIn { from { opacity: 0 } to { opacity: 1 } }
-        .fiche-tab { animation: ficheTabIn .32s ease both; min-height: 240px; }
+        /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
+           pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
+        .fiche-tab { animation: ficheTabIn .32s ease both; min-height: 240px;
+          background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
+          border-radius: 0 0 16px 16px; padding: 16px; }
+        @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
       `}</style>
 
         <StylesEmilio />
