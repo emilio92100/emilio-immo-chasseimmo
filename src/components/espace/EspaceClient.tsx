@@ -767,123 +767,167 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
 
 function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
+  const lues = passage?.totalLues ?? 0;
+  const ret = passage?.totalRetenues ?? 0;
+  const nbRech = passage?.nbPassages ?? 0;
+  /* « 1 sur 40 » : on le dit dans l'autre sens, celui qui parle — combien on
+     écarte pour en garder une. */
+  const sur = ret > 0 ? Math.round(lues / ret) : 0;
+
+  const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
+  const prix = avecPrix.map((b: Bien) => b.prix as number).sort((a: number, z: number) => a - z);
+  const auM2 = avecPrix.filter((b: Bien) => b.surface && b.surface > 0)
+    .map((b: Bien) => Math.round((b.prix as number) / (b.surface as number)));
+  const moyM2 = auM2.length ? Math.round(auM2.reduce((t: number, x: number) => t + x, 0) / auM2.length) : 0;
+  const bmax = crit?.budgetMax || 0;
+  const sous = bmax ? prix.filter((x: number) => x <= bmax).length : 0;
+
   return (
-    <Vue icone="graph" titre="Le marché sur vos critères" aller={aller}
-      sous="Ce que nous avons parcouru pour vous. La recherche est menée chaque jour, sur les principaux portails immobiliers, notre carnet d'adresses de confrères et de partenaires, et notre base off-market.">
-      {/* Le cumul du dossier : c'est lui qui dit l'ampleur du travail.
-          Un seul passage ne raconte rien, dix mois de passages, si. */}
-      {(passage?.totalLues ?? 0) > 0 && (() => {
-        const lues = passage.totalLues as number;
-        const ret = passage.totalRetenues ?? 0;
-        const sur = ret > 0 ? Math.round(lues / ret) : 0;
-        return (
-          <div className="bilan">
-            <div className="bilan-t">Depuis l&apos;ouverture de votre dossier</div>
-            <div className="bilan-g">
-              <div className="bg-c"><span className="bg-i"><Ico n="loupe" t={17} /></span>
-                <b className="tab">{lues.toLocaleString('fr-FR')}</b><span>annonces lues</span></div>
-              <div className="bg-c"><span className="bg-i"><Ico n="horloge" t={17} /></span>
-                <b className="tab">{(passage.nbPassages ?? 0).toLocaleString('fr-FR')}</b><span>passages de recherche</span></div>
-              <div className="bg-c or"><span className="bg-i"><Ico n="etoile" t={17} /></span>
-                <b className="tab">{ret.toLocaleString('fr-FR')}</b><span>biens retenus pour vous</span></div>
+    <Vue icone="graph" titre="Le marché sur vos critères" aller={aller}>
+      <div className="intro-m">
+        <span className="im-i"><Ico n="loupe" t={18} /></span>
+        <span>Chaque jour, nous parcourons ce qui sort sur vos secteurs et dans votre budget&nbsp;:
+          portails immobiliers, confrères et partenaires, base off-market. Voici ce que ça donne.</span>
+      </div>
+
+      {/* ── Le travail depuis l'ouverture ── */}
+      {lues > 0 && (
+        <div className="gr-cadre c-net">
+          <div className="gr-tete">
+            <span className="ge or"><Ico n="loupe" t={16} /></span>
+            <h3>Le travail depuis l&apos;ouverture</h3>
+          </div>
+          <div className="tuiles">
+            <div className="tu">
+              <span className="tu-i"><Ico n="note" t={19} /></span>
+              <span className="tu-c"><b className="tab">{lues.toLocaleString('fr-FR')}</b>
+                <span>annonce{lues > 1 ? 's' : ''} lue{lues > 1 ? 's' : ''}</span></span></div>
+            <div className="tu">
+              <span className="tu-i"><Ico n="loupe" t={19} /></span>
+              <span className="tu-c"><b className="tab">{nbRech.toLocaleString('fr-FR')}</b>
+                <span>recherche{nbRech > 1 ? 's' : ''} lancée{nbRech > 1 ? 's' : ''}</span></span></div>
+            <div className="tu or">
+              <span className="tu-i"><Ico n="etoile" t={19} /></span>
+              <span className="tu-c"><b className="tab">{ret.toLocaleString('fr-FR')}</b>
+                <span>bien{ret > 1 ? 's' : ''} retenu{ret > 1 ? 's' : ''} pour vous</span></span></div>
+          </div>
+          {sur > 1 && (
+            <div className="gr-note">
+              Autrement dit&nbsp;: sur <b>{sur.toLocaleString('fr-FR')} annonces</b>, <b>une seule</b> vous est présentée.
+              Les {(sur - 1).toLocaleString('fr-FR')} autres sont écartées avant d&apos;arriver jusqu&apos;à vous.
             </div>
-            {sur > 1 && (
-              <div className="bilan-r">Soit <b>1 bien retenu sur {sur.toLocaleString('fr-FR')} annonces lues</b>.
-                Tout le reste a été écarté avant d&apos;arriver jusqu&apos;à vous.</div>
+          )}
+        </div>
+      )}
+
+      {/* ── La dernière recherche ── */}
+      <div className="gr-cadre c-net">
+        <div className="gr-tete">
+          <span className="ge"><Ico n="cible" t={16} /></span>
+          <h3>La dernière recherche</h3>
+          {passage?.quand && <span className="gn">{depuis(passage.quand)}</span>}
+        </div>
+        <div className="entonnoir">
+          {(() => {
+            const l = passage?.lues ?? 0;
+            const ec = passage?.ecartees ?? 0;
+            const re = passage?.proposees ?? 0;
+            const pc = (n: number) => (l ? Math.max(5, Math.round((n / l) * 100)) : 0);
+            return (
+              <>
+                <div className="ent">
+                  <div className="ent-h"><b className="tab">{l || '—'}</b>
+                    <span>annonce{l > 1 ? 's' : ''} lue{l > 1 ? 's' : ''} sur le marché</span></div>
+                  <div className="ent-b"><i style={{ width: '100%' }} /></div>
+                </div>
+                <div className="ent">
+                  <div className="ent-h"><b className="tab pale">{ec || '—'}</b>
+                    <span>écartée{ec > 1 ? 's' : ''}</span></div>
+                  <div className="ent-b"><i className="pale" style={{ width: pc(ec) + '%' }} /></div>
+                </div>
+                <div className="ent">
+                  <div className="ent-h"><b className="tab or">{re || '—'}</b>
+                    <span className="or">retenue{re > 1 ? 's' : ''} et déposée{re > 1 ? 's' : ''} dans votre espace</span></div>
+                  <div className="ent-b"><i className="or" style={{ width: pc(re) + '%' }} /></div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+        <div className="gr-note">
+          Une annonce est écartée dès qu&apos;<b>un seul</b> de vos critères n&apos;est pas respecté&nbsp;:
+          le budget, la surface, le nombre de pièces, le secteur, l&apos;étage… Nous ne vous montrons
+          que ce qui passe tout.
+        </div>
+      </div>
+
+      {/* ── Les biens retenus ── */}
+      {prix.length >= 2 && (
+        <div className="gr-cadre c-net">
+          <div className="gr-tete">
+            <span className="ge"><Ico n="maison" t={16} /></span>
+            <h3>Les biens retenus pour vous</h3>
+            <span className="gn">{prix.length}</span>
+          </div>
+          <div className="tuiles">
+            <div className="tu">
+              <span className="tu-i"><Ico n="euro" t={19} /></span>
+              <span className="tu-c"><b className="tab">{EUR(prix[0])}</b><span>le moins cher</span></span></div>
+            <div className="tu">
+              <span className="tu-i"><Ico n="euro" t={19} /></span>
+              <span className="tu-c"><b className="tab">{EUR(prix[prix.length - 1])}</b><span>le plus cher</span></span></div>
+            {moyM2 > 0 && (
+              <div className="tu">
+                <span className="tu-i"><Ico n="regle" t={19} /></span>
+                <span className="tu-c"><b className="tab">{moyM2.toLocaleString('fr-FR')} €</b>
+                  <span>du m² en moyenne</span></span></div>
             )}
           </div>
-        );
-      })()}
-
-      <div className="sep"><span>Le dernier passage</span><i /></div>
-
-      <div className="entonnoir">
-        <div className="ent-t">Ce qu&apos;il a donné, sur vos critères</div>
-        {(() => {
-          const lues = passage?.lues ?? 0;
-          const ec = passage?.ecartees ?? 0;
-          const re = passage?.proposees ?? 0;
-          const pc = (n: number) => lues ? Math.max(5, Math.round(n / lues * 100)) : 0;
-          return (
-            <>
-              <div className="ent">
-                <div className="ent-h"><b className="tab">{passage?.lues ?? '—'}</b>
-                  <span>annonces lues sur le marché</span></div>
-                <div className="ent-b"><i style={{ width: '100%' }} /></div>
-              </div>
-              <div className="ent">
-                <div className="ent-h"><b className="tab pale">{passage?.ecartees ?? '—'}</b>
-                  <span>écartées&nbsp;: elles ne passaient pas vos critères</span></div>
-                <div className="ent-b"><i className="pale" style={{ width: pc(ec) + '%' }} /></div>
-              </div>
-              <div className="ent">
-                <div className="ent-h"><b className="tab or">{passage?.proposees ?? '—'}</b>
-                  <span className="or">retenues et déposées dans votre espace</span></div>
-                <div className="ent-b"><i className="or" style={{ width: pc(re) + '%' }} /></div>
-              </div>
-            </>
-          );
-        })()}
-      </div>
-      <div className="sep"><span>Les biens retenus</span><i /></div>
-
-      {/* Ce que valent, concrètement, les biens retenus : c'est la seule
-          fourchette de prix que l'on puisse donner sans inventer — elle vient
-          des biens réellement présentés, pas d'une moyenne de marché. */}
-      {(() => {
-        const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
-        if (avecPrix.length < 2) return null;
-        const prix = avecPrix.map((b: Bien) => b.prix as number).sort((a: number, z: number) => a - z);
-        const auM2 = avecPrix.filter((b: Bien) => b.surface && b.surface > 0)
-          .map((b: Bien) => Math.round((b.prix as number) / (b.surface as number)));
-        const moyM2 = auM2.length ? Math.round(auM2.reduce((t: number, x: number) => t + x, 0) / auM2.length) : 0;
-        const bmax = crit?.budgetMax || 0;
-        const sous = bmax ? prix.filter((x: number) => x <= bmax).length : 0;
-        return (
-          <div className="bilan">
-            <div className="bilan-t">Les biens déposés dans votre espace depuis l&apos;ouverture</div>
-            <div className="bilan-g">
-              <div className="bg-c"><span className="bg-i"><Ico n="maison" t={17} /></span>
-                <b className="tab">{prix.length}</b><span>biens présentés en tout</span></div>
-              {moyM2 > 0 && <div className="bg-c"><span className="bg-i"><Ico n="euro" t={17} /></span>
-                <b className="tab">{moyM2.toLocaleString('fr-FR')} €</b><span>prix moyen du m²</span></div>}
-            </div>
-            <div className="bilan-r">
-              Ils vont de <b>{EUR(prix[0])}</b> à <b>{EUR(prix[prix.length - 1])}</b>.
-              {bmax > 0 && (sous === prix.length
-                ? <> Tous tiennent dans votre budget de {EUR(bmax)}.</>
-                : <> {sous} sur {prix.length} tiennent dans votre budget de {EUR(bmax)}&nbsp;; les autres vous ont été montrés parce qu&apos;ils le valaient.</>)}
-            </div>
-          </div>
-        );
-      })()}
-
-      <p className="note">Chaque jour, nous relisons l&apos;intégralité du marché sur vos critères.
-        Ce qui ne correspond pas est écarté&nbsp;— vous ne voyez que ce qui mérite votre temps.</p>
-
-      <div className="sep"><span>Jour après jour</span><i /></div>
-      {semaine.length > 1 && (
-        <div className="graphe">
-          <div className="bloc-titre" style={{ margin: 0 }}>
-            <h3>Annonces lues, jour par jour</h3>
-            <span className="n">{total} cette semaine</span>
-          </div>
-          <p className="legende">Chaque barre, c&apos;est le nombre d&apos;annonces parcourues ce jour-là
-            sur vos secteurs et votre budget. La barre dorée est celle d&apos;aujourd&apos;hui.</p>
-          <div className="barres">
-            {semaine.map((d: any, i: number) => {
-              const j = d.quand ? JOURS[new Date(d.quand).getDay()] : '·';
-              return (
-                <span className={'barre' + (i === semaine.length - 1 ? ' auj' : '')} key={i}>
-                  <b>{d.lues || '—'}</b>
-                  <i style={{ height: Math.max(4, d.lues / maxLues * 100) + '%', animationDelay: i * .06 + 's' }} />
-                  <span>{j}</span>
-                </span>
-              );
-            })}
+          <div className="gr-note">
+            Ce sont les {prix.length} biens déposés dans votre espace depuis l&apos;ouverture de votre dossier.
+            {bmax > 0 && (sous === prix.length
+              ? <> Tous tiennent dans votre budget de <b>{EUR(bmax)}</b>.</>
+              : <> <b>{sous} sur {prix.length}</b> tiennent dans votre budget de {EUR(bmax)}&nbsp;; les autres
+                vous ont été montrés parce qu&apos;ils le valaient.</>)}
           </div>
         </div>
       )}
+
+      {/* ── Le rythme ── */}
+      <div className="gr-cadre c-net">
+        <div className="gr-tete">
+          <span className="ge"><Ico n="calendrier" t={16} /></span>
+          <h3>Jour après jour</h3>
+          {semaine.length > 1 && <span className="gn">{total} cette semaine</span>}
+        </div>
+        {semaine.length > 1 ? (
+          <>
+            <div className="gr-note">Chaque barre, c&apos;est le nombre d&apos;annonces parcourues ce jour-là
+              sur vos secteurs et votre budget. La barre dorée est celle d&apos;aujourd&apos;hui.</div>
+            <div className="barres">
+              {semaine.map((d: any, i: number) => {
+                const j = d.quand ? JOURS[new Date(d.quand).getDay()] : '·';
+                return (
+                  <span className={'barre' + (i === semaine.length - 1 ? ' auj' : '')} key={i}>
+                    <b>{d.lues || '—'}</b>
+                    <i style={{ height: Math.max(4, (d.lues / maxLues) * 100) + '%', animationDelay: i * 0.06 + 's' }} />
+                    <span>{j}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          /* Une section vide inquiète plus qu'elle n'informe : on dit pourquoi. */
+          <div className="vide-doux">
+            <span className="vd-i"><Ico n="graph" t={26} /></span>
+            <b>Le graphique arrive à la deuxième recherche</b>
+            <span>Il faut au moins deux journées de recherche pour dessiner une courbe.
+              Revenez demain&nbsp;: vous verrez ici, jour par jour, combien d&apos;annonces ont été
+              parcourues pour vous.</span>
+          </div>
+        )}
+      </div>
     </Vue>
   );
 }
@@ -2191,12 +2235,6 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .vide-sec{color:var(--plume-clair); font-size:14px; padding:26px 16px; text-align:center;
   background:var(--carte); border:1px dashed var(--trait-fort); border-radius:16px; line-height:1.6}
 
-.tuiles{display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--trait);
-  border:1px solid var(--trait); border-radius:18px; overflow:hidden; box-shadow:var(--ombre)}
-.tuile{background:var(--carte); padding:18px 16px}
-.tuile .n{font-family:'Plus Jakarta Sans',sans-serif; font-size:29px; font-weight:800; line-height:1; letter-spacing:-1.2px}
-.tuile .n.or{color:var(--or-fonce)} .tuile .n.pale{color:var(--plume-clair)}
-.tuile .l{font-size:10.5px; letter-spacing:.9px; text-transform:uppercase; color:var(--plume-clair); margin-top:8px; font-weight:700}
 .note{font-size:14px; color:var(--plume); margin-top:16px; line-height:1.7}
 .legende{font-size:12.5px; color:var(--plume-clair); line-height:1.6; margin:10px 0 0}
 
@@ -2578,7 +2616,6 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .grille{gap:16px}
   /* les listes de biens passent sur deux colonnes */
   .liste{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:stretch}
-  .tuiles{grid-template-columns:repeat(4,1fr)}
   .sous-vue{max-width:820px}
   .relance{max-width:820px}
 }
@@ -2897,5 +2934,61 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .bilan-r{margin-top:12px; font-size:13px; line-height:1.6; color:var(--plume)}
 .bilan-r b{color:var(--encre); font-weight:800}
 
+
+
+/* ═══ La page « marché » : des blocs colorés, pas des tableaux blancs ═══ */
+.intro-m{display:flex; gap:12px; align-items:flex-start; margin-top:16px; background:var(--carte);
+  border:1px solid var(--trait); border-radius:18px; padding:14px 16px; box-shadow:var(--ombre);
+  font-size:13.5px; line-height:1.65; color:var(--plume)}
+.im-i{flex:0 0 auto; width:32px; height:32px; border-radius:10px; display:flex;
+  align-items:center; justify-content:center; background:var(--fond); color:var(--plume)}
+
+.tuiles{display:grid; grid-template-columns:1fr; gap:9px}
+.tu{border-radius:15px; padding:12px 13px; border:1px solid var(--trait); background:var(--carte);
+  display:flex; align-items:center; gap:12px;
+  background:var(--carte)}
+.tu-i{flex:0 0 auto; width:38px; height:38px; border-radius:12px; display:flex;
+  align-items:center; justify-content:center; background:rgba(255,255,255,.72)}
+.tu-c{min-width:0}
+.tu b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:800;
+  letter-spacing:-.6px; line-height:1.15; color:var(--encre)}
+.tu-c > span{display:block; margin-top:3px; font-size:10px; letter-spacing:.7px;
+  text-transform:uppercase; font-weight:800; line-height:1.35; color:var(--plume-clair)}
+.tu b{color:var(--encre)}
+.tu .tu-c > span{color:var(--plume-clair)}
+.tu .tu-i{color:var(--plume); background:var(--fond)}
+/* une seule tuile porte l'or : celle qui dit ce qu'on a retenu pour vous */
+.tu.or{background:var(--or-fond); border-color:var(--or-trait)}
+.tu.or b{color:var(--or-fonce)}
+.tu.or .tu-c > span{color:var(--or-fonce); opacity:.75}
+.tu.or .tu-i{color:#fff; background:var(--or)}
+
+.vide-doux{text-align:center; padding:22px 14px 6px}
+.vd-i{display:inline-flex; width:54px; height:54px; border-radius:50%; margin-bottom:12px;
+  align-items:center; justify-content:center; background:var(--fond); color:var(--plume-clair)}
+.vide-doux b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800}
+.vide-doux > span:not(.vd-i){display:block; margin-top:7px; font-size:13px; line-height:1.6;
+  color:var(--plume); max-width:46ch; margin-left:auto; margin-right:auto}
+
+/* l'entonnoir vit désormais dans une carte de catégorie */
+@media(min-width:540px){
+  .tuiles{grid-template-columns:repeat(3,1fr)}
+  .tu{flex-direction:column; text-align:center; gap:9px; padding:15px 11px 14px}
+  .tu-i{width:40px; height:40px}
+}
+/* ── la carte nette : blanc, filet gris, titre encre ─────────────
+   Sur la page du marché, quatre cartes se suivent. Quatre teintes
+   différentes, c'était un arc-en-ciel : ici le fond se tait et l'or
+   ne souligne que le chiffre qui compte. */
+.gr-cadre.c-net{border-color:var(--trait); background:var(--carte); box-shadow:var(--ombre)}
+.gr-cadre.c-net .gr-tete{border-color:var(--trait); background:none; padding-bottom:12px}
+.gr-cadre.c-net .gr-tete h3{color:var(--encre)}
+.gr-cadre.c-net .gr-note{color:var(--plume)}
+.gr-cadre.c-net .gn{background:var(--encre); color:#fff}
+.gr-cadre.c-net .ge{width:28px; height:28px; border-radius:9px; display:flex;
+  align-items:center; justify-content:center; background:var(--fond); color:var(--encre2)}
+.gr-cadre.c-net .ge.or{background:var(--or); color:#fff}
+.gr-cadre .entonnoir{background:none; border:none; padding:0; box-shadow:none}
+.gr-cadre .barres{margin-top:12px}
 
 `;
