@@ -90,6 +90,52 @@ const AVIS: Record<string, { e: string; n: string; c: string }> = {
   souhaite_visiter: { e: '👀', n: 'Je veux visiter', c: 'visite' },
   refuse: { e: '👎', n: 'Pas pour moi', c: 'non' },
 };
+/* Pour l'affichage seulement : « visite » n'est pas un choix du client,
+   c'est le chasseur qui l'a posé en saisissant son compte rendu. */
+const ETIQ: Record<string, { e: string; n: string; c: string }> = {
+  ...AVIS,
+  visite: { e: '🏠', n: 'Visite effectuée', c: 'fait' },
+};
+/* Après le clic sur un avis, on ne laisse pas un champ vide et muet :
+   on dit au client à quoi servira ce qu'il écrit, et ce qu'on attend de lui.
+   C'est ce qui fait la différence entre 10 % et 60 % de retours écrits. */
+const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string }> = {
+  interesse: {
+    t: 'Qu’est-ce qui vous a plu ?',
+    p: 'Plus vous êtes précis, plus les biens suivants ressembleront à celui-là. Et si vous voulez le visiter, dites-le-nous ici.',
+    ph: 'Ex : la luminosité, le séjour, le quartier… et si je veux le visiter.',
+    btn: 'Envoyer mon avis',
+  },
+  souhaite_visiter: {
+    t: 'Quelles sont vos disponibilités ?',
+    p: 'Votre conseiller organise la visite avec l’agence ou le propriétaire. Donnez-lui deux ou trois créneaux, il revient vers vous avec un rendez-vous.',
+    ph: 'Ex : jeudi après 18 h, vendredi midi, samedi matin…',
+    btn: 'Envoyer mes disponibilités',
+  },
+  refuse: {
+    t: 'Qu’est-ce qui n’a pas convenu ?',
+    p: 'C’est l’information la plus utile de toutes : elle nous permet d’écarter ce type de bien et d’affiner votre recherche. Même une phrase suffit.',
+    ph: 'Ex : trop sombre, rue trop passante, cuisine trop petite, pas de vrai extérieur…',
+    btn: 'Envoyer mon retour',
+  },
+};
+
+/* Les cases de rangement de « Mes derniers biens consultés », dans l'ordre
+   où elles comptent pour le client : ce qu'il attend de faire d'abord, puis
+   ce qu'il a aimé, et seulement à la fin ce qu'il a écarté.
+   « visite » vient du CRM (compte rendu de visite saisi par le chasseur). */
+const GROUPES: { id: string; e: string; court: string; titre: string; note?: string }[] = [
+  { id: 'attente', e: '⏳', court: 'En attente', titre: 'En attente de votre avis',
+    note: 'Vous les avez ouverts sans nous dire ce que vous en pensiez. Un mot suffit — c’est ce qui oriente la suite de la recherche.' },
+  { id: 'souhaite_visiter', e: '👀', court: 'À visiter', titre: 'Je veux visiter',
+    note: 'Votre conseiller organise les visites. Envoyez-lui vos disponibilités si ce n’est pas déjà fait.' },
+  { id: 'visite', e: '🏠', court: 'Visités', titre: 'Visite effectuée' },
+  { id: 'interesse', e: '👍', court: 'Ça me plaît', titre: 'Ça me plaît' },
+  { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi',
+    note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
+];
+const groupeDe = (b: Bien) => (b.avis && GROUPES.some(g => g.id === b.avis) ? b.avis : 'attente');
+
 /* Les secteurs sont écrits par le CRM sous la forme « Quartier (Ville) »,
    ou « Ville » seule quand toute la ville est prise. On relit ce format —
    on n'invente aucune liste ici, elle vient de src/lib/secteurs.ts. */
@@ -282,6 +328,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
+  const [filtreC, setFiltreC] = useState('tout');   // filtre de « Mes derniers biens consultés »
 
   /* ── ouverture d'une fiche ── */
   function ouvrirBien(b: Bien) {
@@ -435,24 +482,43 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               )}
             </Vue>
           )}
-          {vue === 'consultes' && (
+          {vue === 'consultes' && (() => {
+            const ouverts = [...vus, ...donnes];
+            const par: Record<string, Bien[]> = {};
+            ouverts.forEach(b => { const g = groupeDe(b); (par[g] ||= []).push(b); });
+            const visibles = GROUPES.filter(g => (par[g.id] || []).length > 0);
+            const montres = filtreC === 'tout' ? visibles : visibles.filter(g => g.id === filtreC);
+            return (
             <Vue icone="horloge" titre="Mes derniers biens consultés" aller={aller}
               sous="Tout ce que vous avez déjà ouvert, du plus récent au plus ancien, avec vos retours.">
-              {vus.length > 0 && (
-                <div>
-                  <div className="bloc-titre"><h3>En attente de votre avis</h3><span className="n or">{vus.length}</span></div>
-                  <div className="relance"><Ico n="horloge" t={18} />
-                    <span>Vous les avez regardés sans me dire ce que vous en pensiez. Un mot suffit&nbsp;— c&apos;est ce qui affine la chasse du lendemain.</span>
-                  </div>
-                  <Liste biens={vus} onOuvrir={ouvrirBien} vide="" />
+              {ouverts.length === 0 ? (
+                <div className="vide-sec">Vous n&apos;avez encore ouvert aucun bien.<br />Ils se rangeront ici au fur et à mesure, avec vos retours.</div>
+              ) : (<>
+                <div className="filtres">
+                  <button className={'fc' + (filtreC === 'tout' ? ' on' : '')} onClick={() => setFiltreC('tout')}>
+                    Tout <i>{ouverts.length}</i>
+                  </button>
+                  {visibles.map(g => (
+                    <button key={g.id} className={'fc' + (filtreC === g.id ? ' on' : '')} onClick={() => setFiltreC(g.id)}>
+                      <span className="fe">{g.e}</span>{g.court} <i>{par[g.id].length}</i>
+                    </button>
+                  ))}
                 </div>
-              )}
-              <div>
-                <div className="bloc-titre"><h3>Vos avis</h3><span className="n">{donnes.length}</span></div>
-                <Liste biens={donnes} onOuvrir={ouvrirBien} vide="Vos avis apparaîtront ici dès que vous en aurez donné un." />
-              </div>
+                {montres.map(g => (
+                  <div className="groupe" key={g.id}>
+                    <div className="bloc-titre">
+                      <span className="ge">{g.e}</span>
+                      <h3>{g.titre}</h3>
+                      <span className={'n' + (g.id === 'attente' ? ' or' : '')}>{par[g.id].length}</span>
+                    </div>
+                    {g.note && <div className="relance"><Ico n="horloge" t={18} /><span>{g.note}</span></div>}
+                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" />
+                  </div>
+                ))}
+              </>)}
             </Vue>
-          )}
+            );
+          })()}
           {vue === 'marche' && (
             <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} />
           )}
@@ -532,8 +598,8 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           {dernier && (
             <div className="apercu">
               <span className="apl"><span className="pt">▣</span>
-                <b>{dernier.avis && AVIS[dernier.avis]
-                  ? `${AVIS[dernier.avis].e} ${AVIS[dernier.avis].n}`
+                <b>{dernier.avis && ETIQ[dernier.avis]
+                  ? `${ETIQ[dernier.avis].e} ${ETIQ[dernier.avis].n}`
                   : 'Votre avis est attendu'}</b></span>
               <span className="apl-s">{dernier.avis ? 'Votre dernier retour · ' : 'Dernier bien ouvert · '}{dernier.titre}</span>
             </div>
@@ -612,7 +678,7 @@ function Liste({ biens, onOuvrir, vide }: { biens: Bien[]; onOuvrir: (b: Bien) =
   return (
     <div className="liste">
       {biens.map(b => {
-        const a = b.avis ? AVIS[b.avis] : null;
+        const a = b.avis ? ETIQ[b.avis] : null;
         return (
           <button key={b.id} className={'bien' + (b.etat === 'neuf' ? ' neuf' : '')} onClick={() => onOuvrir(b)}>
             <span className="vignette">{b.photos[0]
@@ -1187,11 +1253,13 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
             </button>
           ))}
         </div>
-        {avis && (
-          <div style={{ marginTop: 12 }}>
-            <textarea rows={2} value={com} onChange={e => setCom(e.target.value)}
-              placeholder="Un mot, si vous voulez : ce qui vous plaît, ce qui bloque…" />
-            <BtnEnvoi enCours={envoiAvis} libelle="Envoyer mon avis" style={{ marginTop: 10 }}
+        {avis && SUITE_AVIS[avis] && (
+          <div className="apres-avis">
+            <div className="aa-t">{SUITE_AVIS[avis].t}</div>
+            <p className="aa-p">{SUITE_AVIS[avis].p}</p>
+            <textarea rows={5} value={com} onChange={e => setCom(e.target.value)}
+              placeholder={SUITE_AVIS[avis].ph} />
+            <BtnEnvoi enCours={envoiAvis} libelle={SUITE_AVIS[avis].btn} style={{ marginTop: 12 }}
               onClick={async () => { setEnvoiAvis(true); await onAvis(b, avis, com.trim()); }} />
           </div>
         )}
@@ -2436,5 +2504,33 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   color:var(--plume-clair); border:1px solid var(--trait); background:var(--carte);
   border-radius:99px; padding:4px 11px; white-space:nowrap; transition:color .15s, border-color .15s}
 .lien-aide:hover{color:var(--or-fonce); border-color:var(--or-trait)}
+
+
+/* ═══ Biens consultés : filtres et groupes ═══ */
+.filtres{display:flex; gap:7px; overflow-x:auto; padding-bottom:4px; margin-bottom:4px;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch}
+.filtres::-webkit-scrollbar{display:none}
+.fc{flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; border-radius:99px;
+  padding:8px 13px; font-family:inherit; font-size:12.5px; font-weight:700; white-space:nowrap;
+  background:var(--carte); border:1.5px solid var(--trait); color:var(--plume);
+  transition:background .16s, border-color .16s, color .16s}
+.fc .fe{font-size:13px; line-height:1}
+.fc i{font-style:normal; font-size:11px; font-weight:800; background:var(--fond); color:var(--plume-clair);
+  border-radius:99px; padding:1px 7px}
+.fc.on{background:var(--encre); border-color:var(--encre); color:#fff}
+.fc.on i{background:rgba(255,255,255,.16); color:#fff}
+.groupe + .groupe{margin-top:26px}
+.bloc-titre .ge{font-size:16px; line-height:1}
+.etiq.fait{background:var(--or-fond); color:var(--or-fonce); border-color:var(--or-trait)}
+
+/* ═══ Après le choix d'un avis : on invite vraiment à écrire ═══ */
+.apres-avis{margin-top:14px; background:var(--fond); border:1px solid var(--trait);
+  border-left:3px solid var(--or); border-radius:16px; padding:15px}
+.aa-t{font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; color:var(--encre)}
+.aa-p{margin:6px 0 12px; font-size:13px; line-height:1.6; color:var(--plume)}
+.apres-avis textarea{width:100%; background:var(--carte); border:1.5px solid var(--trait);
+  border-radius:14px; padding:13px 14px; font-size:15px; font-family:inherit; color:var(--encre);
+  outline:none; resize:vertical; min-height:108px; line-height:1.6}
+.apres-avis textarea:focus{border-color:var(--or)}
 
 `;
