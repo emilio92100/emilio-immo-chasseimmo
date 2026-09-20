@@ -149,7 +149,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         poser('rdc_exclu', 'rdcExclu', !!c.rdcExclu);
         poser('dernier_etage', 'dernierEtage', !!c.dernierEtage);
         poser('etat_souhaite', 'etatSouhaite', parmi(c.etatSouhaite, ['a_renover', 'travaux_legers', 'bon_etat', 'refait_neuf']));
-        poser('financement', 'financement', parmi(c.financement, ['cash', 'pret_valide', 'pret_en_cours', 'a_monter']));
+        poser('financement', 'financement', parmi(c.financement, ['cash', 'pret_valide', 'pret_en_cours', 'a_monter', 'pret_relais',
+          'mixte_cash_pret', 'mixte_cash_relais', 'mixte_pret_relais']));
         poser('urgence', 'urgence', parmi(c.urgence, ['immediate', '3_mois', '6_mois', 'annee']));
         poser('cuisine_type', 'cuisineType', parmi(c.cuisineType, ['ouverte', 'separee']));
         poser('dpe_max', 'dpeMax', parmi(c.dpeMax, ['A', 'B', 'C', 'D', 'E', 'F', 'G']));
