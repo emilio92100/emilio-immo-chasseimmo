@@ -23,6 +23,8 @@ export interface Recherche {
   chambres_min?: number
   surface_sejour_min?: number
   secteurs: string[]
+  transport_minutes?: number
+  transport_lignes?: string[]
   etage_min?: number
   etage_max?: number
   rdc_exclu?: boolean
