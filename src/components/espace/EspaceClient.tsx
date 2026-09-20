@@ -45,7 +45,11 @@ type Props = {
   client: { prenom: string; nom: string; reference: string; jours: number | null };
   criteres: Criteres;
   biens: Bien[];
-  passage: { quand: string | null; lues: number | null; proposees: number | null; ecartees: number | null; totalLues?: number } | null;
+  passage: {
+    quand: string | null; lues: number | null; proposees: number | null; ecartees: number | null;
+    /* Les cumuls depuis l'ouverture du dossier, tous passages confondus. */
+    totalLues?: number; totalRetenues?: number; totalEcartees?: number; nbPassages?: number;
+  } | null;
   semaine: { quand: string | null; lues: number }[];
   /* Les visites calées et pas encore passées, la plus proche en premier. */
   visites: { id: string; date: string; heure: string | null; titre: string; adresse: string; bienId: string | null }[];
@@ -541,7 +545,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             );
           })()}
           {vue === 'marche' && (
-            <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} />
+            <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} biens={biens} crit={crit} />
           )}
           {vue === 'recherche' && (
             <Recherche crit={crit} aller={aller} onCriteres={ouvrirCriteres} onMessage={ouvrirMessage} />
@@ -761,13 +765,40 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
   );
 }
 
-function Marche({ passage, semaine, maxLues, aller }: any) {
+function Marche({ passage, semaine, maxLues, aller, biens, crit }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
   return (
     <Vue icone="graph" titre="Le marché sur vos critères" aller={aller}
       sous="Ce que nous avons parcouru pour vous. La recherche est menée chaque jour, sur les principaux portails immobiliers, notre carnet d'adresses de confrères et de partenaires, et notre base off-market.">
+      {/* Le cumul du dossier : c'est lui qui dit l'ampleur du travail.
+          Un seul passage ne raconte rien, dix mois de passages, si. */}
+      {(passage?.totalLues ?? 0) > 0 && (() => {
+        const lues = passage.totalLues as number;
+        const ret = passage.totalRetenues ?? 0;
+        const sur = ret > 0 ? Math.round(lues / ret) : 0;
+        return (
+          <div className="bilan">
+            <div className="bilan-t">Depuis l&apos;ouverture de votre dossier</div>
+            <div className="bilan-g">
+              <div className="bg-c"><span className="bg-i"><Ico n="loupe" t={17} /></span>
+                <b className="tab">{lues.toLocaleString('fr-FR')}</b><span>annonces lues</span></div>
+              <div className="bg-c"><span className="bg-i"><Ico n="horloge" t={17} /></span>
+                <b className="tab">{(passage.nbPassages ?? 0).toLocaleString('fr-FR')}</b><span>passages de recherche</span></div>
+              <div className="bg-c or"><span className="bg-i"><Ico n="etoile" t={17} /></span>
+                <b className="tab">{ret.toLocaleString('fr-FR')}</b><span>biens retenus pour vous</span></div>
+            </div>
+            {sur > 1 && (
+              <div className="bilan-r">Soit <b>1 bien retenu sur {sur.toLocaleString('fr-FR')} annonces lues</b>.
+                Tout le reste a été écarté avant d&apos;arriver jusqu&apos;à vous.</div>
+            )}
+          </div>
+        );
+      })()}
+
+      <div className="sep"><span>Le dernier passage</span><i /></div>
+
       <div className="entonnoir">
-        <div className="ent-t">Au dernier passage, sur vos critères</div>
+        <div className="ent-t">Ce qu&apos;il a donné, sur vos critères</div>
         {(() => {
           const lues = passage?.lues ?? 0;
           const ec = passage?.ecartees ?? 0;
@@ -794,8 +825,43 @@ function Marche({ passage, semaine, maxLues, aller }: any) {
           );
         })()}
       </div>
+      <div className="sep"><span>Les biens retenus</span><i /></div>
+
+      {/* Ce que valent, concrètement, les biens retenus : c'est la seule
+          fourchette de prix que l'on puisse donner sans inventer — elle vient
+          des biens réellement présentés, pas d'une moyenne de marché. */}
+      {(() => {
+        const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
+        if (avecPrix.length < 2) return null;
+        const prix = avecPrix.map((b: Bien) => b.prix as number).sort((a: number, z: number) => a - z);
+        const auM2 = avecPrix.filter((b: Bien) => b.surface && b.surface > 0)
+          .map((b: Bien) => Math.round((b.prix as number) / (b.surface as number)));
+        const moyM2 = auM2.length ? Math.round(auM2.reduce((t: number, x: number) => t + x, 0) / auM2.length) : 0;
+        const bmax = crit?.budgetMax || 0;
+        const sous = bmax ? prix.filter((x: number) => x <= bmax).length : 0;
+        return (
+          <div className="bilan">
+            <div className="bilan-t">Les biens déposés dans votre espace depuis l&apos;ouverture</div>
+            <div className="bilan-g">
+              <div className="bg-c"><span className="bg-i"><Ico n="maison" t={17} /></span>
+                <b className="tab">{prix.length}</b><span>biens présentés en tout</span></div>
+              {moyM2 > 0 && <div className="bg-c"><span className="bg-i"><Ico n="euro" t={17} /></span>
+                <b className="tab">{moyM2.toLocaleString('fr-FR')} €</b><span>prix moyen du m²</span></div>}
+            </div>
+            <div className="bilan-r">
+              Ils vont de <b>{EUR(prix[0])}</b> à <b>{EUR(prix[prix.length - 1])}</b>.
+              {bmax > 0 && (sous === prix.length
+                ? <> Tous tiennent dans votre budget de {EUR(bmax)}.</>
+                : <> {sous} sur {prix.length} tiennent dans votre budget de {EUR(bmax)}&nbsp;; les autres vous ont été montrés parce qu&apos;ils le valaient.</>)}
+            </div>
+          </div>
+        );
+      })()}
+
       <p className="note">Chaque jour, nous relisons l&apos;intégralité du marché sur vos critères.
         Ce qui ne correspond pas est écarté&nbsp;— vous ne voyez que ce qui mérite votre temps.</p>
+
+      <div className="sep"><span>Jour après jour</span><i /></div>
       {semaine.length > 1 && (
         <div className="graphe">
           <div className="bloc-titre" style={{ margin: 0 }}>
@@ -2810,5 +2876,26 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   transition:background .18s}
 .vav-ics:hover{background:rgba(255,255,255,.2)}
 .vav-p{position:relative; margin-top:10px; font-size:12px; color:rgba(255,255,255,.5)}
+
+
+/* ═══ Les bilans de la page « marché » ═══ */
+.bilan{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:16px 17px;
+  box-shadow:var(--ombre)}
+.bilan-t{font-size:10.5px; font-weight:800; letter-spacing:1.3px; text-transform:uppercase; color:var(--plume-clair)}
+.bilan-g{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:13px}
+.bg-c{background:var(--fond); border:1px solid var(--trait); border-radius:14px; padding:12px 11px; text-align:center}
+.bg-i{display:flex; align-items:center; justify-content:center; width:32px; height:32px; margin:0 auto 9px;
+  border-radius:11px; background:var(--carte); border:1px solid var(--trait); color:var(--plume)}
+.bg-c.or .bg-i{background:#fff; border-color:var(--or-trait); color:var(--or-fonce)}
+.bg-c b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:800;
+  letter-spacing:-.6px; line-height:1.1}
+.bg-c span{display:block; margin-top:5px; font-size:9.5px; letter-spacing:.8px; text-transform:uppercase;
+  color:var(--plume-clair); font-weight:700; line-height:1.35}
+.bg-c.or{background:var(--or-fond); border-color:var(--or-trait)}
+.bg-c.or b{color:var(--or-fonce)}
+.bg-c.or span{color:var(--or-fonce); opacity:.75}
+.bilan-r{margin-top:12px; font-size:13px; line-height:1.6; color:var(--plume)}
+.bilan-r b{color:var(--encre); font-weight:800}
+
 
 `;
