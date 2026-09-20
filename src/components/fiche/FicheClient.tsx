@@ -45,6 +45,55 @@ const LegendeNiveaux = () => (
   </div>
 );
 
+/* Listes de choix, chacune avec son icône. Mêmes clés et mêmes intitulés
+   que l'espace acheteur : le client et le chasseur lisent la même chose. */
+const ETATS: [string, string, string][] = [
+  ['a_renover', 'À rénover', '🔨'], ['travaux_legers', 'Travaux légers', '🧰'],
+  ['bon_etat', 'Bon état', '✨'], ['refait_neuf', 'Refait à neuf', '💎'],
+];
+const FINANCEMENTS: [string, string, string][] = [
+  ['cash', 'Cash', '💵'], ['pret_valide', 'Prêt validé', '✅'],
+  ['pret_en_cours', 'Prêt en cours', '⏳'], ['a_monter', 'Prêt à monter', '📝'],
+  ['pret_relais', 'Prêt relais', '🔁'],
+  ['mixte_cash_pret', 'Mixte · cash + prêt', '🔀'],
+  ['mixte_cash_relais', 'Mixte · cash + prêt relais', '🔀'],
+  ['mixte_pret_relais', 'Mixte · prêt + prêt relais', '🔀'],
+];
+const URGENCES: [string, string, string][] = [
+  ['immediate', 'Immédiate', '🔥'], ['3_mois', 'Sous 3 mois', '⏱️'],
+  ['6_mois', 'Sous 6 mois', '📆'], ['annee', "Dans l'année", '🗓️'],
+];
+const CUISINES: [string, string, string][] = [
+  ['', 'Indifférent', '🤷'], ['ouverte', 'Ouverte sur le séjour', '🍽️'], ['separee', 'Séparée', '🚪'],
+];
+/* Retrouve « 💵 Cash » à partir de la valeur enregistrée. */
+const texteChoix = (table: [string, string, string][], v?: string | null) => {
+  const l = table.find(x => x[0] === v);
+  return l ? `${l[2]} ${l[1]}` : (v || null);
+};
+
+/* Une ligne de pastilles à choix unique — remplace les anciens menus déroulants. */
+const ChoixIco = ({ table, valeur, onChange, couleur = '#1a2332' }: {
+  table: [string, string, string][]; valeur: string; onChange: (v: string) => void; couleur?: string;
+}) => (
+  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+    {table.map(([k, l, i]) => {
+      const actif = valeur === k;
+      return (
+        <button type="button" key={k || 'vide'} onClick={() => onChange(actif ? '' : k)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20,
+            border: `1px solid ${actif ? couleur : '#e2e8f0'}`, background: actif ? couleur : 'white',
+            color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+            fontFamily: 'inherit', transition: 'all 0.12s',
+          }}>
+          <span style={{ fontSize: 14 }}>{i}</span>{l}
+        </button>
+      );
+    })}
+  </div>
+);
+
 /* Orientations, avec leur icône : on lit la ligne d'un coup d'œil. */
 const EXPOSITIONS = [
   { k: 'sud', l: 'Sud', i: '☀️' }, { k: 'est', l: 'Est', i: '🌅' },
@@ -1202,13 +1251,14 @@ Emilio Immobilier
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
   // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
   const COMM_EVENT_TYPES = ['email_libre', 'envoi_externe'];
-  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', ...COMM_EVENT_TYPES];
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', 'message_client', ...COMM_EVENT_TYPES];
   const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
   const suiviGroupes: Record<string, { label: string; items: any[] }> = {
     appel:          { label: '📞 Appels',         items: evType(['appel']) },
     rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
     note:           { label: '📝 Notes',          items: evType(['note']) },
     relance:        { label: '🔔 Relances',       items: evType(['relance_manuelle']) },
+    message:        { label: '💬 Messages client', items: evType(['message_client']) },
     communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
     systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
   };
@@ -1470,7 +1520,7 @@ Emilio Immobilier
                     {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage || cr.etage_max_sans_ascenseur) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : '', cr.etage_max_sans_ascenseur ? `🛗 ${cr.etage_max_sans_ascenseur}e max sans ascenseur` : ''].filter(Boolean).join(' · ')}</div></div>}
                     {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
                     {cr.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_sejour_min}m²</div></div>}
-                    {cr.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{({a_renover:'À rénover',travaux_legers:'Travaux légers',bon_etat:'Bon état',refait_neuf:'Refait à neuf'} as any)[cr.etat_souhaite] || cr.etat_souhaite}</div></div>}
+                    {cr.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{texteChoix(ETATS, cr.etat_souhaite)}</div></div>}
                     {cr.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{cr.exposition_souhaitee.split(',').map(x => x.trim()).filter(Boolean).map(x => (
                       <span key={x} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#ecfdf5', color: '#0f766e', border: '1px solid #99f6e4', borderRadius: 20, padding: '3px 11px', fontSize: 13.5, fontWeight: 700, textTransform: 'capitalize' }}>{ICONE_EXPO[x] || '🧭'} {x}</span>
                     ))}</div></div>}
@@ -1484,7 +1534,7 @@ Emilio Immobilier
                     const lignes: { cle: string; texte: string; fort: boolean }[] = [];
                     base.forEach(([k, l]) => { if ((cr as any)[k] || ex[k]) lignes.push({ cle: k, texte: l, fort: ex[k] === 'indispensable' }); });
                     if (ex.exterieur) lignes.push({ cle: 'exterieur', texte: `🌤️ Extérieur${cr.exterieur_surface_min ? ` de ${cr.exterieur_surface_min} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
-                    if (cr.cuisine_type) lignes.push({ cle: 'cuisine', texte: `🍳 Cuisine ${cr.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
+                    if (cr.cuisine_type) lignes.push({ cle: 'cuisine', texte: `${cr.cuisine_type === 'ouverte' ? '🍽️' : '🚪'} Cuisine ${cr.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
                     if (lignes.length === 0) return null;
                     const duDore = lignes.some(l => l.fort);
                     return (
@@ -1527,8 +1577,8 @@ Emilio Immobilier
                   {/* Profil d'achat (priorisation) */}
                   {(cr.urgence || cr.financement || cr.apport) && (
                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #3b82f6', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-                      {cr.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({immediate:'Immédiate','3_mois':'Sous 3 mois','6_mois':'Sous 6 mois',annee:"Dans l'année"} as any)[cr.urgence] || cr.urgence}</div></div>}
-                      {cr.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{({cash:'Cash',pret_valide:'Prêt validé',pret_en_cours:'Prêt en cours',a_monter:'À monter'} as any)[cr.financement] || cr.financement}</div></div>}
+                      {cr.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{texteChoix(URGENCES, cr.urgence)}</div></div>}
+                      {cr.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{texteChoix(FINANCEMENTS, cr.financement)}</div></div>}
                       {cr.apport != null && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Apport</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.apport.toLocaleString('fr-FR')}€</div></div>}
                     </div>
                   )}
@@ -2101,17 +2151,11 @@ Emilio Immobilier
                 </div>
               </div>
               <div className={styles.formRow}>
-                <div>
+                <div style={{ gridColumn: '1 / -1' }}>
                   <label className={styles.lbl}>État souhaité</label>
-                  <select className={styles.inp} value={crit.etat_souhaite} onChange={e=>setCrit(f=>({...f,etat_souhaite:e.target.value}))}>
-                    <option value="">Indifférent</option>
-                    <option value="a_renover">À rénover</option>
-                    <option value="travaux_legers">Travaux légers</option>
-                    <option value="bon_etat">Bon état</option>
-                    <option value="refait_neuf">Refait à neuf</option>
-                  </select>
+                  <ChoixIco table={ETATS} valeur={crit.etat_souhaite} onChange={v => setCrit(f => ({ ...f, etat_souhaite: v }))} />
                 </div>
-                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} /></div>
+                <div><label className={styles.lbl}>📅 Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} /></div>
               </div>
             </>),
           },
@@ -2208,9 +2252,9 @@ Emilio Immobilier
               <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>🍳 Cuisine</span>
-                  {[{v:'',l:'Indifférent'},{v:'ouverte',l:'Ouverte sur le séjour'},{v:'separee',l:'Séparée'}].map(o => {
-                    const actif = crit.cuisine_type === o.v;
-                    return <button type="button" key={o.v || 'ind'} onClick={() => setCrit(f => ({ ...f, cuisine_type: o.v }))} style={{ padding: '7px 13px', borderRadius: 20, border: `1px solid ${actif ? '#1a2332' : '#e2e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>;
+                  {CUISINES.map(([v, l, i]) => {
+                    const actif = crit.cuisine_type === v;
+                    return <button type="button" key={v || 'ind'} onClick={() => setCrit(f => ({ ...f, cuisine_type: v }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${actif ? '#1a2332' : '#e2e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{i}</span>{l}</button>;
                   })}
                 </div>
                 {crit.cuisine_type && (
@@ -2274,16 +2318,10 @@ Emilio Immobilier
               </div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} /></div>
-                <div>
-                  <label className={styles.lbl}>Financement</label>
-                  <select className={styles.inp} value={crit.financement} onChange={e=>setCrit(f=>({...f,financement:e.target.value}))}>
-                    <option value="">Non précisé</option>
-                    <option value="cash">Cash</option>
-                    <option value="pret_valide">Prêt validé</option>
-                    <option value="pret_en_cours">Prêt en cours</option>
-                    <option value="a_monter">À monter</option>
-                  </select>
-                </div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Financement</label>
+                <ChoixIco table={FINANCEMENTS} valeur={crit.financement} onChange={v => setCrit(f => ({ ...f, financement: v }))} couleur="#0f766e" />
               </div>
             </>),
           },
@@ -2293,13 +2331,7 @@ Emilio Immobilier
             contenu: (<>
               <div>
                 <label className={styles.lbl}>Urgence du projet</label>
-                <select className={styles.inp} value={crit.urgence} onChange={e=>setCrit(f=>({...f,urgence:e.target.value}))}>
-                  <option value="">Non précisée</option>
-                  <option value="immediate">Immédiate</option>
-                  <option value="3_mois">Sous 3 mois</option>
-                  <option value="6_mois">Sous 6 mois</option>
-                  <option value="annee">Dans l&apos;année</option>
-                </select>
+                <ChoixIco table={URGENCES} valeur={crit.urgence} onChange={v => setCrit(f => ({ ...f, urgence: v }))} couleur="#b45309" />
               </div>
               <div><label className={styles.lbl}>Notes libres <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>— visibles par le client dans son espace</span></label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
             </>),
