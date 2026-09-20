@@ -33,6 +33,9 @@ export function StylesEmilio() {
       .emi-panneau { animation: emiEntree .32s cubic-bezier(.16,1,.3,1) both }
       .emi-panneau > * { animation: emiEntree .38s cubic-bezier(.16,1,.3,1) both }
       .emi-pouls { width:7px; height:7px; border-radius:50%; background:${OR}; display:inline-block; animation: emiPouls 1.9s ease-in-out infinite }
+      @keyframes emiArrivee { from { opacity:0; transform: translateY(16px) } to { opacity:1; transform:none } }
+      .emi-arrivee { animation: emiArrivee .52s cubic-bezier(.16,1,.3,1) both }
+      @media (prefers-reduced-motion: reduce) { .emi-arrivee { animation-duration: .01ms } }
       .emi-carte { transition: box-shadow .24s ease, transform .24s ease, border-color .24s ease }
       .emi-carte:hover { box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 20px 44px -24px rgba(16,24,40,.38) }
 
