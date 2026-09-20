@@ -47,6 +47,8 @@ type Props = {
   biens: Bien[];
   passage: { quand: string | null; lues: number | null; proposees: number | null; ecartees: number | null; totalLues?: number } | null;
   semaine: { quand: string | null; lues: number }[];
+  /* Les visites calées et pas encore passées, la plus proche en premier. */
+  visites: { id: string; date: string; heure: string | null; titre: string; adresse: string; bienId: string | null }[];
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -252,6 +254,7 @@ const T: Record<string, string[]> = {
   partage:['M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7','M12 3v13','m7.5 7.5 4.5-4.5 4.5 4.5'],
   mail:['M3.6 6.6h16.8v10.8H3.6z','m3.6 7 8.4 5.9 8.4-5.9'],
   regle:['M3 8.5h18v7H3z','M7 8.5v3','M11 8.5v3','M15 8.5v3','M19 8.5v3'],
+  calendrier:['M4.5 6h15a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z','M3.5 10.5h17','M8 3.5v4','M16 3.5v4'],
   immeuble:['M4 21V4h9v17','M13 10h7v11','M7 8h2','M7 12h2','M7 16h2','M16 14h1','M16 18h1'],
   etincelle:['M11 3l1.7 4.6L17 9.3l-4.3 1.7L11 15.6 9.3 11 5 9.3l4.3-1.7z','M18 15l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z'],
   eclair:['M13 2 4.8 13.4h5.9L9.8 22 19.2 10.4H13z'],
@@ -300,7 +303,7 @@ function useEchap(actif: boolean, onEchap: () => void) {
 }
 
 /* ══ composant ════════════════════════════════════ */
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
   const [crit, setCrit] = useState(criteres);
@@ -460,7 +463,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         <div className="vue" key={vue}>
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
-              passage={passage} semaine={semaine} maxLues={maxLues} aller={aller}
+              passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
+              token={token}
               onBienvenue={ouvrirBienvenue}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
@@ -561,11 +565,15 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, visites, token }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
       <div className="col-a">
+      {/* Une visite calée passe avant tout le reste : c'est la seule chose de
+          cet écran qui a une heure et une date. */}
+      {visites?.length > 0 && <ProchaineVisite v={visites[0]} autres={visites.length - 1} token={token} />}
+
       <div className="bandeau-chiffres">
         <div className="bc"><div className="n or tab"><span className="nv">{neufs.length}<BtnAide cle="decouvrir" onAide={onAide} /></span></div>
           <div className="l">à découvrir</div></div>
@@ -1710,6 +1718,71 @@ function Message({ onFermer, onEnvoi }: any) {
   );
 }
 
+const JOURS_L = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const MOIS_L = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/* « Jeudi 25 septembre » plutôt que « 25/09/2026 » : on lit une date de
+   rendez-vous comme on la dirait au téléphone. */
+function dateLongue(d: string) {
+  const x = new Date(d + (d.length <= 10 ? 'T12:00:00' : ''));
+  if (isNaN(x.getTime())) return d;
+  const t = `${JOURS_L[x.getDay()]} ${x.getDate()} ${MOIS_L[x.getMonth()]}`;
+  return t.charAt(0).toUpperCase() + t.slice(1);   // « Mercredi 23 septembre », pas « Mercredi 23 Septembre »
+}
+function joursAvant(d: string) {
+  const x = new Date(d + (d.length <= 10 ? 'T12:00:00' : ''));
+  const a = new Date(); a.setHours(12, 0, 0, 0);
+  const n = Math.round((x.getTime() - a.getTime()) / 86400000);
+  if (n < 0) return null;
+  if (n === 0) return "aujourd'hui";
+  if (n === 1) return 'demain';
+  if (n < 8) return `dans ${n} jours`;
+  return null;
+}
+
+/* Sur Android, un fichier .ics se télécharge puis il faut aller l'ouvrir :
+   pour Google Agenda, un lien direct est bien plus simple. On propose donc
+   les deux, chacun fait un seul geste. */
+function lienGoogle(v: { date: string; heure: string | null; titre: string; adresse: string }) {
+  const hh = v.heure ? String(v.heure).slice(0, 5) : '10:00';
+  const debut = new Date(`${String(v.date).slice(0, 10)}T${hh}:00`);
+  const fin = new Date(debut.getTime() + 3600000);
+  const z = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) => `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}T${z(d.getHours())}${z(d.getMinutes())}00`;
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: 'Visite — ' + v.titre,
+    dates: `${fmt(debut)}/${fmt(fin)}`,
+    details: 'Visite organisée par Emilio Immobilier.\nAlexandre Rogelet · 06 58 95 76 32',
+    ctz: 'Europe/Paris',
+  });
+  if (v.adresse) p.set('location', v.adresse);
+  return 'https://calendar.google.com/calendar/render?' + p.toString();
+}
+
+function ProchaineVisite({ v, autres, token }: { v: any; autres: number; token: string }) {
+  const bientot = joursAvant(v.date);
+  return (
+    <div className="visite-a-venir">
+      <div className="vav-t"><Ico n="calendrier" t={15} /> Votre prochaine visite</div>
+      <div className="vav-q">
+        {dateLongue(v.date)}{v.heure ? ` à ${String(v.heure).slice(0, 5).replace(':', ' h ')}` : ''}
+        {bientot && <span className="vav-b">{bientot}</span>}
+      </div>
+      <div className="vav-b2">{v.titre}</div>
+      {v.adresse && <div className="vav-a"><Ico n="lieu" t={13} /> {v.adresse}</div>}
+      <div className="vav-ag">
+        <span className="vav-ag-t">Ajouter à mon agenda</span>
+        <span className="vav-ag-b">
+          <a className="vav-ics" href={lienGoogle(v)} target="_blank" rel="noopener noreferrer">Google&nbsp;Agenda</a>
+          <a className="vav-ics" href={`/api/espace/agenda?token=${encodeURIComponent(token)}&v=${encodeURIComponent(v.id)}`}>Apple&nbsp;· Outlook</a>
+        </span>
+      </div>
+      {autres > 0 && <div className="vav-p">Et {autres} autre{autres > 1 ? 's' : ''} visite{autres > 1 ? 's' : ''} prévue{autres > 1 ? 's' : ''} ensuite.</div>}
+    </div>
+  );
+}
+
 /* Les trois chiffres de l'accueil ne parlent pas d'eux-mêmes : « 119 annonces
    lues », lues par qui, et pour quoi faire ? Chacun a son explication, derrière
    un point d'interrogation. On dit ce que le chiffre est, et ce qu'il n'est pas. */
@@ -2710,5 +2783,32 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   border-radius:14px; padding:13px 14px; font-size:15px; font-family:inherit; color:var(--encre);
   outline:none; resize:vertical; min-height:108px; line-height:1.6}
 .apres-avis textarea:focus{border-color:var(--or)}
+
+
+/* ═══ La prochaine visite, en tête de l'accueil ═══ */
+.visite-a-venir{position:relative; overflow:hidden; margin-top:18px; background:var(--encre); color:#fff;
+  border-radius:20px; padding:16px 18px 17px; box-shadow:0 18px 34px -24px rgba(16,24,40,.95)}
+.visite-a-venir::after{content:""; position:absolute; top:-80px; right:-60px; width:210px; height:210px;
+  border-radius:50%; background:radial-gradient(circle,rgba(201,168,76,.26),transparent 66%)}
+.vav-t{position:relative; display:flex; align-items:center; gap:8px; font-size:10px; font-weight:800;
+  letter-spacing:1.4px; text-transform:uppercase; color:var(--or)}
+.vav-q{position:relative; display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:9px;
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:20px; font-weight:800; letter-spacing:-.4px;
+  line-height:1.2}
+.vav-b{text-transform:none; font-size:11px; font-weight:800; letter-spacing:.6px; border-radius:99px;
+  padding:3px 10px; background:var(--or); color:#1a2332}
+.vav-b2{position:relative; margin-top:7px; font-size:14px; font-weight:700; color:rgba(255,255,255,.92); line-height:1.4}
+.vav-a{position:relative; display:flex; align-items:center; gap:7px; margin-top:5px; font-size:12.5px;
+  color:rgba(255,255,255,.55)}
+.vav-ag{position:relative; margin-top:14px; padding-top:13px; border-top:1px solid rgba(255,255,255,.14)}
+.vav-ag-t{display:block; font-size:10px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase;
+  color:rgba(255,255,255,.5)}
+.vav-ag-b{display:flex; gap:8px; flex-wrap:wrap; margin-top:9px}
+.vav-ics{display:inline-flex; align-items:center; gap:8px;
+  background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); color:#fff;
+  border-radius:99px; padding:9px 15px; font-size:12.5px; font-weight:700; text-decoration:none;
+  transition:background .18s}
+.vav-ics:hover{background:rgba(255,255,255,.2)}
+.vav-p{position:relative; margin-top:10px; font-size:12px; color:rgba(255,255,255,.5)}
 
 `;
