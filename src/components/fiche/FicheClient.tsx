@@ -45,6 +45,14 @@ const LegendeNiveaux = () => (
   </div>
 );
 
+/* Orientations, avec leur icône : on lit la ligne d'un coup d'œil. */
+const EXPOSITIONS = [
+  { k: 'sud', l: 'Sud', i: '☀️' }, { k: 'est', l: 'Est', i: '🌅' },
+  { k: 'ouest', l: 'Ouest', i: '🌇' }, { k: 'nord', l: 'Nord', i: '❄️' },
+  { k: 'traversant', l: 'Traversant', i: '↔️' },
+];
+const ICONE_EXPO: Record<string, string> = Object.fromEntries(EXPOSITIONS.map(e => [e.k, e.i]));
+
 /* Types de biens proposés dans les critères. Les valeurs déjà enregistrées
    qui ne sont plus dans cette liste restent affichées, pour rester modifiables. */
 const TYPES_BIEN = [
@@ -554,7 +562,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function saveCriteres() {
     if (!rechercheId) return;
     setSaving(true);
-    const { data } = await supabase.from('recherches').update({
+    const { data, error } = await supabase.from('recherches').update({
       type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null,
       budget_min: crit.budget_min ? parseInt(crit.budget_min) : null,
       budget_max: crit.budget_max ? parseInt(crit.budget_max) : null,
@@ -588,6 +596,13 @@ export default function FicheClient({ client: init, onBack }: Props) {
       apport: crit.apport ? parseInt(crit.apport) : null,
       updated_at: new Date().toISOString(),
     }).eq('id', rechercheId).select().single();
+    if (error) {
+      /* Sans message, un échec ressemble à « ça n'a pas voulu s'afficher ».
+         Le cas le plus courant : une colonne pas encore créée dans Supabase. */
+      setSaving(false);
+      alert(`Les critères n'ont pas pu être enregistrés.\n\n${error.message}\n\nSi le message parle d'une colonne inconnue, c'est la migration SQL qui n'a pas encore été passée.`);
+      return;
+    }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
     }
@@ -1436,7 +1451,7 @@ Emilio Immobilier
           <div className={styles.infoCard} style={{ flex: 2 }}>
             <div className={styles.infoCardHeader}>🎯 Critères de recherche <button className={styles.editBtn} onClick={ouvrirCriteres}>✏️ Modifier</button></div>
             <div className={styles.infoCardBody}>
-              {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur) ? (
+              {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Type + Budget sur même ligne */}
                   {(cr.type_bien || cr.budget_min || cr.budget_max) && (
@@ -1452,23 +1467,40 @@ Emilio Immobilier
                     {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
                     {cr.transport_arrets?.length ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.transport_arrets.map((a: any) => `${a.nom} (${a.minutes || 10} min)`).join(' · ')}</div></div> : (cr.transport_minutes ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`${cr.transport_minutes} min à pied max`}</div></div> : null)}
                     {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
-                    {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : ''].filter(Boolean).join(' · ')}</div></div>}
+                    {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage || cr.etage_max_sans_ascenseur) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : '', cr.etage_max_sans_ascenseur ? `🛗 ${cr.etage_max_sans_ascenseur}e max sans ascenseur` : ''].filter(Boolean).join(' · ')}</div></div>}
                     {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
                     {cr.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_sejour_min}m²</div></div>}
                     {cr.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{({a_renover:'À rénover',travaux_legers:'Travaux légers',bon_etat:'Bon état',refait_neuf:'Refait à neuf'} as any)[cr.etat_souhaite] || cr.etat_souhaite}</div></div>}
-                    {cr.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332', textTransform: 'capitalize' }}>{cr.exposition_souhaitee}</div></div>}
+                    {cr.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{cr.exposition_souhaitee.split(',').map(x => x.trim()).filter(Boolean).map(x => (
+                      <span key={x} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#ecfdf5', color: '#0f766e', border: '1px solid #99f6e4', borderRadius: 20, padding: '3px 11px', fontSize: 13.5, fontWeight: 700, textTransform: 'capitalize' }}>{ICONE_EXPO[x] || '🧭'} {x}</span>
+                    ))}</div></div>}
                   </div>
                   {/* Ligne 2 : Équipements */}
-                  {(cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.gardien || (cr as any).interphone || (cr as any).digicode) && (
-                    <div style={{ paddingBottom: cr.secteurs?.length ? 8 : 0, borderBottom: cr.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Critères importants</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {[['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']].filter(([k]) => (cr as any)[k]).map(([k,l]) => (
-                          <span key={k} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l}</span>
-                        ))}
+                  {(() => {
+                    /* Le chasseur distingue « souhaité » et « indispensable » : le doré
+                       signale ce sans quoi un bien n'a pas à être présenté. */
+                    const ex = (cr.exigences || {}) as Record<string, string>;
+                    const base: [string, string][] = [['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']];
+                    const lignes: { cle: string; texte: string; fort: boolean }[] = [];
+                    base.forEach(([k, l]) => { if ((cr as any)[k] || ex[k]) lignes.push({ cle: k, texte: l, fort: ex[k] === 'indispensable' }); });
+                    if (ex.exterieur) lignes.push({ cle: 'exterieur', texte: `🌤️ Extérieur${cr.exterieur_surface_min ? ` de ${cr.exterieur_surface_min} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
+                    if (cr.cuisine_type) lignes.push({ cle: 'cuisine', texte: `🍳 Cuisine ${cr.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
+                    if (lignes.length === 0) return null;
+                    const duDore = lignes.some(l => l.fort);
+                    return (
+                      <div style={{ paddingBottom: cr.secteurs?.length ? 8 : 0, borderBottom: cr.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Critères importants</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {lignes.map(l => (
+                            <span key={l.cle} style={l.fort
+                              ? { background: '#1a2332', color: '#f2dfa6', border: '1px solid #c9a84c', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 700 }
+                              : { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l.texte}</span>
+                          ))}
+                        </div>
+                        {duDore && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 6 }}>En doré : <b style={{ color: '#9a7d2e' }}>indispensable</b> — un bien qui ne l&apos;a pas ne part pas.</div>}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   {/* Ligne 3 : Secteurs */}
                   {cr.secteurs?.length > 0 && (
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Secteurs recherchés</div>
@@ -2079,7 +2111,7 @@ Emilio Immobilier
                     <option value="refait_neuf">Refait à neuf</option>
                   </select>
                 </div>
-                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} placeholder="Ex: 1990" /></div>
+                <div><label className={styles.lbl}>Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} /></div>
               </div>
             </>),
           },
@@ -2089,11 +2121,11 @@ Emilio Immobilier
             contenu: (<>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
-                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} placeholder="Ex: 25" /></div>
+                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} /></div>
               </div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
-                <div><label className={styles.lbl}>Chambres min</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} placeholder="Ex: 2" /></div>
+                <div><label className={styles.lbl}>Chambres min</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} /></div>
               </div>
             </>),
           },
@@ -2103,8 +2135,8 @@ Emilio Immobilier
             contenu: (<>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
-                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage min</span><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} placeholder="2" style={{width:80}} /></div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage max</span><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} placeholder="5" style={{width:80}} /></div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage min</span><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} style={{width:80}} /></div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage max</span><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} style={{width:80}} /></div>
               </div>
 
               {/* Ascenseur : indispensable, ou bien « je monte jusqu'au Xe sans ». */}
@@ -2114,7 +2146,7 @@ Emilio Immobilier
                   {niv('ascenseur') !== 'indispensable' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Sans ascenseur, jusqu&apos;au</span>
-                      <input className={styles.inp} type="number" min={0} max={12} value={crit.etage_max_sans_ascenseur} onChange={e => setCrit(f => ({ ...f, etage_max_sans_ascenseur: e.target.value }))} placeholder="3" style={{ width: 72 }} />
+                      <input className={styles.inp} type="number" min={0} max={12} value={crit.etage_max_sans_ascenseur} onChange={e => setCrit(f => ({ ...f, etage_max_sans_ascenseur: e.target.value }))} style={{ width: 72 }} />
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>e étage</span>
                     </div>
                   )}
@@ -2131,11 +2163,11 @@ Emilio Immobilier
               <div>
                 <label className={styles.lbl}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>(plusieurs possibles)</span></label>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[{k:'sud',l:'Sud'},{k:'est',l:'Est'},{k:'ouest',l:'Ouest'},{k:'nord',l:'Nord'},{k:'traversant',l:'Traversant'}].map(o => {
+                  {EXPOSITIONS.map(o => {
                     const sel = crit.exposition_souhaitee.split(',').map(x=>x.trim()).filter(Boolean);
                     const active = sel.includes(o.k);
                     return (
-                      <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{active ? '✓ ' : ''}{o.l}</button>
+                      <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{o.i}</span> {o.l}</button>
                     );
                   })}
                 </div>
@@ -2160,7 +2192,7 @@ Emilio Immobilier
                   {niv('exterieur') && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>D&apos;au moins</span>
-                      <input className={styles.inp} type="number" min={1} value={crit.exterieur_surface_min} onChange={e => setCrit(f => ({ ...f, exterieur_surface_min: e.target.value }))} placeholder="8" style={{ width: 76 }} />
+                      <input className={styles.inp} type="number" min={1} value={crit.exterieur_surface_min} onChange={e => setCrit(f => ({ ...f, exterieur_surface_min: e.target.value }))} style={{ width: 76 }} />
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>m²</span>
                     </div>
                   )}
@@ -2237,11 +2269,11 @@ Emilio Immobilier
             sous: 'Enveloppe, apport et financement',
             contenu: (<>
               <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} placeholder="300 000" /></div>
-                <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} placeholder="450 000" /></div>
+                <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} /></div>
+                <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} /></div>
               </div>
               <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} placeholder="Ex: 100 000" /></div>
+                <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} /></div>
                 <div>
                   <label className={styles.lbl}>Financement</label>
                   <select className={styles.inp} value={crit.financement} onChange={e=>setCrit(f=>({...f,financement:e.target.value}))}>
