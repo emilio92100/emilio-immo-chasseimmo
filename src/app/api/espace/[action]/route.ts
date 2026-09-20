@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     async function bienDeLaRecherche(id: unknown) {
       if (typeof id !== 'string' || !id) return null;
       const { data } = await supabase.from('biens')
-        .select('id, titre, surface, prix_acquereur, prix_vendeur, nb_vues, recherche_id')
+        .select('id, titre, surface, prix_acquereur, prix_vendeur, nb_vues, vu_le, recherche_id')
         .eq('id', id).eq('recherche_id', recherche!.id).maybeSingle();
       return data || null;
     }
@@ -74,10 +74,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       case 'vue': {
         const bien = await bienDeLaRecherche(body.bien_id);
         if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
+        /* On compte CHAQUE ouverture. « vu_le » garde la toute première :
+           c'est elle qui dit combien de temps il a mis à regarder. */
         await supabase.from('biens').update({
-          vu_le: new Date().toISOString(), nb_vues: (bien.nb_vues || 0) + 1,
+          vu_le: bien.vu_le || new Date().toISOString(),
+          nb_vues: (bien.nb_vues || 0) + 1,
         }).eq('id', bien.id);
-        await evt('fiche', bien.titre || null, bien.id);
+
+        /* Le journal, lui, ne se répète pas : une ligne par bien et par
+           demi-heure, comme pour l'ouverture de l'espace. */
+        const ilYA30min = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: dejaVu } = await supabase.from('espace_evenements')
+          .select('id').eq('recherche_id', recherche.id).eq('bien_id', bien.id)
+          .eq('type', 'fiche').gte('created_at', ilYA30min).limit(1).maybeSingle();
+        if (!dejaVu) await evt('fiche', bien.titre || null, bien.id);
         return NextResponse.json({ ok: true });
       }
 
