@@ -97,9 +97,27 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
       client={{ prenom: client?.prenom || '', nom: client?.nom || '', reference: client?.reference || '', jours }}
       criteres={{
         budgetMin: recherche.budget_min, budgetMax: recherche.budget_max,
-        surfaceMin: recherche.surface_min, piecesMin: recherche.nb_pieces_min,
+        surfaceMin: recherche.surface_min, surfaceMax: recherche.surface_max ?? null,
+        surfaceSejourMin: recherche.surface_sejour_min ?? null,
+        piecesMin: recherche.nb_pieces_min, piecesMax: recherche.nb_pieces_max ?? null,
         chambresMin: recherche.chambres_min, secteurs: recherche.secteurs || [],
         typeBien: recherche.type_bien,
+        typesBien: recherche.type_bien
+          ? String(recherche.type_bien).split(',').map((x: string) => x.trim()).filter(Boolean)
+          : [],
+        etatSouhaite: recherche.etat_souhaite ?? null,
+        anneeMin: recherche.annee_construction_min ?? null,
+        etageMin: recherche.etage_min ?? null, etageMax: recherche.etage_max ?? null,
+        rdcExclu: !!recherche.rdc_exclu, dernierEtage: !!recherche.dernier_etage,
+        etageMaxSansAscenseur: recherche.etage_max_sans_ascenseur ?? null,
+        exposition: recherche.exposition_souhaitee || '',
+        exigences: recherche.exigences || {},
+        cuisineType: recherche.cuisine_type ?? null,
+        exterieurSurfaceMin: recherche.exterieur_surface_min ?? null,
+        dpeMax: recherche.dpe_max ?? null,
+        apport: recherche.apport ?? null,
+        financement: recherche.financement ?? null,
+        urgence: recherche.urgence ?? null,
         transportMinutes: recherche.transport_minutes ?? null,
         transportLignes: recherche.transport_lignes || [],
         transportArrets: recherche.transport_arrets || [],
