@@ -469,9 +469,21 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                   <span>Ces biens sont ceux qui ont passé tous vos critères, sur {passage.lues} annonces lues lors du dernier passage.</span>
                 </div>
               )}
+              {/* « Aucun nouveau bien » ne veut pas dire « aucun bien retenu » :
+                  si le dernier passage en a retenu, ils sont simplement déjà ouverts.
+                  Dire le contraire serait faux, et le client le verrait tout de suite. */}
               {neufs.length === 0 && !!passage?.lues && (
                 <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
-                  <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères. Aucune n&apos;était assez juste pour vous être présentée&nbsp;— mieux vaut ne rien vous envoyer que de vous faire perdre du temps.</span>
+                  {passage.proposees ? (
+                    <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères
+                      et {passage.proposees} bien{passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} pour vous.
+                      Vous {passage.proposees > 1 ? 'les ' : "l'"}avez déjà ouvert{passage.proposees > 1 ? 's' : ''}&nbsp;:
+                      {passage.proposees > 1 ? ' ils vous attendent' : ' il vous attend'} dans «&nbsp;Mes derniers biens consultés&nbsp;».</span>
+                  ) : (
+                    <span>Lors du dernier passage, {passage.lues} annonces ont été passées en revue sur vos critères.
+                      Aucune n&apos;a passé tous vos critères cette fois-ci&nbsp;— mieux vaut ne rien vous envoyer
+                      que de vous faire perdre du temps.</span>
+                  )}
                 </div>
               )}
             </Vue>
