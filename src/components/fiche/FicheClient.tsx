@@ -1162,6 +1162,32 @@ Emilio Immobilier
         return;
       }
 
+      /* C'est ici, et seulement ici, qu'un bien devient « Présenté » : le mail
+         est parti pour de bon. Ouvrir la fenêtre puis annuler ne laisse plus
+         rien derrière. Un bien déjà présenté qu'on renvoie garde l'avis du
+         client — on ne remet pas son badge à zéro. */
+      if (envoiMode !== 'libre' && envoiBienIds.length > 0) {
+        const quand = new Date().toISOString();
+        for (const id of envoiBienIds) {
+          const b = biens.find(x => x.id === id);
+          const neuf = b?.etape !== 'presente';
+          await supabase.from('biens').update({
+            etape: 'presente', envoye_le: quand, canal_envoi: 'mail',
+            ...(neuf ? { badge_retour: 'propose' } : {}),
+          }).eq('id', id);
+          const prix = Number(b?.prix_acquereur) || Number(b?.prix_vendeur) || 0;
+          const hono = prix - (Number(b?.prix_vendeur) || 0);
+          await supabase.from('journal').insert({
+            client_id: client.id, bien_id: id, recherche_id: rechercheId, type: 'envoi_bien',
+            titre: neuf ? 'Envoyé au client · mail' : 'Renvoyé au client · mail',
+            description: prix
+              ? `Prix présenté ${prix.toLocaleString('fr-FR')} €${hono > 0 ? ` — dont ${hono.toLocaleString('fr-FR')} € d'honoraires de chasse` : ''}`
+              : null,
+            metadata: {},
+          });
+        }
+      }
+
       setEnvoiSending(false);
       setShowEnvoiBien(false);
       load();
@@ -1731,11 +1757,11 @@ Emilio Immobilier
                         <button onClick={() => openEnvoiBien(b.id)} style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📤 Envoyer</button>
                         <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Visite</button>
                         {b.pdf_statut === 'pret' && b.pdf_url ? (
-                          <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, background: '#1a2332', color: 'white', border: '1px solid #1a2332', padding: '4px 12px', borderRadius: 20, fontWeight: 600, textDecoration: 'none' }}>📄 PDF client</a>
+                          <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, background: '#1a2332', color: 'white', border: '1px solid #1a2332', padding: '4px 12px', borderRadius: 20, fontWeight: 600, textDecoration: 'none' }}>📄 Fiche client</a>
                         ) : b.pdf_statut === 'demande' ? (
-                          <span style={{ fontSize: 12, background: '#fdfaf1', color: '#a17d2c', border: '1px solid #ecdcb4', padding: '4px 12px', borderRadius: 20, fontWeight: 600 }}>⏳ PDF en préparation</span>
+                          <span style={{ fontSize: 12, background: '#fdfaf1', color: '#a17d2c', border: '1px solid #ecdcb4', padding: '4px 12px', borderRadius: 20, fontWeight: 600 }}>⏳ Fiche en attente</span>
                         ) : (
-                          <button onClick={() => demanderPdf(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📄 Préparer le PDF</button>
+                          <button onClick={() => demanderPdf(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📄 Demander une fiche soignée</button>
                         )}
                       </div>
                     </div>
