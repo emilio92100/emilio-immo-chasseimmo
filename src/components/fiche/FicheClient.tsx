@@ -814,9 +814,14 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const tempId = crypto.randomUUID();
     // Uploader les photos vers Supabase Storage
     const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
-    const { data: bienInsere } = await supabase.from('biens').insert({
+    const { data: bienInsere, error: erreurBien } = await supabase.from('biens').insert({
       client_id: client.id,
       recherche_id: rechercheId,
+      /* ⚠️ Sans `etape`, le bien n'apparaît dans AUCUN onglet : Sélection et
+         Présentés filtrent tous les deux dessus en dur (OngletBiens.tsx).
+         Seul le compteur le voyait, via son repli `(b.etape || 'selection')`
+         — d'où un onglet qui affiche « 1 » et reste vide. */
+      etape: 'selection',
       url: bienForm.url||null,
       titre: bienForm.titre,
       ville: bienForm.ville,
@@ -870,6 +875,14 @@ export default function FicheClient({ client: init, onBack }: Props) {
       agence_tel: bienForm.agence_tel||null,
       badge_retour: 'propose',
     }).select().single();
+    /* L'erreur n'était pas relue : le journal s'écrivait et la modale se
+       fermait même quand l'insertion avait échoué — le bien n'existait alors
+       nulle part, sans que rien ne le dise. */
+    if (erreurBien) {
+      alert("Le bien n'a pas pu être enregistré : " + erreurBien.message);
+      setSaving(false);
+      return;
+    }
     await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'');
     setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
   }
