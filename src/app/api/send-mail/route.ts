@@ -46,9 +46,18 @@ function escapeHtml(s: string) {
     .replace(/'/g, '&#39;');
 }
 
-function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): string {
+/* Le bouton de chaque bien mène à l'espace acheteur, ouvert sur ce bien-là :
+   c'est la seule page où le client peut répondre « ça me plaît », demander une
+   visite ou dire non. La fiche publique /bien/<id> reste, mais elle est en
+   lecture seule : elle sert au partage à un tiers, pas au client lui-même. */
+function lienBien(b: BienLite, token?: string | null): string {
+  return token ? `${SITE_URL}/espace/${token}?bien=${b.id}` : `${SITE_URL}/bien/${b.id}`;
+}
+
+function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null }): string {
   const { corps, biens } = opts;
   const corpsHtml = escapeHtml(corps).replace(/\n/g, '<br/>');
+  const token = opts.token;
   const single = biens.length === 1;
 
   const photoOf = (b: BienLite) => (Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null);
@@ -86,7 +95,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
       ${statsRow ? `<tr><td style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
       <tr><td style="padding:18px 28px 6px;">
         ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
-        <a href="${SITE_URL}/bien/${b.id}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
+        <a href="${lienBien(b, token)}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
       </td></tr>`;
   }
 
@@ -107,7 +116,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[] }): 
             ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
             ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
             ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:8px;">${fmt(prix)} €</div>` : ''}
-            <a href="${SITE_URL}/bien/${b.id}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
+            <a href="${lienBien(b, token)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
           </td>
         </tr></table>
       </td></tr>
@@ -215,6 +224,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Clients introuvables' }, { status: 404 });
     }
 
+    /* Le jeton de l'espace acheteur, pour que chaque bouton du mail ouvre la
+       bonne fiche. S'il manque, les liens retombent sur la page publique :
+       le mail part quand même, il est juste moins bien. */
+    let tokenEspace: string | null = null;
+    if (recherche_id) {
+      const { data: rech } = await supabase
+        .from('recherches').select('token_espace').eq('id', recherche_id).maybeSingle();
+      tokenEspace = (rech?.token_espace as string) || null;
+    }
+
     // Récupère les biens UNIQUEMENT si mode != 'libre'
     let tousBiens: (BienLite & { client_id: string })[] = [];
     if (mode !== 'libre') {
@@ -252,8 +271,8 @@ export async function POST(req: NextRequest) {
 
       const biensClient = tousBiens.filter(b => b.client_id === client.id);
       const corpsPerso = corps.replace(/\{\{prénom\}\}/g, client.prenom);
-      const html = buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient });
-      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${SITE_URL}/bien/${b.id}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32`;
+      const html = buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: tokenEspace });
+      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, tokenEspace)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32`;
 
       try {
         const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
