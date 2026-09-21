@@ -126,6 +126,16 @@ const CRIT_CHIP_FORT: React.CSSProperties = {
   fontSize: 14.5, fontWeight: 800, color: '#1a2332',
 };
 
+/* Les états d'un dossier. Le libellé seul ne suffisait pas : on dit quand
+   chacun s'emploie, pour qu'on choisisse sans hésiter. */
+const ETATS_CLIENT: { cle: string; nom: string; quand: string; point: string }[] = [
+  { cle: 'prospect',    nom: 'Prospect',    quand: 'Premier contact, rien de signé', point: '#8b5cf6' },
+  { cle: 'actif',       nom: 'Actif',       quand: 'Recherche en cours',             point: '#10b981' },
+  { cle: 'suspendu',    nom: 'Suspendu',    quand: 'En pause, à reprendre plus tard', point: '#f59e0b' },
+  { cle: 'bien_trouve', nom: 'Bien trouvé', quand: 'Acquisition faite, dossier clos', point: '#3b82f6' },
+  { cle: 'perdu',       nom: 'Perdu',       quand: 'Le client ne cherche plus avec nous', point: '#ef4444' },
+];
+
 /* « minimum » en toutes lettres : « min » se confondait avec le chiffre. */
 function Mini({ fort }: { fort?: boolean }) {
   return <span style={{ fontSize: 11.5, color: fort ? '#a9822f' : '#94a3b8', fontWeight: 600 }}> minimum</span>;
@@ -510,6 +520,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const changerModeCrit = (m: 'tout' | 'etapes') => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); try { localStorage.setItem('emilio_mode_criteres', m); } catch { /* stockage indisponible */ } };
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
+  const [menuStatut, setMenuStatut] = useState(false);
   const [showBien, setShowBien] = useState(false);
   const [relancesAtt, setRelancesAtt] = useState<{ date_echeance: string; note: string | null }[]>([]);
   const [delaiJours, setDelaiJours] = useState(5);
@@ -1559,13 +1570,39 @@ Emilio Immobilier
                       <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
                         {client.prenom} {client.nom}
                       </div>
+                      {/* Le menu natif s'ouvrait en blanc brut sur le bandeau sombre.
+                          Celui-ci nomme chaque état et dit ce qu'il veut dire. */}
                       <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                        <span style={{ position: 'absolute', left: 11, width: 6, height: 6, borderRadius: '50%', background: teinte, pointerEvents: 'none' }} />
-                        <select value={client.statut} onChange={e => changeStatut(e.target.value)}
-                          style={{ padding: '5px 26px 5px 24px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', appearance: 'none', WebkitAppearance: 'none', outline: 'none' }}>
-                          <option value="prospect">Prospect</option><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="offre_ecrite">Offre écrite</option><option value="bien_trouve">Bien trouvé</option><option value="perdu">Perdu</option>
-                        </select>
-                        <span style={{ position: 'absolute', right: 10, pointerEvents: 'none', fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
+                        {menuStatut && <div onClick={() => setMenuStatut(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />}
+                        <button onClick={() => setMenuStatut(v => !v)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', outline: 'none', transition: 'background .15s' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: teinte, flexShrink: 0 }} />
+                          {ETATS_CLIENT.find(x => x.cle === st)?.nom || st}
+                          <span style={{ fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
+                        </button>
+                        {menuStatut && (
+                          <div className="emilio-menu" style={{ position: 'absolute', top: 'calc(100% + 7px)', left: 0, zIndex: 50, width: 268, background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, boxShadow: '0 16px 40px rgba(15,22,35,.22)', overflow: 'hidden' }}>
+                            {ETATS_CLIENT.map(e => {
+                              const courant = e.cle === st;
+                              return (
+                                <button key={e.cle} onClick={() => { setMenuStatut(false); changeStatut(e.cle); }}
+                                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5 }} />
+                                  <span style={{ flexGrow: 1, minWidth: 0 }}>
+                                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: '#1a2332' }}>{e.nom}</span>
+                                    <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{e.quand}</span>
+                                  </span>
+                                  {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
+                                </button>
+                              );
+                            })}
+                            {/* Ce n'est pas un état, c'est un geste : il se distingue. */}
+                            <button onClick={() => { setMenuStatut(false); changeStatut('offre_ecrite'); }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
+                              ✍️ Créer une offre écrite
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1681,12 +1718,44 @@ Emilio Immobilier
           {rechercheActive && (
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline', paddingBottom: 12 }}>Renommer</button>
           )}
+
+          <span style={{ flexGrow: 1 }} />
+
+          {/* Le mandat tenait une colonne entière à droite des critères, qui s'en
+              trouvaient rétrécis. Il dit peu de choses : une ligne lui suffit. */}
+          <button onClick={() => setShowMandat(true)}
+            title="Modifier le mandat"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 10,
+              background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 10,
+              padding: '7px 13px', cursor: 'pointer', fontFamily: 'inherit', maxWidth: '100%' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>📋 Mandat</span>
+            {cr.mandat_date_signature ? (
+              <>
+                <span style={{ fontSize: 12.5, color: '#6b6045', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR')}
+                  {cr.mandat_duree ? ` · ${cr.mandat_duree} mois` : ''}
+                  {cr.mandat_honoraires ? ` · ${cr.mandat_honoraires}` : ''}
+                </span>
+                {joursMandat !== null && (
+                  <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, borderRadius: 99, padding: '2px 9px',
+                    background: joursMandat > 15 ? '#fff' : joursMandat > 0 ? '#fffbeb' : '#fef2f2',
+                    border: `1px solid ${joursMandat > 15 ? '#e3d3ab' : joursMandat > 0 ? '#fde68a' : '#fecaca'}`,
+                    color: joursMandat > 15 ? '#a9822f' : joursMandat > 0 ? '#b45309' : '#b91c1c' }}>
+                    {joursMandat > 0 ? `${joursMandat} j restants` : '⚠️ Expiré'}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ fontSize: 12.5, color: '#a08c60', fontWeight: 600 }}>non renseigné — <b style={{ color: '#a9822f' }}>compléter</b></span>
+            )}
+            <span style={{ fontSize: 11, color: '#c2ad7c', flexShrink: 0 }}>✏️</span>
+          </button>
         </div>
 
-        {/* INFOS CLIENT (Contact + Critères + Mandat) - en bas */}
+        {/* LES CRITÈRES — sur toute la largeur depuis que le mandat est remonté */}
         <div className={styles.infoRow}>
           {/* coin supérieur gauche carré : c'est là que vient se poser le sélecteur */}
-          <div className={styles.infoCard} style={{ flex: 2, borderTopLeftRadius: 0 }}>
+          <div className={styles.infoCard} style={{ borderTopLeftRadius: 0 }}>
             <div className={styles.infoCardHeader}>
               <span>🎯 Critères de recherche</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1876,38 +1945,14 @@ Emilio Immobilier
             </div>
           </div>
 
-          <div style={{ background: '#1a2332', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#c9a84c' }}>📋 Mandat</span>
-              <button onClick={() => setShowMandat(true)} style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✏️</button>
-            </div>
-            {cr.mandat_date_signature ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Signé</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR')}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Durée</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{cr.mandat_duree ? `${cr.mandat_duree} mois` : '—'}</div></div>
-                  <div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 }}>Honoraires</div><div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{cr.mandat_honoraires||'—'}</div></div>
-                </div>
-                {joursMandat !== null && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                    <div style={{ fontSize: 15, fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, color: joursMandat < 15 ? '#fca5a5' : 'white' }}>{joursMandat > 0 ? `${joursMandat} jours restants` : 'Expiré'}</div>
-                    <span style={{ fontSize: 10, background: joursMandat > 15 ? 'rgba(201,168,76,0.15)' : 'rgba(239,68,68,0.2)', color: joursMandat > 15 ? '#c9a84c' : '#fca5a5', border: `1px solid ${joursMandat > 15 ? 'rgba(201,168,76,0.2)' : 'rgba(239,68,68,0.3)'}`, padding: '3px 8px', borderRadius: 8, fontWeight: 700 }}>{joursMandat > 0 ? 'Actif' : '⚠️ Expiré'}</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginBottom: 8 }}>Non renseigné</div>
-                <button onClick={() => setShowMandat(true)} style={{ background: 'rgba(201,168,76,0.15)', color: '#c9a84c', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Compléter</button>
-              </div>
-            )}
-          </div>
         </div>
 
 
         {/* ONGLETS en haut */}
       <style>{`
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes emilioMenu { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
+        .emilio-menu { animation: emilioMenu .16s cubic-bezier(.22,.8,.3,1) both; transform-origin: top left; }
         .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
         @keyframes ficheTabIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
         /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
