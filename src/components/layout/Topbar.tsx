@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Topbar.module.css';
+import { EVT_MAJ, demanderNouveauClient } from '@/lib/intentions';
 
 export default function Topbar({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [query, setQuery] = useState('');
@@ -14,10 +15,24 @@ export default function Topbar({ onNavigate }: { onNavigate: (page: string, data
   /* Comme la barre latérale : on n'annonce que les relances dues, en retard
      ou du jour. Celles à venir attendent sagement dans leur page. */
   useEffect(() => {
-    const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-    supabase.from('relances').select('*', { count: 'exact', head: true })
-      .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString())
-      .then(({ count }) => setRelancesCount(count || 0));
+    const compter = () => {
+      const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
+      supabase.from('relances').select('*', { count: 'exact', head: true })
+        .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString())
+        .then(({ count }) => setRelancesCount(count || 0));
+    };
+    compter();
+    const revoir = () => { if (!document.hidden) compter(); };
+    const minuterie = setInterval(revoir, 20000);
+    window.addEventListener(EVT_MAJ, compter);
+    window.addEventListener('focus', revoir);
+    document.addEventListener('visibilitychange', revoir);
+    return () => {
+      clearInterval(minuterie);
+      window.removeEventListener(EVT_MAJ, compter);
+      window.removeEventListener('focus', revoir);
+      document.removeEventListener('visibilitychange', revoir);
+    };
   }, []);
 
   // Fermer si clic extérieur
@@ -117,7 +132,10 @@ export default function Topbar({ onNavigate }: { onNavigate: (page: string, data
         </button>
       )}
       <button className={styles.btn} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
-      <button className={`${styles.btn} ${styles.btnDark}`} onClick={() => onNavigate('clients')}>+ Nouveau client</button>
+      {/* Le bouton créait un client… en affichant la liste des clients. Il
+          ouvre maintenant le formulaire, depuis n'importe quel écran. */}
+      <button className={`${styles.btn} ${styles.btnDark}`}
+        onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}>+ Nouveau client</button>
     </header>
   );
 }
