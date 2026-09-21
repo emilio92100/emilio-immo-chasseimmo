@@ -110,6 +110,55 @@ const TYPES_BIEN = [
   { t: 'Duplex', i: '🪜' }, { t: 'Terrain', i: '🌱' }, { t: 'Autre', i: '✳️' },
 ];
 
+/* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
+   Un bandeau sombre pour le client et son enveloppe, puis trois familles :
+   le logement, l'immeuble, les transports. Avant, les neuf critères étaient
+   posés dans une rangée qui se repliait toute seule — « Transports » et
+   « Étage » prenaient toute la largeur, le reste se serrait, et rien ne
+   s'alignait. */
+const CRIT_CHIP: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.08)',
+  borderRadius: 10, padding: '7px 13px', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.82)',
+};
+const CRIT_CHIP_FORT: React.CSSProperties = {
+  ...CRIT_CHIP, background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.16)',
+  fontSize: 14.5, fontWeight: 700, color: '#fff',
+};
+
+/* « minimum » en toutes lettres : « min » se confondait avec le chiffre. */
+function Mini({ fort }: { fort?: boolean }) {
+  return <span style={{ fontSize: 11.5, color: fort ? '#a9822f' : '#94a3b8', fontWeight: 600 }}> minimum</span>;
+}
+
+type LigneC = { lib: string; val: React.ReactNode; fort?: boolean };
+
+/* Une colonne de famille : un en-tête teinté, puis ses lignes. */
+function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
+  { titre: string; couleur: string; fond: string; trait: string; ico: React.ReactNode; lignes: LigneC[] }) {
+  if (!lignes.length) return null;
+  return (
+    <div style={{ border: `1px solid ${trait}`, borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ background: fond, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {ico}
+        <span style={{ fontSize: 11, fontWeight: 800, color: couleur, textTransform: 'uppercase', letterSpacing: 0.9 }}>{titre}</span>
+      </div>
+      <div style={{ padding: '4px 14px 10px' }}>
+        {lignes.map((l, i) => (
+          <div key={l.lib} style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
+            padding: l.fort ? '9px 14px' : '9px 0', margin: l.fort ? '0 -14px' : undefined,
+            background: l.fort ? '#fdfaf1' : undefined,
+            borderBottom: i === lignes.length - 1 ? 'none' : '1px solid #f1f5f9',
+          }}>
+            <span style={{ fontSize: 13, color: l.fort ? '#a9822f' : '#64748b', fontWeight: l.fort ? 700 : 600 }}>{l.lib}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: l.fort ? '#a9822f' : '#1a2332' }}>{l.val}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* En-tête de section dans la pop-up « Critères de recherche ». */
 const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; note?: string }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 -4px',
@@ -1658,28 +1707,85 @@ Emilio Immobilier
             <div className={styles.infoCardBody}>
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {/* Type + Budget sur même ligne */}
-                  {(cr.type_bien || cr.budget_min || cr.budget_max) && (
-                    <div style={{ paddingBottom: 8, borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      {cr.type_bien && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Type</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.type_bien}</div></div>}
-                      {(cr.budget_min || cr.budget_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Budget</div><div style={{ fontSize: 22, fontWeight: 800, color: '#c9a84c', lineHeight: 1.1 }}>{cr.budget_min && cr.budget_max ? `${(cr.budget_min/1000).toFixed(0)}–${(cr.budget_max/1000).toFixed(0)} k€` : cr.budget_max ? `Jusqu'à ${(cr.budget_max/1000).toFixed(0)} k€` : `À partir de ${((cr.budget_min||0)/1000).toFixed(0)} k€`}</div></div>}
-                      </div>
-                  )}
-                  {/* Autres critères chiffrés */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
-                    {(cr.surface_min || cr.surface_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Surface</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_min && cr.surface_max ? `${cr.surface_min}–${cr.surface_max}m²` : cr.surface_max ? `max ${cr.surface_max}m²` : `min ${cr.surface_min}m²`}</div></div>}
-                    {(cr.nb_pieces_min || cr.nb_pieces_max) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Pièces</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}P` : cr.nb_pieces_max ? `max ${cr.nb_pieces_max}P` : `min ${cr.nb_pieces_min}P`}</div></div>}
-                    {cr.chambres_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Chambres</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`min ${cr.chambres_min}`}</div></div>}
-                    {cr.transport_arrets?.length ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.transport_arrets.map((a: any) => `${a.nom} (${a.minutes || 10} min)`).join(' · ')}</div></div> : (cr.transport_minutes ? <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Transports</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{`${cr.transport_minutes} min à pied max`}</div></div> : null)}
-                    {cr.dpe_max && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>DPE max</div><div style={{ fontSize: 15, fontWeight: 800, color: '#1a2332', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0 6px' }}>{cr.dpe_max}</div></div>}
-                    {(cr.etage_min || cr.etage_max || cr.rdc_exclu || cr.dernier_etage || cr.etage_max_sans_ascenseur) && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Étage</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{[cr.etage_min ? `min ${cr.etage_min}` : '', cr.etage_max ? `max ${cr.etage_max}` : '', cr.rdc_exclu ? '🚫 RDC exclu' : '', cr.dernier_etage ? '🏙️ Dernier' : '', cr.etage_max_sans_ascenseur ? `🛗 ${cr.etage_max_sans_ascenseur}e max sans ascenseur` : ''].filter(Boolean).join(' · ')}</div></div>}
-                    {cr.annee_construction_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Année min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.annee_construction_min}</div></div>}
-                    {cr.surface_sejour_min && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Séjour min</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.surface_sejour_min}m²</div></div>}
-                    {cr.etat_souhaite && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>État</div><div style={{ fontSize: 15, fontWeight: 600, color: '#1a2332' }}>{texteChoix(ETATS, cr.etat_souhaite)}</div></div>}
-                    {cr.exposition_souhaitee && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Exposition</div><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{cr.exposition_souhaitee.split(',').map(x => x.trim()).filter(Boolean).map(x => (
-                      <span key={x} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#ecfdf5', color: '#0f766e', border: '1px solid #99f6e4', borderRadius: 20, padding: '3px 11px', fontSize: 13.5, fontWeight: 700, textTransform: 'capitalize' }}>{ICONE_EXPO[x] || '🧭'} {x}</span>
-                    ))}</div></div>}
+                  {/* Le bandeau : le client et son enveloppe */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#fff', background: 'linear-gradient(105deg, #1a2332 0%, #27405f 55%, #35547a 100%)' }}>
+                    {cr.type_bien && <span style={CRIT_CHIP_FORT}>🏡 {cr.type_bien}</span>}
+                    {cr.urgence && <span style={CRIT_CHIP}>⏱️ {texteChoix(URGENCES, cr.urgence)}</span>}
+                    {cr.financement && <span style={CRIT_CHIP}>💳 {texteChoix(FINANCEMENTS, cr.financement)}</span>}
+                    {cr.apport != null && <span style={CRIT_CHIP}>💰 Apport {cr.apport.toLocaleString('fr-FR')} €</span>}
+                    <span style={{ flexGrow: 1 }} />
+                    <span style={{ textAlign: 'right' }}>
+                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: 1.1 }}>Budget</span>
+                      <span style={{ display: 'block', fontSize: 25, fontWeight: 800, color: '#e0c479', letterSpacing: -0.6, marginTop: 2 }}>
+                        {cr.budget_min && cr.budget_max ? `${(cr.budget_min / 1000).toFixed(0)}–${(cr.budget_max / 1000).toFixed(0)} k€`
+                          : cr.budget_max ? `Jusqu'à ${(cr.budget_max / 1000).toFixed(0)} k€`
+                            : cr.budget_min ? `À partir de ${(cr.budget_min / 1000).toFixed(0)} k€`
+                              : 'À préciser'}
+                      </span>
+                    </span>
                   </div>
+
+                  {/* Trois familles. Une colonne sans aucun critère renseigné
+                      ne s'affiche pas — une case vide en dirait moins que rien. */}
+                  {(() => {
+                    const ordinal = (n: number) => n === 0 ? 'RDC' : n === 1 ? '1er' : `${n}e`;
+
+                    const logement: LigneC[] = [];
+                    if (cr.surface_min || cr.surface_max) logement.push({ lib: 'Surface', val: cr.surface_min && cr.surface_max ? `${cr.surface_min}–${cr.surface_max} m²` : cr.surface_max ? `${cr.surface_max} m² maximum` : <>{cr.surface_min} m²<Mini /></> });
+                    if (cr.nb_pieces_min || cr.nb_pieces_max) logement.push({ lib: 'Pièces', val: cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}` : cr.nb_pieces_max ? `${cr.nb_pieces_max} maximum` : <>{cr.nb_pieces_min}<Mini /></> });
+                    if (cr.chambres_min) logement.push({ lib: 'Chambres', val: <>{cr.chambres_min}<Mini fort /></>, fort: true });
+                    if (cr.surface_sejour_min) logement.push({ lib: 'Séjour', val: <>{cr.surface_sejour_min} m²<Mini /></> });
+                    if (cr.etat_souhaite) logement.push({ lib: 'État', val: <span style={{ fontSize: 13.5 }}>{texteChoix(ETATS, cr.etat_souhaite)}</span> });
+
+                    const immeuble: LigneC[] = [];
+                    if (cr.etage_min || cr.etage_max) immeuble.push({ lib: 'Étage', val: cr.etage_min && cr.etage_max ? `${ordinal(cr.etage_min)} – ${ordinal(cr.etage_max)}` : cr.etage_max ? `jusqu'au ${ordinal(cr.etage_max || 0)}` : `${ordinal(cr.etage_min || 0)} et plus` });
+                    if (cr.rdc_exclu) immeuble.push({ lib: 'Rez-de-chaussée', val: <span style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 99, padding: '2px 9px', fontSize: 11.5, fontWeight: 700, color: '#b91c1c' }}>exclu</span> });
+                    if (cr.dernier_etage) immeuble.push({ lib: 'Dernier étage', val: <span style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 99, padding: '2px 9px', fontSize: 11.5, fontWeight: 700, color: '#6d28d9' }}>recherché</span> });
+                    if (cr.etage_max_sans_ascenseur) immeuble.push({ lib: 'Sans ascenseur', val: <span style={{ fontSize: 13.5 }}>{ordinal(cr.etage_max_sans_ascenseur || 0)} maximum</span> });
+                    if (cr.annee_construction_min) immeuble.push({ lib: 'Construit après', val: cr.annee_construction_min });
+                    if (cr.dpe_max) immeuble.push({ lib: 'DPE', val: <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 7, background: '#1a2332', color: '#fff', fontSize: 12.5, fontWeight: 800 }}>{cr.dpe_max}</span> });
+                    if (cr.exposition_souhaitee) immeuble.push({ lib: 'Exposition', val: <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{cr.exposition_souhaitee.split(',').map((x: string) => x.trim()).filter(Boolean).map((x: string) => (
+                      <span key={x} style={{ background: '#ecfdf5', color: '#0f766e', border: '1px solid #99f6e4', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{ICONE_EXPO[x] || '🧭'} {x}</span>
+                    ))}</span> });
+
+                    const arrets = cr.transport_arrets || [];
+                    const aTransport = arrets.length > 0 || !!cr.transport_minutes;
+
+                    const ICO = (d: React.ReactNode, c: string) => (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+                    );
+
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${[logement.length, immeuble.length, aTransport ? 1 : 0].filter(Boolean).length || 1}, minmax(0, 1fr))`, gap: 12 }}>
+                        <FamilleCrit titre="Le logement" couleur="#2d5c8f" fond="#eff4fb" trait="#d6e3f5" lignes={logement}
+                          ico={ICO(<><path d="M3 21h18" /><path d="M5 21V9.5L12 4l7 5.5V21" /><path d="M10 21v-6h4v6" /></>, '#2d5c8f')} />
+                        <FamilleCrit titre="L'immeuble" couleur="#6d28d9" fond="#f5f3ff" trait="#ddd6fe" lignes={immeuble}
+                          ico={ICO(<><path d="M4 21V4h9v17" /><path d="M13 10h7v11" /><path d="M7 8h2" /><path d="M7 12h2" /><path d="M7 16h2" /></>, '#6d28d9')} />
+                        {aTransport && (
+                          <div style={{ border: '1px solid #cbf0d8', borderRadius: 14, overflow: 'hidden' }}>
+                            <div style={{ background: '#f0fdf4', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {ICO(<><path d="M7.5 4h9a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /><path d="M4.5 10h15" /><path d="M8.5 16.5 6.5 20" /><path d="M15.5 16.5l2 3.5" /></>, '#15803d')}
+                              <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.9 }}>Les transports</span>
+                            </div>
+                            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {arrets.length > 0 ? arrets.map((a: any, k: number) => (
+                                <div key={(a.nom || '') + k} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                                  <span style={{ flexGrow: 1, minWidth: 0 }}>
+                                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1a2332' }}>{a.nom}</span>
+                                    {a.ville && <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', fontWeight: 600 }}>{a.ville}</span>}
+                                  </span>
+                                  <span style={{ flexShrink: 0, background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#475569' }}>{a.minutes || 10} min</span>
+                                </div>
+                              )) : (
+                                <div style={{ fontSize: 14, fontWeight: 700, color: '#1a2332' }}>{cr.transport_minutes} min à pied maximum</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Ligne 2 : Équipements */}
                   {(() => {
                     /* Le chasseur distingue « souhaité » et « indispensable » : le doré
@@ -1720,21 +1826,16 @@ Emilio Immobilier
                           else { if(!bv[s])bv[s]=[]; }
                         });
                         return Object.entries(bv).map(([ville, qs]) => (
-                          <div key={ville} style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-                            <span style={{ fontSize: 14, fontWeight: 800, color: '#1a2332', minWidth: 'max-content' }}>📍 {ville}</span>
+                          <div key={ville} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                            <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 9, background: '#eff4fb', border: '1px solid #d6e3f5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#3b6ea8' }}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></svg>
+                            </span>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: '#1a2332', minWidth: 'max-content' }}>{ville}</span>
                             {qs.length > 0 && qs.map(q => <span key={q} className={styles.secteurTag}>{q}</span>)}
                             {qs.length === 0 && <span className={styles.secteurTag}>Toute la ville</span>}
                           </div>
                         ));
                       })()}
-                    </div>
-                  )}
-                  {/* Profil d'achat (priorisation) */}
-                  {(cr.urgence || cr.financement || cr.apport) && (
-                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #3b82f6', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-                      {cr.urgence && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>⏱️ Urgence</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{texteChoix(URGENCES, cr.urgence)}</div></div>}
-                      {cr.financement && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💳 Financement</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{texteChoix(FINANCEMENTS, cr.financement)}</div></div>}
-                      {cr.apport != null && <div><div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>💰 Apport</div><div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332' }}>{cr.apport.toLocaleString('fr-FR')}€</div></div>}
                     </div>
                   )}
                   {/* Notes */}
