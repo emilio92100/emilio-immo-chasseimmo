@@ -104,6 +104,15 @@ const EVT_CLIENT = new Set(['retour_client', 'message_client', 'demande_rappel',
 function venantDuClient(type: string, titre: string) {
   return EVT_CLIENT.has(type) || /depuis son espace|par le client/i.test(titre || '');
 }
+type TriCle = 'nom' | 'modif' | 'creation' | 'budget';
+type Tri = { cle: TriCle; sens: 'asc' | 'desc' };
+const TRIS: { cle: TriCle; nom: string; note: string; sensDefaut: 'asc' | 'desc' }[] = [
+  { cle: 'nom',      nom: 'Nom du client',        note: 'de A à Z',                  sensDefaut: 'asc' },
+  { cle: 'modif',    nom: 'Dernière modification', note: 'le plus récent en haut',   sensDefaut: 'desc' },
+  { cle: 'creation', nom: 'Date de création',      note: 'le dernier arrivé en haut', sensDefaut: 'desc' },
+  { cle: 'budget',   nom: 'Budget',                note: 'du plus élevé au plus bas', sensDefaut: 'desc' },
+];
+
 type DetailDossier = {
   journal: { titre: string; type: string; date: string } | null;
   espaceOuvertures: number;
@@ -183,7 +192,49 @@ function signalDe(client: any, st: StatDossier | undefined): Signal {
   return { texte: `Créé il y a ${duree(joursDepuis(client.created_at))}`, color: '#7b8798', bg: '#f5f8fc', rang: 7, aide: 'Aucun événement enregistré sur ce dossier' };
 }
 
-/* La recherche, en une phrase plutôt qu'en huit pastilles. */
+/* ── La colonne Recherche : une pastille par critère, picto compris ──
+   Le texte brut « Appartement · 4 pièces, 75 m² minimum » se lisait mot à mot.
+   Trois pastilles se reconnaissent à la forme et à la couleur, sans lire. */
+
+function Ico({ d, c = '#8593a8', t = 13 }: { d: React.ReactNode; c?: string; t?: number }) {
+  return (
+    <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke={c}
+      strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>{d}</svg>
+  );
+}
+const D_TYPE = <><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10V20h13V10" /></>;
+const D_PIECES = <><rect x="4" y="3" width="13" height="18" rx="1.5" /><circle cx="13.5" cy="12" r="1" /></>;
+const D_SURFACE = <><path d="M4 20h16" /><path d="M4 20V8" /><path d="M20 20V8" /><path d="M4 8h16" /></>;
+const D_CHAMBRE = <><path d="M4 21V8l8-5 8 5v13" /><path d="M10 21v-6h4v6" /></>;
+
+const PA_BASE: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 9,
+  padding: '4px 10px 4px 8px', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
+};
+const PA_TYPE: React.CSSProperties = { ...PA_BASE, background: '#eef4fb', border: '1px solid #dbe7f6', color: '#2d5c8f' };
+const PA_NOMBRE: React.CSSProperties = { ...PA_BASE, background: '#f8fafc', border: '1px solid #eef2f7', color: '#45566e' };
+const PA_FORT: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800, color: '#1a2332' };
+const PA_FAIBLE: React.CSSProperties = { fontSize: 11, color: '#a3b0c2', fontWeight: 600 };
+
+/* Deux types tiennent sur une ligne, au-delà on compte. */
+function texteType(v: unknown) {
+  const l = String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (l.length === 0) return 'Type à préciser';
+  const court = (x: string) => /^appartements?$/i.test(x) ? 'Appart.' : x;
+  if (l.length === 1) return l[0];
+  if (l.length === 2) return `${court(l[0])} ou ${court(l[1]).toLowerCase()}`;
+  return `${court(l[0])} +${l.length - 1}`;
+}
+
+/* Un intervalle : « 4 », « 4 – 5 », « 4 min », « 4 max ». */
+function borne(min: unknown, max: unknown) {
+  if (min && max) return { valeur: `${min} – ${max}`, note: '' };
+  if (min) return { valeur: String(min), note: 'min' };
+  if (max) return { valeur: String(max), note: 'max' };
+  return null;
+}
+
+/* La recherche, en une phrase — gardée pour l'infobulle de la ligne. */
 function phraseRecherche(c: any) {
   const bouts: string[] = [];
   if (c.type_bien) bouts.push(String(c.type_bien));
@@ -239,6 +290,26 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   /* La carte de survol. Le détail (dernier échange, espace acheteur) n'est lu
      que pour le client survolé, et gardé en mémoire ensuite. */
   const [survol, setSurvol] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  /* Le classement de la liste, retenu dans le navigateur. */
+  const [tri, setTri] = useState<Tri>({ cle: 'modif', sens: 'desc' });
+  const [menuTri, setMenuTri] = useState(false);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('emilio.tri.clients');
+      if (v) setTri(JSON.parse(v) as Tri);
+    } catch { /* navigateur sans stockage : on garde le réglage par défaut */ }
+  }, []);
+  function classer(cle: TriCle, sensDefaut: 'asc' | 'desc' = 'desc') {
+    /* Reprendre le critère déjà actif inverse le sens — c'est ce qu'on attend
+       d'un en-tête de tableau. */
+    const suivant: Tri = tri.cle === cle
+      ? { cle, sens: tri.sens === 'asc' ? 'desc' : 'asc' }
+      : { cle, sens: sensDefaut };
+    setTri(suivant);
+    setMenuTri(false);
+    try { localStorage.setItem('emilio.tri.clients', JSON.stringify(suivant)); } catch { /* sans stockage, tant pis */ }
+  }
   const [details, setDetails] = useState<Record<string, DetailDossier>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   /* En trois secondes la souris a bougé : on retient sa dernière position,
@@ -481,11 +552,25 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     setSaving(false);
   }
 
-  /* Ce qui presse remonte : relance en retard, puis aujourd'hui, puis le reste. */
+  /* Le classement. Par défaut, le dossier qui a bougé le plus récemment est en
+     haut — c'est celui auquel on pense. Le choix est retenu d'une session à
+     l'autre : on ne reclasse pas sa liste chaque matin. */
   const ordonne = [...filtered].sort((a, b) => {
-    const ra = signalDe(a, stats[a.id]).rang, rb = signalDe(b, stats[b.id]).rang;
-    if (ra !== rb) return ra - rb;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const sens = tri.sens === 'asc' ? 1 : -1;
+    const ts = (x: any) => new Date(stats[x.id]?.dernierContact || x.updated_at || x.created_at).getTime();
+    const sous = (x: any) => Number(x.budget_max ?? x.budget_min ?? 0);
+    switch (tri.cle) {
+      case 'nom':
+        return sens * `${a.nom || ''} ${a.prenom || ''}`.localeCompare(`${b.nom || ''} ${b.prenom || ''}`, 'fr', { sensitivity: 'base' });
+      case 'creation':
+        return sens * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      case 'budget': {
+        const d = sous(a) - sous(b);
+        return d !== 0 ? sens * d : `${a.nom}`.localeCompare(`${b.nom}`, 'fr');
+      }
+      default:
+        return sens * (ts(a) - ts(b));
+    }
   });
 
   const nbParStatut = (s: string) => s === 'tous' ? clients.length : clients.filter(c => c.statut === s).length;
@@ -541,10 +626,46 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
               l'œil sans transformer la page en tableur. */}
           <div className={styles.entete}>
-            <span className={styles.colClient}>Client</span>
+            <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
+              Client
+              {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
+              <button className={`${styles.triBtn} ${tri.cle !== 'budget' ? styles.triBtnActif : ''}`}
+                onClick={() => setMenuTri(v => !v)} title="Choisir l'ordre de la liste">
+                <Ico t={11} c={tri.cle !== 'budget' ? '#ffffff' : '#8593a8'}
+                  d={<><path d="M7 4v16" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h6" /><path d="M14 17h6" /></>} />
+                Classer
+              </button>
+              {menuTri && (
+                <span className={styles.triMenu}>
+                  {TRIS.map(t => {
+                    const actif = tri.cle === t.cle;
+                    return (
+                      <button key={t.cle} className={styles.triItem} onClick={() => classer(t.cle, t.sensDefaut)}
+                        style={actif ? { background: '#fdfaf1' } : undefined}>
+                        <span style={{ width: 12, flexShrink: 0, color: '#c9a84c', fontSize: 12 }}>{actif ? '✓' : ''}</span>
+                        <span style={{ flexGrow: 1, minWidth: 0 }}>
+                          <b>{t.nom}</b>
+                          <small>{actif && tri.sens !== t.sensDefaut ? 'ordre inversé' : t.note}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </span>
+              )}
+            </span>
             <span className={styles.colRech}>Recherche</span>
-            <span className={styles.colSect}>Secteur</span>
-            <span className={styles.colBud}>Budget</span>
+            <span className={styles.colSect}>Secteur recherché</span>
+            <span className={styles.colBud} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
+              Budget max
+              <button className={`${styles.triFleche} ${tri.cle === 'budget' ? styles.triBtnActif : ''}`}
+                onClick={() => classer('budget', 'desc')}
+                title={tri.cle === 'budget' && tri.sens === 'asc' ? 'Budgets les plus élevés en haut' : 'Budgets les plus bas en haut'}>
+                <Ico t={11} c={tri.cle === 'budget' ? '#ffffff' : '#8593a8'}
+                  d={tri.cle === 'budget' && tri.sens === 'asc'
+                    ? <><path d="M12 5v14" /><path d="M6 11l6-6 6 6" /></>
+                    : <><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></>} />
+              </button>
+            </span>
             <span className={styles.colSig}>Signal</span>
           </div>
 
@@ -572,7 +693,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
                     </span>
                     <span style={{ minWidth: 0 }}>
-                      <span className={styles.nom} style={clos ? { color: '#6b7a90' } : undefined}>{client.prenom} {client.nom}</span>
+                      <span className={styles.nom} title={`${client.prenom} ${client.nom}`} style={clos ? { color: '#6b7a90' } : undefined}>{client.prenom} {client.nom}</span>
                       <span className={styles.ref}>
                         {client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}
                         {/* Une couleur seule ne se comprend pas : on la nomme. */}
@@ -585,8 +706,39 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     </span>
                   </span>
 
-                  <span className={styles.colRech}>
-                    <span className={styles.rech} style={clos ? { color: '#93a1b4' } : undefined}>{phraseRecherche(client)}</span>
+                  <span className={styles.colRech} title={phraseRecherche(client)}>
+                    <span className={styles.pastilles} style={clos ? { opacity: 0.68 } : undefined}>
+                      <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>
+                      {(() => {
+                        const p = borne(client.nb_pieces_min, client.nb_pieces_max);
+                        return p ? (
+                          <span style={PA_NOMBRE}>
+                            <Ico d={D_PIECES} />
+                            <span style={PA_FORT}>{p.valeur}</span> pièces
+                            {p.note && <span style={PA_FAIBLE}>{p.note}</span>}
+                          </span>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        const su = borne(client.surface_min, client.surface_max);
+                        if (su) return (
+                          <span style={PA_NOMBRE}>
+                            <Ico d={D_SURFACE} />
+                            <span style={PA_FORT}>{su.valeur}</span> m²
+                            {su.note && <span style={PA_FAIBLE}>{su.note}</span>}
+                          </span>
+                        );
+                        /* Pas de surface demandée : les chambres disent au moins
+                           quelque chose du logement cherché. */
+                        return (client as any).chambres_min ? (
+                          <span style={PA_NOMBRE}>
+                            <Ico d={D_CHAMBRE} />
+                            <span style={PA_FORT}>{(client as any).chambres_min}</span> chambres
+                            <span style={PA_FAIBLE}>min</span>
+                          </span>
+                        ) : null;
+                      })()}
+                    </span>
                   </span>
 
                   <span className={styles.colSect}>
