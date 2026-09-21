@@ -2191,10 +2191,28 @@ Emilio Immobilier
           background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
           border-radius: 0 0 16px 16px; padding: 16px; }
         @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
+
+        /* Les onglets arrivaient collés aux critères, sans rien pour dire qu'on
+           changeait de sujet. Ce bandeau sombre le dit d'un seul contraste. */
+        .fiche-suivi { margin-top: 22px; padding: 13px 14px 0;
+          background: linear-gradient(105deg, #1a2332 0%, #27405f 100%);
+          border-radius: 16px 16px 0 0; }
+        .fiche-suivi-tete { display: flex; align-items: baseline; gap: 10px;
+          flex-wrap: wrap; padding: 0 4px 11px; }
+        .fiche-suivi-tete b { font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 12px; font-weight: 800; color: #e0c479;
+          text-transform: uppercase; letter-spacing: 1.1px; }
+        .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.45); }
       `}</style>
 
         <StylesEmilio />
-        <Onglets items={TABS} actif={tab} onChange={setTab} />
+        <div className="fiche-suivi">
+          <div className="fiche-suivi-tete">
+            <b>Le suivi du dossier</b>
+            <i>ce qui a été fait pour ce client</i>
+          </div>
+          <Onglets items={TABS} actif={tab} onChange={setTab} sombre />
+        </div>
 
         <div key={`${rechercheId}-${tab}`} className="fiche-tab">
 
