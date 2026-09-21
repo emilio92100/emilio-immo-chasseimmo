@@ -194,6 +194,17 @@ function resumeChangements(avant: Record<string, unknown> | undefined, apres: Re
   return lignes.join(' · ');
 }
 
+/* Clore une recherche, c'est dire pourquoi. « Trouvé ailleurs » et « a
+   renoncé » comptent tous deux comme un dossier perdu côté chiffres, mais ce
+   n'est pas la même histoire — et c'est cette histoire qu'on veut relire dans
+   six mois. */
+const MOTIFS_CLOTURE: { cle: string; nom: string; quoi: string; statut: string; point: string }[] = [
+  { cle: 'trouve_avec_moi', nom: 'Trouvé avec moi', quoi: 'Le bien a été acquis grâce à la chasse', statut: 'bien_trouve', point: '#10b981' },
+  { cle: 'trouve_ailleurs', nom: 'Trouvé ailleurs', quoi: 'Le client a acheté sans passer par nous', statut: 'perdu', point: '#f59e0b' },
+  { cle: 'renonce', nom: 'A renoncé', quoi: 'Projet abandonné, reporté, ou plus de nouvelles', statut: 'perdu', point: '#94a3b8' },
+  { cle: 'autre', nom: 'Autre raison', quoi: 'À préciser dans la note ci-dessous', statut: 'perdu', point: '#64748b' },
+];
+
 /* Les états d'un dossier. Le libellé seul ne suffisait pas : on dit quand
    chacun s'emploie, pour qu'on choisisse sans hésiter. */
 const ETATS_CLIENT: { cle: string; nom: string; quand: string; point: string }[] = [
@@ -588,7 +599,12 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const changerModeCrit = (m: 'tout' | 'etapes') => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); try { localStorage.setItem('emilio_mode_criteres', m); } catch { /* stockage indisponible */ } };
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
-  const [menuStatut, setMenuStatut] = useState(false);
+  /* Le menu se posait dans la carte d'en-tête, qui rogne ce qui dépasse : il
+     était coupé en deux. Il s'ouvre maintenant par-dessus la page, à l'aplomb
+     du bouton — d'où la position retenue ici. */
+  const [menuStatut, setMenuStatut] = useState<{ x: number; y: number } | null>(null);
+  const [showCloture, setShowCloture] = useState(false);
+  const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
   const [showBien, setShowBien] = useState(false);
   const [relancesAtt, setRelancesAtt] = useState<{ date_echeance: string; note: string | null }[]>([]);
   const [delaiJours, setDelaiJours] = useState(5);
@@ -869,6 +885,36 @@ export default function FicheClient({ client: init, onBack }: Props) {
       load();
     }
     setSaving(false); setShowMandat(false);
+  }
+
+  /* Clôturer : le statut change, la veille s'arrête (c'est le drapeau
+     « active » que je lis pour savoir sur quoi chercher), et les relances en
+     attente sont soldées — inutile de relancer quelqu'un qui a acheté. */
+  async function cloturerDossier() {
+    const m = MOTIFS_CLOTURE.find(x => x.cle === cloture.motif);
+    if (!m) return;
+    setSaving(true);
+    const raison = cloture.note.trim() ? `${m.nom} — ${cloture.note.trim()}` : m.nom;
+    await supabase.from('clients').update({ statut: m.statut, raison_perte: raison }).eq('id', client.id);
+    await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
+    await supabase.from('relances').update({ statut: 'cloturee' })
+      .eq('client_id', client.id).eq('statut', 'en_attente');
+    await addJournal(client.id, 'dossier_finalise', `🏁 Recherche clôturée — ${m.nom}`, cloture.note.trim() || undefined);
+    const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+    if (data) setClient(data as Client);
+    setSaving(false); setShowCloture(false); setCloture({ motif: 'trouve_avec_moi', note: '' });
+    load();
+  }
+
+  async function rouvrirDossier() {
+    if (!confirm('Rouvrir ce dossier ?\n\nLe statut repasse à « Actif » et la veille reprend sur cette recherche.')) return;
+    setSaving(true);
+    await supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id);
+    if (rechercheId) await supabase.from('recherches').update({ active: true }).eq('id', rechercheId);
+    await addJournal(client.id, 'statut_change', '↩️ Dossier rouvert — la veille reprend');
+    const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+    if (data) setClient(data as Client);
+    setSaving(false); load();
   }
 
   async function changeStatut(statut: string) {
@@ -1632,6 +1678,7 @@ Emilio Immobilier
         const aVendre = !!occ.bien_actuel_a_vendre;
         const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
         const st = client.statut as string;
+        const dossierClos = st === 'bien_trouve' || st === 'perdu';
         const teinte = st === 'actif' ? '#34d399' : st === 'prospect' ? '#a78bfa' : st === 'suspendu' || st === 'offre_ecrite' ? '#fbbf24' : st === 'bien_trouve' ? '#60a5fa' : '#f87171';
         const tels = (client.telephones || []).filter(Boolean);
         const mails = (client.emails || []).filter(Boolean);
@@ -1684,36 +1731,62 @@ Emilio Immobilier
                       </div>
                       {/* Le menu natif s'ouvrait en blanc brut sur le bandeau sombre.
                           Celui-ci nomme chaque état et dit ce qu'il veut dire. */}
-                      <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                        {menuStatut && <div onClick={() => setMenuStatut(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />}
-                        <button onClick={() => setMenuStatut(v => !v)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', outline: 'none', transition: 'background .15s' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <button onClick={(ev) => {
+                          if (menuStatut) { setMenuStatut(null); return; }
+                          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                          setMenuStatut({ x: Math.max(12, Math.min(r.left, window.innerWidth - 300)), y: r.bottom + 8 });
+                        }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: menuStatut ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', outline: 'none', transition: 'background .15s' }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: teinte, flexShrink: 0 }} />
                           {ETATS_CLIENT.find(x => x.cle === st)?.nom || st}
                           <span style={{ fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
                         </button>
                         {menuStatut && (
-                          <div className="emilio-menu" style={{ position: 'absolute', top: 'calc(100% + 7px)', left: 0, zIndex: 50, width: 268, background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, boxShadow: '0 16px 40px rgba(15,22,35,.22)', overflow: 'hidden' }}>
-                            {ETATS_CLIENT.map(e => {
-                              const courant = e.cle === st;
-                              return (
-                                <button key={e.cle} onClick={() => { setMenuStatut(false); changeStatut(e.cle); }}
-                                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5 }} />
-                                  <span style={{ flexGrow: 1, minWidth: 0 }}>
-                                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: '#1a2332' }}>{e.nom}</span>
-                                    <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{e.quand}</span>
-                                  </span>
-                                  {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
+                          <Portail>
+                            <div onClick={() => setMenuStatut(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
+                            <div className="emilio-menu" style={{ position: 'fixed', left: menuStatut.x, top: menuStatut.y, zIndex: 191, width: 286, background: 'white', border: '1px solid #e3e8f0', borderRadius: 15, boxShadow: '0 3px 8px rgba(15,22,35,.06), 0 18px 44px rgba(15,22,35,.2)', overflow: 'hidden' }}>
+                              <div style={{ padding: '10px 15px 9px', borderBottom: '1px solid #f1f5f9', background: '#fbfcfe' }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>État du dossier</span>
+                              </div>
+                              {ETATS_CLIENT.map(e => {
+                                const courant = e.cle === st;
+                                return (
+                                  <button key={e.cle} onClick={() => { setMenuStatut(null); changeStatut(e.cle); }}
+                                    style={{ display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%', textAlign: 'left', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5, boxShadow: courant ? `0 0 0 3px ${e.point}26` : 'none' }} />
+                                    <span style={{ flexGrow: 1, minWidth: 0 }}>
+                                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: '#1a2332' }}>{e.nom}</span>
+                                      <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1, lineHeight: 1.35 }}>{e.quand}</span>
+                                    </span>
+                                    {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
+                                  </button>
+                                );
+                              })}
+
+                              {/* Ce ne sont pas des états, ce sont des gestes : ils se détachent. */}
+                              <div style={{ padding: '9px 15px 7px', background: '#fbfcfe', borderTop: '1px solid #eef2f7' }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>Actions</span>
+                              </div>
+                              {dossierClos ? (
+                                <button onClick={() => { setMenuStatut(null); rouvrirDossier(); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#f0fdf4', cursor: 'pointer', fontFamily: 'inherit', color: '#0f7a4f', fontWeight: 700, fontSize: 13 }}>
+                                  ↩️ Rouvrir le dossier
                                 </button>
-                              );
-                            })}
-                            {/* Ce n'est pas un état, c'est un geste : il se distingue. */}
-                            <button onClick={() => { setMenuStatut(false); changeStatut('offre_ecrite'); }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
-                              ✍️ Créer une offre écrite
-                            </button>
-                          </div>
+                              ) : (
+                                <>
+                                  <button onClick={() => { setMenuStatut(null); setShowOffreEcrite(false); changeStatut('offre_ecrite'); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
+                                    ✍️ Créer une offre écrite
+                                  </button>
+                                  <button onClick={() => { setMenuStatut(null); setShowCloture(true); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: '#1a2332', fontWeight: 700, fontSize: 13 }}>
+                                    🏁 Clôturer la recherche
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </Portail>
                         )}
                       </div>
                     </div>
@@ -2917,6 +2990,57 @@ Emilio Immobilier
         </Portail>
         );
       })()}
+
+      {showCloture && (
+        <Portail>
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 520 }}>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏁 Clôturer la recherche</h2><button className={styles.modalClose} onClick={() => setShowCloture(false)}>✕</button></div>
+            <div className={styles.modalBody}>
+              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
+                La veille s'arrête sur ce dossier, les relances en attente sont soldées, et le motif reste au journal. Tout est réversible : « Rouvrir le dossier » dans le menu d'état.
+              </div>
+              <div>
+                <label className={styles.lbl}>Pourquoi la recherche s'arrête</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {MOTIFS_CLOTURE.map(m => {
+                    const actif = cloture.motif === m.cle;
+                    return (
+                      <button type="button" key={m.cle} onClick={() => setCloture(f => ({ ...f, motif: m.cle }))}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#faf6ee' : 'white', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                        <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: '50%', border: `2px solid ${actif ? '#c9a84c' : '#cbd5e1'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+                          {actif && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#c9a84c' }} />}
+                        </span>
+                        <span style={{ flexGrow: 1, minWidth: 0 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.point, flexShrink: 0 }} />
+                            <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1a2332' }}>{m.nom}</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.7, borderRadius: 99, padding: '1px 8px', color: m.statut === 'bien_trouve' ? '#1d4ed8' : '#b91c1c', background: m.statut === 'bien_trouve' ? '#eff6ff' : '#fef2f2' }}>
+                              {m.statut === 'bien_trouve' ? 'Bien trouvé' : 'Perdu'}
+                            </span>
+                          </span>
+                          <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{m.quoi}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className={styles.lbl}>Note <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnelle)</span></label>
+                <textarea className={styles.inp} rows={3} value={cloture.note}
+                  onChange={e => setCloture(f => ({ ...f, note: e.target.value }))}
+                  placeholder="Ce qu'il a acheté, avec qui, ce qui a manqué…" />
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowCloture(false)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={cloturerDossier} disabled={saving}>{saving ? '...' : '🏁 Clôturer'}</button>
+            </div>
+          </div>
+        </div>
+        </Portail>
+      )}
 
       {showMandat && (
         <Portail>
