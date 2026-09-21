@@ -484,6 +484,31 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       onFermer={fermer} />, 'pleine');
   }
 
+  /* Dire que la recherche est finie doit être simple et sans gêne : trois
+     réponses, un mot si on veut. Rien ne se ferme ici — le conseiller rappelle
+     d'abord, il clôture ensuite. */
+  function ouvrirFinRecherche() {
+    montrer(<FinRecherche onFermer={fermer} onChoisir={declarerFin} />);
+  }
+
+  async function declarerFin(motif: string, mot: string) {
+    const r = await envoyer('fin', { motif, mot });
+    if (r && r.ok === false) {
+      montrer(<GrandOk titre="C'est déjà noté"
+        texte="Votre conseiller en a déjà été prévenu. Il vous rappelle pour en parler avec vous — inutile de le signaler à nouveau."
+        rappel={'Si c\'est urgent, vous pouvez l\'appeler directement au <b>' + AGENT.tel + '</b>.'}
+        onFermer={fermer} />, 'pleine');
+      return;
+    }
+    const suite = motif === 'pause'
+      ? "Votre recherche est mise de côté le temps qu'il vous faut. Votre conseiller vous rappelle pour en convenir avec vous, et votre espace reste accessible."
+      : "Votre conseiller vous rappelle pour en parler et clôturer votre dossier proprement. Votre espace reste accessible en attendant.";
+    montrer(<GrandOk titre={motif === 'pause' ? "C'est noté, on met en pause" : 'Merci de nous avoir prévenus'}
+      texte={suite}
+      rappel="Rien n'est définitif tant que vous n'en avez pas parlé ensemble."
+      onFermer={fermer} />, 'pleine');
+  }
+
   function ouvrirModifCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
       setCrit(nv);
@@ -563,6 +588,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
               token={token}
               onBienvenue={ouvrirBienvenue}
+              onFin={ouvrirFinRecherche}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'neufs' && (
@@ -663,7 +689,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, visites, token }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, onFin, visites, token }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -784,6 +810,18 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
         <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
       </div>
+
+      <button onClick={onFin}
+        style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', marginTop: 12,
+          background: 'transparent', border: '1px dashed var(--trait)', borderRadius: 14,
+          padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+        <span style={{ fontSize: 15, flexShrink: 0 }}>🏁</span>
+        <span style={{ flexGrow: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--encre)' }}>Ma recherche est terminée</span>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--plume)', marginTop: 1 }}>Vous avez trouvé, ou vous souhaitez faire une pause</span>
+        </span>
+        <span style={{ color: 'var(--plume-clair)', flexShrink: 0 }}><Ico n="fleche" t={16} /></span>
+      </button>
 
       <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
         <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
@@ -2162,6 +2200,55 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
 /* Le carrefour de « Mes critères ont évolué » : modifier soi-même, ou être
    rappelé. Le créneau se choisit ici même — ouvrir une deuxième pop-up pour
    trois boutons, c'est une étape de trop. */
+/* Trois réponses, jamais une de plus : on ne fait pas remplir un formulaire
+   à quelqu'un qui vient nous dire qu'il s'en va. */
+function FinRecherche({ onFermer, onChoisir }: any) {
+  const [motif, setMotif] = useState('');
+  const [mot, setMot] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const CHOIX: [string, string, string][] = [
+    ['trouve_avec_vous', "J'ai trouvé, grâce à vous", 'Le bien vient de votre sélection.'],
+    ['trouve_ailleurs', "J'ai trouvé par un autre biais", 'Une autre agence, un particulier, une relation.'],
+    ['pause', 'Je mets ma recherche en pause', 'Le projet est reporté, sans être abandonné.'],
+  ];
+  return (
+    <>
+      <div className="tete-f">
+        <div><div className="sur">Votre recherche</div><h3>Votre recherche est terminée&nbsp;?</h3></div>
+        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+      </div>
+      <div className="corps-f">
+        <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
+          Dites-le-nous en un clic. Votre conseiller vous rappelle pour en parler&nbsp;:
+          rien ne se ferme sans vous.
+        </p>
+
+        {CHOIX.map(([cle, titre, sous]) => (
+          <button key={cle} className="cta-prec" onClick={() => setMotif(cle)}
+            style={motif === cle ? { borderColor: 'var(--or)', background: 'var(--or-fond)' } : undefined}>
+            <span><b>{titre}</b><span className="s">{sous}</span></span>
+            <span className="chev"><Ico n="fleche" t={18} /></span>
+          </button>
+        ))}
+
+        {motif && (
+          <div className="bloc-rappel">
+            <div className="lib-rappel">Un mot, si vous voulez en dire plus</div>
+            <textarea value={mot} onChange={e => setMot(e.target.value)} rows={3}
+              placeholder="Facultatif"
+              style={{ width: '100%', border: '1px solid var(--trait)', borderRadius: 12,
+                padding: '11px 13px', fontFamily: 'inherit', fontSize: 14,
+                color: 'var(--encre)', resize: 'vertical', outline: 'none', background: '#fff' }} />
+            <BtnEnvoi enCours={envoi} classe="btn or" libelle="Prévenir mon conseiller"
+              enCoursTexte="Envoi en cours…" style={{ marginTop: 12 }}
+              onClick={async () => { setEnvoi(true); await onChoisir(motif, mot); }} />
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function ChoixCriteres({ onFermer, onModifier, onRappel }: any) {
   const [ouvertRappel, setOuvertRappel] = useState(false);
   const [creneau, setCreneau] = useState('');
