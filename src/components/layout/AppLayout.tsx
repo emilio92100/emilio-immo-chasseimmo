@@ -47,6 +47,7 @@ function ecrireUrl(page: string, clientId?: string | null, remplacer = false) {
 
 export default function AppLayout() {
   const [activePage, setActivePage] = useState('dashboard');
+  const [sens, setSens] = useState<'avant' | 'arriere'>('avant');
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
   const [chargeFiche, setChargeFiche] = useState(false);
   const contenu = useRef<HTMLElement>(null);
@@ -80,6 +81,9 @@ export default function AppLayout() {
   }, []);
 
   const handleNavigate = useCallback((page: string, data?: unknown) => {
+    /* Entrer dans une fiche pousse l'écran vers le haut, en sortir le fait
+       redescendre : le mouvement dit d'où l'on vient. */
+    setSens(page === 'fiche' ? 'avant' : 'arriere');
     if (page === 'fiche' && data) {
       const c = data as Client;
       setFicheClient(c);
@@ -134,7 +138,11 @@ export default function AppLayout() {
       <Sidebar activePage={activePage} onNavigate={handleNavigate} />
       <div className={styles.mainArea}>
         <Topbar onNavigate={handleNavigate} />
-        <main className={styles.content} ref={contenu}>{renderPage()}</main>
+        <main className={styles.content} ref={contenu}>
+          <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
+            {renderPage()}
+          </div>
+        </main>
       </div>
     </div>
   );
