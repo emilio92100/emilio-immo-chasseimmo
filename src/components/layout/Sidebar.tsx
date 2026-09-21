@@ -4,19 +4,18 @@ import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
 
 export default function Sidebar({ activePage, onNavigate }: { activePage: string; onNavigate: (page: string) => void }) {
-  const [counts, setCounts] = useState({ clients: 0, relances: 0, visites: 0, recherche: 0 });
+  const [counts, setCounts] = useState({ clients: 0, relances: 0, visites: 0 });
 
   useEffect(() => { fetchCounts(); }, [activePage]);
 
   async function fetchCounts() {
     const today = new Date().toISOString();
-    const [{ count: cl }, { count: rel }, { count: vis }, { count: rech }] = await Promise.all([
+    const [{ count: cl }, { count: rel }, { count: vis }] = await Promise.all([
       supabase.from('clients').select('*', { count: 'exact', head: true }),
       supabase.from('relances').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
-      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
     ]);
-    setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0, recherche: rech || 0 });
+    setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0 });
   }
 
   const navItems = [
@@ -25,7 +24,6 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: '⊞', badge: null },
         { id: 'clients', label: 'Clients', icon: '◎', badge: counts.clients > 0 ? { count: counts.clients, type: 'gold' } : null },
-        { id: 'recherche', label: 'Recherche en cours', icon: '⊙', badge: counts.recherche > 0 ? { count: counts.recherche, type: 'slate' } : null },
       ]
     },
     {
