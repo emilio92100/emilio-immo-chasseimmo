@@ -139,6 +139,61 @@ function Portail({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
+/* Ce qui change dans une recherche mérite d'être raconté : « Budget maxi :
+   900 000 € → 950 000 € » en dit plus que « critères modifiés ». Sans ça, une
+   modification de critères ne laissait aucune trace au journal, et la liste
+   clients continuait d'afficher « rien depuis trois mois ». */
+const CHAMPS_SUIVIS: { cle: string; nom: string; fmt?: (v: unknown) => string }[] = [
+  { cle: 'type_bien', nom: 'Type' },
+  { cle: 'budget_min', nom: 'Budget mini', fmt: (v) => `${Number(v).toLocaleString('fr-FR')} €` },
+  { cle: 'budget_max', nom: 'Budget maxi', fmt: (v) => `${Number(v).toLocaleString('fr-FR')} €` },
+  { cle: 'surface_min', nom: 'Surface mini', fmt: (v) => `${v} m²` },
+  { cle: 'surface_max', nom: 'Surface maxi', fmt: (v) => `${v} m²` },
+  { cle: 'nb_pieces_min', nom: 'Pièces mini' },
+  { cle: 'nb_pieces_max', nom: 'Pièces maxi' },
+  { cle: 'chambres_min', nom: 'Chambres mini' },
+  { cle: 'surface_sejour_min', nom: 'Séjour mini', fmt: (v) => `${v} m²` },
+  { cle: 'etage_min', nom: 'Étage mini' },
+  { cle: 'etage_max', nom: 'Étage maxi' },
+  { cle: 'dpe_max', nom: 'DPE maxi' },
+  { cle: 'annee_construction_min', nom: 'Construit après' },
+  { cle: 'etat_souhaite', nom: 'État' },
+  { cle: 'urgence', nom: 'Urgence' },
+  { cle: 'financement', nom: 'Financement' },
+  { cle: 'apport', nom: 'Apport', fmt: (v) => `${Number(v).toLocaleString('fr-FR')} €` },
+];
+
+function resumeChangements(avant: Record<string, unknown> | undefined, apres: Record<string, unknown>) {
+  if (!avant) return '';
+  const lignes: string[] = [];
+  const dit = (v: unknown, fmt?: (x: unknown) => string) =>
+    v === null || v === undefined || v === '' ? 'non renseigné' : (fmt ? fmt(v) : String(v));
+
+  for (const c of CHAMPS_SUIVIS) {
+    const a = avant[c.cle] ?? null, b = apres[c.cle] ?? null;
+    if (a !== b) lignes.push(`${c.nom} : ${dit(a, c.fmt)} → ${dit(b, c.fmt)}`);
+  }
+
+  const secA = (avant.secteurs as string[]) || [], secB = (apres.secteurs as string[]) || [];
+  if (JSON.stringify(secA) !== JSON.stringify(secB)) {
+    const ajoutes = secB.filter(x => !secA.includes(x));
+    const retires = secA.filter(x => !secB.includes(x));
+    if (ajoutes.length) lignes.push(`Secteurs ajoutés : ${ajoutes.join(', ')}`);
+    if (retires.length) lignes.push(`Secteurs retirés : ${retires.join(', ')}`);
+  }
+
+  const arrA = JSON.stringify(avant.transport_arrets || []), arrB = JSON.stringify(apres.transport_arrets || []);
+  if (arrA !== arrB) lignes.push('Arrêts de transport modifiés');
+
+  const equipements = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur', 'gardien', 'interphone', 'digicode', 'rdc_exclu', 'dernier_etage'];
+  const bouge = equipements.filter(k => !!avant[k] !== !!apres[k]);
+  if (bouge.length) lignes.push(`Équipements : ${bouge.join(', ')}`);
+  if (JSON.stringify(avant.exigences || {}) !== JSON.stringify(apres.exigences || {})) lignes.push('Niveaux d\'exigence modifiés');
+  if ((avant.notes || '') !== (apres.notes || '')) lignes.push('Précisions sur la recherche modifiées');
+
+  return lignes.join(' · ');
+}
+
 /* Les états d'un dossier. Le libellé seul ne suffisait pas : on dit quand
    chacun s'emploie, pour qu'on choisisse sans hésiter. */
 const ETATS_CLIENT: { cle: string; nom: string; quand: string; point: string }[] = [
@@ -637,6 +692,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
       setRecherches(rs => [...rs, data as Recherche]);
       setRechercheId((data as Recherche).id);
       setTab('selection');
+      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(data as Recherche).nom}`);
     }
   }
 
@@ -644,8 +700,12 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (!rechercheActive) return;
     const nom = prompt('Renommer la recherche :', rechercheActive.nom);
     if (nom === null || !nom.trim()) return;
+    const ancien = rechercheActive.nom;
     const { data } = await supabase.from('recherches').update({ nom: nom.trim() }).eq('id', rechercheActive.id).select().single();
-    if (data) setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
+    if (data) {
+      setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
+      await addJournal(client.id, 'recherche_renommee', `🔍 Recherche renommée — ${ancien} → ${nom.trim()}`);
+    }
   }
 
   async function supprimerRecherche(r: Recherche) {
@@ -712,6 +772,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function saveCriteres() {
     if (!rechercheId) return;
     setSaving(true);
+    const avant = recherches.find(r => r.id === rechercheId) as unknown as Record<string, unknown> | undefined;
     const { data, error } = await supabase.from('recherches').update({
       type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null,
       budget_min: crit.budget_min ? parseInt(crit.budget_min) : null,
@@ -755,6 +816,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
+      const change = resumeChangements(avant, data as unknown as Record<string, unknown>);
+      if (change) {
+        await addJournal(client.id, 'criteres_modifies', '🎯 Critères modifiés', change);
+        load();
+      }
     }
     setSaving(false); setShowCriteres(false);
   }
@@ -765,9 +831,18 @@ export default function FicheClient({ client: init, onBack }: Props) {
     let exp = mandat.date_expiration;
     if (mandat.date_signature && mandat.duree && !exp) { const d = new Date(mandat.date_signature); d.setMonth(d.getMonth() + parseInt(mandat.duree)); exp = d.toISOString().split('T')[0]; }
 
+    const avaitMandat = !!(recherches.find(r => r.id === rechercheId) as any)?.mandat_date_signature;
     const { data } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().single();
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
+      const detail = [
+        mandat.date_signature ? `signé le ${new Date(mandat.date_signature).toLocaleDateString('fr-FR')}` : null,
+        mandat.duree ? `${mandat.duree} mois` : null,
+        mandat.honoraires || null,
+        exp ? `jusqu'au ${new Date(exp).toLocaleDateString('fr-FR')}` : null,
+      ].filter(Boolean).join(' · ');
+      await addJournal(client.id, 'mandat', avaitMandat ? '📋 Mandat mis à jour' : '📋 Mandat enregistré', detail || undefined);
+      load();
     }
     setSaving(false); setShowMandat(false);
   }
