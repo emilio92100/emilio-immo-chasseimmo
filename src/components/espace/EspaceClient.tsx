@@ -247,6 +247,17 @@ function PastilleE({ texte, fort }: { texte: string; fort?: boolean }) {
 }
 
 const T: Record<string, string[]> = {
+  /* Les équipements du bien : un trait, pas un pictogramme chargé — ils se
+     lisent à 34 px dans une pastille, pas en pleine page. */
+  terrasse:['M3 15h18','M3 21h18','M4.5 15v6','M9.5 15v6','M14.5 15v6','M19.5 15v6'],
+  jardin:['c:12,9,5','M12 14v7','M8.6 17.4 12 18.8l3.4-1.4'],
+  parking:['M4 16.5h16','M6.2 16.5v2','M17.8 16.5v2','M5.6 16.5v-4l1.9-4.2h9l1.9 4.2v4','M5.6 12.5h12.8'],
+  cave:['M4 19.5h4v-4h4v-4h4v-4h4','M4 19.5V17'],
+  ascenseur:['M6.2 3.5h11.6v17H6.2z','m10 10 2-2.6 2 2.6','m10 14 2 2.6 2-2.6'],
+  gardien:['M12 3.4 5.2 6.3v5.4c0 4.1 2.8 7.4 6.8 8.5 4-1.1 6.8-4.4 6.8-8.5V6.3z'],
+  cuisine:['M3.6 6.6h16.8v11.4H3.6z','M3.6 13.4h16.8','c:8.4,10,1.5','c:15.6,10,1.5'],
+  clim:['M12 3.4v17.2','M4.5 7.8 19.5 16.2','M19.5 7.8 4.5 16.2','m9.2 5.2 2.8 2 2.8-2','m9.2 18.8 2.8-2 2.8 2'],
+  traversant:['M3.2 12h17.6','m7.4 7.8-4 4.2 4 4.2','m16.6 7.8 4 4.2-4 4.2'],
   etoile:['M12 2.8l2.5 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.2l-5.2 2.8 1.1-5.9-4.3-4.1 5.9-.8z'],
   horloge:['c:12,12,9','M12 7.4V12l3.2 2'],
   graph:['M3 20h18','M6 20V12','M11 20V6.5','M16 20v-5','M21 20v-9'],
@@ -1381,13 +1392,18 @@ function BtnEnvoi({ enCours, libelle, enCoursTexte = 'Envoi en cours…', classe
 
 /* ══ feuilles ═════════════════════════════════════ */
 function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
-  const [avis, setAvis] = useState<string | null>(b.avis);
+  /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
+     y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
+     de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
+     Tester `!!b.avis` figeait la fiche dès la première ouverture. */
+  const repondu = !!b.avis && !!ETIQ[b.avis];
+  const [avis, setAvis] = useState<string | null>(b.avis && AVIS[b.avis] ? b.avis : null);
   const [com, setCom] = useState(b.commentaire || '');
   /* Un avis déjà parti a été lu, et il a peut-être déjà orienté une
      recherche : on ne le laisse plus bouger. Tant qu'il n'est pas parti,
      le client reste libre de se raviser. */
-  const envoye = !!b.avis;
-  const etiqRetour = b.avis ? ETIQ[b.avis] : null;
+  const envoye = repondu;
+  const etiqRetour = repondu ? ETIQ[b.avis as string] : null;
   const dateRetour = b.retourLe
     ? new Date(b.retourLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
     : null;
@@ -1398,25 +1414,25 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   /* Deux rubriques de plus sous la description. Elles se construisent ici
      pour que le rendu reste lisible, et surtout pour qu'une rubrique vide ne
      laisse aucune trace à l'écran — pas de titre orphelin. */
-  const inclus: string[] = [];
-  if (b.terrasse) inclus.push('Terrasse');
-  if (b.balcon) inclus.push('Balcon');
-  if (b.jardin) inclus.push('Jardin');
-  if (b.parking) inclus.push(b.nbParking && b.nbParking > 1 ? `${b.nbParking} parkings` : 'Parking');
-  if (b.cave) inclus.push('Cave');
-  if (b.ascenseur) inclus.push('Ascenseur');
-  if (b.gardien) inclus.push('Gardien');
-  if (b.cuisineEquipee) inclus.push('Cuisine équipée');
-  if (b.clim) inclus.push('Climatisation');
-  if (b.traversant) inclus.push('Traversant');
+  const inclus: [string, string][] = [];
+  if (b.terrasse) inclus.push(['terrasse', 'Terrasse']);
+  if (b.balcon) inclus.push(['terrasse', 'Balcon']);
+  if (b.jardin) inclus.push(['jardin', 'Jardin']);
+  if (b.parking) inclus.push(['parking', b.nbParking && b.nbParking > 1 ? `${b.nbParking} parkings` : 'Parking']);
+  if (b.cave) inclus.push(['cave', 'Cave']);
+  if (b.ascenseur) inclus.push(['ascenseur', 'Ascenseur']);
+  if (b.gardien) inclus.push(['gardien', 'Gardien']);
+  if (b.cuisineEquipee) inclus.push(['cuisine', 'Cuisine équipée']);
+  if (b.clim) inclus.push(['clim', 'Climatisation']);
+  if (b.traversant) inclus.push(['traversant', 'Traversant']);
 
   /* Les charges se saisissent au trimestre dans le CRM : on l'écrit tel quel
      plutôt que de multiplier par quatre un chiffre dont on n'est pas sûr. */
-  const couts: [string, string][] = [];
-  if (b.charges) couts.push(['Charges de copropriété', `${EUR(b.charges)} / trimestre`]);
-  if (b.taxe) couts.push(['Taxe foncière', `${EUR(b.taxe)} / an`]);
-  if (b.chauffage) couts.push(['Chauffage', b.chauffage]);
-  if (b.lots) couts.push(['Copropriété', `${b.lots} lots`]);
+  const couts: [string, string, string, string][] = [];
+  if (b.charges) couts.push(['euro', 'Charges', EUR(b.charges), 'par trimestre']);
+  if (b.taxe) couts.push(['immeuble', 'Taxe foncière', EUR(b.taxe), 'par an']);
+  if (b.chauffage) couts.push(['eclair', 'Chauffage', b.chauffage, '']);
+  if (b.lots) couts.push(['maison', 'Copropriété', String(b.lots), b.lots > 1 ? 'lots' : 'lot']);
 
   /* La surface d'extérieur est parfois saisie en bloc, parfois balcon par
      terrasse : on prend le total quand il existe, la somme sinon. */
@@ -1470,7 +1486,9 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
         {inclus.length > 0 && (
           <>
             <label className="lab">Ce que le bien comprend</label>
-            <div className="incl">{inclus.map(x => <span key={x}>{x}</span>)}</div>
+            <div className="incl">{inclus.map(([i, n]) => (
+              <div className="ic" key={n}><span className="r"><Ico n={i} t={19} /></span><span className="n">{n}</span></div>
+            ))}</div>
           </>
         )}
 
@@ -1478,8 +1496,11 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           <>
             <label className="lab">Charges et énergie</label>
             <div className="cout">
-              {couts.map(([l, v]) => (
-                <div className="cl" key={l}><span>{l}</span><b className="tab">{v}</b></div>
+              {couts.map(([i, l, v, u]) => (
+                <div className="c" key={l}>
+                  <div className="h"><Ico n={i} t={15} /><span className="l">{l}</span></div>
+                  <div className="v tab">{v}{u ? <span className="u">{u}</span> : null}</div>
+                </div>
               ))}
             </div>
           </>
@@ -2609,21 +2630,26 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .dpe .l{width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center;
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:14px; color:#1a2332}
 .dpe .t{font-size:10.5px; letter-spacing:.9px; text-transform:uppercase; color:var(--plume-clair); font-weight:800}
-/* Ce que le bien comprend : des pastilles, pas un tableau. Elles se lisent
-   d'un coup d'œil et ne prennent de la place que si elles ont du contenu. */
-.incl{display:flex; flex-wrap:wrap; gap:7px; margin-top:8px}
-.incl span{background:var(--fond); border:1px solid var(--trait); border-radius:999px;
-  padding:7px 13px; font-size:12.5px; font-weight:700; color:var(--plume)}
+/* Ce que le bien comprend : une carte par équipement, avec son icône. C'est
+   ce que l'acquéreur cherche des yeux en premier — ça mérite de la place. */
+.incl{display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:9px; margin-top:10px}
+.incl .ic{display:flex; align-items:center; gap:11px; background:var(--carte);
+  border:1px solid var(--trait); border-radius:15px; padding:11px 13px}
+.incl .ic .r{width:34px; height:34px; border-radius:11px; background:var(--fond);
+  color:var(--or); display:flex; align-items:center; justify-content:center; flex:0 0 auto}
+.incl .ic .n{font-family:'Plus Jakarta Sans',sans-serif; font-weight:700;
+  font-size:13.5px; color:var(--encre); line-height:1.25}
 
-/* Ce que le bien coûte à vivre : sobre, deux colonnes, jamais en avant. */
-.cout{margin-top:8px; background:var(--fond); border:1px solid var(--trait);
-  border-radius:14px; padding:2px 14px}
-.cout .cl{display:flex; justify-content:space-between; align-items:baseline; gap:14px;
-  padding:11px 0; border-bottom:1px solid var(--trait)}
-.cout .cl:last-child{border-bottom:none}
-.cout .cl span{font-size:12.5px; color:var(--plume)}
-.cout .cl b{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800;
-  font-size:13.5px; color:var(--encre); text-align:right; white-space:nowrap}
+/* Ce que le bien coûte à vivre : même grammaire, le chiffre en avant et
+   l'unité en dessous, pour qu'on ne confonde pas trimestre et année. */
+.cout{display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:9px; margin-top:10px}
+.cout .c{background:var(--carte); border:1px solid var(--trait); border-radius:15px; padding:13px 14px}
+.cout .c .h{display:flex; align-items:center; gap:7px; color:var(--plume-clair)}
+.cout .c .l{font-size:9.5px; letter-spacing:1px; text-transform:uppercase; font-weight:800}
+.cout .c .v{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px;
+  color:var(--encre); margin-top:8px; line-height:1.2}
+.cout .c .u{display:block; font-family:'Inter',sans-serif; font-size:11px;
+  color:var(--plume-clair); font-weight:700; margin-top:3px; letter-spacing:.3px}
 
 .avis3{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:8px}
 .avis{background:var(--fond); border:2px solid var(--trait); border-radius:16px; padding:14px 6px;
