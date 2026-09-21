@@ -70,6 +70,17 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+/*
+ * ⚠️ Les fichiers du dossier public/ doivent être exclus, eux aussi.
+ *
+ * Sans ça, le logo ne s'affiche nulle part sur les pages publiques : quand
+ * next/image optimise /logo_high_resolution_white.png, il va le rechercher par
+ * une requête HTTP sur le site lui-même — requête qui repasse ici, sans
+ * cookie, et qui est redirigée vers /login. L'optimiseur reçoit une page HTML
+ * au lieu d'une image, et l'image reste vide.
+ */
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon|robots.txt|sitemap.xml).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|icon|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|bmp|pdf|txt|xml|json|webmanifest|css|js|map|woff|woff2|ttf|otf|eot|mp4|webm)$).*)',
+  ],
 };
