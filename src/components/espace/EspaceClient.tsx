@@ -27,6 +27,10 @@ type Bien = {
   chauffage?: string | null; lots?: number | null;
   pdfUrl: string | null; envoyeLe: string | null; vuLe: string | null;
   avis: string | null; commentaire: string | null; retourLe: string | null;
+  /* 'client' s'il a répondu ici, 'conseiller' si Alexandre l'a noté pour lui
+     après un appel. Ce n'est pas un détail : on ne présente pas à quelqu'un
+     comme « son commentaire » une phrase qu'il n'a pas écrite. */
+  retourPar?: string | null;
   etat: string;
 };
 type Criteres = {
@@ -815,7 +819,8 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
                 /* Ce que le client a écrit lui appartient : on l'annonce et on le
                    rend lisible, au lieu d'une ligne grise en italique tout en bas. */
                 <span className={'mon-com ' + (a ? a.c : '')}>
-                  <span className="mc-t">Votre commentaire</span>
+                  <span className="mc-t">{b.retourPar === 'conseiller'
+                    ? 'Noté par votre conseiller' : 'Votre commentaire'}</span>
                   <span className="mc-c">« {b.commentaire} »</span>
                 </span>
               )}
@@ -1448,6 +1453,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
      le client reste libre de se raviser. */
   const envoye = repondu;
   const etiqRetour = repondu ? ETIQ[b.avis as string] : null;
+  const parConseiller = repondu && b.retourPar === 'conseiller';
   const dateRetour = b.retourLe
     ? new Date(b.retourLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
     : null;
@@ -1618,10 +1624,18 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
             <div className="aa-t">{etiqRetour ? `${etiqRetour.e} ${etiqRetour.n}` : 'Retour enregistré'}</div>
             <p className="aa-p">{b.avis === 'visite'
               ? 'Vous avez visité ce bien avec votre conseiller. Son compte rendu est dans votre dossier.'
-              : `Votre conseiller a reçu ce retour${dateRetour ? ` le ${dateRetour}` : ''}. Il oriente déjà la suite de votre recherche.`}</p>
-            {b.commentaire ? <div className="fige">{b.commentaire}</div> : null}
-            <p className="aa-n">Vous avez changé d&apos;avis sur ce bien&nbsp;? Dites-le à votre conseiller,
-              il met le dossier à jour.</p>
+              : parConseiller
+                ? `Votre conseiller a noté ce retour${dateRetour ? ` le ${dateRetour}` : ''}, d’après votre échange. Il oriente déjà la suite de votre recherche.`
+                : `Votre conseiller a reçu ce retour${dateRetour ? ` le ${dateRetour}` : ''}. Il oriente déjà la suite de votre recherche.`}</p>
+            {b.commentaire ? (
+              <>
+                <div className="fige-t">{parConseiller ? 'Ce qu’il a retenu' : 'Ce que vous avez écrit'}</div>
+                <div className="fige">{b.commentaire}</div>
+              </>
+            ) : null}
+            <p className="aa-n">{parConseiller
+              ? 'Ce n’est pas tout à fait ça ? Dites-le à votre conseiller, il corrige.'
+              : 'Vous avez changé d’avis sur ce bien ? Dites-le à votre conseiller, il met le dossier à jour.'}</p>
           </div>
         )}
 
@@ -3221,6 +3235,8 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   outline:none; resize:vertical; min-height:108px; line-height:1.6}
 .apres-avis textarea:focus{border-color:var(--or)}
 .apres-avis.fini{border-left-color:var(--vert)}
+.fige-t{font-size:9.5px; letter-spacing:1.1px; text-transform:uppercase; font-weight:800;
+  color:var(--plume-clair); margin:2px 0 6px}
 .aa-n{margin:12px 0 0; font-size:12.5px; line-height:1.6; color:var(--plume-clair)}
 
 
