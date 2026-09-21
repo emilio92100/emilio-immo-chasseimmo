@@ -69,7 +69,7 @@ export function StylesEmilio() {
          se touchent, on est « dedans ». Le liseré doré marque l'onglet choisi. */
       .emi-onglet { position:relative; display:inline-flex; align-items:center; gap:8px; background:transparent;
         border:1px solid transparent; border-bottom:none; margin-bottom:-1px;
-        border-radius:11px 11px 0 0; padding:11px 16px 12px; font-size:13.5px; font-weight:600;
+        border-radius:13px 13px 0 0; padding:11px 16px 12px; font-size:13.5px; font-weight:600;
         color:#64748b; cursor:pointer; font-family:inherit; white-space:nowrap;
         transition: background .28s cubic-bezier(.16,1,.3,1), color .28s cubic-bezier(.16,1,.3,1) }
       .emi-onglet:hover { color:${NAVY}; background:rgba(255,255,255,.62) }
@@ -89,6 +89,17 @@ export function StylesEmilio() {
       .emi-onglets.sombre .emi-onglet[data-actif="true"] { color:${NAVY}; background:#f7f9fc; border-color:transparent }
       .emi-onglets.sombre .emi-compteur { background:rgba(255,255,255,.15); color:#fff }
       .emi-onglets.sombre .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(26,35,50,.1); color:${NAVY} }
+
+      /* Le raccord de l'onglet au panneau. Deux quarts de cercle peints dans la
+         couleur du panneau, de part et d'autre : l'onglet cesse d'être un
+         rectangle posé là, il se fond dans la page comme un intercalaire. */
+      .emi-onglets.sombre .emi-onglet[data-actif="true"]::after {
+        content:""; position:absolute; bottom:0; left:-11px; right:-11px; height:11px;
+        pointer-events:none;
+        background:
+          radial-gradient(circle at 0 0, transparent 11px, #f7f9fc 11.5px) left bottom / 11px 11px no-repeat,
+          radial-gradient(circle at 100% 0, transparent 11px, #f7f9fc 11.5px) right bottom / 11px 11px no-repeat;
+      }
     `}</style>
   );
 }
