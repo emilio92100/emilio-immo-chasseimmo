@@ -13,7 +13,9 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     setLoading(true);
     const { data } = await supabase
       .from('relances')
-      .select('*, clients(prenom, nom, reference)')
+      /* On rapatrie le client en entier : « Voir fiche » a besoin de l'objet
+         complet pour ouvrir la fiche, pas seulement du nom affiché ici. */
+      .select('*, clients(*)')
       .eq('statut', 'en_attente')
       .order('date_echeance', { ascending: true });
     setRelances(data || []);
@@ -60,7 +62,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         </div>
         <span className={`${styles.badge} ${tag.cls}`}>{tag.label}</span>
         <div className={styles.btnRow}>
-          {client && <button className={styles.btn} onClick={() => onNavigate('clients')}>Voir fiche</button>}
+          {client && <button className={styles.btn} onClick={() => onNavigate('fiche', client)}>Voir fiche</button>}
           <button className={styles.btn} onClick={() => reporter(r.id)}>Reporter +5j</button>
           <button className={`${styles.btn} ${styles.btnDark}`} onClick={() => cloturer(r.id)}>✓ Clôturer</button>
         </div>
