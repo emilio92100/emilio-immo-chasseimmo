@@ -64,6 +64,27 @@ type Props = {
 /* ══ outils ═══════════════════════════════════════ */
 const EUR = (n?: number | null) =>
   n == null ? '—' : n.toLocaleString('fr-FR').replace(/[  ]/g, ' ') + ' €';
+/* Les descriptions d'annonces arrivent souvent d'un bloc, sans le moindre
+   saut de ligne. On respire pour le lecteur : on coupe d'abord sur les sauts
+   existants, puis on regroupe les phrases par paquets. On ne touche jamais
+   aux mots — seulement à l'air entre eux. */
+const decoupeTexte = (t?: string | null): string[] => {
+  if (!t || !t.trim()) return [];
+  const doubles = t.split(/\n{2,}/).map(x => x.trim()).filter(Boolean);
+  const source = doubles.length > 1 ? doubles : t.split(/\n+/).map(x => x.trim()).filter(Boolean);
+  const sortie: string[] = [];
+  for (const bloc of source) {
+    if (bloc.length <= 300) { sortie.push(bloc); continue; }
+    const phrases = bloc.match(/[^.!?\u2026]+[.!?\u2026]+\s*|[^.!?\u2026]+$/g) || [bloc];
+    let courant = '';
+    for (const ph of phrases) {
+      courant += ph;
+      if (courant.length >= 200) { sortie.push(courant.trim()); courant = ''; }
+    }
+    if (courant.trim()) sortie.push(courant.trim());
+  }
+  return sortie;
+};
 const MOIS = ['janv.','févr.','mars','avril','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
 const JOURS = ['D','L','M','M','J','V','S'];
 
@@ -1408,6 +1429,9 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
     ? new Date(b.retourLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
     : null;
   const [plein, setPlein] = useState<number | null>(null);
+  const [texteOuvert, setTexteOuvert] = useState(false);
+  const refTexte = useRef<HTMLDivElement>(null);
+  const [hTexte, setHTexte] = useState(0);
   const [partage, setPartage] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   const photos: string[] = b.photos || [];
@@ -1439,10 +1463,20 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const ext = b.exterieur || ((b.surfaceTerrasse || 0) + (b.surfaceBalcon || 0)) || null;
   const nb = (v: number) => String(v).replace('.', ',');
 
-  const dpe = (l: string | null, t: string) => l && DPEC[l.toUpperCase()?.[0]] ? (
-    <span className="dpe"><span className="l" style={{ background: DPEC[l.toUpperCase()[0]] }}>{l.toUpperCase()[0]}</span>
-      <span className="t">{t}</span></span>
-  ) : null;
+  /* La description : en paragraphes, et repliée quand elle est longue. On
+     mesure sa hauteur réelle pour que l'ouverture glisse au lieu de sauter. */
+  const paras = decoupeTexte(b.description);
+  useLayoutEffect(() => {
+    if (refTexte.current) setHTexte(refTexte.current.scrollHeight);
+  }, [b.id, paras.length]);
+  const texteLong = hTexte > 176;
+
+  /* DPE et GES : une lettre colorée dans une carte, comme le reste. */
+  const lettre = (v?: string | null) => {
+    const k = v ? v.toUpperCase()[0] : '';
+    return k && DPEC[k] ? k : null;
+  };
+  const lDpe = lettre(b.dpe), lGes = lettre(b.ges);
 
   return (
     <>
@@ -1478,10 +1512,42 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           {b.expo ? <div className="spec"><div className="v">{b.expo}</div><div className="l">Exposition</div></div> : null}
           {b.sejour ? <div className="spec"><div className="v tab">{nb(b.sejour)} m²</div><div className="l">Séjour</div></div> : null}
           {ext ? <div className="spec"><div className="v tab">{nb(ext)} m²</div><div className="l">Extérieur</div></div> : null}
+          {b.annee ? <div className="spec"><div className="v tab">{b.annee}</div><div className="l">Construction</div></div> : null}
         </div>
-        <div>{dpe(b.dpe, 'DPE')}{dpe(b.ges, 'GES')}
-          {b.annee ? <span className="dpe"><span className="t">Immeuble {b.annee}</span></span> : null}</div>
-        {b.description && b.description.split('\n\n').map((p: string, n: number) => <p className="txt" key={n}>{p}</p>)}
+        {(lDpe || lGes) && (
+          <>
+            <label className="lab">Performance énergétique</label>
+            <div className="cout">
+              {lDpe ? (
+                <div className="c">
+                  <div className="h"><Ico n="eclair" t={15} /><span className="l">DPE</span></div>
+                  <div className="v"><span className="lettre" style={{ background: DPEC[lDpe] }}>{lDpe}</span></div>
+                </div>
+              ) : null}
+              {lGes ? (
+                <div className="c">
+                  <div className="h"><Ico n="etincelle" t={15} /><span className="l">GES</span></div>
+                  <div className="v"><span className="lettre" style={{ background: DPEC[lGes] }}>{lGes}</span></div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
+
+        {paras.length > 0 && (
+          <div className="desc">
+            <div ref={refTexte} className="desc-t" data-court={texteLong && !texteOuvert ? '1' : undefined}
+              style={texteLong ? { maxHeight: texteOuvert ? hTexte : 176 } : undefined}>
+              {paras.map((x, n) => <p className="txt" key={n}>{x}</p>)}
+            </div>
+            {texteLong && (
+              <button type="button" className="plus" onClick={() => setTexteOuvert(o => !o)}>
+                <span>{texteOuvert ? 'Réduire' : 'Lire la suite'}</span>
+                <span className="ch" data-o={texteOuvert ? '1' : undefined}><Ico n="fleche" t={14} /></span>
+              </button>
+            )}
+          </div>
+        )}
 
         {inclus.length > 0 && (
           <>
@@ -2648,8 +2714,25 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .cout .c .l{font-size:9.5px; letter-spacing:1px; text-transform:uppercase; font-weight:800}
 .cout .c .v{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px;
   color:var(--encre); margin-top:8px; line-height:1.2}
+.cout .c .lettre{display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:11px; color:#1a2332;
+  font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px}
 .cout .c .u{display:block; font-family:'Inter',sans-serif; font-size:11px;
   color:var(--plume-clair); font-weight:700; margin-top:3px; letter-spacing:.3px}
+
+/* La description : un pavé de dix lignes décourage la lecture. On n'en montre
+   que le début, le bas s'estompe, et « Lire la suite » déroule le reste. */
+.desc{margin-top:16px}
+.desc-t{overflow:hidden; transition:max-height .42s cubic-bezier(.16,1,.3,1)}
+.desc-t[data-court]{-webkit-mask-image:linear-gradient(#000 58%,transparent 100%);
+  mask-image:linear-gradient(#000 58%,transparent 100%)}
+.desc-t .txt:first-child{margin-top:0}
+.plus{display:inline-flex; align-items:center; gap:7px; margin-top:8px; padding:7px 0;
+  background:none; border:none; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:13px; font-weight:800; color:var(--or); letter-spacing:.2px}
+.plus .ch{display:flex; transform:rotate(90deg);
+  transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.plus .ch[data-o]{transform:rotate(-90deg)}
 
 .avis3{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:8px}
 .avis{background:var(--fond); border:2px solid var(--trait); border-radius:16px; padding:14px 6px;
