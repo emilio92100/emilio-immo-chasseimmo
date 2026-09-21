@@ -346,6 +346,51 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         return NextResponse.json({ ok: true });
       }
 
+      /* ── il dit que sa recherche est terminée ───────────────── */
+      case 'fin': {
+        const MOTIFS: Record<string, string> = {
+          trouve_avec_vous: 'a trouvé son bien avec nous',
+          trouve_ailleurs: 'a trouvé son bien par un autre biais',
+          pause: 'souhaite mettre sa recherche en pause',
+        };
+        const motif = typeof body.motif === 'string' ? body.motif : '';
+        const quoi = MOTIFS[motif];
+        if (!quoi) return NextResponse.json({ ok: false, error: 'motif inconnu' }, { status: 400 });
+        const mot = nettoie(body.mot, 400);
+
+        /* Une déclaration par jour suffit : s'il reclique, c'est qu'il doute
+           que la première soit partie — l'écran le lui dit, on n'en crée pas
+           une deuxième. */
+        const depuis24h = new Date(Date.now() - 86_400_000).toISOString();
+        const { count } = await supabase.from('journal')
+          .select('id', { count: 'exact', head: true })
+          .eq('recherche_id', recherche.id).eq('type', 'fin_recherche')
+          .gte('created_at', depuis24h);
+        if ((count || 0) >= 1) {
+          return NextResponse.json({ ok: false, error: 'déjà signalé' }, { status: 429 });
+        }
+
+        /* On ne clôture rien ici. Un dossier se ferme après un appel, pas sur
+           un clic : c'est au chasseur de confirmer depuis sa fiche. */
+        await supabase.from('journal').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'fin_recherche',
+          titre: `🏁 Le client ${quoi}, depuis son espace`,
+          description: mot || null, metadata: { motif },
+        });
+
+        await supabase.from('relances').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'rappel_client', statut: 'en_attente',
+          date_echeance: new Date().toISOString(),
+          note: `Le client ${quoi} — à rappeler avant de clôturer.`,
+        });
+
+        /* Liste de types fermée côté espace_evenements : c'est un message. */
+        await evt('message', `Fin de recherche — ${quoi}${mot ? ` : ${mot}` : ''}`);
+        return NextResponse.json({ ok: true });
+      }
+
       /* ── il partage une fiche ───────────────────────────────── */
       case 'partage': {
         const bien = await bienDeLaRecherche(body.bien_id);
