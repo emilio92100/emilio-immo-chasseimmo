@@ -71,6 +71,12 @@ function pill(active: boolean, borderActive: string, bgActive: string, colorActi
   return { padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? borderActive : '#e2e8f0'}`, background: active ? bgActive : 'white', color: active ? colorActive : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' };
 }
 
+/* Le temps qu'il faut rester sur une ligne avant que la bulle n'apparaisse.
+   Trois secondes : on peut parcourir la liste des yeux sans rien déclencher,
+   la bulle ne vient que si on s'arrête vraiment sur un dossier.
+   C'est le seul endroit à changer si le délai te paraît trop long ou trop court. */
+const DELAI_BULLE = 3000;
+
 /* La bulle se pose sur <body>. Dans la page, un parent qui porte une
    animation devient le repère des éléments « position: fixed » : la bulle
    s'affichait alors décalée, très loin du curseur. */
@@ -187,6 +193,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [survol, setSurvol] = useState<{ id: string; x: number; y: number } | null>(null);
   const [details, setDetails] = useState<Record<string, DetailDossier>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* En trois secondes la souris a bougé : on retient sa dernière position,
+     dans une référence, pour ne pas redessiner la liste à chaque pixel. */
+  const souris = useRef({ x: 0, y: 0 });
   const [filtre, setFiltre] = useState('tous');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -301,8 +310,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const LARGEUR_FICHE = 306, HAUTEUR_FICHE = 340;
   function entrer(id: string, ev: React.MouseEvent) {
     if (minuteur.current) clearTimeout(minuteur.current);
-    const cx = ev.clientX, cy = ev.clientY;
+    souris.current = { x: ev.clientX, y: ev.clientY };
     minuteur.current = setTimeout(() => {
+      const { x: cx, y: cy } = souris.current;
       let x = cx + 12;
       if (x + LARGEUR_FICHE > window.innerWidth - 12) x = Math.max(12, cx - LARGEUR_FICHE - 12);
       let y = cy - 18;
@@ -310,8 +320,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       if (y < 12) y = 12;
       setSurvol({ id, x, y });
       chargerDetail(id);
-    }, 110);
+    }, DELAI_BULLE);
   }
+  function bouger(ev: React.MouseEvent) { souris.current = { x: ev.clientX, y: ev.clientY }; }
   function sortir() {
     if (minuteur.current) clearTimeout(minuteur.current);
     minuteur.current = setTimeout(() => setSurvol(null), 130);
@@ -487,6 +498,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}) }}
                   onClick={() => onNavigate('fiche', client)}
                   onMouseEnter={e => entrer(client.id, e)}
+                  onMouseMove={bouger}
                   onMouseLeave={sortir}
                 >
                   <span className={styles.colClient}>
