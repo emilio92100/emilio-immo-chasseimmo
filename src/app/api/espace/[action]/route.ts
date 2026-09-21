@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     async function bienDeLaRecherche(id: unknown) {
       if (typeof id !== 'string' || !id) return null;
       const { data } = await supabase.from('biens')
-        .select('id, titre, surface, prix_acquereur, prix_vendeur, nb_vues, vu_le, recherche_id')
+        .select('id, titre, surface, nb_pieces, nb_chambres, ville, quartier, photos, prix_acquereur, prix_vendeur, nb_vues, vu_le, recherche_id')
         .eq('id', id).eq('recherche_id', recherche!.id).maybeSingle();
       return data || null;
     }
@@ -313,8 +313,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const prenom = cl?.prenom || 'Votre contact';
         const lien = `${SITE}/bien/${bien.id}`;
         const prix = bien.prix_acquereur || bien.prix_vendeur;
-        const ligne = [bien.surface ? bien.surface + ' m²' : null,
-          prix ? Number(prix).toLocaleString('fr-FR') + ' €' : null].filter(Boolean).join(' · ');
+        const carac = [bien.surface ? bien.surface + ' m²' : null,
+          bien.nb_pieces ? bien.nb_pieces + ' pièce' + (bien.nb_pieces > 1 ? 's' : '') : null,
+          bien.nb_chambres ? bien.nb_chambres + ' chambre' + (bien.nb_chambres > 1 ? 's' : '') : null,
+        ].filter(Boolean).join(' · ');
+        const lieuBien = [bien.quartier, bien.ville].filter(Boolean).join(', ');
+        /* Un bien se partage avec une photo, sinon ce n'est qu'un lien de plus
+           dans une boîte de réception. On prend la première, en pleine largeur. */
+        const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
+        const echappe = (t: string) => String(t)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
         const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
         if (!apiKey || !apiSecret) {
@@ -330,11 +338,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     <p style="margin:0 0 16px">Bonjour,</p>
     <p style="margin:0 0 20px;line-height:1.7">Voici un bien que je suis en train de regarder avec mon chasseur
       immobilier. Dites-moi ce que vous en pensez.</p>
-    <div style="border:1px solid #e3e8f0;border-radius:12px;padding:16px;background:#f8fafc">
+    <div style="border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc;overflow:hidden">
+      ${photo ? `<img src="${echappe(photo)}" alt="" width="510" style="width:100%;max-width:510px;height:auto;display:block;border:0" />` : ''}
+      <div style="padding:16px">
       <div style="font-weight:700;font-size:16px;color:#1a2332">${bien.titre || 'Le bien'}</div>
-      ${ligne ? `<div style="color:#64748b;margin-top:6px">${ligne}</div>` : ''}
+      ${lieuBien ? `<div style="color:#64748b;margin-top:5px;font-size:13px"><span style="color:#c9a84c">&#9679;</span> ${echappe(lieuBien)}</div>` : ''}
+      ${carac ? `<div style="color:#64748b;margin-top:6px;font-size:13px">${carac}</div>` : ''}
+      ${prix ? `<div style="font-weight:800;font-size:20px;color:#1a2332;margin-top:10px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
       <a href="${lien}" style="display:inline-block;margin-top:14px;background:#c9a84c;color:#fff;
         text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Voir la fiche</a>
+      </div>
     </div>
     <p style="margin:20px 0 0">${prenom}</p>
     <hr style="border:none;border-top:1px solid #e3e8f0;margin:24px 0 14px">
@@ -353,7 +366,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
               From: { Email: FROM_EMAIL, Name: FROM_NAME },
               To: [{ Email: dest }],
               Subject: `${prenom} vous partage un bien`,
-              TextPart: `Bonjour,\n\nVoici un bien que je suis en train de regarder avec mon chasseur immobilier.\n\n${bien.titre || ''}\n${ligne}\n${lien}\n\n${prenom}\n\n— Alexandre Rogelet, Emilio Immobilier, 06 58 95 76 32`,
+              TextPart: `Bonjour,\n\nVoici un bien que je suis en train de regarder avec mon chasseur immobilier.\n\n${bien.titre || ''}\n${[carac, prix ? Number(prix).toLocaleString('fr-FR') + ' \u20ac' : null].filter(Boolean).join(' \u00b7 ')}\n${lien}\n\n${prenom}\n\n— Alexandre Rogelet, Emilio Immobilier, 06 58 95 76 32`,
               HTMLPart: html,
               CustomID: `partage-${bien.id}-${Date.now()}`,
               TrackOpens: 'disabled', TrackClicks: 'disabled',
