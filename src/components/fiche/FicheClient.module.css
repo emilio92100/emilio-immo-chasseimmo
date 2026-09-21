@@ -144,3 +144,57 @@
   .critPuceOn { max-width: 200px; }
   .critEnTeteIco { width: 36px; height: 36px; border-radius: 11px; font-size: 17px; }
 }
+
+/* ═══ L'en-tête des critères — la recherche EST le titre du bloc ═══
+   Le sélecteur flottait au-dessus de la carte, comme un onglet posé à côté.
+   Il est maintenant dedans : un seul cadre, un seul en-tête. */
+.critEntete {
+  display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+  padding: 13px 16px; border-bottom: 1px solid #f1f5f9;
+}
+.critFilet { width: 4px; height: 30px; border-radius: 4px; background: #c9a84c; flex-shrink: 0; }
+.critSur {
+  display: block; font-size: 10.5px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.critLigne { display: flex; align-items: center; gap: 9px; margin-top: 1px; flex-wrap: wrap; }
+.critNom {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 800;
+  color: #1a2332; letter-spacing: -0.2px;
+}
+.critNom:hover { color: #a9822f; }
+.critRenommer {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 12.5px; color: #94a3b8; text-decoration: underline;
+}
+.critRenommer:hover { color: #1a2332; }
+.critPause {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 99px;
+  padding: 3px 11px; font-size: 11px; font-weight: 800; color: #64748b;
+}
+
+/* Le mandat en ardoise : une information de dossier, pas de recherche. */
+.critMandat {
+  display: inline-flex; align-items: center; gap: 9px; max-width: 100%;
+  background: #eef4fb; border: 1px solid #d6e3f5; border-radius: 10px;
+  padding: 6px 12px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+  transition: border-color 0.15s, background 0.15s;
+}
+.critMandat:hover { border-color: #b9d0ee; background: #e6eefb; }
+.critMandat b {
+  font-size: 10px; font-weight: 800; color: #6b8bb0;
+  text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0;
+}
+.critMandat span { font-size: 12.5px; font-weight: 600; color: #3d5f85; white-space: nowrap; }
+.critMandat i {
+  font-style: normal; flex-shrink: 0; font-size: 11px; font-weight: 800;
+  border-radius: 99px; padding: 2px 9px;
+  background: #ffffff; border: 1px solid #cfdff3; color: #2d5c8f;
+}
+
+@media (max-width: 860px) {
+  .critMandat span { white-space: normal; }
+}
