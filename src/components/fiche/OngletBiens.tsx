@@ -330,7 +330,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   <>
                     {b.pdf_url && <Action href={b.pdf_url} ton="neutre">📄&nbsp; Le PDF</Action>}
                     <Action onClick={() => onVisite(b.id)} ton="violet">📅&nbsp; Planifier une visite</Action>
-                    <Action onClick={() => setObs(b)} ton="navy">💬&nbsp; Observation</Action>
+                    <Action onClick={() => setObs(b)} ton="navy">💬&nbsp; Noter son retour</Action>
                     <button type="button" onClick={() => renvoyerEnSelection(b.id)}
                       style={{ background: 'none', border: 'none', color: '#a9b6c8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Remettre en sélection
