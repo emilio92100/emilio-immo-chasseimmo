@@ -609,7 +609,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showCloture, setShowCloture] = useState(false);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
   const [showBien, setShowBien] = useState(false);
-  const [relancesAtt, setRelancesAtt] = useState<{ date_echeance: string; note: string | null }[]>([]);
+  const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null }[]>([]);
   const [delaiJours, setDelaiJours] = useState(5);
   const [showAction, setShowAction] = useState(false);
 
@@ -620,6 +620,19 @@ export default function FicheClient({ client: init, onBack }: Props) {
   /* Modifier une ligne du suivi : on rouvre le même formulaire, en mémorisant
      laquelle. Vide = on en crée une nouvelle. */
   const [actionEdit, setActionEdit] = useState<string | null>(null);
+  /* La relance née de cette action, s'il y en a une : c'est elle qu'on
+     déplacera, supprimera — ou qu'on créera si elle manquait. */
+  const [actionRelanceId, setActionRelanceId] = useState<string | null>(null);
+
+  function nouvelleAction() {
+    setActionEdit(null); setActionRelanceId(null);
+    setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
+    setShowAction(true);
+  }
+  function fermerAction() {
+    setShowAction(false); setActionEdit(null); setActionRelanceId(null);
+    setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
+  }
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
@@ -1536,14 +1549,37 @@ Emilio Immobilier
         description: actionF.description || null,
         bien_id: actionF.bien_id || null,
       }).eq('id', actionEdit);
-      /* Si une relance est née de cette action et qu'elle attend toujours, son
-         intitulé suit la correction : sinon la page Relances continuerait
-         d'afficher l'ancienne faute de frappe. */
-      const liee = journal.find(x => x.id === actionEdit)?.metadata?.relance_id;
-      if (liee) await supabase.from('relances').update({ note: noteRelance }).eq('id', liee).eq('statut', 'en_attente');
-      setShowAction(false); setActionEdit(null);
-      setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
-      load();
+
+      const jour = actionF.relance;
+      if (actionRelanceId && jour) {
+        /* Déplacée : la relance suit la date. L'étiquette affichée sous
+           l'action la lit directement, il n'y a rien d'autre à mettre à jour. */
+        await supabase.from('relances')
+          .update({ date_echeance: new Date(`${jour}T12:00:00`).toISOString(), note: noteRelance })
+          .eq('id', actionRelanceId).eq('statut', 'en_attente');
+
+      } else if (actionRelanceId && !jour) {
+        /* Retirée : on efface la relance et son annonce au suivi. */
+        await supabase.from('relances').delete().eq('id', actionRelanceId).eq('statut', 'en_attente');
+        await supabase.from('journal').delete()
+          .eq('type', 'relance_manuelle').eq('metadata->>relance_id', actionRelanceId);
+        await supabase.from('journal').update({ metadata: {} }).eq('id', actionEdit);
+
+      } else if (!actionRelanceId && jour) {
+        /* Ajoutée après coup : elle n'existait pas, on la crée et on la relie. */
+        const { data: rel } = await supabase.from('relances').insert({
+          client_id: client.id, recherche_id: rechercheId,
+          type: 'manuelle', statut: 'en_attente',
+          date_echeance: new Date(`${jour}T12:00:00`).toISOString(),
+          note: noteRelance,
+        }).select('id').single();
+        if (rel?.id) {
+          await supabase.from('journal').update({ metadata: { relance_id: rel.id } }).eq('id', actionEdit);
+        }
+      }
+
+      fermerAction();
+      load(); chargerRelances();
       return;
     }
 
@@ -1574,15 +1610,7 @@ Emilio Immobilier
       metadata: relanceId ? { relance_id: relanceId } : {},
     });
 
-    if (actionF.relance) {
-      await supabase.from('journal').insert({
-        client_id: client.id, recherche_id: rechercheId, type: 'relance_manuelle',
-        titre: `🔔 Relance prévue le ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}`,
-        description: titre, metadata: relanceId ? { relance_id: relanceId } : {},
-      });
-    }
-
-    setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' }); load();
+    fermerAction(); load(); chargerRelances();
   }
 
   /* Seules les lignes que tu as saisies toi-même se modifient. Un « Bien
@@ -1590,14 +1618,27 @@ Emilio Immobilier
      réécrire fausserait l'histoire du dossier. */
   const TYPES_MODIFIABLES = new Set(['appel', 'rdv', 'note', 'relance_manuelle', 'envoi_externe', 'email_libre']);
 
-  function modifierAction(j: any) {
+  async function modifierAction(j: any) {
+    /* La date de relance ne se devine pas depuis le journal : on lit la
+       relance elle-même, pour pouvoir la déplacer dans le formulaire. */
+    const rid = (j.metadata?.relance_id as string | undefined) || null;
+    let jour = '';
+    if (rid) {
+      const { data } = await supabase.from('relances')
+        .select('date_echeance, statut').eq('id', rid).maybeSingle();
+      if (data && data.statut === 'en_attente') {
+        const d = new Date(data.date_echeance);
+        jour = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+    }
     setActionEdit(j.id);
+    setActionRelanceId(jour ? rid : null);
     setActionF({
       type: j.type || 'note',
       titre: j.titre || '',
       description: j.description || '',
       bien_id: j.bien_id || '',
-      relance: '',
+      relance: jour,
     });
     setShowAction(true);
   }
@@ -1623,6 +1664,7 @@ Emilio Immobilier
 
     if (relanceId) {
       if (quand) await supabase.from('relances').delete().eq('id', relanceId).eq('statut', 'en_attente');
+      chargerRelances();
       /* Une action avec relance laisse DEUX lignes au suivi : l'action, et le
          « 🔔 Relance prévue le… » qui l'accompagne. Les deux portent le même
          identifiant de relance — on les efface ensemble, sinon la seconde
@@ -1729,7 +1771,7 @@ Emilio Immobilier
   /* Les relances en attente de ce client, pour l'étiquette de l'entête. */
   const chargerRelances = useCallback(async () => {
     const { data } = await supabase.from('relances')
-      .select('date_echeance, note')
+      .select('id, date_echeance, note')
       .eq('client_id', client.id).eq('statut', 'en_attente')
       .order('date_echeance', { ascending: true });
     setRelancesAtt(data || []);
@@ -1781,7 +1823,7 @@ Emilio Immobilier
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
           <button className={styles.btn} onClick={creerRelanceManuelle}>🔔 Relance J+{delaiJours}</button>
-          <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
+          <button className={styles.btn} onClick={nouvelleAction}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
         </div>
       </div>
@@ -2685,7 +2727,7 @@ Emilio Immobilier
                   </button>
                 ))}
               </div>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowAction(true)}>+ Ajouter une action</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={nouvelleAction}>+ Ajouter une action</button>
             </div>
 
             {suiviItems.length === 0 ? (
@@ -2743,6 +2785,30 @@ Emilio Immobilier
                       )}
                     </div>
                     {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
+                    {/* La relance née de cette action se dit ici, sous elle —
+                        plutôt que sur une deuxième ligne du suivi qui répétait
+                        la même chose sans rien apprendre de plus. */}
+                    {(() => {
+                      const rid = j.metadata?.relance_id as string | undefined;
+                      const rel = rid ? relancesAtt.find(x => x.id === rid) : null;
+                      if (!rel) return null;
+                      const d = new Date(rel.date_echeance); d.setHours(12, 0, 0, 0);
+                      const a = new Date(); a.setHours(12, 0, 0, 0);
+                      const jours = Math.round((d.getTime() - a.getTime()) / 86400000);
+                      const due = jours <= 0;
+                      return (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 6,
+                          padding: '3px 11px', borderRadius: 99, fontSize: 12, fontWeight: 700,
+                          background: due ? '#fff1f2' : '#fffbeb',
+                          border: `1px solid ${due ? '#fbd0d6' : '#fde68a'}`,
+                          color: due ? '#be123c' : '#b45309' }}>
+                          🔔 Relance programmée le {d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                          <span style={{ fontWeight: 600, opacity: .75 }}>
+                            {jours < 0 ? `· en retard de ${-jours} j` : jours === 0 ? "· aujourd'hui" : `· dans ${jours} j`}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {j.bien_id && (() => { const b = biens.find(x => x.id === j.bien_id); return b ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '3px 10px', borderRadius: 8, background: '#faf6ee', border: '1px solid #e8dcc0', fontSize: 12, color: '#92702a', fontWeight: 600 }}>🏠 {b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`}</div>
                     ) : null; })()}
@@ -3946,7 +4012,7 @@ Emilio Immobilier
         <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={() => { setShowAction(false); setActionEdit(null); }}>✕</button></div>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={fermerAction}>✕</button></div>
             <div className={styles.modalBody}>
               <div>
                 <label className={styles.lbl}>Type d'action</label>
@@ -3956,11 +4022,11 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
-              {!actionEdit && (() => {
+              {(() => {
                 /* Une date, et rien d'autre : le reste — qui, pourquoi — est déjà
                    au-dessus. Les raccourcis évitent de compter les jours de tête.
-                   En modification on ne le montre pas : la relance a sa propre
-                   page, on ne la recrée pas en corrigeant une faute de frappe. */
+                   En modification, le champ porte la date de la relance existante :
+                   la changer la déplace, la vider la supprime. */
                 const jourPlus = (j: number) => {
                   const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + j);
                   return d.toISOString().split('T')[0];
@@ -3991,8 +4057,12 @@ Emilio Immobilier
                     </div>
                     <div style={{ fontSize: 11.5, color: pose ? '#a9822f' : '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>
                       {pose
-                        ? `Elle apparaîtra dans « Relances » — à venir jusqu'au ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}, à faire ensuite.`
-                        : 'Laissez vide si rien n\'est à rappeler.'}
+                        ? (actionRelanceId
+                          ? `Relance déplacée au ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')} — videz le champ pour la supprimer.`
+                          : `Elle apparaîtra dans « Relances » — à venir jusqu'au ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}, à faire ensuite.`)
+                        : (actionRelanceId
+                          ? 'La relance rattachée sera supprimée.'
+                          : 'Laissez vide si rien n\'est à rappeler.')}
                     </div>
                   </div>
                 );
@@ -4052,7 +4122,7 @@ Emilio Immobilier
               })()}
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.btn} onClick={() => { setShowAction(false); setActionEdit(null); }}>Annuler</button>
+              <button className={styles.btn} onClick={fermerAction}>Annuler</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>{actionEdit ? '✓ Enregistrer' : '✓ Ajouter au journal'}</button>
             </div>
           </div>
