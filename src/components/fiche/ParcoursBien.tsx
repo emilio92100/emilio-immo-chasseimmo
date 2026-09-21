@@ -984,7 +984,21 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
     setEnvoi(false); onEnvoye();
   }
 
-  const lien = bien.pdf_url || (typeof window !== 'undefined' ? `${window.location.origin}/bien/${bien.id}` : '');
+  /* Choisir « par mail » n'est pas envoyer : ça ouvre la fenêtre de rédaction,
+     et on peut encore annuler. On n'enregistre donc que les honoraires qu'on
+     vient de fixer ; le passage en « Présenté » se fait à l'envoi réel. */
+  async function enregistrerPrix() {
+    setEnvoi(true);
+    await supabase.from('biens').update({
+      commission_type: type, commission_val: v, prix_acquereur: total,
+    }).eq('id', bien.id);
+    setEnvoi(false);
+  }
+
+  /* Le lien envoyé est toujours la fiche vivante, jamais le PDF : c'est la
+     seule page où le client peut répondre. Le PDF reste téléchargeable depuis
+     son espace, mais il ne remplace pas le lien. */
+  const lien = typeof window !== 'undefined' ? `${window.location.origin}/bien/${bien.id}` : '';
 
   async function viaWhatsapp() {
     const txt = `Bonjour ${client?.prenom || ''}, voici un bien qui correspond à votre recherche :\n\n${bien.titre || ''}\n${bien.surface ? bien.surface + ' m²' : ''}${bien.nb_pieces ? ' · ' + bien.nb_pieces + ' pièces' : ''}\nPrix : ${total.toLocaleString('fr-FR')} € tout compris\n\n${lien}`;
@@ -996,7 +1010,7 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
     try { await navigator.clipboard.writeText(lien); setCopie(true); } catch { /* ignore */ }
     await marquer('lien'); setTimeout(onFerme, 800);
   }
-  async function viaMail() { await marquer('mail'); onFerme(); onMail(bien.id); }
+  async function viaMail() { await enregistrerPrix(); onFerme(); onMail(bien.id); }
 
   const canal = (icone: string, titre: string, sous: string, action: () => void, teinte: string) => (
     <button type="button" onClick={action} disabled={envoi}
