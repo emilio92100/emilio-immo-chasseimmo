@@ -613,7 +613,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState({ exigences: {} as Record<string, Niveau>, etage_max_sans_ascenseur: '', cuisine_type: '', exterieur_surface_min: '', types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], transport_arrets: [] as Arret[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
-  const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '' });
+  const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
@@ -1531,7 +1531,23 @@ Emilio Immobilier
       bien_id: actionF.bien_id || null,
       metadata: {},
     });
-    setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '' }); load();
+    /* Le geste manquant : noter, au moment où on note l'appel, la date à
+       laquelle il faudra rappeler. La relance part directement dans la page
+       Relances, et se range d'elle-même selon son échéance. */
+    if (actionF.relance) {
+      await supabase.from('relances').insert({
+        client_id: client.id,
+        recherche_id: rechercheId,
+        type: 'manuelle',
+        statut: 'en_attente',
+        date_echeance: new Date(`${actionF.relance}T12:00:00`).toISOString(),
+        note: [titre, actionF.description.trim()].filter(Boolean).join(' — ').slice(0, 300),
+      });
+      await addJournal(client.id, 'relance_manuelle',
+        `🔔 Relance prévue le ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}`, titre);
+    }
+
+    setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' }); load();
   }
 
   async function saveTxField(field: string, value: any) {
@@ -3826,6 +3842,52 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
+              {(() => {
+                /* Une date, et rien d'autre : le reste — qui, pourquoi — est déjà
+                   au-dessus. Les raccourcis évitent de compter les jours de tête. */
+                const jourPlus = (j: number) => {
+                  const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + j);
+                  return d.toISOString().split('T')[0];
+                };
+                const RACCOURCIS: [string, number][] = [['Demain', 1], ['Dans 3 j', 3], [`Dans ${delaiJours} j`, delaiJours], ['Dans 15 j', 15], ['Dans 1 mois', 30]];
+                const pose = !!actionF.relance;
+                return (
+                  <div style={{ background: pose ? '#fffbf4' : '#fbfcfe', border: `1px solid ${pose ? '#ecdcb4' : '#eef2f7'}`, borderRadius: 12, padding: '12px 14px' }}>
+                    <label className={styles.lbl} style={{ marginBottom: 8 }}>
+                      🔔 Prochaine relance <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span>
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 9 }}>
+                      {RACCOURCIS.map(([lib, j]) => {
+                        const d = jourPlus(j);
+                        const actif = actionF.relance === d;
+                        return (
+                          <button type="button" key={lib} onClick={() => setActionF(f => ({ ...f, relance: actif ? '' : d }))}
+                            style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? '#f2dfa6' : '#64748b', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {lib}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <input className={styles.inp} type="date" style={{ width: 'auto' }}
+                        value={actionF.relance} min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setActionF(f => ({ ...f, relance: e.target.value }))} />
+                      {pose && (
+                        <button type="button" onClick={() => setActionF(f => ({ ...f, relance: '' }))}
+                          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+                          Pas de relance
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: pose ? '#a9822f' : '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>
+                      {pose
+                        ? `Elle apparaîtra dans « Relances » — à venir jusqu'au ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}, à faire ensuite.`
+                        : 'Laissez vide si rien n\'est à rappeler.'}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {(() => {
                 /* Une action se rattache à ce que le client a vu : seuls les biens
                    déjà présentés sont proposés ici. Photo, prix et statut, pour
