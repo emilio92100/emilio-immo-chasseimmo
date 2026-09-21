@@ -71,6 +71,14 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     description: b.description, photos: b.photos || [],
     terrasse: b.terrasse, balcon: b.balcon, jardin: b.jardin, parking: b.parking,
     ascenseur: b.ascenseur, cave: b.cave,
+    /* La requête lit déjà toutes les colonnes : ces champs-là existaient en
+       base et n'arrivaient simplement jamais jusqu'à l'écran du client. */
+    sejour: b.surface_sejour, exterieur: b.surface_exterieur,
+    surfaceTerrasse: b.surface_terrasse, surfaceBalcon: b.surface_balcon,
+    nbParking: b.nb_parking, gardien: b.gardien, cuisineEquipee: b.cuisine_equipee,
+    clim: b.climatisation, traversant: b.traversant,
+    charges: b.charges_trimestrielles, taxe: b.taxe_fonciere,
+    chauffage: b.chauffage, lots: b.nb_lots,
     pdfUrl: b.pdf_statut === 'pret' ? b.pdf_url : null,
     envoyeLe: b.envoye_le, vuLe: b.vu_le,
     avis: b.badge_retour, commentaire: b.retour_client, retourLe: b.retour_le,
