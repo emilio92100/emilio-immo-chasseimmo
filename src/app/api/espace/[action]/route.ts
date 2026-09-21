@@ -112,6 +112,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           type: 'retour_client', titre: `${libelle} — depuis son espace`,
           description: com || null, metadata: {},
         });
+        /* Le client vient de répondre : la relance automatique posée à
+           l'envoi n'a plus d'objet. On ne touche pas aux relances manuelles,
+           celles-là sont posées par Alexandre et lui seul les clôture. */
+        await supabase.from('relances')
+          .update({ statut: 'cloturee' })
+          .eq('client_id', recherche.client_id)
+          .eq('recherche_id', recherche.id)
+          .eq('type', 'auto')
+          .eq('statut', 'en_attente');
+
         await evt('avis', `${libelle}${com ? ' · ' + com : ''}`, bien.id);
         return NextResponse.json({ ok: true });
       }
