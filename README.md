@@ -38,4 +38,3 @@ mais la collecte des pages échoue sur `supabaseUrl is required`.
 # Voir AGENTS.md §2.1 — ce bug a déjà produit « annoncesque » et « 4 500€commission » en production.
 python3 outils/espaces-jsx.py $(find src -name '*.tsx' -o -name '*.ts')
 ```
-
