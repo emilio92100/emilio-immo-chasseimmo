@@ -1051,10 +1051,27 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
 /* La phrase du haut : seulement ce qui est renseigné, dans l'ordre où on le
    dirait à l'oral. Rien n'est inventé, et ce qui manque ne se dit pas —
    « surface non précisée » n'apprend rien au client. */
+const ARTICLE_TYPE: Record<string, string> = {
+  appartement: 'un', maison: 'une', loft: 'un', duplex: 'un', terrain: 'un', autre: 'un',
+};
+/* « Un appartement ou une maison » : chaque type garde son article, et le
+   premier prend la majuscule. Un type inconnu du CRM passe au masculin
+   plutôt que de disparaître de la phrase. */
+function listeTypes(types: string[]): string {
+  const bouts = types.map((x, i) => {
+    const n = x.toLowerCase();
+    const art = ARTICLE_TYPE[n] || 'un';
+    return (i === 0 ? art.charAt(0).toUpperCase() + art.slice(1) : art) + ' ' + n;
+  });
+  if (bouts.length === 1) return bouts[0];
+  return bouts.slice(0, -1).join(', ') + ' ou ' + bouts[bouts.length - 1];
+}
+
 function morceauxResume(crit: any, villes: { ville: string }[]) {
   const m: { t: string; fort?: boolean }[] = [];
-  const type = (crit.typesBien?.length ? crit.typesBien[0] : crit.typeBien) || '';
-  m.push({ t: type ? `Un ${type.toLowerCase()}` : 'Un bien' });
+  const types: string[] = crit.typesBien?.length ? crit.typesBien
+    : (crit.typeBien ? [crit.typeBien] : []);
+  m.push({ t: types.length ? listeTypes(types) : 'Un bien' });
   if (crit.surfaceMin) {
     m.push({ t: " d'au moins " });
     m.push({ t: `${crit.surfaceMin} m²`, fort: true });
@@ -1192,7 +1209,7 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
           <div className="villes">
             {grouperSecteurs(crit.secteurs).map(v => (
               <div className="ville" key={v.ville}>
-                <div className="ville-n"><span className="ville-i"><Ico n="lieu" t={14} /></span>{v.ville}</div>
+                <div className="ville-n"><span className="ville-i"><Ico n="lieu" t={16} /></span>{v.ville}</div>
                 {v.quartiers.length
                   ? <div className="pastilles">{v.quartiers.map(q => <span className="past" key={q}>{q}</span>)}</div>
                   : <div className="ville-tout">Toute la ville</div>}
@@ -2745,7 +2762,7 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .cta-prec span.s{display:block; font-size:12.5px; color:var(--plume); margin-top:3px}
 
 /* La phrase de rappel, en tête de « Rappel de ma recherche » */
-.resume-r{margin-top:22px; background:var(--carte); border:1px solid var(--trait);
+.resume-r{margin:22px 0 20px; background:var(--carte); border:1px solid var(--trait);
   border-radius:20px; padding:20px 18px 18px; box-shadow:var(--ombre)}
 .resume-k{display:flex; align-items:center; gap:7px; font-size:9.5px; letter-spacing:1.8px;
   text-transform:uppercase; font-weight:800; color:var(--or-fonce); margin-bottom:12px}
@@ -2754,10 +2771,14 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-weight:600; letter-spacing:-.3px; color:var(--encre)}
 .resume-p b{color:var(--or-fonce); font-weight:800}
 
-/* Le picto de localisation devant chaque commune, dans « Où je cherche » */
-.ville-i{display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
-  border-radius:9px; background:var(--or-fond); border:1px solid var(--or-trait);
-  color:var(--or-fonce); margin-right:9px; vertical-align:-7px}
+/* Le picto de localisation, en face du nom de la commune. La ligne est un
+   flex : le carré et le nom sont centrés l'un sur l'autre quoi qu'il arrive,
+   même quand un nom passe sur deux lignes. */
+.ville-i{flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+  width:30px; height:30px; border-radius:10px; background:var(--or-fond);
+  border:1px solid var(--or-trait); color:var(--or-fonce)}
+/* Les quartiers s'alignent sous le nom, pas sous le picto. */
+.ville-n + .pastilles, .ville-n + .ville-tout{margin-left:40px}
 
 /* Le choix du créneau, sous « Je souhaite être rappelé ». Trois cases et rien
    d'autre : on ne demande pas au client d'écrire pour obtenir un appel. */
@@ -3022,8 +3043,9 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 .rond:active{transform:scale(.87)}
 /* — où je cherche : une ville, ses quartiers — */
 .villes{display:flex; flex-direction:column; gap:14px}
-.ville-n{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800;
-  color:var(--encre); margin-bottom:9px; letter-spacing:-.2px}
+.ville-n{display:flex; align-items:center; gap:10px;
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800;
+  color:var(--encre); margin-bottom:10px; letter-spacing:-.2px}
 .ville-tout{font-size:13px; color:var(--plume); font-style:italic}
 .ville + .ville{border-top:1px solid var(--trait); padding-top:14px}
 
