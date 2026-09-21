@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import type { Client, StatutClient } from '@/lib/supabase';
 import SecteurPicker from '@/components/shared/SecteurPicker';
@@ -68,6 +69,16 @@ function Bloc({ titre, children }: { titre: string; children: React.ReactNode })
 // Style d'une pastille toggle (active/inactive)
 function pill(active: boolean, borderActive: string, bgActive: string, colorActive: string): React.CSSProperties {
   return { padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? borderActive : '#e2e8f0'}`, background: active ? bgActive : 'white', color: active ? colorActive : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' };
+}
+
+/* La bulle se pose sur <body>. Dans la page, un parent qui porte une
+   animation devient le repère des éléments « position: fixed » : la bulle
+   s'affichait alors décalée, très loin du curseur. */
+function Portail({ children }: { children: React.ReactNode }) {
+  const [pret, setPret] = useState(false);
+  useEffect(() => { setPret(true); }, []);
+  if (!pret) return null;
+  return createPortal(children, document.body);
 }
 
 type StatDossier = {
@@ -287,19 +298,19 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   /* La carte s'ouvre à côté du curseur, pas au bout de la ligne — et une fois
      posée elle ne bouge plus, sinon on ne pourrait pas aller cliquer dedans. */
-  const LARGEUR_FICHE = 330, HAUTEUR_FICHE = 350;
+  const LARGEUR_FICHE = 306, HAUTEUR_FICHE = 340;
   function entrer(id: string, ev: React.MouseEvent) {
     if (minuteur.current) clearTimeout(minuteur.current);
     const cx = ev.clientX, cy = ev.clientY;
     minuteur.current = setTimeout(() => {
-      let x = cx + 22;
-      if (x + LARGEUR_FICHE > window.innerWidth - 14) x = Math.max(14, cx - LARGEUR_FICHE - 22);
-      let y = cy - 46;
-      if (y + HAUTEUR_FICHE > window.innerHeight - 14) y = window.innerHeight - HAUTEUR_FICHE - 14;
-      if (y < 14) y = 14;
+      let x = cx + 12;
+      if (x + LARGEUR_FICHE > window.innerWidth - 12) x = Math.max(12, cx - LARGEUR_FICHE - 12);
+      let y = cy - 18;
+      if (y + HAUTEUR_FICHE > window.innerHeight - 12) y = Math.max(12, cy - HAUTEUR_FICHE + 18);
+      if (y < 12) y = 12;
       setSurvol({ id, x, y });
       chargerDetail(id);
-    }, 180);
+    }, 110);
   }
   function sortir() {
     if (minuteur.current) clearTimeout(minuteur.current);
@@ -531,9 +542,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             const t = TEINTE[client.statut] || TEINTE.actif;
             const det = details[client.id];
             return (
+                    <Portail>
                     <div
                       className={styles.fiche}
-                      style={{ left: survol!.x, top: survol!.y }}
+                      style={{ left: survol.x, top: survol.y }}
                       onMouseEnter={retenir}
                       onMouseLeave={sortir}
                     >
@@ -605,6 +617,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </div>
                       </div>
                     </div>
+                    </Portail>
                   );
       })()}
 
