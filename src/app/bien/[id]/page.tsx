@@ -71,6 +71,12 @@ const T: Record<string, string[]> = {
   etincelle: ['M11 3l1.7 4.6L17 9.3l-4.3 1.7L11 15.6 9.3 11 5 9.3l4.3-1.7z', 'M18 15l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z'],
   tel: ['M6.2 3h3.1l1.5 3.9-2 1.3a13.4 13.4 0 0 0 6.9 6.9l1.3-2 3.9 1.5v3.1a1.9 1.9 0 0 1-2.1 1.9A17.6 17.6 0 0 1 3.1 5.1 1.9 1.9 0 0 1 5 3z'],
   mail: ['M3.6 6.6h16.8v10.8H3.6z', 'm3.6 7 8.4 5.9 8.4-5.9'],
+  regle: ['M2.8 9.2h18.4v5.6H2.8z', 'M7 9.2v2.6', 'M12 9.2v3.4', 'M17 9.2v2.6'],
+  plan: ['M3.5 3.5h17v17h-17z', 'M3.5 10.5h17', 'M10.5 10.5v10'],
+  lit: ['M3.2 19v-9', 'M3.2 14.6h17.6V19', 'M20.8 14.6v-2.4a2.4 2.4 0 0 0-2.4-2.4h-6.4v4.8', 'c:7.2,11.6,1.9'],
+  soleil: ['c:12,12,3.9', 'M12 3.2v2.2', 'M12 18.6v2.2', 'M3.2 12h2.2', 'M18.6 12h2.2', 'm5.9 5.9 1.6 1.6', 'm16.5 16.5 1.6 1.6', 'm18.1 5.9-1.6 1.6', 'm7.5 16.5-1.6 1.6'],
+  sejour: ['M3.4 12.4a1.9 1.9 0 0 1 3.8 0v2.4h9.6v-2.4a1.9 1.9 0 0 1 3.8 0V18H3.4z', 'M7.2 14.8V9.6a1.9 1.9 0 0 1 1.9-1.9h5.8a1.9 1.9 0 0 1 1.9 1.9v5.2', 'M6 18v2', 'M18 18v2'],
+  calendrier: ['M4 6.6h16v14H4z', 'M4 10.6h16', 'M8.4 3.6v4', 'M15.6 3.6v4'],
 };
 
 function Ico({ n, t = 22 }: { n: string; t?: number }) {
@@ -116,20 +122,21 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
     || ((Number(bien.surface_terrasse) || 0) + (Number(bien.surface_balcon) || 0))
     || null;
 
-  const chiffres: { v: string; l: string }[] = [];
-  if (bien.surface) chiffres.push({ v: `${nb(bien.surface)} m²`, l: 'Surface' });
-  if (bien.nb_pieces) chiffres.push({ v: String(bien.nb_pieces), l: bien.nb_pieces > 1 ? 'Pièces' : 'Pièce' });
-  if (bien.nb_chambres) chiffres.push({ v: String(bien.nb_chambres), l: bien.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
+  const chiffres: { i: string; v: string; l: string }[] = [];
+  if (bien.surface) chiffres.push({ i: 'regle', v: `${nb(bien.surface)} m²`, l: 'Surface' });
+  if (bien.nb_pieces) chiffres.push({ i: 'plan', v: String(bien.nb_pieces), l: bien.nb_pieces > 1 ? 'Pièces' : 'Pièce' });
+  if (bien.nb_chambres) chiffres.push({ i: 'lit', v: String(bien.nb_chambres), l: bien.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
   if (bien.etage !== null && bien.etage !== undefined) {
     chiffres.push({
+      i: 'immeuble',
       v: bien.etage === 0 ? 'RDC' : `${bien.etage}e${bien.etage_total ? '/' + bien.etage_total : ''}`,
       l: 'Étage',
     });
   }
-  if (bien.exposition) chiffres.push({ v: String(bien.exposition), l: 'Exposition' });
-  if (bien.surface_sejour) chiffres.push({ v: `${nb(bien.surface_sejour)} m²`, l: 'Séjour' });
-  if (ext) chiffres.push({ v: `${nb(ext)} m²`, l: 'Extérieur' });
-  if (bien.annee_construction) chiffres.push({ v: String(bien.annee_construction), l: 'Construction' });
+  if (bien.exposition) chiffres.push({ i: 'soleil', v: String(bien.exposition), l: 'Exposition' });
+  if (bien.surface_sejour) chiffres.push({ i: 'sejour', v: `${nb(bien.surface_sejour)} m²`, l: 'Séjour' });
+  if (ext) chiffres.push({ i: 'terrasse', v: `${nb(ext)} m²`, l: 'Extérieur' });
+  if (bien.annee_construction) chiffres.push({ i: 'calendrier', v: String(bien.annee_construction), l: 'Construction' });
 
   const inclus: { i: string; n: string }[] = [];
   if (bien.terrasse) inclus.push({ i: 'terrasse', n: 'Terrasse' });
@@ -165,7 +172,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
     <div style={{ minHeight: '100vh', background: FOND, color: ENCRE, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <style>{`
         html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important}
-        .fb-grille{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px}
+        .fb-grille{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:9px}
         .fb-cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:9px}
         .fb-corps{max-width:760px; margin:0 auto; padding:0 20px 56px}
         .fb-prix{display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap}
@@ -209,11 +216,17 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         )}
 
         {chiffres.length > 0 && (
-          <div className="fb-grille" style={{ margin: '18px 0 4px' }}>
+          <div className="fb-grille" style={{ margin: '20px 0 4px' }}>
             {chiffres.map((c) => (
-              <div key={c.l} style={{ background: FOND, border: `1px solid ${TRAIT}`, borderRadius: 13, padding: '11px 8px', textAlign: 'center' }}>
-                <div style={{ fontFamily: JAKARTA, fontWeight: 800, fontSize: 15 }}>{c.v}</div>
-                <div style={{ fontSize: 9, letterSpacing: .9, textTransform: 'uppercase', color: PLUME_CLAIR, marginTop: 4, fontWeight: 700 }}>{c.l}</div>
+              <div key={c.l} style={{
+                background: CARTE, border: `1px solid ${TRAIT}`, borderRadius: 15,
+                padding: '14px 8px 12px', textAlign: 'center', boxShadow: OMBRE,
+              }}>
+                <span style={{ color: OR, display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ico n={c.i} t={19} />
+                </span>
+                <div style={{ fontFamily: JAKARTA, fontWeight: 800, fontSize: 17, letterSpacing: -.3, lineHeight: 1.15 }}>{c.v}</div>
+                <div style={{ fontSize: 9, letterSpacing: .9, textTransform: 'uppercase', color: PLUME_CLAIR, marginTop: 5, fontWeight: 700 }}>{c.l}</div>
               </div>
             ))}
           </div>
@@ -326,8 +339,11 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       <footer style={{ background: ENCRE_NUIT, padding: '24px 20px', borderTop: '1px solid rgba(201,168,76,.2)' }}>
         <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={220} height={50} style={{ height: 38, width: 'auto' }} />
-          <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11 }}>
-            Paris &amp; Hauts-de-Seine · Carte professionnelle CPI 9201 2020 000 045 344
+          <div style={{ color: 'rgba(255,255,255,.55)', fontSize: 11.5, lineHeight: 1.7 }}>
+            <span style={{ fontFamily: JAKARTA, fontWeight: 800, color: OR }}>Emilio Immobilier</span>
+            <span style={{ color: 'rgba(255,255,255,.4)' }}> — RT Conseils (SAS)</span>
+            <br />
+            <span style={{ color: 'rgba(255,255,255,.4)' }}>Paris &amp; Hauts-de-Seine · Carte professionnelle CPI 9201 2020 000 045 344</span>
           </div>
         </div>
       </footer>
