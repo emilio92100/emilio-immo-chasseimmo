@@ -102,15 +102,18 @@ a { text-decoration: none; color: inherit; }
    Aller vers une fiche pousse vers le haut, revenir glisse vers le bas.
    ═══════════════════════════════════════════════════════════════════════ */
 
-@keyframes ecranAvant  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes ecranArriere { from { opacity: 0; transform: translateY(-9px); } to { opacity: 1; transform: none; } }
+@keyframes ecranAvant   { from { opacity: 0; transform: translateY(38px); } to { opacity: 1; transform: none; } }
+@keyframes ecranArriere { from { opacity: 0; transform: translateY(-22px); } to { opacity: 1; transform: none; } }
 
-.ecran-avant   { animation: ecranAvant  .28s cubic-bezier(.22,.8,.3,1) both; }
-.ecran-arriere { animation: ecranArriere .26s cubic-bezier(.22,.8,.3,1) both; }
+/* Pas de fill-mode : une fois l'entrée jouée, plus aucune transformation ne
+   reste sur l'écran. Un parent transformé devient sinon le repère de tout ce
+   qui est « position: fixed » — fenêtres et bulles partent hors de l'écran. */
+.ecran-avant   { animation: ecranAvant   .42s cubic-bezier(.16,1,.3,1); }
+.ecran-arriere { animation: ecranArriere .34s cubic-bezier(.16,1,.3,1); }
 
 /* Les lignes d'une liste arrivent l'une après l'autre, très vite. */
 @keyframes ligneEntre { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.ligne-entre { animation: ligneEntre .24s cubic-bezier(.22,.8,.3,1) both; }
+.ligne-entre { animation: ligneEntre .28s cubic-bezier(.16,1,.3,1) backwards; }
 
 /* Tout ce qui se clique répond au doigt. */
 button, a[role="button"] {
