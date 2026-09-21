@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
 import type { Client, Recherche } from '@/lib/supabase';
@@ -125,6 +126,18 @@ const CRIT_CHIP_FORT: React.CSSProperties = {
   ...CRIT_CHIP, background: '#ffffff', border: '1px solid #e3d3ab',
   fontSize: 14.5, fontWeight: 800, color: '#1a2332',
 };
+
+/* Une fenêtre se pose sur <body>, jamais dans la page.
+   Un parent qui porte une animation devient le repère des éléments
+   « position: fixed » : la fenêtre se centrait alors au milieu de toute la
+   hauteur de la fiche, donc hors de l'écran — on ne voyait plus que le voile
+   gris, sans pouvoir fermer. Le portail supprime le problème à la racine. */
+function Portail({ children }: { children: React.ReactNode }) {
+  const [pret, setPret] = useState(false);
+  useEffect(() => { setPret(true); }, []);
+  if (!pret) return null;
+  return createPortal(children, document.body);
+}
 
 /* Les états d'un dossier. Le libellé seul ne suffisait pas : on dit quand
    chacun s'emploie, pour qu'on choisisse sans hésiter. */
@@ -2412,6 +2425,7 @@ Emilio Immobilier
         </div>
 
       {showContact && (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📞 Modifier le contact</h2><button className={styles.modalClose} onClick={() => setShowContact(false)}>✕</button></div>
@@ -2452,9 +2466,11 @@ Emilio Immobilier
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowContact(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveContact} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
         </div>
+        </Portail>
       )}
 
       {showHisto && (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 620 }}>
             <div className={styles.modalHeader}>
@@ -2505,6 +2521,7 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {showCriteres && (() => {
@@ -2723,6 +2740,7 @@ Emilio Immobilier
         const allerE = (n: number) => { setSensCrit(n > iE ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbE - 1, n))); };
         const cls = (...v: (string | false | undefined)[]) => v.filter(Boolean).join(' ');
         return (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 900 }}>
             <div className={styles.modalHeader}>
@@ -2792,10 +2810,12 @@ Emilio Immobilier
             )}
           </div>
         </div>
+        </Portail>
         );
       })()}
 
       {showMandat && (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📋 Mandat de recherche</h2><button className={styles.modalClose} onClick={() => setShowMandat(false)}>✕</button></div>
@@ -2811,9 +2831,11 @@ Emilio Immobilier
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowMandat(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveMandat} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
         </div>
+        </Portail>
       )}
 
       {showBien && (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>✕</button></div>
@@ -2889,12 +2911,14 @@ Emilio Immobilier
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
           </div>
         </div>
+        </Portail>
       )}
 
       </div>
 
       {/* ═══ MODAL CONFIRM ÉTAPE PRÉCÉDENTE ═══ */}
       {showConfirmEtape && transaction && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmEtape(false); }}>
           <div className={styles.modal} style={{ maxWidth: 440 }}>
             <div className={styles.modalHeader}>
@@ -2915,10 +2939,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL CONFIRM DELETE BIEN ═══ */}
       {showConfirmDeleteBien && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmDeleteBien(false); }}>
           <div className={styles.modal} style={{ maxWidth: 420 }}>
             <div className={styles.modalHeader}>
@@ -2934,10 +2960,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL CONFIRM VISITE DOUBLON ═══ */}
       {showConfirmVisite && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowConfirmVisite(null); }}>
           <div className={styles.modal} style={{ maxWidth: 420 }}>
             <div className={styles.modalHeader}>
@@ -2953,10 +2981,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL ENVOI ═══ */}
       {showEnvoi && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoi(false); }}>
           <div className={styles.modal} style={{ maxWidth: 520 }}>
             <div className={styles.modalHeader}>
@@ -2983,10 +3013,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL FICHE BIEN ═══ */}
       {showFicheBien && editBienForm && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowFicheBien(false); }}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
 
@@ -3243,9 +3275,11 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {showEnvoiBien && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoiBien(false); }}>
           <div className={styles.modal} style={{ maxWidth: 680 }}>
             <div className={styles.modalHeader}>
@@ -3333,10 +3367,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL PLANIFIER VISITE ═══ */}
       {showPlanVisite && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowPlanVisite(false); }}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📅 Planifier une visite</h2><button className={styles.modalClose} onClick={() => setShowPlanVisite(false)}>✕</button></div>
@@ -3428,10 +3464,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL COMPTE-RENDU VISITE ═══ */}
       {showCompteRendu && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowCompteRendu(false); }}>
           <div className={styles.modal} style={{ maxWidth: 520 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>✅ Compte-rendu de visite</h2><button className={styles.modalClose} onClick={() => setShowCompteRendu(false)}>✕</button></div>
@@ -3468,10 +3506,12 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {/* ═══ MODAL OFFRE ÉCRITE ═══ */}
       {showOffreEcrite && (
+        <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowOffreEcrite(false); }}>
           <div className={styles.modal} style={{ maxWidth: 580 }}>
             <div className={styles.modalHeader}>
@@ -3508,9 +3548,11 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
 
       {showAction && (
+        <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>+ Ajouter une action</h2><button className={styles.modalClose} onClick={() => setShowAction(false)}>✕</button></div>
@@ -3582,6 +3624,7 @@ Emilio Immobilier
             </div>
           </div>
         </div>
+        </Portail>
       )}
     </div>
   );
