@@ -39,4 +39,3 @@ mais la collecte des pages échoue sur `supabaseUrl is required`.
 python3 outils/espaces-jsx.py $(find src -name '*.tsx' -o -name '*.ts')
 ```
 
-
