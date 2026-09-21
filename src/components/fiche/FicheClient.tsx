@@ -548,7 +548,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [client, setClient] = useState<Client>(init);
   const [recherches, setRecherches] = useState<Recherche[]>([]);
   const [rechercheId, setRechercheId] = useState<string>('');
-  const [showRechercheMenu, setShowRechercheMenu] = useState(false);
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
   const [tab, setTab] = useState('presentes');   // c'est là qu'on regarde en premier : ce que le client a reçu
@@ -604,6 +603,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
      était coupé en deux. Il s'ouvre maintenant par-dessus la page, à l'aplomb
      du bouton — d'où la position retenue ici. */
   const [menuStatut, setMenuStatut] = useState<{ x: number; y: number } | null>(null);
+  /* La carte des critères rogne ce qui dépasse : le menu des recherches se
+     pose donc par-dessus la page, à l'aplomb du bouton. */
+  const [posRecherche, setPosRecherche] = useState<{ x: number; y: number } | null>(null);
   const [showCloture, setShowCloture] = useState(false);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
   const [showBien, setShowBien] = useState(false);
@@ -737,7 +739,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const reste = recherches.filter(x => x.id !== r.id);
     setRecherches(reste);
     if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('selection'); }
-    setShowRechercheMenu(false);
+    setPosRecherche(null);
   }
 
   async function load() {
@@ -1976,92 +1978,65 @@ Emilio Immobilier
           </div>
         )}
 
-        {/* SÉLECTEUR DE RECHERCHE — posé SUR le bloc des critères, comme un
-            onglet de classeur : on doit voir que l'un commande l'autre. */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: -1, flexWrap: 'wrap', position: 'relative', zIndex: 3 }}>
-          <div style={{ position: 'relative' }}>
-            {showRechercheMenu && <div onClick={() => setShowRechercheMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />}
-            <button onClick={() => setShowRechercheMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid #e3e8f0', borderBottom: 'none', borderRadius: '13px 13px 0 0', padding: '10px 18px 11px', cursor: 'pointer', fontFamily: 'inherit' }}>
-              <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 3, background: '#c9a84c' }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                {recherches.length > 1 ? 'Recherche active' : 'Recherche principale'}
-              </span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: '#1a2332' }}>{rechercheActive?.nom || '—'}</span>
-              <span style={{ color: '#94a3b8', fontSize: 12 }}>▾</span>
-            </button>
-            {showRechercheMenu && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 1, background: 'white', border: '1px solid #e3e8f0', borderRadius: '0 12px 12px 12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 40, minWidth: 260, overflow: 'hidden' }}>
-                {recherches.map(r => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
-                    <button onClick={() => { setRechercheId(r.id); setShowRechercheMenu(false); setTab('presentes'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 700 : 500, color: '#1a2332' }}>{r.nom}</span>
-                      {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
-                    </button>
-                    {recherches.length > 1 && (
-                      <button title="Supprimer cette recherche" onClick={() => supprimerRecherche(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 14px', height: '100%' }} onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')} onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
-                    )}
-                  </div>
-                ))}
-                <button onClick={() => { setShowRechercheMenu(false); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#3b82f6', fontWeight: 700, fontSize: 14 }}>+ Nouvelle recherche</button>
-              </div>
-            )}
-          </div>
-          {rechercheActive && rechercheActive.active === false && (
-            <span title="La veille ne cherche plus sur cette recherche"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 11,
-                background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 99,
-                padding: '4px 12px', fontSize: 11.5, fontWeight: 800, color: '#64748b' }}>
-              ⏸️ Veille en pause
-            </span>
-          )}
-          {rechercheActive && (
-            <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline', paddingBottom: 12 }}>Renommer</button>
-          )}
-
-          <span style={{ flexGrow: 1 }} />
-
-          {/* Le mandat tenait une colonne entière à droite des critères, qui s'en
-              trouvaient rétrécis. Il dit peu de choses : une ligne lui suffit. */}
-          <button onClick={() => setShowMandat(true)}
-            title="Modifier le mandat"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 10,
-              background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 10,
-              padding: '7px 13px', cursor: 'pointer', fontFamily: 'inherit', maxWidth: '100%' }}>
-            <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>
-              📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}
-            </span>
-            {cr.mandat_date_signature || cr.mandat_date_expiration ? (
-              <>
-                <span style={{ fontSize: 12.5, color: '#6b6045', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {cr.mandat_date_signature ? new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR') : 'Signature non datée'}
-                  {cr.mandat_duree ? ` · ${cr.mandat_duree} mois` : ''}
-                  {cr.mandat_honoraires ? ` · ${cr.mandat_honoraires}` : ''}
-                </span>
-                {joursMandat !== null && (
-                  <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, borderRadius: 99, padding: '2px 9px',
-                    background: joursMandat > 15 ? '#fff' : joursMandat > 0 ? '#fffbeb' : '#fef2f2',
-                    border: `1px solid ${joursMandat > 15 ? '#e3d3ab' : joursMandat > 0 ? '#fde68a' : '#fecaca'}`,
-                    color: joursMandat > 15 ? '#a9822f' : joursMandat > 0 ? '#b45309' : '#b91c1c' }}>
-                    {joursMandat > 0 ? `${joursMandat} j restants` : '⚠️ Expiré'}
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: 12.5, color: '#a08c60', fontWeight: 600, whiteSpace: 'nowrap' }}>non renseigné</span>
-                <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 800, borderRadius: 99, padding: '3px 11px', background: '#fff', border: '1px solid #e3d3ab', color: '#a9822f' }}>Remplir</span>
-              </>
-            )}
-            {(cr.mandat_date_signature || cr.mandat_date_expiration) && <span style={{ fontSize: 11, color: '#c2ad7c', flexShrink: 0 }}>✏️</span>}
-          </button>
-        </div>
-
         {/* LES CRITÈRES — sur toute la largeur depuis que le mandat est remonté */}
         <div className={styles.infoRow}>
           {/* coin supérieur gauche carré : c'est là que vient se poser le sélecteur */}
-          <div className={styles.infoCard} style={{ borderTopLeftRadius: 0 }}>
-            <div className={styles.infoCardHeader}>
-              <span>🎯 Critères de recherche</span>
+          <div className={styles.infoCard}>
+            {/* Un seul en-tête. Le nom de la recherche EST le titre du bloc :
+                plus rien ne flotte au-dessus, on voit que l'un commande l'autre. */}
+            <div className={styles.critEntete}>
+              <span className={styles.critFilet} />
+              <span style={{ minWidth: 0 }}>
+                <span className={styles.critSur}>
+                  {recherches.length > 1 ? 'Recherche active' : 'Recherche principale'} · critères
+                </span>
+                <span className={styles.critLigne}>
+                  <button className={styles.critNom} onClick={(ev) => {
+                    if (posRecherche) { setPosRecherche(null); return; }
+                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                    setPosRecherche({ x: Math.max(12, Math.min(r.left, window.innerWidth - 292)), y: r.bottom + 7 });
+                  }}>
+                    {rechercheActive?.nom || '—'}
+                    <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>▾</span>
+                  </button>
+                  {rechercheActive && (
+                    <button className={styles.critRenommer} onClick={() => renommerRecherche()}>Renommer</button>
+                  )}
+                  {rechercheActive && rechercheActive.active === false && (
+                    <span className={styles.critPause} title="La veille ne cherche plus sur cette recherche">⏸️ Veille en pause</span>
+                  )}
+                </span>
+              </span>
+
+              <span style={{ flexGrow: 1 }} />
+
+              {/* Le mandat quitte l'ivoire — qui appartient aux critères — pour
+                  l'ardoise : c'est une information de dossier, pas de recherche. */}
+              <button className={styles.critMandat} onClick={() => setShowMandat(true)} title="Modifier le mandat">
+                <b>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}</b>
+                {cr.mandat_date_signature || cr.mandat_date_expiration ? (
+                  <>
+                    <span>
+                      {cr.mandat_date_signature ? new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR') : 'Signature non datée'}
+                      {cr.mandat_duree ? ` · ${cr.mandat_duree} mois` : ''}
+                      {cr.mandat_honoraires ? ` · ${cr.mandat_honoraires}` : ''}
+                    </span>
+                    {joursMandat !== null && (
+                      <i style={joursMandat > 15 ? undefined : joursMandat > 0
+                        ? { background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }
+                        : { background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
+                        {joursMandat > 0 ? `${joursMandat} j restants` : '⚠️ Expiré'}
+                      </i>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>non renseigné</span>
+                    <i>Remplir</i>
+                  </>
+                )}
+              </button>
+
               <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <button className={styles.editBtn} onClick={ouvrirHistorique}
                   title="Ce que le client a changé ou demandé depuis son espace"
@@ -2078,6 +2053,27 @@ Emilio Immobilier
                 <button className={styles.editBtn} onClick={() => ouvrirCriteres()}>✏️ Modifier</button>
               </span>
             </div>
+
+            {posRecherche && (
+              <Portail>
+                <div onClick={() => setPosRecherche(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
+                <div className="emilio-menu" style={{ position: 'fixed', left: posRecherche.x, top: posRecherche.y, zIndex: 191, width: 280, background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, boxShadow: '0 3px 8px rgba(15,22,35,.06), 0 18px 44px rgba(15,22,35,.2)', overflow: 'hidden' }}>
+                  {recherches.map(r => (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f4f7fb', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
+                      <button onClick={() => { setRechercheId(r.id); setPosRecherche(null); setTab('presentes'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 15px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 800 : 600, color: '#1a2332' }}>{r.nom}</span>
+                        {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
+                      </button>
+                      {recherches.length > 1 && (
+                        <button title="Supprimer cette recherche" onClick={() => { setPosRecherche(null); supprimerRecherche(r); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 14px', alignSelf: 'stretch' }} onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')} onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => { setPosRecherche(null); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: '#fbfcfe', cursor: 'pointer', fontFamily: 'inherit', color: '#2d5c8f', fontWeight: 700, fontSize: 13.5 }}>+ Nouvelle recherche</button>
+                </div>
+              </Portail>
+            )}
+
             <div className={styles.infoCardBody}>
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -2274,14 +2270,14 @@ Emilio Immobilier
         @media (hover: none) { .suivi-actions { opacity: 1; } }
 
         .fiche-suivi { margin-top: 22px; padding: 13px 14px 0;
-          background: linear-gradient(105deg, #1a2332 0%, #27405f 100%);
+          background: linear-gradient(105deg, #3d5878 0%, #4d6f95 100%);
           border-radius: 16px 16px 0 0; }
         .fiche-suivi-tete { display: flex; align-items: baseline; gap: 10px;
           flex-wrap: wrap; padding: 0 4px 11px; }
         .fiche-suivi-tete b { font-family: 'Plus Jakarta Sans', sans-serif;
           font-size: 12px; font-weight: 800; color: #e0c479;
           text-transform: uppercase; letter-spacing: 1.1px; }
-        .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.45); }
+        .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.55); }
       `}</style>
 
         <StylesEmilio />
