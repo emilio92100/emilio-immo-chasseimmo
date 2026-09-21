@@ -262,10 +262,11 @@ L'**assistant de critères** s'ouvre depuis le bloc critères : 9 étapes, dans 
 le remonter. Bascule « tout d'un coup / étape par étape » retenue dans `localStorage`.
 Chaque équipement a trois niveaux : rien · souhaité · indispensable.
 
-**Le bouton Emilio** (`/bookmarklet`) — un favori Chrome, pas une extension. Sur n'importe quelle
-annonce, un clic ouvre une fenêtre qui lit la page, en extrait le bien via Claude, et demande :
-le client, la recherche (seulement s'il en a plusieurs), puis **Mettre en sélection** ou
-**Mettre en veille**. Contrôle de doublon des deux côtés.
+**Le bouton Emilio** (`/bookmarklet`) — **supprimé le 21 septembre**. Jamais utilisé, et sa route
+d'extraction acceptait un appel depuis n'importe quel site (`Access-Control-Allow-Origin: *`) tout
+en consommant `ANTHROPIC_API_KEY` : risque de facture pour personne. Supprimés : `src/app/bookmarklet/`
+et `src/app/api/bien-from-bookmarklet/`. La saisie d'un bien passe par « Ajouter un bien » dans la
+fiche client, ou par la veille.
 
 ### La fiche bien publique — `/bien/<id>`
 
@@ -347,7 +348,6 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex) | `ANTHROPIC_API_KEY` facultative |
 | `POST /api/parse-texte-bien` | portail | Texte collé → Claude → JSON. **Prix = prix affiché en gros**, jamais le « hors honoraires » | idem |
 | `POST /api/reformuler-bien` | portail | Réécrit la description : retire confrère, téléphone, formules commerciales. Ne touche pas au prix | `ANTHROPIC_API_KEY` |
-| `POST /api/bien-from-bookmarklet` | portail | HTML d'annonce → photos par regex + champs via Claude Haiku | `ANTHROPIC_API_KEY` |
 | `POST /api/send-mail` | portail | Envoi Mailjet, mode `libre` ou avec biens | Mailjet |
 | `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
@@ -712,7 +712,12 @@ que c'est une demande déposée en base, honorée à la session suivante. « Obs
 n'écrive plus « Votre commentaire » sous une phrase saisie par Alexandre), et la renumérotation des
 dossiers clients à partir de 100 (`EMI-2026-100`).
 
-⚠️ **Toujours pas poussé sur GitHub au 21 septembre** : `src/app/bookmarklet/capture/page.tsx`
-(la réparation du bouton Emilio, cf. V3.3 bug n°5 — **le bouton reste mort tant que ce fichier
-n'est pas en ligne**), `src/app/bookmarklet/page.tsx`, `src/components/clients/Clients.tsx`
-(espaces JSX), et le dossier `outils/`.
+⚠️ **Toujours pas poussé sur GitHub au 21 septembre** : `src/components/clients/Clients.tsx`
+(espaces JSX) et le dossier `outils/`. Le bouton Emilio, lui, n'est plus à pousser : il a été
+supprimé (voir plus haut).
+
+**La veille et l'URL** — `window.veilleMaj(url, champs, recherche_id)` prend désormais la recherche
+en troisième argument. Une même annonce peut être proposée à plusieurs clients : la table porte une
+ligne par recherche, toutes avec la même URL, et filtrer sur la seule URL écrivait chez tout le
+monde à la fois. Sans `recherche_id`, la mise à jour n'est acceptée que si l'URL ne désigne qu'une
+seule ligne ; sinon elle est refusée et la liste des recherches concernées est renvoyée.
