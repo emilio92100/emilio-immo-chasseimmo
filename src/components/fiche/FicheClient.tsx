@@ -607,6 +607,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
      pose donc par-dessus la page, à l'aplomb du bouton. */
   const [posRecherche, setPosRecherche] = useState<{ x: number; y: number } | null>(null);
   const [showCloture, setShowCloture] = useState(false);
+  /* Choisir le bien d'une transaction : à la création, ou pour la corriger. */
+  const [showChoixTx, setShowChoixTx] = useState<'creer' | 'changer' | null>(null);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
   const [showBien, setShowBien] = useState(false);
   const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null }[]>([]);
@@ -934,6 +936,32 @@ export default function FicheClient({ client: init, onBack }: Props) {
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
     if (data) setClient(data as Client);
     setSaving(false); load();
+  }
+
+  /* Une transaction ne se lance que sur un bien que le client a vu. On n'écrit
+     pas une offre sur un bien qu'il n'a pas visité — et ça évite de chercher
+     dans toute la sélection. */
+  function biensVisites() {
+    const vus = new Set(visites.map(v => v.bien_id).filter(Boolean));
+    return biens.filter(b => vus.has(b.id));
+  }
+
+  async function choisirBienTx(bienId: string) {
+    if (showChoixTx === 'changer' && transaction) {
+      await supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id);
+      const b = biens.find(x => x.id === bienId);
+      await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`);
+    } else {
+      await supabase.from('transactions').insert({
+        client_id: client.id, recherche_id: rechercheId,
+        bien_id: bienId, etape_actuelle: 'offre',
+      });
+      await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId);
+      const b = biens.find(x => x.id === bienId);
+      await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${b?.titre || b?.ville || 'bien'}`);
+    }
+    setShowChoixTx(null);
+    load();
   }
 
   async function changeStatut(statut: string) {
@@ -2508,7 +2536,28 @@ Emilio Immobilier
         {/* TAB TRANSACTION - refonte complète */}
         {tab === 'transaction' && (
           !transaction
-            ? <div className={styles.emptyTab}><div style={{ fontSize: 36, marginBottom: 12 }}>📋</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucune transaction</div><div style={{ color: '#94a3b8', fontSize: 14 }}>Posez le badge "Offre faite" sur un bien pour démarrer</div></div>
+            ? (() => {
+                /* L'ancien écran disait quoi faire ailleurs. Celui-ci le fait. */
+                const visites_ = biensVisites();
+                return (
+                  <div className={styles.emptyTab} style={{ padding: '46px 24px' }}>
+                    <div style={{ fontSize: 40, marginBottom: 14 }}>💼</div>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#1a2332', marginBottom: 6 }}>
+                      Aucune transaction en cours
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 20, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+                      {visites_.length > 0
+                        ? `Une transaction suit un bien de l'offre jusqu'à l'acte. ${visites_.length} bien${visites_.length > 1 ? 's ont' : ' a'} été visité${visites_.length > 1 ? 's' : ''} — c'est parmi ${visites_.length > 1 ? 'eux' : 'lui'} que ça se joue.`
+                        : 'Une transaction suit un bien de l\'offre jusqu\'à l\'acte. Planifiez d\'abord une visite : on n\'écrit pas une offre sur un bien que le client n\'a pas vu.'}
+                    </div>
+                    {visites_.length > 0 && (
+                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowChoixTx('creer')}>
+                        + Créer une transaction
+                      </button>
+                    )}
+                  </div>
+                );
+              })()
             : <div className={styles.card} style={{ padding: 24 }}>
 
                 {/* Bien concerné */}
@@ -2523,19 +2572,18 @@ Emilio Immobilier
                       <div style={{ fontSize: 12, color: '#64748b' }}>{[bienTx.surface && `${bienTx.surface}m²`, bienTx.nb_pieces && `${bienTx.nb_pieces}P`, bienTx.ville].filter(Boolean).join(' · ')}</div>
                     </div>
                     {bienTx.prix_acquereur && <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#c9a84c', flexShrink: 0 }}>{bienTx.prix_acquereur.toLocaleString('fr-FR')}€</div>}
-                    {transaction.etape_actuelle === 'offre' && biens.length > 1 && (
-                      <select onChange={async e => { await supabase.from('transactions').update({ bien_id: e.target.value }).eq('id', transaction.id); load(); }} value={transaction.bien_id} className={styles.inp} style={{ fontSize: 12, width: 'auto', maxWidth: 160 }}>
-                        {biens.map(b => <option key={b.id} value={b.id}>{b.titre || `${b.type_bien} — ${b.ville||'—'}`}</option>)}
-                      </select>
+                    {transaction.etape_actuelle === 'offre' && biensVisites().length > 1 && (
+                      <button className={styles.btn} style={{ fontSize: 12, flexShrink: 0 }}
+                        onClick={() => setShowChoixTx('changer')}>Changer de bien</button>
                     )}
                   </div>
                 ) : (
                   <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#92400e' }}>
                     ⚠️ Aucun bien associé à cette transaction.
-                    {biens.length > 0 && <select onChange={async e => { await supabase.from('transactions').update({ bien_id: e.target.value }).eq('id', transaction.id); load(); }} className={styles.inp} style={{ marginLeft: 10, fontSize: 12, width: 'auto' }}>
-                      <option value="">Choisir un bien...</option>
-                      {biens.map(b => <option key={b.id} value={b.id}>{b.titre || `${b.type_bien} — ${b.ville||'—'}`}</option>)}
-                    </select>}
+                    {biensVisites().length > 0 && (
+                      <button className={styles.btn} style={{ marginLeft: 10, fontSize: 12 }}
+                        onClick={() => setShowChoixTx('changer')}>Choisir un bien</button>
+                    )}
                   </div>
                 ); })()}
 
@@ -3212,6 +3260,67 @@ Emilio Immobilier
         </Portail>
         );
       })()}
+
+      {showChoixTx && (
+        <Portail>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowChoixTx(null); }}>
+          <div className={styles.modal} style={{ maxWidth: 560 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>{showChoixTx === 'creer' ? '💼 Créer une transaction' : '💼 Changer de bien'}</h2>
+              <button className={styles.modalClose} onClick={() => setShowChoixTx(null)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
+                Sur quel bien porte cette transaction&nbsp;? Seuls les biens <b>visités</b> par le client
+                sont proposés — c'est là que se joue une offre.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {biensVisites().map(b => {
+                  const vs = visites.filter(v => v.bien_id === b.id);
+                  const faite = vs.find(v => v.statut === 'effectuee');
+                  const derniere = faite || vs[0];
+                  const actif = transaction?.bien_id === b.id;
+                  return (
+                    <button type="button" key={b.id} onClick={() => choisirBienTx(b.id)} disabled={actif}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 12,
+                        border: `1.5px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#faf6ee' : 'white',
+                        cursor: actif ? 'default' : 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .14s' }}>
+                      <span style={{ width: 52, height: 52, borderRadius: 10, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
+                        {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+                      </span>
+                      <span style={{ flexGrow: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || '—'}`}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                          {[b.surface && `${b.surface} m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ') || '—'}
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5, fontSize: 11.5, fontWeight: 700,
+                          borderRadius: 99, padding: '2px 9px',
+                          background: faite ? '#ecfdf5' : '#f5f3ff', border: `1px solid ${faite ? '#bbf7d0' : '#ddd6fe'}`,
+                          color: faite ? '#15803d' : '#6d28d9' }}>
+                          {faite ? '✅ Visité' : '📅 Visite prévue'}
+                          {derniere?.date_visite ? ` · ${new Date(derniere.date_visite).toLocaleDateString('fr-FR')}` : ''}
+                        </span>
+                      </span>
+                      {b.prix_acquereur ? (
+                        <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 15, color: '#a9822f', flexShrink: 0 }}>
+                          {b.prix_acquereur.toLocaleString('fr-FR')} €
+                        </span>
+                      ) : null}
+                      {actif && <span style={{ fontSize: 11, fontWeight: 800, color: '#a9822f', flexShrink: 0 }}>en cours</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setShowChoixTx(null)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+        </Portail>
+      )}
 
       {showCloture && (
         <Portail>
