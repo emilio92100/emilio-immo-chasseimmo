@@ -119,6 +119,15 @@ export interface Client {
   updated_at: string
 }
 
+/* Le numéro de dossier est la première chose qu'un client voit en haut de son
+   espace. « EMI-2026-001 » annonce qu'il est le premier de l'année ; on démarre
+   donc à 100, ce qui ne dit rien de la taille du portefeuille.
+
+   Le tri se fait sur la chaîne : avec trois chiffres et un préfixe fixe, c'est
+   exact jusqu'à 999. Au-delà, il faudra passer à quatre chiffres — sinon
+   « 1000 » se rangerait avant « 999 ». */
+const PREMIER_DOSSIER = 100
+
 export async function genererReference(): Promise<string> {
   const annee = new Date().getFullYear()
   const { data } = await supabase
@@ -127,9 +136,11 @@ export async function genererReference(): Promise<string> {
     .like('reference', `EMI-${annee}-%`)
     .order('reference', { ascending: false })
     .limit(1)
-  if (!data || data.length === 0) return `EMI-${annee}-001`
-  const num = parseInt(data[0].reference.split('-')[2]) + 1
-  return `EMI-${annee}-${String(num).padStart(3, '0')}`
+  if (!data || data.length === 0) return `EMI-${annee}-${PREMIER_DOSSIER}`
+  const num = parseInt(data[0].reference.split('-')[2], 10) + 1
+  /* Filet : si d'anciens dossiers sont restés en dessous de 100, le suivant
+     repart quand même à 100 au lieu de continuer la vieille série. */
+  return `EMI-${annee}-${String(Math.max(num, PREMIER_DOSSIER)).padStart(3, '0')}`
 }
 
 export async function addJournal(
