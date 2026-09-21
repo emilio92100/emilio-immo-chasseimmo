@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { delaiRelance, echeanceDans } from '@/lib/relances';
 import styles from './Page.module.css';
 
 export default function PageRelances({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -28,9 +29,13 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   }
 
   async function reporter(id: string) {
-    const d = new Date();
-    d.setDate(d.getDate() + 5);
-    await supabase.from('relances').update({ date_echeance: d.toISOString() }).eq('id', id);
+    /* Le délai vient des Paramètres, comme partout ailleurs : il était codé
+       en dur à 5 ici alors que le réglage existait et n'était lu par
+       personne. Le report repart d'aujourd'hui, volontairement — une relance
+       en retard de dix jours doit revenir dans le délai normal, pas hériter
+       de son retard. */
+    await supabase.from('relances')
+      .update({ date_echeance: echeanceDans(await delaiRelance()) }).eq('id', id);
     fetch();
   }
 
@@ -58,12 +63,12 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         <div className={styles.urgBar} style={{ background: tag.color }} />
         <div style={{ flex: 1 }}>
           <div className={styles.name}>{client ? `${client.prenom} ${client.nom}` : '—'}</div>
-          <div className={styles.detail}>{r.note || 'Relance automatique J+5'}</div>
+          <div className={styles.detail}>{r.note || (r.type === 'manuelle' ? 'Relance manuelle' : 'Relance')}</div>
         </div>
         <span className={`${styles.badge} ${tag.cls}`}>{tag.label}</span>
         <div className={styles.btnRow}>
           {client && <button className={styles.btn} onClick={() => onNavigate('fiche', client)}>Voir fiche</button>}
-          <button className={styles.btn} onClick={() => reporter(r.id)}>Reporter +5j</button>
+          <button className={styles.btn} onClick={() => reporter(r.id)}>Reporter</button>
           <button className={`${styles.btn} ${styles.btnDark}`} onClick={() => cloturer(r.id)}>✓ Clôturer</button>
         </div>
       </div>
@@ -85,7 +90,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>✅</div>
           <div className={styles.emptyTitle}>Aucune relance en attente</div>
-          <div className={styles.emptySub}>Les relances apparaissent automatiquement J+5 après chaque envoi de PDF</div>
+          <div className={styles.emptySub}>Une relance se programme toute seule dès qu&apos;un bien part chez un client, et se clôture dès qu&apos;il répond.</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
