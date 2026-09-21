@@ -429,6 +429,25 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return () => clearTimeout(t);
   }, [ouvrirBienvenue]);
 
+  /* Les mails envoyés au client pointent sur /espace/<jeton>?bien=<id> : il
+     arrive directement sur le bien dont on lui parle, pas sur l'accueil à
+     chercher lequel c'est. On n'ouvre qu'une fois, et on nettoie l'adresse
+     pour qu'un rafraîchissement ne rouvre pas la fiche par surprise. */
+  const bienOuvert = useRef(false);
+  useEffect(() => {
+    if (bienOuvert.current) return;
+    let vise = '';
+    try { vise = new URLSearchParams(window.location.search).get('bien') || ''; } catch { return; }
+    if (!vise) return;
+    bienOuvert.current = true;
+    const cible = biensInit.find(b => b.id === vise);
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
+    if (!cible) return;
+    const t = setTimeout(() => ouvrirBien(cible), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [biensInit]);
+
   function ouvrirCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
       setCrit(nv);
@@ -1437,6 +1456,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const refTexte = useRef<HTMLDivElement>(null);
   const [hTexte, setHTexte] = useState(0);
   const [partage, setPartage] = useState(false);
+  const [bientot, setBientot] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   const photos: string[] = b.photos || [];
   /* Deux rubriques de plus sous la description. Elles se construisent ici
@@ -1497,6 +1517,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
         <ModalePartage b={b} client={client} onFermer={() => setPartage(false)}
           onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
+      {bientot && <ModaleBientot onFermer={() => setBientot(false)} />}
       <div className="fiche-droite">
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
@@ -1616,13 +1637,45 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
         )}
         <div className="duo">
           <button className="btn fant" onClick={() => setPartage(true)}><Ico n="partage" t={16} /> Partager</button>
-          {b.pdfUrl
-            ? <a className="btn fant" href={b.pdfUrl} target="_blank" rel="noopener noreferrer"><Ico n="pdf" t={16} /> La fiche PDF</a>
-            : null}
+          {/* Le téléchargement existe toujours à l'écran : quand la fiche est prête
+              il l'ouvre, sinon il explique qu'elle arrive. Un bouton qui apparaît
+              et disparaît selon les biens est plus déroutant qu'un bouton en attente. */}
+          {b.pdfUrl ? (
+            <a className="btn fant" href={b.pdfUrl} target="_blank" rel="noopener noreferrer">
+              <Ico n="pdf" t={16} /> La fiche PDF</a>
+          ) : (
+            <button type="button" className="btn fant attente" onClick={() => setBientot(true)}>
+              <Ico n="pdf" t={16} /> Télécharger la fiche</button>
+          )}
         </div>
       </div>
       </div>
     </>
+  );
+}
+
+/* Le téléchargement de la fiche n'est pas encore ouvert. Plutôt que de cacher
+   le bouton, on dit ce qui arrive : le client sait que le dossier avance, et il
+   sait aussi qu'il peut l'obtenir tout de suite en le demandant. */
+function ModaleBientot({ onFermer }: { onFermer: () => void }) {
+  useEchap(true, onFermer);
+  return createPortal(
+    <div className="pop" role="dialog" aria-modal="true">
+      <div className="pop-voile" onClick={onFermer} />
+      <div className="pop-carte">
+        <div className="pop-fin">
+          <div className="rond-ok"><Ico n="pdf" t={30} /></div>
+          <h3>La fiche du bien, bientôt</h3>
+          <p>Nous préparons un document à télécharger&nbsp;: les photos, le plan quand il existe,
+            les surfaces pièce par pièce, les charges et les diagnostics. De quoi garder le bien
+            sous la main, l&apos;imprimer, ou le montrer autour de vous.</p>
+          <p>Il sera disponible ici prochainement. En attendant, votre conseiller vous l&apos;envoie
+            sur simple demande.</p>
+          <button type="button" className="btn or" onClick={onFermer}>C&apos;est noté</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2654,6 +2707,10 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   border:2px solid rgba(255,255,255,.4); border-top-color:#fff; animation:tourne .7s linear infinite}
 .btn.fant .tourne{border-color:rgba(26,35,50,.22); border-top-color:var(--encre)}
 @keyframes tourne{to{transform:rotate(360deg)}}
+/* En attente : assez présent pour qu'on le voie, assez discret pour qu'on
+   comprenne qu'il n'est pas encore tout à fait à nous. */
+.btn.fant.attente{color:var(--plume-clair); border-color:var(--trait); border-style:dashed;
+  background:var(--fond)}
 .btn[disabled]{opacity:.82; cursor:default}
 .btn[disabled]:active{transform:none}
 
