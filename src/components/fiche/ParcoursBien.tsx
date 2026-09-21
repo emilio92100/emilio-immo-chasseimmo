@@ -873,12 +873,18 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
     if (!avis || envoi) return;
     setEnvoi(true);
     const a = AVIS.find(x => x.id === avis)!;
+    /* Ce retour-là vient d'Alexandre, pas du client : il l'a eu au téléphone
+       et le saisit à sa place. L'espace acheteur le dira — « le commentaire de
+       votre conseiller » — au lieu de faire croire au client qu'il a écrit
+       quelque chose qu'il n'a jamais écrit. */
     await supabase.from('biens').update({
-      badge_retour: a.badge, retour_client: texte.trim() || a.label, retour_le: new Date().toISOString(),
+      badge_retour: a.badge, retour_client: texte.trim() || a.label,
+      retour_le: new Date().toISOString(), retour_par: 'conseiller',
     }).eq('id', bien.id);
     await supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id,
-      type: 'retour_client', titre: `${a.icone} ${a.label}`, description: texte.trim() || null, metadata: {},
+      type: 'retour_client', titre: `${a.icone} ${a.label} · noté par le conseiller`,
+      description: texte.trim() || null, metadata: {},
     });
     setEnvoi(false); onEnregistre(); onFerme();
   }
