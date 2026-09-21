@@ -10,9 +10,15 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
 
   async function fetchCounts() {
     const today = new Date().toISOString();
+    /* La pastille ne dit que ce qui est dû : en retard ou pour aujourd'hui.
+       Une relance prévue dans douze jours n'est pas une alerte — elle reste
+       dans la page Relances, mais elle ne doit pas peser sur le menu.
+       Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
+    const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
     const [{ count: cl }, { count: rel }, { count: vis }] = await Promise.all([
       supabase.from('clients').select('*', { count: 'exact', head: true }),
-      supabase.from('relances').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
+      supabase.from('relances').select('*', { count: 'exact', head: true })
+        .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
     ]);
     setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0 });
