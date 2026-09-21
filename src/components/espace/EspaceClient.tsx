@@ -635,7 +635,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       </div>
 
       <div className="grille">
-        <button className={'case large' + (neufs.length ? ' phare' : '')} onClick={() => aller('neufs')}>
+        <button className={'case' + (neufs.length ? ' phare' : '')} onClick={() => aller('neufs')}>
           <div className="tete-case">
             <span className="ico"><Ico n="etoile" /></span>
             {!!neufs.length && <span className="badge">{neufs.length}</span>}
@@ -647,7 +647,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
               {neufs.slice(0, 2).map((b: Bien) => (
                 <span className="apl" key={b.id}>
                   <span className="pt">{b.photos[0] ? <img src={b.photos[0]} alt="" /> : '▣'}</span>
-                  <b>{b.surface ? b.surface + ' m²' : b.titre.slice(0, 22)}</b> · {EUR(b.prix)}
+                  <span className="et"><b>{EUR(b.prix)}</b><i>{b.surface ? b.surface + ' m²' : b.titre.slice(0, 22)}</i></span>
                 </span>
               ))}
             </div>
@@ -674,16 +674,30 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           {dernier && (
             <div className="apercu">
               <span className="apl"><span className="pt">▣</span>
-                <b>{dernier.avis && ETIQ[dernier.avis]
+                <span className="et"><b>{dernier.avis && ETIQ[dernier.avis]
                   ? `${ETIQ[dernier.avis].e} ${ETIQ[dernier.avis].n}`
-                  : 'Votre avis est attendu'}</b></span>
+                  : 'Votre avis est attendu'}</b></span></span>
               <span className="apl-s">{dernier.avis ? 'Votre dernier retour · ' : 'Dernier bien ouvert · '}{dernier.titre}</span>
             </div>
           )}
           <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
         </button>
 
-        <button className="case" onClick={() => aller('marche')}>
+        {/* Ordre de lecture sur mobile : ce sur quoi on agit en tête, côte à
+            côte ; ce qu'on consulte en dessous, sur toute la largeur. Le rappel
+            des critères et le graphe du marché ont besoin de la ligne entière
+            pour rester lisibles — à mi-largeur, leur texte se casse en quatre. */}
+        <button className="case large" onClick={() => aller('recherche')}>
+          <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
+          <div><h3>Rappel de ma recherche</h3>
+            <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
+              {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
+              {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
+          <div className="pied-case">
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
+            <span className="chev"><Ico n="fleche" t={18} /></span></div>
+        </button>
+        <button className="case large" onClick={() => aller('marche')}>
           <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
           <div><h3>Le marché sur vos critères</h3>
             <p>{semaine.reduce((s: number, x: any) => s + x.lues, 0)} annonces lues cette semaine</p></div>
@@ -697,16 +711,6 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
         </button>
 
-        <button className="case large" onClick={() => aller('recherche')}>
-          <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
-          <div><h3>Rappel de ma recherche</h3>
-            <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
-              {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
-              {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
-          <div className="pied-case">
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
-            <span className="chev"><Ico n="fleche" t={18} /></span></div>
-        </button>
       </div>
 
       </div>
@@ -2369,13 +2373,19 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .badge.gris{background:var(--trait); color:var(--plume); box-shadow:none}
 @keyframes pop{from{transform:scale(.3); opacity:0}to{transform:scale(1); opacity:1}}
 .apercu{display:flex; flex-direction:column; gap:7px; position:relative}
-.apl{display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--plume)}
-.apl .pt{width:26px; height:26px; border-radius:7px; flex:0 0 auto; font-size:9px; overflow:hidden;
+/* Les cartes du haut font une demi-largeur : l'aperçu n'a qu'environ 105 px.
+   « 68 m² · 790 000 € » n'y tient pas d'un bloc et se ferait couper en plein
+   milieu du prix. On empile : le prix d'abord, la surface en dessous. */
+.apl{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--plume); min-width:0}
+.apl .et{min-width:0; display:flex; flex-direction:column; line-height:1.32}
+.apl .et i{font-style:normal; font-size:11px; color:var(--plume-clair);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.apl .pt{width:24px; height:24px; border-radius:7px; flex:0 0 auto; font-size:9px; overflow:hidden;
   background:linear-gradient(148deg,#3a5178,#22314c); color:rgba(255,255,255,.5);
   display:flex; align-items:center; justify-content:center}
 .apl .pt img{width:100%; height:100%; object-fit:cover}
-.apl b{color:var(--encre); font-weight:700}
-.apl-s{font-size:12px; color:var(--plume-clair); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:35px; margin-top:-3px}
+.apl b{color:var(--encre); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.apl-s{font-size:11.5px; color:var(--plume-clair); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:32px; margin-top:-3px}
 .mini{display:flex; align-items:flex-end; gap:4px; height:34px}
 .mini i{flex:1; background:var(--or-trait); border-radius:3px 3px 0 0; min-height:4px;
   animation:pousse .7s cubic-bezier(.16,1,.3,1) both; transform-origin:bottom}
