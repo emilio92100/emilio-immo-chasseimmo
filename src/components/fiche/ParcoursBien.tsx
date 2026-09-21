@@ -87,6 +87,9 @@ export function StylesEmilio() {
       .emi-onglets.sombre .emi-onglet { color:rgba(255,255,255,.66) }
       .emi-onglets.sombre .emi-onglet:hover { color:#fff; background:rgba(255,255,255,.09) }
       .emi-onglets.sombre .emi-onglet[data-actif="true"] { color:${NAVY}; background:#f7f9fc; border-color:transparent }
+      /* Le filet doré du haut faisait doublon avec le blanc de l'onglet, qui
+         suffit à dire lequel est ouvert. */
+      .emi-onglets.sombre .emi-onglet[data-actif="true"]::before { display:none }
       .emi-onglets.sombre .emi-compteur { background:rgba(255,255,255,.15); color:#fff }
       .emi-onglets.sombre .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(26,35,50,.1); color:${NAVY} }
 
