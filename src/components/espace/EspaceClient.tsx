@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
+import { CENTRES, PARIS, SEINE, SEINE_PARIS, centreDe, cleCommune } from '@/lib/communes';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
 
@@ -1048,6 +1049,153 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
   );
 }
 
+/* ══ La carte des secteurs ════════════════════════════════════════════════
+   Les épingles sont posées aux vraies coordonnées des communes (voir
+   src/lib/communes.ts) : elles tombent au bon endroit quel que soit le
+   secteur du client, et le cadre se recentre tout seul sur ses communes.
+   Une commune hors du périmètre couvert n'est pas dessinée — elle reste dans
+   la liste en dessous, et la carte ne raconte rien de faux. */
+function CarteSecteurs({ villes }: { villes: { ville: string; quartiers: string[] }[] }) {
+  const L = 390, H = 252, MARGE = 34;
+
+  const places = villes
+    .map(v => ({ nom: v.ville, c: centreDe(v.ville) }))
+    .filter((v): v is { nom: string; c: [number, number] } => !!v.c);
+  if (!places.length) return null;
+
+  /* Le cadre : la boîte qui contient ses communes, élargie pour que les
+     étiquettes respirent, et jamais plus serrée qu'un minimum — sinon une
+     commune seule donnerait un zoom absurde sur un point. */
+  const lons = places.map(p => p.c[0]), lats = places.map(p => p.c[1]);
+  const cx = (Math.min(...lons) + Math.max(...lons)) / 2;
+  const cy = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const spanL = Math.max(Math.max(...lons) - Math.min(...lons), 0.075) * 1.4;
+  const spanH = Math.max(Math.max(...lats) - Math.min(...lats), 0.05) * 1.5;
+
+  /* Projection : à cette échelle une simple mise à plat suffit. On corrige
+     seulement l'écrasement des longitudes avec la latitude, sinon la région
+     paraît étirée en largeur. */
+  const k = Math.cos((cy * Math.PI) / 180);
+  const ech = Math.min((L - 2 * MARGE) / (spanL * k), (H - 2 * MARGE) / spanH);
+  const px = (lon: number) => L / 2 + (lon - cx) * k * ech;
+  const py = (lat: number) => H / 2 - (lat - cy) * ech;
+  const trace = (pts: [number, number][]) =>
+    pts.map((p, i) => `${i ? 'L' : 'M'}${px(p[0]).toFixed(1)} ${py(p[1]).toFixed(1)}`).join(' ');
+
+  const prises = new Set(places.map(p => cleCommune(p.nom)));
+  const voisines = Object.entries(CENTRES)
+    .filter(([cle]) => !prises.has(cle) && !cle.startsWith('paris'))
+    .map(([, c]) => [px(c[0]), py(c[1])] as [number, number])
+    .filter(([x, y]) => x > 6 && x < L - 6 && y > 6 && y < H - 6);
+
+  const parisX = PARIS.map(p => px(p[0]));
+  const parisY = PARIS.map(p => py(p[1]));
+  const parisVisible = Math.max(...parisX) > 0 && Math.min(...parisX) < L
+    && Math.max(...parisY) > 0 && Math.min(...parisY) < H;
+
+  /* Les étiquettes se posent sous l'épingle ; si deux se gênent, la suivante
+     passe au-dessus, puis plus bas. Deux communes voisines restent lisibles. */
+  const posees: { x: number; y: number; w: number }[] = [];
+  const etiquettes = places.map(p => {
+    const x = px(p.c[0]), y = py(p.c[1]);
+    const w = Math.min(L - 16, p.nom.length * 6.7 + 26);
+    let ey = y + 22;
+    const gene = () => posees.some(q => Math.abs(q.y - ey) < 24 && Math.abs(q.x - x) < (q.w + w) / 2);
+    if (gene()) ey = y - 34;
+    if (gene()) ey = y + 48;
+    posees.push({ x, y: ey, w });
+    return { nom: p.nom, x, y, ex: Math.max(w / 2 + 6, Math.min(L - w / 2 - 6, x)), ey, w };
+  });
+
+  return (
+    <svg className="carte-sect" viewBox={`0 0 ${L} ${H}`} role="img"
+      aria-label={'Carte des secteurs de recherche : ' + places.map(p => p.nom).join(', ')}>
+      <defs>
+        <linearGradient id="cs-ciel" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#f2f6fa" /><stop offset="1" stopColor="#e6eef6" />
+        </linearGradient>
+        <linearGradient id="cs-eau" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#d3e6f4" /><stop offset="1" stopColor="#bcd8ee" />
+        </linearGradient>
+        <radialGradient id="cs-halo" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor="#c9a84c" stopOpacity=".34" />
+          <stop offset="1" stopColor="#c9a84c" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+
+      <rect x="0" y="0" width={L} height={H} fill="url(#cs-ciel)" />
+      <g className="cs-grille">
+        <path d={`M0 ${H * 0.25} H${L}`} /><path d={`M0 ${H * 0.5} H${L}`} /><path d={`M0 ${H * 0.75} H${L}`} />
+        <path d={`M${L * 0.25} 0 V${H}`} /><path d={`M${L * 0.5} 0 V${H}`} /><path d={`M${L * 0.75} 0 V${H}`} />
+      </g>
+
+      <path d={trace(SEINE)} stroke="url(#cs-eau)" strokeWidth="24" fill="none"
+        strokeLinecap="round" strokeLinejoin="round" />
+      <path d={trace(SEINE_PARIS)} stroke="url(#cs-eau)" strokeWidth="18" fill="none"
+        strokeLinecap="round" strokeLinejoin="round" />
+
+      {parisVisible && (
+        <>
+          <path d={trace(PARIS) + ' Z'} className="cs-paris" />
+          <text className="cs-paris-t" x={parisX.reduce((a, b) => a + b, 0) / parisX.length}
+            y={parisY.reduce((a, b) => a + b, 0) / parisY.length}>PARIS</text>
+        </>
+      )}
+
+      {voisines.map(([x, y], i) => <circle key={i} className="cs-voisine" cx={x} cy={y} r="2.6" />)}
+
+      {etiquettes.map(e => (
+        <g key={e.nom} className="cs-pin">
+          <circle cx={e.x} cy={e.y} r="30" fill="url(#cs-halo)" />
+          <ellipse cx={e.x} cy={e.y + 15} rx="8" ry="2.6" className="cs-ombre" />
+          <path d={`M${e.x} ${e.y - 17} c -7.7 0 -13.5 5.8 -13.5 12.6 c 0 8.7 13.5 20.4 13.5 20.4
+            s 13.5 -11.7 13.5 -20.4 c 0 -6.8 -5.8 -12.6 -13.5 -12.6 z`} className="cs-goutte" />
+          <circle cx={e.x} cy={e.y - 4.5} r="4.3" fill="#fff" />
+          <rect className="cs-etiq" x={e.ex - e.w / 2} y={e.ey - 13} width={e.w} height="25" rx="12.5" />
+          <text className="cs-etiq-t" x={e.ex} y={e.ey + 4}>{e.nom}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/* La phrase du haut : seulement ce qui est renseigné, dans l'ordre où on le
+   dirait à l'oral. Rien n'est inventé, et ce qui manque ne se dit pas —
+   « surface non précisée » n'apporte rien au client. */
+function morceauxResume(crit: any, villes: { ville: string }[]) {
+  const m: { t: string; fort?: boolean }[] = [];
+  const type = (crit.typesBien?.length ? crit.typesBien[0] : crit.typeBien) || '';
+  const voyelle = /^[aeiouyâàéèêîïôûù]/i.test(type);
+  m.push({ t: type ? `Un${voyelle ? '' : ''} ${type.toLowerCase()}` : 'Un bien' });
+  if (crit.surfaceMin) {
+    m.push({ t: " d'au moins " });
+    m.push({ t: `${crit.surfaceMin} m²`, fort: true });
+  }
+  if (crit.chambresMin) {
+    m.push({ t: ' avec ' });
+    m.push({ t: `${crit.chambresMin} chambre${crit.chambresMin > 1 ? 's' : ''}`, fort: true });
+  }
+  if (villes.length) {
+    const courts = villes.map(v => v.ville.replace(/-sur-Seine$/i, '').replace(/-Billancourt$/i, ''));
+    m.push({ t: ', à ' });
+    m.push({
+      t: courts.length <= 2 ? courts.join(' ou ')
+        : `${courts[0]}, ${courts[1]} et ${courts.length - 2} autre${courts.length > 3 ? 's' : ''}`,
+      fort: true,
+    });
+  }
+  if (crit.budgetMax) {
+    m.push({ t: crit.budgetMin ? ', entre ' : ", jusqu'à " });
+    if (crit.budgetMin) { m.push({ t: EUR(crit.budgetMin), fort: true }); m.push({ t: ' et ' }); }
+    m.push({ t: EUR(crit.budgetMax), fort: true });
+  }
+  m.push({ t: '.' });
+  return m;
+}
+
+/* Rappel de ma recherche — l'ordre suit les neuf étapes de la qualification :
+   bien · surfaces · étage · équipements · énergie · lieu · transports ·
+   budget · contexte. Le budget vient à la fin, comme au téléphone. */
 function Recherche({ crit, aller, onCriteres, onMessage }: any) {
   /* On n'invente rien : s'il n'y a pas de minimum, on écrit « jusqu'à ». */
   const bmin: number | null = crit.budgetMin || null;
@@ -1056,6 +1204,7 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
   const expos: string[] = (crit.exposition || '').split(',').map((x: string) => x.trim()).filter(Boolean);
   const types: string[] = crit.typesBien?.length ? crit.typesBien : (crit.typeBien ? [crit.typeBien] : []);
   const iDpe = crit.dpeMax ? LETTRES_DPE.indexOf(crit.dpeMax) : -1;
+  const villes = grouperSecteurs(crit.secteurs || []);
 
   /* Les équipements retenus, dans l'ordre du CRM, avec leur niveau. */
   const equips: { texte: string; fort: boolean }[] = [];
@@ -1075,9 +1224,50 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
 
   const aQuelqueChose = types.length || crit.etatSouhaite || crit.anneeMin;
 
+  /* Les quatre chiffres sous la phrase : on prend ceux qui existent, dans
+     l'ordre d'importance, et on s'arrête à quatre. Une case vide serait pire
+     qu'une case en moins. */
+  const cles: { v: React.ReactNode; l: string }[] = [];
+  if (crit.surfaceMin) cles.push({ v: <>{crit.surfaceMin}<small>m²</small></>, l: 'surface' });
+  if (crit.chambresMin != null) cles.push({ v: <>{crit.chambresMin}</>, l: 'chambres' });
+  if (crit.etageMin) cles.push({ v: <>{crit.etageMin}<small>e+</small></>, l: 'étage' });
+  else if (crit.piecesMin) cles.push({ v: <>{crit.piecesMin}</>, l: 'pièces' });
+  if (villes.length) cles.push({ v: <>{villes.length}</>, l: villes.length > 1 ? 'communes' : 'commune' });
+
+  /* La coupe d'immeuble : quatre niveaux au-dessus du minimum, le minimum
+     lui-même, puis les étages exclus tout en bas. Quand le minimum est haut on
+     saute les niveaux intermédiaires plutôt que de dessiner une tour de vingt
+     étages — et le saut se voit, il ne se cache pas. Sans étage minimum, le
+     dessin ne dirait rien : on ne le dessine pas. */
+  const etageMin = crit.etageMin || 0;
+  const bas = [1, 0].filter(n => n < etageMin);
+  const niveaux: (number | null)[] = [
+    etageMin + 4, etageMin + 3, etageMin + 2, etageMin + 1, etageMin,
+    ...(etageMin > 2 ? [null] : []), ...bas,
+  ];
+  const hCoupe = 22 + niveaux.length * 27 - 3;
+  const nomNiveau = (n: number) => n === 0 ? 'rez-de-chaussée' : n === 1 ? '1er' : `${n}e`;
+
   return (
     <Vue icone="cible" titre="Rappel de ma recherche" aller={aller}
-      sous="Ce qu'Alexandre a noté de votre projet, catégorie par catégorie. Vous pouvez le faire évoluer vous-même à tout moment.">
+      sous="Ce qu'Alexandre a noté de votre projet. Vous pouvez le faire évoluer vous-même à tout moment.">
+
+      {/* ── La phrase, en vedette ── */}
+      <div className="resume-r">
+        <div className="resume-k"><i /> En une phrase</div>
+        <p className="resume-p">
+          {morceauxResume(crit, villes).map((x, i) => x.fort
+            ? <b key={i}>{x.t}</b>
+            : <span key={i}>{x.t}</span>)}
+        </p>
+        {cles.length >= 2 && (
+          <div className="resume-c">
+            {cles.slice(0, 4).map(c => (
+              <div key={c.l}><div className="v tab">{c.v}</div><div className="l">{c.l}</div></div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* 1 — Le bien recherché */}
       {aQuelqueChose ? (
@@ -1092,35 +1282,94 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
         </CatE>
       ) : null}
 
-      {/* 2 — Surfaces & volumes */}
+      {/* 2 — Surfaces & volumes, en plan */}
       <CatE ico="regle" titre="Surfaces & volumes" sous="la taille du bien">
+        {(crit.surfaceMin || crit.chambresMin || crit.surfaceSejourMin) ? (
+          <svg className="plan-r" viewBox="0 0 330 142" role="img"
+            aria-label={`Plan schématique${crit.surfaceSejourMin ? ` : séjour de ${crit.surfaceSejourMin} m² minimum` : ''}${crit.chambresMin ? `, ${crit.chambresMin} chambres` : ''}`}>
+            <rect className="plan-cadre" x="1" y="1" width="328" height="112" rx="12" />
+            <rect className="plan-sejour" x="11" y="11" width="152" height="92" rx="9" />
+            <text className="plan-t1" x="87" y={crit.surfaceSejourMin ? 50 : 62} textAnchor="middle">Séjour</text>
+            {crit.surfaceSejourMin ? <text className="plan-t2" x="87" y="69" textAnchor="middle">{crit.surfaceSejourMin} m² minimum</text> : null}
+            {Array.from({ length: Math.min(3, crit.chambresMin || 0) }).map((_, i) => (
+              <g key={i}>
+                <rect className="plan-ch" x="173" y={11 + i * 32.5} width="146" height="27" rx="8" />
+                <text className="plan-t3" x="246" y={29 + i * 32.5} textAnchor="middle">Chambre {i + 1}</text>
+              </g>
+            ))}
+            {(crit.chambresMin || 0) > 3 ? <text className="plan-t3" x="246" y="120" textAnchor="middle">+ {crit.chambresMin - 3} autres</text> : null}
+            {crit.surfaceMin ? (
+              <>
+                <path className="plan-cote" d="M11 127 H 319" /><path className="plan-cote" d="M11 122 v10 M319 122 v10" />
+                <rect className="plan-cote-f" x="122" y="118" width="86" height="18" rx="9" />
+                <text className="plan-t4" x="165" y="131" textAnchor="middle">{crit.surfaceMin} m² et plus</text>
+              </>
+            ) : null}
+          </svg>
+        ) : null}
         <div className="trio">
-          <div className="mini-t"><div className="v tab">{crit.surfaceMin ? crit.surfaceMin + ' m²' : '—'}</div><div className="l">surface min.</div></div>
           <div className="mini-t"><div className="v tab">{crit.piecesMin ?? '—'}</div><div className="l">pièces min.</div></div>
-          <div className="mini-t"><div className="v tab">{crit.chambresMin ?? '—'}</div><div className="l">chambres min.</div></div>
+          <div className="mini-t"><div className="v tab">{crit.surfaceSejourMin ? crit.surfaceSejourMin + ' m²' : '—'}</div><div className="l">séjour min.</div></div>
+          <div className="mini-t"><div className="v tab">{crit.anneeMin ?? '—'}</div><div className="l">construit après</div></div>
         </div>
-        {(crit.surfaceMax || crit.surfaceSejourMin || crit.piecesMax) && (
+        {(crit.surfaceMax || crit.piecesMax) && (
           <div className="faits">
             {crit.surfaceMax ? <Fait ico="📏" lib="Surface maximum" val={<span className="tab">{crit.surfaceMax} m²</span>} /> : null}
             {crit.piecesMax ? <Fait ico="🚪" lib="Pièces maximum" val={<span className="tab">{crit.piecesMax}</span>} /> : null}
-            {crit.surfaceSejourMin ? <Fait ico="🛋️" lib="Séjour d’au moins" val={<span className="tab">{crit.surfaceSejourMin} m²</span>} /> : null}
           </div>
         )}
       </CatE>
 
-      {/* 3 — Étage & exposition */}
+      {/* 3 — Dans l'immeuble : l'étage en coupe, l'exposition en boussole */}
       {(etage.length || expos.length) ? (
-        <CatE ico="immeuble" titre="Étage & exposition" sous="où se trouve le bien dans l'immeuble">
-          {etage.length ? <div className="pastilles">{etage.map(e => <span className="past" key={e}>{e}</span>)}</div> : null}
-          {expos.length ? (
-            <div style={{ marginTop: etage.length ? 12 : 0 }}>
-              <div className="ss-t">Exposition souhaitée</div>
-              <div className="pastilles">{expos.map(e => {
-                const t = EXPO_E.find(x => x[0] === e);
-                return <span className="past or" key={e}>{t ? `${t[2]} ${t[1]}` : e}</span>;
-              })}</div>
-            </div>
-          ) : null}
+        <CatE ico="immeuble" titre="Dans l'immeuble" sous="l'étage et l'orientation">
+          <div className="duo-sch">
+            {etage.length ? (
+              <div className="sch">
+                <div className="sch-k">Étage</div>
+                {crit.etageMin ? (
+                  <svg className="coupe" viewBox={`0 0 156 ${hCoupe}`} role="img"
+                    aria-label={`Coupe d'immeuble : à partir du ${crit.etageMin}e étage`}>
+                    <rect className="coupe-f" x="1" y="1" width="154" height={hCoupe - 2} rx="12" />
+                    <rect className="coupe-asc" x="11" y="11" width="15" height={hCoupe - 22} rx="5" />
+                    <path className="coupe-fleche" d={`M18.5 ${hCoupe / 2 - 7} v-12 m-3 3 l3 -3 l3 3 M18.5 ${hCoupe / 2 + 7} v12 m-3 -3 l3 3 l3 -3`} />
+                    <text className="coupe-asc-t" x="18.5" y={hCoupe - 4} textAnchor="middle">ASC.</text>
+                    {niveaux.map((n, i) => {
+                      const y = 11 + i * 27;
+                      if (n === null) {
+                        return <text key="saut" className="coupe-t" x="89" y={y + 16} textAnchor="middle">· · ·</text>;
+                      }
+                      const pris = n >= etageMin && !(n === 0 && crit.rdcExclu);
+                      const cible = n === etageMin;
+                      return (
+                        <g key={n}>
+                          <rect className={'coupe-n' + (cible ? ' cible' : pris ? ' pris' : '')} x="34" y={y} width="110" height="24" rx="7" />
+                          <text className={'coupe-t' + (cible ? ' cible' : pris ? ' pris' : '')} x="89" y={y + 16} textAnchor="middle">
+                            {cible ? `${nomNiveau(n)} — à partir d'ici` : nomNiveau(n)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {crit.rdcExclu && bas.includes(0) ? (
+                      <path className="coupe-barre" d={`M40 ${11 + (niveaux.length - 1) * 27 + 20} L 138 ${11 + (niveaux.length - 1) * 27 + 4}`} />
+                    ) : null}
+                  </svg>
+                ) : null}
+                <div className="pastilles" style={{ marginTop: 10 }}>{etage.map(e => <span className="past" key={e}>{e}</span>)}</div>
+              </div>
+            ) : null}
+
+            {expos.length ? (
+              <div className="sch etroit">
+                <div className="sch-k">Exposition</div>
+                <Boussole expos={expos} />
+                <div className="pastilles" style={{ marginTop: 10 }}>{expos.map(e => {
+                  const t = EXPO_E.find(x => x[0] === e);
+                  return <span className="past or" key={e}>{t ? `${t[2]} ${t[1]}` : e}</span>;
+                })}</div>
+              </div>
+            ) : null}
+          </div>
         </CatE>
       ) : null}
 
@@ -1143,12 +1392,13 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       ) : null}
 
       {/* 6 — Où je cherche */}
-      {!!crit.secteurs.length && (
+      {!!villes.length && (
         <CatE ico="lieu" titre="Où je cherche" sous="vos communes et quartiers">
+          <CarteSecteurs villes={villes} />
           <div className="villes">
-            {grouperSecteurs(crit.secteurs).map(v => (
+            {villes.map(v => (
               <div className="ville" key={v.ville}>
-                <div className="ville-n">{v.ville}</div>
+                <div className="ville-n"><i className="pt" />{v.ville}</div>
                 {v.quartiers.length
                   ? <div className="pastilles">{v.quartiers.map(q => <span className="past" key={q}>{q}</span>)}</div>
                   : <div className="ville-tout">Toute la ville</div>}
@@ -1179,23 +1429,34 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
         </CatE>
       ) : null}
 
-      {/* 8 — Budget */}
-      <CatE ico="euro" titre="Budget" sous="votre enveloppe">
-        <div className="gros tab">
+      {/* 8 — Budget, à la fin comme au téléphone */}
+      <div className="budget-r">
+        <div className="budget-k"><Ico n="euro" t={17} /> Budget</div>
+        <div className="budget-v tab">
           {bmin && bmax ? <>{EUR(bmin)} <small>à</small> {EUR(bmax)}</>
             : bmax ? <><small>Jusqu&apos;à</small> {EUR(bmax)}</>
               : bmin ? <><small>À partir de</small> {EUR(bmin)}</>
                 : <small>À préciser ensemble</small>}
         </div>
+        {bmax ? (
+          <>
+            <div className="budget-b"><i style={{ left: '18%', width: '64%' }} /></div>
+            <div className="budget-e">
+              <span>{EUR(Math.round((bmin || bmax * 0.8) * 0.82 / 10000) * 10000)}</span>
+              <span>{EUR(Math.round(((bmin || bmax * 0.8) + bmax) / 2 / 10000) * 10000)}</span>
+              <span>{EUR(Math.round(bmax * 1.15 / 10000) * 10000)}</span>
+            </div>
+          </>
+        ) : null}
         {(crit.apport || crit.financement) && (
-          <div className="faits">
-            {crit.apport ? <Fait ico="🏦" lib="Apport" val={<span className="tab">{EUR(crit.apport)}</span>} /> : null}
-            {crit.financement && <Fait ico={FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[2] || '💳'} lib="Financement" val={(FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[1]) || crit.financement} />}
+          <div className="budget-f">
+            {crit.apport ? <div><span className="k">Apport</span><span className="v tab">{EUR(crit.apport)}</span></div> : null}
+            {crit.financement ? <div className="or"><span className="k">Financement</span><span className="v">{(FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[1]) || crit.financement}</span></div> : null}
           </div>
         )}
-      </CatE>
+      </div>
 
-      {/* 9 — Mon projet + la note d'Alexandre, en lecture seule */}
+      {/* 9 — Mon projet, et la note d'Alexandre en lecture seule */}
       <CatE ico="note" titre="Mon projet" sous="échéance et précisions">
         {crit.urgence && (
           <div className="faits">
@@ -1216,10 +1477,52 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
         </div>
       </CatE>
 
-      <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
+      <div className="duo">
+        <button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button>
+        <p className="duo-s">Vos changements sont transmis à votre conseiller.</p>
+      </div>
     </Vue>
   );
 }
+
+/* La boussole : le quart de cercle s'allume sur les expositions retenues.
+   Une exposition inconnue du référentiel n'allume rien — elle reste en
+   pastille sous le dessin, et la boussole ne raconte pas n'importe quoi. */
+function Boussole({ expos }: { expos: string[] }) {
+  const pris = new Set(expos.map(e => e.toLowerCase()));
+  const traversant = pris.has('traversant');
+  /* Chaque direction est un quart de disque, dessiné depuis le centre. */
+  const QUARTS: Record<string, string> = {
+    nord: 'M75 75 L 17 75 A 58 58 0 0 1 133 75 Z',
+    est: 'M75 75 L 75 17 A 58 58 0 0 1 75 133 Z',
+    sud: 'M75 75 L 133 75 A 58 58 0 0 1 17 75 Z',
+    ouest: 'M75 75 L 75 133 A 58 58 0 0 1 75 17 Z',
+  };
+  return (
+    <svg className="boussole" viewBox="0 0 150 172" role="img"
+      aria-label={'Exposition : ' + expos.join(', ')}>
+      <circle className="bo-f" cx="75" cy="75" r="58" />
+      {Object.entries(QUARTS).map(([d, p]) =>
+        (pris.has(d) || traversant) ? <path key={d} className="bo-q" d={p} /> : null)}
+      <circle className="bo-c" cx="75" cy="75" r="58" />
+      <g className="bo-tick">
+        <path d="M75 19 v6" /><path d="M75 125 v6" /><path d="M19 75 h6" /><path d="M125 75 h6" />
+      </g>
+      <circle cx="75" cy="75" r="5" className="bo-p" />
+      <text className={'bo-l' + (pris.has('nord') || traversant ? ' on' : '')} x="75" y="11" textAnchor="middle">N</text>
+      <text className={'bo-l' + (pris.has('est') || traversant ? ' on' : '')} x="141" y="80" textAnchor="middle">E</text>
+      <text className={'bo-l' + (pris.has('sud') || traversant ? ' on' : '')} x="75" y="150" textAnchor="middle">S</text>
+      <text className={'bo-l' + (pris.has('ouest') || traversant ? ' on' : '')} x="9" y="80" textAnchor="middle">O</text>
+      {(pris.has('sud') || pris.has('ouest')) && !traversant ? (
+        <g className="bo-soleil">
+          <circle cx="41" cy="110" r="11" /><circle className="c" cx="41" cy="110" r="4.2" />
+          <path d="M41 101 v-3 M41 119 v3 M32 110 h-3 M50 110 h3 M34.6 103.6 l-2.2 -2.2 M47.4 116.4 l2.2 2.2 M47.4 103.6 l2.2 -2.2 M34.6 116.4 l-2.2 2.2" />
+        </g>
+      ) : null}
+    </svg>
+  );
+}
+
 /* Où chercher — une carte par ville, ses quartiers en dessous.
    Même format et mêmes listes que le CRM (src/lib/secteurs.ts) : ce que le
    client coche ici est directement relisible par la chasse. */
@@ -2456,10 +2759,135 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 /* Les règles grand écran sont regroupées en fin de feuille (voir plus bas). */
 @keyframes monte{from{opacity:0; transform:translateY(18px)}to{opacity:1; transform:none}}
 .vue > *{animation:monte .5s cubic-bezier(.16,1,.3,1) both}
-.vue > *:nth-child(2){animation-delay:.06s} .vue > *:nth-child(3){animation-delay:.12s}
-.vue > *:nth-child(4){animation-delay:.18s} .vue > *:nth-child(5){animation-delay:.24s}
-.vue > *:nth-child(6){animation-delay:.3s} .vue > *:nth-child(7){animation-delay:.36s}
-.vue > *:nth-child(8){animation-delay:.42s} .vue > *:nth-child(9){animation-delay:.48s}
+/* ⚠️ La cascade s'arrêtait au neuvième enfant : « Rappel de ma recherche » en
+   compte onze, et les derniers blocs apparaissaient tous d'un coup, sans
+   décalage. Elle va maintenant jusqu'à treize. */
+.vue > *:nth-child(2){animation-delay:.05s} .vue > *:nth-child(3){animation-delay:.1s}
+.vue > *:nth-child(4){animation-delay:.15s} .vue > *:nth-child(5){animation-delay:.2s}
+.vue > *:nth-child(6){animation-delay:.25s} .vue > *:nth-child(7){animation-delay:.3s}
+.vue > *:nth-child(8){animation-delay:.35s} .vue > *:nth-child(9){animation-delay:.4s}
+.vue > *:nth-child(10){animation-delay:.45s} .vue > *:nth-child(11){animation-delay:.5s}
+.vue > *:nth-child(12){animation-delay:.55s} .vue > *:nth-child(13){animation-delay:.6s}
+
+/* ═══ « Rappel de ma recherche » ═══════════════════════════════════════════
+   Trois dessins portent l'écran : la carte des secteurs, la coupe d'immeuble
+   et la boussole. Ils sont en SVG, sans image ni fond de carte à charger. */
+
+/* La phrase du haut */
+.resume-r{margin-top:22px; background:var(--carte); border:1px solid var(--trait);
+  border-radius:22px; padding:22px 20px 18px;
+  box-shadow:0 2px 4px rgba(16,24,40,.04), 0 24px 44px -28px rgba(16,24,40,.55)}
+.resume-k{display:flex; align-items:center; gap:7px; font-size:9.5px; letter-spacing:1.8px;
+  text-transform:uppercase; font-weight:800; color:var(--or-fonce); margin-bottom:13px}
+.resume-k i{width:18px; height:2px; border-radius:2px; background:var(--or); display:block}
+.resume-p{margin:0; font-family:'Plus Jakarta Sans',sans-serif; font-size:18.5px; line-height:1.5;
+  font-weight:600; letter-spacing:-.3px; color:var(--encre)}
+.resume-p b{color:var(--or-fonce); font-weight:800}
+.resume-c{margin-top:20px; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:1px;
+  background:var(--fond); border:1px solid var(--fond); border-radius:15px; overflow:hidden}
+.resume-c > div{background:var(--carte); padding:13px 4px 12px; text-align:center}
+.resume-c .v{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; letter-spacing:-.5px}
+.resume-c .v small{font-size:10.5px; color:var(--plume); font-weight:700}
+.resume-c .l{font-size:8.5px; letter-spacing:.7px; text-transform:uppercase; color:var(--plume-clair);
+  margin-top:4px; font-weight:700}
+
+/* La carte des secteurs */
+.carte-sect{display:block; width:calc(100% + 36px); margin:-4px -18px 14px; height:auto}
+.cs-grille path{stroke:#dde5ee; stroke-width:1; opacity:.5; fill:none}
+.cs-paris{fill:#e2e7ef; stroke:#ccd5e0; stroke-width:1.2; stroke-dasharray:5 5}
+.cs-paris-t{font-family:'DM Sans',sans-serif; font-size:10px; font-weight:700; letter-spacing:1.4px;
+  fill:#9aa6b6; text-anchor:middle}
+.cs-voisine{fill:#b6c3d2; opacity:.55}
+.cs-ombre{fill:var(--encre); opacity:.14}
+.cs-goutte{fill:var(--or); stroke:#fff; stroke-width:2.4}
+.cs-etiq{fill:#fff; stroke:var(--trait); stroke-width:1}
+.cs-etiq-t{font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:800;
+  fill:var(--encre); text-anchor:middle}
+.cs-pin{animation:pose .8s cubic-bezier(.34,1.56,.64,1) both; animation-delay:.35s}
+.cs-pin:nth-of-type(2){animation-delay:.48s} .cs-pin:nth-of-type(3){animation-delay:.61s}
+.cs-pin:nth-of-type(4){animation-delay:.74s} .cs-pin:nth-of-type(5){animation-delay:.87s}
+@keyframes pose{from{opacity:0; transform:translateY(-14px) scale(.8)}to{opacity:1; transform:none}}
+
+/* Le plan des surfaces */
+.plan-r{display:block; width:100%; height:auto; margin-bottom:14px}
+.plan-cadre{fill:var(--fond); stroke:#dfe5ee; stroke-width:1; stroke-dasharray:5 5}
+.plan-sejour{fill:var(--or-fond); stroke:var(--or-trait); stroke-width:1}
+.plan-ch{fill:#fff; stroke:var(--trait); stroke-width:1}
+.plan-t1{font-family:'Plus Jakarta Sans',sans-serif; font-size:13.5px; font-weight:800; fill:var(--or-fonce)}
+.plan-t2{font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; fill:#bd9b52}
+.plan-t3{font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:700; fill:#4b5a70}
+.plan-t4{font-family:'DM Sans',sans-serif; font-size:11px; font-weight:700; fill:var(--plume)}
+.plan-cote{stroke:#c3cbd7; stroke-width:1.2; fill:none}
+.plan-cote-f{fill:var(--carte)}
+
+/* Étage et exposition, côte à côte */
+.duo-sch{display:flex; gap:12px; align-items:flex-start}
+.sch{flex:1 1 0; min-width:0}
+.sch.etroit{flex:0 0 144px}
+.sch-k{font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--plume-clair);
+  font-weight:700; margin-bottom:10px}
+
+/* La coupe d'immeuble */
+.coupe{display:block; width:100%; height:auto}
+.coupe-f{fill:#fafbfd; stroke:var(--fond); stroke-width:1}
+.coupe-asc{fill:#fff; stroke:var(--trait); stroke-width:1}
+.coupe-fleche{stroke:#b9c2cf; stroke-width:1.4; fill:none; stroke-linecap:round}
+.coupe-asc-t{font-family:'DM Sans',sans-serif; font-size:6.5px; font-weight:700; letter-spacing:.4px; fill:#b9c2cf}
+.coupe-n{fill:#fff; stroke:var(--fond); stroke-width:1}
+.coupe-n.pris{fill:var(--or-fond); stroke:var(--or-trait)}
+.coupe-n.cible{fill:var(--or); stroke:var(--or-fonce)}
+.coupe-t{font-family:'DM Sans',sans-serif; font-size:10.5px; font-weight:600; fill:#c3cbd7}
+.coupe-t.pris{font-weight:700; fill:var(--or-fonce)}
+.coupe-t.cible{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; fill:#fff}
+.coupe-barre{stroke:#dba1a6; stroke-width:1.6; stroke-linecap:round; fill:none}
+.coupe-n, .coupe-t{animation:allume .55s cubic-bezier(.16,1,.3,1) both; animation-delay:.3s}
+@keyframes allume{from{opacity:0; transform:translateX(-10px)}to{opacity:1; transform:none}}
+
+/* La boussole */
+.boussole{display:block; width:100%; height:auto}
+.bo-f{fill:#fff; stroke:var(--fond); stroke-width:1}
+.bo-q{fill:var(--or); opacity:.9; animation:balaie 1.1s cubic-bezier(.16,1,.3,1) both;
+  animation-delay:.4s; transform-origin:75px 75px}
+@keyframes balaie{from{opacity:0; transform:rotate(-48deg)}to{opacity:.9; transform:none}}
+.bo-c{fill:none; stroke:var(--trait-fort); stroke-width:1}
+.bo-tick path{stroke:#dde3ec; stroke-width:1.4; stroke-linecap:round; fill:none}
+.bo-p{fill:var(--encre)}
+.bo-l{font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:800; fill:var(--plume-clair)}
+.bo-l.on{fill:var(--or-fonce)}
+.bo-soleil circle{fill:#fff; stroke:var(--or-trait); stroke-width:1}
+.bo-soleil circle.c{fill:var(--or); stroke:none}
+.bo-soleil path{stroke:var(--or); stroke-width:1.5; stroke-linecap:round; fill:none}
+
+/* Le budget, en bas, seul bloc sombre de la page */
+.budget-r{margin-top:14px; background:var(--encre); border-radius:22px; padding:20px; color:#fff}
+.budget-k{display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:16.5px; font-weight:800; letter-spacing:-.35px; color:#fff; margin-bottom:16px}
+.budget-k svg{color:var(--or)}
+.budget-v{font-family:'Plus Jakarta Sans',sans-serif; font-size:26px; font-weight:800;
+  letter-spacing:-1.1px; line-height:1.15}
+.budget-v small{font-size:16px; font-weight:600; color:rgba(255,255,255,.5)}
+.budget-b{margin-top:18px; height:10px; border-radius:99px; background:rgba(255,255,255,.1);
+  position:relative; overflow:hidden}
+.budget-b i{position:absolute; top:0; bottom:0; border-radius:99px;
+  background:linear-gradient(90deg,#e2ca85,var(--or));
+  animation:pousse .95s cubic-bezier(.16,1,.3,1) both; animation-delay:.5s; transform-origin:left center}
+@keyframes pousse{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.budget-e{display:flex; justify-content:space-between; margin-top:8px; font-size:10.5px;
+  color:rgba(255,255,255,.42); font-weight:600}
+.budget-f{margin-top:18px; display:flex; gap:9px}
+.budget-f > div{flex:1 1 0; background:rgba(255,255,255,.07); border-radius:14px; padding:12px 14px}
+.budget-f > div.or{background:rgba(201,168,76,.16)}
+.budget-f .k{display:block; font-size:9.5px; letter-spacing:.9px; text-transform:uppercase;
+  color:rgba(255,255,255,.5); font-weight:700}
+.budget-f > div.or .k{color:#e2ca85}
+.budget-f .v{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:15px;
+  font-weight:800; margin-top:3px}
+.budget-f > div.or .v{color:#e2ca85}
+
+/* Détails */
+.ville-n i.pt{display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:var(--or); margin-right:9px; vertical-align:middle}
+.duo-s{margin:12px 0 0; text-align:center; font-size:11.5px; color:var(--plume-clair)}
 
 .hero{position:relative; overflow:hidden; margin-top:24px; background:var(--carte);
   border:1px solid var(--trait); border-radius:22px; padding:24px 22px; box-shadow:var(--ombre)}
