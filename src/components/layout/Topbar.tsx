@@ -11,9 +11,12 @@ export default function Topbar({ onNavigate }: { onNavigate: (page: string, data
   const [relancesCount, setRelancesCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Compteur relances réel
+  /* Comme la barre latérale : on n'annonce que les relances dues, en retard
+     ou du jour. Celles à venir attendent sagement dans leur page. */
   useEffect(() => {
-    supabase.from('relances').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente')
+    const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
+    supabase.from('relances').select('*', { count: 'exact', head: true })
+      .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString())
       .then(({ count }) => setRelancesCount(count || 0));
   }, []);
 
