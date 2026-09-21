@@ -82,6 +82,10 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     pdfUrl: b.pdf_statut === 'pret' ? b.pdf_url : null,
     envoyeLe: b.envoye_le, vuLe: b.vu_le,
     avis: b.badge_retour, commentaire: b.retour_client, retourLe: b.retour_le,
+    /* 'conseiller' quand Alexandre a saisi le retour à la place du client,
+       après un appel. Le client ne doit pas lire « votre commentaire »
+       sous une phrase qu'il n'a pas écrite. */
+    retourPar: b.retour_par || 'client',
     etat: ETAT(b),
   }));
 
