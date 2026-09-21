@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const BLEU = '#1a2332';
 const DORE = '#c9a84c';
@@ -13,6 +13,25 @@ export default function PhotoCarousel({ photos }: { photos: string[] }) {
   const prev = useCallback(() => setCurrent(c => (c - 1 + photos.length) % photos.length), [photos.length]);
   const lbNext = useCallback(() => setLightbox(i => (i === null ? null : (i + 1) % photos.length)), [photos.length]);
   const lbPrev = useCallback(() => setLightbox(i => (i === null ? null : (i - 1 + photos.length) % photos.length)), [photos.length]);
+
+  /* Sur un téléphone, on fait défiler des photos avec le pouce, pas en visant
+     une flèche de 44 px. On écoute donc le glissement — en laissant passer les
+     gestes verticaux, qui sont du défilement de page, pas un changement de
+     photo. Et un glissement ne doit pas ouvrir le plein écran au relâchement. */
+  const depart = useRef({ x: 0, y: 0 });
+  const aGlisse = useRef(false);
+
+  const toucheDebut = (e: React.TouchEvent) => {
+    depart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    aGlisse.current = false;
+  };
+  const toucheFin = (e: React.TouchEvent, suivant: () => void, precedent: () => void) => {
+    const dx = e.changedTouches[0].clientX - depart.current.x;
+    const dy = e.changedTouches[0].clientY - depart.current.y;
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    aGlisse.current = true;
+    if (dx < 0) suivant(); else precedent();
+  };
 
   useEffect(() => {
     if (lightbox === null) return;
@@ -39,12 +58,16 @@ export default function PhotoCarousel({ photos }: { photos: string[] }) {
   return (
     <>
       {/* ===== CARROUSEL PRINCIPAL ===== */}
-      <div style={{ position: 'relative', height: 440, background: '#1a2332', overflow: 'hidden' }}>
+      <div
+        onTouchStart={toucheDebut}
+        onTouchEnd={(e) => toucheFin(e, next, prev)}
+        style={{ position: 'relative', height: 440, background: '#1a2332', overflow: 'hidden', touchAction: 'pan-y' }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={photos[current]}
           alt={`Photo ${current + 1}`}
-          onClick={() => setLightbox(current)}
+          onClick={() => { if (aGlisse.current) { aGlisse.current = false; return; } setLightbox(current); }}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }}
         />
 
@@ -52,7 +75,7 @@ export default function PhotoCarousel({ photos }: { photos: string[] }) {
           onClick={() => setShowGallery(true)}
           style={{ position: 'absolute', bottom: 16, right: 16, background: 'rgba(26,35,50,0.85)', color: 'white', padding: '7px 15px', borderRadius: 20, fontSize: 11.5, fontWeight: 500, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
         >
-          📷 {current + 1} / {photos.length} · Voir tout
+          📷 {current + 1} / {photos.length}{' '}· Voir tout
         </button>
 
         {photos.length > 1 && (
@@ -93,8 +116,11 @@ export default function PhotoCarousel({ photos }: { photos: string[] }) {
 
       {/* ===== PLEIN ÉCRAN ===== */}
       {lightbox !== null && (
-        <div onClick={() => setLightbox(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div
+          onClick={() => { if (aGlisse.current) { aGlisse.current = false; return; } setLightbox(null); }}
+          onTouchStart={toucheDebut}
+          onTouchEnd={(e) => toucheFin(e, lbNext, lbPrev)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, touchAction: 'pan-y' }}>
           <button onClick={(e) => { e.stopPropagation(); setLightbox(null); }} aria-label="Fermer"
             style={{ position: 'fixed', top: 16, right: 16, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', fontSize: 22, fontFamily: 'inherit', zIndex: 10001 }}>✕</button>
 
