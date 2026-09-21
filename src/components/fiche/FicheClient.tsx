@@ -8,109 +8,14 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
+import { signalerMaj } from '@/lib/intentions';
+import {
+  BasculeCriteres, CorpsCriteres, CRIT_VIDE, ETATS, EXPOSITIONS, etapesCriteres,
+  FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
+  texteChoix, URGENCES, CUISINES,
+} from '@/components/shared/CriteresRecherche';
+import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
-
-/* Un critère n'est pas seulement « coché / pas coché » : il peut être
-   indifférent, simplement souhaité, ou carrément indispensable.
-   Un clic fait avancer d'un cran, et le troisième clic revient à zéro. */
-export type Niveau = '' | 'souhaite' | 'indispensable';
-const CYCLE: Niveau[] = ['', 'souhaite', 'indispensable'];
-
-const PastilleExigence = ({ ico, libelle, niveau, onChange }: {
-  ico: string; libelle: string; niveau: Niveau; onChange: (n: Niveau) => void;
-}) => {
-  const indisp = niveau === 'indispensable';
-  const souh = niveau === 'souhaite';
-  return (
-    <button type="button"
-      onClick={() => onChange(CYCLE[(CYCLE.indexOf(niveau) + 1) % CYCLE.length])}
-      title="Un clic : souhaité — deux clics : indispensable — trois clics : indifférent"
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20,
-        border: `1px solid ${indisp ? '#c9a84c' : souh ? '#10b981' : '#e2e8f0'}`,
-        background: indisp ? '#1a2332' : souh ? '#ecfdf5' : 'white',
-        color: indisp ? '#f2dfa6' : souh ? '#10b981' : '#64748b',
-        fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.14s',
-      }}>
-      <span>{ico}</span><span>{libelle}</span>
-      {indisp ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, background: '#c9a84c', color: '#1a2332', borderRadius: 6, padding: '2px 5px' }}>INDISPENSABLE</span>
-        : souh ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: '#10b981' }}>SOUHAITÉ</span> : null}
-    </button>
-  );
-};
-
-/* Légende expliquant les trois niveaux, à placer sous une série de pastilles. */
-const LegendeNiveaux = () => (
-  <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-    <span>Cliquez une fois = <b style={{ color: '#10b981' }}>souhaité</b></span>
-    <span>deux fois = <b style={{ color: '#9a7d2e' }}>indispensable</b></span>
-    <span>trois fois = indifférent</span>
-  </div>
-);
-
-/* Listes de choix, chacune avec son icône. Mêmes clés et mêmes intitulés
-   que l'espace acheteur : le client et le chasseur lisent la même chose. */
-const ETATS: [string, string, string][] = [
-  ['a_renover', 'À rénover', '🔨'], ['travaux_legers', 'Travaux légers', '🧰'],
-  ['bon_etat', 'Bon état', '✨'], ['refait_neuf', 'Refait à neuf', '💎'],
-];
-const FINANCEMENTS: [string, string, string][] = [
-  ['cash', 'Cash', '💵'], ['pret_valide', 'Prêt validé', '✅'],
-  ['pret_en_cours', 'Prêt en cours', '⏳'], ['a_monter', 'Prêt à monter', '📝'],
-  ['pret_relais', 'Prêt relais', '🔁'],
-  ['mixte_cash_pret', 'Mixte · cash + prêt', '🔀'],
-  ['mixte_cash_relais', 'Mixte · cash + prêt relais', '🔀'],
-  ['mixte_pret_relais', 'Mixte · prêt + prêt relais', '🔀'],
-];
-const URGENCES: [string, string, string][] = [
-  ['immediate', 'Immédiate', '🔥'], ['3_mois', 'Sous 3 mois', '⏱️'],
-  ['6_mois', 'Sous 6 mois', '📆'], ['annee', "Dans l'année", '🗓️'],
-];
-const CUISINES: [string, string, string][] = [
-  ['', 'Indifférent', '🤷'], ['ouverte', 'Ouverte sur le séjour', '🍽️'], ['separee', 'Séparée', '🚪'],
-];
-/* Retrouve « 💵 Cash » à partir de la valeur enregistrée. */
-const texteChoix = (table: [string, string, string][], v?: string | null) => {
-  const l = table.find(x => x[0] === v);
-  return l ? `${l[2]} ${l[1]}` : (v || null);
-};
-
-/* Une ligne de pastilles à choix unique — remplace les anciens menus déroulants. */
-const ChoixIco = ({ table, valeur, onChange, couleur = '#1a2332' }: {
-  table: [string, string, string][]; valeur: string; onChange: (v: string) => void; couleur?: string;
-}) => (
-  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-    {table.map(([k, l, i]) => {
-      const actif = valeur === k;
-      return (
-        <button type="button" key={k || 'vide'} onClick={() => onChange(actif ? '' : k)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20,
-            border: `1px solid ${actif ? couleur : '#e2e8f0'}`, background: actif ? couleur : 'white',
-            color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-            fontFamily: 'inherit', transition: 'all 0.12s',
-          }}>
-          <span style={{ fontSize: 14 }}>{i}</span>{l}
-        </button>
-      );
-    })}
-  </div>
-);
-
-/* Orientations, avec leur icône : on lit la ligne d'un coup d'œil. */
-const EXPOSITIONS = [
-  { k: 'sud', l: 'Sud', i: '☀️' }, { k: 'est', l: 'Est', i: '🌅' },
-  { k: 'ouest', l: 'Ouest', i: '🌇' }, { k: 'nord', l: 'Nord', i: '❄️' },
-  { k: 'traversant', l: 'Traversant', i: '↔️' },
-];
-const ICONE_EXPO: Record<string, string> = Object.fromEntries(EXPOSITIONS.map(e => [e.k, e.i]));
-
-/* Types de biens proposés dans les critères. Les valeurs déjà enregistrées
-   qui ne sont plus dans cette liste restent affichées, pour rester modifiables. */
-const TYPES_BIEN = [
-  { t: 'Appartement', i: '🏢' }, { t: 'Maison', i: '🏡' }, { t: 'Loft', i: '🏗️' },
-  { t: 'Duplex', i: '🪜' }, { t: 'Terrain', i: '🌱' }, { t: 'Autre', i: '✳️' },
-];
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -250,15 +155,6 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
   );
 }
 
-/* En-tête de section dans la pop-up « Critères de recherche ». */
-const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; note?: string }) => (
-  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 -4px',
-    paddingBottom: 9, borderBottom: '1px solid #e3e8f0' }}>
-    <span style={{ fontSize: 16, lineHeight: 1 }}>{ico}</span>
-    <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1a2332', letterSpacing: 0.2 }}>{titre}</span>
-    {note ? <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{note}</span> : null}
-  </div>
-);
 
 
 import OngletVeille from './OngletVeille';
@@ -620,11 +516,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showContact, setShowContact] = useState(false);
   const [showCriteres, setShowCriteres] = useState(false);
   /* Pop-up critères : « tout d'un coup » (scroll) ou « étape par étape » (assistant). */
-  const [modeCrit, setModeCrit] = useState<'tout' | 'etapes'>('tout');
+  const [modeCrit, setModeCrit] = useState<ModeCrit>('tout');
   const [etapeCrit, setEtapeCrit] = useState(0);
   const [sensCrit, setSensCrit] = useState<1 | -1>(1);
-  useEffect(() => { try { const m = localStorage.getItem('emilio_mode_criteres'); if (m === 'etapes' || m === 'tout') setModeCrit(m); } catch { /* stockage indisponible */ } }, []);
-  const changerModeCrit = (m: 'tout' | 'etapes') => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); try { localStorage.setItem('emilio_mode_criteres', m); } catch { /* stockage indisponible */ } };
+  useEffect(() => { setModeCrit(lireModeCrit()); }, []);
+  const changerModeCrit = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
   /* Le menu se posait dans la carte d'en-tête, qui rogne ce qui dépasse : il
@@ -644,7 +540,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
-  const [crit, setCrit] = useState({ exigences: {} as Record<string, Niveau>, etage_max_sans_ascenseur: '', cuisine_type: '', exterieur_surface_min: '', types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], transport_arrets: [] as Arret[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
+  const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
   /* Modifier une ligne du suivi : on rouvre le même formulaire, en mémorisant
@@ -679,7 +575,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const txPending = useRef<Record<string, any>>({});
   const txTimer = useRef<any>(null);
   const txRef = useRef<any>(null);
-  const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
   const [showFicheBien, setShowFicheBien] = useState(false);
   const [showEnvoi, setShowEnvoi] = useState(false);
@@ -706,7 +601,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [planVisteForm, setPlanVisiteForm] = useState<{ bien_ids: string[]; date: string; heure: string; contact: string; notes: string }>({ bien_ids: [], date: '', heure: '', contact: '', notes: '' });
   const [ajoutVisite, setAjoutVisite] = useState(false);
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
-  const [offreForm, setOffreForm] = useState({ bien_id: '', montant: '', date: '', notes: '' });
 
   useEffect(() => { loadRecherches(); }, [client.id]);
   useEffect(() => { if (rechercheId) load(); }, [rechercheId]);
@@ -809,6 +703,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
     ]);
     setBiens(b||[]); setVisites(v||[]); setTransaction(t); setEnvois(e||[]); setJournal(j||[]);
     setHistoEvts(h||[]);
+    /* Les compteurs de la barre de gauche suivent ce qui vient de changer. */
+    signalerMaj();
   }
 
   async function refresh() {
@@ -1005,12 +901,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }
 
   async function changeStatut(statut: string) {
-    if (statut === 'offre_ecrite') {
-      if (biens.length === 0) { alert('Ajoutez d\'abord des biens à la fiche avant de créer une offre écrite.'); return; }
-      setOffreForm({ bien_id: biens[0]?.id || '', montant: '', date: new Date().toISOString().split('T')[0], notes: '' });
-      setShowOffreEcrite(true);
-      return;
-    }
     // Anti-doublon : ne rien faire si le statut est déjà le même
     if (client.statut === statut) return;
     const { data } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().single();
@@ -1031,32 +921,6 @@ export default function FicheClient({ client: init, onBack }: Props) {
     await addJournal(client.id, 'statut_change', `Statut → ${nom}`,
       chercher ? 'La veille reprend sur cette recherche.' : 'La veille est arrêtée sur ce dossier.');
     load();
-  }
-
-  async function saveOffreEcrite() {
-    if (!offreForm.bien_id || !offreForm.montant) { alert('Sélectionnez un bien et indiquez le montant de l\'offre.'); return; }
-    setSaving(true);
-    // Mettre à jour le statut client
-    const { data: clientData } = await supabase.from('clients').update({ statut: 'offre_ecrite' }).eq('id', client.id).select().single();
-    if (clientData) setClient(clientData as Client);
-    // Créer ou mettre à jour la transaction
-    if (!transaction) {
-      await supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: offreForm.bien_id, etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date });
-    } else {
-      await supabase.from('transactions').update({ etape_actuelle: 'offre', offre_montant: parseInt(offreForm.montant), offre_date: offreForm.date, bien_id: offreForm.bien_id }).eq('id', transaction.id);
-    }
-    // Badge sur le bien
-    await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', offreForm.bien_id);
-    // Journal
-    const bien = biens.find(b => b.id === offreForm.bien_id);
-    const desc = `Montant : ${parseInt(offreForm.montant).toLocaleString('fr-FR')}€ · Bien : ${bien?.titre || bien?.ville || '—'}${offreForm.notes ? ' · ' + offreForm.notes : ''}`;
-    await addJournal(client.id, 'offre_ecrite', '✍️ Offre écrite créée', desc);
-    setSaving(false); setShowOffreEcrite(false); load();
-  }
-
-  async function changeChaleur(chaleur: string) {
-    const { data } = await supabase.from('clients').update({ chaleur }).eq('id', client.id).select().single();
-    if (data) setClient(data as Client);
   }
 
   async function parseTexte() {
@@ -2126,9 +1990,18 @@ Emilio Immobilier
                                 </button>
                               ) : (
                                 <>
-                                  <button onClick={() => { setMenuStatut(null); setShowOffreEcrite(false); changeStatut('offre_ecrite'); }}
+                                  {/* Il y avait deux portes vers la même pièce : cette
+                                      « offre écrite », et « Créer une transaction » dans
+                                      l'onglet. La première ouvrait un formulaire à part et
+                                      posait au client un statut « offre_ecrite » qui n'existe
+                                      plus dans ce menu — il disparaissait du filtre « Actifs ».
+                                      Une seule porte, maintenant. */}
+                                  <button onClick={() => {
+                                    setMenuStatut(null); setTab('transaction');
+                                    if (!transaction && biensVisites().length > 0) setShowChoixTx('creer');
+                                  }}
                                     style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
-                                    ✍️ Créer une offre écrite
+                                    💼 {transaction ? 'Voir la transaction' : 'Ouvrir une transaction'}
                                   </button>
                                   <button onClick={() => { setMenuStatut(null); setShowCloture(true); }}
                                     style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: '#1a2332', fontWeight: 700, fontSize: 13 }}>
@@ -3429,218 +3302,9 @@ Emilio Immobilier
       )}
 
       {showCriteres && (() => {
-        /* Lecture / écriture du niveau d'exigence d'un critère.
-           Les anciennes colonnes booléennes restent tenues à jour : tout ce qui
-           n'est pas « indifférent » vaut true, comme avant. */
-        const niv = (k: string): Niveau => (crit.exigences?.[k] as Niveau) || '';
-        const setNiv = (k: string, n: Niveau) => setCrit(f => {
-          const ex = { ...(f.exigences || {}) };
-          if (n) ex[k] = n; else delete ex[k];
-          const maj: Record<string, unknown> = { exigences: ex };
-          if (k in f) maj[k] = !!n;
-          return { ...f, ...maj } as typeof f;
-        });
-        /* Les neuf catégories : affichées à la suite (mode « tout ») ou une par une (mode « étapes »). */
-        const etapesCrit: { id: string; ico: string; titre: string; note?: string; sous: string; contenu: React.ReactNode }[] = [
-          {
-            id: 'bien', ico: '🏠', titre: 'LE BIEN', note: 'plusieurs choix possibles',
-            sous: 'Quel type de bien, dans quel état',
-            contenu: (<>
-              <div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[...TYPES_BIEN, ...crit.types_bien.filter(t => !TYPES_BIEN.some(o => o.t === t)).map(t => ({ t, i: '✳️' }))].map(o => { const sel = crit.types_bien.includes(o.t); return <button key={o.t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==o.t) : [...f.types_bien, o.t] }))} style={{ padding: '7px 15px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.i} {o.t}</button>; })}
-                </div>
-              </div>
-              <div className={styles.formRow}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.lbl}>État souhaité</label>
-                  <ChoixIco table={ETATS} valeur={crit.etat_souhaite} onChange={v => setCrit(f => ({ ...f, etat_souhaite: v }))} />
-                </div>
-                <div><label className={styles.lbl}>📅 Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} /></div>
-              </div>
-            </>),
-          },
-          {
-            id: 'surfaces', ico: '📐', titre: 'SURFACES & VOLUMES', note: undefined,
-            sous: 'Surface, pièces et chambres',
-            contenu: (<>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Surface m²</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.surface_min} onChange={e=>setCrit(f=>({...f,surface_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.surface_max} onChange={e=>setCrit(f=>({...f,surface_max:e.target.value}))} placeholder="Max" /></div></div>
-                <div><label className={styles.lbl}>Surface séjour min m²</label><input className={styles.inp} type="number" value={crit.surface_sejour_min} onChange={e=>setCrit(f=>({...f,surface_sejour_min:e.target.value}))} /></div>
-              </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Pièces</label><div style={{display:'flex',gap:6}}><input className={styles.inp} type="number" value={crit.nb_pieces_min} onChange={e=>setCrit(f=>({...f,nb_pieces_min:e.target.value}))} placeholder="Min" /><input className={styles.inp} type="number" value={crit.nb_pieces_max} onChange={e=>setCrit(f=>({...f,nb_pieces_max:e.target.value}))} placeholder="Max" /></div></div>
-                <div><label className={styles.lbl}>Chambres min</label><input className={styles.inp} type="number" value={crit.chambres_min} onChange={e=>setCrit(f=>({...f,chambres_min:e.target.value}))} /></div>
-              </div>
-            </>),
-          },
-          {
-            id: 'etage', ico: '🏢', titre: 'ÉTAGE & EXPOSITION', note: 'ascenseur compris',
-            sous: 'Niveau dans l\'immeuble, ascenseur et orientation',
-            contenu: (<>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
-                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage min</span><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} style={{width:80}} /></div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage max</span><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} style={{width:80}} /></div>
-              </div>
-
-              {/* Ascenseur : indispensable, ou bien « je monte jusqu'au Xe sans ». */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <PastilleExigence ico="🛗" libelle="Ascenseur" niveau={niv('ascenseur')} onChange={n => setNiv('ascenseur', n)} />
-                  {niv('ascenseur') !== 'indispensable' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Sans ascenseur, jusqu&apos;au</span>
-                      <input className={styles.inp} type="number" min={0} max={12} value={crit.etage_max_sans_ascenseur} onChange={e => setCrit(f => ({ ...f, etage_max_sans_ascenseur: e.target.value }))} style={{ width: 72 }} />
-                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>e étage</span>
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  {niv('ascenseur') === 'indispensable'
-                    ? 'Tout bien sans ascenseur est écarté, quel que soit l\u2019étage.'
-                    : crit.etage_max_sans_ascenseur
-                      ? `Sans ascenseur, on ne propose rien au-dessus du ${crit.etage_max_sans_ascenseur}e étage.`
-                      : 'Laissez vide si l\u2019étage sans ascenseur n\u2019est pas un problème.'}
-                </div>
-              </div>
-
-              <div>
-                <label className={styles.lbl}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>(plusieurs possibles)</span></label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {EXPOSITIONS.map(o => {
-                    const sel = crit.exposition_souhaitee.split(',').map(x=>x.trim()).filter(Boolean);
-                    const active = sel.includes(o.k);
-                    return (
-                      <button type="button" key={o.k} onClick={() => { const next = active ? sel.filter(x=>x!==o.k) : [...sel, o.k]; setCrit(f=>({...f,exposition_souhaitee: next.join(', ')})); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${active ? '#10b981' : '#e2e8f0'}`, background: active ? '#ecfdf5' : 'white', color: active ? '#10b981' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{o.i}</span> {o.l}</button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>),
-          },
-          {
-            id: 'equipements', ico: '✨', titre: 'ÉQUIPEMENTS', note: 'souhaité ou indispensable',
-            sous: 'Ce qui ferait plaisir, et ce sans quoi c\'est non',
-            contenu: (<>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[{k:'parking',ico:'🅿️',l:'Parking'},{k:'cave',ico:'📦',l:'Cave'},{k:'balcon',ico:'🌿',l:'Balcon'},{k:'terrasse',ico:'☀️',l:'Terrasse'},{k:'jardin',ico:'🌳',l:'Jardin'},{k:'gardien',ico:'👮',l:'Gardien'},{k:'interphone',ico:'🔔',l:'Interphone'},{k:'digicode',ico:'🔢',l:'Digicode'}].map(o => (
-                  <PastilleExigence key={o.k} ico={o.ico} libelle={o.l} niveau={niv(o.k)} onChange={n => setNiv(o.k, n)} />
-                ))}
-              </div>
-              <LegendeNiveaux />
-
-              {/* Extérieur : au-delà du simple balcon/terrasse coché, sa taille compte. */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <PastilleExigence ico="🌤️" libelle="Un extérieur" niveau={niv('exterieur')} onChange={n => setNiv('exterieur', n)} />
-                  {niv('exterieur') && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>D&apos;au moins</span>
-                      <input className={styles.inp} type="number" min={1} value={crit.exterieur_surface_min} onChange={e => setCrit(f => ({ ...f, exterieur_surface_min: e.target.value }))} style={{ width: 76 }} />
-                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>m²</span>
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  {!niv('exterieur') ? 'Balcon, terrasse, loggia ou jardin — peu importe lequel.'
-                    : crit.exterieur_surface_min ? `Un extérieur de moins de ${crit.exterieur_surface_min} m² ne compte pas.`
-                    : 'Laissez vide si la taille importe peu.'}
-                </div>
-              </div>
-
-              {/* Cuisine : ouverte ou séparée, et à quel point c'est ferme. */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>🍳 Cuisine</span>
-                  {CUISINES.map(([v, l, i]) => {
-                    const actif = crit.cuisine_type === v;
-                    return <button type="button" key={v || 'ind'} onClick={() => setCrit(f => ({ ...f, cuisine_type: v }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${actif ? '#1a2332' : '#e2e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{i}</span>{l}</button>;
-                  })}
-                </div>
-                {crit.cuisine_type && (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {[{v:'souhaite' as Niveau,l:'Simple préférence'},{v:'indispensable' as Niveau,l:'Indispensable'}].map(o => {
-                      const actif = niv('cuisine') === o.v;
-                      return <button type="button" key={o.v} onClick={() => setNiv('cuisine', actif ? '' : o.v)} style={{ padding: '6px 12px', borderRadius: 20, border: `1px solid ${actif ? (o.v === 'indispensable' ? '#c9a84c' : '#10b981') : '#e2e8f0'}`, background: actif ? (o.v === 'indispensable' ? '#fdf9ef' : '#ecfdf5') : 'white', color: actif ? (o.v === 'indispensable' ? '#9a7d2e' : '#10b981') : '#94a3b8', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{actif ? '✓ ' : ''}{o.l}</button>;
-                    })}
-                  </div>
-                )}
-              </div>
-            </>),
-          },
-          {
-            id: 'energie', ico: '⚡', titre: 'PERFORMANCE ÉNERGÉTIQUE', note: 'la plus mauvaise lettre acceptée',
-            sous: 'La plus mauvaise lettre acceptée',
-            contenu: (<>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['A','B','C','D','E','F','G'].map(d => {
-                  const lettres = ['A','B','C','D','E','F','G'];
-                  const passe = crit.dpe_max ? lettres.indexOf(d) <= lettres.indexOf(crit.dpe_max) : false;
-                  const choisi = crit.dpe_max === d;
-                  return (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${choisi ? '#1a2332' : passe ? '#bbf7d0' : '#e2e8f0'}`, background: choisi ? '#1a2332' : passe ? '#f0fdf4' : 'white', color: choisi ? 'white' : passe ? '#15803d' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>);
-                })}
-              </div>
-              {crit.dpe_max ? (() => {
-                const lettres = ['A','B','C','D','E','F','G'];
-                const i = lettres.indexOf(crit.dpe_max);
-                const ok = lettres.slice(0, i + 1).join(' '); const ko = lettres.slice(i + 1).join(' ');
-                return <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>
-                  Vous gardez <b style={{ color: '#15803d' }}>{ok}</b>
-                  {ko ? <> · vous écartez <b style={{ color: '#dc2626' }}>{ko}</b></> : null}
-                </div>;
-              })() : <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>Aucune exigence — toutes les lettres passent.</div>}
-            </>),
-          },
-          {
-            id: 'lieu', ico: '📍', titre: 'OÙ CHERCHER', note: 'ville puis quartiers',
-            sous: 'Villes puis quartiers',
-            contenu: (<>
-              <SecteurPicker secteurs={crit.secteurs} onChange={(next) => setCrit(f => ({ ...f, secteurs: next }))} />
-            </>),
-          },
-          {
-            id: 'transports', ico: '🚇', titre: 'TRANSPORTS', note: 'cherchez un arrêt, puis réglez le temps à pied',
-            sous: 'Arrêts souhaités et temps à pied',
-            contenu: (<>
-              <ArretPicker
-                arrets={crit.transport_arrets}
-                onChange={(v) => setCrit(f => ({ ...f, transport_arrets: v }))}
-                minutesDefaut={crit.transport_minutes ? parseInt(crit.transport_minutes) : 10} />
-            </>),
-          },
-          {
-            id: 'budget', ico: '💶', titre: 'BUDGET', note: undefined,
-            sous: 'Enveloppe, apport et financement',
-            contenu: (<>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Minimum €</label><input className={styles.inp} type="number" value={crit.budget_min} onChange={e => setCrit(f => ({ ...f, budget_min: e.target.value }))} /></div>
-                <div><label className={styles.lbl}>Maximum €</label><input className={styles.inp} type="number" value={crit.budget_max} onChange={e => setCrit(f => ({ ...f, budget_max: e.target.value }))} /></div>
-              </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" value={crit.apport} onChange={e=>setCrit(f=>({...f,apport:e.target.value}))} /></div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Financement</label>
-                <ChoixIco table={FINANCEMENTS} valeur={crit.financement} onChange={v => setCrit(f => ({ ...f, financement: v }))} couleur="#0f766e" />
-              </div>
-            </>),
-          },
-          {
-            id: 'contexte', ico: '🗒️', titre: 'CONTEXTE DU PROJET', note: undefined,
-            sous: 'Urgence et notes pour le client',
-            contenu: (<>
-              <div>
-                <label className={styles.lbl}>Urgence du projet</label>
-                <ChoixIco table={URGENCES} valeur={crit.urgence} onChange={v => setCrit(f => ({ ...f, urgence: v }))} couleur="#b45309" />
-              </div>
-              <div><label className={styles.lbl}>Notes libres <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>— visibles par le client dans son espace</span></label><textarea className={styles.inp} rows={3} value={crit.notes} onChange={e => setCrit(f=>({...f,notes:e.target.value}))} placeholder="Particularités, préférences, exclusions, quartiers à éviter..." /></div>
-            </>),
-          },
-        ];
+        const etapesCrit = etapesCriteres(crit, setCrit);
         const nbE = etapesCrit.length;
         const iE = Math.min(Math.max(etapeCrit, 0), nbE - 1);
-        const eC = etapesCrit[iE];
         const allerE = (n: number) => { setSensCrit(n > iE ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbE - 1, n))); };
         const cls = (...v: (string | false | undefined)[]) => v.filter(Boolean).join(' ');
         return (
@@ -3650,48 +3314,15 @@ Emilio Immobilier
             <div className={styles.modalHeader}>
               <h2 className={styles.modalTitle}>🎯 Critères de recherche</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div className={styles.critBasc}>
-                  <button type="button" className={cls(styles.critBascBtn, modeCrit === 'tout' && styles.critBascOn)} onClick={() => changerModeCrit('tout')}>☰ Tout afficher</button>
-                  <button type="button" className={cls(styles.critBascBtn, modeCrit === 'etapes' && styles.critBascOn)} onClick={() => changerModeCrit('etapes')}>✨ Étape par étape</button>
-                </div>
+                <BasculeCriteres mode={modeCrit} onMode={changerModeCrit} />
                 <button className={styles.modalClose} onClick={() => setShowCriteres(false)}>✕</button>
               </div>
             </div>
 
-            {modeCrit === 'etapes' && (
-              <div className={styles.critFrise}>
-                {etapesCrit.map((sE, k) => (
-                  <Fragment key={sE.id}>
-                    {k > 0 && <span className={cls(styles.critTrait, k <= iE && styles.critTraitFait)} />}
-                    <button type="button" title={sE.titre} aria-label={sE.titre} onClick={() => allerE(k)}
-                      className={cls(styles.critPuce, k === iE && styles.critPuceOn, k < iE && styles.critPuceFait)}>
-                      <span className={styles.critPuceIco}>{sE.ico}</span>
-                      <span className={styles.critPuceTxt}>{sE.titre}</span>
-                    </button>
-                  </Fragment>
-                ))}
-              </div>
-            )}
+            {modeCrit === 'etapes' && <FriseCriteres etapes={etapesCrit} i={iE} onAller={allerE} />}
 
             <div className={cls(styles.modalBody, modeCrit === 'etapes' && styles.critCorps)}>
-              {modeCrit === 'tout' ? etapesCrit.map(sE => (
-                <Fragment key={sE.id}>
-                  <SectionCrit ico={sE.ico} titre={sE.titre} note={sE.note} />
-                  {sE.contenu}
-                </Fragment>
-              )) : (
-                <div key={eC.id} className={cls(styles.critPanneau, sensCrit === 1 ? styles.critAvant : styles.critArriere)}>
-                  <div className={styles.critEnTete}>
-                    <div className={styles.critEnTeteIco}>{eC.ico}</div>
-                    <div>
-                      <div className={styles.critEnTeteT}>{eC.titre}</div>
-                      <div className={styles.critEnTeteS}>{eC.sous}</div>
-                    </div>
-                    <div className={styles.critCompteur}>Étape {iE + 1} / {nbE}</div>
-                  </div>
-                  {eC.contenu}
-                </div>
-              )}
+              <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iE} sens={sensCrit} />
             </div>
 
             {modeCrit === 'tout' ? (
@@ -4538,48 +4169,6 @@ Emilio Immobilier
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowCompteRendu(false)}>Annuler</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCompteRendu}>✅ Valider le compte-rendu</button>
-            </div>
-          </div>
-        </div>
-        </Portail>
-      )}
-
-      {/* ═══ MODAL OFFRE ÉCRITE ═══ */}
-      {showOffreEcrite && (
-        <Portail>
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowOffreEcrite(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 580 }}>
-            <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>✍️ Créer une offre écrite</h2>
-              <button className={styles.modalClose} onClick={() => setShowOffreEcrite(false)}>✕</button>
-            </div>
-            <div className={styles.modalBody}>
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 4 }}>
-                ✍️ Cette action va passer le statut client en "Offre écrite" et créer / mettre à jour la transaction.
-              </div>
-              <div>
-                <label className={styles.lbl}>Bien concerné par l'offre</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {biens.map(b => (
-                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${offreForm.bien_id === b.id ? '#1a2332' : '#e3e8f0'}`, background: offreForm.bien_id === b.id ? '#f8fafc' : 'white', cursor: 'pointer' }}>
-                      <input type="radio" name="bien_offre" value={b.id} checked={offreForm.bien_id === b.id} onChange={() => setOffreForm(f => ({ ...f, bien_id: b.id }))} style={{ accentColor: '#1a2332' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{b.prix_acquereur ? `Prix acquéreur : ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}{b.surface ? ` · ${b.surface}m²` : ''}{b.ville ? ` · ${b.ville}` : ''}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Montant de l'offre €</label><input className={styles.inp} type="number" value={offreForm.montant} onChange={e => setOffreForm(f => ({ ...f, montant: e.target.value }))} placeholder="Ex : 345 000" /></div>
-                <div><label className={styles.lbl}>Date de l'offre</label><input className={styles.inp} type="date" value={offreForm.date} onChange={e => setOffreForm(f => ({ ...f, date: e.target.value }))} /></div>
-              </div>
-              <div><label className={styles.lbl}>Notes / Conditions particulières</label><textarea className={styles.inp} rows={3} value={offreForm.notes} onChange={e => setOffreForm(f => ({ ...f, notes: e.target.value }))} placeholder="Conditions suspensives, délai de réponse attendu..." /></div>
-            </div>
-            <div className={styles.modalFooter}>
-              <button className={styles.btn} onClick={() => setShowOffreEcrite(false)}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveOffreEcrite} disabled={saving || !offreForm.bien_id || !offreForm.montant}>{saving ? '...' : '✍️ Créer l\'offre écrite'}</button>
             </div>
           </div>
         </div>
