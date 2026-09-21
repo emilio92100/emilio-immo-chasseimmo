@@ -12,6 +12,11 @@ import { supabase } from '@/lib/supabase';
  *
  *   await window.veilleLire()            → les recherches actives + ce qui est déjà connu
  *   await window.veilleDeposer(payload)  → dépose les propositions trouvées
+ *   await window.veilleMaj(url, champs, recherche_id)
+ *                                        → enrichit une proposition déjà déposée.
+ *                                          La recherche est à préciser : la même
+ *                                          annonce peut être proposée à plusieurs
+ *                                          clients, avec la même URL.
  *
  * Aucune clé ne circule : c'est la page, déjà authentifiée, qui écrit.
  */
@@ -209,13 +214,37 @@ export default function PageImportVeille() {
       }
     }
 
-    /** Mise à jour d'une proposition existante (enrichissement Yanport). */
-    async function veilleMaj(url: string, champs: Record<string, unknown>) {
+    /**
+     * Mise à jour d'une proposition existante (enrichissement Yanport).
+     *
+     * Une même annonce peut être proposée à plusieurs clients : la table porte
+     * alors une ligne par recherche, toutes avec la même URL. Filtrer sur la
+     * seule URL écrivait donc chez tout le monde à la fois — un motif d'écart
+     * noté pour un client faisait disparaître l'annonce chez l'autre.
+     * On passe donc la recherche ; sans elle, on n'accepte la mise à jour que
+     * si l'URL ne désigne qu'une seule ligne.
+     */
+    async function veilleMaj(url: string, champs: Record<string, unknown>, rechercheId?: string) {
       if (!url) return { ok: false, error: 'url manquante' };
-      const { data, error } = await supabase
-        .from('veille_propositions')
-        .update(champs)
-        .eq('url', url)
+
+      if (!rechercheId) {
+        const { data: lignes, error: erreurLecture } = await supabase
+          .from('veille_propositions')
+          .select('id, recherche_id')
+          .eq('url', url);
+        if (erreurLecture) {
+          log('Maj impossible : ' + erreurLecture.message, false);
+          return { ok: false, error: erreurLecture.message };
+        }
+        if ((lignes?.length || 0) > 1) {
+          const msg = `annonce proposée à ${lignes!.length} recherches — appelez veilleMaj(url, champs, recherche_id)`;
+          log('Maj refusée : ' + msg, false);
+          return { ok: false, error: msg, recherches: lignes!.map((l) => l.recherche_id) };
+        }
+      }
+
+      const requete = supabase.from('veille_propositions').update(champs).eq('url', url);
+      const { data, error } = await (rechercheId ? requete.eq('recherche_id', rechercheId) : requete)
         .select('id, titre');
       if (error) {
         log('Maj impossible : ' + error.message, false);
