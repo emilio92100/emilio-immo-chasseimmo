@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
 
 export default function Sidebar({ activePage, onNavigate }: { activePage: string; onNavigate: (page: string) => void }) {
-  const [counts, setCounts] = useState({ clients: 0, relances: 0, visites: 0 });
+  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0 });
 
   useEffect(() => { fetchCounts(); }, [activePage]);
 
@@ -16,20 +16,25 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
        Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
     const [{ count: cl }, { count: rel }, { count: vis }] = await Promise.all([
-      supabase.from('clients').select('*', { count: 'exact', head: true }),
+      /* Le total des clients ne dit rien : un dossier clos il y a deux ans pèse
+         autant qu'une recherche en cours. On compte ce sur quoi on travaille. */
+      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
       supabase.from('relances').select('*', { count: 'exact', head: true })
         .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
     ]);
-    setCounts({ clients: cl || 0, relances: rel || 0, visites: vis || 0 });
+    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0 });
   }
 
-  const navItems = [
+  /* Un seul type pour toutes les pastilles : sans lui, TypeScript déduit un
+     type différent par entrée et refuse les champs absents des autres. */
+  type Badge = { count: number; type: string; suffixe?: string; pulse?: boolean };
+  const navItems: { section: string; items: { id: string; label: string; icon: string; badge: Badge | null }[] }[] = [
     {
       section: 'PRINCIPAL',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: '⊞', badge: null },
-        { id: 'clients', label: 'Clients', icon: '◎', badge: counts.clients > 0 ? { count: counts.clients, type: 'gold' } : null },
+        { id: 'clients', label: 'Clients', icon: '◎', badge: counts.actifs > 0 ? { count: counts.actifs, suffixe: 'actifs', type: 'gold' } : null },
       ]
     },
     {
@@ -72,8 +77,10 @@ export default function Sidebar({ activePage, onNavigate }: { activePage: string
                 <span className={styles.navIcon}>{item.icon}</span>
                 <span className={styles.navLabel}>{item.label}</span>
                 {item.badge && (
-                  <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}>
+                  <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}
+                    title={item.badge.suffixe ? `${item.badge.count} dossiers ${item.badge.suffixe}` : undefined}>
                     {item.badge.count}
+                    {item.badge.suffixe && <span className={styles.navBadgeMot}>{item.badge.suffixe}</span>}
                   </span>
                 )}
               </button>
