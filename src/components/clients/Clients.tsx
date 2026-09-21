@@ -128,8 +128,12 @@ function phraseRecherche(c: any) {
   const su = c.surface_min && c.surface_max ? `${c.surface_min} – ${c.surface_max} m²`
     : c.surface_min ? `${c.surface_min} m² minimum`
       : c.surface_max ? `${c.surface_max} m² maximum` : '';
-  if (p && su) bouts.push(`${p.replace(' minimum', '')}, ${su}`);
-  else if (p || su) bouts.push(p || su);
+  if (p && su) {
+    const memeFin = (f: string) => p.endsWith(f) && su.endsWith(f);
+    bouts.push(memeFin(' minimum') || memeFin(' maximum')
+      ? `${p.replace(/ (minimum|maximum)$/, '')}, ${su}`
+      : `${p}, ${su}`);
+  } else if (p || su) bouts.push(p || su);
   return bouts.join(' · ') || 'Critères à préciser';
 }
 
@@ -145,6 +149,11 @@ function budgetCourt(c: any) {
 function villesDe(secteurs: string[] | undefined) {
   return [...new Set((secteurs || []).map(x => { const m = x.match(/\((.+?)\)$/); return m ? m[1].trim() : x; }))];
 }
+
+const ETIQUETTE: Record<string, string> = {
+  prospect: 'Prospect', actif: 'Actif', suspendu: 'Suspendu',
+  bien_trouve: 'Finalisé', perdu: 'Perdu',
+};
 
 const TEINTE: Record<string, { bg: string; fg: string; trait: string }> = {
   prospect:    { bg: '#f5f3ff', fg: '#6d28d9', trait: '#ddd6fe' },
@@ -164,7 +173,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   /* La carte de survol. Le détail (dernier échange, espace acheteur) n'est lu
      que pour le client survolé, et gardé en mémoire ensuite. */
-  const [survol, setSurvol] = useState<{ id: string; sens: 'haut' | 'bas' } | null>(null);
+  const [survol, setSurvol] = useState<{ id: string; x: number; y: number } | null>(null);
   const [details, setDetails] = useState<Record<string, DetailDossier>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filtre, setFiltre] = useState('tous');
@@ -276,11 +285,21 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     } }));
   }
 
-  function entrer(id: string, el: HTMLElement) {
+  /* La carte s'ouvre à côté du curseur, pas au bout de la ligne — et une fois
+     posée elle ne bouge plus, sinon on ne pourrait pas aller cliquer dedans. */
+  const LARGEUR_FICHE = 330, HAUTEUR_FICHE = 350;
+  function entrer(id: string, ev: React.MouseEvent) {
     if (minuteur.current) clearTimeout(minuteur.current);
-    const r = el.getBoundingClientRect();
-    const sens: 'haut' | 'bas' = r.bottom + 340 > window.innerHeight ? 'haut' : 'bas';
-    minuteur.current = setTimeout(() => { setSurvol({ id, sens }); chargerDetail(id); }, 200);
+    const cx = ev.clientX, cy = ev.clientY;
+    minuteur.current = setTimeout(() => {
+      let x = cx + 22;
+      if (x + LARGEUR_FICHE > window.innerWidth - 14) x = Math.max(14, cx - LARGEUR_FICHE - 22);
+      let y = cy - 46;
+      if (y + HAUTEUR_FICHE > window.innerHeight - 14) y = window.innerHeight - HAUTEUR_FICHE - 14;
+      if (y < 14) y = 14;
+      setSurvol({ id, x, y });
+      chargerDetail(id);
+    }, 180);
   }
   function sortir() {
     if (minuteur.current) clearTimeout(minuteur.current);
@@ -441,23 +460,22 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             <span className={styles.colSig}>Signal</span>
           </div>
 
-          <div className={styles.list}>
-            {ordonne.map(client => {
+          <div className={styles.list} key={`${filtre}:${search}`}>
+            {ordonne.map((client, rang) => {
               const st = stats[client.id];
               const sig = signalDe(client, st);
               const t = TEINTE[client.statut] || TEINTE.actif;
               const villes = villesDe(client.secteurs);
               const clos = (client.statut as string) === 'bien_trouve' || (client.statut as string) === 'perdu';
               const ouvert = survol?.id === client.id;
-              const det = details[client.id];
 
               return (
                 <div
                   key={client.id}
-                  className={`${styles.ligne} ${ouvert ? styles.ligneOuverte : ''}`}
-                  style={clos ? { background: '#fbfcfe' } : undefined}
+                  className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''}`}
+                  style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}) }}
                   onClick={() => onNavigate('fiche', client)}
-                  onMouseEnter={e => entrer(client.id, e.currentTarget)}
+                  onMouseEnter={e => entrer(client.id, e)}
                   onMouseLeave={sortir}
                 >
                   <span className={styles.colClient}>
@@ -466,7 +484,15 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     </span>
                     <span style={{ minWidth: 0 }}>
                       <span className={styles.nom} style={clos ? { color: '#6b7a90' } : undefined}>{client.prenom} {client.nom}</span>
-                      <span className={styles.ref}>{client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}</span>
+                      <span className={styles.ref}>
+                        {client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}
+                        {/* Une couleur seule ne se comprend pas : on la nomme. */}
+                        {(client.statut as string) !== 'actif' && (
+                          <span className={styles.etiquette} style={{ color: t.fg, background: t.bg, border: `1px solid ${t.trait}` }}>
+                            {ETIQUETTE[client.statut] || client.statut}
+                          </span>
+                        )}
+                      </span>
                     </span>
                   </span>
 
@@ -488,10 +514,26 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     <span className={styles.signal} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
                   </span>
 
-                  {/* ─── La carte de survol ─── */}
-                  {ouvert && (
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+
+      {/* ═══ La carte de survol — posée au niveau de la page, à côté du curseur ═══ */}
+      {survol && (() => {
+            const client = ordonne.find(c => c.id === survol.id);
+            if (!client) return null;
+            const st = stats[client.id];
+            const sig = signalDe(client, st);
+            const t = TEINTE[client.statut] || TEINTE.actif;
+            const det = details[client.id];
+            return (
                     <div
-                      className={`${styles.fiche} ${survol?.sens === 'haut' ? styles.ficheHaut : ''}`}
+                      className={styles.fiche}
+                      style={{ left: survol!.x, top: survol!.y }}
                       onMouseEnter={retenir}
                       onMouseLeave={sortir}
                     >
@@ -563,13 +605,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                  );
+      })()}
 
       {/* MODAL NOUVEAU CLIENT — assistant en étapes */}
       {showModal && (() => {
