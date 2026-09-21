@@ -18,7 +18,13 @@ type Bien = {
   dpe: string | null; ges: string | null; annee: number | null;
   description: string | null; photos: string[];
   terrasse?: boolean; balcon?: boolean; jardin?: boolean; parking?: boolean;
-  ascenseur?: boolean; cave?: boolean;
+  ascenseur?: boolean; cave?: boolean; gardien?: boolean;
+  cuisineEquipee?: boolean; clim?: boolean; traversant?: boolean;
+  sejour?: number | null; exterieur?: number | null;
+  surfaceTerrasse?: number | null; surfaceBalcon?: number | null;
+  nbParking?: number | null;
+  charges?: number | null; taxe?: number | null;
+  chauffage?: string | null; lots?: number | null;
   pdfUrl: string | null; envoyeLe: string | null; vuLe: string | null;
   avis: string | null; commentaire: string | null; retourLe: string | null;
   etat: string;
@@ -1389,6 +1395,34 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [partage, setPartage] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   const photos: string[] = b.photos || [];
+  /* Deux rubriques de plus sous la description. Elles se construisent ici
+     pour que le rendu reste lisible, et surtout pour qu'une rubrique vide ne
+     laisse aucune trace à l'écran — pas de titre orphelin. */
+  const inclus: string[] = [];
+  if (b.terrasse) inclus.push('Terrasse');
+  if (b.balcon) inclus.push('Balcon');
+  if (b.jardin) inclus.push('Jardin');
+  if (b.parking) inclus.push(b.nbParking && b.nbParking > 1 ? `${b.nbParking} parkings` : 'Parking');
+  if (b.cave) inclus.push('Cave');
+  if (b.ascenseur) inclus.push('Ascenseur');
+  if (b.gardien) inclus.push('Gardien');
+  if (b.cuisineEquipee) inclus.push('Cuisine équipée');
+  if (b.clim) inclus.push('Climatisation');
+  if (b.traversant) inclus.push('Traversant');
+
+  /* Les charges se saisissent au trimestre dans le CRM : on l'écrit tel quel
+     plutôt que de multiplier par quatre un chiffre dont on n'est pas sûr. */
+  const couts: [string, string][] = [];
+  if (b.charges) couts.push(['Charges de copropriété', `${EUR(b.charges)} / trimestre`]);
+  if (b.taxe) couts.push(['Taxe foncière', `${EUR(b.taxe)} / an`]);
+  if (b.chauffage) couts.push(['Chauffage', b.chauffage]);
+  if (b.lots) couts.push(['Copropriété', `${b.lots} lots`]);
+
+  /* La surface d'extérieur est parfois saisie en bloc, parfois balcon par
+     terrasse : on prend le total quand il existe, la somme sinon. */
+  const ext = b.exterieur || ((b.surfaceTerrasse || 0) + (b.surfaceBalcon || 0)) || null;
+  const nb = (v: number) => String(v).replace('.', ',');
+
   const dpe = (l: string | null, t: string) => l && DPEC[l.toUpperCase()?.[0]] ? (
     <span className="dpe"><span className="l" style={{ background: DPEC[l.toUpperCase()[0]] }}>{l.toUpperCase()[0]}</span>
       <span className="t">{t}</span></span>
@@ -1426,10 +1460,30 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           {b.chambres ? <div className="spec"><div className="v tab">{b.chambres}</div><div className="l">Chambres</div></div> : null}
           {b.etage != null ? <div className="spec"><div className="v tab">{b.etage === 0 ? 'RDC' : b.etage + 'e'}{b.etageTotal ? '/' + b.etageTotal : ''}</div><div className="l">Étage</div></div> : null}
           {b.expo ? <div className="spec"><div className="v">{b.expo}</div><div className="l">Exposition</div></div> : null}
+          {b.sejour ? <div className="spec"><div className="v tab">{nb(b.sejour)} m²</div><div className="l">Séjour</div></div> : null}
+          {ext ? <div className="spec"><div className="v tab">{nb(ext)} m²</div><div className="l">Extérieur</div></div> : null}
         </div>
         <div>{dpe(b.dpe, 'DPE')}{dpe(b.ges, 'GES')}
           {b.annee ? <span className="dpe"><span className="t">Immeuble {b.annee}</span></span> : null}</div>
         {b.description && b.description.split('\n\n').map((p: string, n: number) => <p className="txt" key={n}>{p}</p>)}
+
+        {inclus.length > 0 && (
+          <>
+            <label className="lab">Ce que le bien comprend</label>
+            <div className="incl">{inclus.map(x => <span key={x}>{x}</span>)}</div>
+          </>
+        )}
+
+        {couts.length > 0 && (
+          <>
+            <label className="lab">Charges et énergie</label>
+            <div className="cout">
+              {couts.map(([l, v]) => (
+                <div className="cl" key={l}><span>{l}</span><b className="tab">{v}</b></div>
+              ))}
+            </div>
+          </>
+        )}
 
         <label className="lab">{envoye ? 'Votre retour' : 'Qu’en pensez-vous ?'}</label>
         <div className="avis3">
@@ -2555,6 +2609,22 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .dpe .l{width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center;
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:14px; color:#1a2332}
 .dpe .t{font-size:10.5px; letter-spacing:.9px; text-transform:uppercase; color:var(--plume-clair); font-weight:800}
+/* Ce que le bien comprend : des pastilles, pas un tableau. Elles se lisent
+   d'un coup d'œil et ne prennent de la place que si elles ont du contenu. */
+.incl{display:flex; flex-wrap:wrap; gap:7px; margin-top:8px}
+.incl span{background:var(--fond); border:1px solid var(--trait); border-radius:999px;
+  padding:7px 13px; font-size:12.5px; font-weight:700; color:var(--plume)}
+
+/* Ce que le bien coûte à vivre : sobre, deux colonnes, jamais en avant. */
+.cout{margin-top:8px; background:var(--fond); border:1px solid var(--trait);
+  border-radius:14px; padding:2px 14px}
+.cout .cl{display:flex; justify-content:space-between; align-items:baseline; gap:14px;
+  padding:11px 0; border-bottom:1px solid var(--trait)}
+.cout .cl:last-child{border-bottom:none}
+.cout .cl span{font-size:12.5px; color:var(--plume)}
+.cout .cl b{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800;
+  font-size:13.5px; color:var(--encre); text-align:right; white-space:nowrap}
+
 .avis3{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:8px}
 .avis{background:var(--fond); border:2px solid var(--trait); border-radius:16px; padding:14px 6px;
   display:flex; flex-direction:column; align-items:center; gap:7px;
