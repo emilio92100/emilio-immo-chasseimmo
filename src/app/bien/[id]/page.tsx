@@ -4,6 +4,19 @@ import Image from 'next/image';
 import PhotoCarousel from './PhotoCarousel';
 import AboutPliable from './AboutPliable';
 
+/*
+ * La fiche publique d'un bien — /bien/<id>
+ *
+ * C'est la page qu'un client envoie à son conjoint, à ses parents ou à son
+ * courtier depuis le bouton « Partager » de son espace : ces gens-là n'ont pas
+ * de lien d'espace, donc cette page reste ouverte à tous.
+ *
+ * Elle reprend exactement la trame de la fiche du bien dans l'espace acheteur
+ * (mêmes cartes, mêmes rubriques, mêmes jetons de couleur), à une différence
+ * près : pas de boutons d'avis. Celui qui reçoit le lien n'est pas le client,
+ * il n'a rien à répondre — on lui donne les moyens d'appeler, c'est tout.
+ */
+
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -11,279 +24,313 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const BLEU = '#1a2332';
-const BLEU_FONCE = '#131b27';
-const DORE = '#c9a84c';
-const CREME = '#f3eee3';
-const TEXTE = '#2f3c52';
-const DOUX = '#5a6a85';
-const FIN = '#8492ab';
-const LIGNE = 'rgba(26,35,50,0.08)';
-const TINT = 'rgba(201,168,76,0.12)';
+/* Les jetons de l'espace acheteur, repris à l'identique. */
+const ENCRE = '#1a2332';
+const ENCRE_NUIT = '#131b27';
+const OR = '#c9a84c';
+const OR_FONCE = '#a9822f';
+const OR_FOND = '#fdfaf1';
+const OR_TRAIT = '#ecdcb4';
+const FOND = '#f4f6fa';
+const CARTE = '#ffffff';
+const TRAIT = '#e3e8f0';
+const PLUME = '#64748b';
+const PLUME_CLAIR = '#98a4b6';
+const OMBRE = '0 1px 2px rgba(16,24,40,.04), 0 10px 26px -20px rgba(16,24,40,.3)';
 
-const CARD: React.CSSProperties = { background: '#ffffff', border: `1px solid ${LIGNE}`, borderRadius: 18, padding: '26px 28px', boxShadow: '0 6px 26px rgba(26,35,50,0.06)', marginBottom: 18 };
-
-const CARD_SEC: React.CSSProperties = { ...CARD, position: 'relative', paddingTop: 40, marginTop: 36 };
-
-const DPE_COLORS: Record<string, { bg: string; label: string }> = {
-  A: { bg: '#00a651', label: 'Excellent' },
-  B: { bg: '#52b947', label: 'Très bon' },
-  C: { bg: '#aed136', label: 'Bon' },
-  D: { bg: '#ffeb3b', label: 'Moyen' },
-  E: { bg: '#fbc02d', label: 'À améliorer' },
-  F: { bg: '#f57c00', label: 'Énergivore' },
-  G: { bg: '#d32f2f', label: 'Très énergivore' },
+const DPEC: Record<string, string> = {
+  A: '#319834', B: '#4ab84a', C: '#a8d84a', D: '#f7e017',
+  E: '#f5b912', F: '#ee8235', G: '#e2231a',
 };
 
-function fmt(n?: number | null) {
-  if (n === null || n === undefined) return null;
-  return new Intl.NumberFormat('fr-FR').format(n);
+const JAKARTA = "'Plus Jakarta Sans', system-ui, sans-serif";
+
+const nb = (v: number | string) => String(v).replace('.', ',');
+const fmt = (n?: number | null) =>
+  n === null || n === undefined ? null : new Intl.NumberFormat('fr-FR').format(n);
+
+
+/* Les mêmes icônes que dans l'espace acheteur, dessinées à la main et posées
+   ici en SVG : aucune police externe à charger, et surtout un trait identique
+   des deux côtés. Une fiche partagée doit ressembler à la fiche d'origine. */
+const T: Record<string, string[]> = {
+  terrasse: ['M3 15h18', 'M3 21h18', 'M4.5 15v6', 'M9.5 15v6', 'M14.5 15v6', 'M19.5 15v6'],
+  jardin: ['c:12,9,5', 'M12 14v7', 'M8.6 17.4 12 18.8l3.4-1.4'],
+  parking: ['M4 16.5h16', 'M6.2 16.5v2', 'M17.8 16.5v2', 'M5.6 16.5v-4l1.9-4.2h9l1.9 4.2v4', 'M5.6 12.5h12.8'],
+  cave: ['M4 19.5h4v-4h4v-4h4v-4h4', 'M4 19.5V17'],
+  ascenseur: ['M6.2 3.5h11.6v17H6.2z', 'm10 10 2-2.6 2 2.6', 'm10 14 2 2.6 2-2.6'],
+  gardien: ['M12 3.4 5.2 6.3v5.4c0 4.1 2.8 7.4 6.8 8.5 4-1.1 6.8-4.4 6.8-8.5V6.3z'],
+  cuisine: ['M3.6 6.6h16.8v11.4H3.6z', 'M3.6 13.4h16.8', 'c:8.4,10,1.5', 'c:15.6,10,1.5'],
+  clim: ['M12 3.4v17.2', 'M4.5 7.8 19.5 16.2', 'M19.5 7.8 4.5 16.2', 'm9.2 5.2 2.8 2 2.8-2', 'm9.2 18.8 2.8-2 2.8 2'],
+  traversant: ['M3.2 12h17.6', 'm7.4 7.8-4 4.2 4 4.2', 'm16.6 7.8 4 4.2-4 4.2'],
+  lieu: ['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z', 'c:12,10,2.6'],
+  euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
+  maison: ['M3 21h18', 'M5 21V9.5L12 4l7 5.5V21', 'M10 21v-6h4v6'],
+  immeuble: ['M4 21V4h9v17', 'M13 10h7v11', 'M7 8h2', 'M7 12h2', 'M7 16h2', 'M16 14h1', 'M16 18h1'],
+  eclair: ['M13 2 4.8 13.4h5.9L9.8 22 19.2 10.4H13z'],
+  etincelle: ['M11 3l1.7 4.6L17 9.3l-4.3 1.7L11 15.6 9.3 11 5 9.3l4.3-1.7z', 'M18 15l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z'],
+  tel: ['M6.2 3h3.1l1.5 3.9-2 1.3a13.4 13.4 0 0 0 6.9 6.9l1.3-2 3.9 1.5v3.1a1.9 1.9 0 0 1-2.1 1.9A17.6 17.6 0 0 1 3.1 5.1 1.9 1.9 0 0 1 5 3z'],
+  mail: ['M3.6 6.6h16.8v10.8H3.6z', 'm3.6 7 8.4 5.9 8.4-5.9'],
+};
+
+function Ico({ n, t = 22 }: { n: string; t?: number }) {
+  const d = T[n];
+  if (!d) return null;
+  return (
+    <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
+      style={{ display: 'block', flex: '0 0 auto' }} aria-hidden="true">
+      {d.map((x, i) => x.startsWith('c:')
+        ? (([cx, cy, r]) => <circle key={i} cx={cx} cy={cy} r={r} />)(x.slice(2).split(','))
+        : <path key={i} d={x} />)}
+    </svg>
+  );
 }
 
-function SectionHead({ icon, title }: { icon: string; title: string }) {
+/* Le petit intitulé gris au-dessus de chaque rubrique, comme dans l'espace. */
+function Titre({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ position: 'absolute', top: -16, left: 24, display: 'inline-flex', alignItems: 'center', gap: 8, background: DORE, color: '#3a2e06', fontWeight: 600, fontSize: 15, padding: '8px 16px', borderRadius: 30, boxShadow: '0 4px 14px rgba(201,168,76,0.32)' }}>
-      <i className={`ti ${icon}`} style={{ fontSize: 18 }} aria-hidden="true" />
-      <span>{title}</span>
-    </div>
+    <div style={{
+      fontSize: 10, letterSpacing: 1.3, textTransform: 'uppercase',
+      color: PLUME_CLAIR, fontWeight: 800, margin: '26px 0 10px',
+    }}>{children}</div>
   );
 }
 
 export default async function PageBien({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const { data: bien } = await supabase
-    .from('biens')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-
+  const { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle();
   if (!bien) notFound();
 
-  const prixAffiche = bien.prix_acquereur || bien.prix_vendeur;
+  const prix = bien.prix_acquereur || bien.prix_vendeur;
   const labelPrix = bien.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix';
-  const prixM2 = prixAffiche && bien.surface ? Math.round(prixAffiche / bien.surface) : null;
+  const prixM2 = prix && bien.surface ? Math.round(prix / bien.surface) : null;
   const photos: string[] = Array.isArray(bien.photos) ? bien.photos.filter(Boolean) : [];
+  const lieu = [bien.quartier || bien.adresse_probable, bien.ville, bien.code_postal]
+    .filter(Boolean).join(', ');
 
-  const stats: { icon: string; value: string; sub?: string; label: string }[] = [];
-  if (bien.surface) stats.push({ icon: 'ti-ruler-2', value: `${bien.surface}`, sub: 'm²', label: 'Surface' });
-  if (bien.nb_pieces) stats.push({ icon: 'ti-layout-grid', value: `${bien.nb_pieces}`, label: 'Pièces' });
-  if (bien.nb_chambres) stats.push({ icon: 'ti-bed', value: `${bien.nb_chambres}`, label: bien.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
-  if (bien.etage !== null && bien.etage !== undefined) stats.push({ icon: 'ti-stairs-up', value: bien.etage === 0 ? 'RDC' : `${bien.etage}`, sub: bien.etage !== 0 && bien.etage_total ? `/${bien.etage_total}` : undefined, label: 'Étage' });
-  if (bien.exposition) stats.push({ icon: 'ti-sun', value: `${bien.exposition}`, label: 'Exposition' });
+  /* La surface d'extérieur est parfois saisie en bloc, parfois balcon par
+     terrasse : on prend le total quand il existe, la somme sinon. */
+  const ext = bien.surface_exterieur
+    || ((Number(bien.surface_terrasse) || 0) + (Number(bien.surface_balcon) || 0))
+    || null;
 
-  const features: { icon: string; label: string }[] = [];
-  if (bien.parking) features.push({ icon: 'ti-car', label: 'Parking' });
-  if (bien.ascenseur) features.push({ icon: 'ti-elevator', label: 'Ascenseur' });
-  if (bien.cave) features.push({ icon: 'ti-archive', label: 'Cave' });
-  if (bien.balcon) features.push({ icon: 'ti-plant', label: bien.surface_balcon ? `Balcon ${bien.surface_balcon}m²` : 'Balcon' });
-  if (bien.terrasse) features.push({ icon: 'ti-deer', label: bien.surface_terrasse ? `Terrasse ${bien.surface_terrasse}m²` : 'Terrasse' });
-  if (bien.jardin) features.push({ icon: 'ti-trees', label: 'Jardin' });
-  if (bien.gardien) features.push({ icon: 'ti-shield-check', label: 'Gardien' });
-  if (bien.cuisine_equipee) features.push({ icon: 'ti-tools-kitchen-2', label: 'Cuisine équipée' });
-  if (bien.climatisation) features.push({ icon: 'ti-snowflake', label: 'Climatisation' });
-  if (bien.traversant) features.push({ icon: 'ti-arrows-horizontal', label: 'Traversant' });
+  const chiffres: { v: string; l: string }[] = [];
+  if (bien.surface) chiffres.push({ v: `${nb(bien.surface)} m²`, l: 'Surface' });
+  if (bien.nb_pieces) chiffres.push({ v: String(bien.nb_pieces), l: bien.nb_pieces > 1 ? 'Pièces' : 'Pièce' });
+  if (bien.nb_chambres) chiffres.push({ v: String(bien.nb_chambres), l: bien.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
+  if (bien.etage !== null && bien.etage !== undefined) {
+    chiffres.push({
+      v: bien.etage === 0 ? 'RDC' : `${bien.etage}e${bien.etage_total ? '/' + bien.etage_total : ''}`,
+      l: 'Étage',
+    });
+  }
+  if (bien.exposition) chiffres.push({ v: String(bien.exposition), l: 'Exposition' });
+  if (bien.surface_sejour) chiffres.push({ v: `${nb(bien.surface_sejour)} m²`, l: 'Séjour' });
+  if (ext) chiffres.push({ v: `${nb(ext)} m²`, l: 'Extérieur' });
+  if (bien.annee_construction) chiffres.push({ v: String(bien.annee_construction), l: 'Construction' });
 
-  const dpeInfo = bien.dpe ? DPE_COLORS[String(bien.dpe).toUpperCase()] : null;
-  const gesInfo = bien.ges ? DPE_COLORS[String(bien.ges).toUpperCase()] : null;
+  const inclus: { i: string; n: string }[] = [];
+  if (bien.terrasse) inclus.push({ i: 'terrasse', n: 'Terrasse' });
+  if (bien.balcon) inclus.push({ i: 'terrasse', n: 'Balcon' });
+  if (bien.jardin) inclus.push({ i: 'jardin', n: 'Jardin' });
+  if (bien.parking) inclus.push({ i: 'parking', n: bien.nb_parking > 1 ? `${bien.nb_parking} parkings` : 'Parking' });
+  if (bien.cave) inclus.push({ i: 'cave', n: 'Cave' });
+  if (bien.ascenseur) inclus.push({ i: 'ascenseur', n: 'Ascenseur' });
+  if (bien.gardien) inclus.push({ i: 'gardien', n: 'Gardien' });
+  if (bien.cuisine_equipee) inclus.push({ i: 'cuisine', n: 'Cuisine équipée' });
+  if (bien.climatisation) inclus.push({ i: 'clim', n: 'Climatisation' });
+  if (bien.traversant) inclus.push({ i: 'traversant', n: 'Traversant' });
 
-  const infos: { icon: string; label: string; value: string }[] = [];
-  if (bien.annee_construction) infos.push({ icon: 'ti-calendar', label: 'Année de construction', value: String(bien.annee_construction) });
-  if (bien.etat_general) infos.push({ icon: 'ti-circle-check', label: 'État général', value: String(bien.etat_general) });
-  if (bien.charges_trimestrielles) infos.push({ icon: 'ti-coins', label: 'Charges trimestrielles', value: `~ ${fmt(bien.charges_trimestrielles)} €` });
-  if (bien.taxe_fonciere) infos.push({ icon: 'ti-receipt', label: 'Taxe foncière', value: `${fmt(bien.taxe_fonciere)} € / an` });
+  /* Les charges se saisissent au trimestre dans le CRM : on l'écrit tel quel
+     plutôt que de multiplier par quatre un chiffre dont on n'est pas sûr. */
+  const couts: { i: string; l: string; v: string; u: string }[] = [];
+  if (bien.charges_trimestrielles) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(bien.charges_trimestrielles)} €`, u: 'par trimestre' });
+  if (bien.taxe_fonciere) couts.push({ i: 'immeuble', l: 'Taxe foncière', v: `${fmt(bien.taxe_fonciere)} €`, u: 'par an' });
+  if (bien.chauffage) couts.push({ i: 'eclair', l: 'Chauffage', v: String(bien.chauffage), u: '' });
+  if (bien.nb_lots) couts.push({ i: 'maison', l: 'Copropriété', v: String(bien.nb_lots), u: bien.nb_lots > 1 ? 'lots' : 'lot' });
+
+  const lettre = (v?: string | null) => {
+    const k = v ? String(v).toUpperCase()[0] : '';
+    return k && DPEC[k] ? k : null;
+  };
+  const lDpe = lettre(bien.dpe), lGes = lettre(bien.ges);
+
+  const carte: React.CSSProperties = {
+    background: CARTE, border: `1px solid ${TRAIT}`, borderRadius: 15, padding: '13px 14px',
+  };
 
   return (
-    <div style={{ minHeight: '100vh', background: CREME, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
-      <style>{`html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch}`}</style>
+    <div style={{ minHeight: '100vh', background: FOND, color: ENCRE, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <style>{`
+        html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important}
+        .fb-grille{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px}
+        .fb-cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); gap:9px}
+        .fb-corps{max-width:760px; margin:0 auto; padding:0 20px 56px}
+        .fb-prix{display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap}
+        @media(max-width:600px){ .fb-h1{font-size:23px!important} .fb-corps{padding:0 16px 44px} }
+      `}</style>
 
-      {/* HEADER */}
-      <header style={{ background: BLEU, padding: '16px 0', borderBottom: `2px solid ${DORE}` }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={280} height={64} style={{ height: 56, width: 'auto' }} priority />
-          <div style={{ color: DORE, fontSize: 11, letterSpacing: 2.5, fontWeight: 500 }}>SÉLECTION PRIVÉE</div>
+      <header style={{ background: ENCRE, padding: '16px 0', borderBottom: `2px solid ${OR}` }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={280} height={64} style={{ height: 46, width: 'auto' }} priority />
+          <div style={{ color: OR, fontSize: 10, letterSpacing: 2.4, fontWeight: 700 }}>SÉLECTION PRIVÉE</div>
         </div>
       </header>
 
-      <div className="bienwrap" style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px 56px' }}>
-
-        {/* TITRE */}
-        <div style={{ marginBottom: 18 }}>
-          <h1 className="bienh1" style={{ fontSize: 30, fontWeight: 700, color: BLEU, margin: '0 0 8px', lineHeight: 1.2 }}>
-            {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` — ${bien.surface} m²` : ''}`}
-          </h1>
-          {(bien.quartier || bien.ville || bien.code_postal) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, color: DOUX }}>
-              <i className="ti ti-map-pin" style={{ fontSize: 18, color: DORE }} aria-hidden="true" />
-              {[bien.quartier, bien.ville, bien.code_postal].filter(Boolean).join(', ')}
-            </div>
-          )}
-        </div>
-
-        {/* CARROUSEL */}
-        <div style={{ borderRadius: 20, overflow: 'hidden', boxShadow: '0 14px 44px rgba(26,35,50,0.18)', marginBottom: 18 }}>
+      {/* Les photos, bord à bord comme dans l'espace */}
+      <div style={{ background: ENCRE }}>
+        <div style={{ maxWidth: 760, margin: '0 auto' }}>
           <PhotoCarousel photos={photos} />
         </div>
+      </div>
 
-        {/* BARRE PRIX */}
-        {prixAffiche && (
-          <div className="pricebar" style={{ ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: BLEU, lineHeight: 1 }}>{fmt(prixAffiche)} €</div>
-              <div style={{ fontSize: 12, color: DORE, fontWeight: 600, marginTop: 6 }}>{labelPrix}{prixM2 ? <span style={{ color: DOUX, fontWeight: 400 }}>{`  ·  ${fmt(prixM2)} €/m²`}</span> : null}</div>
-            </div>
-            <div className="pricebtns" style={{ display: 'flex', gap: 10 }}>
-              <a href="#contact" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: BLEU, color: 'white', textDecoration: 'none', padding: '13px 22px', borderRadius: 12, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>Demander une visite</a>
-              <a href="tel:+33658957632" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'white', color: BLEU, textDecoration: 'none', padding: '13px 22px', borderRadius: 12, fontSize: 14, fontWeight: 600, border: `1.5px solid ${BLEU}`, whiteSpace: 'nowrap' }}>
-                <i className="ti ti-phone" style={{ fontSize: 16 }} aria-hidden="true" /> 06 58 95 76 32
-              </a>
-            </div>
+      <div className="fb-corps">
+
+        {/* Le prix d'abord : c'est la première question de celui qui reçoit le lien */}
+        <div className="fb-prix" style={{ padding: '20px 0 2px' }}>
+          <span style={{ fontFamily: JAKARTA, fontSize: 30, fontWeight: 800, color: OR_FONCE, letterSpacing: -.8 }}>
+            {fmt(prix) || '—'} €
+          </span>
+          {prixM2 ? (
+            <span style={{ fontSize: 13.5, color: PLUME_CLAIR, fontWeight: 700 }}>{fmt(prixM2)} €/m²</span>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 11.5, color: OR, fontWeight: 700, marginBottom: 14 }}>{labelPrix}</div>
+
+        <h1 className="fb-h1" style={{ fontFamily: JAKARTA, fontSize: 25, fontWeight: 800, letterSpacing: -.5, lineHeight: 1.25, margin: '0 0 6px' }}>
+          {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` — ${bien.surface} m²` : ''}`}
+        </h1>
+        {lieu && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: PLUME }}>
+            <span style={{ color: OR, display: 'flex' }}><Ico n="lieu" t={15} /></span>{lieu}
           </div>
         )}
 
-        {/* STATS */}
-        {stats.length > 0 && (
-          <div style={CARD}>
-            <div className="statsrow" style={{ display: 'flex' }}>
-              {stats.map((s, i) => (
-                <span key={i} style={{ display: 'contents' }}>
-                  {i > 0 && <div className="statdiv" style={{ width: 1, background: LIGNE }} />}
-                  <div className="statcell" style={{ flex: 1, textAlign: 'center', padding: '0 4px' }}>
-                    <div style={{ color: DORE }}><i className={`ti ${s.icon}`} style={{ fontSize: 22 }} aria-hidden="true" /></div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: BLEU, marginTop: 6, textTransform: 'capitalize' }}>{s.value}{s.sub && <span style={{ fontSize: 13, color: DOUX }}>{s.sub === 'm²' ? ' ' : ''}{s.sub}</span>}</div>
-                    <div style={{ fontSize: 12, color: FIN, marginTop: 2 }}>{s.label}</div>
+        {chiffres.length > 0 && (
+          <div className="fb-grille" style={{ margin: '18px 0 4px' }}>
+            {chiffres.map((c) => (
+              <div key={c.l} style={{ background: FOND, border: `1px solid ${TRAIT}`, borderRadius: 13, padding: '11px 8px', textAlign: 'center' }}>
+                <div style={{ fontFamily: JAKARTA, fontWeight: 800, fontSize: 15 }}>{c.v}</div>
+                <div style={{ fontSize: 9, letterSpacing: .9, textTransform: 'uppercase', color: PLUME_CLAIR, marginTop: 4, fontWeight: 700 }}>{c.l}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(lDpe || lGes) && (
+          <>
+            <Titre>Performance énergétique</Titre>
+            <div className="fb-cartes">
+              {lDpe && (
+                <div style={carte}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: PLUME_CLAIR }}>
+                    <Ico n="eclair" t={15} />
+                    <span style={{ fontSize: 9.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 800 }}>DPE</span>
                   </div>
-                </span>
-              ))}
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 11, background: DPEC[lDpe], color: ENCRE, fontFamily: JAKARTA, fontWeight: 800, fontSize: 18 }}>{lDpe}</span>
+                  </div>
+                  {bien.dpe_conso ? <div style={{ fontSize: 11, color: PLUME_CLAIR, fontWeight: 700, marginTop: 6 }}>{bien.dpe_conso} kWh/m².an</div> : null}
+                </div>
+              )}
+              {lGes && (
+                <div style={carte}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: PLUME_CLAIR }}>
+                    <Ico n="etincelle" t={15} />
+                    <span style={{ fontSize: 9.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 800 }}>GES</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 11, background: DPEC[lGes], color: ENCRE, fontFamily: JAKARTA, fontWeight: 800, fontSize: 18 }}>{lGes}</span>
+                  </div>
+                  {bien.ges_emissions ? <div style={{ fontSize: 11, color: PLUME_CLAIR, fontWeight: 700, marginTop: 6 }}>{bien.ges_emissions} kg CO₂/m².an</div> : null}
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
 
-        {/* À PROPOS (pliable) */}
         {bien.description && (
-          <div style={CARD_SEC}>
-            <SectionHead icon="ti-home" title="À propos de ce bien" />
+          <div style={{ marginTop: 20 }}>
             <AboutPliable text={bien.description} />
           </div>
         )}
 
-        {/* ÉQUIPEMENTS */}
-        {features.length > 0 && (
-          <div style={CARD_SEC}>
-            <SectionHead icon="ti-sparkles" title="Équipements et caractéristiques" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '18px 16px' }}>
-              {features.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ width: 42, height: 42, borderRadius: 11, background: TINT, display: 'flex', alignItems: 'center', justifyContent: 'center', color: DORE, flex: 'none' }}>
-                    <i className={`ti ${f.icon}`} style={{ fontSize: 20 }} aria-hidden="true" />
+        {inclus.length > 0 && (
+          <>
+            <Titre>Ce que le bien comprend</Titre>
+            <div className="fb-cartes">
+              {inclus.map((x) => (
+                <div key={x.n} style={{ ...carte, display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px' }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 11, background: FOND, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
+                    <Ico n={x.i} t={19} />
                   </span>
-                  <span style={{ fontSize: 14, color: TEXTE, fontWeight: 500 }}>{f.label}</span>
+                  <span style={{ fontFamily: JAKARTA, fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{x.n}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </>
         )}
 
-        {/* PERFORMANCE ÉNERGÉTIQUE */}
-        {(dpeInfo || gesInfo) && (
-          <div style={CARD_SEC}>
-            <SectionHead icon="ti-bolt" title="Performance énergétique" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 14 }}>
-              {dpeInfo && (
-                <div style={{ background: CREME, borderRadius: 14, padding: 18, display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ background: dpeInfo.bg, color: 'white', fontWeight: 700, fontSize: 26, width: 54, height: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, flexShrink: 0 }}>{String(bien.dpe).toUpperCase()}</div>
-                  <div>
-                    <div style={{ fontSize: 11, color: FIN, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Consommation</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: BLEU }}>DPE {dpeInfo.label}</div>
-                    {bien.dpe_conso && <div style={{ fontSize: 13, color: DOUX, marginTop: 2 }}>{bien.dpe_conso} kWh/m².an</div>}
+        {couts.length > 0 && (
+          <>
+            <Titre>Charges et énergie</Titre>
+            <div className="fb-cartes">
+              {couts.map((c) => (
+                <div key={c.l} style={carte}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: PLUME_CLAIR }}>
+                    <Ico n={c.i} t={15} />
+                    <span style={{ fontSize: 9.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 800 }}>{c.l}</span>
                   </div>
-                </div>
-              )}
-              {gesInfo && (
-                <div style={{ background: CREME, borderRadius: 14, padding: 18, display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ background: gesInfo.bg, color: 'white', fontWeight: 700, fontSize: 26, width: 54, height: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, flexShrink: 0 }}>{String(bien.ges).toUpperCase()}</div>
-                  <div>
-                    <div style={{ fontSize: 11, color: FIN, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Émissions GES</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: BLEU }}>GES {gesInfo.label}</div>
-                    {bien.ges_emissions && <div style={{ fontSize: 13, color: DOUX, marginTop: 2 }}>{bien.ges_emissions} kg CO₂/m².an</div>}
+                  <div style={{ fontFamily: JAKARTA, fontWeight: 800, fontSize: 18, marginTop: 8, lineHeight: 1.2 }}>
+                    {c.v}
+                    {c.u ? <span style={{ display: 'block', fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: PLUME_CLAIR, fontWeight: 700, marginTop: 3, letterSpacing: .3 }}>{c.u}</span> : null}
                   </div>
-                </div>
-              )}
-            </div>
-            {(bien.chauffage || bien.source_energie) && (
-              <div style={{ display: 'flex', gap: 28, marginTop: 16, fontSize: 13, flexWrap: 'wrap' }}>
-                {bien.chauffage && <div><span style={{ color: FIN }}>Chauffage :</span> <span style={{ color: TEXTE, fontWeight: 500 }}>{bien.chauffage}</span></div>}
-                {bien.source_energie && <div><span style={{ color: FIN }}>Énergie :</span> <span style={{ color: TEXTE, fontWeight: 500 }}>{bien.source_energie}</span></div>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* INFOS COMPLÉMENTAIRES */}
-        {infos.length > 0 && (
-          <div style={{ ...CARD_SEC, marginBottom: 0 }}>
-            <SectionHead icon="ti-info-circle" title="Informations complémentaires" />
-            <div>
-              {infos.map((row, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: i < infos.length - 1 ? `1px solid ${LIGNE}` : 'none' }}>
-                  <span style={{ color: DORE, flex: 'none' }}><i className={`ti ${row.icon}`} style={{ fontSize: 20 }} aria-hidden="true" /></span>
-                  <span style={{ flex: 1, fontSize: 14, color: DOUX }}>{row.label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: BLEU, textAlign: 'right' }}>{row.value}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </>
         )}
 
-      </div>
-
-      {/* CONTACT */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 20px' }}>
-        <section id="contact" className="biencontact" style={{ background: BLEU, borderRadius: 24, padding: '40px 32px', color: 'white', textAlign: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(201,168,76,0.15)', color: DORE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, border: `1px solid rgba(201,168,76,0.4)` }}>AR</div>
+        {/* Celui qui reçoit ce lien ne peut pas répondre dans l'application :
+            on lui donne de quoi appeler, et c'est tout ce qu'on lui demande. */}
+        <section style={{ background: ENCRE, borderRadius: 22, padding: '32px 24px', color: '#fff', textAlign: 'center', marginTop: 30 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(201,168,76,.15)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: JAKARTA, fontWeight: 800, fontSize: 15, border: `1px solid rgba(201,168,76,.4)` }}>AR</div>
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Alexandre Rogelet</div>
-              <div style={{ fontSize: 12, color: DORE }}>Votre chasseur dédié</div>
+              <div style={{ fontFamily: JAKARTA, fontSize: 15, fontWeight: 800 }}>Alexandre Rogelet</div>
+              <div style={{ fontSize: 12, color: OR }}>Emilio Immobilier</div>
             </div>
           </div>
-          <h2 style={{ fontSize: 23, fontWeight: 600, margin: '0 0 8px' }}>Ce bien vous intéresse ?</h2>
-          <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 24 }}>Contactez-moi pour organiser une visite, je reste à votre disposition.</div>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="tel:+33658957632" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: DORE, color: BLEU, padding: '14px 28px', borderRadius: 14, fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>
-              <i className="ti ti-phone" style={{ fontSize: 16 }} aria-hidden="true" /> 06 58 95 76 32
+          <h2 style={{ fontFamily: JAKARTA, fontSize: 21, fontWeight: 800, margin: '0 0 8px', letterSpacing: -.3 }}>Ce bien vous intéresse&nbsp;?</h2>
+          <div style={{ fontSize: 14, opacity: .72, marginBottom: 22, lineHeight: 1.6 }}>
+            Appelez-moi pour organiser une visite, je reste à votre disposition.
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="tel:+33658957632" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: OR, color: ENCRE, padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
+              <Ico n="tel" t={16} />06 58 95 76 32
             </a>
-            <a href="mailto:arogelet@emilio-immo.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.08)', color: 'white', padding: '14px 28px', borderRadius: 14, fontWeight: 600, fontSize: 14, textDecoration: 'none', border: '1px solid rgba(255,255,255,0.25)' }}>
-              <i className="ti ti-mail" style={{ fontSize: 16 }} aria-hidden="true" /> Me contacter
+            <a href="mailto:arogelet@emilio-immo.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.08)', color: '#fff', padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 700, fontSize: 14, textDecoration: 'none', border: '1px solid rgba(255,255,255,.25)' }}>
+              <Ico n="mail" t={16} />Me contacter
             </a>
           </div>
         </section>
+
+        <div style={{ marginTop: 18, background: OR_FOND, border: `1px solid ${OR_TRAIT}`, borderRadius: 15, padding: '13px 15px', fontSize: 12.5, color: OR_FONCE, lineHeight: 1.6, boxShadow: OMBRE }}>
+          Document non contractuel. Les surfaces, charges et diagnostics sont communiqués sous réserve
+          de vérification par les diagnostics, le règlement de copropriété et les documents notariés.
+        </div>
       </div>
 
-      {/* FOOTER */}
-      <footer style={{ background: BLEU_FONCE, padding: '24px 20px', borderTop: '1px solid rgba(201,168,76,0.2)', marginTop: 40 }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={220} height={50} style={{ height: 44, width: 'auto' }} />
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-            Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine · Document confidentiel
+      <footer style={{ background: ENCRE_NUIT, padding: '24px 20px', borderTop: '1px solid rgba(201,168,76,.2)' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={220} height={50} style={{ height: 38, width: 'auto' }} />
+          <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11 }}>
+            Paris &amp; Hauts-de-Seine · Carte professionnelle CPI 9201 2020 000 045 344
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @media (max-width: 600px) {
-          .bienh1 { font-size: 23px !important; }
-          .bienwrap { padding: 22px 14px 44px !important; }
-          .biencontact { padding: 32px 18px !important; }
-          .pricebar { flex-direction: column !important; align-items: stretch !important; }
-          .pricebtns { flex-direction: column !important; }
-          .pricebtns a { width: 100% !important; }
-          .statsrow { flex-wrap: wrap !important; }
-          .statdiv { display: none !important; }
-          .statcell { flex: 0 0 33.33% !important; padding: 10px 4px !important; }
-        }
-      `}</style>
     </div>
   );
 }
