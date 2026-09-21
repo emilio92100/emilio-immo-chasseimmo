@@ -828,11 +828,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function saveMandat() {
     setSaving(true);
     if (!rechercheId) { setSaving(false); return; }
+    /* Vider la date de signature devait pouvoir effacer le mandat. L'ancienne
+       expiration restait pourtant en base, et la fiche affichait « expiré »
+       indéfiniment. Plus de signature et plus d'expiration saisie : on efface. */
     let exp = mandat.date_expiration;
     if (mandat.date_signature && mandat.duree && !exp) { const d = new Date(mandat.date_signature); d.setMonth(d.getMonth() + parseInt(mandat.duree)); exp = d.toISOString().split('T')[0]; }
+    if (!mandat.date_signature && !mandat.date_expiration) exp = '';
 
     const avaitMandat = !!(recherches.find(r => r.id === rechercheId) as any)?.mandat_date_signature;
-    const { data } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().single();
+    const { data } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, sans_mandat: !mandat.date_signature && !exp, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().single();
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
       const detail = [
@@ -842,6 +846,26 @@ export default function FicheClient({ client: init, onBack }: Props) {
         exp ? `jusqu'au ${new Date(exp).toLocaleDateString('fr-FR')}` : null,
       ].filter(Boolean).join(' · ');
       await addJournal(client.id, 'mandat', avaitMandat ? '📋 Mandat mis à jour' : '📋 Mandat enregistré', detail || undefined);
+      load();
+    }
+    setSaving(false); setShowMandat(false);
+  }
+
+  /* Supprimer le mandat : il n'y avait aucun moyen de le faire, et un dossier
+     sans mandat restait marqué « expiré » partout, jusque dans la liste. */
+  async function supprimerMandat() {
+    if (!rechercheId) return;
+    if (!confirm('Supprimer le mandat de recherche de ce dossier ?\n\nLes dates, la durée et les honoraires seront effacés. Le dossier sera marqué « sans mandat ».')) return;
+    setSaving(true);
+    const { data } = await supabase.from('recherches').update({
+      mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null,
+      mandat_date_expiration: null, sans_mandat: true,
+      updated_at: new Date().toISOString(),
+    }).eq('id', rechercheId).select().single();
+    if (data) {
+      setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
+      setMandat({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
+      await addJournal(client.id, 'mandat', '📋 Mandat supprimé');
       load();
     }
     setSaving(false); setShowMandat(false);
@@ -1816,11 +1840,13 @@ Emilio Immobilier
             style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 10,
               background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 10,
               padding: '7px 13px', cursor: 'pointer', fontFamily: 'inherit', maxWidth: '100%' }}>
-            <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>📋 Mandat</span>
-            {cr.mandat_date_signature ? (
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>
+              📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}
+            </span>
+            {cr.mandat_date_signature || cr.mandat_date_expiration ? (
               <>
                 <span style={{ fontSize: 12.5, color: '#6b6045', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR')}
+                  {cr.mandat_date_signature ? new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR') : 'Signature non datée'}
                   {cr.mandat_duree ? ` · ${cr.mandat_duree} mois` : ''}
                   {cr.mandat_honoraires ? ` · ${cr.mandat_honoraires}` : ''}
                 </span>
@@ -1834,9 +1860,12 @@ Emilio Immobilier
                 )}
               </>
             ) : (
-              <span style={{ fontSize: 12.5, color: '#a08c60', fontWeight: 600 }}>non renseigné — <b style={{ color: '#a9822f' }}>compléter</b></span>
+              <>
+                <span style={{ fontSize: 12.5, color: '#a08c60', fontWeight: 600, whiteSpace: 'nowrap' }}>non renseigné</span>
+                <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 800, borderRadius: 99, padding: '3px 11px', background: '#fff', border: '1px solid #e3d3ab', color: '#a9822f' }}>Remplir</span>
+              </>
             )}
-            <span style={{ fontSize: 11, color: '#c2ad7c', flexShrink: 0 }}>✏️</span>
+            {(cr.mandat_date_signature || cr.mandat_date_expiration) && <span style={{ fontSize: 11, color: '#c2ad7c', flexShrink: 0 }}>✏️</span>}
           </button>
         </div>
 
@@ -2903,7 +2932,16 @@ Emilio Immobilier
               <div><label className={styles.lbl}>Honoraires convenus</label><input className={styles.inp} value={mandat.honoraires} onChange={e => setMandat(f => ({ ...f, honoraires: e.target.value }))} placeholder="3,5% TTC ou 5 000€ TTC" /></div>
               {mandat.date_signature && mandat.duree && !mandat.date_expiration && <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>💡 Expiration calculée : {new Date(new Date(mandat.date_signature).setMonth(new Date(mandat.date_signature).getMonth() + parseInt(mandat.duree))).toLocaleDateString('fr-FR')}</div>}
             </div>
-            <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowMandat(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveMandat} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
+            <div className={styles.modalFooter} style={{ justifyContent: 'space-between' }}>
+              {cr.mandat_date_signature || cr.mandat_date_expiration ? (
+                <button className={styles.btn} onClick={supprimerMandat} disabled={saving}
+                  style={{ color: '#b91c1c', borderColor: '#fecaca', background: '#fff' }}>🗑️ Supprimer le mandat</button>
+              ) : <span />}
+              <span style={{ display: 'flex', gap: 8 }}>
+                <button className={styles.btn} onClick={() => setShowMandat(false)}>Annuler</button>
+                <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveMandat} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button>
+              </span>
+            </div>
           </div>
         </div>
         </Portail>
