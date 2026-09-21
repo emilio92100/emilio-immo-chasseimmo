@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import type { Client, StatutClient } from '@/lib/supabase';
 import SecteurPicker from '@/components/shared/SecteurPicker';
@@ -70,9 +70,103 @@ function pill(active: boolean, borderActive: string, bgActive: string, colorActi
   return { padding: '7px 14px', borderRadius: 20, border: `1px solid ${active ? borderActive : '#e2e8f0'}`, background: active ? bgActive : 'white', color: active ? colorActive : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' };
 }
 
+type StatDossier = {
+  biens: number; visites: number; offres: number;
+  relance?: { date: string; note: string | null };
+  dernierContact?: string;
+};
+type DetailDossier = {
+  journal: { titre: string; type: string; date: string } | null;
+  espaceOuvertures: number;
+};
+
+/* Combien de jours nous séparent de cette date — négatif si elle est passée. */
+function joursJusqua(iso: string) {
+  const d = new Date(iso); d.setHours(12, 0, 0, 0);
+  const a = new Date(); a.setHours(12, 0, 0, 0);
+  return Math.round((d.getTime() - a.getTime()) / 86400000);
+}
+function joursDepuis(iso: string) { return -joursJusqua(iso); }
+
+function ilYA(iso: string) {
+  const j = joursDepuis(iso);
+  if (j <= 0) return "aujourd'hui";
+  if (j === 1) return 'hier';
+  if (j < 31) return `il y a ${j} j`;
+  const m = Math.round(j / 30.4);
+  return m < 12 ? `il y a ${m} mois` : `il y a ${Math.round(j / 365)} an${j >= 730 ? 's' : ''}`;
+}
+
+/* Le signal : une seule phrase, celle qui compte le plus pour ce dossier.
+   L'ordre décide aussi du tri — ce qui presse remonte. */
+type Signal = { texte: string; color: string; bg: string; rang: number };
+function signalDe(client: any, st: StatDossier | undefined): Signal {
+  if (st?.relance) {
+    const j = joursJusqua(st.relance.date);
+    if (j < 0) return { texte: `🔔 Relance en retard`, color: '#be123c', bg: '#fff1f2', rang: 0 };
+    if (j === 0) return { texte: `🔔 Relance aujourd'hui`, color: '#be123c', bg: '#fff1f2', rang: 1 };
+    if (j <= 7) return { texte: `Relance dans ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 2 };
+    return { texte: `Relance le ${new Date(st.relance.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`, color: '#64748b', bg: '#f5f8fc', rang: 4 };
+  }
+  if (client.mandat_date_expiration) {
+    const j = joursJusqua(client.mandat_date_expiration);
+    if (j < 0) return { texte: '⚠️ Mandat expiré', color: '#b91c1c', bg: '#fef2f2', rang: 3 };
+    if (j < 15) return { texte: `Mandat · ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 3 };
+  }
+  if ((client.statut as string) === 'bien_trouve') return { texte: 'Dossier clos', color: '#1d4ed8', bg: '#eff6ff', rang: 8 };
+  if (st?.dernierContact) return { texte: `Vu ${ilYA(st.dernierContact)}`, color: '#7b8798', bg: '#f5f8fc', rang: 6 };
+  return { texte: `Suivi ${joursDepuis(client.created_at)} j`, color: '#7b8798', bg: '#f5f8fc', rang: 7 };
+}
+
+/* La recherche, en une phrase plutôt qu'en huit pastilles. */
+function phraseRecherche(c: any) {
+  const bouts: string[] = [];
+  if (c.type_bien) bouts.push(String(c.type_bien));
+  const p = c.nb_pieces_min && c.nb_pieces_max ? `${c.nb_pieces_min} – ${c.nb_pieces_max} pièces`
+    : c.nb_pieces_min ? `${c.nb_pieces_min} pièces minimum`
+      : c.nb_pieces_max ? `${c.nb_pieces_max} pièces maximum` : '';
+  const su = c.surface_min && c.surface_max ? `${c.surface_min} – ${c.surface_max} m²`
+    : c.surface_min ? `${c.surface_min} m² minimum`
+      : c.surface_max ? `${c.surface_max} m² maximum` : '';
+  if (p && su) bouts.push(`${p.replace(' minimum', '')}, ${su}`);
+  else if (p || su) bouts.push(p || su);
+  return bouts.join(' · ') || 'Critères à préciser';
+}
+
+function budgetCourt(c: any) {
+  const k = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1).replace('.', ',')} M€` : `${Math.round(n / 1000)} k€`;
+  if (c.budget_min && c.budget_max) return k(c.budget_max);
+  if (c.budget_max) return k(c.budget_max);
+  if (c.budget_min) return `dès ${k(c.budget_min)}`;
+  return '—';
+}
+
+/* Les secteurs sont stockés « Quartier (Ville) » : on ne garde que les villes. */
+function villesDe(secteurs: string[] | undefined) {
+  return [...new Set((secteurs || []).map(x => { const m = x.match(/\((.+?)\)$/); return m ? m[1].trim() : x; }))];
+}
+
+const TEINTE: Record<string, { bg: string; fg: string; trait: string }> = {
+  prospect:    { bg: '#f5f3ff', fg: '#6d28d9', trait: '#ddd6fe' },
+  actif:       { bg: '#ecfdf5', fg: '#0f7a4f', trait: '#a7e8c6' },
+  suspendu:    { bg: '#fffbeb', fg: '#b45309', trait: '#fde68a' },
+  bien_trouve: { bg: '#eff6ff', fg: '#1d4ed8', trait: '#bcd4fb' },
+  perdu:       { bg: '#fef2f2', fg: '#b91c1c', trait: '#fecaca' },
+};
+
 export default function Clients({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /* Ce que la liste ne savait pas dire : combien de biens, de visites, d'offres,
+     et quelle relance attend. Chargé en trois lectures, une fois, au démarrage. */
+  const [stats, setStats] = useState<Record<string, StatDossier>>({});
+
+  /* La carte de survol. Le détail (dernier échange, espace acheteur) n'est lu
+     que pour le client survolé, et gardé en mémoire ensuite. */
+  const [survol, setSurvol] = useState<{ id: string; sens: 'haut' | 'bas' } | null>(null);
+  const [details, setDetails] = useState<Record<string, DetailDossier>>({});
+  const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filtre, setFiltre] = useState('tous');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -134,12 +228,65 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       for (const f of CRIT_FIELDS) {
         if (display[f] !== undefined && display[f] !== null) crit[f] = display[f];
       }
-      return { ...c, ...crit };
+      return { ...c, ...crit, _espaceOuvertLe: display.espace_ouvert_le || null };
     });
 
     setClients(merged);
     setLoading(false);
+
+    /* Les compteurs. Jusqu'ici la liste affichait un tiret : ils n'étaient
+       jamais calculés. Trois lectures légères suffisent. */
+    if (ids.length) {
+      const [bi, vi, re, jo] = await Promise.all([
+        supabase.from('biens').select('client_id, etape, badge_retour').in('client_id', ids),
+        supabase.from('visites').select('client_id').in('client_id', ids),
+        supabase.from('relances').select('client_id, date_echeance, note')
+          .in('client_id', ids).eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
+        supabase.from('journal').select('client_id, created_at')
+          .in('client_id', ids).order('created_at', { ascending: false }),
+      ]);
+      const s: Record<string, StatDossier> = {};
+      ids.forEach(id => { s[id] = { biens: 0, visites: 0, offres: 0 }; });
+      (bi.data || []).forEach((b: any) => {
+        const e = s[b.client_id]; if (!e) return;
+        if (b.etape === 'presente') e.biens++;
+        if (b.badge_retour === 'offre_faite') e.offres++;
+      });
+      (vi.data || []).forEach((v: any) => { const e = s[v.client_id]; if (e) e.visites++; });
+      (re.data || []).forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
+      (jo.data || []).forEach((j: any) => { const e = s[j.client_id]; if (e && !e.dernierContact) e.dernierContact = j.created_at; });
+      setStats(s);
+    }
   }
+
+  /* Le détail du survol : la dernière ligne du journal et le nombre de fois
+     où le client a ouvert son espace. Une seule fois par client. */
+  async function chargerDetail(id: string) {
+    if (details[id]) return;
+    const [jo, es] = await Promise.all([
+      supabase.from('journal').select('titre, type, created_at')
+        .eq('client_id', id).order('created_at', { ascending: false }).limit(1),
+      supabase.from('espace_evenements').select('id', { count: 'exact', head: true })
+        .eq('client_id', id).eq('type', 'ouverture'),
+    ]);
+    const j = jo.data?.[0] as any;
+    setDetails(d => ({ ...d, [id]: {
+      journal: j ? { titre: j.titre, type: j.type, date: j.created_at } : null,
+      espaceOuvertures: es.count ?? 0,
+    } }));
+  }
+
+  function entrer(id: string, el: HTMLElement) {
+    if (minuteur.current) clearTimeout(minuteur.current);
+    const r = el.getBoundingClientRect();
+    const sens: 'haut' | 'bas' = r.bottom + 340 > window.innerHeight ? 'haut' : 'bas';
+    minuteur.current = setTimeout(() => { setSurvol({ id, sens }); chargerDetail(id); }, 200);
+  }
+  function sortir() {
+    if (minuteur.current) clearTimeout(minuteur.current);
+    minuteur.current = setTimeout(() => setSurvol(null), 130);
+  }
+  function retenir() { if (minuteur.current) clearTimeout(minuteur.current); }
 
   const filtered = clients.filter(c => {
     const matchStatut = filtre === 'tous' || c.statut === filtre;
@@ -227,6 +374,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     setSaving(false);
   }
 
+  /* Ce qui presse remonte : relance en retard, puis aujourd'hui, puis le reste. */
+  const ordonne = [...filtered].sort((a, b) => {
+    const ra = signalDe(a, stats[a.id]).rang, rb = signalDe(b, stats[b.id]).rang;
+    if (ra !== rb) return ra - rb;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   const nbParStatut = (s: string) => s === 'tous' ? clients.length : clients.filter(c => c.statut === s).length;
 
   return (
@@ -276,68 +430,144 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           <div className={styles.emptySub}>{!search && filtre === 'tous' && 'Cliquez sur "+ Nouveau client" pour commencer'}</div>
         </div>
       ) : (
-        <div className={styles.list}>
-          {filtered.map(client => {
-            const st = statutBadge[client.statut];
-            const initiales = `${client.prenom[0]}${client.nom[0]}`.toUpperCase();
-            const joursSuivi = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
+              l'œil sans transformer la page en tableur. */}
+          <div className={styles.entete}>
+            <span className={styles.colClient}>Client</span>
+            <span className={styles.colRech}>Recherche</span>
+            <span className={styles.colSect}>Secteur</span>
+            <span className={styles.colBud}>Budget</span>
+            <span className={styles.colSig}>Signal</span>
+          </div>
 
-            const equipements = [client.parking&&'🅿️',client.balcon&&'🌿',client.terrasse&&'☀️',client.jardin&&'🌳',client.cave&&'📦',client.ascenseur&&'🛗'].filter(Boolean);
-            return (
-              <div
-                key={client.id}
-                className={styles.clientRow}
-                onClick={() => onNavigate('fiche', client)}
-              >
-                <div style={{ position: 'relative', flexShrink: 0 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: (client.statut as string) === 'actif' ? '#ecfdf5' : (client.statut as string) === 'prospect' ? '#f5f3ff' : (client.statut as string) === 'suspendu' ? '#fffbeb' : (client.statut as string) === 'bien_trouve' ? '#eff6ff' : '#fef2f2', border: `3px solid ${(client.statut as string) === 'actif' ? '#10b981' : (client.statut as string) === 'prospect' ? '#8b5cf6' : (client.statut as string) === 'suspendu' ? '#f59e0b' : (client.statut as string) === 'bien_trouve' ? '#3b82f6' : '#ef4444'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#1a2332', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
-                    {client.prenom[0]}
-                  </div>
-                </div>
-                <div className={styles.clientInfo}>
-                  {/* Ligne 1 : nom + badges */}
-                  <div className={styles.clientTop}>
-                    <span className={styles.clientName} style={{ fontSize: 16, fontWeight: 800 }}>{client.prenom} {client.nom}</span>
-                    <span className={styles.badge} style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}30` }}>{st.label}</span>
-                    <span className={styles.badgeGold}>{client.reference}</span>
-                    {client.mandat_date_expiration && (() => { const j = Math.floor((new Date(client.mandat_date_expiration).getTime()-Date.now())/86400000); return j<15 ? <span className={styles.badge} style={{color:'#ef4444',background:'#fef2f2',border:'1px solid #fecaca'}}>⚠️ Mandat {j > 0 ? `${j}j restants` : 'expiré'}</span> : null; })()}
-                  </div>
-                  {/* Ligne 2 : critères en chips */}
-                  {(client.type_bien || client.budget_min || client.surface_min || client.secteurs?.length > 0) && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
-                      {client.type_bien && <span style={{ fontSize: 11, fontWeight: 600, color: '#1a2332', background: '#f1f5f9', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>🏠 {client.type_bien}</span>}
-                      {client.budget_min && <span style={{ fontSize: 11, fontWeight: 700, color: '#854d0e', background: '#fef9c3', padding: '2px 8px', borderRadius: 20, border: '1px solid #fde68a' }}>💰 {client.budget_max ? `${(client.budget_min/1000).toFixed(0)}–${(client.budget_max/1000).toFixed(0)}k€` : `min ${(client.budget_min/1000).toFixed(0)}k€`}</span>}
-                      {client.surface_min && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f8fafc', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>📐 {client.surface_max ? `${client.surface_min}–${client.surface_max}m²` : `min ${client.surface_min}m²`}</span>}
-                      {client.nb_pieces_min && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f8fafc', padding: '2px 8px', borderRadius: 20, border: '1px solid #e3e8f0' }}>🚪 {client.nb_pieces_max ? `${client.nb_pieces_min}–${client.nb_pieces_max}P` : `min ${client.nb_pieces_min}P`}</span>}
-                      {client.dpe_max && <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: 20, border: '1px solid #bbf7d0' }}>🌿 DPE ≤{client.dpe_max}</span>}
-                      {equipements.map((e,i) => <span key={i} style={{ fontSize: 11 }}>{e}</span>)}
+          <div className={styles.list}>
+            {ordonne.map(client => {
+              const st = stats[client.id];
+              const sig = signalDe(client, st);
+              const t = TEINTE[client.statut] || TEINTE.actif;
+              const villes = villesDe(client.secteurs);
+              const clos = (client.statut as string) === 'bien_trouve' || (client.statut as string) === 'perdu';
+              const ouvert = survol?.id === client.id;
+              const det = details[client.id];
+
+              return (
+                <div
+                  key={client.id}
+                  className={`${styles.ligne} ${ouvert ? styles.ligneOuverte : ''}`}
+                  style={clos ? { background: '#fbfcfe' } : undefined}
+                  onClick={() => onNavigate('fiche', client)}
+                  onMouseEnter={e => entrer(client.id, e.currentTarget)}
+                  onMouseLeave={sortir}
+                >
+                  <span className={styles.colClient}>
+                    <span className={styles.avatar} style={{ background: t.bg, color: t.fg, boxShadow: `inset 0 0 0 2px ${t.trait}` }}>
+                      {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span className={styles.nom} style={clos ? { color: '#6b7a90' } : undefined}>{client.prenom} {client.nom}</span>
+                      <span className={styles.ref}>{client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}</span>
+                    </span>
+                  </span>
+
+                  <span className={styles.colRech}>
+                    <span className={styles.rech} style={clos ? { color: '#93a1b4' } : undefined}>{phraseRecherche(client)}</span>
+                  </span>
+
+                  <span className={styles.colSect}>
+                    {villes.slice(0, 1).map(v => <span key={v} className={styles.ville}>📍 {v}</span>)}
+                    {villes.length > 1 && <span className={styles.villePlus}>+{villes.length - 1}</span>}
+                    {villes.length === 0 && <span className={styles.villePlus}>—</span>}
+                  </span>
+
+                  <span className={styles.colBud}>
+                    <span className={styles.budget} style={clos ? { color: '#8593a8' } : undefined}>{budgetCourt(client)}</span>
+                  </span>
+
+                  <span className={styles.colSig}>
+                    <span className={styles.signal} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
+                  </span>
+
+                  {/* ─── La carte de survol ─── */}
+                  {ouvert && (
+                    <div
+                      className={`${styles.fiche} ${survol?.sens === 'haut' ? styles.ficheHaut : ''}`}
+                      onMouseEnter={retenir}
+                      onMouseLeave={sortir}
+                    >
+                      <div className={styles.ficheTete}>
+                        <span className={styles.ficheAv}>{(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}</span>
+                        <span style={{ flexGrow: 1, minWidth: 0 }}>
+                          <span className={styles.ficheNom}>{client.prenom} {client.nom}</span>
+                          <span className={styles.ficheRef}>{client.reference} · suivi depuis {joursDepuis(client.created_at)} j</span>
+                        </span>
+                        <span className={styles.ficheStatut} style={{ color: t.fg, background: t.bg, border: `1px solid ${t.trait}` }}>
+                          {(statutBadge[client.statut]?.label || '').replace(/^[^ ]+ /, '').toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className={styles.ficheCorps}>
+                        <div className={styles.ficheChiffres}>
+                          <span className={styles.chiffre}><b>{st ? st.biens : '·'}</b><i>Proposés</i></span>
+                          <span className={styles.chiffre}><b>{st ? st.visites : '·'}</b><i>Visites</i></span>
+                          <span className={`${styles.chiffre} ${styles.chiffreOr}`}><b>{st ? st.offres : '·'}</b><i>Offres</i></span>
+                        </div>
+
+                        <div className={styles.ficheTrait} />
+                        <div className={styles.ficheRub}>Dernier échange</div>
+                        <div className={styles.ficheTxt}>
+                          {det === undefined ? 'Lecture…'
+                            : det.journal
+                              ? <>{det.journal.titre} <span style={{ color: '#a3b0c2' }}>· {ilYA(det.journal.date)}</span></>
+                              : 'Aucun échange noté pour l\'instant.'}
+                        </div>
+
+                        <div className={styles.ficheTrait} />
+                        <div className={styles.ficheRub}>Son espace acheteur</div>
+                        <div className={styles.ficheTxt}>
+                          {(client as any)._espaceOuvertLe
+                            ? <><span className={styles.pastilleVerte} />Ouvert {ilYA((client as any)._espaceOuvertLe)}{det && det.espaceOuvertures > 0 ? ` · ${det.espaceOuvertures} passage${det.espaceOuvertures > 1 ? 's' : ''}` : ''}</>
+                            : 'Jamais ouvert.'}
+                        </div>
+
+                        <div className={styles.ficheTrait} />
+                        <div className={styles.ficheDuo}>
+                          <span className={styles.ficheCase} style={st?.relance ? { background: sig.bg, borderColor: sig.color + '33' } : undefined}>
+                            <i style={st?.relance ? { color: sig.color } : undefined}>Relance</i>
+                            <b style={st?.relance ? { color: sig.color } : undefined}>
+                              {st?.relance
+                                ? (joursJusqua(st.relance.date) <= 0 ? "Aujourd'hui" : `Dans ${joursJusqua(st.relance.date)} j`)
+                                : 'Aucune'}
+                            </b>
+                          </span>
+                          <span className={styles.ficheCase}>
+                            <i>Mandat</i>
+                            <b>{client.mandat_date_expiration
+                              ? (joursJusqua(client.mandat_date_expiration) < 0 ? 'Expiré' : `${joursJusqua(client.mandat_date_expiration)} j restants`)
+                              : 'Sans mandat'}</b>
+                          </span>
+                        </div>
+
+                        <div className={styles.ficheTrait} />
+                        <div className={styles.ficheActions}>
+                          <button className={`${styles.ficheBtn} ${styles.ficheBtnFort}`}
+                            onClick={e => { e.stopPropagation(); onNavigate('fiche', client); }}>Ouvrir la fiche</button>
+                          {client.emails?.[0] && (
+                            <a className={styles.ficheBtn} href={`mailto:${client.emails[0]}`}
+                              onClick={e => e.stopPropagation()} title={client.emails[0]}>✉️</a>
+                          )}
+                          {client.telephones?.[0] && (
+                            <a className={styles.ficheBtn} href={`tel:${client.telephones[0].replace(/\s/g, '')}`}
+                              onClick={e => e.stopPropagation()} title={client.telephones[0]}>📞</a>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
-                  {/* Ligne 3 : villes uniquement */}
-                  {client.secteurs?.length > 0 && (() => {
-                    const villes = [...new Set(client.secteurs.map((s:string) => {
-                      const m = s.match(/\((.+?)\)$/);
-                      return m ? m[1].trim() : s;
-                    }))];
-                    return (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                        {villes.slice(0,4).map((v:any) => (
-                          <span key={v} style={{ fontSize: 11, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>📍 {v}</span>
-                        ))}
-                        {villes.length > 4 && <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center' }}>+{villes.length-4} autres</span>}
-                      </div>
-                    );
-                  })()}
                 </div>
-                <div className={styles.clientStats}>
-                  <div className={styles.stat}><div className={styles.statN}>—</div><div className={styles.statL}>Biens</div></div>
-                  <div className={styles.stat}><div className={styles.statN}>—</div><div className={styles.statL}>Visites</div></div>
-                  <div className={styles.stat}><div className={styles.statN}>{joursSuivi}j</div><div className={styles.statL}>Suivi</div></div>
-                </div>
-                <span className={styles.chevron}>›</span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
