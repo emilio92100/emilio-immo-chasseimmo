@@ -5,7 +5,7 @@ import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
-import ArretPicker from '@/components/shared/ArretPicker';
+import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
 
 /* Un critère n'est pas seulement « coché / pas coché » : il peut être
@@ -117,12 +117,13 @@ const TYPES_BIEN = [
    « Étage » prenaient toute la largeur, le reste se serrait, et rien ne
    s'alignait. */
 const CRIT_CHIP: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.08)',
-  borderRadius: 10, padding: '7px 13px', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.82)',
+  display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.72)',
+  border: '1px solid #efe3c6', borderRadius: 10, padding: '7px 13px',
+  fontSize: 13, fontWeight: 600, color: '#6b6045',
 };
 const CRIT_CHIP_FORT: React.CSSProperties = {
-  ...CRIT_CHIP, background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.16)',
-  fontSize: 14.5, fontWeight: 700, color: '#fff',
+  ...CRIT_CHIP, background: '#ffffff', border: '1px solid #e3d3ab',
+  fontSize: 14.5, fontWeight: 800, color: '#1a2332',
 };
 
 /* « minimum » en toutes lettres : « min » se confondait avec le chiffre. */
@@ -1708,15 +1709,15 @@ Emilio Immobilier
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Le bandeau : le client et son enveloppe */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#fff', background: 'linear-gradient(105deg, #1a2332 0%, #27405f 55%, #35547a 100%)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#1a2332', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
                     {cr.type_bien && <span style={CRIT_CHIP_FORT}>🏡 {cr.type_bien}</span>}
                     {cr.urgence && <span style={CRIT_CHIP}>⏱️ {texteChoix(URGENCES, cr.urgence)}</span>}
                     {cr.financement && <span style={CRIT_CHIP}>💳 {texteChoix(FINANCEMENTS, cr.financement)}</span>}
                     {cr.apport != null && <span style={CRIT_CHIP}>💰 Apport {cr.apport.toLocaleString('fr-FR')} €</span>}
                     <span style={{ flexGrow: 1 }} />
                     <span style={{ textAlign: 'right' }}>
-                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: 1.1 }}>Budget</span>
-                      <span style={{ display: 'block', fontSize: 25, fontWeight: 800, color: '#e0c479', letterSpacing: -0.6, marginTop: 2 }}>
+                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1.1 }}>Budget</span>
+                      <span style={{ display: 'block', fontSize: 25, fontWeight: 800, color: '#a9822f', letterSpacing: -0.6, marginTop: 2 }}>
                         {cr.budget_min && cr.budget_max ? `${(cr.budget_min / 1000).toFixed(0)}–${(cr.budget_max / 1000).toFixed(0)} k€`
                           : cr.budget_max ? `Jusqu'à ${(cr.budget_max / 1000).toFixed(0)} k€`
                             : cr.budget_min ? `À partir de ${(cr.budget_min / 1000).toFixed(0)} k€`
@@ -1767,17 +1768,37 @@ Emilio Immobilier
                               {ICO(<><path d="M7.5 4h9a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /><path d="M4.5 10h15" /><path d="M8.5 16.5 6.5 20" /><path d="M15.5 16.5l2 3.5" /></>, '#15803d')}
                               <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.9 }}>Les transports</span>
                             </div>
-                            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                              {arrets.length > 0 ? arrets.map((a: any, k: number) => (
-                                <div key={(a.nom || '') + k} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                                  <span style={{ flexGrow: 1, minWidth: 0 }}>
-                                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1a2332' }}>{a.nom}</span>
-                                    {a.ville && <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', fontWeight: 600 }}>{a.ville}</span>}
-                                  </span>
-                                  <span style={{ flexShrink: 0, background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#475569' }}>{a.minutes || 10} min</span>
+                            <div style={{ padding: '11px 14px 13px' }}>
+                              <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 10 }}>Temps de marche accepté :</div>
+                              {arrets.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                                  {arrets.map((a: any, k: number) => (
+                                    <div key={(a.nom || '') + k} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                                      <span style={{ flexShrink: 0, width: 46, height: 46, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #86e0a8', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                                        <span style={{ fontSize: 16, fontWeight: 800, color: '#15803d' }}>{a.minutes || cr.transport_minutes || 10}</span>
+                                        <span style={{ fontSize: 8, fontWeight: 800, color: '#4f9d6b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>min</span>
+                                      </span>
+                                      <span style={{ flexGrow: 1, minWidth: 0 }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                                          {(a.lignes || []).slice(0, 4).map((l: string) => <PastilleArret key={l} id={l} t={22} />)}
+                                          <span style={{ fontSize: 14, fontWeight: 800, color: '#1a2332' }}>{a.nom}</span>
+                                        </span>
+                                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 3 }}>à pied{a.ville ? ` · ${a.ville}` : ''}</span>
+                                      </span>
+                                    </div>
+                                  ))}
                                 </div>
-                              )) : (
-                                <div style={{ fontSize: 14, fontWeight: 700, color: '#1a2332' }}>{cr.transport_minutes} min à pied maximum</div>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                                  <span style={{ flexShrink: 0, width: 46, height: 46, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #86e0a8', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                                    <span style={{ fontSize: 16, fontWeight: 800, color: '#15803d' }}>{cr.transport_minutes}</span>
+                                    <span style={{ fontSize: 8, fontWeight: 800, color: '#4f9d6b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>min</span>
+                                  </span>
+                                  <span style={{ minWidth: 0 }}>
+                                    <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: '#1a2332' }}>à pied maximum</span>
+                                    <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 3 }}>d'un transport en commun</span>
+                                  </span>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -3457,18 +3478,58 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
-              {biens.length > 0 && (
-                <div>
-                  <label className={styles.lbl}>🏠 Concerne un bien <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label>
-                  <select className={styles.inp} value={actionF.bien_id} onChange={e => setActionF(f => ({ ...f, bien_id: e.target.value }))}>
-                    <option value="">— Aucun (suivi général) —</option>
-                    {biens.map(b => (
-                      <option key={b.id} value={b.id}>{(b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`)}{b.prix_acquereur ? ` · ${b.prix_acquereur.toLocaleString('fr-FR')}€` : ''}</option>
-                    ))}
-                  </select>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>💡 Ex : « Appel — visite non aboutie » rattaché au bien concerné, pour un meilleur suivi.</div>
-                </div>
-              )}
+              {(() => {
+                /* Une action se rattache à ce que le client a vu : seuls les biens
+                   déjà présentés sont proposés ici. Photo, prix et statut, pour
+                   reconnaître le bien sans avoir à lire une ligne de texte brut. */
+                const proposes = biens.filter(b => b.etape === 'presente');
+                if (proposes.length === 0) return null;
+                const aucun = !actionF.bien_id;
+                return (
+                  <div>
+                    <label className={styles.lbl}>🏠 Concerne un bien <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel · {proposes.length} présenté{proposes.length > 1 ? 's' : ''})</span></label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 252, overflowY: 'auto', border: '1px solid #e3e8f0', borderRadius: 10, padding: 8, background: '#fafbfc' }}>
+
+                      <button type="button" onClick={() => setActionF(f => ({ ...f, bien_id: '' }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, border: `1.5px solid ${aucun ? '#c9a84c' : '#e3e8f0'}`, background: aucun ? '#faf6ee' : 'white', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>
+                        <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: '50%', border: `2px solid ${aucun ? '#c9a84c' : '#cbd5e1'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {aucun && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#c9a84c' }} />}
+                        </span>
+                        <span style={{ width: 38, height: 38, borderRadius: 6, background: '#eef2f7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>💬</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: '#1a2332' }}>Aucun bien en particulier</span>
+                          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginTop: 1 }}>Suivi général du dossier</span>
+                        </span>
+                      </button>
+
+                      {proposes.map(b => {
+                        const actif = actionF.bien_id === b.id;
+                        const badge = BADGES[b.badge_retour] || BADGES.propose;
+                        return (
+                          <button type="button" key={b.id} onClick={() => setActionF(f => ({ ...f, bien_id: b.id }))}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#faf6ee' : 'white', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>
+                            <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: '50%', border: `2px solid ${actif ? '#c9a84c' : '#cbd5e1'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {actif && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#c9a84c' }} />}
+                            </span>
+                            <span style={{ width: 38, height: 38, borderRadius: 6, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, overflow: 'hidden', flexShrink: 0 }}>
+                              {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
+                            </span>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien || 'Bien'} — ${b.ville || '—'}`}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                <span style={{ fontSize: 11, color: '#64748b' }}>{[b.surface && `${b.surface} m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ') || '—'}</span>
+                                <span style={{ fontSize: 10.5, fontWeight: 700, color: badge.color, background: badge.bg, border: `1px solid ${badge.color}2e`, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{badge.label}</span>
+                              </span>
+                            </span>
+                            {b.prix_acquereur ? <span style={{ fontWeight: 700, fontSize: 13, color: '#c9a84c', flexShrink: 0 }}>{b.prix_acquereur.toLocaleString('fr-FR')} €</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>💡 Ex : « Appel — visite non aboutie » rattaché au bien concerné, pour un meilleur suivi.</div>
+                  </div>
+                );
+              })()}
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button>
