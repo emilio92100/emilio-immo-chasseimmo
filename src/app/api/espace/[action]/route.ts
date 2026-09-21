@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
  *   POST /api/espace/retour    { token, bien_id, avis, commentaire }
  *   POST /api/espace/criteres  { token, criteres }
  *   POST /api/espace/message   { token, texte }
+ *   POST /api/espace/rappel    { token, creneau }
  *   POST /api/espace/partage   { token, bien_id, destinataire }
  *
  * Chaque appel revérifie le lien : sans lui, rien ne s'écrit.
@@ -287,6 +288,51 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           note: 'Message depuis l’espace : ' + texte.slice(0, 180),
         });
         await evt('message', texte.slice(0, 300));
+        return NextResponse.json({ ok: true });
+      }
+
+      /* ── il demande à être rappelé ──────────────────────────── */
+      case 'rappel': {
+        const CRENEAUX: Record<string, string> = {
+          matin: 'le matin (8h – 12h)',
+          apres_midi: 'l’après-midi (12h – 18h)',
+          soir: 'en fin de journée (18h – 20h)',
+        };
+        const creneau = typeof body.creneau === 'string' ? body.creneau : '';
+        const quand = CRENEAUX[creneau];
+        if (!quand) return NextResponse.json({ ok: false, error: 'créneau inconnu' }, { status: 400 });
+
+        /* Garde-fou : une demande par jour et par lien suffit. Un client qui
+           reclique n'en fait pas une deuxième, il croit que la première n'est
+           pas partie — c'est ce que lui dit l'écran de retour. */
+        const depuis24h = new Date(Date.now() - 86_400_000).toISOString();
+        const { count } = await supabase.from('journal')
+          .select('id', { count: 'exact', head: true })
+          .eq('recherche_id', recherche.id).eq('type', 'demande_rappel')
+          .gte('created_at', depuis24h);
+        if ((count || 0) >= 1) {
+          return NextResponse.json({ ok: false, error: 'demande déjà enregistrée' }, { status: 429 });
+        }
+
+        await supabase.from('journal').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'demande_rappel', titre: '📞 Demande de rappel, depuis son espace',
+          description: `Souhaite être rappelé ${quand}.`, metadata: { creneau },
+        });
+
+        /* Une demande de rappel n'attend pas demain : l'échéance est du jour,
+           donc elle sort tout de suite sur le tableau de bord et dans Relances.
+           Colonnes réelles : date_echeance / note / statut « en_attente ». */
+        await supabase.from('relances').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'rappel_client', statut: 'en_attente',
+          date_echeance: new Date().toISOString(),
+          note: `Demande de rappel depuis l’espace — ${quand}.`,
+        });
+
+        /* Le type reste « message » côté espace_evenements : cette table a une
+           liste de types fermée, et un rappel est bien un message du client. */
+        await evt('message', `Demande de rappel — ${quand}`);
         return NextResponse.json({ ok: true });
       }
 
