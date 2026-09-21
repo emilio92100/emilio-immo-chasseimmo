@@ -106,11 +106,11 @@ function venantDuClient(type: string, titre: string) {
 }
 type TriCle = 'nom' | 'modif' | 'creation' | 'budget';
 type Tri = { cle: TriCle; sens: 'asc' | 'desc' };
-const TRIS: { cle: TriCle; nom: string; note: string; sensDefaut: 'asc' | 'desc' }[] = [
-  { cle: 'nom',      nom: 'Nom du client',        note: 'de A à Z',                  sensDefaut: 'asc' },
-  { cle: 'modif',    nom: 'Dernière modification', note: 'le plus récent en haut',   sensDefaut: 'desc' },
-  { cle: 'creation', nom: 'Date de création',      note: 'le dernier arrivé en haut', sensDefaut: 'desc' },
-  { cle: 'budget',   nom: 'Budget',                note: 'du plus élevé au plus bas', sensDefaut: 'desc' },
+const TRIS: { cle: TriCle; nom: string; court: string; note: string; sensDefaut: 'asc' | 'desc' }[] = [
+  { cle: 'nom',      nom: 'Nom du client',         court: 'Nom',            note: 'de A à Z',                  sensDefaut: 'asc' },
+  { cle: 'modif',    nom: 'Dernière modification', court: 'Dernière modif.', note: 'le plus récent en haut',   sensDefaut: 'desc' },
+  { cle: 'creation', nom: 'Date de création',      court: 'Création',       note: 'le dernier arrivé en haut', sensDefaut: 'desc' },
+  { cle: 'budget',   nom: 'Budget',                court: 'Budget',         note: 'du plus élevé au plus bas', sensDefaut: 'desc' },
 ];
 
 type DetailDossier = {
@@ -639,11 +639,15 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
               Client
               {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
-              <button className={`${styles.triBtn} ${tri.cle !== 'budget' ? styles.triBtnActif : ''}`}
+              {/* Le bouton dit l'ordre en cours, pas le mot « Classer » : on veut
+                  savoir pourquoi la liste est dans cet ordre sans ouvrir le menu. */}
+              <button className={`${styles.triBtn} ${styles.triBtnActif}`}
                 onClick={() => setMenuTri(v => !v)} title="Choisir l'ordre de la liste">
-                <Ico t={11} c={tri.cle !== 'budget' ? '#ffffff' : '#8593a8'}
-                  d={<><path d="M7 4v16" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h6" /><path d="M14 17h6" /></>} />
-                Classer
+                <Ico t={11} c="#ffffff"
+                  d={tri.sens === 'asc'
+                    ? <><path d="M7 20V4" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h5" /><path d="M14 17h3" /></>
+                    : <><path d="M7 4v16" /><path d="M4 16l3 4 3-4" /><path d="M14 7h3" /><path d="M14 12h5" /><path d="M14 17h6" /></>} />
+                {TRIS.find(t => t.cle === tri.cle)?.court || 'Classer'}
               </button>
               {menuTri && (
                 <span className={styles.triMenu}>
