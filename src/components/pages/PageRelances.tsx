@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { delaiRelance, echeanceDans } from '@/lib/relances';
+import { signalerMaj } from '@/lib/intentions';
 import ChoixDate from '@/components/shared/ChoixDate';
 import styles from './Page.module.css';
 
@@ -26,6 +27,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       .order('date_echeance', { ascending: true });
     setRelances(data || []);
     setLoading(false);
+    signalerMaj();
   }
 
   async function cloturer(id: string) {
