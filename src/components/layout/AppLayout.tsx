@@ -11,7 +11,6 @@ import PageVisites from '@/components/pages/PageVisites';
 import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
-import PageRecherche from '@/components/pages/PageRecherche';
 import styles from './AppLayout.module.css';
 import type { Client } from '@/lib/supabase';
 
@@ -24,7 +23,7 @@ import type { Client } from '@/lib/supabase';
  * L'URL reste volontairement une query string (`/?page=fiche&client=<id>`) :
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
-const PAGES = ['dashboard', 'clients', 'fiche', 'recherche', 'visites',
+const PAGES = ['dashboard', 'clients', 'fiche', 'visites',
   'relances', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
@@ -123,7 +122,6 @@ export default function AppLayout() {
     switch (activePage) {
       case 'dashboard':  return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
-      case 'recherche':  return <PageRecherche onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
       case 'mail':       return <PageMail onNavigate={handleNavigate} />;
