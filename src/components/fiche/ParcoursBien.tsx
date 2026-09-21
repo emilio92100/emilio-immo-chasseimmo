@@ -815,7 +815,7 @@ export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
 
       <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Lgn icone="🎯" titre="La base" couleur="#3b82f6"
-          texte="Les critères durs de la recherche : budget, surface, nombre de chambres, secteur. Un bien qui n'en coche pas un ne remonte pas jusqu'ici." />
+          texte="Les critères fermes : chambres, secteur, type de bien, et tout ce qui est marqué indispensable. Un bien qui n'en coche pas un ne remonte pas jusqu'ici. Le budget et la surface, eux, s'élargissent un peu quand ça vaut le coup — l'écart est alors dit en point d'attention." />
         {!!p.points_forts?.length && (
           <Lgn icone="✓" titre="Ce qui rapporte des points" couleur="#15803d" texte={p.points_forts.join(' · ')} />
         )}
@@ -829,7 +829,7 @@ export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
           {[
             { min: '85+', t: 'Coche tout', c: '#10b981' },
             { min: '70–85', t: 'Un point accroche', c: OR },
-            { min: '< 70', t: 'Non proposé', c: '#cbd5e1' },
+            { min: '< 70', t: 'Un écart assumé', c: '#cbd5e1' },
           ].map(x => (
             <div key={x.min} style={{ flex: 1, textAlign: 'center', background: 'white', border: `1px solid ${(score >= 85 && x.min === '85+') || (score >= 70 && score < 85 && x.min === '70–85') ? x.c : BORD}`, borderRadius: 11, padding: '9px 6px' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: x.c }}>{x.min}</div>
