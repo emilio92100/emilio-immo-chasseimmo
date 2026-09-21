@@ -3,8 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import type { Client, StatutClient } from '@/lib/supabase';
-import SecteurPicker from '@/components/shared/SecteurPicker';
 import styles from './Clients.module.css';
+import {
+  BasculeCriteres, classesCrit, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
+  etapesCriteres, FriseCriteres, lireModeCrit,
+} from '@/components/shared/CriteresRecherche';
+import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
+import { prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT } from '@/lib/intentions';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -15,11 +20,18 @@ const STATUTS = [
   { key: 'perdu',       label: 'Perdus',     color: '#ef4444' },
 ];
 
-const CHALEURS = [
-  { key: 'tres_chaud', label: '🔥 Très chaud' },
-  { key: 'interesse',  label: '👍 Intéressé' },
-  { key: 'tiede',      label: '😐 Tiède' },
-  { key: 'froid',      label: '❄️ Froid' },
+/* La « chaleur du client » a été retirée : elle se remplissait à la création
+   et n'était plus jamais lue — ni affichée dans la liste, ni dans la fiche,
+   ni utilisée par la veille. Le statut du dossier dit déjà où on en est. */
+
+/* Les cinq états d'un dossier, avec ce qu'ils veulent dire. Mêmes libellés
+   que le menu de statut de la fiche : un seul vocabulaire. */
+const ETATS_NOUVEAU: { cle: string; nom: string; quand: string; point: string }[] = [
+  { cle: 'prospect',    nom: 'Prospect',    quand: 'Premier contact, rien de signé', point: '#8b5cf6' },
+  { cle: 'actif',       nom: 'Actif',       quand: 'Recherche en cours',             point: '#10b981' },
+  { cle: 'suspendu',    nom: 'Suspendu',    quand: 'En pause, à reprendre plus tard', point: '#f59e0b' },
+  { cle: 'bien_trouve', nom: 'Bien trouvé', quand: 'Acquisition faite, dossier clos', point: '#3b82f6' },
+  { cle: 'perdu',       nom: 'Perdu',       quand: 'Ne cherche plus avec nous',       point: '#ef4444' },
 ];
 
 const statutBadge: Record<string, { label: string; color: string; bg: string }> = {
@@ -30,27 +42,16 @@ const statutBadge: Record<string, { label: string; color: string; bg: string }> 
   perdu:       { label: '✗ Perdu',      color: '#ef4444', bg: '#fef2f2' },
 };
 
+/* Le client et ce qui nous lie à lui. Les critères de recherche vivent à
+   part, dans le formulaire partagé avec la fiche. */
 const initForm = {
   prenom: '', nom: '',
   adresse_rue: '', adresse_cp: '', adresse_ville: '',
   email1: '', email2: '', tel1: '', tel2: '',
-  statut: 'prospect' as StatutClient, chaleur: 'tiede',
+  statut: 'prospect' as StatutClient,
   statut_occupation: '', bien_actuel_type: '', bien_actuel_surface: '',
   bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
   bien_actuel_adresse: '', bien_actuel_meme_adresse: true,
-  type_bien: [] as string[],
-  budget_min: '', budget_max: '',
-  surface_min: '', surface_max: '',
-  nb_pieces_min: '', nb_pieces_max: '',
-  chambres_min: '',
-  secteurs: [] as string[],
-  etage_min: '', etage_max: '',
-  rdc_exclu: false, dernier_etage: false,
-  dpe_max: '', annee_min: '',
-  parking: false, cave: false, balcon: false, terrasse: false,
-  jardin: false, ascenseur: false, gardien: false,
-  etat_souhaite: '', exposition: [] as string[], surface_sejour_min: '',
-  urgence: '', financement: '', apport: '',
   sans_mandat: false,
   mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '3,5% TTC',
   notes: '',
@@ -322,12 +323,34 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(initForm);
+  const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
   const [step, setStep] = useState(0);
+  /* Les critères se remplissent d'un bloc ou catégorie par catégorie — le
+     choix se retient d'un écran à l'autre, comme dans la fiche. */
+  const [modeCrit, setModeCrit] = useState<ModeCrit>('tout');
+  const [etapeCrit, setEtapeCrit] = useState(0);
+  const [sensCrit, setSensCrit] = useState<1 | -1>(1);
   const [adrSug, setAdrSug] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  function openModal() { setForm(initForm); setStep(0); setError(''); setAdrSug([]); setShowModal(true); }
+  function openModal() {
+    setForm(initForm); setCrit(CRIT_VIDE);
+    setStep(0); setEtapeCrit(0); setSensCrit(1);
+    setError(''); setAdrSug([]); setShowModal(true);
+  }
+
+  useEffect(() => { setModeCrit(lireModeCrit()); }, []);
+
+  /* « + Nouveau client » de la barre du haut : il ramenait seulement sur cette
+     page. Il ouvre maintenant le formulaire — qu'on arrive d'ailleurs (le
+     drapeau) ou qu'on soit déjà ici (l'événement). */
+  useEffect(() => {
+    if (prendreIntentionNouveauClient()) openModal();
+    const ouvrir = () => openModal();
+    window.addEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
+    return () => window.removeEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
+  }, []);
 
   // Autocomplétion d'adresse via l'API officielle adresse.data.gouv.fr
   async function searchAdresse(q: string) {
@@ -496,14 +519,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       const reference = await genererReference();
       const emails = [form.email1, form.email2].filter(Boolean);
       const telephones = [form.tel1, form.tel2].filter(Boolean);
-      const secteurs = form.secteurs;
       const adresse = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-      const exposition = form.exposition.length ? form.exposition.join(', ') : null;
+      const ent = (v: string) => (v ? parseInt(v) : null);
 
       const { data, error: err } = await supabase.from('clients').insert({
         reference, prenom: form.prenom || '', nom: form.nom || '',
         adresse: adresse || null,
-        emails, telephones, statut: form.statut, chaleur: form.chaleur,
+        emails, telephones, statut: form.statut,
         statut_occupation: form.statut_occupation || null,
         bien_actuel_a_vendre: form.bien_actuel_a_vendre,
         bien_actuel_type: form.bien_actuel_a_vendre ? (form.bien_actuel_type || null) : null,
@@ -518,44 +540,51 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       if (err) throw err;
       if (data) {
         // Créer la 1ère recherche du client avec tous les critères
+        /* Exactement les colonnes qu'écrit « Enregistrer » depuis la fiche :
+           une recherche créée ici et une recherche modifiée là-bas sont la
+           même chose. C'est la raison d'être du formulaire partagé. */
         await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
-          active: true,
-          type_bien: form.type_bien.length ? form.type_bien.join(', ') : null,
-          budget_min: form.budget_min ? parseInt(form.budget_min) : null,
-          budget_max: form.budget_max ? parseInt(form.budget_max) : null,
-          surface_min: form.surface_min ? parseInt(form.surface_min) : null,
-          surface_max: form.surface_max ? parseInt(form.surface_max) : null,
-          nb_pieces_min: form.nb_pieces_min ? parseInt(form.nb_pieces_min) : null,
-          nb_pieces_max: form.nb_pieces_max ? parseInt(form.nb_pieces_max) : null,
-          chambres_min: form.chambres_min ? parseInt(form.chambres_min) : null,
-          surface_sejour_min: form.surface_sejour_min ? parseInt(form.surface_sejour_min) : null,
-          secteurs,
-          etage_min: form.etage_min ? parseInt(form.etage_min) : null,
-          etage_max: form.etage_max ? parseInt(form.etage_max) : null,
-          rdc_exclu: form.rdc_exclu, dernier_etage: form.dernier_etage,
-          dpe_max: form.dpe_max || null,
-          annee_construction_min: form.annee_min ? parseInt(form.annee_min) : null,
-          etat_souhaite: form.etat_souhaite || null,
-          exposition_souhaitee: exposition,
-          parking: form.parking, cave: form.cave, balcon: form.balcon,
-          terrasse: form.terrasse, jardin: form.jardin,
-          ascenseur: form.ascenseur, gardien: form.gardien,
-          urgence: form.urgence || null,
-          financement: form.financement || null,
-          apport: form.apport ? parseInt(form.apport) : null,
+          active: form.statut === 'actif',
+          type_bien: crit.types_bien.length ? crit.types_bien.join(', ') : null,
+          budget_min: ent(crit.budget_min), budget_max: ent(crit.budget_max),
+          surface_min: ent(crit.surface_min), surface_max: ent(crit.surface_max),
+          nb_pieces_min: ent(crit.nb_pieces_min), nb_pieces_max: ent(crit.nb_pieces_max),
+          chambres_min: ent(crit.chambres_min),
+          surface_sejour_min: ent(crit.surface_sejour_min),
+          secteurs: crit.secteurs,
+          transport_minutes: ent(crit.transport_minutes),
+          transport_lignes: crit.transport_lignes,
+          transport_arrets: crit.transport_arrets,
+          etage_min: ent(crit.etage_min), etage_max: ent(crit.etage_max),
+          etage_max_sans_ascenseur: ent(crit.etage_max_sans_ascenseur),
+          rdc_exclu: crit.rdc_exclu, dernier_etage: crit.dernier_etage,
+          dpe_max: crit.dpe_max || null,
+          annee_construction_min: ent(crit.annee_min),
+          etat_souhaite: crit.etat_souhaite || null,
+          exposition_souhaitee: crit.exposition_souhaitee || null,
+          cuisine_type: crit.cuisine_type || null,
+          exterieur_surface_min: ent(crit.exterieur_surface_min),
+          parking: crit.parking, cave: crit.cave, balcon: crit.balcon,
+          terrasse: crit.terrasse, jardin: crit.jardin,
+          ascenseur: crit.ascenseur, gardien: crit.gardien,
+          interphone: crit.interphone, digicode: crit.digicode,
+          exigences: crit.exigences,
+          urgence: crit.urgence || null,
+          financement: crit.financement || null,
+          apport: ent(crit.apport),
           sans_mandat: form.sans_mandat,
           mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
-          mandat_duree: form.sans_mandat ? null : (form.mandat_duree ? parseInt(form.mandat_duree) : null),
+          mandat_duree: form.sans_mandat ? null : ent(form.mandat_duree),
           mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
-          notes: form.notes || null,
+          notes: crit.notes || null,
         });
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}`);
       }
       setShowModal(false);
-      setForm(initForm);
-      fetchClients();
+      setForm(initForm); setCrit(CRIT_VIDE);
+      fetchClients(); signalerMaj();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur lors de la création');
     }
@@ -865,287 +894,268 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   );
       })()}
 
-      {/* MODAL NOUVEAU CLIENT — assistant en étapes */}
+      {/* ═══ NOUVEAU CLIENT ═══════════════════════════════════════════════
+          Trois temps : qui est ce client, ce qu'il cherche, ce qui nous lie.
+          Le deuxième reprend, à l'identique, le formulaire de critères de la
+          fiche — il n'y a plus deux versions à tenir à jour. */}
       {showModal && (() => {
-        const STEPS = ['Identité', 'Recherche', 'Profil & mandat'];
-        const canNext = true;
-        const expoOptions = [
-          { k: 'sud', l: 'Sud' }, { k: 'est', l: 'Est' }, { k: 'ouest', l: 'Ouest' },
-          { k: 'nord', l: 'Nord' }, { k: 'traversant', l: 'Traversant' },
+        const GRANDES = [
+          { ico: '👤', nom: 'Le client',    sous: 'Qui il est, comment le joindre' },
+          { ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
+          { ico: '📋', nom: 'Le mandat',    sous: 'Ce qui vous lie, vos notes' },
         ];
-        const toggleExpo = (k: string) =>
-          setForm(f => ({ ...f, exposition: f.exposition.includes(k) ? f.exposition.filter(x => x !== k) : [...f.exposition, k] }));
+        const etapesCrit = etapesCriteres(crit, setCrit);
+        const nbC = etapesCrit.length;
+        const iC = Math.min(Math.max(etapeCrit, 0), nbC - 1);
+        const surCriteres = step === 1 && modeCrit === 'etapes';
+        const nomRempli = !!(form.prenom.trim() || form.nom.trim());
+
+        const allerC = (n: number) => { setSensCrit(n > iC ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbC - 1, n))); };
+        const changerMode = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
+        const allerGrande = (n: number) => { setError(''); setEtapeCrit(0); setSensCrit(1); setStep(Math.max(0, Math.min(2, n))); };
+
+        /* « Continuer » avance d'un cran — un cran, c'est une sous-étape des
+           critères quand on les remplit une par une, sinon une grande étape. */
+        function continuer() {
+          if (surCriteres && iC < nbC - 1) { allerC(iC + 1); return; }
+          allerGrande(step + 1);
+        }
+        function revenir() {
+          if (surCriteres && iC > 0) { allerC(iC - 1); return; }
+          if (step === 0) { setShowModal(false); return; }
+          allerGrande(step - 1);
+        }
+        const dernierCran = step === 2;
 
         return (
           <div className={styles.modalOverlay} style={{ animation: 'crmFadeIn 0.2s ease' }}>
             <style>{`
               @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
               @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-              @keyframes crmSlideIn { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+              @keyframes ncEntre { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
               .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-color: #fff !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9a84c' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding: 11px 38px 11px 14px !important; border-radius: 12px !important; border: 1.5px solid #e3e8f0 !important; font-size: 13.5px !important; font-weight: 600; color: #1a2332; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
               .crm-select:hover { border-color: #cbd5e1 !important; }
               .crm-select:focus { border-color: #c9a84c !important; background-color: #fff !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.12); outline: none; }
+
+              /* Le rail des trois temps */
+              .nc-rail { display: flex; gap: 0; margin-top: 18px; }
+              .nc-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0 0 2px; font-family: inherit; text-align: left; cursor: pointer; }
+              .nc-pas:disabled { cursor: default; }
+              .nc-barre { height: 4px; border-radius: 4px; background: #e3e8f0; margin-right: 6px; transition: background .3s ease; }
+              .nc-pas[data-etat="fait"] .nc-barre { background: #c9a84c; }
+              .nc-pas[data-etat="ici"] .nc-barre { background: #1a2332; }
+              .nc-lig { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; }
+              .nc-lig b { font-size: 11.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
+              .nc-pas[data-etat="fait"] .nc-lig b { color: #a9822f; }
+              .nc-pas[data-etat="ici"] .nc-lig b { color: #1a2332; }
+              .nc-lig i { font-style: normal; font-size: 11.5px; color: #b4bfcd; }
+              @media (max-width: 720px) { .nc-lig i { display: none; } }
+
+              .nc-corps { animation: ncEntre .26s cubic-bezier(.22,.9,.3,1) both; }
+
+              /* Le statut : cinq cartes plutôt qu'une liste déroulante — on voit
+                 ce que chaque état veut dire au lieu de le deviner. */
+              .nc-etats { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 8px; }
+              .nc-etat { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #e3e8f0; background: #fff; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .14s, background .14s, transform .12s; }
+              .nc-etat:hover { transform: translateY(-1px); }
+              .nc-etat[data-on="true"] { border-color: #1a2332; background: #f8fafc; }
+              .nc-etat u { text-decoration: none; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+              .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: #1a2332; }
+              .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
             `}</style>
-            <div className={styles.modal} style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', maxHeight: '92vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
 
-              {/* En-tête */}
-              <div style={{ padding: '22px 26px 0', position: 'relative' }}>
-                <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 18, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
-                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a2332' }}>Nouveau client</h2>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>Mandat de recherche acquéreur</div>
+            <div className={styles.modal} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
 
-                {/* Stepper */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-                  {STEPS.map((s, i) => (
-                    <div key={s} style={{ flex: 1 }}>
-                      <div style={{ height: 4, borderRadius: 4, background: i <= step ? '#1a2332' : '#e3e8f0', transition: 'background 0.25s' }} />
-                      <div style={{ fontSize: 11, fontWeight: 700, marginTop: 6, color: i === step ? '#1a2332' : '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{i + 1}. {s}</div>
-                    </div>
+              {/* ── En-tête ── */}
+              <div style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
+                <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
+                  <div style={{ flexGrow: 1, minWidth: 0 }}>
+                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a2332', letterSpacing: -0.4 }}>
+                      {nomRempli ? `${form.prenom} ${form.nom}`.trim() : 'Nouveau client'}
+                    </h2>
+                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[step].sous}</div>
+                  </div>
+                  {step === 1 && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
+                </div>
+
+                <div className="nc-rail">
+                  {GRANDES.map((g, i) => (
+                    <button key={g.nom} type="button" className="nc-pas"
+                      data-etat={i < step ? 'fait' : i === step ? 'ici' : 'avenir'}
+                      disabled={i > step && !nomRempli}
+                      onClick={() => allerGrande(i)}>
+                      <div className="nc-barre" />
+                      <div className="nc-lig"><b>{g.ico} {g.nom}</b>{i === step && <i>{i + 1}/3</i>}</div>
+                    </button>
                   ))}
                 </div>
+
+                {/* La frise porte son propre retrait : on annule celui du bloc. */}
+                {surCriteres && <div style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
               </div>
 
-              {/* Corps défilant */}
-              <div style={{ padding: '22px 26px', overflowY: 'auto', flex: 1 }}>
+              {/* ── Corps ── */}
+              <div style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
                 {error && <div className={styles.errorBox} style={{ marginBottom: 16 }}>{error}</div>}
 
-                <div key={step} style={{ animation: 'crmSlideIn 0.25s ease' }}>
-                {/* ÉTAPE 1 — IDENTITÉ & CONTACT */}
-                {step === 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                    <Bloc titre="👤 Identité">
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
-                      </div>
-                      <div className={styles.formGroup} style={{ position: 'relative' }}>
-                        <label className={styles.label}>Adresse actuelle</label>
-                        <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="Commencez à taper : 12 rue de la Paix..." autoComplete="off" />
-                        {adrSug.length > 0 && (
-                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #e3e8f0', borderRadius: 10, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 30, overflow: 'hidden' }}>
-                            {adrSug.map((f, i) => (
-                              <div key={i} onClick={() => pickAdresse(f)} style={{ padding: '10px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = 'white')}>{f.properties.label}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} placeholder="75002" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} placeholder="Paris" /></div>
-                      </div>
-                    </Bloc>
+                <div key={`${step}-${surCriteres ? iC : 'x'}`} className="nc-corps">
 
-                    <Bloc titre="📞 Contact">
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Email principal</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="sophie@gmail.com" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Email secondaire</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="s.martin@work.fr" /></div>
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Téléphone principal</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Téléphone secondaire</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="06 98 76 54 32" /></div>
-                      </div>
-                    </Bloc>
-
-                    <Bloc titre="🔥 Suivi commercial">
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Statut</label>
-                          <select className={`${styles.input} crm-select`} value={form.statut} onChange={e => setForm({ ...form, statut: e.target.value as StatutClient })}>
-                            <option value="prospect">🟣 Prospect</option>
-                            <option value="actif">🟢 Actif</option>
-                            <option value="suspendu">⏸️ Suspendu</option>
-                          </select>
+                  {/* ═══ 1 · LE CLIENT ═══ */}
+                  {step === 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <Bloc titre="👤 Identité">
+                        <div className={styles.formRow}>
+                          <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" autoFocus /></div>
+                          <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
                         </div>
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Chaleur client</label>
-                          <select className={`${styles.input} crm-select`} value={form.chaleur} onChange={e => setForm({ ...form, chaleur: e.target.value })}>
-                            {CHALEURS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </Bloc>
-
-                    <Bloc titre="🏡 Situation de logement">
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>Statut d'occupation actuel</label>
-                        <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
-                          <option value="">Non précisé</option>
-                          <option value="proprietaire">🔑 Propriétaire</option>
-                          <option value="locataire">🏠 Locataire</option>
-                          <option value="heberge">👨‍👩‍👧 Hébergé</option>
-                          <option value="autre">Autre</option>
-                        </select>
-                      </div>
-                      {/* Bien à vendre — indépendant du statut (locataire peut avoir un bien à vendre ailleurs) */}
-                      <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c')}>{form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Projet de vente / bien à vendre (mandat potentiel)</button>
-                      {form.bien_actuel_a_vendre && (
-                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-                          <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 700 }}>💡 Mandat de vente potentiel si vous lui trouvez son achat</div>
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} placeholder="Appartement 3P" /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} placeholder="65" /></div>
-                          </div>
-                          <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} placeholder="450000" /></div>
-                          <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9')}>{form.bien_actuel_meme_adresse ? '✓ ' : ''}📍 Bien à la même adresse que le contact</button>
-                          {!form.bien_actuel_meme_adresse && (
-                            <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à vendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                        <div className={styles.formGroup} style={{ position: 'relative' }}>
+                          <label className={styles.label}>📍 Adresse actuelle</label>
+                          <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="12 rue de la Paix…" autoComplete="off" />
+                          {adrSug.length > 0 && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
+                              {adrSug.map((f: any, i: number) => (
+                                <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: '#1a2332' }}>
+                                  {f.properties?.label}
+                                </button>
+                              ))}
+                            </div>
                           )}
-                          <div className={styles.formGroup}><label className={styles.label}>Précisions sur le bien à vendre</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, particularités, contexte de vente..." rows={2} /></div>
                         </div>
-                      )}
-                    </Bloc>
-                  </div>
-                )}
+                        <div className={styles.formRow}>
+                          <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} placeholder="75002" /></div>
+                          <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} placeholder="Paris" /></div>
+                        </div>
+                      </Bloc>
 
-                {/* ÉTAPE 2 — CRITÈRES DE RECHERCHE */}
-                {step === 1 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                    <Bloc titre="🏠 Le bien recherché">
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>Type(s) de bien <span style={{ color: '#94a3b8', fontWeight: 400 }}>(plusieurs possibles)</span></label>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {['Appartement', 'Maison', 'Loft', 'Duplex', 'Studio', 'Hôtel particulier', 'Atelier', 'Autre'].map(t => {
-                            const sel = form.type_bien.includes(t);
-                            return (
-                              <button type="button" key={t} onClick={() => setForm(f => ({ ...f, type_bien: sel ? f.type_bien.filter(x => x !== t) : [...f.type_bien, t] }))} style={pill(sel, '#1a2332', '#1a2332', 'white')}>{sel ? '✓ ' : ''}{t}</button>
-                            );
-                          })}
+                      <Bloc titre="📞 Contact">
+                        <div className={styles.formRow}>
+                          <div className={styles.formGroup}><label className={styles.label}>✉️ Email principal</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="sophie@gmail.com" /></div>
+                          <div className={styles.formGroup}><label className={styles.label}>✉️ Email secondaire</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="s.martin@travail.fr" /></div>
                         </div>
-                        {form.type_bien.length > 1 && (
-                          <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginTop: 10, lineHeight: 1.5 }}>
-                            💡 Si les critères diffèrent selon le type (ex. jardin pour la maison, balcon pour l'appartement), créez plutôt <strong>une recherche par type</strong> depuis la fiche du client.
-                          </div>
+                        <div className={styles.formRow}>
+                          <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone principal</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
+                          <div className={styles.formGroup}><label className={styles.label}>☎️ Téléphone secondaire</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
+                        </div>
+                      </Bloc>
+
+                      <Bloc titre="🎚️ Où en est ce dossier">
+                        <div className="nc-etats">
+                          {ETATS_NOUVEAU.map(e => (
+                            <button type="button" key={e.cle} className="nc-etat" data-on={form.statut === e.cle}
+                              onClick={() => setForm({ ...form, statut: e.cle as StatutClient })}>
+                              <u style={{ background: e.point }} />
+                              <span style={{ display: 'block' }}>
+                                <b>{e.nom}</b>
+                                <span>{e.quand}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 12, lineHeight: 1.55, borderRadius: 10, padding: '9px 12px',
+                          background: form.statut === 'actif' ? '#ecfdf5' : '#f8fafc',
+                          border: `1px solid ${form.statut === 'actif' ? '#bbf7d0' : '#eef1f6'}`,
+                          color: form.statut === 'actif' ? '#15803d' : '#64748b' }}>
+                          {form.statut === 'actif'
+                            ? '🔍 La veille cherchera pour ce client dès la création du dossier.'
+                            : '⏸️ Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
+                        </div>
+                      </Bloc>
+
+                      <Bloc titre="🏠 Sa situation aujourd'hui">
+                        <div className={styles.formGroup}>
+                          <label className={styles.label}>Statut d&apos;occupation</label>
+                          <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
+                            <option value="">Non précisé</option>
+                            <option value="proprietaire">🔑 Propriétaire</option>
+                            <option value="locataire">🏠 Locataire</option>
+                            <option value="heberge">👨‍👩‍👧 Hébergé</option>
+                            <option value="autre">Autre</option>
+                          </select>
+                        </div>
+                        <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
+                          {form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Un bien à vendre en parallèle (mandat potentiel)
+                        </button>
+                        {form.bien_actuel_a_vendre && (
+                          <>
+                            <div className={styles.formRow}>
+                              <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} placeholder="Appartement 3P" /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} placeholder="65" /></div>
+                            </div>
+                            <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} placeholder="450000" /></div>
+                            <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={{ ...pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9'), alignSelf: 'flex-start' }}>
+                              {form.bien_actuel_meme_adresse ? '✓ ' : ''}📍 À la même adresse que le contact
+                            </button>
+                            {!form.bien_actuel_meme_adresse && (
+                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à vendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                            )}
+                            <div className={styles.formGroup}><label className={styles.label}>Précisions</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, contexte de vente…" rows={2} /></div>
+                          </>
                         )}
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Budget min (€)</label><input className={styles.input} type="number" value={form.budget_min} onChange={e => setForm({ ...form, budget_min: e.target.value })} placeholder="300000" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Budget max (€)</label><input className={styles.input} type="number" value={form.budget_max} onChange={e => setForm({ ...form, budget_max: e.target.value })} placeholder="420000" /></div>
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Surface min (m²)</label><input className={styles.input} type="number" value={form.surface_min} onChange={e => setForm({ ...form, surface_min: e.target.value })} placeholder="60" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Surface max (m²)</label><input className={styles.input} type="number" value={form.surface_max} onChange={e => setForm({ ...form, surface_max: e.target.value })} placeholder="85" /></div>
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Pièces min</label><input className={styles.input} type="number" value={form.nb_pieces_min} onChange={e => setForm({ ...form, nb_pieces_min: e.target.value })} placeholder="3" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Pièces max</label><input className={styles.input} type="number" value={form.nb_pieces_max} onChange={e => setForm({ ...form, nb_pieces_max: e.target.value })} placeholder="4" /></div>
-                      </div>
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Chambres min</label><input className={styles.input} type="number" value={form.chambres_min} onChange={e => setForm({ ...form, chambres_min: e.target.value })} placeholder="2" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Séjour min (m²)</label><input className={styles.input} type="number" value={form.surface_sejour_min} onChange={e => setForm({ ...form, surface_sejour_min: e.target.value })} placeholder="25" /></div>
-                      </div>
-                    </Bloc>
+                      </Bloc>
+                    </div>
+                  )}
 
-                    <Bloc titre="📍 Secteurs recherchés">
-                      <SecteurPicker secteurs={form.secteurs} onChange={(next) => setForm(f => ({ ...f, secteurs: next }))} />
-                    </Bloc>
+                  {/* ═══ 2 · SA RECHERCHE ═══ */}
+                  {step === 1 && (
+                    <div className={modeCrit === 'etapes' ? classesCrit.critCorps : undefined}
+                      style={modeCrit === 'tout' ? { display: 'flex', flexDirection: 'column', gap: 14 } : undefined}>
+                      <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iC} sens={sensCrit} />
+                    </div>
+                  )}
 
-                    <Bloc titre="🎯 Critères fins">
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}><label className={styles.label}>Étage min</label><input className={styles.input} type="number" value={form.etage_min} onChange={e => setForm({ ...form, etage_min: e.target.value })} placeholder="2" /></div>
-                        <div className={styles.formGroup}><label className={styles.label}>Étage max</label><input className={styles.input} type="number" value={form.etage_max} onChange={e => setForm({ ...form, etage_max: e.target.value })} placeholder="5" /></div>
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>Contraintes d'étage</label>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {[{ k: 'rdc_exclu', l: '🚫 Exclure RDC' }, { k: 'dernier_etage', l: '🏙️ Dernier étage' }].map(o => (
-                            <button type="button" key={o.k} onClick={() => setForm({ ...form, [o.k]: !(form as any)[o.k] })} style={pill((form as any)[o.k], '#1a2332', '#1a2332', 'white')}>{o.l}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.formRow}>
+                  {/* ═══ 3 · LE MANDAT ═══ */}
+                  {step === 2 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <Bloc titre="📋 Mandat de recherche">
+                        <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), alignSelf: 'flex-start' }}>
+                          {form.sans_mandat ? '✓ ' : ''}Recherche sans mandat signé
+                        </button>
+                        {!form.sans_mandat && (
+                          <>
+                            <div className={styles.formRow}>
+                              <div className={styles.formGroup}><label className={styles.label}>📅 Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>⏳ Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} placeholder="3" /></div>
+                            </div>
+                            <div className={styles.formGroup}><label className={styles.label}>💶 Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} placeholder="3,5% TTC" /></div>
+                          </>
+                        )}
+                      </Bloc>
+
+                      <Bloc titre="🗒️ Notes internes">
                         <div className={styles.formGroup}>
-                          <label className={styles.label}>État souhaité</label>
-                          <select className={`${styles.input} crm-select`} value={form.etat_souhaite} onChange={e => setForm({ ...form, etat_souhaite: e.target.value })}>
-                            <option value="">Indifférent</option><option value="a_renover">À rénover</option><option value="travaux_legers">Travaux légers</option><option value="bon_etat">Bon état</option><option value="refait_neuf">Refait à neuf</option>
-                          </select>
+                          <label className={styles.label}>Pour vous seul — le client ne les voit pas</label>
+                          <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={4} placeholder="Comment il est arrivé, ce qu'il a dit au téléphone, ce qu'il ne faut pas oublier…" />
                         </div>
-                        <div className={styles.formGroup}><label className={styles.label}>Année construction min</label><input className={styles.input} type="number" value={form.annee_min} onChange={e => setForm({ ...form, annee_min: e.target.value })} placeholder="1990" /></div>
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>Exposition souhaitée <span style={{ color: '#94a3b8', fontWeight: 400 }}>(plusieurs possibles)</span></label>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {expoOptions.map(o => (
-                            <button type="button" key={o.k} onClick={() => toggleExpo(o.k)} style={pill(form.exposition.includes(o.k), '#10b981', '#ecfdf5', '#10b981')}>{form.exposition.includes(o.k) ? '✓ ' : ''}{o.l}</button>
-                          ))}
+                        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>
+                          Les notes <b>visibles par le client</b> se remplissent à l&apos;étape « Sa recherche », tout en bas.
                         </div>
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>DPE maximum accepté</label>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(d => (
-                            <button type="button" key={d} onClick={() => setForm({ ...form, dpe_max: form.dpe_max === d ? '' : d })} style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${form.dpe_max === d ? '#1a2332' : '#e2e8f0'}`, background: form.dpe_max === d ? '#1a2332' : 'white', color: form.dpe_max === d ? 'white' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label className={styles.label}>Équipements souhaités</label>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {[{ k: 'parking', l: '🅿️ Parking' }, { k: 'cave', l: '📦 Cave' }, { k: 'balcon', l: '🌿 Balcon' }, { k: 'terrasse', l: '☀️ Terrasse' }, { k: 'jardin', l: '🌳 Jardin' }, { k: 'ascenseur', l: '🛗 Ascenseur' }, { k: 'gardien', l: '👮 Gardien' }].map(o => (
-                            <button type="button" key={o.k} onClick={() => setForm({ ...form, [o.k]: !(form as any)[o.k] })} style={pill((form as any)[o.k], '#10b981', '#ecfdf5', '#10b981')}>{o.l}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </Bloc>
-
-                    <Bloc titre="💬 Précisions sur la recherche">
-                      <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Particularités, préférences fines, exclusions, quartiers à éviter... (ces précisions seront prises en compte dans l'analyse des biens)" rows={4} />
-                    </Bloc>
-                  </div>
-                )}
-
-                {/* ÉTAPE 3 — PROFIL D'ACHAT, MANDAT, NOTES */}
-                {step === 2 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                    <Bloc titre="💳 Profil d'achat">
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Urgence du projet</label>
-                          <select className={`${styles.input} crm-select`} value={form.urgence} onChange={e => setForm({ ...form, urgence: e.target.value })}>
-                            <option value="">Non précisée</option><option value="immediate">Immédiate</option><option value="3_mois">Sous 3 mois</option><option value="6_mois">Sous 6 mois</option><option value="annee">Dans l'année</option>
-                          </select>
-                        </div>
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Financement</label>
-                          <select className={`${styles.input} crm-select`} value={form.financement} onChange={e => setForm({ ...form, financement: e.target.value })}>
-                            <option value="">Non précisé</option><option value="cash">Cash</option><option value="pret_valide">Prêt validé</option><option value="pret_en_cours">Prêt en cours</option><option value="a_monter">À monter</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className={styles.formGroup}><label className={styles.label}>Apport (€)</label><input className={styles.input} type="number" value={form.apport} onChange={e => setForm({ ...form, apport: e.target.value })} placeholder="100000" /></div>
-                    </Bloc>
-
-                    <Bloc titre="📋 Mandat de recherche">
-                      <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), marginBottom: form.sans_mandat ? 0 : 14 }}>
-                        {form.sans_mandat ? '✓ ' : ''}Recherche sans mandat signé
-                      </button>
-                      {!form.sans_mandat && (
-                        <>
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} placeholder="3" /></div>
-                          </div>
-                          <div className={styles.formGroup}><label className={styles.label}>Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} placeholder="3,5% TTC" /></div>
-                        </>
-                      )}
-                    </Bloc>
-                  </div>
-                )}
+                      </Bloc>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Pied de page navigation */}
-              <div style={{ padding: '16px 26px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <button type="button" className={styles.btnSecondary} onClick={() => (step === 0 ? setShowModal(false) : setStep(step - 1))}>
-                  {step === 0 ? 'Annuler' : '← Retour'}
+              {/* ── Pied ── */}
+              <div style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+                <button type="button" className={styles.btnSecondary} onClick={revenir}>
+                  {step === 0 ? 'Annuler' : '← Précédent'}
                 </button>
-                {step < 2 ? (
-                  <button type="button" className={styles.btnPrimary} disabled={!canNext} style={{ opacity: canNext ? 1 : 0.5 }} onClick={() => { setError(''); setStep(step + 1); }}>
-                    Continuer →
+                <span style={{ flexGrow: 1 }} />
+                {!dernierCran && (
+                  <button type="button" className={styles.btnSecondary} disabled={saving || !nomRempli}
+                    style={{ opacity: nomRempli ? 1 : 0.45 }}
+                    title="Crée le dossier avec ce qui est déjà rempli — le reste se complète depuis la fiche"
+                    onClick={handleCreate}>
+                    {saving ? '…' : 'Créer maintenant'}
+                  </button>
+                )}
+                {dernierCran ? (
+                  <button type="button" className={styles.btnPrimary} disabled={saving} onClick={handleCreate}>
+                    {saving ? 'Création…' : '✓ Créer le dossier'}
                   </button>
                 ) : (
-                  <button type="button" className={styles.btnPrimary} disabled={saving} onClick={handleCreate}>
-                    {saving ? 'Création...' : '✓ Créer le dossier'}
-                  </button>
+                  <button type="button" className={styles.btnPrimary} onClick={continuer}>Continuer →</button>
                 )}
               </div>
             </div>
