@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
+import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
@@ -460,6 +461,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
   const [showBien, setShowBien] = useState(false);
+  const [relancesAtt, setRelancesAtt] = useState<{ date_echeance: string; note: string | null }[]>([]);
+  const [delaiJours, setDelaiJours] = useState(5);
   const [showAction, setShowAction] = useState(false);
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
@@ -1199,10 +1202,14 @@ Emilio Immobilier
             metadata: {},
           });
         }
+        /* L'envoi vient de partir : la relance est programmée d'office. Elle
+           se clôturera toute seule si le client répond avant l'échéance. */
+        await programmerRelance(client.id, rechercheId, envoiBienIds.length);
       }
 
       setEnvoiSending(false);
       setShowEnvoiBien(false);
+      chargerRelances();
       load();
       alert('✅ Mail envoyé avec succès !');
     } catch (e) {
@@ -1350,6 +1357,45 @@ Emilio Immobilier
     refuse:           { label: '❌ Refusé',            color: '#ef4444', bg: '#fef2f2' },
   };
 
+  /* La fiche n'affichait jamais la table `relances` : l'étiquette qu'on y
+     voyait était une ligne de journal. Clôturer une relance ailleurs ne
+     changeait donc rien ici, et une relance en retard n'apparaissait sur
+     aucun dossier. */
+  async function creerRelanceManuelle() {
+    const jours = await delaiRelance();
+    const { error } = await supabase.from('relances').insert({
+      client_id: client.id, recherche_id: rechercheId, type: 'manuelle',
+      statut: 'en_attente', date_echeance: echeanceDans(jours), note: 'Relance manuelle',
+    });
+    if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; }
+    await addJournal(client.id, 'relance_manuelle', `🔔 Relance créée pour J+${jours}`);
+    chargerRelances();
+    load();
+    alert(`Relance créée pour dans ${jours} jours.`);
+  }
+
+  /* Les relances en attente de ce client, pour l'étiquette de l'entête. */
+  const chargerRelances = useCallback(async () => {
+    const { data } = await supabase.from('relances')
+      .select('date_echeance, note')
+      .eq('client_id', client.id).eq('statut', 'en_attente')
+      .order('date_echeance', { ascending: true });
+    setRelancesAtt(data || []);
+  }, [client.id]);
+
+  useEffect(() => { chargerRelances(); delaiRelance().then(setDelaiJours); }, [chargerRelances]);
+
+  const etiquetteRelance = (() => {
+    const r = relancesAtt[0];
+    if (!r) return null;
+    const auj = new Date(); auj.setHours(12, 0, 0, 0);
+    const d = new Date(r.date_echeance); d.setHours(12, 0, 0, 0);
+    const j = Math.round((d.getTime() - auj.getTime()) / 86400000);
+    if (j < 0) return { label: `Relance en retard de ${-j}j`, note: r.note || '', couleur: '#b91c1c', fond: '#fef2f2', trait: '#fecaca' };
+    if (j === 0) return { label: "Relance aujourd'hui", note: r.note || '', couleur: '#b45309', fond: '#fffbeb', trait: '#fde68a' };
+    return { label: `Relance dans ${j}j`, note: r.note || '', couleur: '#64748b', fond: '#f8fafc', trait: '#e3e8f0' };
+  })();
+
   const AVIS_CR: Record<string, { label: string; color: string; bg: string }> = {
     tres_interesse: { label: '🔥 Très intéressé', color: '#c2410c', bg: '#fff7ed' },
     interesse:      { label: '👍 Intéressé',      color: '#15803d', bg: '#f0fdf4' },
@@ -1371,10 +1417,18 @@ Emilio Immobilier
           <button className={styles.backBtn} onClick={onBack}>← Clients</button>
           <span style={{ color: '#94a3b8' }}>/</span>
           <span style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
+          {etiquetteRelance && (
+            <span title={etiquetteRelance.note} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px',
+              borderRadius: 99, fontSize: 12, fontWeight: 700,
+              color: etiquetteRelance.couleur, background: etiquetteRelance.fond,
+              border: `1px solid ${etiquetteRelance.trait}`,
+            }}>🔔 {etiquetteRelance.label}</span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
-          <button className={styles.btn} onClick={async () => { const date = new Date(); date.setDate(date.getDate() + 5); const { error } = await supabase.from('relances').insert({ client_id: client.id, recherche_id: rechercheId, type: 'manuelle', statut: 'en_attente', date_echeance: date.toISOString(), note: 'Relance manuelle' }); if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; } await addJournal(client.id, 'relance_manuelle', '🔔 Relance créée pour J+5'); load(); alert('Relance créée pour dans 5 jours !'); }}>🔔 Relance J+5</button>
+          <button className={styles.btn} onClick={creerRelanceManuelle}>🔔 Relance J+{delaiJours}</button>
           <button className={styles.btn} onClick={() => setShowAction(true)}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
         </div>
