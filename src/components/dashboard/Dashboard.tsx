@@ -128,7 +128,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
                     <div className={styles.urgBar} style={{ background: isRetard ? '#ef4444' : isAujourd ? '#ef4444' : '#f59e0b' }} />
                     <div className={styles.listInfo}>
                       <div className={styles.listName}>{clientRelance ? `${clientRelance.prenom} ${clientRelance.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
-                      <div className={styles.listDetail}>{r.type === 'auto' ? 'PDF envoyé — relance J+5' : r.note || 'Relance manuelle'}</div>
+                      <div className={styles.listDetail}>{r.note || (r.type === 'manuelle' ? 'Relance manuelle' : 'Sans réponse du client')}</div>
                     </div>
                     <span className={`${styles.badge} ${isRetard ? styles.badgeRed : isAujourd ? styles.badgeRed : styles.badgeAmber}`}>
                       {isRetard ? `${jours}j de retard` : isAujourd ? "Aujourd'hui" : `Dans ${jours}j`}
