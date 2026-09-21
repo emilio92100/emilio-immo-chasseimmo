@@ -1377,6 +1377,14 @@ function BtnEnvoi({ enCours, libelle, enCoursTexte = 'Envoi en cours…', classe
 function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [avis, setAvis] = useState<string | null>(b.avis);
   const [com, setCom] = useState(b.commentaire || '');
+  /* Un avis déjà parti a été lu, et il a peut-être déjà orienté une
+     recherche : on ne le laisse plus bouger. Tant qu'il n'est pas parti,
+     le client reste libre de se raviser. */
+  const envoye = !!b.avis;
+  const etiqRetour = b.avis ? ETIQ[b.avis] : null;
+  const dateRetour = b.retourLe
+    ? new Date(b.retourLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+    : null;
   const [plein, setPlein] = useState<number | null>(null);
   const [partage, setPartage] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
@@ -1423,15 +1431,35 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           {b.annee ? <span className="dpe"><span className="t">Immeuble {b.annee}</span></span> : null}</div>
         {b.description && b.description.split('\n\n').map((p: string, n: number) => <p className="txt" key={n}>{p}</p>)}
 
-        <label className="lab">Qu&apos;en pensez-vous&nbsp;?</label>
+        <label className="lab">{envoye ? 'Votre retour' : 'Qu’en pensez-vous ?'}</label>
         <div className="avis3">
           {Object.entries(AVIS).map(([k, a]) => (
-            <button key={k} className="avis" data-a={a.c} aria-pressed={avis === k} onClick={() => setAvis(k)}>
+            <button key={k} type="button" className="avis" data-a={a.c}
+              data-fige={envoye ? '1' : undefined}
+              aria-pressed={avis === k} disabled={envoye}
+              onClick={() => setAvis(v => (v === k ? null : k))}>
               <span className="e">{a.e}</span><span className="n">{a.n}</span>
             </button>
           ))}
         </div>
-        {avis && SUITE_AVIS[avis] && (
+
+        {/* Le retour est parti : on le montre tel qu'il est parti, et rien
+            ne se remodifie ici. Le client qui change d'avis le dit de vive
+            voix — c'est plus juste qu'un deuxième retour qui écrase le
+            premier sans qu'Alexandre sache lequel comptait. */}
+        {envoye && (
+          <div className="apres-avis fini">
+            <div className="aa-t">{etiqRetour ? `${etiqRetour.e} ${etiqRetour.n}` : 'Retour enregistré'}</div>
+            <p className="aa-p">{b.avis === 'visite'
+              ? 'Vous avez visité ce bien avec votre conseiller. Son compte rendu est dans votre dossier.'
+              : `Votre conseiller a reçu ce retour${dateRetour ? ` le ${dateRetour}` : ''}. Il oriente déjà la suite de votre recherche.`}</p>
+            {b.commentaire ? <div className="fige">{b.commentaire}</div> : null}
+            <p className="aa-n">Vous avez changé d&apos;avis sur ce bien&nbsp;? Dites-le à votre conseiller,
+              il met le dossier à jour.</p>
+          </div>
+        )}
+
+        {!envoye && avis && SUITE_AVIS[avis] && (
           <div className="apres-avis">
             <div className="aa-t">{SUITE_AVIS[avis].t}</div>
             <p className="aa-p">{SUITE_AVIS[avis].p}</p>
@@ -2541,6 +2569,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .avis[data-a="visite"][aria-pressed="true"] .n{color:var(--prune)}
 .avis[data-a="non"][aria-pressed="true"]{border-color:var(--brique); background:var(--brique-fond)}
 .avis[data-a="non"][aria-pressed="true"] .n{color:var(--brique)}
+/* Avis envoyé : les trois boutons restent lisibles, le choix garde sa
+   couleur, les deux autres s'effacent. Plus rien ne réagit au doigt. */
+.avis[data-fige="1"]{cursor:default}
+.avis[data-fige="1"]:active{transform:none}
+.avis[data-fige="1"][aria-pressed="false"]{opacity:.38}
 textarea,input[type="email"]{width:100%; border:1px solid var(--trait-fort); border-radius:13px; padding:13px;
   font-family:inherit; font-size:15px; color:var(--encre); background:var(--fond); resize:vertical}
 textarea:focus,input:focus{outline:none; border-color:var(--or); background:var(--carte)}
@@ -2941,6 +2974,8 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   border-radius:14px; padding:13px 14px; font-size:15px; font-family:inherit; color:var(--encre);
   outline:none; resize:vertical; min-height:108px; line-height:1.6}
 .apres-avis textarea:focus{border-color:var(--or)}
+.apres-avis.fini{border-left-color:var(--vert)}
+.aa-n{margin:12px 0 0; font-size:12.5px; line-height:1.6; color:var(--plume-clair)}
 
 
 /* ═══ La prochaine visite, en tête de l'accueil ═══ */
