@@ -95,3 +95,35 @@ a { text-decoration: none; color: inherit; }
 }
 .pulse { animation: pulse 2s infinite; }
 .fade-up { animation: fadeUp 0.25s ease forwards; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LE MOUVEMENT
+   Rien de spectaculaire : de courtes entrées qui disent d'où l'on vient.
+   Aller vers une fiche pousse vers le haut, revenir glisse vers le bas.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@keyframes ecranAvant  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ecranArriere { from { opacity: 0; transform: translateY(-9px); } to { opacity: 1; transform: none; } }
+
+.ecran-avant   { animation: ecranAvant  .28s cubic-bezier(.22,.8,.3,1) both; }
+.ecran-arriere { animation: ecranArriere .26s cubic-bezier(.22,.8,.3,1) both; }
+
+/* Les lignes d'une liste arrivent l'une après l'autre, très vite. */
+@keyframes ligneEntre { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ligne-entre { animation: ligneEntre .24s cubic-bezier(.22,.8,.3,1) both; }
+
+/* Tout ce qui se clique répond au doigt. */
+button, a[role="button"] {
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease,
+              box-shadow .18s ease, opacity .15s ease;
+}
+button:active:not(:disabled) { transform: scale(.985); }
+
+/* Certains préfèrent que rien ne bouge. On les écoute. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
