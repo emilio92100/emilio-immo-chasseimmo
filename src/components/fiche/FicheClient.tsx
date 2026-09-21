@@ -927,7 +927,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
     // Anti-doublon : ne rien faire si le statut est déjà le même
     if (client.statut === statut) return;
     const { data } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().single();
-    if (data) { setClient(data as Client); await addJournal(client.id, 'statut_change', `Statut → ${statut}`); }
+    if (!data) return;
+    setClient(data as Client);
+
+    /* Le statut et la veille marchaient chacun de leur côté : la veille lit le
+       drapeau « active » de la recherche, que rien ne touchait. Un dossier
+       suspendu restait donc cherché tous les jours. Les deux vont désormais
+       ensemble — seul « Actif » fait chercher. */
+    const chercher = statut === 'actif';
+    if (chercher) {
+      if (rechercheId) await supabase.from('recherches').update({ active: true }).eq('id', rechercheId);
+    } else {
+      await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
+    }
+    const nom = ETATS_CLIENT.find(x => x.cle === statut)?.nom || statut;
+    await addJournal(client.id, 'statut_change', `Statut → ${nom}`,
+      chercher ? 'La veille reprend sur cette recherche.' : 'La veille est arrêtée sur ce dossier.');
+    load();
   }
 
   async function saveOffreEcrite() {
@@ -1900,6 +1916,14 @@ Emilio Immobilier
               </div>
             )}
           </div>
+          {rechercheActive && rechercheActive.active === false && (
+            <span title="La veille ne cherche plus sur cette recherche"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 11,
+                background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 99,
+                padding: '4px 12px', fontSize: 11.5, fontWeight: 800, color: '#64748b' }}>
+              ⏸️ Veille en pause
+            </span>
+          )}
           {rechercheActive && (
             <button onClick={() => renommerRecherche()} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline', paddingBottom: 12 }}>Renommer</button>
           )}
