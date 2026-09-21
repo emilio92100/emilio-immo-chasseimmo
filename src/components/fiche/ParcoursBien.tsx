@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
@@ -886,6 +887,8 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
       type: 'retour_client', titre: `${a.icone} ${a.label} · noté par le conseiller`,
       description: texte.trim() || null, metadata: {},
     });
+    /* Le client a répondu : la relance automatique n'a plus d'objet. */
+    await cloturerRelancesAuto(clientId, bien.recherche_id);
     setEnvoi(false); onEnregistre(); onFerme();
   }
 
@@ -987,6 +990,8 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
       description: `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de chasse`,
       metadata: {},
     });
+    /* Présenté = en attente d'une réponse : la relance se programme ici. */
+    await programmerRelance(clientId, bien.recherche_id, 1);
     setEnvoi(false); onEnvoye();
   }
 
