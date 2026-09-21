@@ -768,28 +768,29 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             côte ; ce qu'on consulte en dessous, sur toute la largeur. Le rappel
             des critères et le graphe du marché ont besoin de la ligne entière
             pour rester lisibles — à mi-largeur, leur texte se casse en quatre. */}
-        <button className="case large" onClick={() => aller('recherche')}>
-          <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
-          <div><h3>Rappel de ma recherche</h3>
-            <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
-              {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
-              {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
-          <div className="pied-case">
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
-            <span className="chev"><Ico n="fleche" t={18} /></span></div>
-        </button>
-
-        {/* Juste sous le rappel de sa recherche : c'est là qu'on y pense, pas
-            tout en bas de page. Le trait pointillé dit que ce n'est pas une
-            case comme les autres — on n'y clique pas par hasard. */}
-        <button className="fin-recherche" onClick={onFin}>
-          <span className="fr-ico">🏁</span>
-          <span className="fr-txt">
-            <b>Ma recherche est terminée</b>
-            <i>Vous avez trouvé&nbsp;? Vous souhaitez faire une pause&nbsp;? Dites-le-nous.</i>
-          </span>
-          <span className="chev"><Ico n="fleche" t={17} /></span>
-        </button>
+        {/* Une seule carte, deux issues. Faire évoluer sa recherche ou dire
+            qu'elle est finie relèvent du même moment : on les met sous le même
+            toit, séparées d'un simple filet. */}
+        <div className="case large bloc-rech">
+          <button className="rech-haut" onClick={() => aller('recherche')}>
+            <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
+            <div><h3>Rappel de ma recherche</h3>
+              <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
+                {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
+                {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
+            <div className="pied-case">
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
+              <span className="chev"><Ico n="fleche" t={18} /></span></div>
+          </button>
+          <button className="rech-bas" onClick={onFin}>
+            <span className="rb-ico">🏁</span>
+            <span className="rb-txt">
+              <b>Ma recherche est terminée</b>
+              <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
+            </span>
+            <span className="chev"><Ico n="fleche" t={17} /></span>
+          </button>
+        </div>
         <button className="case large" onClick={() => aller('marche')}>
           <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
           <div><h3>Le marché sur vos critères</h3>
@@ -2869,18 +2870,30 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 
 /* Le choix du créneau, sous « Je souhaite être rappelé ». Trois cases et rien
    d'autre : on ne demande pas au client d'écrire pour obtenir un appel. */
-.fin-recherche{grid-column:1 / -1; display:flex; align-items:center; gap:12px; width:100%;
-  background:transparent; border:1.5px dashed var(--trait); border-radius:16px;
-  padding:13px 16px; cursor:pointer; font-family:inherit; text-align:left;
-  transition:border-color .16s, background .16s}
-.fin-recherche:hover{border-color:var(--or); background:var(--or-fond)}
-.fin-recherche:active{transform:scale(.99)}
-.fin-recherche .fr-ico{font-size:17px; flex-shrink:0}
-.fin-recherche .fr-txt{flex-grow:1; min-width:0}
-.fin-recherche .fr-txt b{display:block; font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:14px; font-weight:800; color:var(--encre)}
-.fin-recherche .fr-txt i{display:block; font-style:normal; font-size:12.5px;
-  color:var(--plume); margin-top:2px}
+.bloc-rech{padding:0; gap:0; cursor:default}
+.bloc-rech:hover{transform:none; box-shadow:var(--ombre); border-color:var(--trait)}
+.bloc-rech:active{transform:none}
+.rech-haut{display:flex; flex-direction:column; gap:13px; width:100%; text-align:left;
+  background:transparent; border:none; padding:18px 17px 16px; cursor:pointer;
+  font-family:inherit; border-radius:20px 20px 0 0; transition:background .2s ease}
+.rech-haut:hover{background:var(--fond)}
+.rech-haut:hover .ico{transform:translateY(-2px) rotate(-4deg)}
+.rech-haut:hover .chev{transform:translateX(4px)}
+.rech-bas{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:transparent; border:none; border-top:1px solid var(--trait);
+  padding:13px 17px; cursor:pointer; font-family:inherit;
+  border-radius:0 0 20px 20px; transition:background .2s ease}
+.rech-bas:hover{background:var(--or-fond)}
+.rech-bas:hover .chev{transform:translateX(4px)}
+.rech-bas:active{background:var(--or-trait)}
+.rech-bas .rb-ico{width:30px; height:30px; flex-shrink:0; border-radius:10px;
+  background:var(--or-fond); border:1px solid var(--or-trait);
+  display:flex; align-items:center; justify-content:center; font-size:14px}
+.rech-bas .rb-txt{flex-grow:1; min-width:0}
+.rech-bas .rb-txt b{display:block; font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:13.5px; font-weight:800; color:var(--encre)}
+.rech-bas .rb-txt i{display:block; font-style:normal; font-size:12.5px;
+  color:var(--plume); margin-top:1px}
 .bloc-rappel{margin-top:12px; background:var(--fond); border:1px solid var(--trait);
   border-radius:14px; padding:14px}
 .lib-rappel{font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:800;
