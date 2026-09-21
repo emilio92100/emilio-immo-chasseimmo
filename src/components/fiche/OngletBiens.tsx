@@ -157,7 +157,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
           {biens.length} bien{biens.length > 1 ? 's' : ''} {mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}
         </span>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
-          {mode === 'selection' ? 'Prépare le PDF, fixe tes honoraires, puis envoie.' : 'Rangés selon ce que le client en a dit.'}
+          {mode === 'selection' ? 'Fixe tes honoraires et envoie. La fiche soignée est facultative.' : 'Rangés selon ce que le client en a dit.'}
         </span>
         {mode === 'presentes' && repondus > 0 && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 800 }}>
@@ -318,11 +318,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 {mode === 'selection' ? (
                   <>
                     {b.pdf_statut === 'pret' && b.pdf_url ? (
-                      <Action href={b.pdf_url} ton="neutre">📄&nbsp; PDF prêt — consulter</Action>
+                      <Action href={b.pdf_url} ton="neutre">📄&nbsp; Fiche prête — consulter</Action>
                     ) : b.pdf_statut === 'demande' ? (
-                      <Action ton="neutre" disabled>⏳&nbsp; PDF en fabrication</Action>
+                      <Action ton="neutre" disabled>⏳&nbsp; En attente · prochaine session</Action>
                     ) : (
-                      <Action onClick={() => demanderPdf(b.id)} ton="neutre">📄&nbsp; Préparer le PDF</Action>
+                      <Action onClick={() => demanderPdf(b.id)} ton="neutre">📄&nbsp; Demander une fiche soignée</Action>
                     )}
                     <Action onClick={() => setEnvoi(b)} ton="or">📤&nbsp; Envoyer</Action>
                   </>
