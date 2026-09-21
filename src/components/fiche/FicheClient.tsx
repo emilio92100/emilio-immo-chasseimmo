@@ -1526,17 +1526,42 @@ Emilio Immobilier
   async function saveAction() {
     const typeLabels: Record<string, string> = { appel: 'Appel passé', rdv: 'RDV physique', note: 'Note', relance_manuelle: 'Relance manuelle', envoi_externe: 'Envoi externe', email_libre: 'Email envoyé' };
     const titre = actionF.titre.trim() || typeLabels[actionF.type] || 'Action';
+    const noteRelance = [titre, actionF.description.trim()].filter(Boolean).join(' — ').slice(0, 300);
+
     if (actionEdit) {
       await supabase.from('journal').update({
         type: actionF.type, titre,
         description: actionF.description || null,
         bien_id: actionF.bien_id || null,
       }).eq('id', actionEdit);
+      /* Si une relance est née de cette action et qu'elle attend toujours, son
+         intitulé suit la correction : sinon la page Relances continuerait
+         d'afficher l'ancienne faute de frappe. */
+      const liee = journal.find(x => x.id === actionEdit)?.metadata?.relance_id;
+      if (liee) await supabase.from('relances').update({ note: noteRelance }).eq('id', liee).eq('statut', 'en_attente');
       setShowAction(false); setActionEdit(null);
       setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
       load();
       return;
     }
+
+    /* Le geste manquant : noter, au moment où on note l'appel, la date à
+       laquelle il faudra rappeler. On crée la relance d'abord, pour garder son
+       identifiant dans la ligne du suivi — c'est ce lien qui permettra, plus
+       tard, de supprimer les deux ensemble. */
+    let relanceId: string | null = null;
+    if (actionF.relance) {
+      const { data: rel } = await supabase.from('relances').insert({
+        client_id: client.id,
+        recherche_id: rechercheId,
+        type: 'manuelle',
+        statut: 'en_attente',
+        date_echeance: new Date(`${actionF.relance}T12:00:00`).toISOString(),
+        note: noteRelance,
+      }).select('id').single();
+      relanceId = rel?.id || null;
+    }
+
     await supabase.from('journal').insert({
       client_id: client.id,
       recherche_id: rechercheId,
@@ -1544,22 +1569,15 @@ Emilio Immobilier
       titre,
       description: actionF.description || null,
       bien_id: actionF.bien_id || null,
-      metadata: {},
+      metadata: relanceId ? { relance_id: relanceId } : {},
     });
-    /* Le geste manquant : noter, au moment où on note l'appel, la date à
-       laquelle il faudra rappeler. La relance part directement dans la page
-       Relances, et se range d'elle-même selon son échéance. */
+
     if (actionF.relance) {
-      await supabase.from('relances').insert({
-        client_id: client.id,
-        recherche_id: rechercheId,
-        type: 'manuelle',
-        statut: 'en_attente',
-        date_echeance: new Date(`${actionF.relance}T12:00:00`).toISOString(),
-        note: [titre, actionF.description.trim()].filter(Boolean).join(' — ').slice(0, 300),
+      await supabase.from('journal').insert({
+        client_id: client.id, recherche_id: rechercheId, type: 'relance_manuelle',
+        titre: `🔔 Relance prévue le ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}`,
+        description: titre, metadata: relanceId ? { relance_id: relanceId } : {},
       });
-      await addJournal(client.id, 'relance_manuelle',
-        `🔔 Relance prévue le ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR')}`, titre);
     }
 
     setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' }); load();
@@ -1583,7 +1601,25 @@ Emilio Immobilier
   }
 
   async function supprimerAction(j: any) {
-    if (!confirm(`Supprimer « ${j.titre} » du suivi ?\n\nCette ligne disparaît définitivement de l'historique du dossier.`)) return;
+    /* Une action peut avoir posé une relance. Les deux partent ensemble, sans
+       seconde question : une relance dont l'action n'existe plus n'a plus de
+       raison d'être, et deux confirmations pour un geste, c'est une de trop.
+       Une relance déjà clôturée n'est pas touchée : c'est de l'histoire. */
+    const relanceId = j.metadata?.relance_id as string | undefined;
+    let quand = '';
+    if (relanceId) {
+      const { data } = await supabase.from('relances')
+        .select('date_echeance, statut').eq('id', relanceId).maybeSingle();
+      if (data && data.statut === 'en_attente') {
+        quand = new Date(data.date_echeance).toLocaleDateString('fr-FR');
+      }
+    }
+
+    const texte = `Supprimer « ${j.titre} » du suivi ?\n\nCette ligne disparaît définitivement de l'historique du dossier.`
+      + (quand ? `\nLa relance prévue le ${quand} est supprimée avec elle.` : '');
+    if (!confirm(texte)) return;
+
+    if (quand) await supabase.from('relances').delete().eq('id', relanceId!).eq('statut', 'en_attente');
     await supabase.from('journal').delete().eq('id', j.id);
     load();
   }
