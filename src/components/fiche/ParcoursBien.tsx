@@ -10,7 +10,8 @@ import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
  *  <Icone>          jeu de pictos au trait
  *  <Vignettes>      bandeau de photos carrées + visionneuse
  *  <Specs>          surface / pièces / chambres / séjour… en pictos
- *  <BandeauMarche>  ancienneté + baisses de prix, avec volet dépliant et graphique
+ *  <BandeauMarche>  ancienneté, baisses de prix et diffuseurs, en volets dépliants
+ *  <diffuseurs>     la liste des agences d'un même bien, dédoublonnée et triée par prix
  *  <Modale>         fenêtre plein écran, rendue hors du conteneur
  *  <Frise>          chronologie d'un bien
  *  <ModaleObservation> / <ModaleEnvoi> / <ModaleScore>
@@ -134,6 +135,7 @@ const TRAITS: Record<string, string[]> = {
   envoi: ['M21.4 2.6 2.6 10.3l7.2 2.9 2.9 7.2z', 'M21.4 2.6 9.8 13.2'],
   mallette: ['M3 9.4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 7.4V5.6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.8', 'M3 13.4h18'],
   dossier: ['M3 6.6a2 2 0 0 1 2-2h4.2l2.2 2.6H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+  lien: ['M10.4 13.6a4.2 4.2 0 0 0 6 0l3-3a4.2 4.2 0 1 0-6-6l-1.5 1.5', 'M13.6 10.4a4.2 4.2 0 0 0-6 0l-3 3a4.2 4.2 0 1 0 6 6l1.5-1.5'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -478,6 +480,9 @@ export type PointPrix = { date: string; prix: number };
 export function seriePrix(p: any): PointPrix[] {
   const brut = Array.isArray(p?.historique_prix) ? p.historique_prix : [];
   const pts: PointPrix[] = brut
+    /* les lignes « diffuseur » disent qui vend et à quel prix, pas comment le
+       prix a bougé : elles n'entrent pas dans la courbe. */
+    .filter((x: any) => x?.type !== 'diffuseur')
     .map((x: any) => ({ date: String(x?.date ?? x?.d ?? ''), prix: Number(x?.prix ?? x?.p ?? x?.price) }))
     .filter((x: PointPrix) => x.date && isFinite(x.prix) && x.prix > 0)
     .sort((a: PointPrix, b: PointPrix) => a.date.localeCompare(b.date));
@@ -551,6 +556,69 @@ export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hau
   );
 }
 
+/* ══ Les diffuseurs d'un même bien ═════════════════════════════
+   Un bien est souvent porté par plusieurs agences, à des prix et
+   avec des honoraires différents. La veille les dépose dans
+   `historique_prix`, chaque entrée pouvant porter `agence` et `url`.
+   On reconstruit ici la liste, dédoublonnée et triée du moins cher
+   au plus cher — c'est le moins cher qu'Alexandre appelle en premier. */
+export type Diffuseur = { agence: string; prix?: number; date?: string; url?: string };
+
+export function diffuseurs(p: any): Diffuseur[] {
+  const brut = Array.isArray(p?.historique_prix) ? p.historique_prix : [];
+
+  /* Deux sortes de lignes cohabitent dans `historique_prix` :
+       — la courbe du prix   { date, prix }
+       — les diffuseurs      { type: 'diffuseur', agence, prix, date, url }
+     Dès que la veille a marqué les diffuseurs, on ne lit qu'eux : sinon une
+     baisse de prix signée d'une agence compterait pour une agence de plus.
+     Sans marquage (fiches déposées avant), on retombe sur l'ancienne règle :
+     toute ligne qui porte un nom d'agence. */
+  const marquees = brut.filter((x: any) => x?.type === 'diffuseur');
+  const source = marquees.length ? marquees : brut;
+  const vus = new Map<string, Diffuseur>();
+
+  for (const x of source) {
+    const nom = String(x?.agence ?? x?.a ?? '').trim();
+    if (!nom) continue;
+    const cle = nom.toLowerCase();
+    const prix = Number(x?.prix ?? x?.p);
+    const neuf: Diffuseur = {
+      agence: nom,
+      prix: isFinite(prix) && prix > 0 ? prix : undefined,
+      date: x?.date ? String(x.date) : undefined,
+      url: x?.url ? String(x.url) : undefined,
+    };
+    const ancien = vus.get(cle);
+    vus.set(cle, ancien
+      ? { agence: ancien.agence, prix: neuf.prix ?? ancien.prix, date: ancien.date ?? neuf.date, url: ancien.url ?? neuf.url }
+      : neuf);
+  }
+
+  /* L'agence de l'annonce retenue, si l'historique ne la cite pas.
+     Le champ ne porte pas le même nom des deux côtés : `agence` dans la
+     veille, `agence_nom` une fois le bien passé en Sélection. Pareil pour
+     le lien. On accepte les deux, sinon le volet reste vide côté Sélection. */
+  const mandat = String(p?.agence ?? p?.agence_nom ?? '').trim();
+  const lienRetenu = p?.url || p?.lien || undefined;
+  if (mandat && !vus.has(mandat.toLowerCase())) {
+    vus.set(mandat.toLowerCase(), {
+      agence: mandat,
+      prix: Number(p?.prix ?? p?.prix_vendeur) > 0 ? Number(p?.prix ?? p?.prix_vendeur) : undefined,
+      url: lienRetenu,
+    });
+  }
+
+  // à défaut d'URL propre, l'agence du mandat renvoie vers l'annonce retenue
+  const out = [...vus.values()];
+  if (mandat && lienRetenu) {
+    const principal = out.find(d => d.agence.toLowerCase() === mandat.toLowerCase());
+    if (principal && !principal.url) principal.url = lienRetenu;
+  }
+
+  return out.sort((a, b) => (a.prix ?? Number.MAX_SAFE_INTEGER) - (b.prix ?? Number.MAX_SAFE_INTEGER));
+}
+
 function Puce({ children, icone, onClick, ouvert, ton = 'neutre' }: {
   children: React.ReactNode; icone?: string; onClick?: () => void; ouvert?: boolean;
   ton?: 'neutre' | 'vert' | 'or';
@@ -577,26 +645,41 @@ function Puce({ children, icone, onClick, ouvert, ton = 'neutre' }: {
 }
 
 export function BandeauMarche({ p }: { p: any }) {
-  const [ouvert, setOuvert] = useState<null | 'date' | 'prix'>(null);
+  const [ouvert, setOuvert] = useState<null | 'date' | 'prix' | 'agences'>(null);
   const pts = seriePrix(p);
-  const baisse = p.prix_initial && p.prix ? Number(p.prix_initial) - Number(p.prix) : 0;
+  const prixActuel = Number(p.prix ?? p.prix_vendeur) || 0;
+  const baisse = p.prix_initial && prixActuel ? Number(p.prix_initial) - prixActuel : 0;
   const baissePct = baisse > 0 && p.prix_initial ? (baisse / Number(p.prix_initial)) * 100 : 0;
   const nbBaisses = p.nb_baisses || Math.max(pts.length - 1, 0);
   const aDuPrix = pts.length >= 2 || nbBaisses > 0;
 
-  if (!p.date_publication && !nbBaisses && !p.nb_agences && !p.agence && !p.portail) return null;
+  const agenceMandat = p.agence ?? p.agence_nom ?? null;
+  const portail = p.portail ?? p.source_portail ?? null;
 
-  const bascule = (v: 'date' | 'prix') => setOuvert(o => (o === v ? null : v));
+  const liste = diffuseurs(p);
+  /* Le chiffre affiché est celui de la liste qui s'ouvre : c'est la seule
+     façon de ne jamais promettre « 2 agences » sur un volet qui n'en montre
+     qu'une. `nb_agences` ne sert que tant que la liste est vide. */
+  const nbAgences = liste.length || Number(p.nb_agences) || 0;
+  const moinsCher = liste.find(d => typeof d.prix === 'number');
+  const ecart = liste.length >= 2 && liste[0].prix && liste[liste.length - 1].prix
+    ? Number(liste[liste.length - 1].prix) - Number(liste[0].prix) : 0;
+
+  if (!p.date_publication && !nbBaisses && !nbAgences && !agenceMandat && !portail) return null;
+
+  const bascule = (v: 'date' | 'prix' | 'agences') => setOuvert(o => (o === v ? null : v));
 
   return (
     <div style={{ background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 14, padding: '9px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Marché</span>
 
-        {p.date_publication && (
+        {p.date_publication ? (
           <Puce icone="horloge" onClick={() => bascule('date')} ouvert={ouvert === 'date'}>
             en ligne depuis {anciennete(p.date_publication)}
           </Puce>
+        ) : (
+          <Puce icone="horloge" ton="neutre">mise en ligne inconnue</Puce>
         )}
 
         {aDuPrix && (
@@ -607,13 +690,78 @@ export function BandeauMarche({ p }: { p: any }) {
           </Puce>
         )}
 
-        {p.nb_agences ? (
-          <Puce icone="maison" ton={p.nb_agences >= 3 ? 'vert' : 'neutre'}>
-            {p.nb_agences} agence{p.nb_agences > 1 ? 's' : ''}
+        {/* Une seule puce pour la commercialisation : le nombre d'agences.
+            Elle s'ouvre sur la liste, et chaque agence y est cliquable. */}
+        {nbAgences > 0 && (
+          <Puce icone="maison" ton={nbAgences >= 3 ? 'vert' : 'neutre'}
+            onClick={liste.length ? () => bascule('agences') : undefined}
+            ouvert={ouvert === 'agences'}>
+            {nbAgences === 1 ? 'Exclusivité' : `${nbAgences} agences`}
+            {ecart > 0 && ` · ${ecart.toLocaleString('fr-FR')} € d'écart`}
           </Puce>
-        ) : null}
-        {p.agence && <Puce>{p.agence}</Puce>}
-        {p.portail && <Puce>{p.portail}</Puce>}
+        )}
+      </div>
+
+      {/* volet : qui commercialise le bien, et à quel prix */}
+      <div className="emi-volet" data-ouvert={ouvert === 'agences'}>
+        <div>
+          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '10px 14px 8px' }}>
+            {liste.length ? (
+              <>
+                {liste.map((d, i) => {
+                  const estMandat = agenceMandat && d.agence.toLowerCase() === String(agenceMandat).toLowerCase();
+                  const estMoinsCher = liste.length >= 2 && moinsCher && d.agence === moinsCher.agence;
+                  const corps = (
+                    <>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
+                      <span style={{ fontWeight: 800, color: NAVY, flex: 1, minWidth: 150, textAlign: 'left' }}>
+                        {d.agence}
+                        {estMandat && <span style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8' }}> · annonce retenue</span>}
+                      </span>
+                      {typeof d.prix === 'number' && (
+                        <span style={{ fontWeight: 800, color: estMoinsCher ? '#15803d' : NAVY, minWidth: 104, textAlign: 'right' }}>
+                          {d.prix.toLocaleString('fr-FR')} €
+                        </span>
+                      )}
+                      {d.date && <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 96, textAlign: 'right' }}>{jour(d.date)}</span>}
+                      <span style={{ color: d.url ? OR : '#e2e8f0', display: 'flex', flexShrink: 0 }}>
+                        <Icone nom="lien" taille={14} epaisseur={2} />
+                      </span>
+                    </>
+                  );
+                  const style: React.CSSProperties = {
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                    padding: '9px 4px', fontSize: 13, background: 'none', color: 'inherit',
+                    borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', borderLeft: 0, borderRight: 0, borderBottom: 0,
+                    textDecoration: 'none',
+                  };
+                  return d.url
+                    ? <a key={i} href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
+                    : <div key={i} style={style} title="Lien non renseigné par la veille">{corps}</div>;
+                })}
+                {ecart > 0 && (
+                  <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
+                      Écart entre diffuseurs
+                    </span>
+                    <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>{ecart.toLocaleString('fr-FR')} €</span>
+                  </div>
+                )}
+                {portail && (
+                  <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>
+                    Annonce retenue trouvée sur {portail}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
+                {nbAgences > 1
+                  ? `${nbAgences} agences commercialisent ce bien, mais leurs noms n'ont pas encore été récupérés. La prochaine veille les complétera.`
+                  : "Le nom de l'agence n'a pas encore été récupéré."}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* volet : la date exacte */}
@@ -623,7 +771,7 @@ export function BandeauMarche({ p }: { p: any }) {
             <Ligne lib="Première mise en ligne" val={jour(p.date_publication)} />
             <Ligne lib="Sur le marché depuis" val={anciennete(p.date_publication) || '—'} />
             {p.date_derniere_baisse && <Ligne lib="Dernier changement de prix" val={jour(p.date_derniere_baisse)} />}
-            {p.agence && <Ligne lib="Mandat" val={p.agence} />}
+            {agenceMandat && <Ligne lib="Mandat" val={agenceMandat} />}
           </div>
         </div>
       </div>
