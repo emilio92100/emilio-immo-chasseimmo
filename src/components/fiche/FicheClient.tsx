@@ -1711,13 +1711,15 @@ Emilio Immobilier
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
   // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
   const COMM_EVENT_TYPES = ['email_libre', 'envoi_externe'];
-  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', 'message_client', 'demande_rappel', ...COMM_EVENT_TYPES];
+  /* « relance_manuelle » n'est plus dans cette liste : les quelques anciennes
+     lignes de ce type retombent dans « Système ». Une relance ne mérite plus
+     son propre filtre — elle s'affiche maintenant sous l'action qui l'a créée. */
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel', ...COMM_EVENT_TYPES];
   const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
   const suiviGroupes: Record<string, { label: string; items: any[] }> = {
     appel:          { label: '📞 Appels',         items: evType(['appel']) },
     rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
     note:           { label: '📝 Notes',          items: evType(['note']) },
-    relance:        { label: '🔔 Relances',       items: evType(['relance_manuelle']) },
     message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel']) },
     communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
     systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
@@ -2714,7 +2716,7 @@ Emilio Immobilier
                   { id: 'appel', label: suiviGroupes.appel.label, count: suiviGroupes.appel.items.length },
                   { id: 'rdv', label: suiviGroupes.rdv.label, count: suiviGroupes.rdv.items.length },
                   { id: 'note', label: suiviGroupes.note.label, count: suiviGroupes.note.items.length },
-                  { id: 'relance', label: suiviGroupes.relance.label, count: suiviGroupes.relance.items.length },
+                  { id: 'message', label: suiviGroupes.message.label, count: suiviGroupes.message.items.length },
                   { id: 'communications', label: suiviGroupes.communications.label, count: suiviGroupes.communications.items.length },
                   { id: 'systeme', label: suiviGroupes.systeme.label, count: suiviGroupes.systeme.items.length },
                 ].map(f => (
