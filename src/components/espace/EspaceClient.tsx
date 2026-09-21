@@ -778,6 +778,18 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
             <span className="chev"><Ico n="fleche" t={18} /></span></div>
         </button>
+
+        {/* Juste sous le rappel de sa recherche : c'est là qu'on y pense, pas
+            tout en bas de page. Le trait pointillé dit que ce n'est pas une
+            case comme les autres — on n'y clique pas par hasard. */}
+        <button className="fin-recherche" onClick={onFin}>
+          <span className="fr-ico">🏁</span>
+          <span className="fr-txt">
+            <b>Ma recherche est terminée</b>
+            <i>Vous avez trouvé&nbsp;? Vous souhaitez faire une pause&nbsp;? Dites-le-nous.</i>
+          </span>
+          <span className="chev"><Ico n="fleche" t={17} /></span>
+        </button>
         <button className="case large" onClick={() => aller('marche')}>
           <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
           <div><h3>Le marché sur vos critères</h3>
@@ -810,18 +822,6 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
         <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
       </div>
-
-      <button onClick={onFin}
-        style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', marginTop: 12,
-          background: 'transparent', border: '1px dashed var(--trait)', borderRadius: 14,
-          padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-        <span style={{ fontSize: 15, flexShrink: 0 }}>🏁</span>
-        <span style={{ flexGrow: 1, minWidth: 0 }}>
-          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--encre)' }}>Ma recherche est terminée</span>
-          <span style={{ display: 'block', fontSize: 12, color: 'var(--plume)', marginTop: 1 }}>Vous avez trouvé, ou vous souhaitez faire une pause</span>
-        </span>
-        <span style={{ color: 'var(--plume-clair)', flexShrink: 0 }}><Ico n="fleche" t={16} /></span>
-      </button>
 
       <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
         <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
@@ -2869,6 +2869,18 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 
 /* Le choix du créneau, sous « Je souhaite être rappelé ». Trois cases et rien
    d'autre : on ne demande pas au client d'écrire pour obtenir un appel. */
+.fin-recherche{grid-column:1 / -1; display:flex; align-items:center; gap:12px; width:100%;
+  background:transparent; border:1.5px dashed var(--trait); border-radius:16px;
+  padding:13px 16px; cursor:pointer; font-family:inherit; text-align:left;
+  transition:border-color .16s, background .16s}
+.fin-recherche:hover{border-color:var(--or); background:var(--or-fond)}
+.fin-recherche:active{transform:scale(.99)}
+.fin-recherche .fr-ico{font-size:17px; flex-shrink:0}
+.fin-recherche .fr-txt{flex-grow:1; min-width:0}
+.fin-recherche .fr-txt b{display:block; font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:14px; font-weight:800; color:var(--encre)}
+.fin-recherche .fr-txt i{display:block; font-style:normal; font-size:12.5px;
+  color:var(--plume); margin-top:2px}
 .bloc-rappel{margin-top:12px; background:var(--fond); border:1px solid var(--trait);
   border-radius:14px; padding:14px}
 .lib-rappel{font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:800;
