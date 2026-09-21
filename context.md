@@ -269,12 +269,24 @@ le client, la recherche (seulement s'il en a plusieurs), puis **Mettre en sélec
 
 ### La fiche bien publique — `/bien/<id>`
 
-Une colonne centrée (900 px max) sur fond crème, chaque section en carte blanche avec son
-**en-tête en étiquette dorée à cheval** sur le bord supérieur.
-Header navy avec logo · titre et localisation · carrousel avec plein écran (flèches, clavier,
-Échap) · barre de prix pleine largeur · un bandeau de chiffres sans titre · puis quatre cartes
-titrées : « À propos de ce bien » (pliable) · « Équipements et caractéristiques » ·
-« Performance énergétique » · « Informations complémentaires » · contact · pied de page.
+**Refaite le 21 septembre à la trame de l'espace acheteur** : mêmes cartes, mêmes rubriques, mêmes
+jetons de couleur, mêmes icônes SVG. C'est volontaire — cette page est celle que le client partage
+avec son conjoint ou son courtier depuis l'espace, et les deux doivent se ressembler.
+
+760 px de large, fond `--fond`, header navy avec logo. Carrousel (glissement au doigt, ruban qui
+suit le geste, résistance aux bords) · prix en or avec le prix au m² · titre et localisation · une
+grille de cases à icône dorée (surface, pièces, chambres, étage, exposition, séjour, extérieur,
+construction) · « Performance énergétique » (DPE et GES en lettres colorées) · la description en
+paragraphes repliés derrière « Lire la suite » · « Ce que le bien comprend » en cartes à icône ·
+« Charges et énergie » en tuiles · bloc de contact navy · mentions non contractuelles · pied de
+page nommant l'agence.
+
+**La différence avec l'espace : pas de boutons d'avis.** Celui qui reçoit ce lien n'est pas le
+client, il n'a rien à répondre — on lui donne de quoi appeler.
+
+⚠️ **Le découpage du texte en paragraphes existe en double** : `AboutPliable.tsx` pour cette page,
+et `decoupeTexte()` dans `EspaceClient.tsx` pour l'espace. Même logique, deux copies. Les changer
+séparément ferait diverger les deux pages — à sortir dans un fichier commun un jour.
 
 Le prix affiché est `prix_acquereur || prix_vendeur` : **si la commission n'a pas été saisie, c'est
 le prix vendeur qui s'affiche**, sous le libellé « Prix ». Ce n'est donc « FAI uniquement » que si
@@ -477,6 +489,41 @@ l'étaient pas**. Le bug était *latent* — l'assistant envoie aujourd'hui l'ob
 n'a été perdu — mais le premier envoi partiel aurait vidé ces deux champs sans un mot. Les six
 passent désormais par le même mécanisme que les autres, et un envoi vide n'écrit plus rien.
 
+### ✅ Corrigé le 21 septembre
+
+**Le portail bloquait toutes les images du dossier `public/`.** `src/proxy.ts` n'excluait que
+`_next/static` et `_next/image`. Or quand `next/image` optimise `/logo_high_resolution_white.png`,
+il redemande le fichier au site **par une requête HTTP** — qui repassait par le portail, sans
+cookie, et se faisait rediriger vers `/login`. L'optimiseur recevait du HTML au lieu d'une image :
+**le logo n'apparaissait sur aucune page publique.** Le matcher exclut désormais les extensions de
+fichier statique.
+
+**Le bien passait en « Présenté » avant l'envoi.** Choisir « par mail » appelait `marquer('mail')`
+*avant* d'ouvrir la fenêtre de rédaction : annuler ne changeait plus rien. Désormais le clic
+n'enregistre que les honoraires ; le passage en « Présenté » se fait dans `saveEnvoiBien`, quand
+Mailjet confirme. **Et renvoyer un bien déjà présenté ne remet plus `badge_retour` à `propose`** —
+sans ça, un renvoi effaçait l'avis du client.
+
+**Le PDF remplaçait le lien d'envoi.** `const lien = bien.pdf_url || …` : dès qu'une fiche PDF
+existait, WhatsApp et « copier le lien » envoyaient le fichier au lieu de la page vivante. Le
+client recevait un document mort, sans aucun moyen de répondre. Le `pdf_url ||` est retiré.
+
+**Le mail menait à la fiche publique, en lecture seule.** `/api/send-mail` pointait sur
+`/bien/<id>`, où il n'y a aucun bouton de réponse. Il pointe maintenant sur
+`/espace/<token>?bien=<id>`. Le jeton est lu depuis `recherches.token_espace` ; s'il manque, le
+lien retombe sur la page publique.
+
+**L'avis du client ne pouvait pas se désélectionner**, et un avis déjà envoyé restait modifiable en
+rouvrant le bien — un deuxième retour écrasait le premier et doublait la ligne au journal.
+Désormais : bascule tant que rien n'est parti, figé dès l'envoi.
+
+**`envoye` était calculé sur `!!b.avis`**, alors qu'un bien présenté sans réponse porte déjà
+`badge_retour = 'propose'`. Tous les biens en attente arrivaient donc figés. Seules les quatre
+valeurs d'`ETIQ` comptent comme un vrai retour.
+
+**Le mail de partage n'avait pas de photo** — juste un titre et une ligne. La requête
+`bienDeLaRecherche` ne remontait ni `photos` ni `quartier`.
+
 ### Décidé, pas encore construit
 
 1. **SMS à chaque dépôt de bien** — un SMS au client quand un bien arrive dans son espace, avec le
@@ -638,3 +685,34 @@ or + blanc, émojis remplacés par les icônes dessinées.
 `app/api/espace/[action]/route.ts` · `app/api/espace/agenda/route.ts` ·
 `components/shared/ArretPicker.tsx` · `lib/arrets.ts` · `lib/lignes.ts` · `src/proxy.ts` ·
 `outils/espaces-jsx.py`.
+
+### V3.4 — 21 septembre 2026 · le circuit d'envoi, remis d'aplomb
+
+Pas de nouvelle fonction : une journée à réparer le chemin entre un bien retenu et la réponse du
+client. Sept bugs silencieux, tous détaillés au §7.
+
+**Le circuit, tel qu'il est maintenant.** Le mail ne sert qu'à prévenir : chaque bouton mène à
+`/espace/<jeton>?bien=<id>`, la fiche du bien dans l'espace, avec les trois boutons de réponse.
+Le bien ne bascule en « Présenté » qu'à l'envoi réel. La fiche publique `/bien/<id>` reste, pour le
+partage à un tiers qui n'a pas de lien d'espace, et adopte la même trame.
+
+**Côté espace acheteur** : deux rubriques de plus sous la description — « Ce que le bien comprend »
+en cartes à icône, « Charges et énergie » en tuiles — avec neuf icônes dessinées pour l'occasion.
+DPE et GES passés en cartes, année de construction montée dans la rangée de chiffres. Description
+découpée en paragraphes et repliée derrière « Lire la suite ». Accueil réorganisé : deux cartes
+d'action côte à côte, puis le rappel de recherche et le marché sur toute la largeur. Bouton
+« Télécharger la fiche » en attente, avec une pop-up qui annonce ce qui arrive.
+
+**Côté CRM** : « Préparer le PDF » renommé **« Demander une fiche soignée »**, et son état d'attente
+« En attente · prochaine session » — l'ancien libellé laissait croire à une action immédiate, alors
+que c'est une demande déposée en base, honorée à la session suivante. « Observation » renommé
+**« Noter son retour »** : la fonction existait, personne ne la trouvait.
+
+**Deux migrations SQL** : `retour_par` sur `biens` (`client` / `conseiller`, pour que l'espace
+n'écrive plus « Votre commentaire » sous une phrase saisie par Alexandre), et la renumérotation des
+dossiers clients à partir de 100 (`EMI-2026-100`).
+
+⚠️ **Toujours pas poussé sur GitHub au 21 septembre** : `src/app/bookmarklet/capture/page.tsx`
+(la réparation du bouton Emilio, cf. V3.3 bug n°5 — **le bouton reste mort tant que ce fichier
+n'est pas en ligne**), `src/app/bookmarklet/page.tsx`, `src/components/clients/Clients.tsx`
+(espaces JSX), et le dossier `outils/`.
