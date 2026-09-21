@@ -1297,14 +1297,14 @@ Emilio Immobilier
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
   // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
   const COMM_EVENT_TYPES = ['email_libre', 'envoi_externe'];
-  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', 'message_client', ...COMM_EVENT_TYPES];
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'relance_manuelle', 'message_client', 'demande_rappel', ...COMM_EVENT_TYPES];
   const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
   const suiviGroupes: Record<string, { label: string; items: any[] }> = {
     appel:          { label: '📞 Appels',         items: evType(['appel']) },
     rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
     note:           { label: '📝 Notes',          items: evType(['note']) },
     relance:        { label: '🔔 Relances',       items: evType(['relance_manuelle']) },
-    message:        { label: '💬 Messages client', items: evType(['message_client']) },
+    message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel']) },
     communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
     systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
   };
