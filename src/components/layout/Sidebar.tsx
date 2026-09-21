@@ -2,11 +2,29 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
+import { EVT_MAJ } from '@/lib/intentions';
 
 export default function Sidebar({ activePage, onNavigate }: { activePage: string; onNavigate: (page: string) => void }) {
   const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0 });
 
-  useEffect(() => { fetchCounts(); }, [activePage]);
+  /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
+     relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
+     maintenant les écrans qui touchent aux dossiers, le retour sur l'onglet,
+     et se rafraîchissent d'eux-mêmes de temps en temps. */
+  useEffect(() => {
+    fetchCounts();
+    const revoir = () => { if (!document.hidden) fetchCounts(); };
+    const minuterie = setInterval(revoir, 20000);
+    window.addEventListener(EVT_MAJ, fetchCounts);
+    window.addEventListener('focus', revoir);
+    document.addEventListener('visibilitychange', revoir);
+    return () => {
+      clearInterval(minuterie);
+      window.removeEventListener(EVT_MAJ, fetchCounts);
+      window.removeEventListener('focus', revoir);
+      document.removeEventListener('visibilitychange', revoir);
+    };
+  }, [activePage]);
 
   async function fetchCounts() {
     const today = new Date().toISOString();
