@@ -452,7 +452,39 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [biensInit]);
 
+  /* « Mes critères ont évolué » ne mène plus directement à l'assistant : on
+     demande d'abord au client ce qu'il préfère. Certains veulent corriger un
+     chiffre eux-mêmes, d'autres veulent en parler — les deux sont légitimes,
+     et lui laisser le choix évite qu'il traverse neuf étapes pour dire une
+     chose qui tient en une phrase au téléphone. */
   function ouvrirCriteres() {
+    montrer(<ChoixCriteres onFermer={fermer}
+      onModifier={ouvrirModifCriteres} onRappel={demanderRappel} />);
+  }
+
+  /* Une demande de rappel : le créneau suffit. Le numéro est celui du dossier,
+     on ne le redemande pas — ce serait une friction pour rien. */
+  async function demanderRappel(creneau: string) {
+    const r = await envoyer('rappel', { creneau });
+    const quand = creneau === 'matin' ? 'le matin'
+      : creneau === 'apres_midi' ? "l'après-midi" : 'en fin de journée';
+    if (r && r.ok === false) {
+      /* Déjà demandé aujourd'hui, ou envoi qui n'est pas passé : dans les deux
+         cas on ne fait pas croire au client que c'est reparti une fois de plus. */
+      montrer(<GrandOk titre="Votre demande est déjà partie"
+        texte="Votre conseiller en a déjà été prévenu : il vous rappelle. Inutile de redemander, votre demande n'est pas perdue."
+        rappel={'Si c\'est urgent, vous pouvez l\'appeler directement au <b>' + AGENT.tel + '</b>.'}
+        onFermer={fermer} />, 'pleine');
+      return;
+    }
+    montrer(<GrandOk titre="C'est noté, il vous rappelle"
+      texte={"Votre conseiller est prévenu que vous souhaitez être rappelé " + quand
+        + ". Il vous appelle sur le numéro de votre dossier."}
+      rappel="En attendant, la recherche se poursuit chaque jour sur vos critères actuels."
+      onFermer={fermer} />, 'pleine');
+  }
+
+  function ouvrirModifCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
       setCrit(nv);
       await envoyer('criteres', { criteres: nv });
@@ -2066,6 +2098,66 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     </>
   );
 }
+/* Le carrefour de « Mes critères ont évolué » : modifier soi-même, ou être
+   rappelé. Le créneau se choisit ici même — ouvrir une deuxième pop-up pour
+   trois boutons, c'est une étape de trop. */
+function ChoixCriteres({ onFermer, onModifier, onRappel }: any) {
+  const [ouvertRappel, setOuvertRappel] = useState(false);
+  const [creneau, setCreneau] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const CRENEAUX: [string, string, string][] = [
+    ['matin', 'Le matin', '8h – 12h'],
+    ['apres_midi', "L'après-midi", '12h – 18h'],
+    ['soir', 'En fin de journée', '18h – 20h'],
+  ];
+  return (
+    <>
+      <div className="tete-f">
+        <div><div className="sur">Votre recherche</div><h3>Comment préférez-vous faire&nbsp;?</h3></div>
+        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+      </div>
+      <div className="corps-f">
+        <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
+          Deux façons de faire évoluer votre recherche. Les deux arrivent chez votre conseiller.
+        </p>
+
+        <button className="cta-prec" onClick={onModifier}>
+          <span><b>Je modifie moi-même ma recherche</b>
+            <span className="s">Vous reprenez vos critères un par un. Vos changements sont
+              transmis à votre conseiller, qui les intègre aussitôt à la recherche.</span></span>
+          <span className="chev"><Ico n="fleche" t={18} /></span>
+        </button>
+
+        <button className="cta-prec" onClick={() => setOuvertRappel(true)}
+          style={ouvertRappel ? { borderColor: 'var(--or)' } : undefined}>
+          <span><b>Je souhaite être rappelé</b>
+            <span className="s">Votre conseiller vous appelle pour en parler de vive voix,
+              et met la recherche à jour avec vous.</span></span>
+          <span className="chev"><Ico n="tel" t={18} /></span>
+        </button>
+
+        {ouvertRappel && (
+          <div className="bloc-rappel">
+            <div className="lib-rappel">À quel moment de la journée&nbsp;?</div>
+            <div className="creneaux">
+              {CRENEAUX.map(([cle, titre, heures]) => (
+                <button key={cle} type="button"
+                  className={'creneau' + (creneau === cle ? ' pris' : '')}
+                  onClick={() => setCreneau(cle)}>
+                  <b>{titre}</b><span>{heures}</span>
+                </button>
+              ))}
+            </div>
+            <BtnEnvoi enCours={envoi} classe="btn or" libelle="Demander à être rappelé"
+              enCoursTexte="Envoi en cours…" style={{ marginTop: 12, opacity: creneau ? 1 : .5 }}
+              onClick={async () => { if (!creneau) return; setEnvoi(true); await onRappel(creneau); }} />
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function Message({ onFermer, onEnvoi }: any) {
   const [txt, setTxt] = useState('');
   const [envoi, setEnvoi] = useState(false);
@@ -2603,6 +2695,23 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .cta-prec:active{transform:scale(.985)}
 .cta-prec b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:14px; font-weight:800; color:var(--or-fonce)}
 .cta-prec span.s{display:block; font-size:12.5px; color:var(--plume); margin-top:3px}
+
+/* Le choix du créneau, sous « Je souhaite être rappelé ». Trois cases et rien
+   d'autre : on ne demande pas au client d'écrire pour obtenir un appel. */
+.bloc-rappel{margin-top:12px; background:var(--fond); border:1px solid var(--trait);
+  border-radius:14px; padding:14px}
+.lib-rappel{font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:800;
+  color:var(--encre); margin-bottom:10px}
+.creneaux{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+.creneau{background:var(--carte); border:1px solid var(--trait); border-radius:12px;
+  padding:11px 6px; text-align:center;
+  transition:border-color .16s, background .16s, transform .16s cubic-bezier(.16,1,.3,1)}
+.creneau:active{transform:scale(.97)}
+.creneau b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:12.5px;
+  font-weight:800; color:var(--encre)}
+.creneau span{display:block; font-size:11.5px; color:var(--plume); margin-top:2px}
+.creneau.pris{border-color:var(--or); background:var(--or-fond)}
+.creneau.pris b{color:var(--or-fonce)}
 
 .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:14px;
   padding:15px 20px; font-family:'Plus Jakarta Sans',sans-serif; font-size:14.5px; font-weight:800;
