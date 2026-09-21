@@ -80,6 +80,15 @@ export function StylesEmilio() {
       .emi-compteur { background:rgba(148,163,184,.18); color:#64748b; border-radius:20px; padding:1px 8px; font-size:11.5px; font-weight:800; transition: all .32s cubic-bezier(.16,1,.3,1) }
       .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(26,35,50,.1); color:${NAVY} }
       .emi-onglet .emi-compteur.dore { background:${OR}; color:#fff }
+
+      /* ─── La barre du suivi, sur fond bleu profond ───
+         Le contraste fait le travail : au-dessus le brief du client, en dessous
+         ce qu'on fait pour lui. On ne les confond plus. */
+      .emi-onglets.sombre .emi-onglet { color:rgba(255,255,255,.66) }
+      .emi-onglets.sombre .emi-onglet:hover { color:#fff; background:rgba(255,255,255,.09) }
+      .emi-onglets.sombre .emi-onglet[data-actif="true"] { color:${NAVY}; background:#f7f9fc; border-color:transparent }
+      .emi-onglets.sombre .emi-compteur { background:rgba(255,255,255,.15); color:#fff }
+      .emi-onglets.sombre .emi-onglet[data-actif="true"] .emi-compteur { background:rgba(26,35,50,.1); color:${NAVY} }
     `}</style>
   );
 }
@@ -672,12 +681,17 @@ function Ligne({ lib, val }: { lib: string; val: React.ReactNode }) {
 
 /* ══ Onglets glissants ═════════════════════════════════════════ */
 
-export function Onglets({ items, actif, onChange }: {
+export function Onglets({ items, actif, onChange, sombre }: {
   items: { id: string; icone: string; nom: string; compte?: number | null; dore?: boolean }[];
   actif: string; onChange: (id: string) => void;
+  /* Sur fond sombre, la barre ne porte plus ni fond ni cadre : c'est le
+     bandeau qui l'accueille qui s'en charge. */
+  sombre?: boolean;
 }) {
   return (
-    <div style={{
+    <div className={sombre ? 'emi-onglets sombre' : 'emi-onglets'} style={sombre ? {
+      display: 'flex', gap: 3, flexWrap: 'wrap', padding: 0, marginBottom: 0,
+    } : {
       display: 'flex', gap: 3, flexWrap: 'wrap', background: '#eef2f7',
       border: `1px solid ${BORD}`, borderBottom: 'none',
       borderRadius: '16px 16px 0 0', padding: '6px 6px 0', marginBottom: 0,
