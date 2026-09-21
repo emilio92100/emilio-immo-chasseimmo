@@ -102,7 +102,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           : avis === 'souhaite_visiter' ? '👀 Il veut visiter' : '👎 Pas pour lui';
 
         await supabase.from('biens').update({
-          badge_retour: avis, retour_client: com || null, retour_le: new Date().toISOString(),
+          badge_retour: avis, retour_client: com || null,
+          retour_le: new Date().toISOString(), retour_par: 'client',
         }).eq('id', bien.id);
 
         await supabase.from('journal').insert({
