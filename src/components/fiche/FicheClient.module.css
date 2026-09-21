@@ -4,6 +4,10 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 24px; background: white; border-bottom: 1px solid #e3e8f0;
   flex-shrink: 0;
+  /* La barre d'actions de la fiche reste accessible une fois qu'on a
+     défilé : sans ça, « Action » et « Ajouter un bien » disparaissaient
+     dès le premier tour de molette. */
+  position: sticky; top: 0; z-index: 20;
 }
 
 .backBtn { background: none; border: none; color: #64748b; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color 0.15s; }
