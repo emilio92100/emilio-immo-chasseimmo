@@ -193,8 +193,8 @@
 
 .colClient { width: 248px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
 .colRech   { flex: 1 1 auto; min-width: 0; padding-right: 14px; }
-.colSect   { width: 180px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
-.colBud    { width: 104px; flex-shrink: 0; text-align: right; }
+.colSect   { width: 172px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.colBud    { width: 134px; flex-shrink: 0; text-align: right; }
 .colSig    { width: 150px; flex-shrink: 0; text-align: right; }
 
 .ligne {
@@ -213,12 +213,15 @@
   font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 800;
 }
 
+/* Un nom long était coupé net. Il tient maintenant sur deux lignes ;
+   au-delà seulement, on coupe. */
 .nom {
-  display: block; font-family: 'Plus Jakarta Sans', sans-serif;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 14.5px; font-weight: 800; color: #1a2332; letter-spacing: -0.15px;
-  line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.18; overflow: hidden;
 }
-.ref { display: block; font-size: 10.5px; font-weight: 700; color: #b0bccd; letter-spacing: 0.4px; margin-top: 1px; }
+.ref { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 700; color: #b0bccd; letter-spacing: 0.4px; }
 
 .rech {
   display: block; font-size: 13.5px; color: #55647a; font-weight: 500;
@@ -341,4 +344,48 @@
   font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px;
   text-transform: uppercase; border-radius: 99px; padding: 1px 7px;
   vertical-align: 1px;
+}
+
+/* ─── La colonne Recherche, en pastilles ─── */
+.pastilles { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+
+/* ─── Classer la liste : les en-têtes deviennent des commandes ─── */
+.triBtn, .triFleche {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #ffffff; border: 1px solid #dde4ee; border-radius: 8px;
+  padding: 3px 8px; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 10.5px; font-weight: 800;
+  color: #5d6b80; text-transform: uppercase; letter-spacing: 0.9px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.triFleche { padding: 3px 6px; }
+.triBtn:hover, .triFleche:hover { border-color: #c9a84c; }
+.triBtnActif { background: #1a2332; border-color: #1a2332; color: #ffffff; }
+.triBtnActif:hover { background: #243044; border-color: #243044; }
+
+.triMenu {
+  position: absolute; top: calc(100% + 9px); left: 0; z-index: 60;
+  width: 232px; background: #ffffff; border: 1px solid #e3e8f0; border-radius: 13px;
+  box-shadow: 0 14px 34px rgba(15,22,35,0.16); overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: triMenuEntre 0.14s cubic-bezier(.16,1,.3,1);
+  transform-origin: top left;
+}
+@keyframes triMenuEntre { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
+
+.triItem {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 9px 13px; border: none; border-bottom: 1px solid #f4f7fb;
+  background: #ffffff; cursor: pointer; text-align: left;
+  font-family: 'DM Sans', sans-serif;
+}
+.triItem:last-child { border-bottom: none; }
+.triItem:hover { background: #f8fafc; }
+.triItem b {
+  display: block; font-size: 13px; font-weight: 700; color: #1a2332;
+  text-transform: none; letter-spacing: 0;
+}
+.triItem small {
+  display: block; font-size: 11px; font-weight: 600; color: #a3b0c2;
+  margin-top: 1px; text-transform: none; letter-spacing: 0;
 }
