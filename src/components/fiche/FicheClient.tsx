@@ -1621,7 +1621,14 @@ Emilio Immobilier
       + (quand ? `\nLa relance prévue le ${quand} est supprimée avec elle.` : '');
     if (!confirm(texte)) return;
 
-    if (quand) await supabase.from('relances').delete().eq('id', relanceId!).eq('statut', 'en_attente');
+    if (relanceId) {
+      if (quand) await supabase.from('relances').delete().eq('id', relanceId).eq('statut', 'en_attente');
+      /* Une action avec relance laisse DEUX lignes au suivi : l'action, et le
+         « 🔔 Relance prévue le… » qui l'accompagne. Les deux portent le même
+         identifiant de relance — on les efface ensemble, sinon la seconde
+         restait seule à annoncer une relance qui n'existe plus. */
+      await supabase.from('journal').delete().eq('client_id', client.id).eq('metadata->>relance_id', relanceId);
+    }
     await supabase.from('journal').delete().eq('id', j.id);
     load();
   }
