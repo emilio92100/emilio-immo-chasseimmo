@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { delaiRelance, echeanceDans } from '@/lib/relances';
+import ChoixDate from '@/components/shared/ChoixDate';
 import styles from './Page.module.css';
 
 export default function PageRelances({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -117,10 +118,8 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
               </button>
             );
           })}
-          <input type="date" value={report.date} min={jourPlus(0)}
-            onChange={e => setReport({ id: r.id, date: e.target.value })}
-            style={{ border: '1px solid #e3d3ab', borderRadius: 9, padding: '5px 10px',
-              fontFamily: 'inherit', fontSize: 12.5, color: '#1a2332', background: 'white', outline: 'none' }} />
+          <ChoixDate compact valeur={report.date} min={jourPlus(0)} placeholder="Une autre date"
+            onChange={(v) => v && setReport({ id: r.id, date: v })} />
           <span style={{ flexGrow: 1 }} />
           <button onClick={() => setReport(null)}
             style={{ background: 'none', border: 'none', color: '#a08c60', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
