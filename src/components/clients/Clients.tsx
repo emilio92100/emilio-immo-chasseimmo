@@ -91,7 +91,19 @@ type StatDossier = {
   biens: number; visites: number; offres: number;
   relance?: { date: string; note: string | null };
   dernierContact?: string;
+  dernierTitre?: string;
+  /* Qui a bougé en dernier : toi, ou l'acheteur depuis son espace. */
+  dernierCote?: 'moi' | 'client';
 };
+
+/* Ce que l'acheteur fait depuis son espace passe par le même journal que tes
+   propres gestes. On les distingue : un dossier où le client vient de réagir
+   attend une réponse, ce n'est pas la même chose qu'un dossier que tu viens
+   toi-même de mettre à jour. */
+const EVT_CLIENT = new Set(['retour_client', 'message_client', 'demande_rappel', 'partage_client']);
+function venantDuClient(type: string, titre: string) {
+  return EVT_CLIENT.has(type) || /depuis son espace|par le client/i.test(titre || '');
+}
 type DetailDossier = {
   journal: { titre: string; type: string; date: string } | null;
   espaceOuvertures: number;
@@ -114,25 +126,59 @@ function ilYA(iso: string) {
   return m < 12 ? `il y a ${m} mois` : `il y a ${Math.round(j / 365)} an${j >= 730 ? 's' : ''}`;
 }
 
+/* Une durée, sans « il y a » devant. */
+function duree(j: number) {
+  if (j < 31) return `${j} j`;
+  const m = Math.round(j / 30.4);
+  return m < 12 ? `${m} mois` : `${Math.round(j / 365)} an${j >= 730 ? 's' : ''}`;
+}
+
 /* Le signal : une seule phrase, celle qui compte le plus pour ce dossier.
-   L'ordre décide aussi du tri — ce qui presse remonte. */
-type Signal = { texte: string; color: string; bg: string; rang: number };
+   L'ordre décide aussi du tri — ce qui presse remonte.
+
+   « Rien depuis … » se lit dans le journal du dossier : appels, mails, biens
+   envoyés, retours, visites, changements de statut. Ouvrir une fiche pour la
+   consulter n'écrit rien — sinon le compteur repartirait à zéro chaque fois
+   qu'on regarde, et il ne voudrait plus rien dire. */
+type Signal = { texte: string; color: string; bg: string; rang: number; aide: string };
 function signalDe(client: any, st: StatDossier | undefined): Signal {
   if (st?.relance) {
     const j = joursJusqua(st.relance.date);
-    if (j < 0) return { texte: `🔔 Relance en retard`, color: '#be123c', bg: '#fff1f2', rang: 0 };
-    if (j === 0) return { texte: `🔔 Relance aujourd'hui`, color: '#be123c', bg: '#fff1f2', rang: 1 };
-    if (j <= 7) return { texte: `Relance dans ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 2 };
-    return { texte: `Relance le ${new Date(st.relance.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`, color: '#64748b', bg: '#f5f8fc', rang: 4 };
+    const aide = `Relance prévue le ${new Date(st.relance.date).toLocaleDateString('fr-FR')}${st.relance.note ? ` — ${st.relance.note}` : ''}`;
+    if (j < 0) return { texte: `🔔 Relance en retard`, color: '#be123c', bg: '#fff1f2', rang: 0, aide };
+    if (j === 0) return { texte: `🔔 Relance aujourd'hui`, color: '#be123c', bg: '#fff1f2', rang: 1, aide };
+    if (j <= 7) return { texte: `Relance dans ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 2, aide };
+    return { texte: `Relance le ${new Date(st.relance.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`, color: '#64748b', bg: '#f5f8fc', rang: 4, aide };
   }
   if (client.mandat_date_expiration) {
     const j = joursJusqua(client.mandat_date_expiration);
-    if (j < 0) return { texte: '⚠️ Mandat expiré', color: '#b91c1c', bg: '#fef2f2', rang: 3 };
-    if (j < 15) return { texte: `Mandat · ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 3 };
+    const aide = `Mandat jusqu'au ${new Date(client.mandat_date_expiration).toLocaleDateString('fr-FR')}`;
+    if (j < 0) return { texte: '⚠️ Mandat expiré', color: '#b91c1c', bg: '#fef2f2', rang: 3, aide };
+    if (j < 15) return { texte: `Mandat · ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 3, aide };
   }
-  if ((client.statut as string) === 'bien_trouve') return { texte: 'Dossier clos', color: '#1d4ed8', bg: '#eff6ff', rang: 8 };
-  if (st?.dernierContact) return { texte: `Vu ${ilYA(st.dernierContact)}`, color: '#7b8798', bg: '#f5f8fc', rang: 6 };
-  return { texte: `Suivi ${joursDepuis(client.created_at)} j`, color: '#7b8798', bg: '#f5f8fc', rang: 7 };
+  if ((client.statut as string) === 'bien_trouve') {
+    return { texte: 'Dossier clos', color: '#1d4ed8', bg: '#eff6ff', rang: 8, aide: 'Bien trouvé — dossier terminé' };
+  }
+  if (st?.dernierContact) {
+    const j = joursDepuis(st.dernierContact);
+    const quand = j <= 0 ? "aujourd'hui" : j === 1 ? 'hier' : `il y a ${duree(j)}`;
+    const aide = `${st.dernierTitre || 'Dernier mouvement'} — ${new Date(st.dernierContact).toLocaleDateString('fr-FR')}`;
+
+    /* L'acheteur a bougé : ça appelle une réponse, ça ne se confond pas avec
+       une mise à jour que tu as faite toi-même. */
+    if (st.dernierCote === 'client') {
+      return { texte: `Le client a réagi ${quand}`, color: '#6d28d9', bg: '#f5f3ff', rang: j <= 3 ? 1.5 : 5.5, aide };
+    }
+    if (j <= 1) return { texte: `Mis à jour ${quand}`, color: '#0f7a4f', bg: '#ecfdf5', rang: 6, aide };
+
+    /* Un dossier actif sans le moindre geste depuis six semaines refroidit :
+       ce n'est pas une alerte, mais ça doit se voir. */
+    if (j > 45 && (client.statut as string) === 'actif') {
+      return { texte: `Rien depuis ${duree(j)}`, color: '#b45309', bg: '#fffbeb', rang: 5, aide };
+    }
+    return { texte: `Mis à jour ${quand}`, color: '#7b8798', bg: '#f5f8fc', rang: 6, aide };
+  }
+  return { texte: `Créé il y a ${duree(joursDepuis(client.created_at))}`, color: '#7b8798', bg: '#f5f8fc', rang: 7, aide: 'Aucun événement enregistré sur ce dossier' };
 }
 
 /* La recherche, en une phrase plutôt qu'en huit pastilles. */
@@ -271,7 +317,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         supabase.from('visites').select('client_id').in('client_id', ids),
         supabase.from('relances').select('client_id, date_echeance, note')
           .in('client_id', ids).eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
-        supabase.from('journal').select('client_id, created_at')
+        supabase.from('journal').select('client_id, created_at, type, titre')
           .in('client_id', ids).order('created_at', { ascending: false }),
       ]);
       const s: Record<string, StatDossier> = {};
@@ -283,7 +329,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       });
       (vi.data || []).forEach((v: any) => { const e = s[v.client_id]; if (e) e.visites++; });
       (re.data || []).forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
-      (jo.data || []).forEach((j: any) => { const e = s[j.client_id]; if (e && !e.dernierContact) e.dernierContact = j.created_at; });
+      (jo.data || []).forEach((j: any) => {
+        const e = s[j.client_id];
+        if (!e || e.dernierContact) return;
+        e.dernierContact = j.created_at;
+        e.dernierTitre = j.titre || '';
+        e.dernierCote = venantDuClient(j.type, j.titre) ? 'client' : 'moi';
+      });
       setStats(s);
     }
   }
@@ -534,7 +586,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   </span>
 
                   <span className={styles.colSig}>
-                    <span className={styles.signal} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
+                    <span className={styles.signal} title={sig.aide} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
                   </span>
 
                 </div>
