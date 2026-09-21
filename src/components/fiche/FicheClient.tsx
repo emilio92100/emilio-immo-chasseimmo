@@ -7,6 +7,7 @@ import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
+import ChoixDate from '@/components/shared/ChoixDate';
 import type { Arret } from '@/lib/arrets';
 
 /* Un critère n'est pas seulement « coché / pas coché » : il peut être
@@ -614,6 +615,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [crit, setCrit] = useState({ exigences: {} as Record<string, Niveau>, etage_max_sans_ascenseur: '', cuisine_type: '', exterieur_surface_min: '', types_bien: [] as string[], budget_min: '', budget_max: '', surface_min: '', surface_max: '', nb_pieces_min: '', nb_pieces_max: '', chambres_min: '', secteurs: [] as string[], transport_minutes: '', transport_lignes: [] as string[], transport_arrets: [] as Arret[], notes: '', parking: false, balcon: false, terrasse: false, jardin: false, cave: false, ascenseur: false, gardien: false, interphone: false, digicode: false, rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '', annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '', urgence: '', financement: '', apport: '' });
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
+  /* Modifier une ligne du suivi : on rouvre le même formulaire, en mémorisant
+     laquelle. Vide = on en crée une nouvelle. */
+  const [actionEdit, setActionEdit] = useState<string | null>(null);
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [bienForm, setBienForm] = useState<any>(null);
@@ -1522,6 +1526,17 @@ Emilio Immobilier
   async function saveAction() {
     const typeLabels: Record<string, string> = { appel: 'Appel passé', rdv: 'RDV physique', note: 'Note', relance_manuelle: 'Relance manuelle', envoi_externe: 'Envoi externe', email_libre: 'Email envoyé' };
     const titre = actionF.titre.trim() || typeLabels[actionF.type] || 'Action';
+    if (actionEdit) {
+      await supabase.from('journal').update({
+        type: actionF.type, titre,
+        description: actionF.description || null,
+        bien_id: actionF.bien_id || null,
+      }).eq('id', actionEdit);
+      setShowAction(false); setActionEdit(null);
+      setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
+      load();
+      return;
+    }
     await supabase.from('journal').insert({
       client_id: client.id,
       recherche_id: rechercheId,
@@ -1548,6 +1563,29 @@ Emilio Immobilier
     }
 
     setShowAction(false); setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' }); load();
+  }
+
+  /* Seules les lignes que tu as saisies toi-même se modifient. Un « Bien
+     ajouté » ou un « Statut → Actif » raconte ce qui s'est passé : le
+     réécrire fausserait l'histoire du dossier. */
+  const TYPES_MODIFIABLES = new Set(['appel', 'rdv', 'note', 'relance_manuelle', 'envoi_externe', 'email_libre']);
+
+  function modifierAction(j: any) {
+    setActionEdit(j.id);
+    setActionF({
+      type: j.type || 'note',
+      titre: j.titre || '',
+      description: j.description || '',
+      bien_id: j.bien_id || '',
+      relance: '',
+    });
+    setShowAction(true);
+  }
+
+  async function supprimerAction(j: any) {
+    if (!confirm(`Supprimer « ${j.titre} » du suivi ?\n\nCette ligne disparaît définitivement de l'historique du dossier.`)) return;
+    await supabase.from('journal').delete().eq('id', j.id);
+    load();
   }
 
   async function saveTxField(field: string, value: any) {
@@ -2194,6 +2232,11 @@ Emilio Immobilier
 
         /* Les onglets arrivaient collés aux critères, sans rien pour dire qu'on
            changeait de sujet. Ce bandeau sombre le dit d'un seul contraste. */
+        /* Discrets par défaut : le suivi se lit d'abord, il se corrige ensuite. */
+        .suivi-actions { opacity: 0; transition: opacity .16s ease; }
+        .suivi-ligne:hover .suivi-actions, .suivi-actions:focus-within { opacity: 1; }
+        @media (hover: none) { .suivi-actions { opacity: 1; } }
+
         .fiche-suivi { margin-top: 22px; padding: 13px 14px 0;
           background: linear-gradient(105deg, #1a2332 0%, #27405f 100%);
           border-radius: 16px 16px 0 0; }
@@ -2639,13 +2682,27 @@ Emilio Immobilier
               const j = it.data;
               const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : '📝';
               return (
-                <div key={`e-${j.id}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
+                <div key={`e-${j.id}`} className="suivi-ligne" style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f8fafc', border: '1px solid #e3e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{evIcon}</div>
                     {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
                   </div>
                   <div style={{ flex: 1, paddingTop: 4 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ flexGrow: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
+                      {TYPES_MODIFIABLES.has(j.type) && (
+                        <span className="suivi-actions" style={{ display: 'inline-flex', gap: 4, flexShrink: 0 }}>
+                          <button onClick={() => modifierAction(j)} title="Modifier cette ligne"
+                            style={{ border: '1px solid #e3e8f0', background: 'white', borderRadius: 8, padding: '3px 9px', fontSize: 11.5, fontWeight: 700, color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            ✏️ Modifier
+                          </button>
+                          <button onClick={() => supprimerAction(j)} title="Supprimer cette ligne"
+                            style={{ border: '1px solid #e3e8f0', background: 'white', borderRadius: 8, padding: '3px 9px', fontSize: 11.5, fontWeight: 700, color: '#b91c1c', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            🗑️
+                          </button>
+                        </span>
+                      )}
+                    </div>
                     {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
                     {j.bien_id && (() => { const b = biens.find(x => x.id === j.bien_id); return b ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '3px 10px', borderRadius: 8, background: '#faf6ee', border: '1px solid #e8dcc0', fontSize: 12, color: '#92702a', fontWeight: 600 }}>🏠 {b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`}</div>
@@ -3850,7 +3907,7 @@ Emilio Immobilier
         <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 500 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>+ Ajouter une action</h2><button className={styles.modalClose} onClick={() => setShowAction(false)}>✕</button></div>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={() => { setShowAction(false); setActionEdit(null); }}>✕</button></div>
             <div className={styles.modalBody}>
               <div>
                 <label className={styles.lbl}>Type d'action</label>
@@ -3860,9 +3917,11 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
-              {(() => {
+              {!actionEdit && (() => {
                 /* Une date, et rien d'autre : le reste — qui, pourquoi — est déjà
-                   au-dessus. Les raccourcis évitent de compter les jours de tête. */
+                   au-dessus. Les raccourcis évitent de compter les jours de tête.
+                   En modification on ne le montre pas : la relance a sa propre
+                   page, on ne la recrée pas en corrigeant une faute de frappe. */
                 const jourPlus = (j: number) => {
                   const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + j);
                   return d.toISOString().split('T')[0];
@@ -3886,16 +3945,10 @@ Emilio Immobilier
                         );
                       })}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <input className={styles.inp} type="date" style={{ width: 'auto' }}
-                        value={actionF.relance} min={new Date().toISOString().split('T')[0]}
-                        onChange={e => setActionF(f => ({ ...f, relance: e.target.value }))} />
-                      {pose && (
-                        <button type="button" onClick={() => setActionF(f => ({ ...f, relance: '' }))}
-                          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
-                          Pas de relance
-                        </button>
-                      )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                      <ChoixDate valeur={actionF.relance} min={new Date().toISOString().split('T')[0]}
+                        placeholder="Choisir une autre date"
+                        onChange={(v) => setActionF(f => ({ ...f, relance: v }))} />
                     </div>
                     <div style={{ fontSize: 11.5, color: pose ? '#a9822f' : '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>
                       {pose
@@ -3960,8 +4013,8 @@ Emilio Immobilier
               })()}
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.btn} onClick={() => setShowAction(false)}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>✓ Ajouter au journal</button>
+              <button className={styles.btn} onClick={() => { setShowAction(false); setActionEdit(null); }}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>{actionEdit ? '✓ Enregistrer' : '✓ Ajouter au journal'}</button>
             </div>
           </div>
         </div>
