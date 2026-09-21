@@ -273,6 +273,34 @@ const lienEntete: React.CSSProperties = {
 
 const ORDRE_ETAPES = ['offre','negociation','offre_acceptee','compromis','acte'];
 
+/* Chaque étape sait se présenter : son icône, son nom, et la phrase qui dit
+   où on en est. Avant, ces informations étaient éparpillées dans le JSX —
+   une icône ici, un libellé là — et rien ne disait à quoi servait l'étape. */
+const ETAPES_TX: { cle: string; nom: string; quoi: string; icone: string }[] = [
+  { cle: 'offre',          nom: 'Offre',          icone: '✍️', quoi: "L'offre est écrite et transmise au vendeur" },
+  { cle: 'negociation',    nom: 'Négociation',    icone: '⚖️', quoi: 'Les contre-offres vont et viennent' },
+  { cle: 'offre_acceptee', nom: 'Offre acceptée', icone: '🤝', quoi: 'Le prix est arrêté — place au notaire' },
+  { cle: 'compromis',      nom: 'Compromis',      icone: '📋', quoi: 'Signé, les délais courent' },
+  { cle: 'acte',           nom: 'Acte',           icone: '🔑', quoi: "Dernière ligne droite jusqu'aux clés" },
+];
+
+/* Un montant tapé au clavier : vide ou illisible → rien, jamais NaN.
+   Effacer le champ écrivait « NaN » dans la transaction, et le récapitulatif
+   finissait par afficher « NaN € ». */
+function nbOuNull(v: any): number | null {
+  const n = parseInt(String(v ?? '').replace(/[^\d-]/g, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/* Le délai SRU part de la date du compromis — encore faut-il qu'elle existe.
+   Sur un champ vidé, l'ancien calcul appelait toISOString() sur une date
+   invalide : la page plantait. */
+function finSRU(jour: string): string | null {
+  const d = new Date(`${jour}T12:00:00`);
+  if (isNaN(d.getTime())) return null;
+  return new Date(d.getTime() + 10 * 86400000).toISOString().slice(0, 10);
+}
+
 interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; }
 
 function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: any; setBienForm: any; prixAcq: number; styles: any }) {
@@ -642,6 +670,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [texteAnnonce, setTexteAnnonce] = useState('');
   const [photosInput, setPhotosInput] = useState('');
   const [txData, setTxData] = useState<any>({});
+  /* L'étape qu'on REGARDE — pas forcément celle où on en est : le rail permet
+     de revenir voir ce qu'on a saisi à l'offre sans défaire quoi que ce soit. */
+  const [vueEtape, setVueEtape] = useState<string | null>(null);
+  const [coForm, setCoForm] = useState({ partie: 'vendeur', montant: '', date: '' });
+  /* Les champs de transaction n'écrivent plus une requête par touche frappée :
+     on groupe, on attend une demi-seconde, on envoie une fois. */
+  const txPending = useRef<Record<string, any>>({});
+  const txTimer = useRef<any>(null);
+  const txRef = useRef<any>(null);
   const [showOffreEcrite, setShowOffreEcrite] = useState(false);
   const [showPlanVisite, setShowPlanVisite] = useState(false);
   const [showFicheBien, setShowFicheBien] = useState(false);
@@ -673,7 +710,10 @@ export default function FicheClient({ client: init, onBack }: Props) {
 
   useEffect(() => { loadRecherches(); }, [client.id]);
   useEffect(() => { if (rechercheId) load(); }, [rechercheId]);
-  useEffect(() => { if (transaction) setTxData(transaction); }, [transaction]);
+  useEffect(() => { txRef.current = transaction; if (transaction) setTxData(transaction); }, [transaction]);
+  /* En quittant la fiche, on écrit ce qui attendait encore : sinon la dernière
+     frappe — un montant, un nom de notaire — restait dans le vide. */
+  useEffect(() => () => { flushTx(); }, []);
 
   // Synchronise les formulaires critères/mandat avec la recherche active
   useEffect(() => {
@@ -1703,14 +1743,50 @@ Emilio Immobilier
     load();
   }
 
-  async function saveTxField(field: string, value: any) {
-    setTxData((prev: any) => ({ ...prev, [field]: value }));
-    await supabase.from('transactions').update({ [field]: value }).eq('id', transaction.id);
+  /* ═══ La transaction ═══ */
+
+  async function flushTx() {
+    clearTimeout(txTimer.current);
+    const lot = txPending.current;
+    txPending.current = {};
+    const id = txRef.current?.id;
+    if (!id || Object.keys(lot).length === 0) return;
+    await supabase.from('transactions').update(lot).eq('id', id);
   }
 
-  async function avancerEtape(prochaine: string, label: string) {
+  function saveTxField(field: string, value: any) {
+    setTxData((prev: any) => ({ ...prev, [field]: value }));
+    txPending.current[field] = value;
+    clearTimeout(txTimer.current);
+    txTimer.current = setTimeout(() => { flushTx(); }, 550);
+  }
+
+  /* La veille est un drapeau posé sur la recherche — c'est `recherches.active`
+     que lit le robot pour savoir où chercher. Un compromis signé n'a pas
+     besoin de trois mois de propositions : on met en pause, sans clôturer,
+     parce qu'un compromis peut tomber et qu'un clic doit suffire à repartir. */
+  async function veilleTx(active: boolean, pourquoi: string) {
+    if (!rechercheId) return;
+    await supabase.from('recherches').update({ active }).eq('id', rechercheId);
+    setRecherches(rs => rs.map(r => r.id === rechercheId ? ({ ...r, active } as Recherche) : r));
+    await addJournal(client.id, 'statut_change',
+      active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi);
+  }
+
+  async function avancerEtape(prochaine: string) {
+    if (!transaction) return;
+    await flushTx();
+    const e = ETAPES_TX.find(x => x.cle === prochaine);
     await supabase.from('transactions').update({ etape_actuelle: prochaine }).eq('id', transaction.id);
-    await addJournal(client.id, prochaine, label);
+    /* Un seul type au journal. Avant, l'identifiant de l'étape SERVAIT de type
+       — « compromis », « acte »… des types que ni les filtres du suivi ni les
+       icônes ne connaissaient, et qui s'allongeaient à chaque étape. */
+    await addJournal(client.id, 'etape_transaction',
+      `${e?.icone || '💼'} Transaction → ${e?.nom || prochaine}`, e?.quoi);
+    if (prochaine === 'compromis') {
+      await veilleTx(false, "Compromis signé : inutile de continuer à proposer des biens. La veille repart d'un clic si le compromis tombe.");
+    }
+    setVueEtape(null); setTxData({});
     load();
   }
 
@@ -1719,15 +1795,97 @@ Emilio Immobilier
   }
 
   async function doReculerEtape() {
-    const idx = ORDRE_ETAPES.indexOf(transaction.etape_actuelle);
-    if (idx <= 0) return;
-    const precedente = ORDRE_ETAPES[idx - 1];
-    await supabase.from('transactions').update({ etape_actuelle: precedente }).eq('id', transaction.id);
-    await addJournal(client.id, 'retour_etape', `Retour → ${ETAPES_LABELS[precedente]}`);
-    setShowConfirmEtape(false); load();
+    if (!transaction) return;
+    await flushTx();
+    const cur = transaction.etape_actuelle;
+    /* « finalise » ne fait pas partie de l'ordre des étapes : l'ancien calcul
+       tombait sur -1 et sortait sans rien faire — un dossier finalisé ne
+       pouvait plus reculer. */
+    const prec = cur === 'finalise' ? 'acte' : ORDRE_ETAPES[ORDRE_ETAPES.indexOf(cur) - 1];
+    if (!prec) { setShowConfirmEtape(false); return; }
+    await supabase.from('transactions').update({ etape_actuelle: prec }).eq('id', transaction.id);
+    if (cur === 'finalise') {
+      /* On défait la clôture : le dossier redevient un dossier en cours. La
+         veille, elle, reste en pause — on est toujours à l'acte. */
+      await supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id);
+      const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+      if (data) setClient(data as Client);
+    }
+    if (cur === 'compromis') await veilleTx(true, 'Retour avant le compromis — la recherche reprend.');
+    await addJournal(client.id, 'retour_etape', `↩️ Retour → ${ETAPES_LABELS[prec] || prec}`);
+    setShowConfirmEtape(false); setVueEtape(null); setTxData({});
+    load();
   }
 
-  const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
+  /* L'acte signé, c'est la même sortie que « Clôturer le dossier ». Le bouton
+     écrivait seulement `statut = bien_trouve` : la veille continuait de
+     tourner et les relances tombaient sur un client qui avait ses clés. */
+  async function finaliserTransaction() {
+    if (!transaction) return;
+    await flushTx();
+    setSaving(true);
+    await supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id);
+    await supabase.from('clients').update({ statut: 'bien_trouve', raison_perte: null }).eq('id', client.id);
+    await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
+    await supabase.from('relances').update({ statut: 'cloturee' })
+      .eq('client_id', client.id).eq('statut', 'en_attente');
+    await addJournal(client.id, 'dossier_finalise', '🎉 Acte signé — bien trouvé !',
+      "Le dossier est clos : la veille s'arrête et les relances en attente sont soldées.");
+    const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+    if (data) setClient(data as Client);
+    setRecherches(rs => rs.map(r => ({ ...r, active: false } as Recherche)));
+    setSaving(false); setVueEtape(null); setTxData({});
+    chargerRelances(); refresh(); load();
+  }
+
+  /* Une offre refusée, un vendeur qui se retire, un client qui renonce : il
+     n'existait aucun moyen de défaire une transaction ouverte par erreur. */
+  async function abandonnerTransaction() {
+    if (!transaction) return;
+    if (!confirm("Abandonner cette transaction ?\n\nL'offre, les contre-offres et les dates saisies sont effacées. Le bien repasse en « visité », et si le dossier est encore ouvert la recherche reprend.")) return;
+    await flushTx();
+    setSaving(true);
+    const bienId = transaction.bien_id;
+    await supabase.from('transactions').delete().eq('id', transaction.id);
+    if (bienId) await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', bienId);
+    /* « offre_ecrite » est un ancien statut : plus aucun menu ne le propose,
+       mais d'anciens dossiers le portent encore en base. */
+    const st = client.statut as string;
+    if (st === 'actif' || st === 'offre_ecrite') {
+      if (st === 'offre_ecrite') {
+        await supabase.from('clients').update({ statut: 'actif' }).eq('id', client.id);
+        const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+        if (data) setClient(data as Client);
+      }
+      await veilleTx(true, 'Transaction abandonnée — la recherche repart.');
+    }
+    await addJournal(client.id, 'etape_transaction', '❌ Transaction abandonnée');
+    setTransaction(null); setTxData({}); setVueEtape(null);
+    setSaving(false); refresh(); load();
+  }
+
+  async function ajouterContreOffre() {
+    if (!transaction) return;
+    const m = nbOuNull(coForm.montant);
+    /* Le formulaire lisait les champs avec document.getElementById et ne
+       vérifiait rien : un clic à vide ajoutait une contre-offre « NaN € ». */
+    if (!m) { alert('Indiquez le montant de la contre-offre.'); return; }
+    const liste = [...((transaction.contre_offres as any[]) || []),
+      { partie: coForm.partie, montant: m, date: coForm.date || new Date().toISOString().slice(0, 10) }];
+    await supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id);
+    /* La balle est dans l'autre camp : on pré-sélectionne l'autre partie. */
+    setCoForm({ partie: coForm.partie === 'vendeur' ? 'acheteur' : 'vendeur', montant: '', date: '' });
+    load();
+  }
+
+  async function supprimerContreOffre(i: number) {
+    if (!transaction) return;
+    const liste = ((transaction.contre_offres as any[]) || []).filter((_, k) => k !== i);
+    await supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id);
+    load();
+  }
+
+    const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
   const joursMandat = cr.mandat_date_expiration ? Math.floor((new Date(cr.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
 
   // Timeline fusionnée (Historique + Journal)
@@ -1830,8 +1988,14 @@ Emilio Immobilier
 
   const ETAPES_LABELS: Record<string, string> = {
     offre: '1 — Offre', negociation: '2 — Négociation',
-    offre_acceptee: '3 — Offre acceptée', compromis: '4 — Compromis', acte: '5 — Acte'
+    offre_acceptee: '3 — Offre acceptée', compromis: '4 — Compromis', acte: '5 — Acte',
+    finalise: 'Dossier finalisé',
   };
+  /* « finalise » n'est pas dans l'ordre des étapes : sans ce cas particulier,
+     la fenêtre de confirmation annonçait un retour vers « 1 — Offre ». */
+  const etapePrecTx = !transaction ? 'offre'
+    : transaction.etape_actuelle === 'finalise' ? 'acte'
+    : ORDRE_ETAPES[Math.max(0, ORDRE_ETAPES.indexOf(transaction.etape_actuelle) - 1)];
 
   return (
     <div className={styles.page}>
@@ -2357,6 +2521,106 @@ Emilio Immobilier
           font-size: 12px; font-weight: 800; color: #e0c479;
           text-transform: uppercase; letter-spacing: 1.1px; }
         .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.55); }
+
+        /* ═══════════ La transaction ═══════════
+           Cinq étapes empilées à la verticale, chacune avec son formulaire
+           déplié : il fallait défiler pour savoir où on en était. Un rail en
+           haut, les chiffres juste dessous, une seule étape ouverte. */
+
+        .tx-bien { display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+          background: #fff; border: 1px solid #e8edf5; border-radius: 14px; padding: 10px 14px; }
+        .tx-photo { width: 46px; height: 46px; border-radius: 11px; background: #e2e8f0; flex-shrink: 0;
+          display: inline-flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+        .tx-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .tx-sur { display: block; font-size: 10px; font-weight: 800; color: #94a3b8;
+          text-transform: uppercase; letter-spacing: .9px; }
+        .tx-titre { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+          font-size: 14.5px; color: #1a2332; margin-top: 2px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tx-detail { display: block; font-size: 12.5px; color: #64748b; }
+
+        .tx-rail { display: flex; align-items: flex-start; margin: 0 0 18px; }
+        .tx-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0;
+          font-family: inherit; display: flex; flex-direction: column; align-items: center;
+          gap: 7px; cursor: pointer; }
+        .tx-pas:disabled { cursor: default; }
+        .tx-fil { display: flex; align-items: center; width: 100%; }
+        .tx-fil i { flex: 1; height: 2px; background: #e3e8f0; transition: background .35s ease; }
+        .tx-fil i.on { background: #c9a84c; }
+        .tx-fil i.vide { background: transparent; }
+        .tx-rond { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
+          display: inline-flex; align-items: center; justify-content: center;
+          font-size: 15px; font-weight: 800; background: #fff; border: 2px solid #e3e8f0; color: #b0bec5;
+          transition: transform .22s cubic-bezier(.3,1.5,.5,1), box-shadow .22s, background .3s, border-color .3s, color .3s; }
+        .tx-pas[data-etat="fait"] .tx-rond { background: #c9a84c; border-color: #c9a84c; color: #1a2332; }
+        .tx-pas[data-etat="encours"] .tx-rond { background: #1a2332; border-color: #1a2332; color: #fff; }
+        .tx-pas[data-vue="true"] .tx-rond { transform: scale(1.14); box-shadow: 0 0 0 5px rgba(201,168,76,.2); }
+        .tx-pas:not(:disabled):hover .tx-rond { transform: scale(1.09); }
+        .tx-nom { font-size: 11.5px; font-weight: 700; color: #a8b3c4; text-align: center;
+          line-height: 1.25; padding: 0 3px; transition: color .25s; }
+        .tx-pas[data-etat="fait"] .tx-nom { color: #64748b; }
+        .tx-pas[data-etat="encours"] .tx-nom, .tx-pas[data-vue="true"] .tx-nom { color: #1a2332; font-weight: 800; }
+
+        .tx-chiffres { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 16px; }
+        .tx-chiffre { flex: 1 1 145px; background: #fff; border: 1px solid #e8edf5;
+          border-radius: 12px; padding: 9px 13px; }
+        .tx-chiffre b { display: block; font-size: 9.5px; font-weight: 800; color: #94a3b8;
+          text-transform: uppercase; letter-spacing: .8px; }
+        .tx-chiffre strong { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 1px; }
+        .tx-chiffre i { font-style: normal; font-size: 11.5px; color: #94a3b8; }
+
+        @keyframes txPanneau { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .tx-panneau { animation: txPanneau .28s cubic-bezier(.22,.9,.3,1) both;
+          background: #fff; border: 1px solid #e8edf5; border-radius: 16px; overflow: hidden; }
+
+        .tx-tete { display: flex; align-items: center; gap: 11px; padding: 13px 16px;
+          border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+        .tx-tete[data-encours="true"] { background: #fdfaf1; border-bottom-color: #f0e4c6; }
+        .tx-tete-nom { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 800; font-size: 16px; color: #1a2332; letter-spacing: -.2px; }
+        .tx-tete-quoi { display: block; font-size: 12px; color: #8593a8; margin-top: 1px; }
+        .tx-franchie { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #a9822f;
+          background: #fff; border: 1px solid #ecdcb4; border-radius: 99px; padding: 3px 10px; }
+
+        .tx-corps { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+        .tx-note { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+          padding: 9px 13px; font-size: 12.5px; color: #55647a; line-height: 1.55; }
+        .tx-ajout { background: #f8fafc; border: 1px dashed #d9e2ee; border-radius: 12px;
+          padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; }
+
+        .tx-co { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+          border-radius: 11px; border: 1px solid #e8edf5; background: #fff; font-size: 13.5px; }
+        .tx-co[data-partie="acheteur"] { border-color: #dbe7fa; background: #f7fbff; }
+        .tx-co[data-partie="vendeur"] { border-color: #fbe0e0; background: #fffafa; }
+        .tx-co-qui { font-size: 12px; font-weight: 700; color: #55647a; flex-shrink: 0; }
+        .tx-co b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; color: #1a2332; }
+        .tx-co-x { background: none; border: none; cursor: pointer; color: #cbd5e1;
+          font-size: 13px; padding: 2px 4px; line-height: 1; transition: color .15s; }
+        .tx-co-x:hover { color: #ef4444; }
+
+        .tx-alerte { border-radius: 10px; padding: 10px 13px; font-size: 12.5px; line-height: 1.55;
+          background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .tx-alerte[data-ton="calme"] { background: #f8fafc; border-color: #e8edf5; color: #55647a; }
+        .tx-alerte[data-ton="vert"] { background: #ecfdf5; border-color: #bbf7d0; color: #15803d; }
+        .tx-alerte[data-ton="veille"] { background: #eef4fb; border-color: #d6e3f5; color: #2d5c8f; }
+
+        .tx-pied { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+          padding: 12px 16px; border-top: 1px solid #f1f5f9; background: #fbfcfe; }
+        .tx-abandon { background: none; border: none; padding: 0; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; font-size: 12.5px; color: #a8b3c4; text-decoration: underline; }
+        .tx-abandon:hover { color: #ef4444; }
+        .tx-cloture { background: #10b981; color: #fff; border: none; border-radius: 10px;
+          padding: 10px 20px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+          font-size: 13.5px; cursor: pointer; transition: background .15s, transform .12s; }
+        .tx-cloture:hover { background: #0ea271; transform: translateY(-1px); }
+        .tx-cloture:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+        @media (max-width: 640px) {
+          .tx-rond { width: 30px; height: 30px; font-size: 12.5px; }
+          .tx-nom { font-size: 10px; }
+          .tx-chiffre { flex-basis: 100%; }
+        }
       `}</style>
 
         <StylesEmilio />
@@ -2533,7 +2797,7 @@ Emilio Immobilier
           </div>
         )}
 
-        {/* TAB TRANSACTION - refonte complète */}
+        {/* ═══ TAB TRANSACTION ═══ */}
         {tab === 'transaction' && (
           !transaction
             ? (() => {
@@ -2548,7 +2812,7 @@ Emilio Immobilier
                     <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 20, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
                       {visites_.length > 0
                         ? `Une transaction suit un bien de l'offre jusqu'à l'acte. ${visites_.length} bien${visites_.length > 1 ? 's ont' : ' a'} été visité${visites_.length > 1 ? 's' : ''} — c'est parmi ${visites_.length > 1 ? 'eux' : 'lui'} que ça se joue.`
-                        : 'Une transaction suit un bien de l\'offre jusqu\'à l\'acte. Planifiez d\'abord une visite : on n\'écrit pas une offre sur un bien que le client n\'a pas vu.'}
+                        : "Une transaction suit un bien de l'offre jusqu'à l'acte. Planifiez d'abord une visite : on n'écrit pas une offre sur un bien que le client n'a pas vu."}
                     </div>
                     {visites_.length > 0 && (
                       <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowChoixTx('creer')}>
@@ -2558,165 +2822,358 @@ Emilio Immobilier
                   </div>
                 );
               })()
-            : <div className={styles.card} style={{ padding: 24 }}>
+            : (() => {
+                const tx: any = { ...transaction, ...txData };
+                const bienTx = biens.find(b => b.id === tx.bien_id);
+                const fini = tx.etape_actuelle === 'finalise';
+                const idxCourant = fini ? ETAPES_TX.length : ORDRE_ETAPES.indexOf(tx.etape_actuelle);
 
-                {/* Bien concerné */}
-                {(() => { const bienTx = biens.find(b => b.id === transaction.bien_id); return bienTx ? (
-                  <div style={{ background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: '10px 14px', marginBottom: 20, display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-                      {bienTx.photos?.[0] ? <img src={bienTx.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} /> : '🏠'}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Bien concerné par la transaction</div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{bienTx.titre || `${bienTx.type_bien||'Bien'} — ${bienTx.ville||'—'}`}</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{[bienTx.surface && `${bienTx.surface}m²`, bienTx.nb_pieces && `${bienTx.nb_pieces}P`, bienTx.ville].filter(Boolean).join(' · ')}</div>
-                    </div>
-                    {bienTx.prix_acquereur && <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 16, color: '#c9a84c', flexShrink: 0 }}>{bienTx.prix_acquereur.toLocaleString('fr-FR')}€</div>}
-                    {transaction.etape_actuelle === 'offre' && biensVisites().length > 1 && (
-                      <button className={styles.btn} style={{ fontSize: 12, flexShrink: 0 }}
-                        onClick={() => setShowChoixTx('changer')}>Changer de bien</button>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#92400e' }}>
-                    ⚠️ Aucun bien associé à cette transaction.
-                    {biensVisites().length > 0 && (
-                      <button className={styles.btn} style={{ marginLeft: 10, fontSize: 12 }}
-                        onClick={() => setShowChoixTx('changer')}>Choisir un bien</button>
-                    )}
-                  </div>
-                ); })()}
+                /* On regarde l'étape en cours par défaut. Le rail permet de
+                   revenir voir — et corriger — une étape franchie, sans rien
+                   défaire : c'est une lecture, pas un retour en arrière. */
+                const vue = (vueEtape && ORDRE_ETAPES.indexOf(vueEtape) <= idxCourant)
+                  ? vueEtape : (fini ? null : tx.etape_actuelle);
+                const eVue = ETAPES_TX.find(x => x.cle === vue);
+                const enCours = !!vue && vue === tx.etape_actuelle;
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                const co: any[] = Array.isArray(tx.contre_offres) ? tx.contre_offres : [];
+                const derniere = co.length ? co[co.length - 1] : null;
+                const offre = nbOuNull(tx.offre_montant);
+                const prixFinal = nbOuNull(tx.prix_final);
+                const hono = nbOuNull(tx.honoraires_ht);
+                const ecart = (prixFinal !== null && offre !== null) ? prixFinal - offre : null;
+                const sruJ = tx.sru_date_fin
+                  ? Math.ceil((new Date(`${tx.sru_date_fin}T23:59:59`).getTime() - Date.now()) / 86400000)
+                  : null;
+                const eur = (n: number) => `${n.toLocaleString('fr-FR')} €`;
+                const jourFr = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR');
+
+                /* Les chiffres du dossier, toujours sous les yeux : avant, il
+                   fallait déplier chaque étape pour retrouver le montant de
+                   l'offre ou le prix retenu. */
+                const chiffres: any[] = [];
+                if (offre !== null) chiffres.push({ k: 'Offre initiale', v: eur(offre), d: tx.offre_date ? jourFr(tx.offre_date) : null, c: '#a9822f' });
+                if (derniere) {
+                  const m = nbOuNull(derniere.montant);
+                  chiffres.push({ k: 'Dernière contre-offre', v: m !== null ? eur(m) : '—', d: derniere.partie === 'acheteur' ? 'de votre client' : 'du vendeur', c: '#2d5c8f' });
+                }
+                if (prixFinal !== null) chiffres.push({ k: 'Prix retenu', v: eur(prixFinal), d: ecart !== null ? `${ecart > 0 ? '+' : ''}${eur(ecart)} vs offre` : null, c: '#15803d' });
+                if (hono !== null) chiffres.push({ k: 'Honoraires', v: `${eur(hono)} HT`, d: `${eur(Math.round(hono * 1.2))} TTC`, c: '#1a2332' });
+
+                const SUIVANT: Record<string, { label: string; vers: string }> = {
+                  offre:          { label: '→ Passer en négociation', vers: 'negociation' },
+                  negociation:    { label: '✓ Offre acceptée',        vers: 'offre_acceptee' },
+                  offre_acceptee: { label: '→ Passer au compromis',   vers: 'compromis' },
+                  compromis:      { label: "→ Passer à l'acte",       vers: 'acte' },
+                };
+
+                return (
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Étape en cours</div>
-                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: '#1a2332' }}>
-                      {transaction.etape_actuelle === 'finalise' ? '🎉 Dossier finalisé !' : ETAPES_LABELS[transaction.etape_actuelle]}
-                    </div>
-                  </div>
-                  {transaction.etape_actuelle !== 'offre' && transaction.etape_actuelle !== 'finalise' && (
-                    <button onClick={reculerEtape} className={styles.btn} style={{ fontSize: 12 }}>← Étape précédente</button>
-                  )}
-                </div>
-
-                {ORDRE_ETAPES.map((etapeId, i) => {
-                  const idx = ORDRE_ETAPES.indexOf(transaction.etape_actuelle);
-                  const done = i < idx;
-                  const cur = etapeId === transaction.etape_actuelle && transaction.etape_actuelle !== 'finalise';
-
-                  return (
-                    <div key={etapeId} style={{ display: 'flex', gap: 16, marginBottom: cur ? 0 : 16 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 10, background: done ? '#c9a84c' : cur ? '#1a2332' : '#f1f5f9', color: done ? '#1a2332' : cur ? 'white' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, boxShadow: cur ? '0 0 0 4px rgba(26,35,50,0.08)' : 'none' }}>
-                          {done ? '✓' : i + 1}
-                        </div>
-                        {i < ORDRE_ETAPES.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 16, background: done ? '#c9a84c' : '#e3e8f0', marginTop: 4, marginBottom: 4, borderRadius: 1 }} />}
-                      </div>
-
-                      <div style={{ flex: 1, paddingTop: 6, paddingBottom: cur ? 20 : 0 }}>
-                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, color: done ? '#64748b' : cur ? '#1a2332' : '#b0bec5', marginBottom: done || cur ? 6 : 0 }}>
-                          {ETAPES_LABELS[etapeId]}
-                        </div>
-
-                        {done && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            {etapeId === 'offre' && transaction.offre_montant && (
-                              <span style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>💰 {transaction.offre_montant.toLocaleString('fr-FR')}€{transaction.offre_date ? ` · ${new Date(transaction.offre_date).toLocaleDateString('fr-FR')}` : ''}</span>
-                            )}
-                            {etapeId === 'offre_acceptee' && transaction.prix_final && (
-                              <span style={{ fontSize: 12, background: '#ecfdf5', color: '#16a34a', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>✅ Prix final : {transaction.prix_final.toLocaleString('fr-FR')}€</span>
-                            )}
-                            {etapeId === 'compromis' && transaction.compromis_date && (
-                              <span style={{ fontSize: 12, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>📋 {new Date(transaction.compromis_date).toLocaleDateString('fr-FR')}{transaction.compromis_notaire ? ` · ${transaction.compromis_notaire}` : ''}</span>
-                            )}
-                            {etapeId === 'negociation' && transaction.contre_offres?.length > 0 && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                {(transaction.contre_offres as any[]).map((co: any, i: number) => (
-                                  <span key={i} style={{ fontSize: 12, background: co.partie === 'acheteur' ? '#eff6ff' : '#fef2f2', color: co.partie === 'acheteur' ? '#1d4ed8' : '#dc2626', border: `1px solid ${co.partie === 'acheteur' ? '#bfdbfe' : '#fecaca'}`, padding: '3px 10px', borderRadius: 20, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                    {co.partie === 'acheteur' ? '🏠 Acheteur' : '🏢 Vendeur'} · {parseInt(co.montant).toLocaleString('fr-FR')}€{co.date ? ` · ${new Date(co.date).toLocaleDateString('fr-FR')}` : ''}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                    {/* ── Le bien dont il est question ── */}
+                    {bienTx ? (
+                      <div className="tx-bien">
+                        <span className="tx-photo">
+                          {bienTx.photos?.[0] ? <img src={bienTx.photos[0]} alt="" /> : '🏠'}
+                        </span>
+                        <span style={{ flexGrow: 1, minWidth: 0 }}>
+                          <span className="tx-sur">Bien de la transaction</span>
+                          <span className="tx-titre">{bienTx.titre || `${bienTx.type_bien || 'Bien'} — ${bienTx.ville || '—'}`}</span>
+                          <span className="tx-detail">{[bienTx.surface && `${bienTx.surface} m²`, bienTx.nb_pieces && `${bienTx.nb_pieces}P`, bienTx.ville].filter(Boolean).join(' · ') || '—'}</span>
+                        </span>
+                        {bienTx.prix_acquereur ? (
+                          <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span className="tx-sur">Prix affiché</span>
+                            <span style={{ display: 'block', fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: '#a9822f' }}>
+                              {eur(bienTx.prix_acquereur)}
+                            </span>
+                          </span>
+                        ) : null}
+                        {tx.etape_actuelle === 'offre' && biensVisites().length > 1 && (
+                          <button className={styles.btn} style={{ fontSize: 12, flexShrink: 0 }}
+                            onClick={() => setShowChoixTx('changer')}>Changer de bien</button>
                         )}
+                      </div>
+                    ) : (
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+                        ⚠️ Aucun bien associé à cette transaction.
+                        {biensVisites().length > 0 && (
+                          <button className={styles.btn} style={{ marginLeft: 10, fontSize: 12 }}
+                            onClick={() => setShowChoixTx('changer')}>Choisir un bien</button>
+                        )}
+                      </div>
+                    )}
 
-                        {cur && (
-                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: 18, marginTop: 8, border: '1px solid #e3e8f0' }}>
-                            {etapeId === 'offre' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <div className={styles.formRow}>
-                                  <div><label className={styles.lbl}>Montant offre €</label><input className={styles.inp} type="number" defaultValue={transaction.offre_montant} placeholder="Ex: 350 000" onChange={e => saveTxField('offre_montant', parseInt(e.target.value))} /></div>
-                                  <div><label className={styles.lbl}>Date de l'offre</label><input className={styles.inp} type="date" defaultValue={transaction.offre_date} onChange={e => saveTxField('offre_date', e.target.value)} /></div>
+                    {/* ── Le rail : où on en est, et où on peut revenir ── */}
+                    <div className="tx-rail">
+                      {ETAPES_TX.map((e, i) => {
+                        const fait = i < idxCourant;
+                        const ici = i === idxCourant && !fini;
+                        const etat = fait ? 'fait' : ici ? 'encours' : 'avenir';
+                        return (
+                          <button key={e.cle} type="button" className="tx-pas"
+                            data-etat={etat} data-vue={e.cle === vue ? 'true' : 'false'}
+                            disabled={i > idxCourant}
+                            title={i > idxCourant ? 'Étape pas encore atteinte' : e.quoi}
+                            onClick={() => setVueEtape(e.cle)}>
+                            <span className="tx-fil">
+                              <i className={i === 0 ? 'vide' : (i <= idxCourant ? 'on' : '')} />
+                              <span className="tx-rond">{fait ? '✓' : e.icone}</span>
+                              <i className={i === ETAPES_TX.length - 1 ? 'vide' : (i < idxCourant ? 'on' : '')} />
+                            </span>
+                            <span className="tx-nom">{e.nom}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {chiffres.length > 0 && (
+                      <div className="tx-chiffres">
+                        {chiffres.map((c, i) => (
+                          <span key={i} className="tx-chiffre">
+                            <b>{c.k}</b>
+                            <strong style={{ color: c.c }}>{c.v}</strong>
+                            {c.d ? <i>{c.d}</i> : null}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── Le dossier est clos ── */}
+                    {fini ? (
+                      <div className="tx-panneau" style={{ background: 'linear-gradient(140deg, #ecfdf5, #f0fdf4)', border: '1px solid #bbf7d0', borderRadius: 16, padding: '28px 22px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 42, marginBottom: 8 }}>🎉</div>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 19, color: '#15803d' }}>
+                          Acte signé — dossier clos
+                        </div>
+                        <div style={{ fontSize: 13, color: '#4d7c5f', marginTop: 6, lineHeight: 1.55, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+                          La veille est arrêtée sur cette recherche et les relances en attente ont été soldées.
+                          {tx.acte_date_prevue ? ` Acte du ${jourFr(tx.acte_date_prevue)}.` : ''}
+                        </div>
+                        <div style={{ display: 'flex', gap: 9, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
+                          <button className={styles.btn} onClick={() => setVueEtape('acte')}>Revoir le dossier</button>
+                          <button className={styles.btn} onClick={reculerEtape}>↩️ Rouvrir la transaction</button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* ── L'étape regardée ── */}
+                    {eVue && (
+                      <div key={eVue.cle} className="tx-panneau">
+                        <div className="tx-tete" data-encours={enCours ? 'true' : 'false'}>
+                          <span style={{ fontSize: 21 }}>{eVue.icone}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span className="tx-tete-nom">{eVue.nom}</span>
+                            <span className="tx-tete-quoi">{eVue.quoi}</span>
+                          </span>
+                          <span style={{ flexGrow: 1 }} />
+                          {!enCours && <span className="tx-franchie">✓ Étape franchie</span>}
+                        </div>
+
+                        <div className="tx-corps">
+                          {eVue.cle === 'offre' && (
+                            <>
+                              <div className={styles.formRow}>
+                                <div>
+                                  <label className={styles.lbl}>Montant de l'offre €</label>
+                                  <input className={styles.inp} type="number" placeholder="Ex : 350000"
+                                    defaultValue={transaction.offre_montant ?? ''}
+                                    onChange={e => saveTxField('offre_montant', nbOuNull(e.target.value))} />
                                 </div>
-                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('negociation', 'Passage en négociation')}>→ Passer en négociation</button>
+                                <div>
+                                  <label className={styles.lbl}>Date de l'offre</label>
+                                  <input className={styles.inp} type="date" defaultValue={transaction.offre_date || ''}
+                                    onChange={e => saveTxField('offre_date', e.target.value || null)} />
+                                </div>
                               </div>
-                            )}
-                            {etapeId === 'negociation' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <label className={styles.lbl}>Ajouter une contre-offre</label>
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                  <select className={styles.inp} id="cop" style={{ width: 130 }}><option value="vendeur">Vendeur</option><option value="acheteur">Acheteur</option></select>
-                                  <input className={styles.inp} type="number" id="com" placeholder="Montant €" style={{ flex: 1 }} />
-                                  <input className={styles.inp} type="date" id="cod" style={{ width: 160 }} />
-                                  <button className={styles.btn} onClick={async () => { const p = (document.getElementById('cop') as HTMLSelectElement).value; const m = (document.getElementById('com') as HTMLInputElement).value; const d = (document.getElementById('cod') as HTMLInputElement).value; await supabase.from('transactions').update({ contre_offres: [...(transaction.contre_offres||[]), {partie:p,montant:m,date:d}] }).eq('id', transaction.id); load(); }}>+ Ajouter</button>
+                              {bienTx?.prix_acquereur && offre !== null && (
+                                <div className="tx-note">
+                                  {offre === bienTx.prix_acquereur
+                                    ? "L'offre est au prix affiché."
+                                    : `${eur(Math.abs(bienTx.prix_acquereur - offre))} ${offre < bienTx.prix_acquereur ? 'sous' : 'au-dessus du'} prix affiché — soit ${Math.abs(Math.round((offre - bienTx.prix_acquereur) / bienTx.prix_acquereur * 1000) / 10)} %.`}
                                 </div>
-                                {(transaction.contre_offres||[]).map((co: any, i: number) => (
-                                  <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: 10, border: '1px solid #e3e8f0' }}>
-                                    <span style={{ padding: '2px 10px', borderRadius: 20, fontWeight: 700, background: co.partie === 'vendeur' ? '#fef2f2' : '#f0fdf4', color: co.partie === 'vendeur' ? '#ef4444' : '#10b981' }}>{co.partie}</span>
-                                    <span style={{ fontWeight: 600 }}>{parseInt(co.montant).toLocaleString('fr-FR')}€</span>
-                                    <span style={{ color: '#94a3b8' }}>{co.date}</span>
+                              )}
+                            </>
+                          )}
+
+                          {eVue.cle === 'negociation' && (
+                            <>
+                              {co.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                                  {co.map((c: any, i: number) => {
+                                    const m = nbOuNull(c.montant);
+                                    const acheteur = c.partie === 'acheteur';
+                                    return (
+                                      <div key={i} className="tx-co" data-partie={c.partie}>
+                                        <span className="tx-co-qui">{acheteur ? '🏠 Votre client' : '🏢 Le vendeur'}</span>
+                                        <b>{m !== null ? eur(m) : '—'}</b>
+                                        <span style={{ color: '#94a3b8', fontSize: 12.5 }}>{c.date ? jourFr(c.date) : ''}</span>
+                                        <span style={{ flexGrow: 1 }} />
+                                        <button className="tx-co-x" title="Supprimer cette contre-offre"
+                                          onClick={() => supprimerContreOffre(i)}>✕</button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="tx-note">Aucune contre-offre pour l'instant. Notez-les au fur et à mesure : c'est l'historique du bras de fer.</div>
+                              )}
+
+                              {enCours && (
+                                <div className="tx-ajout">
+                                  <label className={styles.lbl}>Ajouter une contre-offre</label>
+                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    <select className={styles.inp} style={{ width: 150, flexShrink: 0 }}
+                                      value={coForm.partie} onChange={e => setCoForm(f => ({ ...f, partie: e.target.value }))}>
+                                      <option value="vendeur">🏢 Le vendeur</option>
+                                      <option value="acheteur">🏠 Votre client</option>
+                                    </select>
+                                    <input className={styles.inp} type="number" placeholder="Montant €" style={{ flex: '1 1 130px' }}
+                                      value={coForm.montant} onChange={e => setCoForm(f => ({ ...f, montant: e.target.value }))}
+                                      onKeyDown={e => { if (e.key === 'Enter') ajouterContreOffre(); }} />
+                                    <input className={styles.inp} type="date" style={{ width: 160, flexShrink: 0 }}
+                                      value={coForm.date} onChange={e => setCoForm(f => ({ ...f, date: e.target.value }))} />
+                                    <button className={styles.btn} disabled={!nbOuNull(coForm.montant)}
+                                      onClick={ajouterContreOffre}>+ Ajouter</button>
                                   </div>
-                                ))}
-                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('offre_acceptee', 'Offre acceptée')}>✓ Offre acceptée →</button>
-                              </div>
-                            )}
-                            {etapeId === 'offre_acceptee' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <div><label className={styles.lbl}>Prix final accepté €</label><input className={styles.inp} type="number" defaultValue={transaction.prix_final} placeholder="Ex: 345 000" onChange={e => saveTxField('prix_final', parseInt(e.target.value))} /></div>
-                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('compromis', 'Passage au compromis')}>→ Passer au compromis</button>
-                              </div>
-                            )}
-                            {etapeId === 'compromis' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <div className={styles.formRow}>
-                                  <div><label className={styles.lbl}>Date compromis</label><input className={styles.inp} type="date" defaultValue={transaction.compromis_date} onChange={e => { saveTxField('compromis_date', e.target.value); saveTxField('sru_date_fin', new Date(new Date(e.target.value).getTime() + 10*86400000).toISOString().split('T')[0]); }} /></div>
-                                  <div><label className={styles.lbl}>Notaire</label><input className={styles.inp} defaultValue={transaction.compromis_notaire} placeholder="Me Dupont..." onChange={e => saveTxField('compromis_notaire', e.target.value)} /></div>
                                 </div>
-                                <div className={styles.formRow}>
-                                  <div><label className={styles.lbl}>Montant prêt €</label><input className={styles.inp} type="number" defaultValue={transaction.pret_montant} onChange={e => saveTxField('pret_montant', parseInt(e.target.value))} /></div>
-                                  <div><label className={styles.lbl}>Apport €</label><input className={styles.inp} type="number" defaultValue={transaction.pret_apport} onChange={e => saveTxField('pret_apport', parseInt(e.target.value))} /></div>
-                                </div>
-                                {transaction.sru_date_fin && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>⏰ SRU : rétractation possible jusqu'au {new Date(transaction.sru_date_fin).toLocaleDateString('fr-FR')}</div>}
-                                <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-end' }} onClick={() => avancerEtape('acte', 'Passage à l\'acte')}>→ Passer à l'acte</button>
-                              </div>
-                            )}
-                            {etapeId === 'acte' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                <div className={styles.formRow}>
-                                  <div><label className={styles.lbl}>Date acte prévue</label><input className={styles.inp} type="date" defaultValue={transaction.acte_date_prevue} onChange={e => saveTxField('acte_date_prevue', e.target.value)} /></div>
-                                  <div><label className={styles.lbl}>Honoraires HT €</label><input className={styles.inp} type="number" defaultValue={transaction.honoraires_ht} onChange={e => { saveTxField('honoraires_ht', parseInt(e.target.value)); saveTxField('honoraires_ttc', Math.round(parseInt(e.target.value)*1.2)); }} /></div>
-                                </div>
-                                {transaction.honoraires_ht && <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#16a34a', fontWeight: 600 }}>💰 Honoraires TTC : {Math.round((txData.honoraires_ht||transaction.honoraires_ht) * 1.2).toLocaleString('fr-FR')}€</div>}
-                                <button style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: 'pointer', alignSelf: 'flex-end' }} onClick={async () => { await supabase.from('clients').update({ statut: 'bien_trouve' }).eq('id', client.id); await supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id); await addJournal(client.id, 'dossier_finalise', '🎉 Bien trouvé !'); refresh(); load(); }}>🎉 Clôturer — Bien trouvé !</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                              )}
+                            </>
+                          )}
 
-                {transaction.etape_actuelle === 'finalise' && (
-                  <div style={{ background: 'linear-gradient(135deg, #ecfdf5, #f0fdf4)', border: '1px solid #bbf7d0', borderRadius: 14, padding: 20, textAlign: 'center', marginTop: 8 }}>
-                    <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
-                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#16a34a' }}>Dossier finalisé !</div>
-                    {transaction.honoraires_ht && <div style={{ fontSize: 15, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>Honoraires HT : {transaction.honoraires_ht.toLocaleString('fr-FR')}€</div>}
-                    {transaction.acte_date_prevue && <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Acte prévu le {new Date(transaction.acte_date_prevue).toLocaleDateString('fr-FR')}</div>}
+                          {eVue.cle === 'offre_acceptee' && (
+                            <>
+                              <div>
+                                <label className={styles.lbl}>Prix final accepté €</label>
+                                <input className={styles.inp} type="number" placeholder="Ex : 345000"
+                                  key={`pf-${transaction.prix_final ?? ''}`}
+                                  defaultValue={transaction.prix_final ?? ''}
+                                  onChange={e => saveTxField('prix_final', nbOuNull(e.target.value))} />
+                              </div>
+                              {enCours && derniere && nbOuNull(derniere.montant) !== null && nbOuNull(derniere.montant) !== prixFinal && (
+                                <button className={styles.btn} style={{ alignSelf: 'flex-start', fontSize: 12.5 }}
+                                  onClick={async () => { const m = nbOuNull(derniere.montant); saveTxField('prix_final', m); await flushTx(); load(); }}>
+                                  Reprendre la dernière contre-offre ({eur(nbOuNull(derniere.montant) as number)})
+                                </button>
+                              )}
+                              {ecart !== null && (
+                                <div className="tx-note">
+                                  {ecart === 0 ? "Le prix retenu est celui de l'offre initiale."
+                                    : `${eur(Math.abs(ecart))} ${ecart > 0 ? 'de plus' : 'de moins'} que l'offre initiale.`}
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {eVue.cle === 'compromis' && (
+                            <>
+                              <div className={styles.formRow}>
+                                <div>
+                                  <label className={styles.lbl}>Date du compromis</label>
+                                  <input className={styles.inp} type="date" defaultValue={transaction.compromis_date || ''}
+                                    onChange={e => {
+                                      const j = e.target.value;
+                                      saveTxField('compromis_date', j || null);
+                                      saveTxField('sru_date_fin', j ? finSRU(j) : null);
+                                    }} />
+                                </div>
+                                <div>
+                                  <label className={styles.lbl}>Notaire</label>
+                                  <input className={styles.inp} placeholder="Me Dupont…" defaultValue={transaction.compromis_notaire || ''}
+                                    onChange={e => saveTxField('compromis_notaire', e.target.value || null)} />
+                                </div>
+                              </div>
+                              <div className={styles.formRow}>
+                                <div>
+                                  <label className={styles.lbl}>Montant du prêt €</label>
+                                  <input className={styles.inp} type="number" defaultValue={transaction.pret_montant ?? ''}
+                                    onChange={e => saveTxField('pret_montant', nbOuNull(e.target.value))} />
+                                </div>
+                                <div>
+                                  <label className={styles.lbl}>Apport €</label>
+                                  <input className={styles.inp} type="number" defaultValue={transaction.pret_apport ?? ''}
+                                    onChange={e => saveTxField('pret_apport', nbOuNull(e.target.value))} />
+                                </div>
+                              </div>
+                              {tx.sru_date_fin && (
+                                <div className="tx-alerte" data-ton={sruJ !== null && sruJ > 0 ? 'ambre' : 'calme'}>
+                                  ⏰ Rétractation SRU possible jusqu'au <b>{jourFr(tx.sru_date_fin)}</b>
+                                  {sruJ !== null && (sruJ > 0 ? ` — encore ${sruJ} jour${sruJ > 1 ? 's' : ''}.` : ' — le délai est passé.')}
+                                </div>
+                              )}
+                              {enCours && rechercheActive?.active === false && (
+                                <div className="tx-alerte" data-ton="veille">
+                                  ⏸️ La veille est en pause sur cette recherche depuis le compromis. Elle reprendra si vous revenez à l'étape précédente.
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {eVue.cle === 'acte' && (
+                            <>
+                              <div className={styles.formRow}>
+                                <div>
+                                  <label className={styles.lbl}>Date de l'acte</label>
+                                  <input className={styles.inp} type="date" defaultValue={transaction.acte_date_prevue || ''}
+                                    onChange={e => saveTxField('acte_date_prevue', e.target.value || null)} />
+                                </div>
+                                <div>
+                                  <label className={styles.lbl}>Honoraires HT €</label>
+                                  <input className={styles.inp} type="number" defaultValue={transaction.honoraires_ht ?? ''}
+                                    onChange={e => {
+                                      const n = nbOuNull(e.target.value);
+                                      saveTxField('honoraires_ht', n);
+                                      saveTxField('honoraires_ttc', n === null ? null : Math.round(n * 1.2));
+                                    }} />
+                                </div>
+                              </div>
+                              {hono !== null && (
+                                <div className="tx-alerte" data-ton="vert">
+                                  💰 Honoraires TTC : <b>{eur(Math.round(hono * 1.2))}</b>
+                                </div>
+                              )}
+                              {enCours && (
+                                <div className="tx-note">
+                                  Clôturer ici, c'est fermer le dossier : le client passe en « Bien trouvé », la veille s'arrête et les relances en attente sont soldées.
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        <div className="tx-pied">
+                          {enCours ? (
+                            <>
+                              <button className="tx-abandon" onClick={abandonnerTransaction}>Abandonner la transaction</button>
+                              <span style={{ flexGrow: 1 }} />
+                              {ORDRE_ETAPES.indexOf(eVue.cle) > 0 && (
+                                <button className={styles.btn} onClick={reculerEtape}>← Étape précédente</button>
+                              )}
+                              {eVue.cle === 'acte' ? (
+                                <button className="tx-cloture" disabled={saving} onClick={finaliserTransaction}>
+                                  🎉 Acte signé — clôturer
+                                </button>
+                              ) : (
+                                <button className={`${styles.btn} ${styles.btnPrimary}`}
+                                  onClick={() => avancerEtape(SUIVANT[eVue.cle].vers)}>
+                                  {SUIVANT[eVue.cle].label}
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: 12.5, color: '#8593a8' }}>Vous consultez une étape déjà franchie — les corrections restent possibles.</span>
+                              <span style={{ flexGrow: 1 }} />
+                              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setVueEtape(null)}>
+                                Revenir à l'étape en cours →
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()
         )}
 
         {/* TAB SÉLECTION */}
@@ -2811,7 +3268,7 @@ Emilio Immobilier
                 );
               }
               const j = it.data;
-              const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : '📝';
+              const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : j.type === 'etape_transaction' ? '💼' : '📝';
               return (
                 <div key={`e-${j.id}`} className="suivi-ligne" style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -3495,11 +3952,21 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody}>
               <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
-                Voulez-vous vraiment revenir à l'étape <strong style={{ color: '#1a2332' }}>"{ETAPES_LABELS[ORDRE_ETAPES[Math.max(0, ORDRE_ETAPES.indexOf(transaction.etape_actuelle) - 1)]]}"</strong> ?
+                Revenir à l'étape <strong style={{ color: '#1a2332' }}>« {ETAPES_LABELS[etapePrecTx]} »</strong> ?
               </p>
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>
-                ⚠️ Les données saisies pour l'étape actuelle seront conservées mais l'étape sera marquée comme non finalisée.
+              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#55647a', lineHeight: 1.55 }}>
+                Rien n'est effacé : les montants et les dates déjà saisis restent en place.
               </div>
+              {transaction.etape_actuelle === 'compromis' && (
+                <div style={{ background: '#eef4fb', border: '1px solid #d6e3f5', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#2d5c8f', lineHeight: 1.55 }}>
+                  🔍 La veille, mise en pause à la signature du compromis, <b>repartira</b> sur cette recherche.
+                </div>
+              )}
+              {transaction.etape_actuelle === 'finalise' && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', lineHeight: 1.55 }}>
+                  ⚠️ Le dossier était clos : il repasse en <b>« Actif »</b>. La veille, elle, reste en pause — vous êtes toujours à l'acte.
+                </div>
+              )}
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowConfirmEtape(false)}>Annuler</button>
