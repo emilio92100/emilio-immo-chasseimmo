@@ -150,7 +150,9 @@ function signalDe(client: any, st: StatDossier | undefined): Signal {
     if (j <= 7) return { texte: `Relance dans ${j} j`, color: '#b45309', bg: '#fffbeb', rang: 2, aide };
     return { texte: `Relance le ${new Date(st.relance.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`, color: '#64748b', bg: '#f5f8fc', rang: 4, aide };
   }
-  if (client.mandat_date_expiration) {
+  /* Pas de mandat du tout : rien à signaler. Un dossier sans mandat n'est pas
+     un dossier au mandat expiré. */
+  if (client.mandat_date_expiration && !client.sans_mandat) {
     const j = joursJusqua(client.mandat_date_expiration);
     const aide = `Mandat jusqu'au ${new Date(client.mandat_date_expiration).toLocaleDateString('fr-FR')}`;
     if (j < 0) return { texte: '⚠️ Mandat expiré', color: '#b91c1c', bg: '#fef2f2', rang: 3, aide };
@@ -303,7 +305,19 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       for (const f of CRIT_FIELDS) {
         if (display[f] !== undefined && display[f] !== null) crit[f] = display[f];
       }
-      return { ...c, ...crit, _espaceOuvertLe: display.espace_ouvert_le || null };
+      /* Le mandat vit sur la recherche depuis la V3. La colonne de même nom
+         sur `clients` n'est plus jamais mise à jour : la liste affichait donc
+         « mandat expiré » même après l'avoir modifié ou supprimé dans la fiche.
+         On lit la recherche, valeurs vides comprises. */
+      return {
+        ...c, ...crit,
+        _espaceOuvertLe: display.espace_ouvert_le || null,
+        mandat_date_signature: display.mandat_date_signature ?? null,
+        mandat_date_expiration: display.mandat_date_expiration ?? null,
+        mandat_duree: display.mandat_duree ?? null,
+        mandat_honoraires: display.mandat_honoraires ?? null,
+        sans_mandat: display.sans_mandat ?? false,
+      };
     });
 
     setClients(merged);
