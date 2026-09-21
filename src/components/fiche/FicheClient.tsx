@@ -497,7 +497,11 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
   const [envoiSending, setEnvoiSending] = useState(false);
   const [showCompteRendu, setShowCompteRendu] = useState(false);
-  const [planVisteForm, setPlanVisiteForm] = useState({ bien_id: '', date: '', heure: '', contact: '', notes: '' });
+  /* Une visite se planifie souvent pour plusieurs biens d'affilée : on garde
+     une liste, pas un bien unique. La table `visites` n'ayant qu'une colonne
+     `bien_id`, on écrit une ligne par bien, toutes sur le même créneau. */
+  const [planVisteForm, setPlanVisiteForm] = useState<{ bien_ids: string[]; date: string; heure: string; contact: string; notes: string }>({ bien_ids: [], date: '', heure: '', contact: '', notes: '' });
+  const [ajoutVisite, setAjoutVisite] = useState(false);
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
   const [offreForm, setOffreForm] = useState({ bien_id: '', montant: '', date: '', notes: '' });
 
@@ -914,7 +918,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setPendingBienId(bienId);
     return;
     }
-    setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
+    setPlanVisiteForm({ bien_ids: [bienId], date: '', heure: '', contact: '', notes: '' });
+    setAjoutVisite(false);
     setShowPlanVisite(true);
   }
 
@@ -924,7 +929,8 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (visiteId) await supabase.from('visites').delete().eq('id', visiteId);
     setShowConfirmVisite(null);
     await load();
-    setPlanVisiteForm({ bien_id: bienId, date: '', heure: '', contact: '', notes: '' });
+    setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], date: '', heure: '', contact: '', notes: '' });
+    setAjoutVisite(false);
     setShowPlanVisite(true);
   }
 
@@ -1219,13 +1225,25 @@ Emilio Immobilier
   }
 
   async function savePlanVisite() {
-    const { bien_id, date, heure, contact, notes } = planVisteForm;
-    if (!bien_id) return;
-    await supabase.from('visites').insert({ client_id: client.id, recherche_id: rechercheId, bien_id, statut: 'a_venir', date_visite: date || null, heure: heure || null, contact_agence: contact || null, commentaire: notes || null });
-    await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).eq('id', bien_id);
-    const bien = biens.find(b => b.id === bien_id);
+    const { bien_ids, date, heure, contact, notes } = planVisteForm;
+    if (!bien_ids.length) return;
+    /* Une ligne de visite par bien, toutes sur le même créneau : la table n'a
+       qu'un `bien_id`, et l'agenda comme les comptes rendus raisonnent bien
+       par bien. Ce qui est commun — date, heure, contact — est recopié. */
+    await supabase.from('visites').insert(bien_ids.map(bien_id => ({
+      client_id: client.id, recherche_id: rechercheId, bien_id, statut: 'a_venir',
+      date_visite: date || null, heure: heure || null,
+      contact_agence: contact || null, commentaire: notes || null,
+    })));
+    await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', bien_ids);
+    const noms = bien_ids
+      .map(id => biens.find(b => b.id === id))
+      .map(b => b?.titre || b?.ville || 'Bien')
+      .join(' · ');
     const desc = [date ? `Le ${new Date(date).toLocaleDateString('fr-FR')}` : '', heure ? `à ${heure}` : '', contact ? `· Contact : ${contact}` : ''].filter(Boolean).join(' ');
-    await addJournal(client.id, 'visite_planifiee', `📅 Visite planifiée — ${bien?.titre || bien?.ville || ''}`, desc);
+    await addJournal(client.id, 'visite_planifiee',
+      bien_ids.length > 1 ? `📅 Visite planifiée — ${bien_ids.length} biens : ${noms}` : `📅 Visite planifiée — ${noms}`,
+      desc);
     setShowPlanVisite(false); load();
   }
 
@@ -3157,18 +3175,76 @@ Emilio Immobilier
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📅 Planifier une visite</h2><button className={styles.modalClose} onClick={() => setShowPlanVisite(false)}>✕</button></div>
             <div className={styles.modalBody}>
               <div>
-                <label className={styles.lbl}>Bien à visiter</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {biens.map(b => (
-                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${planVisteForm.bien_id === b.id ? '#1a2332' : '#e3e8f0'}`, background: planVisteForm.bien_id === b.id ? '#f8fafc' : 'white', cursor: 'pointer' }}>
-                      <input type="radio" name="bien_visite" value={b.id} checked={planVisteForm.bien_id === b.id} onChange={() => setPlanVisiteForm(f => ({ ...f, bien_id: b.id }))} style={{ accentColor: '#1a2332' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
-                        {b.surface && <span style={{ fontSize: 12, color: '#64748b' }}>{b.surface}m²{b.nb_pieces ? ` · ${b.nb_pieces}P` : ''}{b.ville ? ` · ${b.ville}` : ''}</span>}
+                <label className={styles.lbl}>
+                  {planVisteForm.bien_ids.length > 1 ? `${planVisteForm.bien_ids.length} biens à visiter` : 'Bien à visiter'}
+                </label>
+                {/* Le bien d'où l'on vient est déjà choisi : on l'affiche, on ne
+                    redemande pas de le sélectionner dans une liste. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {planVisteForm.bien_ids.map(id => {
+                    const b = biens.find(x => x.id === id);
+                    if (!b) return null;
+                    return (
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, border: '2px solid #1a2332', background: '#f8fafc' }}>
+                        {b.photos?.[0]
+                          ? <img src={b.photos[0]} alt="" style={{ width: 52, height: 52, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
+                          : <div style={{ width: 52, height: 52, borderRadius: 9, background: '#eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🏠</div>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            {[b.surface ? `${b.surface} m²` : '', b.nb_pieces ? `${b.nb_pieces}P` : '', b.ville || ''].filter(Boolean).join(' · ')}
+                            {b.prix_acquereur ? ` · ${Number(b.prix_acquereur).toLocaleString('fr-FR')} €` : ''}
+                          </div>
+                        </div>
+                        {planVisteForm.bien_ids.length > 1 && (
+                          <button onClick={() => setPlanVisiteForm(f => ({ ...f, bien_ids: f.bien_ids.filter(x => x !== id) }))}
+                            title="Retirer de cette visite"
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 17, cursor: 'pointer', padding: 4, lineHeight: 1 }}>✕</button>
+                        )}
                       </div>
-                    </label>
-                  ))}
+                    );
+                  })}
                 </div>
+
+                {/* Plusieurs biens sur le même créneau : on enchaîne les visites
+                    dans la même après-midi, c'est le cas courant. */}
+                {(() => {
+                  const dispo = biens.filter(b =>
+                    !planVisteForm.bien_ids.includes(b.id) && b.badge_retour !== 'refuse');
+                  if (!dispo.length) return null;
+                  if (!ajoutVisite) {
+                    return (
+                      <button onClick={() => setAjoutVisite(true)}
+                        style={{ marginTop: 10, width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px dashed #cbd5e1', background: 'white', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        ＋ Ajouter un autre bien à cette visite
+                      </button>
+                    );
+                  }
+                  return (
+                    <div style={{ marginTop: 10, border: '1px solid #e3e8f0', borderRadius: 12, padding: 10, background: '#fbfcfe' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 8 }}>À ajouter au même créneau</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                        {dispo.map(b => (
+                          <button key={b.id}
+                            onClick={() => { setPlanVisiteForm(f => ({ ...f, bien_ids: [...f.bien_ids, b.id] })); setAjoutVisite(false); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, border: '1px solid #e3e8f0', background: 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}>
+                            {b.photos?.[0]
+                              ? <img src={b.photos[0]} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                              : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🏠</div>}
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</span>
+                              <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 1 }}>
+                                {[b.surface ? `${b.surface} m²` : '', b.ville || '', (b.etape === 'presente' ? 'présenté' : 'en sélection')].filter(Boolean).join(' · ')}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setAjoutVisite(false)}
+                        style={{ marginTop: 8, background: 'none', border: 'none', color: '#64748b', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>Annuler</button>
+                    </div>
+                  );
+                })()}
               </div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Date de la visite</label><input className={styles.inp} type="date" value={planVisteForm.date} onChange={e => setPlanVisiteForm(f => ({ ...f, date: e.target.value }))} /></div>
@@ -3179,7 +3255,9 @@ Emilio Immobilier
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowPlanVisite(false)}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={savePlanVisite} disabled={!planVisteForm.bien_id}>📅 Confirmer la visite</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={savePlanVisite} disabled={!planVisteForm.bien_ids.length}>
+                📅 {planVisteForm.bien_ids.length > 1 ? `Confirmer les ${planVisteForm.bien_ids.length} visites` : 'Confirmer la visite'}
+              </button>
             </div>
           </div>
         </div>
