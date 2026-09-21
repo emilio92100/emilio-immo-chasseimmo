@@ -312,10 +312,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   }
   const [details, setDetails] = useState<Record<string, DetailDossier>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const replieFiltre = useRef(false);
   /* En trois secondes la souris a bougé : on retient sa dernière position,
      dans une référence, pour ne pas redessiner la liste à chaque pixel. */
   const souris = useRef({ x: 0, y: 0 });
-  const [filtre, setFiltre] = useState('tous');
+  /* On arrive sur les dossiers en cours, pas sur la liste entière : c'est
+     eux qu'on vient voir. Les autres onglets restent à un clic. */
+  const [filtre, setFiltre] = useState('actif');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(initForm);
@@ -393,6 +396,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
     setClients(merged);
     setLoading(false);
+
+    /* Sauf s'il n'y a aucun dossier actif : ouvrir sur un écran vide alors que
+       la base est pleine donnerait l'impression que le CRM a tout perdu. */
+    if (!replieFiltre.current) {
+      replieFiltre.current = true;
+      if (merged.length > 0 && !merged.some(c => c.statut === 'actif')) setFiltre('tous');
+    }
 
     /* Les compteurs. Jusqu'ici la liste affichait un tiret : ils n'étaient
        jamais calculés. Trois lectures légères suffisent. */
