@@ -373,6 +373,116 @@ function useEchap(actif: boolean, onEchap: () => void) {
   }, [actif, onEchap]);
 }
 
+/* ══ l'espace sur l'écran d'accueil ═══════════════ */
+/* Le lien part par SMS. La première fois, le client tape dessus ; la deuxième,
+   il ne retrouve plus le message. Une icône sur son écran d'accueil règle ça
+   une bonne fois : l'espace s'ouvre alors en plein écran, comme une
+   application, et le jeton est rangé dedans — il n'a plus rien à retenir.
+
+   Trois règles de politesse, qui comptent autant que le reste :
+     — on ne demande rien à l'arrivée. La proposition n'a de sens qu'une fois
+       qu'il a vu ce qu'il y a dedans : un bien ouvert, ou un vrai moment passé
+       sur la page ;
+     — on ne demande rien sur ordinateur. Il a ses favoris sous la souris ;
+     — deux refus valent un non. Au troisième, on insiste, et on agace. */
+
+const CLE_ECRAN = 'emilio_ecran';
+const REFUS_MAX = 2;
+const ATTENTE_MS = 40_000;
+
+type Appareil = null | 'ios' | 'android' | 'appli';
+
+/* L'événement d'Android, que le navigateur nous confie pour qu'on choisisse le
+   bon moment d'afficher sa boîte d'installation. Il n'est pas typé par TS. */
+type InviteNative = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: string }>;
+};
+
+function useEcranAccueil() {
+  const [appareil, setAppareil] = useState<Appareil>(null);
+  const [visible, setVisible] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const native = useRef<InviteNative | null>(null);
+  const eveille = useRef(false);
+
+  const lire = () => { try { return localStorage.getItem(CLE_ECRAN) || ''; } catch { return ''; } };
+  const ecrire = (v: string) => { try { localStorage.setItem(CLE_ECRAN, v); } catch { /* stockage indisponible */ } };
+
+  useEffect(() => {
+    /* Déjà posé sur l'écran d'accueil : la page tourne en plein écran, la
+       question ne se pose plus. */
+    const pose = window.matchMedia?.('(display-mode: standalone)').matches
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (pose) { ecrire('ok'); return; }
+
+    const tactile = window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth <= 900;
+    if (!tactile) return;
+
+    const ua = navigator.userAgent || '';
+    const ios = /iphone|ipad|ipod/i.test(ua)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    /* WhatsApp, Instagram, Messenger ouvrent les liens dans leur propre
+       navigateur, et celui-là n'a pas l'option sur iPhone. Il faut d'abord
+       repasser par Safari — c'est ce qu'on lui expliquera. */
+    const integre = /FBAN|FBAV|Instagram|Messenger|LinkedInApp|Line\/|Snapchat|Twitter|WhatsApp/i.test(ua);
+
+    setAppareil(ios ? (integre ? 'appli' : 'ios') : 'android');
+
+    const etat = lire();
+    setAuto(etat !== 'ok' && (Number(etat) || 0) < REFUS_MAX);
+
+    const surInvite = (e: Event) => {
+      /* Android proposerait tout seul, au pire moment. On garde la main. */
+      e.preventDefault();
+      native.current = e as InviteNative;
+      setAppareil('android');
+    };
+    const surPose = () => { ecrire('ok'); setAppareil(null); setVisible(false); };
+    window.addEventListener('beforeinstallprompt', surInvite);
+    window.addEventListener('appinstalled', surPose);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', surInvite);
+      window.removeEventListener('appinstalled', surPose);
+    };
+  }, []);
+
+  /* Le déclencheur : un bien ouvert, ou quarante secondes passées ici. */
+  const eveiller = useCallback(() => {
+    if (eveille.current) return;
+    eveille.current = true;
+    setTimeout(() => setVisible(true), 800);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(eveiller, ATTENTE_MS);
+    return () => clearTimeout(t);
+  }, [eveiller]);
+
+  const refuser = useCallback(() => {
+    const n = (Number(lire()) || 0) + 1;
+    ecrire(String(n));
+    setVisible(false);
+    if (n >= REFUS_MAX) setAuto(false);
+  }, []);
+
+  /* Sur Android, le navigateur sait le faire lui-même : une boîte, un bouton,
+     c'est fini. Partout ailleurs, on montre le chemin. */
+  const accepter = useCallback(async (guide: () => void) => {
+    setVisible(false);
+    const inv = native.current;
+    if (!inv) { guide(); return; }
+    native.current = null;
+    try {
+      await inv.prompt();
+      const r = await inv.userChoice;
+      if (r?.outcome === 'accepted') { ecrire('ok'); setAppareil(null); }
+    } catch { guide(); }
+  }, []);
+
+  return { appareil, auto, visible, eveiller, refuser, accepter };
+}
+
 /* ══ composant ════════════════════════════════════ */
 export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites }: Props) {
   const [vue, setVue] = useState('accueil');
@@ -406,6 +516,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
   const [filtreC, setFiltreC] = useState('tout');   // filtre de « Mes derniers biens consultés »
 
+  /* ── l'espace sur l'écran d'accueil ── */
+  const ecran = useEcranAccueil();
+  const ouvrirGuideEcran = useCallback(() => {
+    montrer(<GuideEcran appareil={ecran.appareil || 'ios'} onFermer={fermer} />, 'pleine');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ecran.appareil]);
+
   /* ── ouverture d'une fiche ── */
   function ouvrirBien(b: Bien) {
     if (b.etat === 'neuf') {
@@ -414,6 +531,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     /* Chaque ouverture compte, pas seulement la première : c'est ce qui dit
        à Alexandre qu'un bien a été rouvert trois fois dans la semaine. */
     envoyer('vue', { bien_id: b.id });
+    /* Il vient de regarder un bien : c'est le bon moment pour lui proposer de
+       garder l'espace sous la main, et pas avant. */
+    ecran.eveiller();
     montrer(<FicheBien b={b} client={client} onFermer={fermer}
       onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
   }
@@ -614,6 +734,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               onVisiteBien={(id: string) => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
               token={token}
               onBienvenue={ouvrirBienvenue}
+              onEcran={ecran.appareil ? () => ecran.accepter(ouvrirGuideEcran) : null}
               onFin={ouvrirFinRecherche}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
@@ -705,6 +826,26 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         </div>
       </div>
 
+      {/* La proposition d'écran d'accueil. Elle ne s'affiche jamais par-dessus
+          une fiche ouverte : on ne coupe pas la parole. */}
+      {ecran.appareil && ecran.auto && ecran.visible && !ouvert && (
+        <div className="ecran">
+          <div className="ecran-dedans">
+            <span className="ecran-sceau"><Ico n="maison" t={19} /></span>
+            <div className="ecran-txt">
+              <b>Gardez votre espace sous la main</b>
+              <span>Une icône sur votre écran d&apos;accueil, et vous y êtes en un geste&nbsp;— sans chercher le lien.</span>
+            </div>
+            <button type="button" className="ecran-oui" onClick={() => ecran.accepter(ouvrirGuideEcran)}>
+              Ajouter
+            </button>
+            <button type="button" className="ecran-x" onClick={ecran.refuser} aria-label="Plus tard">
+              <Ico n="croix" t={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className={'voile' + (ouvert ? ' on' : '')} onClick={fermer} />
       <div className={'feuille' + (ouvert ? ' on' : '') + (variante ? ' ' + variante : '')}
         role="dialog" aria-modal="true">
@@ -715,7 +856,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, onFin, visites, token, onVisiteBien }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, onAide, onFin, visites, token, onVisiteBien }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -741,6 +882,13 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
 
       <div className="col-b">
       <div className="sep"><span>Votre espace</span><i />
+        {/* Toujours là, même après un « plus tard » : celui qui change d'avis
+            trois semaines plus tard doit le retrouver sans chercher. */}
+        {onEcran && (
+          <button type="button" className="lien-aide lien-ecran" onClick={onEcran}>
+            <Ico n="maison" t={12} />Sur mon écran d&apos;accueil
+          </button>
+        )}
         <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
       </div>
 
@@ -2585,7 +2733,86 @@ function Bienvenue({ client, onFermer }: any) {
         <span><span className="k"><Ico n="check" t={15} /></span><span>Un avis en un clic sur chaque bien&nbsp;— c&apos;est ce qui affine la suite de la recherche.</span></span>
       </div>
       <button className="btn or" style={{ marginTop: 22, width: '100%' }} onClick={onFermer}>J&apos;ai compris</button>
-      <div className="bienv-pied">Vous pourrez la revoir à tout moment avec «&nbsp;Comment ça marche&nbsp;?&nbsp;»</div>
+      {/* Une phrase, pas une demande : l'idée est posée, elle reviendra d'elle-même
+          un peu plus tard, quand il aura vu ce qu'il y a dedans. */}
+      <div className="bienv-pied">
+        Vous pourrez l&apos;ajouter à votre écran d&apos;accueil pour le retrouver en un geste.
+      </div>
+    </div>
+  );
+}
+
+/* ══ le chemin vers l'écran d'accueil ═════════════ */
+/* Trois textes, parce qu'il y a trois situations, et qu'une notice qui ne
+   correspond pas à ce qu'on a sous les yeux ne sert à rien. */
+const CHEMINS: Record<string, { sur: string; titre: string; texte: string; etapes: React.ReactNode[]; pied: string }> = {
+  ios: {
+    sur: 'Sur votre iPhone',
+    titre: 'En trois gestes',
+    texte: "Votre espace se posera à côté de vos applications. Il s'ouvrira en plein écran, déjà sur votre dossier : plus besoin de retrouver le lien dans vos messages.",
+    etapes: [
+      <>Appuyez sur le bouton <b>Partager</b>, en bas de l&apos;écran — le carré avec une flèche vers le haut.</>,
+      <>Faites défiler, puis choisissez <b>« Sur l&apos;écran d&apos;accueil »</b>.</>,
+      <>Appuyez sur <b>Ajouter</b>, en haut à droite.</>,
+    ],
+    pied: "Rien ne s'installe sur votre téléphone : c'est un raccourci, et il se retire comme n'importe quelle application.",
+  },
+  android: {
+    sur: 'Sur votre téléphone',
+    titre: 'En trois gestes',
+    texte: "Votre espace se posera à côté de vos applications. Il s'ouvrira en plein écran, déjà sur votre dossier : plus besoin de retrouver le lien dans vos messages.",
+    etapes: [
+      <>Appuyez sur le menu <b>⋮</b>, en haut à droite du navigateur.</>,
+      <>Choisissez <b>« Installer l&apos;application »</b> — ou <b>« Ajouter à l&apos;écran d&apos;accueil »</b>.</>,
+      <>Confirmez avec <b>Installer</b>.</>,
+    ],
+    pied: "Rien ne s'installe vraiment sur votre téléphone : c'est un raccourci, et il se retire comme n'importe quelle application.",
+  },
+  appli: {
+    sur: 'Une étape avant',
+    titre: 'Ouvrez-le dans Safari',
+    texte: "Vous lisez cette page dans WhatsApp, Instagram ou Messenger. Ces applications ont leur propre navigateur, et il n'a pas l'option. Une fois dans Safari, tout devient possible.",
+    etapes: [
+      <>Appuyez sur <b>•••</b> ou sur la petite boussole, en bas de l&apos;écran.</>,
+      <>Choisissez <b>« Ouvrir dans Safari »</b>.</>,
+      <>Puis <b>Partager</b> → <b>« Sur l&apos;écran d&apos;accueil »</b>.</>,
+    ],
+    pied: "Vous pouvez aussi copier le lien ci-dessous et le coller dans Safari.",
+  },
+};
+
+function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => void }) {
+  const c = CHEMINS[appareil] || CHEMINS.ios;
+  const [copie, setCopie] = useState(false);
+
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopie(true);
+      setTimeout(() => setCopie(false), 2400);
+    } catch { /* le presse-papier n'est pas toujours autorisé */ }
+  };
+
+  return (
+    <div className="bienv">
+      <div className="bienv-sceau"><Ico n={appareil === 'appli' ? 'partage' : 'maison'} t={28} /></div>
+      <div className="bienv-sur">{c.sur}</div>
+      <h3>{c.titre}</h3>
+      <p>{c.texte}</p>
+      <div className="puces etapes">
+        {c.etapes.map((t, i) => (
+          <span key={i}><span className="k num">{i + 1}</span><span>{t}</span></span>
+        ))}
+      </div>
+      {appareil === 'appli' && (
+        <button className="btn fant" style={{ marginTop: 18, width: '100%' }} onClick={copier}>
+          {copie ? '✓ Lien copié' : 'Copier le lien'}
+        </button>
+      )}
+      <button className="btn or" style={{ marginTop: 12, width: '100%' }} onClick={onFermer}>
+        {appareil === 'appli' ? 'Fermer' : "C'est fait"}
+      </button>
+      <div className="bienv-pied">{c.pied}</div>
     </div>
   );
 }
@@ -3530,6 +3757,51 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   color:var(--plume-clair); border:1px solid var(--trait); background:var(--carte);
   border-radius:99px; padding:4px 11px; white-space:nowrap; transition:color .15s, border-color .15s}
 .lien-aide:hover{color:var(--or-fonce); border-color:var(--or-trait)}
+/* Celui de l'écran d'accueil porte son icône : deux liens côte à côte se
+   distinguent mieux d'un coup d'œil qu'avec deux libellés seuls. */
+.lien-ecran{display:inline-flex; align-items:center; gap:5px; color:var(--or-fonce);
+  border-color:var(--or-trait); background:var(--or-fond)}
+.lien-ecran:hover{border-color:var(--or)}
+
+
+/* ═══ L'espace sur l'écran d'accueil ═══ */
+/* Une bande basse, jamais une fenêtre : elle propose, elle ne barre pas la
+   route. Elle passe sous la feuille (z-index 60) pour ne jamais recouvrir une
+   fiche ouverte. */
+.ecran{position:fixed; left:0; right:0; bottom:0; z-index:50;
+  padding:0 12px calc(12px + env(safe-area-inset-bottom,0px));
+  animation:monte-ecran .4s cubic-bezier(.16,1,.3,1) both; pointer-events:none}
+@keyframes monte-ecran{ from{ opacity:0; transform:translateY(16px) } to{ opacity:1; transform:none } }
+.ecran-dedans{pointer-events:auto; display:flex; align-items:center; gap:11px;
+  max-width:560px; margin:0 auto; padding:11px 12px 11px 13px;
+  background:var(--encre); color:#fff; border-radius:17px;
+  box-shadow:0 8px 20px -6px rgba(16,24,40,.45), 0 24px 48px -28px rgba(16,24,40,.9)}
+.ecran-sceau{flex:0 0 auto; width:36px; height:36px; border-radius:11px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--or); background:rgba(201,168,76,.14); border:1px solid rgba(201,168,76,.3)}
+.ecran-txt{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px}
+.ecran-txt b{font-size:13px; font-weight:800; line-height:1.25}
+.ecran-txt span{font-size:11.5px; line-height:1.4; color:rgba(255,255,255,.66)}
+.ecran-oui{flex:0 0 auto; font-family:inherit; font-size:12.5px; font-weight:800;
+  background:var(--or); color:#fff; border:none; border-radius:11px; padding:9px 15px;
+  white-space:nowrap; transition:transform .15s}
+.ecran-oui:active{transform:scale(.96)}
+.ecran-x{flex:0 0 auto; width:26px; height:26px; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; background:transparent; border:none;
+  color:rgba(255,255,255,.42); transition:color .15s, background .15s}
+.ecran-x:hover{color:#fff; background:rgba(255,255,255,.1)}
+@media(max-width:400px){
+  .ecran-txt span{display:none}
+  .ecran-dedans{gap:9px}
+}
+
+/* Les étapes du guide : le même alignement que les puces, un chiffre à la
+   place de la coche — on suit une marche à suivre, on ne coche pas une liste. */
+.etapes .num{display:flex; align-items:center; justify-content:center;
+  width:21px; height:21px; margin-top:0; border-radius:50%;
+  font-size:11.5px; font-weight:800; color:var(--or-fonce);
+  background:var(--or-fond); border:1px solid var(--or-trait)}
+.bienv .etapes span{line-height:1.55}
 
 
 /* ═══ Biens consultés : filtres et groupes ═══ */
