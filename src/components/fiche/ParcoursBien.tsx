@@ -1576,6 +1576,9 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
 
   async function marquer(canal: string) {
     setEnvoi(true);
+    /* Avant la mise à jour : un bien déjà présenté qu'on renvoie n'est pas une
+       nouvelle pour le client, il ne déclenche pas de notification. */
+    const neuf = bien.etape !== 'presente';
     await supabase.from('biens').update({
       etape: 'presente', envoye_le: new Date().toISOString(), canal_envoi: canal,
       commission_type: type, commission_val: v, prix_acquereur: total, badge_retour: 'propose',
@@ -1588,6 +1591,16 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
     });
     /* Présenté = en attente d'une réponse : la relance se programme ici. */
     await programmerRelance(clientId, bien.recherche_id, 1);
+
+    /* Notification sur le téléphone du client, s'il l'a autorisée. Sans
+       attente et sans message d'erreur : l'envoi est déjà fait. */
+    if (neuf && bien.recherche_id) {
+      fetch('/api/notifier', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recherche_id: bien.recherche_id }),
+      }).catch(() => { /* sans effet sur l'envoi */ });
+    }
+
     setEnvoi(false); onEnvoye();
   }
 
