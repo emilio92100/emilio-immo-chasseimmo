@@ -29,8 +29,43 @@ async function sha256(texte: string): Promise<string> {
     .join('');
 }
 
+/* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
+   Vercel : c'est le nom d'hôte qui décide de ce qu'on sert. */
+const HOTE_ESPACE = 'espace.emilio-immo.com';
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  /* 0. Les liens courts.
+   *
+   *    Le client reçoit espace.emilio-immo.com/dupont-k3n8vq2fab, quarante
+   *    caractères au lieu de cent cinq. Ce chemin-là n'existe pas dans
+   *    l'application : on le réécrit en /espace/<jeton>, sans redirection —
+   *    l'adresse courte reste affichée dans son navigateur, c'est tout
+   *    l'intérêt.
+   *
+   *    Réécrire, pas rediriger : une redirection ferait clignoter la longue
+   *    adresse dans la barre, et c'est précisément ce qu'on veut lui épargner.
+   */
+  const hote = (request.headers.get('host') || '').toLowerCase().split(':')[0];
+  if (hote === HOTE_ESPACE) {
+    /* Une adresse sans jeton ne mène nulle part : on renvoie vers le site. */
+    if (pathname === '/') {
+      return NextResponse.redirect('https://www.emilio-immo.com');
+    }
+    /* Ce qui porte déjà son vrai chemin, ce qui sert l'application, et tout
+       fichier reconnaissable à son extension passent sans être touchés. */
+    const technique =
+      pathname.startsWith('/espace/') ||
+      pathname.startsWith('/api/') ||
+      pathname.startsWith('/_next/') ||
+      /\.[a-z0-9]+$/i.test(pathname);
+    if (!technique) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/espace${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
 
   // 1. Chemins publics
   if (PUBLIC_PATHS.includes(pathname)) return NextResponse.next();
@@ -78,9 +113,14 @@ export async function proxy(request: NextRequest) {
  * une requête HTTP sur le site lui-même — requête qui repasse ici, sans
  * cookie, et qui est redirigée vers /login. L'optimiseur reçoit une page HTML
  * au lieu d'une image, et l'image reste vide.
+ *
+ * /icone en fait partie, pour la même raison : c'est l'icône que le client pose
+ * sur son écran d'accueil. Si elle passait par le portail, son téléphone
+ * recevrait la page de connexion à la place de l'image, et afficherait un carré
+ * gris à la place du logo.
  */
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|bmp|pdf|txt|xml|json|webmanifest|css|js|map|woff|woff2|ttf|otf|eot|mp4|webm)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon|icone|apple-icon|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|bmp|pdf|txt|xml|json|webmanifest|css|js|map|woff|woff2|ttf|otf|eot|mp4|webm)$).*)',
   ],
 };
