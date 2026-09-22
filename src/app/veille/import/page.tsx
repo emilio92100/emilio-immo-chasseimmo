@@ -39,7 +39,29 @@ export default function PageImportVeille() {
   }, []);
 
   useEffect(() => {
-    // ─── Lecture : les recherches actives et ce qu'elles connaissent déjà ───
+    /**
+     * ─── Lecture : les recherches actives et ce qu'elles connaissent déjà ───
+     *
+     * Cette fonction est la mémoire de la veille. Ce qu'elle ne renvoie pas
+     * n'existe pas pour le passage qui commence.
+     *
+     * Elle renvoyait la liste des URL déjà vues, et rien d'autre. Trois trous
+     * en découlaient, tous comblés ici :
+     *
+     *  1. L'URL est la seule clé qui CHANGE. Une annonce retirée puis remise,
+     *     ou confiée à une deuxième agence, revient sous un lien neuf et se
+     *     fait reproposer. L'identifiant Yanport, lui, désigne le BIEN : c'est
+     *     ce qui permet au CRM d'afficher « 3 agences » sur une seule carte.
+     *     Il est déjà en base sur chaque proposition — il partait juste à la
+     *     poubelle ici. Idem pour le titre, le prix et la surface, qui étaient
+     *     lus puis jetés : ils servent de repli quand l'identifiant manque.
+     *  2. La veille ne savait pas QUAND elle était passée. Elle ne pouvait
+     *     donc pas décider seule entre « tout le stock » et « ce qui a bougé ».
+     *  3. Elle ne savait pas CE QUI avait changé dans les critères. Le CRM
+     *     l'écrit pourtant déjà, ligne par ligne : « Budget max : 700 000 € →
+     *     800 000 € ». C'est cette phrase qui dit quelle tranche de marché
+     *     vient de s'ouvrir, et donc où rouvrir le stock.
+     */
     async function veilleLire() {
       const { data: recherches, error } = await supabase
         .from('recherches')
@@ -48,22 +70,93 @@ export default function PageImportVeille() {
 
       if (error) return { ok: false, error: error.message };
 
+      /* `yanport_id` est récent : si la colonne manque encore sur une table, on
+         se rabat sur l'ancien jeu de colonnes plutôt que de casser la lecture
+         — sans elle, aucune veille ne peut démarrer. */
+      const lire = async (table: string, colonnes: string, repli: string, rechercheId: string) => {
+        const r1 = await supabase.from(table).select(colonnes).eq('recherche_id', rechercheId);
+        if (!r1.error) return (r1.data || []) as any[];
+        const r2 = await supabase.from(table).select(repli).eq('recherche_id', rechercheId);
+        return (r2.data || []) as any[];
+      };
+
       const resultat = [];
       for (const r of recherches || []) {
-        const [biens, props] = await Promise.all([
-          supabase.from('biens').select('url, titre, prix_vendeur, surface').eq('recherche_id', r.id),
-          supabase
-            .from('veille_propositions')
-            .select('url, statut, motif_ecart, titre, prix, surface')
-            .eq('recherche_id', r.id),
+        const [biens, props, passages, journal] = await Promise.all([
+          lire('biens',
+            'url, yanport_id, titre, prix_vendeur, surface, ville, etape',
+            'url, titre, prix_vendeur, surface', r.id),
+          lire('veille_propositions',
+            'url, yanport_id, statut, motif_ecart, titre, prix, surface, ville, created_at',
+            'url, statut, motif_ecart, titre, prix, surface', r.id),
+          supabase.from('veille_passages')
+            .select('demarre_le, termine_le, nb_lues, nb_proposees, nb_ecartees, message')
+            .eq('recherche_id', r.id)
+            .order('termine_le', { ascending: false, nullsFirst: false })
+            .limit(1),
+          /* Les modifications de critères sont journalisées des deux côtés :
+             par Alexandre depuis la fiche, par le client depuis son espace.
+             Celles écrites depuis la fiche ne portent pas encore la recherche :
+             on filtre donc sur le client, puis on garde ce qui concerne cette
+             recherche-ci ou ce qui n'en désigne aucune. */
+          supabase.from('journal')
+            .select('created_at, titre, description, recherche_id')
+            .eq('client_id', r.client_id)
+            .eq('type', 'criteres_modifies')
+            .order('created_at', { ascending: false })
+            .limit(20),
         ]);
+
+        const dernier = passages.data?.[0] || null;
+        const depuis = dernier?.termine_le || null;
+
+        const changements = (journal.data || [])
+          .filter((j: any) => !j.recherche_id || j.recherche_id === r.id)
+          .map((j: any) => ({
+            quand: j.created_at,
+            par: /client/i.test(j.titre || '') ? 'client' : 'alexandre',
+            quoi: j.description || j.titre,
+            depuis_le_dernier_passage: !depuis || j.created_at > depuis,
+          }));
+
+        /* Une ligne par bien déjà connu, avec ses trois façons d'être reconnu :
+           le lien, l'identifiant Yanport, et son identité visible. */
+        const connus = [
+          ...(props as any[]).map((p) => ({
+            ou: 'veille',
+            url: p.url || null, yanport_id: p.yanport_id || null,
+            titre: p.titre || null, prix: p.prix ?? null, surface: p.surface ?? null,
+            ville: p.ville || null,
+            statut: p.statut || null, motif: p.motif_ecart || null,
+          })),
+          ...(biens as any[]).map((b) => ({
+            ou: b.etape === 'presente' ? 'presente' : 'selection',
+            url: b.url || null, yanport_id: b.yanport_id || null,
+            titre: b.titre || null, prix: b.prix_vendeur ?? null, surface: b.surface ?? null,
+            ville: b.ville || null,
+            statut: 'retenu', motif: null,
+          })),
+        ];
+
         resultat.push({
           recherche: r,
-          deja_dans_biens: (biens.data || []).filter((b) => b.url).map((b) => b.url),
-          deja_proposes: (props.data || []).map((p) => p.url),
-          refus: (props.data || [])
+
+          /* ── l'ancien format, inchangé ── */
+          deja_dans_biens: (biens as any[]).filter((b) => b.url).map((b) => b.url),
+          deja_proposes: (props as any[]).map((p) => p.url).filter(Boolean),
+          refus: (props as any[])
             .filter((p) => p.statut === 'ecarte' && p.motif_ecart)
             .map((p) => ({ titre: p.titre, motif: p.motif_ecart })),
+
+          /* ── ce qu'il faut pour ne plus reproposer un bien déguisé ── */
+          deja_vus: connus,
+          yanport_deja_vus: Array.from(new Set(connus.map((c) => c.yanport_id).filter(Boolean))),
+
+          /* ── ce qu'il faut pour choisir la profondeur du passage ── */
+          dernier_passage: dernier,
+          criteres_modifies_le: r.updated_at || null,
+          criteres_bouges_depuis: !!depuis && !!r.updated_at && r.updated_at > depuis,
+          changements_criteres: changements,
         });
       }
       return { ok: true, recherches: resultat };
