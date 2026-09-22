@@ -4162,8 +4162,10 @@ Emilio Immobilier
                 </div>
               </div>
               <div>
-                <label className={styles.lbl}>Commentaires / Observations</label>
-                <textarea className={styles.inp} rows={4} value={crForm.commentaire} onChange={e => setCrForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Points positifs, négatifs, questions posées, éléments à vérifier..." />
+                <label className={styles.lbl}>
+                  Compte-rendu <span style={{ fontWeight: 600, color: '#b45309' }}>— lu par le client dans son espace</span>
+                </label>
+                <textarea className={styles.inp} rows={4} value={crForm.commentaire} onChange={e => setCrForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Ce que vous retenez de la visite, écrit pour lui : ce qui vous a plu, ce qui pose question, ce qui reste à vérifier…" />
               </div>
             </div>
             <div className={styles.modalFooter}>
