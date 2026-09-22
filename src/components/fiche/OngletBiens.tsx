@@ -38,6 +38,34 @@ const GROUPES_P: { id: string; titre: string; note?: string }[] = [
 const groupeP = (b: { badge_retour?: string | null }) =>
   (b.badge_retour && GROUPES_P.some(g => g.id === b.badge_retour) ? b.badge_retour : 'propose');
 
+/* Retirer un bien est rare et sans retour : le bouton se voit quand on le
+   cherche, jamais assez pour être cliqué de travers. */
+function LienRetirer({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="Retirer ce bien du dossier"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none',
+        color: '#c3ccda', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+        padding: '4px 2px', transition: 'color .12s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; }}
+      onMouseLeave={e => { e.currentTarget.style.color = '#c3ccda'; }}>
+      <IconeCorbeille /> Retirer
+    </button>
+  );
+}
+
+function IconeCorbeille({ taille = 14 }: { taille?: number }) {
+  return (
+    <svg width={taille} height={taille} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
+
 /* « Il y a deux heures » se lit plus vite qu'une date. */
 function depuisQuand(d?: string | null) {
   if (!d) return '';
@@ -101,6 +129,58 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
   async function renvoyerEnSelection(bienId: string) {
     await supabase.from('biens').update({ etape: 'selection', envoye_le: null, canal_envoi: null }).eq('id', bienId);
+    recharge();
+  }
+
+  /**
+   * Retirer un bien du dossier.
+   *
+   * Trois précautions, dans cet ordre :
+   *   1. une visite calée ou déjà faite bloque le retrait — on ne fait pas
+   *      disparaître un bien qui est dans l'agenda ;
+   *   2. la proposition de veille repasse en « écartée » AVANT la suppression,
+   *      avec un motif : la prochaine veille ne le reproposera pas, et il
+   *      reste rattrapable depuis « les écartées » de l'onglet Veille ;
+   *   3. les photos hébergées chez nous partent avec lui, sinon elles
+   *      resteraient à occuper du stockage sans que rien ne les affiche.
+   */
+  async function retirer(b: any) {
+    const nom = b.titre || b.ville || 'ce bien';
+
+    const { data: vis } = await supabase.from('visites')
+      .select('id').eq('bien_id', b.id).in('statut', ['a_venir', 'effectuee']).limit(1);
+    if (vis && vis.length > 0) {
+      alert(`« ${nom} » est dans ton agenda.\n\nAnnule d'abord la visite depuis l'onglet Visites, puis retire le bien.`);
+      return;
+    }
+
+    /* Une seule fenêtre pour confirmer ET dire pourquoi : le motif part dans la
+       mémoire de la veille, exactement comme celui du bouton « Écarter ».
+       Annuler → on ne fait rien. Valider à vide → on retire sans rien lui
+       apprendre. */
+    const suite = mode === 'selection'
+      ? 'Il repart dans les écartées de la veille : tu pourras le remettre de là si tu changes d’avis.'
+      : 'Il a déjà été envoyé au client : il disparaîtra aussi de son espace, avec le retour qu’il a pu laisser.';
+    const saisi = window.prompt(
+      `Retirer « ${nom} » ?\n\n${suite}\n\nPourquoi ? La prochaine veille le lira et évitera les biens du même genre.\n(Laisse vide et valide si tu préfères ne rien dire.)`,
+      '',
+    );
+    if (saisi === null) return;
+
+    await supabase.from('veille_propositions').update({
+      statut: 'ecarte', bien_id: null,
+      motif_ecart: saisi.trim() || (mode === 'selection' ? 'Retiré de la sélection' : 'Retiré du dossier'),
+      decide_le: new Date().toISOString(),
+    }).eq('bien_id', b.id);
+
+    const photos: string[] = (b.photos || []).filter((p: string) => typeof p === 'string' && p.includes('supabase.co/storage'));
+    if (photos.length > 0) {
+      const chemins = photos.map(u => (u.match(/photos-biens\/(.+)$/) || [])[1]).filter(Boolean) as string[];
+      if (chemins.length > 0) { try { await supabase.storage.from('photos-biens').remove(chemins); } catch { /* le retrait prime */ } }
+    }
+
+    const { error } = await supabase.from('biens').delete().eq('id', b.id);
+    if (error) { alert('Impossible de retirer ce bien : ' + error.message); return; }
     recharge();
   }
 
@@ -243,6 +323,17 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                     {mode === 'selection'
                       ? <BoutonIcone icone="envoyer" titre="Envoyer au client" ton="or" onClick={() => setEnvoi(b)} />
                       : <BoutonIcone icone="calendrier" titre="Planifier une visite" onClick={() => onVisite(b.id)} />}
+                    <button type="button" onClick={() => retirer(b)} title="Retirer ce bien du dossier"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 30, height: 30, borderRadius: 9, background: 'white',
+                        border: `1px solid ${BORD}`, color: '#c3ccda', cursor: 'pointer',
+                        fontFamily: 'inherit', transition: 'color .12s, border-color .12s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.borderColor = '#fecaca'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#c3ccda'; e.currentTarget.style.borderColor = BORD; }}>
+                      <IconeCorbeille taille={15} />
+                    </button>
                   </>
                 }
               />
@@ -371,6 +462,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                       <Action onClick={() => demanderPdf(b.id)} ton="neutre">📄&nbsp; Demander une fiche soignée</Action>
                     )}
                     <Action onClick={() => setEnvoi(b)} ton="or">📤&nbsp; Envoyer</Action>
+                    <LienRetirer onClick={() => retirer(b)} />
                   </>
                 ) : (
                   <>
@@ -381,6 +473,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                       style={{ background: 'none', border: 'none', color: '#a9b6c8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Remettre en sélection
                     </button>
+                    <LienRetirer onClick={() => retirer(b)} />
                   </>
                 )}
               </div>
