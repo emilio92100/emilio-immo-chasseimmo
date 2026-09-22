@@ -49,16 +49,45 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     /* Tous les passages du dossier, pour le total d'annonces lues. On ne tire
        qu'une colonne d'entiers : même après des années, c'est quelques kilo-octets. */
     supabase.from('veille_passages').select('nb_lues, nb_proposees, nb_ecartees').eq('recherche_id', recherche.id),
-    /* Les visites calées et pas encore faites : c'est ce que le client attend
-       de voir en premier quand il ouvre son espace. */
+    /* Toutes les visites du dossier. Celles à venir ouvrent l'espace ; celles
+       qui sont faites portent le compte rendu, et c'est elles qui font passer
+       un bien de « visite à venir » à « visite effectuée » à l'écran. */
     supabase.from('visites').select('*').eq('recherche_id', recherche.id)
-      .eq('statut', 'a_venir').order('date_visite', { ascending: true }),
+      .in('statut', ['a_venir', 'effectuee']).order('date_visite', { ascending: true }),
   ]);
   const tous = totalRes.data || [];
   const totalLues = tous.reduce((t, x) => t + (x.nb_lues || 0), 0);
   const totalRetenues = tous.reduce((t, x) => t + (x.nb_proposees || 0), 0);
   const totalEcartees = tous.reduce((t, x) => t + (x.nb_ecartees || 0), 0);
   const nbPassages = tous.length;
+
+  /* Ce que le CRM sait des visites, rangé par bien. Le statut d'un bien à
+     l'écran ne se devine plus du badge : il vient d'ici, donc il est toujours
+     d'accord avec l'agenda d'Alexandre.
+       une visite calée et pas encore passée → « Visite à venir »
+       une visite faite                      → « Visite effectuée » + son compte rendu */
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const toutesVisites = visitesRes.data || [];
+
+  const prevueParBien = new Map<string, { date: string; heure: string | null }>();
+  toutesVisites
+    .filter((v) => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= aujourdhui)
+    .forEach((v) => {
+      if (!v.bien_id || prevueParBien.has(v.bien_id)) return;   // la plus proche d'abord
+      prevueParBien.set(v.bien_id, { date: v.date_visite, heure: v.heure || null });
+    });
+
+  const faiteParBien = new Map<string, { date: string | null; commentaire: string | null; etoiles: number | null }>();
+  toutesVisites
+    .filter((v) => v.statut === 'effectuee')
+    .forEach((v) => {
+      if (!v.bien_id) return;                                    // la dernière l'emporte
+      faiteParBien.set(v.bien_id, {
+        date: v.date_visite || null,
+        commentaire: v.commentaire || null,
+        etoiles: v.note_etoiles || null,
+      });
+    });
 
   const biens = (biensRes.data || []).map((b) => ({
     id: b.id,
@@ -86,14 +115,16 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
        après un appel. Le client ne doit pas lire « votre commentaire »
        sous une phrase qu'il n'a pas écrite. */
     retourPar: b.retour_par || 'client',
+    visitePrevue: prevueParBien.get(b.id) || null,
+    visiteFaite: faiteParBien.get(b.id) || null,
     etat: ETAT(b),
   }));
 
   /* Une visite sans date ne sert à rien à l'écran, et une visite passée depuis
      plus d'un jour non plus : le compte rendu prend le relais côté CRM. */
   const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  const visites = (visitesRes.data || [])
-    .filter((v) => v.date_visite && String(v.date_visite).slice(0, 10) >= hier)
+  const visites = toutesVisites
+    .filter((v) => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= hier)
     .map((v) => {
       const b = (biensRes.data || []).find((x) => x.id === v.bien_id);
       return {
@@ -102,6 +133,8 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
         heure: (v.heure as string) || null,
         titre: b?.titre || `${b?.type_bien || 'Bien'} — ${b?.ville || ''}`,
         adresse: [b?.adresse || b?.adresse_probable || b?.quartier, b?.ville].filter(Boolean).join(', '),
+        /* La photo du bien : un rappel de visite sans image ne dit pas lequel. */
+        photo: (b?.photos || [])[0] || null,
         bienId: v.bien_id as string | null,
       };
     });
