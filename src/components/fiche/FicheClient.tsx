@@ -2456,13 +2456,6 @@ Emilio Immobilier
                     </div>
                   ))}
                   <button onClick={() => { setPosRecherche(null); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: '#fbfcfe', cursor: 'pointer', fontFamily: 'inherit', color: '#2d5c8f', fontWeight: 700, fontSize: 13.5 }}>+ Nouvelle recherche</button>
-                  {rechercheActive && (
-                    <button onClick={() => { setPosRecherche(null); ouvrirReinit(); }}
-                      title="Effacer tout le suivi de cette recherche et repartir d'une veille neuve"
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderTop: '1px solid #f4f7fb', background: '#fff7f7', cursor: 'pointer', fontFamily: 'inherit', color: '#dc2626', fontWeight: 700, fontSize: 13.5 }}>
-                      ♻️ Réinitialiser le suivi
-                    </button>
-                  )}
                 </div>
               </Portail>
             )}
@@ -2671,6 +2664,14 @@ Emilio Immobilier
           font-size: 12px; font-weight: 800; color: #e0c479;
           text-transform: uppercase; letter-spacing: 1.1px; }
         .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.55); }
+        /* Remettre le suivi à zéro se décide en regardant le suivi : le bouton
+           est donc ici, au bout de son en-tête, et nulle part ailleurs. */
+        .fiche-suivi-reinit { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+          border-radius: 99px; padding: 5px 13px; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; font-size: 11.5px; font-weight: 700;
+          color: rgba(255,255,255,.72); transition: background .14s, color .14s, border-color .14s; }
+        .fiche-suivi-reinit:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 
         /* ═══════════ La transaction ═══════════
            Cinq étapes empilées à la verticale, chacune avec son formulaire
@@ -2778,6 +2779,12 @@ Emilio Immobilier
           <div className="fiche-suivi-tete">
             <b>Le suivi du dossier</b>
             <i>ce qui a été fait pour ce client</i>
+            {rechercheActive && (
+              <button type="button" className="fiche-suivi-reinit" onClick={ouvrirReinit}
+                title="Effacer tout le suivi et repartir sur une veille neuve">
+                ♻️ Réinitialiser le suivi
+              </button>
+            )}
           </div>
           <Onglets items={TABS} actif={tab} onChange={setTab} sombre />
         </div>
