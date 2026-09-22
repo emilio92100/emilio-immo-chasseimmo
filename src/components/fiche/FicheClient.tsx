@@ -530,6 +530,23 @@ export default function FicheClient({ client: init, onBack }: Props) {
   /* La carte des critères rogne ce qui dépasse : le menu des recherches se
      pose donc par-dessus la page, à l'aplomb du bouton. */
   const [posRecherche, setPosRecherche] = useState<{ x: number; y: number } | null>(null);
+  /* La remise à zéro du suivi : on montre les vrais chiffres avant de demander
+     confirmation, parce qu'« êtes-vous sûr ? » ne dit pas ce qu'on perd. */
+  const [showReinit, setShowReinit] = useState(false);
+  const [reinitEnCours, setReinitEnCours] = useState(false);
+  const [reinitStats, setReinitStats] = useState<{
+    propositions: number; passages: number; lues: number;
+    biens: number; presentes: number; visites: number; envois: number;
+  } | null>(null);
+  /* Supprimer le client : la seule action de l'application qui efface une
+     personne. Elle compte d'abord, et fait écrire le nom avant d'agir. */
+  const [showSupprClient, setShowSupprClient] = useState(false);
+  const [supprEnCours, setSupprEnCours] = useState(false);
+  const [supprNom, setSupprNom] = useState('');
+  const [supprStats, setSupprStats] = useState<{
+    recherches: number; biens: number; propositions: number;
+    visites: number; envois: number; passages: number; lues: number;
+  } | null>(null);
   const [showCloture, setShowCloture] = useState(false);
   /* Choisir le bien d'une transaction : à la création, ou pour la corriger. */
   const [showChoixTx, setShowChoixTx] = useState<'creer' | 'changer' | null>(null);
@@ -679,16 +696,230 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
   }
 
+  /**
+   * Les photos que nous hébergeons ne partent pas avec les lignes de la base.
+   * Supprimer un bien sans les enlever laisse des fichiers que plus rien
+   * n'affiche et qui continuent d'occuper le stockage — on les efface donc
+   * partout où un bien disparaît.
+   */
+  function cheminsPhotos(lot: any[]): string[] {
+    return lot
+      .flatMap((b: any) => (b?.photos || []) as string[])
+      .filter((u) => typeof u === 'string' && u.includes('supabase.co/storage'))
+      .map((u) => (u.match(/photos-biens\/(.+)$/) || [])[1])
+      .filter(Boolean) as string[];
+  }
+
+  async function effacerPhotos(chemins: string[]) {
+    if (chemins.length === 0) return;
+    /* Le Storage n'aime pas les très gros lots : on envoie par paquets de 100. */
+    for (let i = 0; i < chemins.length; i += 100) {
+      try { await supabase.storage.from('photos-biens').remove(chemins.slice(i, i + 100)); }
+      catch { /* la suppression des données prime sur le ménage du stockage */ }
+    }
+  }
+
   async function supprimerRecherche(r: Recherche) {
     if (recherches.length <= 1) { alert('Impossible de supprimer la seule recherche du client.'); return; }
     const ok = confirm(`Supprimer la recherche « ${r.nom} » ?\n\n⚠️ Tous les biens, visites et envois rattachés à CETTE recherche seront également supprimés définitivement. Cette action est irréversible.`);
     if (!ok) return;
+    /* Les photos se relèvent AVANT la suppression : après, les lignes qui
+       portaient leurs adresses n'existent plus et elles seraient introuvables. */
+    const { data: aEffacer } = await supabase.from('biens').select('photos').eq('recherche_id', r.id);
     const { error } = await supabase.from('recherches').delete().eq('id', r.id);
     if (error) { alert('Erreur : ' + error.message); return; }
+    await effacerPhotos(cheminsPhotos(aEffacer || []));
     const reste = recherches.filter(x => x.id !== r.id);
     setRecherches(reste);
     if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('selection'); }
     setPosRecherche(null);
+  }
+
+  /**
+   * Réinitialiser le suivi d'une recherche.
+   *
+   * Ce qui part : tout ce qui est attaché à un bien. Les propositions de la
+   * veille, les biens retenus et présentés avec leurs photos, les visites et
+   * leurs comptes rendus, les envois, la transaction, les relances, et les
+   * compteurs de passages de veille.
+   *
+   * Ce qui reste : le client, ses critères, ses précisions libres, son mandat,
+   * le lien de son espace, et tout ce qui dans le journal ne parle pas d'un
+   * bien — les appels, les notes, les changements de critères.
+   *
+   * Au bout : la veille repart comme au premier jour, elle ne connaît plus
+   * aucune URL et rouvre tout le stock.
+   */
+  const TYPES_SUIVI = [
+    'bien_ajoute', 'bien_modifie', 'bien_supprime', 'veille_trouve',
+    'visite_planifiee', 'visite_effectuee', 'offre_faite', 'offre_ecrite',
+    'etape_transaction', 'retour_etape', 'dossier_finalise',
+    'mail_envoye', 'envoi_bien', 'compte_rendu_visite',
+  ];
+
+  async function ouvrirReinit() {
+    if (!rechercheId) return;
+    setReinitStats(null);
+    setShowReinit(true);
+    const [props, passages] = await Promise.all([
+      supabase.from('veille_propositions').select('*', { count: 'exact', head: true }).eq('recherche_id', rechercheId),
+      supabase.from('veille_passages').select('nb_lues').eq('recherche_id', rechercheId),
+    ]);
+    setReinitStats({
+      propositions: props.count || 0,
+      passages: (passages.data || []).length,
+      lues: (passages.data || []).reduce((t, p: any) => t + (p.nb_lues || 0), 0),
+      biens: biens.length,
+      presentes: biens.filter((b: any) => b.etape === 'presente').length,
+      visites: visites.filter((v: any) => v.statut === 'a_venir' || v.statut === 'effectuee').length,
+      envois: envois.length,
+    });
+  }
+
+  async function doReinit() {
+    if (!rechercheId || reinitEnCours) return;
+    setReinitEnCours(true);
+    try {
+      const ids = biens.map((b: any) => b.id);
+
+      /* Les photos que nous hébergeons partent avec les biens : sans ça elles
+         resteraient à occuper du stockage sans que rien ne les affiche. */
+      const chemins = cheminsPhotos(biens);
+
+      /* L'ordre compte : on enlève d'abord ce qui pointe vers un bien, le bien
+         en dernier. Sinon une clé étrangère bloque la suppression. */
+      if (ids.length > 0) await supabase.from('journal').delete().in('bien_id', ids);
+      await supabase.from('journal').delete().eq('recherche_id', rechercheId).in('type', TYPES_SUIVI);
+      /* Les lignes de journal écrites avant qu'on note la recherche n'ont ni
+         bien ni recherche. Quand le client n'en a qu'une, elles ne peuvent
+         venir que d'elle — on peut les enlever sans risque. */
+      if (recherches.length === 1) {
+        await supabase.from('journal').delete().eq('client_id', client.id).is('recherche_id', null).is('bien_id', null).in('type', TYPES_SUIVI);
+      }
+
+      await supabase.from('visites').delete().eq('recherche_id', rechercheId);
+      await supabase.from('envois').delete().eq('recherche_id', rechercheId);
+      await supabase.from('transactions').delete().eq('recherche_id', rechercheId);
+      await supabase.from('relances').delete().eq('recherche_id', rechercheId);
+      await supabase.from('veille_propositions').delete().eq('recherche_id', rechercheId);
+      await supabase.from('veille_passages').delete().eq('recherche_id', rechercheId);
+
+      await effacerPhotos(chemins);
+
+      const { error } = await supabase.from('biens').delete().eq('recherche_id', rechercheId);
+      if (error) { alert('La remise à zéro a échoué : ' + error.message); setReinitEnCours(false); return; }
+
+      /* Le compteur d'ouvertures de l'espace repart lui aussi : il comptait des
+         visites sur des biens qui n'existent plus. Le lien, lui, ne bouge pas. */
+      await supabase.from('recherches').update({ espace_ouvert_le: null }).eq('id', rechercheId);
+
+      /* On garde la trace de la remise à zéro elle-même, sinon le dossier
+         semblerait n'avoir jamais rien contenu. */
+      const titre = `♻️ Suivi réinitialisé — ${rechercheActive?.nom || 'recherche'}`;
+      const detail = reinitStats
+        ? `${reinitStats.propositions} proposition(s) de veille, ${reinitStats.biens} bien(s), ${reinitStats.visites} visite(s) et ${reinitStats.passages} passage(s) effacés. Critères conservés.`
+        : 'Critères conservés.';
+      const ligne = { client_id: client.id, recherche_id: rechercheId, titre, description: detail, metadata: {} };
+      const { error: eJournal } = await supabase.from('journal').insert({ ...ligne, type: 'recherche_reinitialisee' });
+      if (eJournal) await supabase.from('journal').insert({ ...ligne, type: 'statut_change' });
+
+      setShowReinit(false);
+      setReinitEnCours(false);
+      setReinitStats(null);
+      setTab('veille');
+      load();
+      signalerMaj();
+    } catch (e: any) {
+      alert('La remise à zéro a échoué : ' + (e?.message || e));
+      setReinitEnCours(false);
+    }
+  }
+
+  /**
+   * Supprimer un client, pour de bon.
+   *
+   * Le CRM n'avait aucun moyen de le faire : on pouvait clore un dossier
+   * (« perdu », « bien trouvé »), jamais l'effacer. Une fiche créée par erreur,
+   * un doublon, un client qui demande l'effacement de ses données — il fallait
+   * passer par Supabase à la main.
+   *
+   * Rien n'est laissé à la base : chaque table est vidée explicitement, dans
+   * l'ordre, plutôt que de faire confiance aux suppressions en cascade. Et les
+   * photos hébergées partent avec, sinon elles resteraient orphelines dans le
+   * stockage.
+   */
+  async function ouvrirSuppressionClient() {
+    setSupprStats(null);
+    setShowSupprClient(true);
+    const rIds = recherches.map(r => r.id);
+    const [nbBiens, nbProps, nbVisites, nbEnvois, passages] = await Promise.all([
+      supabase.from('biens').select('*', { count: 'exact', head: true }).eq('client_id', client.id),
+      supabase.from('veille_propositions').select('*', { count: 'exact', head: true }).eq('client_id', client.id),
+      supabase.from('visites').select('*', { count: 'exact', head: true }).eq('client_id', client.id),
+      supabase.from('envois').select('*', { count: 'exact', head: true }).eq('client_id', client.id),
+      rIds.length ? supabase.from('veille_passages').select('nb_lues').in('recherche_id', rIds) : Promise.resolve({ data: [] as any[] }),
+    ]);
+    setSupprStats({
+      recherches: recherches.length,
+      biens: nbBiens.count || 0,
+      propositions: nbProps.count || 0,
+      visites: nbVisites.count || 0,
+      envois: nbEnvois.count || 0,
+      passages: (passages.data || []).length,
+      lues: (passages.data || []).reduce((t: number, p: any) => t + (p.nb_lues || 0), 0),
+    });
+  }
+
+  async function doSupprimerClient() {
+    if (supprEnCours) return;
+    /* Un dernier garde-fou : on tape le nom. Le reste de l'application ne
+       demande jamais ça — ici, c'est la seule action qui efface une personne. */
+    const attendu = `${client.prenom} ${client.nom}`.trim();
+    if (supprNom.trim().toLowerCase() !== attendu.toLowerCase()) {
+      alert(`Pour confirmer, écris exactement : ${attendu}`);
+      return;
+    }
+    setSupprEnCours(true);
+    try {
+      const rIds = recherches.map(r => r.id);
+      const { data: lot } = await supabase.from('biens').select('photos').eq('client_id', client.id);
+      const chemins = cheminsPhotos(lot || []);
+
+      /* On vide ce qui pointe vers autre chose avant ce qui est pointé. */
+      const etapes: { quoi: string; faire: () => any }[] = [
+        { quoi: 'journal', faire: () => supabase.from('journal').delete().eq('client_id', client.id) },
+        { quoi: 'relances', faire: () => supabase.from('relances').delete().eq('client_id', client.id) },
+        { quoi: 'visites', faire: () => supabase.from('visites').delete().eq('client_id', client.id) },
+        { quoi: 'envois', faire: () => supabase.from('envois').delete().eq('client_id', client.id) },
+        { quoi: 'transactions', faire: () => supabase.from('transactions').delete().eq('client_id', client.id) },
+        { quoi: 'propositions de veille', faire: () => supabase.from('veille_propositions').delete().eq('client_id', client.id) },
+        { quoi: 'événements de l’espace', faire: () => supabase.from('espace_evenements').delete().eq('client_id', client.id) },
+        { quoi: 'passages de veille', faire: () => (rIds.length ? supabase.from('veille_passages').delete().in('recherche_id', rIds) : Promise.resolve({ error: null })) },
+        { quoi: 'biens', faire: () => supabase.from('biens').delete().eq('client_id', client.id) },
+        { quoi: 'recherches', faire: () => supabase.from('recherches').delete().eq('client_id', client.id) },
+        { quoi: 'client', faire: () => supabase.from('clients').delete().eq('id', client.id) },
+      ];
+
+      for (const e of etapes) {
+        const { error } = await e.faire();
+        /* Une table absente de ce projet ne doit pas bloquer la suppression ;
+           une vraie erreur sur le client ou ses biens, si. */
+        if (error && !/does not exist|schema cache/i.test(error.message || '')) {
+          alert(`La suppression s'est arrêtée sur « ${e.quoi} » :\n\n${error.message}\n\nRien d'autre n'a été touché après cette étape.`);
+          setSupprEnCours(false);
+          return;
+        }
+      }
+
+      await effacerPhotos(chemins);
+      setShowSupprClient(false);
+      setSupprEnCours(false);
+      signalerMaj();
+      onBack();
+    } catch (e: any) {
+      alert('La suppression a échoué : ' + (e?.message || e));
+      setSupprEnCours(false);
+    }
   }
 
   async function load() {
@@ -1915,6 +2146,13 @@ Emilio Immobilier
           <button className={styles.btn} onClick={creerRelanceManuelle}>🔔 Relance J+{delaiJours}</button>
           <button className={styles.btn} onClick={nouvelleAction}>+ Action</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
+          {/* Effacer une personne ne se met pas à côté des actions du quotidien :
+              discret, gris, et rouge seulement quand la souris s'y arrête. */}
+          <button onClick={() => { setSupprNom(''); ouvrirSuppressionClient(); }}
+            title="Supprimer définitivement ce client et tout son dossier"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 15, padding: '0 6px', alignSelf: 'center' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
         </div>
       </div>
 
@@ -2218,6 +2456,13 @@ Emilio Immobilier
                     </div>
                   ))}
                   <button onClick={() => { setPosRecherche(null); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: '#fbfcfe', cursor: 'pointer', fontFamily: 'inherit', color: '#2d5c8f', fontWeight: 700, fontSize: 13.5 }}>+ Nouvelle recherche</button>
+                  {rechercheActive && (
+                    <button onClick={() => { setPosRecherche(null); ouvrirReinit(); }}
+                      title="Effacer tout le suivi de cette recherche et repartir d'une veille neuve"
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderTop: '1px solid #f4f7fb', background: '#fff7f7', cursor: 'pointer', fontFamily: 'inherit', color: '#dc2626', fontWeight: 700, fontSize: 13.5 }}>
+                      ♻️ Réinitialiser le suivi
+                    </button>
+                  )}
                 </div>
               </Portail>
             )}
@@ -3647,6 +3892,133 @@ Emilio Immobilier
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowConfirmEtape(false)}>Annuler</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={doReculerEtape}>← Confirmer le retour</button>
+            </div>
+          </div>
+        </div>
+        </Portail>
+      )}
+
+      {/* ═══ MODAL SUPPRIMER LE CLIENT ═══ */}
+      {showSupprClient && (
+        <Portail>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget && !supprEnCours) setShowSupprClient(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 540 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle} style={{ color: '#dc2626' }}>🗑️ Supprimer {client.prenom} {client.nom}</h2>
+              {!supprEnCours && <button className={styles.modalClose} onClick={() => setShowSupprClient(false)}>✕</button>}
+            </div>
+            <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 14, color: '#1a2332', margin: 0, lineHeight: 1.6 }}>
+                La fiche et <b>tout ce qu&apos;il y a dessous</b> disparaissent de la base. Il n&apos;y a
+                pas de corbeille : une fois parti, rien ne se récupère.
+              </p>
+
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 15px' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                  Ce qui part avec lui
+                </div>
+                {!supprStats ? (
+                  <div style={{ fontSize: 13, color: '#94a3b8' }}>Calcul en cours…</div>
+                ) : (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                    <li>La fiche du client, ses coordonnées et ses notes</li>
+                    <li><b>{supprStats.recherches}</b> recherche{supprStats.recherches > 1 ? 's' : ''}, avec leurs critères et leur mandat</li>
+                    <li><b>{supprStats.biens}</b> bien{supprStats.biens > 1 ? 's' : ''} et <b>{supprStats.propositions}</b> proposition{supprStats.propositions > 1 ? 's' : ''} de veille, photos comprises</li>
+                    <li><b>{supprStats.visites}</b> visite{supprStats.visites > 1 ? 's' : ''}, <b>{supprStats.envois}</b> envoi{supprStats.envois > 1 ? 's' : ''}, les transactions et les relances</li>
+                    <li><b>{supprStats.passages}</b> passage{supprStats.passages > 1 ? 's' : ''} de veille et les <b>{supprStats.lues}</b> annonces lues</li>
+                    <li>Tout l&apos;historique du dossier : appels, mails, notes, comptes rendus</li>
+                    <li><b>Son espace client</b> : le lien cesse immédiatement de fonctionner</li>
+                  </ul>
+                )}
+              </div>
+
+              <p style={{ fontSize: 13, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
+                Si le dossier est simplement terminé, passe plutôt son statut à
+                « bien trouvé » ou « perdu » : tu gardes l&apos;historique, et il sort des
+                dossiers actifs.
+              </p>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 8 }}>
+                  Écris <b style={{ color: '#dc2626', textTransform: 'none', letterSpacing: 0 }}>{client.prenom} {client.nom}</b> pour confirmer
+                </label>
+                <input value={supprNom} onChange={e => setSupprNom(e.target.value)} disabled={supprEnCours}
+                  placeholder={`${client.prenom} ${client.nom}`} autoFocus
+                  style={{ width: '100%', background: '#fff7f7', border: '1.5px solid #fecaca', borderRadius: 9, padding: '10px 13px', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} disabled={supprEnCours} onClick={() => setShowSupprClient(false)}>Annuler</button>
+              <button onClick={doSupprimerClient}
+                disabled={supprEnCours || !supprStats || supprNom.trim().toLowerCase() !== `${client.prenom} ${client.nom}`.trim().toLowerCase()}
+                style={{
+                  background: '#dc2626', color: 'white', border: 'none', borderRadius: 10, padding: '8px 18px',
+                  fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                  cursor: supprEnCours ? 'default' : 'pointer',
+                  opacity: supprEnCours || !supprStats || supprNom.trim().toLowerCase() !== `${client.prenom} ${client.nom}`.trim().toLowerCase() ? 0.45 : 1,
+                }}>
+                {supprEnCours ? '⏳ Suppression…' : '🗑️ Supprimer définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+        </Portail>
+      )}
+
+      {/* ═══ MODAL RÉINITIALISER LE SUIVI ═══ */}
+      {showReinit && (
+        <Portail>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget && !reinitEnCours) setShowReinit(false); }}>
+          <div className={styles.modal} style={{ maxWidth: 520 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle} style={{ color: '#dc2626' }}>♻️ Réinitialiser le suivi</h2>
+              {!reinitEnCours && <button className={styles.modalClose} onClick={() => setShowReinit(false)}>✕</button>}
+            </div>
+            <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 14, color: '#1a2332', margin: 0, lineHeight: 1.6 }}>
+                Tout le travail fait sur <b>{rechercheActive?.nom || 'cette recherche'}</b> sera effacé.
+                La recherche repart comme si tu venais de la créer, et la prochaine veille rouvrira
+                tout le marché.
+              </p>
+
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 15px' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                  Ce qui sera supprimé définitivement
+                </div>
+                {!reinitStats ? (
+                  <div style={{ fontSize: 13, color: '#94a3b8' }}>Calcul en cours…</div>
+                ) : (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                    <li><b>{reinitStats.propositions}</b> proposition{reinitStats.propositions > 1 ? 's' : ''} de veille, y compris les écartées et leurs motifs</li>
+                    <li><b>{reinitStats.biens}</b> bien{reinitStats.biens > 1 ? 's' : ''} en sélection ou présentés{reinitStats.presentes > 0 ? ` (dont ${reinitStats.presentes} déjà envoyé${reinitStats.presentes > 1 ? 's' : ''} au client)` : ''}, avec leurs photos</li>
+                    <li><b>{reinitStats.visites}</b> visite{reinitStats.visites > 1 ? 's' : ''} et leurs comptes rendus</li>
+                    <li><b>{reinitStats.envois}</b> envoi{reinitStats.envois > 1 ? 's' : ''}, la transaction en cours et les relances</li>
+                    <li><b>{reinitStats.passages}</b> passage{reinitStats.passages > 1 ? 's' : ''} de veille — le compteur « {reinitStats.lues} annonces lues » de l&apos;espace client revient à zéro</li>
+                  </ul>
+                )}
+              </div>
+
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 15px' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                  Ce qui ne bouge pas
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                  <li>Les critères, les précisions libres et le mandat</li>
+                  <li>Le lien de l&apos;espace client — il continue de fonctionner, le client y trouvera une page vide</li>
+                  <li>L&apos;historique du client : appels, notes, changements de critères</li>
+                </ul>
+              </div>
+
+              <p style={{ fontSize: 12.5, color: '#94a3b8', margin: 0 }}>
+                Cette action est irréversible. Rien ne se récupère après coup.
+              </p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} disabled={reinitEnCours} onClick={() => setShowReinit(false)}>Annuler</button>
+              <button onClick={doReinit} disabled={reinitEnCours || !reinitStats}
+                style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: reinitEnCours ? 'default' : 'pointer', fontFamily: 'inherit', opacity: reinitEnCours || !reinitStats ? 0.6 : 1 }}>
+                {reinitEnCours ? '⏳ Remise à zéro…' : '♻️ Tout effacer et repartir à zéro'}
+              </button>
             </div>
           </div>
         </div>
