@@ -25,12 +25,43 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
   const prospects = clients.filter(c => c.statut === 'prospect').length;
   const today     = new Date().toISOString().split('T')[0];
 
+  /* Deux familles, et elles ne veulent pas dire la même chose :
+       « à faire »  → l'échéance est arrivée ou dépassée, ça appelle un geste
+       « à venir »  → c'est calé pour plus tard, il n'y a rien à faire
+     Le compteur rouge ne comptait pas ça : il additionnait tout ce qui était
+     en attente en base, donc une relance prévue dans six jours faisait
+     clignoter le dashboard pour rien. La barre de gauche et celle du haut,
+     elles, n'ont jamais compté que les relances dues. */
   const relanceRetard     = relances.filter(r => r.date_echeance.split('T')[0] < today);
   const relanceAujourdhui = relances.filter(r => r.date_echeance.split('T')[0] === today);
   const relanceAvenir     = relances.filter(r => r.date_echeance.split('T')[0] > today);
+  const relanceAfaire     = [...relanceRetard, ...relanceAujourdhui];
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  /* Une ligne de relance. L'étiquette de droite dit toujours la même chose que
+     le groupe dans lequel la ligne se trouve : rouge quand c'est dû, ambre
+     quand c'est pour plus tard. */
+  const LigneRelance = ({ r }: { r: Relance }) => {
+    const dateR = r.date_echeance.split('T')[0];
+    const enRetard = dateR < today;
+    const cejour = dateR === today;
+    const jours = Math.abs(Math.round((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
+    const cli = clients.find(c => c.id === r.client_id);
+    return (
+      <div className={styles.listRow} onClick={() => { if (cli) onNavigate('fiche', cli); }}>
+        <div className={styles.urgBar} style={{ background: enRetard || cejour ? '#ef4444' : '#f59e0b' }} />
+        <div className={styles.listInfo}>
+          <div className={styles.listName}>{cli ? `${cli.prenom} ${cli.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
+          <div className={styles.listDetail}>{r.note || (r.type === 'manuelle' ? 'Relance manuelle' : 'Sans réponse du client')}</div>
+        </div>
+        <span className={`${styles.badge} ${enRetard || cejour ? styles.badgeRed : styles.badgeAmber}`}>
+          {enRetard ? `${jours}j de retard` : cejour ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours}j`}
+        </span>
+      </div>
+    );
+  };
 
   if (loading) return (
     <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
@@ -47,9 +78,11 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           <p className={styles.welcomeDate}>{dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</p>
           <h1 className={styles.welcomeTitle}>Bonjour, Alexandre 👋</h1>
           <p className={styles.welcomeSub}>
-            {relances.length > 0
-              ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relances.length} relance{relances.length > 1 ? 's' : ''}</strong> en attente — bonne journée ! 🌟</>
-              : <>Aucune relance en attente — bonne journée ! ☀️</>
+            {relanceAfaire.length > 0
+              ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relanceAfaire.length} relance{relanceAfaire.length > 1 ? 's' : ''} à faire</strong>{relanceAvenir.length > 0 ? <> et {relanceAvenir.length} à venir</> : null} — bonne journée ! 🌟</>
+              : relanceAvenir.length > 0
+                ? <>Rien à relancer aujourd&apos;hui — {relanceAvenir.length} relance{relanceAvenir.length > 1 ? 's' : ''} plus tard dans la semaine. ☀️</>
+                : <>Aucune relance à faire — bonne journée ! ☀️</>
             }
           </p>
         </div>
@@ -106,8 +139,13 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
         <div className={styles.card}>
           <div className={styles.cardHeader}>
             <div className={styles.cardTitle}>
-              🔔 Relances en attente
-              {relances.length > 0 && <span className={styles.badgeRedSm}>{relances.length}</span>}
+              🔔 Relances
+              {relanceAfaire.length > 0 && (
+                <span className={`${styles.pastille} ${styles.pastilleRouge}`} title="À faire maintenant">{relanceAfaire.length}</span>
+              )}
+              {relanceAvenir.length > 0 && (
+                <span className={`${styles.pastille} ${styles.pastilleAmbre}`} title="Calées pour plus tard">{relanceAvenir.length}</span>
+              )}
             </div>
             {relances.length > 0 && <button className={styles.cardLink} onClick={() => onNavigate('relances')}>Voir toutes →</button>}
           </div>
@@ -117,25 +155,24 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
             </div>
           ) : (
             <div>
-              {[...relanceRetard, ...relanceAujourdhui, ...relanceAvenir].slice(0, 4).map((r) => {
-                const dateR = r.date_echeance.split('T')[0];
-                const isRetard = dateR < today;
-                const isAujourd = dateR === today;
-                const jours = Math.abs(Math.floor((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
-                const clientRelance = clients.find(c => c.id === r.client_id);
-                return (
-                  <div key={r.id} className={styles.listRow} onClick={() => { if (clientRelance) onNavigate('fiche', clientRelance); }}>
-                    <div className={styles.urgBar} style={{ background: isRetard ? '#ef4444' : isAujourd ? '#ef4444' : '#f59e0b' }} />
-                    <div className={styles.listInfo}>
-                      <div className={styles.listName}>{clientRelance ? `${clientRelance.prenom} ${clientRelance.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
-                      <div className={styles.listDetail}>{r.note || (r.type === 'manuelle' ? 'Relance manuelle' : 'Sans réponse du client')}</div>
-                    </div>
-                    <span className={`${styles.badge} ${isRetard ? styles.badgeRed : isAujourd ? styles.badgeRed : styles.badgeAmber}`}>
-                      {isRetard ? `${jours}j de retard` : isAujourd ? "Aujourd'hui" : `Dans ${jours}j`}
-                    </span>
+              {relanceAfaire.length > 0 && (
+                <>
+                  <div className={styles.groupeLabel} style={{ color: '#ef4444' }}>
+                    <span className={styles.groupePoint} style={{ background: '#ef4444' }} />
+                    À faire {relanceRetard.length > 0 ? `— dont ${relanceRetard.length} en retard` : ''}
                   </div>
-                );
-              })}
+                  {relanceAfaire.slice(0, 3).map(r => <LigneRelance key={r.id} r={r} />)}
+                </>
+              )}
+              {relanceAvenir.length > 0 && (
+                <>
+                  <div className={styles.groupeLabel} style={{ color: '#b45309', borderTop: relanceAfaire.length > 0 ? '1px solid #f1f5f9' : undefined }}>
+                    <span className={styles.groupePoint} style={{ background: '#f59e0b' }} />
+                    À venir — rien à faire pour l&apos;instant
+                  </div>
+                  {relanceAvenir.slice(0, relanceAfaire.length > 0 ? 2 : 4).map(r => <LigneRelance key={r.id} r={r} />)}
+                </>
+              )}
             </div>
           )}
         </div>
