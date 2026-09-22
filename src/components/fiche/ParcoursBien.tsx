@@ -136,6 +136,8 @@ const TRAITS: Record<string, string[]> = {
   mallette: ['M3 9.4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 7.4V5.6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.8', 'M3 13.4h18'],
   dossier: ['M3 6.6a2 2 0 0 1 2-2h4.2l2.2 2.6H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
   lien: ['M10.4 13.6a4.2 4.2 0 0 0 6 0l3-3a4.2 4.2 0 1 0-6-6l-1.5 1.5', 'M13.6 10.4a4.2 4.2 0 0 0-6 0l-3 3a4.2 4.2 0 1 0 6 6l1.5-1.5'],
+  coche: ['m4 12.5 5 5L20 6.5'],
+  alerte: ['M12 9v4.2', 'M12 17.2h.01', 'M10.3 3.9 2.4 17.6A1.9 1.9 0 0 0 4 20.5h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -389,64 +391,341 @@ export function Galerie({ photos, hauteur = 168, coin }: { photos: string[]; hau
 
 /* ══ Caractéristiques en pictos ════════════════════════════════ */
 
-function Tuile({ icone, contenu, val, lib, ton }: {
-  icone?: string; contenu?: React.ReactNode; val: React.ReactNode; lib: string; ton?: 'or' | 'neutre';
+/* Une tuile porte trois états, et c'est là tout l'intérêt :
+     'ok'    — la tuile répond à un critère que le client a posé  → vert, coché
+     'sous'  — elle est en dessous de ce critère                  → ambre, avec l'écart
+     rien    — c'est une information, elle ne décide de rien      → neutre
+   Sans recherche passée, tout reste neutre : le comportement d'avant. */
+export type EtatCritere = 'ok' | 'sous';
+
+const TONS_TUILE = {
+  or: { bg: '#fdfaf1', bd: '#ecdcb4', ic: OR, val: NAVY, lib: '#9aa8bd' },
+  neutre: { bg: '#f7f9fc', bd: BORD, ic: '#7b8ba3', val: NAVY, lib: '#9aa8bd' },
+  ok: { bg: '#f0fdf4', bd: '#bbf7d0', ic: '#16a34a', val: '#15803d', lib: '#15803d' },
+  sous: { bg: '#fffbeb', bd: '#fde68a', ic: '#d97706', val: '#b45309', lib: '#92400e' },
+};
+
+function Tuile({ icone, contenu, val, lib, ton, etat, note }: {
+  icone?: string; contenu?: React.ReactNode; val: React.ReactNode; lib: string;
+  ton?: 'or' | 'neutre'; etat?: EtatCritere; note?: string;
 }) {
-  const dore = ton === 'or';
+  const t = TONS_TUILE[etat ?? (ton === 'or' ? 'or' : 'neutre')];
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 9,
-      background: dore ? '#fdfaf1' : '#f7f9fc',
-      border: `1px solid ${dore ? '#ecdcb4' : BORD}`,
+      background: t.bg, border: `1px solid ${t.bd}`,
       borderRadius: 13, padding: '7px 13px 7px 8px', minWidth: 0,
     }}>
       <span style={{
         width: 31, height: 31, borderRadius: 10, background: 'white',
-        border: `1px solid ${dore ? '#ecdcb4' : BORD}`, color: dore ? OR : '#7b8ba3',
+        border: `1px solid ${t.bd}`, color: t.ic,
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>{contenu ?? (icone ? <Icone nom={icone} /> : null)}</span>
       <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: NAVY, lineHeight: 1.15, letterSpacing: -.2, whiteSpace: 'nowrap' }}>{val}</span>
-        <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .7, marginTop: 1, whiteSpace: 'nowrap' }}>{lib}</span>
+        <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: t.val, lineHeight: 1.15, letterSpacing: -.2, whiteSpace: 'nowrap' }}>{val}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 800, color: t.lib, textTransform: 'uppercase', letterSpacing: .7, marginTop: 1, whiteSpace: 'nowrap' }}>
+          {note || lib}
+          {etat === 'ok' && <span style={{ display: 'flex' }}><Icone nom="coche" taille={10} epaisseur={3} /></span>}
+        </span>
       </span>
     </div>
   );
 }
 
-export function Specs({ p }: { p: any }) {
+/** Confronte le bien aux chiffres que le client a posés. Rien d'inventé :
+    un critère absent de la recherche ne juge rien. */
+export function jugeSpecs(p: any, r: any): Record<string, EtatCritere> {
+  const e: Record<string, EtatCritere> = {};
+  if (!r) return e;
+  const n = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const cmp = (v: number | null, min: number | null) => (v && min ? (v >= min ? 'ok' : 'sous') : undefined);
+
+  const s = cmp(n(p.surface), n(r.surface_min)); if (s) e.surface = s;
+  const c = cmp(n(p.nb_chambres), n(r.chambres_min)); if (c) e.chambres = c;
+  const j = cmp(n(p.surface_sejour), n(r.surface_sejour_min)); if (j) e.sejour = j;
+  const a = cmp(n(p.annee_construction), n(r.annee_construction_min)); if (a) e.annee = a;
+  const x = cmp(n(p.surface_exterieur), n(r.exterieur_surface_min)); if (x) e.exterieur = x;
+
+  if (p.etage !== null && p.etage !== undefined) {
+    const et = Number(p.etage);
+    const plafond = n(r.etage_max_sans_ascenseur);
+    if (r.rdc_exclu && et === 0) e.etage = 'sous';
+    else if (!p.ascenseur && plafond !== null && et > plafond) e.etage = 'sous';
+    else if (r.rdc_exclu || plafond !== null) e.etage = 'ok';
+  }
+
+  if (p.dpe && r.dpe_max) {
+    const ordre = 'ABCDEFG';
+    const i = ordre.indexOf(String(p.dpe).toUpperCase().slice(0, 1));
+    const max = ordre.indexOf(String(r.dpe_max).toUpperCase().slice(0, 1));
+    if (i >= 0 && max >= 0) e.dpe = i <= max ? 'ok' : 'sous';
+  }
+  return e;
+}
+
+/** « 3,5 % en dessous » — l'écart, pas la valeur brute. */
+function ecartPct(v: any, min: any) {
+  const a = Number(v), b = Number(min);
+  if (!isFinite(a) || !isFinite(b) || !b) return undefined;
+  const d = ((a - b) / b) * 100;
+  if (Math.abs(d) < 0.05) return undefined;
+  return `${d < 0 ? '−' : '+'} ${Math.abs(d).toFixed(1).replace('.', ',')} %`;
+}
+
+export function Specs({ p, recherche }: { p: any; recherche?: any }) {
   const t: React.ReactNode[] = [];
   const k = (n: string) => `sp-${n}`;
+  const e = jugeSpecs(p, recherche);
 
-  if (p.surface) t.push(<Tuile key={k('s')} icone="surface" val={`${p.surface} m²`} lib="Surface" ton="or" />);
+  if (p.surface) t.push(
+    <Tuile key={k('s')} icone="surface" val={`${p.surface} m²`} lib="Surface" ton="or"
+      etat={e.surface} note={e.surface === 'sous' ? ecartPct(p.surface, recherche?.surface_min) : undefined} />
+  );
   if (p.nb_pieces) t.push(<Tuile key={k('p')} icone="pieces" val={p.nb_pieces} lib={p.nb_pieces > 1 ? 'Pièces' : 'Pièce'} />);
-  if (p.nb_chambres) t.push(<Tuile key={k('c')} icone="lit" val={p.nb_chambres} lib={p.nb_chambres > 1 ? 'Chambres' : 'Chambre'} />);
-  if (p.surface_sejour) t.push(<Tuile key={k('j')} icone="sofa" val={`${p.surface_sejour} m²`} lib="Séjour" />);
+  if (p.nb_chambres) t.push(
+    <Tuile key={k('c')} icone="lit" val={p.nb_chambres} lib={p.nb_chambres > 1 ? 'Chambres' : 'Chambre'} etat={e.chambres} />
+  );
+  if (p.surface_sejour) t.push(
+    <Tuile key={k('j')} icone="sofa" val={`${p.surface_sejour} m²`} lib="Séjour" etat={e.sejour} />
+  );
   if (p.etage != null) t.push(
     <Tuile key={k('e')} icone="immeuble"
       val={p.etage === 0 ? 'RDC' : `${p.etage}ᵉ`}
-      lib={p.etage_total ? `sur ${p.etage_total}` : 'Étage'} />
+      lib={p.etage_total ? `sur ${p.etage_total}` : 'Étage'} etat={e.etage} />
   );
   if (p.surface_exterieur) t.push(
     <Tuile key={k('x')} icone="soleil" ton="or" val={`${p.surface_exterieur} m²`}
-      lib={p.terrasse ? 'Terrasse' : p.jardin ? 'Jardin' : 'Balcon'} />
+      lib={p.terrasse ? 'Terrasse' : p.jardin ? 'Jardin' : 'Balcon'} etat={e.exterieur} />
   );
-  if (p.annee_construction) t.push(<Tuile key={k('a')} icone="calendrier" val={p.annee_construction} lib="Immeuble" />);
+  if (p.annee_construction) t.push(
+    <Tuile key={k('a')} icone="calendrier" val={p.annee_construction} lib="Immeuble" etat={e.annee} />
+  );
   if (p.nb_lots) t.push(<Tuile key={k('l')} icone="lots" val={p.nb_lots} lib="Lots" />);
 
-  const lettre = (v: string, lab: string) => {
+  const lettre = (v: string, lab: string, etat?: EtatCritere) => {
     const L = String(v).toUpperCase().slice(0, 1);
     const c = DPE_COULEURS[L];
     if (!c) return null;
     return (
-      <Tuile key={k(lab)} lib={lab} val={L}
+      <Tuile key={k(lab)} lib={lab} val={L} etat={etat}
         contenu={<span style={{ background: c.bg, color: c.fg, width: 22, height: 22, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800 }}>{L}</span>} />
     );
   };
-  if (p.dpe) { const n = lettre(p.dpe, 'DPE'); if (n) t.push(n); }
+  if (p.dpe) { const n = lettre(p.dpe, 'DPE', e.dpe); if (n) t.push(n); }
   if (p.ges) { const n = lettre(p.ges, 'GES'); if (n) t.push(n); }
 
   if (!t.length) return null;
   return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>;
+}
+
+/* ══ « Le bien » : ce qu'il a, rangé au même endroit ═══════════
+   Exposition, traversant, ascenseur, cave, parking, charges ne sont
+   pas des arguments de vente : ce sont des faits. Ils montent ici,
+   sous les tuiles, au lieu de traîner dans le texte des points forts.
+   Doré = le client l'a demandé dans sa recherche. */
+export function LigneBien({ p, recherche }: { p: any; recherche?: any }) {
+  const items: { texte: string; voulu?: boolean }[] = [];
+  const texte = `${p.titre || ''} ${p.description || ''}`.toLowerCase();
+
+  if (texte.includes('traversant')) items.push({ texte: 'Traversant' });
+  if (p.exposition) {
+    const vise = String(recherche?.exposition_souhaitee || '').toLowerCase();
+    const a = String(p.exposition).toLowerCase();
+    items.push({ texte: `Exposé ${p.exposition}`, voulu: !!vise && (a.includes(vise) || vise.includes(a)) });
+  }
+  if (p.ascenseur) items.push({ texte: 'Ascenseur', voulu: !!recherche?.ascenseur });
+  if (p.cave) items.push({ texte: 'Cave', voulu: !!recherche?.cave });
+  if (p.parking) items.push({ texte: p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking', voulu: !!recherche?.parking });
+  if (p.terrasse && !p.surface_exterieur) items.push({ texte: 'Terrasse', voulu: !!recherche?.terrasse });
+  if (p.balcon && !p.surface_exterieur) items.push({ texte: 'Balcon', voulu: !!recherche?.balcon });
+  if (p.jardin && !p.surface_exterieur) items.push({ texte: 'Jardin', voulu: !!recherche?.jardin });
+  if (p.gardien) items.push({ texte: 'Gardien', voulu: !!recherche?.gardien });
+  if (p.charges_trimestrielles) items.push({ texte: `Charges ${(Number(p.charges_trimestrielles) * 4).toLocaleString('fr-FR')} €/an` });
+
+  if (!items.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Le bien</span>
+      {items.map((it, i) => (
+        <span key={i} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '4px 10px', borderRadius: 999, fontSize: 12,
+          fontWeight: it.voulu ? 700 : 500,
+          background: it.voulu ? '#fdfaf1' : '#f7f9fc',
+          border: `1px solid ${it.voulu ? '#ecdcb4' : BORD}`,
+          color: it.voulu ? '#8a6d24' : '#475569',
+        }}>
+          {it.voulu && <span style={{ width: 5, height: 5, borderRadius: '50%', background: OR }} />}
+          {it.texte}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ══ L'appréciation : ce bien vaut-il un coup de fil ═══════════
+   C'est la ligne qu'Alexandre lit en premier. Le mot vient de la
+   veille (`verdict`) ; à défaut il se déduit de la note, avec les
+   mêmes paliers que ModaleScore. */
+
+export type Verdict = 'priorite' | 'appeler' | 'reserve' | 'ecarter';
+
+const VERDICTS: Record<Verdict, { mot: string; bg: string }> = {
+  priorite: { mot: 'À appeler en priorité', bg: '#15803d' },
+  appeler: { mot: 'À appeler', bg: '#16a34a' },
+  reserve: { mot: 'Sous réserve', bg: '#d97706' },
+  ecarter: { mot: 'À écarter', bg: '#dc2626' },
+};
+
+export function verdictDe(p: any): Verdict {
+  const v = String(p?.verdict || '').toLowerCase().trim();
+  if (v === 'priorite' || v === 'appeler' || v === 'reserve' || v === 'ecarter') return v;
+  const s = Number(p?.score);
+  if (!isFinite(s)) return 'appeler';
+  if (s >= 85) return 'priorite';
+  if (s >= 70) return 'appeler';
+  if (s >= 50) return 'reserve';
+  return 'ecarter';
+}
+
+/** Une ligne d'attention qui commence par ⚠️ ou « À ÉCARTER » n'est pas
+    une vérification : c'est un point qui bloque. Elle sort du lot. */
+const BLOQUANT = /^\s*(⚠️|⚠|!!|à\s*écarter|a\s*ecarter)/i;
+const sansMarque = (t: any) => String(t).replace(/^\s*(⚠️|⚠|!!)\s*/, '').trim();
+
+export function partagePoints(p: any) {
+  const att: any[] = Array.isArray(p?.points_attention) ? p.points_attention : [];
+  return {
+    atouts: (Array.isArray(p?.points_forts) ? p.points_forts : []).map(String),
+    verifier: att.filter(x => !BLOQUANT.test(String(x))).map(String),
+    bloquants: att.filter(x => BLOQUANT.test(String(x))).map(sansMarque),
+  };
+}
+
+export function Appreciation({ p }: { p: any }) {
+  const v = VERDICTS[verdictDe(p)];
+  const { atouts } = partagePoints(p);
+  const phrase = p?.appreciation || atouts[0] || null;
+  if (!phrase) return null;
+  return (
+    <div style={{
+      display: 'flex', gap: 13, alignItems: 'flex-start',
+      padding: '12px 15px', borderRadius: 12, background: '#fdfcf7', borderLeft: `3px solid ${OR}`,
+    }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, marginTop: 1,
+        padding: '4px 11px', borderRadius: 999, background: v.bg,
+        fontSize: 11.5, fontWeight: 800, color: 'white', whiteSpace: 'nowrap',
+      }}>
+        <Icone nom="coche" taille={12} epaisseur={2.8} />{v.mot}
+      </span>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: NAVY }}>{phrase}</p>
+    </div>
+  );
+}
+
+/* ══ Le bilan : trois compteurs, le détail au clic ═════════════ */
+
+const TONS_BILAN = {
+  vert: { pastille: '#16a34a', titre: '#15803d', bd: '#bbf7d0', bg: '#f0fdf4', num: '#dcfce7', texte: '#334155' },
+  ambre: { pastille: '#d97706', titre: '#b45309', bd: '#fde68a', bg: '#fffbeb', num: '#fef3c7', texte: '#334155' },
+  rouge: { pastille: '#dc2626', titre: '#b91c1c', bd: '#fecaca', bg: '#fef2f2', num: '#fee2e2', texte: '#7f1d1d' },
+};
+type TonBilan = keyof typeof TONS_BILAN;
+
+function Compteur({ ton, titre, items, ouvert, onClick }: {
+  ton: TonBilan; titre: string; items: string[]; ouvert: boolean; onClick: () => void;
+}) {
+  const c = TONS_BILAN[ton];
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: 'flex', flexDirection: 'column', gap: 7, textAlign: 'left', fontFamily: 'inherit',
+      padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+      background: ouvert ? c.bg : 'white', border: `1px solid ${c.bd}`,
+      boxShadow: ouvert ? '0 3px 10px -5px rgba(26,35,50,.45)' : 'none',
+    }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%' }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: c.pastille, flexShrink: 0 }} />
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: c.titre }}>{titre}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 800, color: c.pastille }}>{items.length}</span>
+        <span className="emi-chevron" data-ouvert={ouvert} style={{ color: c.pastille, display: 'flex' }}>
+          <Icone nom="chevron" taille={12} epaisseur={2.4} />
+        </span>
+      </span>
+      <span style={{
+        fontSize: 12, lineHeight: 1.45, color: ton === 'rouge' ? c.texte : '#475569',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      }}>
+        {items.slice(0, 2).join(' · ')}
+      </span>
+    </button>
+  );
+}
+
+function ListeNumerotee({ items, ton }: { items: string[]; ton: TonBilan }) {
+  const c = TONS_BILAN[ton];
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: items.length > 3 ? 'repeat(auto-fit, minmax(270px, 1fr))' : '1fr',
+      gap: '7px 26px',
+    }}>
+      {items.map((t, i) => (
+        <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 18, height: 18, borderRadius: 6, flexShrink: 0, marginTop: 1,
+            background: c.num, color: c.titre, fontSize: 10, fontWeight: 800,
+          }}>{i + 1}</span>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#334155' }}>{t}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function BilanBien({ p }: { p: any }) {
+  const [ouvert, setOuvert] = useState<null | TonBilan>(null);
+  const { atouts, verifier, bloquants } = partagePoints(p);
+  if (!atouts.length && !verifier.length && !bloquants.length) return null;
+
+  const bascule = (v: TonBilan) => () => setOuvert(o => (o === v ? null : v));
+  const visibles = [
+    atouts.length ? ('vert' as const) : null,
+    verifier.length ? ('ambre' as const) : null,
+    bloquants.length ? ('rouge' as const) : null,
+  ].filter(Boolean) as TonBilan[];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))`, gap: 9 }}>
+        {!!atouts.length && (
+          <Compteur ton="vert" titre="Atouts" items={atouts} ouvert={ouvert === 'vert'} onClick={bascule('vert')} />
+        )}
+        {!!verifier.length && (
+          <Compteur ton="ambre" titre="À vérifier avant d'appeler" items={verifier} ouvert={ouvert === 'ambre'} onClick={bascule('ambre')} />
+        )}
+        {!!bloquants.length && (
+          <Compteur ton="rouge" titre="À trancher" items={bloquants} ouvert={ouvert === 'rouge'} onClick={bascule('rouge')} />
+        )}
+      </div>
+
+      <div className="emi-volet" data-ouvert={!!ouvert}>
+        <div>
+          <div style={{ background: '#fafcff', border: `1px solid ${BORD}`, borderRadius: 12, padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: ouvert ? TONS_BILAN[ouvert].titre : '#9aa8bd' }}>
+              {ouvert === 'vert' && `Les ${atouts.length} atouts`}
+              {ouvert === 'ambre' && `Les ${verifier.length} points à vérifier avant d'appeler`}
+              {ouvert === 'rouge' && (bloquants.length > 1 ? `Les ${bloquants.length} points à trancher` : 'Le point à trancher')}
+            </span>
+            {ouvert === 'vert' && <ListeNumerotee items={atouts} ton="vert" />}
+            {ouvert === 'ambre' && <ListeNumerotee items={verifier} ton="ambre" />}
+            {ouvert === 'rouge' && <ListeNumerotee items={bloquants} ton="rouge" />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ══ Marché : ancienneté, baisses, graphique ═══════════════════ */
@@ -489,9 +768,17 @@ export function seriePrix(p: any): PointPrix[] {
   if (pts.length >= 2) return pts;
 
   const out: PointPrix[] = [];
-  const iso = (d: any) => { const x = new Date(d); return isNaN(x.getTime()) ? '' : x.toISOString().slice(0, 10); };
+  /* ⚠️ `new Date(null)` ne renvoie pas une date invalide : il renvoie le
+     1er janvier 1970. Sans ce garde-fou, une date absente s'affichait
+     « 1 janv. 1970 » au lieu de laisser la place au repli sur aujourd'hui. */
+  const iso = (d: any) => {
+    if (d === null || d === undefined || d === '') return '';
+    const x = new Date(d);
+    return isNaN(x.getTime()) ? '' : x.toISOString().slice(0, 10);
+  };
+  const prixActuel = Number(p?.prix ?? p?.prix_vendeur);
   if (p?.date_publication && p?.prix_initial) out.push({ date: iso(p.date_publication), prix: Number(p.prix_initial) });
-  if (p?.prix) out.push({ date: iso(p.date_derniere_baisse) || new Date().toISOString().slice(0, 10), prix: Number(p.prix) });
+  if (prixActuel > 0) out.push({ date: iso(p?.date_derniere_baisse) || new Date().toISOString().slice(0, 10), prix: prixActuel });
   const ok = out.filter(x => x.date && isFinite(x.prix) && x.prix > 0);
   return ok.length >= 2 && ok[0].prix !== ok[1].prix ? ok : pts;
 }
