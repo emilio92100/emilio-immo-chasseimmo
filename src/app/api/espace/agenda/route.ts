@@ -41,7 +41,9 @@ function plusUneHeure(date: string, heure?: string | null) {
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token') || '';
   const visiteId = req.nextUrl.searchParams.get('v') || '';
-  if (token.length < 32 || !visiteId) {
+  /* Même plancher qu'ailleurs : les nouveaux liens courts font une vingtaine
+     de caractères, les anciens 64 (voir src/lib/jeton.ts). */
+  if (token.length < 12 || token.length > 128 || !visiteId) {
     return NextResponse.json({ ok: false, error: 'lien invalide' }, { status: 400 });
   }
 
