@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
+import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
 import styles from './Clients.module.css';
 import {
@@ -546,6 +547,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
+          /* Le lien court de l'espace acheteur, posé dès la création :
+             espace.emilio-immo.com/dupont-k3n8vq2fab (voir src/lib/jeton.ts). */
+          token_espace: jetonEspace(form.prenom, form.nom),
           active: form.statut === 'actif',
           type_bien: crit.types_bien.length ? crit.types_bien.join(', ') : null,
           budget_min: ent(crit.budget_min), budget_max: ent(crit.budget_max),
