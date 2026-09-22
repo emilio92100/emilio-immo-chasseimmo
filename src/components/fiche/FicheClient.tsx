@@ -9,6 +9,7 @@ import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { signalerMaj } from '@/lib/intentions';
+import { jetonEspace } from '@/lib/jeton';
 import {
   BasculeCriteres, CorpsCriteres, CRIT_VIDE, ETATS, EXPOSITIONS, etapesCriteres,
   FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
@@ -670,11 +671,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
   async function creerRecherche() {
     const nom = prompt('Nom de la nouvelle recherche ?', `Recherche ${recherches.length + 1}`);
     if (nom === null) return;
+    /* Le lien de l'espace se pose ici, court et lisible. Sans ça, la base en
+       fabrique un de 64 caractères — valable, mais impossible à envoyer par
+       SMS sans avoir l'air d'un spam. */
     const { data } = await supabase.from('recherches').insert({
       client_id: client.id,
       nom: nom.trim() || `Recherche ${recherches.length + 1}`,
       active: true,
       secteurs: [],
+      token_espace: jetonEspace(client.prenom, client.nom),
     }).select().single();
     if (data) {
       setRecherches(rs => [...rs, data as Recherche]);
