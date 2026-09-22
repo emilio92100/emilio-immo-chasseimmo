@@ -4,6 +4,7 @@ import { supabase, addJournal } from '@/lib/supabase';
 import {
   Chip, BoutonLien, CARTE, Vignettes, Specs, BandeauMarche, ModaleScore,
   StylesEmilio, Icone, Action, NAVY, OR, BORD,
+  LigneBien, Appreciation, BilanBien, verdictDe,
 } from './ParcoursBien';
 
 /**
@@ -18,6 +19,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   const [props_, setProps] = useState<any[]>([]);
   const [ecartees, setEcartees] = useState<any[]>([]);
   const [passage, setPassage] = useState<any>(null);
+  /* Les critères du client : c'est eux qui font passer une tuile au vert. */
+  const [recherche, setRecherche] = useState<any>(null);
   const [chargement, setChargement] = useState(true);
   const [voirEcartees, setVoirEcartees] = useState(false);
   const [ecartEnCours, setEcartEnCours] = useState<string | null>(null);
@@ -29,17 +32,19 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   const charger = useCallback(async () => {
     if (!rechercheId) return;
     setChargement(true);
-    const [nouv, ecart, pass] = await Promise.all([
+    const [nouv, ecart, pass, rech] = await Promise.all([
       supabase.from('veille_propositions').select('*').eq('recherche_id', rechercheId).eq('statut', 'nouveau')
         .order('score', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('veille_propositions').select('*').eq('recherche_id', rechercheId).eq('statut', 'ecarte')
         .order('created_at', { ascending: false }).limit(50),
       supabase.from('veille_passages').select('*').eq('recherche_id', rechercheId)
         .order('demarre_le', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('recherches').select('*').eq('id', rechercheId).maybeSingle(),
     ]);
     setProps(nouv.data || []);
     setEcartees(ecart.data || []);
     setPassage(pass.data || null);
+    setRecherche(rech.data || null);
     setChargement(false);
   }, [rechercheId]);
 
@@ -55,7 +60,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
         setEnTraitement(null); charger(); onChange?.(); return;
       }
     }
-    const { data: bien, error } = await supabase.from('biens').insert({
+    const aPoser: Record<string, any> = {
       client_id: clientId, recherche_id: rechercheId, url: p.url || null,
       titre: p.titre, ville: p.ville, code_postal: p.code_postal,
       quartier: p.quartier || null, adresse: p.adresse || p.adresse_probable || null,
@@ -77,7 +82,18 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       nb_baisses: p.nb_baisses || null, nb_agences: p.nb_agences || null,
       historique_prix: p.historique_prix || [], date_derniere_baisse: p.date_derniere_baisse || null,
       score: p.score ?? null, points_forts: p.points_forts || null, points_attention: p.points_attention || null,
-    }).select().single();
+      // l'appréciation suit le bien en Sélection
+      verdict: p.verdict ?? null, appreciation: p.appreciation ?? null,
+    };
+
+    /* `verdict` et `appreciation` sont récents : tant que la colonne n'existe
+       pas encore côté `biens`, on repose le bien sans elles plutôt que de
+       bloquer le bouton Retenir. */
+    let { data: bien, error } = await supabase.from('biens').insert(aPoser).select().single();
+    if (error && /verdict|appreciation/i.test(error.message || '')) {
+      delete aPoser.verdict; delete aPoser.appreciation;
+      ({ data: bien, error } = await supabase.from('biens').insert(aPoser).select().single());
+    }
 
     if (error || !bien) { alert("Impossible d'ajouter ce bien : " + (error?.message || '')); setEnTraitement(null); return; }
     await supabase.from('veille_propositions').update({ statut: 'retenu', bien_id: bien.id, decide_le: new Date().toISOString() }).eq('id', p.id);
@@ -152,23 +168,30 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
         </div>
       )}
 
+      {/* Le fond gris entre les cartes : c'est lui qui dit où finit un bien
+          et où commence le suivant. Sans ça, deux bandeaux de photos qui se
+          suivent se lisent comme un seul bien. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 20,
+        background: props_.length > 1 ? '#eef2f8' : 'transparent',
+        borderRadius: 20, padding: props_.length > 1 ? '16px 14px' : 0, margin: props_.length > 1 ? '0 -4px' : 0,
+      }}>
       {props_.map((p, idx) => {
         const enEcart = ecartEnCours === p.id;
         const fort = (p.score || 0) >= 85;
         const ouvertDesc = !!descriptif[p.id];
-        const atouts: React.ReactNode[] = [];
-        if (p.terrasse && !p.surface_exterieur) atouts.push(<Chip key="t" ton="or">Terrasse</Chip>);
-        if (p.balcon && !p.surface_exterieur) atouts.push(<Chip key="b">Balcon</Chip>);
-        if (p.jardin && !p.surface_exterieur) atouts.push(<Chip key="j">Jardin</Chip>);
-        if (p.parking) atouts.push(<Chip key="p">{p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking'}</Chip>);
-        if (p.ascenseur) atouts.push(<Chip key="a">Ascenseur</Chip>);
-        if (p.cave) atouts.push(<Chip key="c">Cave</Chip>);
-        if (p.gardien) atouts.push(<Chip key="g">Gardien</Chip>);
-        if (p.exposition) atouts.push(<Chip key="e">Exposé {p.exposition}</Chip>);
+        const v = verdictDe(p);
+        const rail = v === 'priorite' ? '#16a34a' : v === 'appeler' ? OR : v === 'reserve' ? '#d97706' : '#94a3b8';
 
         return (
           <div key={p.id} className="emi-carte emi-arrivee"
-            style={{ ...CARTE, opacity: enTraitement === p.id ? 0.45 : 1, animationDelay: Math.min(idx, 6) * 55 + 'ms' }}>
+            style={{
+              ...CARTE, display: 'flex', alignItems: 'stretch',
+              boxShadow: '0 2px 10px -4px rgba(26,35,50,.16)',
+              opacity: enTraitement === p.id ? 0.45 : 1, animationDelay: Math.min(idx, 6) * 55 + 'ms',
+            }}>
+            <div style={{ width: 5, background: rail, flexShrink: 0 }} aria-hidden="true" />
+            <div style={{ flexGrow: 1, minWidth: 0 }}>
 
             {/* ── le bandeau de photos ─────────────────────── */}
             <Vignettes photos={p.photos || []}
@@ -179,8 +202,15 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
             {/* ── titre, adresse, prix ─────────────────────── */}
             <div style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 220, flex: '1 1 320px' }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
-                  {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    width: 26, height: 26, borderRadius: 8, background: NAVY, color: OR,
+                    fontSize: 12, fontWeight: 800, marginTop: 1,
+                  }}>{String(idx + 1).padStart(2, '0')}</span>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
+                    {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
+                  </div>
                 </div>
                 {(p.adresse_probable || p.situation || p.quartier || p.ville) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 13.5, color: '#64748b', flexWrap: 'wrap' }}>
@@ -223,30 +253,20 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
 
             {/* ── caractéristiques + marché ────────────────── */}
             <div style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-              <Specs p={p} />
+              {/* les faits d'abord : les chiffres, puis ce que le bien a */}
+              <Specs p={p} recherche={recherche} />
+              <LigneBien p={p} recherche={recherche} />
               <BandeauMarche p={p} />
 
-              {!!p.points_forts?.length && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>✓</span>
-                  <span style={{ fontSize: 13.5, color: '#15803d', fontWeight: 600, lineHeight: 1.6 }}>{p.points_forts.join(' · ')}</span>
-                </div>
-              )}
-              {!!p.points_attention?.length && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                  <span style={{ color: '#d97706', fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>!</span>
-                  <span style={{ fontSize: 13.5, color: '#92400e', fontWeight: 600, lineHeight: 1.6 }}>{p.points_attention.join(' · ')}</span>
-                </div>
-              )}
+              {/* puis le jugement : l'avis en une phrase, et les trois compteurs */}
+              <Appreciation p={p} />
+              <BilanBien p={p} />
 
-              {(atouts.length > 0 || p.description) && (
+              {p.description && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {atouts}
-                  {p.description && (
-                    <BoutonLien onClick={() => setDescriptif(s => ({ ...s, [p.id]: !ouvertDesc }))} actif={ouvertDesc}>
-                      {ouvertDesc ? 'Masquer le descriptif' : 'Lire le descriptif'}
-                    </BoutonLien>
-                  )}
+                  <BoutonLien onClick={() => setDescriptif(s => ({ ...s, [p.id]: !ouvertDesc }))} actif={ouvertDesc}>
+                    {ouvertDesc ? 'Masquer le descriptif' : 'Lire le descriptif'}
+                  </BoutonLien>
                 </div>
               )}
 
@@ -290,9 +310,11 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
                   style={{ background: NAVY, color: 'white', border: 'none', borderRadius: 9, padding: '9px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Confirmer</button>
               </div>
             )}
+            </div>
           </div>
         );
       })}
+      </div>
 
       {scoreOuvert && <ModaleScore p={scoreOuvert} onFerme={() => setScoreOuvert(null)} />}
 
