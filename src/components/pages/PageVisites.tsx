@@ -237,9 +237,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 8 }}>Commentaires</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 8 }}>
+                  Compte-rendu <span style={{ color: '#b45309', textTransform: 'none', letterSpacing: 0 }}>— lu par le client</span>
+                </label>
                 <textarea value={crForm.commentaire} onChange={e => setCrForm(f => ({ ...f, commentaire: e.target.value }))}
-                  rows={4} placeholder="Points positifs, négatifs, éléments à vérifier..."
+                  rows={4} placeholder="Ce que vous retenez de la visite, écrit pour lui…"
                   style={{ width: '100%', background: '#f8fafc', border: '1.5px solid #e3e8f0', borderRadius: 9, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
