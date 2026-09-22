@@ -1620,9 +1620,11 @@ Emilio Immobilier
          client — on ne remet pas son badge à zéro. */
       if (envoiMode !== 'libre' && envoiBienIds.length > 0) {
         const quand = new Date().toISOString();
+        let duNeuf = false;
         for (const id of envoiBienIds) {
           const b = biens.find(x => x.id === id);
           const neuf = b?.etape !== 'presente';
+          if (neuf) duNeuf = true;
           await supabase.from('biens').update({
             etape: 'presente', envoye_le: quand, canal_envoi: 'mail',
             ...(neuf ? { badge_retour: 'propose' } : {}),
@@ -1641,6 +1643,18 @@ Emilio Immobilier
         /* L'envoi vient de partir : la relance est programmée d'office. Elle
            se clôturera toute seule si le client répond avant l'échéance. */
         await programmerRelance(client.id, rechercheId, envoiBienIds.length);
+
+        /* Et le client est prévenu sur son téléphone, s'il a installé son
+           espace et accepté les notifications. On n'attend pas la réponse et
+           on n'affiche aucune erreur : le mail est parti, c'est l'essentiel.
+           Renvoyer un bien déjà présenté ne déclenche rien — ce n'est pas une
+           nouvelle pour lui. */
+        if (duNeuf) {
+          fetch('/api/notifier', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recherche_id: rechercheId }),
+          }).catch(() => { /* sans effet sur l'envoi */ });
+        }
       }
 
       setEnvoiSending(false);
