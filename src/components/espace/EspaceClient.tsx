@@ -490,6 +490,97 @@ function useEcranAccueil() {
   return { appareil, tactile, auto, visible, eveiller, refuser, accepter };
 }
 
+/* ══ être prévenu des nouveaux biens ═══════════════ */
+/* Le client n'a pas à venir vérifier tous les jours si un bien est arrivé :
+   c'est l'espace qui le lui dit. Deux règles, et elles comptent :
+
+     — on ne demande qu'après l'installation. Sur iPhone, les notifications
+       ne marchent QUE si l'espace est posé sur l'écran d'accueil ; ailleurs,
+       c'est simplement le moment où le client est le plus partant ;
+     — on ne demande qu'une fois. Le navigateur n'offre qu'une seule chance :
+       un « non » est définitif, et plus rien ne peut le rattraper. D'où la
+       petite fenêtre maison avant celle du téléphone — elle, on peut la
+       refermer sans conséquence. */
+
+const CLE_NOTIF = 'emilio_notif';
+const CLE_PUBLIQUE = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
+
+type EtatNotif = 'inconnu' | 'oui' | 'non' | 'bloque';
+
+/* La clé publique voyage en base64 « url » ; le navigateur la veut en octets. */
+function enOctets(b64: string): ArrayBuffer {
+  const p = (b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  const brut = atob(p);
+  const tampon = new ArrayBuffer(brut.length);
+  const out = new Uint8Array(tampon);
+  for (let i = 0; i < brut.length; i++) out[i] = brut.charCodeAt(i);
+  return tampon;
+}
+
+function useNotifications(token: string) {
+  const [possible, setPossible] = useState(false);
+  const [etat, setEtat] = useState<EtatNotif>('inconnu');
+  const veilleur = useRef<ServiceWorkerRegistration | null>(null);
+
+  const ecrire = (v: string) => { try { localStorage.setItem(CLE_NOTIF, v); } catch { /* indisponible */ } };
+
+  const abonner = useCallback(async (reg: ServiceWorkerRegistration) => {
+    try {
+      const deja = await reg.pushManager.getSubscription();
+      const ab = deja || await reg.pushManager.subscribe({
+        /* Obligatoire : on s'engage à toujours montrer quelque chose au
+           client. Pas de réveil silencieux dans son dos. */
+        userVisibleOnly: true,
+        applicationServerKey: enOctets(CLE_PUBLIQUE),
+      });
+      await fetch('/api/espace/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, abonnement: ab.toJSON() }),
+      });
+      return true;
+    } catch { return false; }
+  }, [token]);
+
+  useEffect(() => {
+    if (!CLE_PUBLIQUE) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+    setPossible(true);
+
+    navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+      veilleur.current = reg;
+      if (Notification.permission === 'granted') {
+        setEtat('oui');
+        /* Il a déjà dit oui, peut-être sur un autre appareil ou avant une
+           réinstallation : on réenregistre celui-ci, sans rien lui demander. */
+        await abonner(reg);
+      } else if (Notification.permission === 'denied') {
+        setEtat('bloque');
+      } else {
+        try { if (localStorage.getItem(CLE_NOTIF) === 'non') setEtat('non'); } catch { /* indisponible */ }
+      }
+    }).catch(() => { /* pas de veilleur, pas de notifications, tant pis */ });
+  }, [abonner]);
+
+  const demander = useCallback(async () => {
+    const reg = veilleur.current;
+    if (!reg) return false;
+    let reponse = Notification.permission;
+    if (reponse === 'default') reponse = await Notification.requestPermission();
+    if (reponse !== 'granted') {
+      setEtat(reponse === 'denied' ? 'bloque' : 'non');
+      ecrire('non');
+      return false;
+    }
+    setEtat('oui');
+    ecrire('ok');
+    return abonner(reg);
+  }, [abonner]);
+
+  const refuser = useCallback(() => { setEtat('non'); ecrire('non'); }, []);
+
+  return { possible, etat, demander, refuser };
+}
+
 /* ══ composant ════════════════════════════════════ */
 export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites }: Props) {
   const [vue, setVue] = useState('accueil');
@@ -532,6 +623,51 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   /* Le vocabulaire suit l'appareil : on ne parle pas d'écran d'accueil à
      quelqu'un qui est devant un ordinateur. */
   const motEcran = ecran.tactile ? "Installer sur mon écran d'accueil" : "Installer l'application";
+
+  /* ── être prévenu des nouveaux biens ── */
+  const notif = useNotifications(token);
+  const [aDemander, setADemander] = useState(false);
+
+  /* On ne demande qu'après l'installation : sur iPhone les notifications n'ont
+     aucun effet sans elle, et partout ailleurs c'est le moment où le client
+     est le plus partant. */
+  useEffect(() => {
+    if (!notif.possible || notif.etat !== 'inconnu') return;
+    const pose = window.matchMedia?.('(display-mode: standalone)').matches
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (pose) { setADemander(true); return; }
+    const surPose = () => setADemander(true);
+    window.addEventListener('appinstalled', surPose);
+    return () => window.removeEventListener('appinstalled', surPose);
+  }, [notif.possible, notif.etat]);
+
+  /* Jamais par-dessus autre chose : si la présentation de l'espace est encore
+     ouverte, on attend qu'il l'ait refermée. Deux fenêtres coup sur coup, on
+     n'en lit aucune. */
+  useEffect(() => {
+    if (!aDemander || ouvert) return;
+    const t = setTimeout(() => {
+      setADemander(false);
+      montrer(<DemandeNotif
+        onOui={async () => { await notif.demander(); fermer(); }}
+        onNon={() => { notif.refuser(); fermer(); }} />, 'pleine');
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aDemander, ouvert]);
+
+  /* Le petit chiffre sur l'icône, tant qu'il reste des biens non ouverts.
+     Il tombe tout seul dès qu'il les a lus — personne n'a à l'effacer. */
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    try {
+      if (neufs.length > 0) nav.setAppBadge?.(neufs.length);
+      else nav.clearAppBadge?.();
+    } catch { /* tous les appareils ne savent pas le faire */ }
+  }, [neufs.length]);
 
   /* ── ouverture d'une fiche ── */
   function ouvrirBien(b: Bien) {
@@ -746,6 +882,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               onBienvenue={ouvrirBienvenue}
               onEcran={ecran.appareil ? () => ecran.accepter(ouvrirGuideEcran) : null}
               motEcran={motEcran}
+              /* Une seule pastille à la fois : tant qu'il peut installer, c'est
+                 la priorité. Une fois installé, on lui propose les alertes s'il
+                 les avait passées ou refusées. */
+              onNotif={!ecran.appareil && notif.possible && notif.etat !== 'oui' && notif.etat !== 'bloque'
+                ? () => setADemander(true) : null}
               onFin={ouvrirFinRecherche}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
@@ -844,10 +985,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           <div className="ecran-dedans">
             <span className="ecran-sceau"><Ico n="maison" t={19} /></span>
             <div className="ecran-txt">
-              <b>Gardez votre espace sous la main</b>
+              <b>Ne ratez aucun bien</b>
               <span>{ecran.tactile
-                ? <>Une icône sur votre écran d&apos;accueil, et vous y êtes en un geste&nbsp;— sans chercher le lien.</>
-                : <>Une icône dans votre barre des tâches, et vous y êtes en un clic&nbsp;— sans chercher le lien.</>}</span>
+                ? <>Posez votre espace sur votre écran d&apos;accueil&nbsp;: vous y êtes en un geste, et vous êtes prévenu dès que votre conseiller vous en envoie un.</>
+                : <>Posez votre espace dans votre barre des tâches&nbsp;: vous y êtes en un clic, et vous êtes prévenu dès que votre conseiller vous envoie un bien.</>}</span>
             </div>
             <button type="button" className="ecran-oui" onClick={() => ecran.accepter(ouvrirGuideEcran)}>
               Installer
@@ -869,7 +1010,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onAide, onFin, visites, token, onVisiteBien }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -904,6 +1045,11 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         {onEcran && (
           <button type="button" className="lien-aide lien-ecran" onClick={onEcran}>
             <Ico n="lieu" t={13} />{motEcran}
+          </button>
+        )}
+        {onNotif && (
+          <button type="button" className="lien-aide lien-ecran" onClick={onNotif}>
+            <Ico n="etincelle" t={13} />M&apos;avertir des nouveaux biens
           </button>
         )}
         <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
@@ -2755,6 +2901,38 @@ function Bienvenue({ client, onFermer }: any) {
       <div className="bienv-pied">
         Vous pourrez l&apos;ajouter à votre écran d&apos;accueil pour le retrouver en un geste.
       </div>
+    </div>
+  );
+}
+
+/* ══ la demande d'alertes ═════════════════════════ */
+/* Cette fenêtre-ci est la nôtre : la refermer ne coûte rien. Celle du
+   téléphone, qui arrive juste après s'il dit oui, ne se présente qu'une fois
+   dans la vie du dossier — d'où ce filtre en amont. On explique d'abord, on
+   demande ensuite. */
+function DemandeNotif({ onOui, onNon }: { onOui: () => void; onNon: () => void }) {
+  const [envoi, setEnvoi] = useState(false);
+  return (
+    <div className="bienv">
+      <div className="bienv-sceau"><Ico n="etincelle" t={28} /></div>
+      <div className="bienv-sur">Rester au courant</div>
+      <h3>Vous prévenir dès qu&apos;un bien arrive&nbsp;?</h3>
+      <p>Votre conseiller dépose dans ce dossier les biens qu&apos;il retient pour vous, au fil
+        de la semaine. Si vous le souhaitez, votre téléphone vous le signale&nbsp;— vous
+        n&apos;avez plus à venir vérifier.</p>
+      <div className="puces">
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Uniquement quand un <b>nouveau bien</b> est déposé pour vous.</span></span>
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Jamais de publicité, jamais de relance commerciale.</span></span>
+        <span><span className="k"><Ico n="check" t={15} /></span><span>Vous pouvez les couper quand vous voulez, depuis les réglages de votre téléphone.</span></span>
+      </div>
+      <button className="btn or" style={{ marginTop: 22, width: '100%' }} disabled={envoi}
+        onClick={() => { setEnvoi(true); onOui(); }}>
+        {envoi ? 'Un instant…' : 'Oui, prévenez-moi'}
+      </button>
+      <button className="btn fant" style={{ marginTop: 10, width: '100%' }} onClick={onNon}>
+        Non merci
+      </button>
+      <div className="bienv-pied">Votre téléphone va vous demander confirmation juste après.</div>
     </div>
   );
 }
