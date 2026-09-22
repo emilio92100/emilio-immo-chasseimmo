@@ -28,7 +28,13 @@ const ETAT = (b: { vu_le?: string | null; badge_retour?: string | null }) => {
 
 export default async function PageEspace({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!token || token.length < 32) notFound();
+  /* Deux générations de liens cohabitent, et les deux sont valables :
+       — les anciens, 64 caractères tirés au hasard ;
+       — les nouveaux, « dupont-k3n8vq2fab », dont seuls les dix derniers
+         caractères font la sécurité (voir src/lib/jeton.ts).
+     Le plancher à 12 caractères écarte les adresses fantaisistes sans
+     refuser un client dont le nom est court. */
+  if (!token || token.length < 12 || token.length > 128) notFound();
 
   const supabase = base();
 
