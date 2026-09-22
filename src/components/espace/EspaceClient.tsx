@@ -390,7 +390,7 @@ const CLE_ECRAN = 'emilio_ecran';
 const REFUS_MAX = 2;
 const ATTENTE_MS = 40_000;
 
-type Appareil = null | 'ios' | 'android' | 'appli';
+type Appareil = null | 'ios' | 'android' | 'appli' | 'bureau';
 
 /* L'événement d'Android, que le navigateur nous confie pour qu'on choisisse le
    bon moment d'afficher sa boîte d'installation. Il n'est pas typé par TS. */
@@ -401,6 +401,7 @@ type InviteNative = Event & {
 
 function useEcranAccueil() {
   const [appareil, setAppareil] = useState<Appareil>(null);
+  const [tactile, setTactile] = useState(true);
   const [visible, setVisible] = useState(false);
   const [auto, setAuto] = useState(false);
   const native = useRef<InviteNative | null>(null);
@@ -416,8 +417,8 @@ function useEcranAccueil() {
       || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     if (pose) { ecrire('ok'); return; }
 
-    const tactile = window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth <= 900;
-    if (!tactile) return;
+    const surTactile = window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth <= 900;
+    setTactile(surTactile);
 
     const ua = navigator.userAgent || '';
     const ios = /iphone|ipad|ipod/i.test(ua)
@@ -427,16 +428,22 @@ function useEcranAccueil() {
        repasser par Safari — c'est ce qu'on lui expliquera. */
     const integre = /FBAN|FBAV|Instagram|Messenger|LinkedInApp|Line\/|Snapchat|Twitter|WhatsApp/i.test(ua);
 
-    setAppareil(ios ? (integre ? 'appli' : 'ios') : 'android');
+    /* Sur téléphone, on sait tout de suite quoi montrer.
+       Sur ordinateur, on ne montre rien tant que le navigateur n'a pas dit
+       lui-même qu'il savait installer la page : Chrome et Edge le disent (et
+       l'espace se range alors dans la barre des tâches, dans sa propre
+       fenêtre), Safari et Firefox ne le proposent pas du tout. Inutile
+       d'expliquer un chemin qui n'existe pas chez celui qui lit. */
+    if (surTactile) setAppareil(ios ? (integre ? 'appli' : 'ios') : 'android');
 
     const etat = lire();
     setAuto(etat !== 'ok' && (Number(etat) || 0) < REFUS_MAX);
 
     const surInvite = (e: Event) => {
-      /* Android proposerait tout seul, au pire moment. On garde la main. */
+      /* Le navigateur proposerait tout seul, au pire moment. On garde la main. */
       e.preventDefault();
       native.current = e as InviteNative;
-      setAppareil('android');
+      setAppareil(surTactile ? 'android' : 'bureau');
     };
     const surPose = () => { ecrire('ok'); setAppareil(null); setVisible(false); };
     window.addEventListener('beforeinstallprompt', surInvite);
@@ -480,7 +487,7 @@ function useEcranAccueil() {
     } catch { guide(); }
   }, []);
 
-  return { appareil, auto, visible, eveiller, refuser, accepter };
+  return { appareil, tactile, auto, visible, eveiller, refuser, accepter };
 }
 
 /* ══ composant ════════════════════════════════════ */
@@ -519,9 +526,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   /* ── l'espace sur l'écran d'accueil ── */
   const ecran = useEcranAccueil();
   const ouvrirGuideEcran = useCallback(() => {
-    montrer(<GuideEcran appareil={ecran.appareil || 'ios'} onFermer={fermer} />, 'pleine');
+    montrer(<GuideEcran appareil={ecran.appareil || (ecran.tactile ? 'ios' : 'bureau')} onFermer={fermer} />, 'pleine');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ecran.appareil]);
+  }, [ecran.appareil, ecran.tactile]);
+  /* Le vocabulaire suit l'appareil : on ne parle pas d'écran d'accueil à
+     quelqu'un qui est devant un ordinateur. */
+  const motEcran = ecran.tactile ? "Installer sur mon écran d'accueil" : "Installer l'application";
 
   /* ── ouverture d'une fiche ── */
   function ouvrirBien(b: Bien) {
@@ -735,6 +745,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               token={token}
               onBienvenue={ouvrirBienvenue}
               onEcran={ecran.appareil ? () => ecran.accepter(ouvrirGuideEcran) : null}
+              motEcran={motEcran}
               onFin={ouvrirFinRecherche}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
@@ -834,10 +845,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             <span className="ecran-sceau"><Ico n="maison" t={19} /></span>
             <div className="ecran-txt">
               <b>Gardez votre espace sous la main</b>
-              <span>Une icône sur votre écran d&apos;accueil, et vous y êtes en un geste&nbsp;— sans chercher le lien.</span>
+              <span>{ecran.tactile
+                ? <>Une icône sur votre écran d&apos;accueil, et vous y êtes en un geste&nbsp;— sans chercher le lien.</>
+                : <>Une icône dans votre barre des tâches, et vous y êtes en un clic&nbsp;— sans chercher le lien.</>}</span>
             </div>
             <button type="button" className="ecran-oui" onClick={() => ecran.accepter(ouvrirGuideEcran)}>
-              Ajouter
+              Installer
             </button>
             <button type="button" className="ecran-x" onClick={ecran.refuser} aria-label="Plus tard">
               <Ico n="croix" t={13} />
@@ -856,7 +869,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, onAide, onFin, visites, token, onVisiteBien }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onAide, onFin, visites, token, onVisiteBien }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -881,12 +894,16 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       </div>
 
       <div className="col-b">
-      <div className="sep"><span>Votre espace</span><i />
+      {/* Le titre garde sa ligne à lui, les deux liens la leur : à deux
+          boutons sur la même rangée, le second finissait coupé sur un
+          téléphone, et « Votre espace » passait à la ligne. */}
+      <div className="sep"><span>Votre espace</span><i /></div>
+      <div className="sep-liens">
         {/* Toujours là, même après un « plus tard » : celui qui change d'avis
             trois semaines plus tard doit le retrouver sans chercher. */}
         {onEcran && (
           <button type="button" className="lien-aide lien-ecran" onClick={onEcran}>
-            <Ico n="maison" t={12} />Sur mon écran d&apos;accueil
+            <Ico n="lieu" t={13} />{motEcran}
           </button>
         )}
         <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
@@ -2757,6 +2774,17 @@ const CHEMINS: Record<string, { sur: string; titre: string; texte: string; etape
     ],
     pied: "Rien ne s'installe sur votre téléphone : c'est un raccourci, et il se retire comme n'importe quelle application.",
   },
+  bureau: {
+    sur: 'Sur votre ordinateur',
+    titre: 'En deux clics',
+    texte: "Votre espace se rangera dans votre barre des tâches et s'ouvrira dans sa propre fenêtre, sans onglet ni barre d'adresse.",
+    etapes: [
+      <>Cliquez sur l&apos;icône d&apos;installation, à droite de la barre d&apos;adresse&nbsp;— un petit écran avec une flèche.</>,
+      <>Sinon&nbsp;: menu <b>⋮</b> → <b>« Diffuser, enregistrer et partager »</b> → <b>« Installer la page en tant qu&apos;application »</b>.</>,
+      <>Confirmez avec <b>Installer</b>.</>,
+    ],
+    pied: "Rien ne s'installe vraiment sur votre ordinateur : c'est un raccourci, et il se retire comme n'importe quelle application.",
+  },
   android: {
     sur: 'Sur votre téléphone',
     titre: 'En trois gestes',
@@ -2795,7 +2823,7 @@ function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => 
 
   return (
     <div className="bienv">
-      <div className="bienv-sceau"><Ico n={appareil === 'appli' ? 'partage' : 'maison'} t={28} /></div>
+      <div className="bienv-sceau"><Ico n={appareil === 'appli' ? 'partage' : 'lieu'} t={28} /></div>
       <div className="bienv-sur">{c.sur}</div>
       <h3>{c.titre}</h3>
       <p>{c.texte}</p>
@@ -2964,8 +2992,13 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   transition:color .15s, border-color .15s, background .15s}
 .aide-pt:hover{color:var(--or-fonce); border-color:var(--or-trait); background:var(--or-fond)}
 .sep{display:flex; align-items:center; gap:12px; margin:26px 0 14px}
-.sep span{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase; color:var(--plume-clair)}
-.sep i{flex:1; height:1px; background:var(--trait)}
+.sep span{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+  color:var(--plume-clair); white-space:nowrap}
+.sep i{flex:1; height:1px; background:var(--trait); min-width:16px}
+/* Les liens du séparateur ont leur propre rangée : à deux boutons sur la ligne
+   du titre, le second débordait de l'écran sur un téléphone. Ici ils passent à
+   la ligne tout seuls quand il n'y a plus la place. */
+.sep-liens{display:flex; flex-wrap:wrap; gap:8px; margin:-6px 0 14px}
 
 .grille{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
 .case{position:relative; background:var(--carte); border:1px solid var(--trait); border-radius:20px;
