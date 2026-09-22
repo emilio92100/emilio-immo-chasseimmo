@@ -791,7 +791,15 @@ export default function FicheClient({ client: init, onBack }: Props) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
       const change = resumeChangements(avant, data as unknown as Record<string, unknown>);
       if (change) {
-        await addJournal(client.id, 'criteres_modifies', '🎯 Critères modifiés', change);
+        /* La recherche est notée sur la ligne : la veille lit ce journal pour
+           savoir quel critère a bougé depuis son dernier passage, et un client
+           peut avoir deux recherches ouvertes. Sans elle, les deux se
+           mélangeaient. */
+        await supabase.from('journal').insert({
+          client_id: client.id, recherche_id: rechercheId,
+          type: 'criteres_modifies', titre: '🎯 Critères modifiés',
+          description: change, metadata: {},
+        });
         load();
       }
     }
