@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { lienEspace } from '@/lib/jeton';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,9 +50,14 @@ function escapeHtml(s: string) {
 /* Le bouton de chaque bien mène à l'espace acheteur, ouvert sur ce bien-là :
    c'est la seule page où le client peut répondre « ça me plaît », demander une
    visite ou dire non. La fiche publique /bien/<id> reste, mais elle est en
-   lecture seule : elle sert au partage à un tiers, pas au client lui-même. */
+   lecture seule : elle sert au partage à un tiers, pas au client lui-même.
+
+   lienEspace() choisit tout seul la bonne adresse : la courte pour les
+   nouveaux jetons, l'ancienne pour les liens déjà envoyés (voir
+   src/lib/jeton.ts). Un client ne verra donc jamais son lien changer. */
 function lienBien(b: BienLite, token?: string | null): string {
-  return token ? `${SITE_URL}/espace/${token}?bien=${b.id}` : `${SITE_URL}/bien/${b.id}`;
+  if (!token) return `${SITE_URL}/bien/${b.id}`;
+  return `${lienEspace(token, SITE_URL)}?bien=${b.id}`;
 }
 
 function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null }): string {
