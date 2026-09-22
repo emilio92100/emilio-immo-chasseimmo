@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
+import { after } from 'next/server';
 import EspaceClient from '@/components/espace/EspaceClient';
 
 /**
@@ -152,24 +153,29 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
     ? Math.max(1, Math.round((Date.now() - new Date(client.created_at).getTime()) / 86400000))
     : null;
 
-  // ─── on note le passage, sans spammer le journal ───
-  try {
-    await supabase.from('recherches')
-      .update({ espace_ouvert_le: new Date().toISOString() })
-      .eq('id', recherche.id);
+  /* ─── on note le passage, sans spammer le journal ───
+     Ces trois requêtes intéressent Alexandre, pas le client : elles tournent
+     après l'envoi de la page (after), et non plus avant. Le client gagne
+     l'aller-retour ; le journal est écrit exactement pareil. */
+  after(async () => {
+    try {
+      await supabase.from('recherches')
+        .update({ espace_ouvert_le: new Date().toISOString() })
+        .eq('id', recherche.id);
 
-    const { data: derniere } = await supabase.from('espace_evenements')
-      .select('created_at').eq('recherche_id', recherche.id).eq('type', 'ouverture')
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const { data: derniere } = await supabase.from('espace_evenements')
+        .select('created_at').eq('recherche_id', recherche.id).eq('type', 'ouverture')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-    const recent = derniere && Date.now() - new Date(derniere.created_at).getTime() < 30 * 60 * 1000;
-    if (!recent) {
-      await supabase.from('espace_evenements').insert({
-        recherche_id: recherche.id, client_id: recherche.client_id,
-        type: 'ouverture', detail: null,
-      });
-    }
-  } catch { /* le journal ne doit jamais empêcher la page de s'afficher */ }
+      const recent = derniere && Date.now() - new Date(derniere.created_at).getTime() < 30 * 60 * 1000;
+      if (!recent) {
+        await supabase.from('espace_evenements').insert({
+          recherche_id: recherche.id, client_id: recherche.client_id,
+          type: 'ouverture', detail: null,
+        });
+      }
+    } catch { /* le journal ne doit jamais empêcher la page de s'afficher */ }
+  });
 
   return (
     <EspaceClient
