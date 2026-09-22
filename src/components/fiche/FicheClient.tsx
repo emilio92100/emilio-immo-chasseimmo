@@ -1440,6 +1440,28 @@ Emilio Immobilier
     const _ = bienId;
   }
 
+  /**
+   * Une visite qui ne se fera pas.
+   *
+   * On passe le statut à `annulee` plutôt que de supprimer la ligne : la
+   * trace reste en base, et l'espace du client ne lit que `a_venir` et
+   * `effectuee` — le rappel « votre prochaine visite » disparaît donc de son
+   * côté à la seconde où l'on clique ici.
+   *
+   * Le badge du bien n'est pas touché : le client voulait le visiter avant, il
+   * le veut toujours après. C'est le rendez-vous qui tombe, pas l'envie.
+   */
+  async function annulerVisite(v: any) {
+    const b = biens.find((x: any) => x.id === v.bien_id);
+    const nom = b?.titre || b?.ville || 'ce bien';
+    const quand = v.date_visite ? ` du ${new Date(v.date_visite).toLocaleDateString('fr-FR')}` : '';
+    if (!confirm(`Annuler la visite${quand} — ${nom} ?\n\nElle sort de ton agenda et le rappel disparaît de l'espace du client.`)) return;
+    const { error } = await supabase.from('visites').update({ statut: 'annulee' }).eq('id', v.id);
+    if (error) { alert("Impossible d'annuler cette visite : " + error.message); return; }
+    await addJournal(client.id, 'visite_planifiee', `📅 Visite annulée${quand} — ${nom}`);
+    load();
+  }
+
   async function saveCompteRendu() {
     const { visite_id, etoiles, commentaire, avis_client } = crForm;
     if (!visite_id) { alert('Erreur : visite non identifiée'); return; }
@@ -1788,7 +1810,9 @@ Emilio Immobilier
     { id: 'veille',      icone: 'loupe',      nom: 'Veille',    compte: veilleCount, dore: true },
     { id: 'selection',   icone: 'liste',      nom: 'Sélection', compte: enSelection.length },
     { id: 'presentes',   icone: 'envoi',      nom: 'Présentés', compte: presentes.length },
-    { id: 'visites',     icone: 'calendrier', nom: 'Visites',   compte: visites.length },
+    /* Les visites annulées ne comptent pas : l'onglet annoncerait 3 visites
+       pour n'en montrer qu'une. */
+    { id: 'visites',     icone: 'calendrier', nom: 'Visites',   compte: visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee').length },
     { id: 'transaction', icone: 'mallette',   nom: transaction && transaction.etape_actuelle === 'finalise' ? 'Transaction \u2713' : 'Transaction', compte: null },
     { id: 'suivi',       icone: 'dossier',    nom: 'Suivi',     compte: suiviCount },
   ];
@@ -2582,7 +2606,15 @@ Emilio Immobilier
         {/* TAB VISITES */}
         {tab === 'visites' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {visites.length === 0 && <div className={styles.emptyTab}><div style={{ fontSize: 32, marginBottom: 10 }}>📅</div><div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div><div style={{ color: '#94a3b8', fontSize: 13 }}>Planifiez depuis l'onglet Biens</div></div>}
+            {visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee').length === 0 && (
+              <div className={styles.emptyTab}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
+                <div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div>
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>
+                  {visites.length > 0 ? "Les visites annulées ne s'affichent plus ici." : "Planifiez depuis l'onglet Biens"}
+                </div>
+              </div>
+            )}
 
             {/* Section À venir */}
             {visites.filter(v => v.statut === 'a_venir').length > 0 && (
@@ -2613,6 +2645,11 @@ Emilio Immobilier
                           <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
                           <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
                           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>✓ Effectuée</button>
+                          <button className={styles.btn} onClick={() => annulerVisite(v)}
+                            style={{ color: '#dc2626', borderColor: '#fecaca' }}
+                            title="La visite ne se fera pas : elle sort de l'agenda et de l'espace du client">
+                            ✕ Annuler
+                          </button>
                         </div>
                       </div>
                     );
