@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import {
   Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
+  useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
 } from './ParcoursBien';
 
 /**
@@ -71,6 +72,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [envoi, setEnvoi] = useState<any>(null);
   const [tick, setTick] = useState(0);
   const [filtreP, setFiltreP] = useState('tout');   // onglet « Présentés » : quel retour afficher
+  const [compact, setCompact] = useAffichage('biens-' + mode);  // détaillé ou une ligne par bien
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -149,7 +151,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 7 : 14 }}>
       <StylesEmilio />
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
@@ -159,11 +161,14 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
           {mode === 'selection' ? 'Fixe tes honoraires et envoie. La fiche soignée est facultative.' : 'Rangés selon ce que le client en a dit.'}
         </span>
-        {mode === 'presentes' && repondus > 0 && (
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 800 }}>
-            💬 {repondus} retour{repondus > 1 ? 's' : ''} reçu{repondus > 1 ? 's' : ''}
-          </span>
-        )}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          {mode === 'presentes' && repondus > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 800 }}>
+              💬 {repondus} retour{repondus > 1 ? 's' : ''} reçu{repondus > 1 ? 's' : ''}
+            </span>
+          )}
+          <BasculeAffichage compact={compact} onChange={setCompact} />
+        </span>
       </div>
 
       {mode === 'presentes' && groupesVisibles.length > 1 && (
@@ -204,6 +209,47 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         if (b.est_particulier) atouts.push(<Chip key="x" ton="vert">Particulier</Chip>);
 
         const aRepondu = mode === 'presentes' && b.badge_retour && b.badge_retour !== 'propose';
+
+        /* ── affichage compact : une ligne, et tout le reste au clic ── */
+        if (compact) {
+          return (
+            <Fragment key={b.id}>
+              {enTeteDe(b, idx)}
+              <LigneCompacte
+                photo={(b.photos || [])[0]}
+                numero={idx + 1}
+                titre={b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
+                lieu={b.adresse || b.adresse_probable || b.quartier || b.ville}
+                specs={resumeSpecs(b)}
+                prix={euros(prixAff)}
+                sousPrix={honoraires > 0
+                  ? `dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires`
+                  : prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null}
+                accent={mode === 'presentes' ? r.c : undefined}
+                badge={mode === 'presentes' ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 800 }}>
+                    {r.i} {r.l}
+                  </span>
+                ) : b.pdf_statut === 'pret' ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 800 }}>
+                    📄 fiche prête
+                  </span>
+                ) : undefined}
+                onOuvrir={() => onFiche(b.id)}
+                actions={
+                  <>
+                    {b.url && <BoutonIcone icone="lien" titre="Ouvrir l'annonce d'origine" href={b.url} />}
+                    <BoutonIcone icone="crayon" titre="Ouvrir le détail du bien" onClick={() => onFiche(b.id)} />
+                    {mode === 'selection'
+                      ? <BoutonIcone icone="envoyer" titre="Envoyer au client" ton="or" onClick={() => setEnvoi(b)} />
+                      : <BoutonIcone icone="calendrier" titre="Planifier une visite" onClick={() => onVisite(b.id)} />}
+                  </>
+                }
+              />
+            </Fragment>
+          );
+        }
+
         return (
           <Fragment key={b.id}>
           {enTeteDe(b, idx)}
