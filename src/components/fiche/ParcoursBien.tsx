@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
+import { lienEspace } from '@/lib/jeton';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
@@ -1742,7 +1743,10 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
   const [evts, setEvts] = useState<any[] | null>(null);
 
   const token = recherche?.token_espace;
-  const url = token && typeof window !== 'undefined' ? `${window.location.origin}/espace/${token}` : '';
+  /* Les nouveaux jetons donnent l'adresse courte sur espace.emilio-immo.com ;
+     les anciens gardent celle sous laquelle le client les a reçus. */
+  const url = token ? lienEspace(token) : '';
+  const court = !!token && token.length <= 40;
 
   useEffect(() => {
     if (!recherche?.id) return;
@@ -1797,7 +1801,7 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
         fontSize: 11.5, color: '#64748b', background: '#f7f9fc', border: `1px solid ${BORD}`,
         borderRadius: 7, padding: '4px 9px', maxWidth: 190, overflow: 'hidden',
         textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace',
-      }}>/espace/{String(token).slice(0, 12)}…</code>
+      }} title={url}>{court ? `espace.emilio-immo.com/${token}` : `/espace/${String(token).slice(0, 12)}…`}</code>
 
       <button type="button" onClick={copier} style={btnEspace(copie ? '#ecfdf5' : '#f7f9fc', copie ? '#059669' : '#475569', copie ? '#a7f3d0' : BORD)}>
         {copie ? '✓ Copié' : 'Copier le lien'}
