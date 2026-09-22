@@ -40,6 +40,8 @@ export function StylesEmilio() {
       @media (prefers-reduced-motion: reduce) { .emi-arrivee { animation-duration: .01ms } }
       .emi-carte { transition: box-shadow .24s ease, transform .24s ease, border-color .24s ease }
       .emi-carte:hover { box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 20px 44px -24px rgba(16,24,40,.38) }
+      .emi-ligne { transition: box-shadow .16s ease, border-color .16s ease }
+      .emi-ligne:hover { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 8px 20px -14px rgba(16,24,40,.45) }
 
       /* ── bandeau de photos ─────────────────────────────── */
       .emi-vignette { position:relative; flex:1 1 0; min-width:88px; max-width:158px; aspect-ratio:1/1;
@@ -137,6 +139,9 @@ const TRAITS: Record<string, string[]> = {
   dossier: ['M3 6.6a2 2 0 0 1 2-2h4.2l2.2 2.6H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
   lien: ['M10.4 13.6a4.2 4.2 0 0 0 6 0l3-3a4.2 4.2 0 1 0-6-6l-1.5 1.5', 'M13.6 10.4a4.2 4.2 0 0 0-6 0l-3 3a4.2 4.2 0 1 0 6 6l1.5-1.5'],
   coche: ['m4 12.5 5 5L20 6.5'],
+  carte: ['M3.5 4.5h7v7h-7z', 'M13.5 4.5h7v7h-7z', 'M3.5 14.5h7v5h-7z', 'M13.5 14.5h7v5h-7z'],
+  lignes: ['M3.5 6.5h17', 'M3.5 12h17', 'M3.5 17.5h17'],
+  envoyer: ['M21.4 2.6 2.6 10.3l7.2 2.9 2.9 7.2z', 'M21.4 2.6 9.8 13.2'],
   alerte: ['M12 9v4.2', 'M12 17.2h.01', 'M10.3 3.9 2.4 17.6A1.9 1.9 0 0 0 4 20.5h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z'],
 };
 
@@ -561,6 +566,133 @@ export function LigneBien({ p, recherche }: { p: any; recherche?: any }) {
       ))}
     </div>
   );
+}
+
+/* ══ Détaillé / Compact ════════════════════════════════════════
+   Vingt biens en cartes pleines, c'est dix écrans de défilement et
+   plus aucune vue d'ensemble. Le mode compact ramène chaque bien à
+   une ligne : de quoi le reconnaître et décider, le reste au clic.
+   Le choix se retient par onglet, d'une visite à l'autre. */
+
+export function useAffichage(cle: string) {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    try { setCompact(window.localStorage.getItem('emi-affichage-' + cle) === 'compact'); } catch { /* navigation privée */ }
+  }, [cle]);
+  const basculer = useCallback((v: boolean) => {
+    setCompact(v);
+    try { window.localStorage.setItem('emi-affichage-' + cle, v ? 'compact' : 'detaille'); } catch { /* idem */ }
+  }, [cle]);
+  return [compact, basculer] as const;
+}
+
+export function BasculeAffichage({ compact, onChange }: { compact: boolean; onChange: (v: boolean) => void }) {
+  const bouton = (actif: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    border: 'none', borderRadius: 16, padding: '5px 11px',
+    background: actif ? 'white' : 'transparent',
+    color: actif ? NAVY : '#8b98a9',
+    boxShadow: actif ? '0 1px 3px rgba(16,24,40,.13)' : 'none',
+    fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+  });
+  return (
+    <div role="group" aria-label="Affichage de la liste"
+      style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 19, background: '#eef2f8', border: `1px solid ${BORD}` }}>
+      <button type="button" onClick={() => onChange(false)} style={bouton(!compact)} aria-pressed={!compact}>
+        <Icone nom="carte" taille={13} epaisseur={2} />Détaillé
+      </button>
+      <button type="button" onClick={() => onChange(true)} style={bouton(compact)} aria-pressed={compact}>
+        <Icone nom="lignes" taille={13} epaisseur={2} />Compact
+      </button>
+    </div>
+  );
+}
+
+/** « 88 m² · 3 ch. · 4ᵉ · DPE C » — le bien en une ligne de chiffres. */
+export function resumeSpecs(b: any): string {
+  const p: string[] = [];
+  if (b?.surface) p.push(`${b.surface} m²`);
+  if (b?.nb_chambres) p.push(`${b.nb_chambres} ch.`);
+  else if (b?.nb_pieces) p.push(`${b.nb_pieces} p.`);
+  if (b?.etage !== null && b?.etage !== undefined) p.push(Number(b.etage) === 0 ? 'RDC' : `${b.etage}ᵉ`);
+  if (b?.surface_exterieur) p.push(`${b.surface_exterieur} m² ext.`);
+  if (b?.annee_construction) p.push(String(b.annee_construction));
+  if (b?.dpe) p.push(`DPE ${String(b.dpe).toUpperCase().slice(0, 1)}`);
+  return p.join(' · ');
+}
+
+/** Une ligne de liste : photo, titre, chiffres, prix, et les actions à droite. */
+export function LigneCompacte({ photo, numero, titre, lieu, specs, prix, sousPrix, badge, accent, onOuvrir, actions }: {
+  photo?: string | null; numero?: number; titre: string; lieu?: string | null; specs?: string;
+  prix?: string; sousPrix?: string | null; badge?: React.ReactNode; accent?: string;
+  onOuvrir?: () => void; actions?: React.ReactNode;
+}) {
+  return (
+    <div className="emi-ligne" style={{
+      display: 'flex', alignItems: 'center', gap: 12, minWidth: 0,
+      background: 'white', border: `1px solid ${BORD}`, borderRadius: 13,
+      borderLeft: accent ? `4px solid ${accent}` : `1px solid ${BORD}`,
+      padding: '8px 12px 8px 10px',
+    }}>
+      {numero !== undefined && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          width: 22, height: 22, borderRadius: 7, background: '#f1f5f9', color: '#64748b',
+          fontSize: 11, fontWeight: 800,
+        }}>{String(numero).padStart(2, '0')}</span>
+      )}
+
+      {photo
+        ? <img src={photo} alt="" style={{ width: 54, height: 42, objectFit: 'cover', borderRadius: 8, flexShrink: 0, background: '#eef2f8' }} />
+        : <span style={{ width: 54, height: 42, borderRadius: 8, flexShrink: 0, background: '#eef2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
+            <Icone nom="maison" taille={16} />
+          </span>}
+
+      <button type="button" onClick={onOuvrir} disabled={!onOuvrir}
+        style={{
+          flex: '1 1 220px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2,
+          background: 'none', border: 'none', padding: 0, textAlign: 'left',
+          fontFamily: 'inherit', cursor: onOuvrir ? 'pointer' : 'default',
+        }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: '100%' }}>
+          {titre}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: 11.5, color: '#64748b' }}>
+          {lieu && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{lieu}</span>}
+          {badge}
+        </span>
+      </button>
+
+      {specs && (
+        <span style={{ flexShrink: 0, fontSize: 12, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>{specs}</span>
+      )}
+
+      {prix && (
+        <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 96 }}>
+          <span style={{ display: 'block', fontSize: 15, fontWeight: 800, color: OR, letterSpacing: -.3, lineHeight: 1.2 }}>{prix}</span>
+          {sousPrix && <span style={{ display: 'block', fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{sousPrix}</span>}
+        </span>
+      )}
+
+      {actions && <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{actions}</span>}
+    </div>
+  );
+}
+
+/** Un bouton d'action réduit à son icône, pour les lignes compactes. */
+export function BoutonIcone({ icone, titre, onClick, href, ton = 'neutre' }: {
+  icone: string; titre: string; onClick?: () => void; href?: string; ton?: 'neutre' | 'or';
+}) {
+  const dore = ton === 'or';
+  const st: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 30, height: 30, borderRadius: 9, cursor: 'pointer', textDecoration: 'none',
+    background: dore ? OR : 'white', color: dore ? 'white' : '#64748b',
+    border: `1px solid ${dore ? OR : BORD}`, fontFamily: 'inherit', padding: 0,
+  };
+  const contenu = <Icone nom={icone} taille={15} epaisseur={1.9} />;
+  if (href) return <a href={href} target="_blank" rel="noreferrer" title={titre} aria-label={titre} style={st}>{contenu}</a>;
+  return <button type="button" onClick={onClick} title={titre} aria-label={titre} style={st}>{contenu}</button>;
 }
 
 /* ══ L'appréciation : ce bien vaut-il un coup de fil ═══════════
