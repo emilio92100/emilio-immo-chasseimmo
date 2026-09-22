@@ -29,9 +29,10 @@ export async function GET(
   const racine = court ? `/${token}` : `/espace/${token}`;
 
   const manifeste = {
-    name: 'Ma recherche — Emilio Immobilier',
-    /* Le nom sous l'icône : douze caractères, pas plus, sinon le téléphone le
-       coupe au milieu d'un mot. */
+    /* Court, parce que c'est ce mot-là qu'Android affiche en grand sur l'écran
+       d'ouverture. « Ma recherche — Emilio Immobilier » y tenait sur deux
+       lignes et faisait brouillon ; la marque est déjà dans l'icône. */
+    name: 'Ma recherche',
     short_name: 'Ma recherche',
     description: 'Les biens retenus pour vous, vos critères et vos visites.',
     lang: 'fr',
@@ -42,7 +43,10 @@ export async function GET(
     scope: court ? '/' : '/espace/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#f4f6fa',
+    /* La couleur de l'écran d'ouverture d'Android. Elle est volontairement la
+       même que celle de l'écran de chargement (voir loading.tsx) : le passage
+       de l'un à l'autre devient invisible, et l'ouverture paraît immédiate. */
+    background_color: '#1a2332',
     theme_color: '#1a2332',
     icons: [
       { src: '/icone?t=192', sizes: '192x192', type: 'image/png', purpose: 'any' },
