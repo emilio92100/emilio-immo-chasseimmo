@@ -38,7 +38,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     const { action } = await ctx.params;
     const body = await req.json();
     const token = typeof body?.token === 'string' ? body.token : '';
-    if (!token || token.length < 32) {
+    /* Deux générations de liens cohabitent : les anciens font 64 caractères,
+       les nouveaux « dupont-k3n8vq2fab » une vingtaine (voir src/lib/jeton.ts).
+       Le plancher doit donc être le même qu'à l'affichage de l'espace, sinon
+       un nouveau client ne pourrait plus rien enregistrer. */
+    if (!token || token.length < 12 || token.length > 128) {
       return NextResponse.json({ ok: false, error: 'lien invalide' }, { status: 401 });
     }
 
