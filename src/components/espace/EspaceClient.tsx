@@ -31,6 +31,10 @@ type Bien = {
      après un appel. Ce n'est pas un détail : on ne présente pas à quelqu'un
      comme « son commentaire » une phrase qu'il n'a pas écrite. */
   retourPar?: string | null;
+  /* Ce que dit l'agenda d'Alexandre, pas le badge du bien : une visite calée
+     et pas encore passée, et la visite faite avec son compte rendu. */
+  visitePrevue?: { date: string; heure: string | null } | null;
+  visiteFaite?: { date: string | null; commentaire: string | null; etoiles: number | null } | null;
   etat: string;
 };
 type Criteres = {
@@ -62,7 +66,7 @@ type Props = {
   } | null;
   semaine: { quand: string | null; lues: number }[];
   /* Les visites calées et pas encore passées, la plus proche en premier. */
-  visites: { id: string; date: string; heure: string | null; titre: string; adresse: string; bienId: string | null }[];
+  visites: { id: string; date: string; heure: string | null; titre: string; adresse: string; photo?: string | null; bienId: string | null }[];
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -90,6 +94,13 @@ const decoupeTexte = (t?: string | null): string[] => {
   return sortie;
 };
 const MOIS = ['janv.','févr.','mars','avril','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+
+/* « 3 oct. » — la date d'un rendez-vous, en trois mots sur une carte. */
+function dateCourte(d: string) {
+  const x = new Date(d + (d.length <= 10 ? 'T12:00:00' : ''));
+  if (isNaN(x.getTime())) return d;
+  return `${x.getDate()} ${MOIS[x.getMonth()]}`;
+}
 const JOURS = ['D','L','M','M','J','V','S'];
 
 function depuis(d?: string | null) {
@@ -124,6 +135,7 @@ const AVIS: Record<string, { e: string; n: string; c: string }> = {
    c'est le chasseur qui l'a posé en saisissant son compte rendu. */
 const ETIQ: Record<string, { e: string; n: string; c: string }> = {
   ...AVIS,
+  visite_prevue: { e: '📅', n: 'Visite à venir', c: 'prevue' },
   visite: { e: '🏠', n: 'Visite effectuée', c: 'fait' },
 };
 /* Après le clic sur un avis, on ne laisse pas un champ vide et muet :
@@ -157,15 +169,28 @@ const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string
 const GROUPES: { id: string; e: string; court: string; titre: string; ton: string; note?: string }[] = [
   { id: 'attente', e: '⏳', court: 'En attente', titre: 'En attente de votre avis', ton: 'c-or',
     note: 'Vous les avez ouverts sans nous dire ce que vous en pensiez. Un mot suffit — c’est ce qui oriente la suite de la recherche.' },
+  { id: 'visite_prevue', e: '📅', court: 'Visite prévue', titre: 'Visite à venir', ton: 'c-prune',
+    note: 'Le rendez-vous est pris. Vous le retrouvez en haut de votre accueil, avec le lien pour l’ajouter à votre agenda.' },
   { id: 'souhaite_visiter', e: '👀', court: 'À visiter', titre: 'Je veux visiter', ton: 'c-prune',
     note: 'Votre conseiller organise les visites. Envoyez-lui vos disponibilités si ce n’est pas déjà fait.' },
-  { id: 'visite', e: '🏠', court: 'Visités', titre: 'Visite effectuée', ton: 'c-bleu' },
+  { id: 'visite', e: '🏠', court: 'Visités', titre: 'Visite effectuée', ton: 'c-bleu',
+    note: 'Ce que vous avez vu sur place. Le compte rendu de votre conseiller est sur la fiche.' },
   { id: 'interesse', e: '👍', court: 'Ça me plaît', titre: 'Ça me plaît', ton: 'c-vert',
     note: 'Ce que vous gardez de côté. Dites-nous si vous voulez en visiter un, votre conseiller s’en occupe.' },
   { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi', ton: 'c-brique',
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
 ];
-const groupeDe = (b: Bien) => (b.avis && GROUPES.some(g => g.id === b.avis) ? b.avis : 'attente');
+/* L'ordre compte : une visite faite l'emporte sur tout, puis une visite calée,
+   et seulement ensuite l'avis que le client a donné. C'est ce qui évite
+   d'écrire « Visite effectuée » sur un bien que personne n'a encore vu. */
+const groupeDe = (b: Bien) => {
+  if (b.visiteFaite) return 'visite';
+  if (b.visitePrevue) return 'visite_prevue';
+  if (b.avis === 'visite') return 'visite';
+  return b.avis && GROUPES.some(g => g.id === b.avis) ? b.avis : 'attente';
+};
+/* La même règle pour l'étiquette posée sur une carte. */
+const etiqDe = (b: Bien) => ETIQ[groupeDe(b)] || null;
 
 /* Les secteurs sont écrits par le CRM sous la forme « Quartier (Ville) »,
    ou « Ville » seule quand toute la ville est prise. On relit ce format —
@@ -586,6 +611,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
+              onVisiteBien={(id: string) => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
               token={token}
               onBienvenue={ouvrirBienvenue}
               onFin={ouvrirFinRecherche}
@@ -689,14 +715,17 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, onFin, visites, token }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onAide, onFin, visites, token, onVisiteBien }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
       <div className="col-a">
       {/* Une visite calée passe avant tout le reste : c'est la seule chose de
           cet écran qui a une heure et une date. */}
-      {visites?.length > 0 && <ProchaineVisite v={visites[0]} autres={visites.length - 1} token={token} />}
+      {visites?.length > 0 && (
+        <ProchaineVisite v={visites[0]} autres={visites.length - 1} token={token}
+          onBien={visites[0].bienId && onVisiteBien ? () => onVisiteBien(visites[0].bienId) : undefined} />
+      )}
 
       <div className="bandeau-chiffres">
         <div className="bc"><div className="n or tab"><span className="nv">{neufs.length}<BtnAide cle="decouvrir" onAide={onAide} /></span></div>
@@ -854,7 +883,7 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
   return (
     <div className="liste">
       {biens.map(b => {
-        const a = b.avis ? ETIQ[b.avis] : null;
+        const a = etiqDe(b);
         /* Une carte en hauteur : la bande de photos, puis le titre, puis le
              prix, puis le commentaire. L'ancienne grille « vignette | texte »
              s'étirait dès qu'un commentaire s'ajoutait, et la vignette flottait
@@ -874,7 +903,7 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
               <span className="haut-bien">
                 {sansEtiq ? null : b.etat === 'neuf'
                   ? <span className="etiq neuf">Nouveau</span>
-                  : b.etat === 'avis' && a
+                  : a
                     ? <span className={'etiq ' + a.c}>{a.e} {a.n}</span>
                     : <span className="etiq vu">Vu</span>}
                 <span className="dat">{depuis(b.envoyeLe)}</span>
@@ -886,6 +915,18 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
                 b.chambres && b.chambres + ' chambres', b.secteur,
               ].filter(Boolean).join(' · ')}</span>
               <span className="prix tab">{EUR(b.prix)}</span>
+              {b.visitePrevue && !b.visiteFaite && (
+                <span className="rdv-l"><Ico n="calendrier" t={13} />
+                  Visite le {dateCourte(b.visitePrevue.date)}
+                  {b.visitePrevue.heure ? ` à ${String(b.visitePrevue.heure).slice(0, 5).replace(':', ' h ')}` : ''}
+                </span>
+              )}
+              {b.visiteFaite?.commentaire && (
+                <span className="mon-com fait">
+                  <span className="mc-t">Compte rendu de votre conseiller</span>
+                  <span className="mc-c">« {b.visiteFaite.commentaire} »</span>
+                </span>
+              )}
               {b.etat === 'avis' && b.commentaire && (
                 /* Ce que le client a écrit lui appartient : on l'annonce et on le
                    rend lisible, au lieu d'une ligne grise en italique tout en bas. */
@@ -1751,11 +1792,42 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
             ne se remodifie ici. Le client qui change d'avis le dit de vive
             voix — c'est plus juste qu'un deuxième retour qui écrase le
             premier sans qu'Alexandre sache lequel comptait. */}
-        {envoye && (
+        {/* Le rendez-vous, quand il est pris : c'est l'information la plus
+            attendue sur la fiche, elle passe avant l'avis déjà donné. */}
+        {b.visitePrevue && !b.visiteFaite && (
+          <div className="apres-avis fini">
+            <div className="aa-t">📅 Visite à venir</div>
+            <p className="aa-p">
+              Votre conseiller a calé le rendez-vous&nbsp;: <b>{dateLongue(b.visitePrevue.date)}</b>
+              {b.visitePrevue.heure ? <> à <b>{String(b.visitePrevue.heure).slice(0, 5).replace(':', ' h ')}</b></> : null}.
+              Vous le retrouvez en haut de votre accueil, avec le lien pour l’ajouter à votre agenda.
+            </p>
+          </div>
+        )}
+
+        {/* Après la visite, ce qu'il en a retenu. */}
+        {b.visiteFaite && (
+          <div className="apres-avis fini">
+            <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
+            {b.visiteFaite.etoiles ? (
+              <p className="aa-p">{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
+            ) : null}
+            {b.visiteFaite.commentaire ? (
+              <>
+                <div className="fige-t">Compte rendu de votre conseiller</div>
+                <div className="fige">{b.visiteFaite.commentaire}</div>
+              </>
+            ) : (
+              <p className="aa-p">Votre conseiller vous fait un retour détaillé de sa visite.</p>
+            )}
+          </div>
+        )}
+
+        {envoye && !b.visiteFaite && (
           <div className="apres-avis fini">
             <div className="aa-t">{etiqRetour ? `${etiqRetour.e} ${etiqRetour.n}` : 'Retour enregistré'}</div>
             <p className="aa-p">{b.avis === 'visite'
-              ? 'Vous avez visité ce bien avec votre conseiller. Son compte rendu est dans votre dossier.'
+              ? 'Vous avez visité ce bien avec votre conseiller.'
               : parConseiller
                 ? `Votre conseiller a noté ce retour${dateRetour ? ` le ${dateRetour}` : ''}, d’après votre échange. Il oriente déjà la suite de votre recherche.`
                 : `Votre conseiller a reçu ce retour${dateRetour ? ` le ${dateRetour}` : ''}. Il oriente déjà la suite de votre recherche.`}</p>
@@ -2369,8 +2441,11 @@ function lienGoogle(v: { date: string; heure: string | null; titre: string; adre
   return 'https://calendar.google.com/calendar/render?' + p.toString();
 }
 
-function ProchaineVisite({ v, autres, token }: { v: any; autres: number; token: string }) {
+function ProchaineVisite({ v, autres, token, onBien }: { v: any; autres: number; token: string; onBien?: () => void }) {
   const bientot = joursAvant(v.date);
+  /* La photo et le titre mènent au bien : quand le rendez-vous tombe une
+     semaine plus tard, la première question est « c'était lequel, déjà ? ». */
+  const Rappel = onBien ? 'button' : 'div';
   return (
     <div className="visite-a-venir">
       <div className="vav-t"><Ico n="calendrier" t={15} /> Votre prochaine visite</div>
@@ -2378,8 +2453,20 @@ function ProchaineVisite({ v, autres, token }: { v: any; autres: number; token: 
         {dateLongue(v.date)}{v.heure ? ` à ${String(v.heure).slice(0, 5).replace(':', ' h ')}` : ''}
         {bientot && <span className="vav-b">{bientot}</span>}
       </div>
-      <div className="vav-b2">{v.titre}</div>
-      {v.adresse && <div className="vav-a"><Ico n="lieu" t={13} /> {v.adresse}</div>}
+
+      <Rappel className="vav-bien" onClick={onBien} type={onBien ? 'button' : undefined}>
+        <span className="vav-ph">
+          {v.photo
+            ? <img src={v.photo} alt="" />
+            : <span className="vav-ph-vide"><Ico n="lieu" t={18} /></span>}
+        </span>
+        <span className="vav-txt">
+          <span className="vav-b2">{v.titre}</span>
+          {v.adresse && <span className="vav-a"><Ico n="lieu" t={13} /> {v.adresse}</span>}
+          {onBien && <span className="vav-voir">Revoir le bien <Ico n="fleche" t={14} /></span>}
+        </span>
+      </Rappel>
+
       <div className="vav-ag">
         <span className="vav-ag-t">Ajouter à mon agenda</span>
         <span className="vav-ag-b">
@@ -3530,6 +3617,9 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .groupe + .groupe{margin-top:26px}
 .bloc-titre .ge{font-size:16px; line-height:1}
 .etiq.fait{background:var(--or-fond); color:var(--or-fonce); border-color:var(--or-trait)}
+.etiq.prevue{background:var(--prune-fond); color:var(--prune); border-color:var(--prune-trait)}
+.mon-com.fait{background:var(--or-fond); border-color:var(--or-trait)}
+.mon-com.fait .mc-t{color:var(--or-fonce)}
 
 /* ═══ Après le choix d'un avis : on invite vraiment à écrire ═══ */
 .apres-avis{margin-top:14px; background:var(--fond); border:1px solid var(--trait);
@@ -3558,9 +3648,20 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   line-height:1.2}
 .vav-b{text-transform:none; font-size:11px; font-weight:800; letter-spacing:.6px; border-radius:99px;
   padding:3px 10px; background:var(--or); color:#1a2332}
-.vav-b2{position:relative; margin-top:7px; font-size:14px; font-weight:700; color:rgba(255,255,255,.92); line-height:1.4}
-.vav-a{position:relative; display:flex; align-items:center; gap:7px; margin-top:5px; font-size:12.5px;
-  color:rgba(255,255,255,.55)}
+.vav-bien{position:relative; display:flex; align-items:center; gap:13px; width:100%; margin-top:12px;
+  padding:9px 11px 9px 9px; border-radius:14px; text-align:left; font-family:inherit;
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14); color:inherit;
+  transition:background .18s, border-color .18s}
+button.vav-bien{cursor:pointer}
+button.vav-bien:hover{background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.28)}
+.vav-ph{flex:0 0 auto; width:62px; height:52px; border-radius:10px; overflow:hidden; background:rgba(255,255,255,.1);
+  display:flex; align-items:center; justify-content:center}
+.vav-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.vav-ph-vide{color:rgba(255,255,255,.4)}
+.vav-txt{display:flex; flex-direction:column; gap:3px; min-width:0}
+.vav-b2{font-size:14px; font-weight:700; color:rgba(255,255,255,.94); line-height:1.35}
+.vav-a{display:flex; align-items:center; gap:6px; font-size:12.5px; color:rgba(255,255,255,.55)}
+.vav-voir{display:flex; align-items:center; gap:5px; margin-top:2px; font-size:11.5px; font-weight:700; color:var(--or)}
 .vav-ag{position:relative; margin-top:14px; padding-top:13px; border-top:1px solid rgba(255,255,255,.14)}
 .vav-ag-t{display:block; font-size:10px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase;
   color:rgba(255,255,255,.5)}
@@ -3571,6 +3672,10 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   transition:background .18s}
 .vav-ics:hover{background:rgba(255,255,255,.2)}
 .vav-p{position:relative; margin-top:10px; font-size:12px; color:rgba(255,255,255,.5)}
+
+/* Le rendez-vous rappelé sur la carte du bien, dans « Mes derniers biens consultés » */
+.rdv-l{display:flex; align-items:center; gap:7px; margin-top:9px; padding:6px 10px; border-radius:9px;
+  background:#f5f3ff; border:1px solid #ddd6fe; color:#6d28d9; font-size:12.5px; font-weight:700}
 
 
 /* ═══ Les bilans de la page « marché » ═══ */
