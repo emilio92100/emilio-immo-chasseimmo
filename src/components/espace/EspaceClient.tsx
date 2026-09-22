@@ -526,6 +526,10 @@ function useNotifications(token: string) {
 
   const abonner = useCallback(async (reg: ServiceWorkerRegistration) => {
     try {
+      /* Le veilleur doit être ACTIF, pas seulement enregistré. S'abonner sur un
+         veilleur encore en cours d'installation échoue sur Android — et c'est
+         silencieux. Cette ligne attend qu'il soit vraiment en place. */
+      await navigator.serviceWorker.ready;
       const deja = await reg.pushManager.getSubscription();
       const ab = deja || await reg.pushManager.subscribe({
         /* Obligatoire : on s'engage à toujours montrer quelque chose au
@@ -533,12 +537,19 @@ function useNotifications(token: string) {
         userVisibleOnly: true,
         applicationServerKey: enOctets(CLE_PUBLIQUE),
       });
-      await fetch('/api/espace/push', {
+      const r = await fetch('/api/espace/push', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, abonnement: ab.toJSON() }),
       });
-      return true;
-    } catch { return false; }
+      const d = await r.json().catch(() => null);
+      /* Trace dans la console du navigateur : si un jour ça ne marche pas chez
+         un client, c'est ici qu'on lira pourquoi, au lieu de deviner. */
+      if (!d?.ok) console.warn('[espace] abonnement aux notifications refusé', d?.error || r.status);
+      return !!d?.ok;
+    } catch (e) {
+      console.warn('[espace] abonnement aux notifications impossible', e);
+      return false;
+    }
   }, [token]);
 
   useEffect(() => {
@@ -562,8 +573,14 @@ function useNotifications(token: string) {
   }, [abonner]);
 
   const demander = useCallback(async () => {
-    const reg = veilleur.current;
-    if (!reg) return false;
+    /* ⚠️ On demande l'autorisation AVANT toute autre chose, et sans dépendre
+       de quoi que ce soit d'autre.
+
+       La version précédente commençait par vérifier que le veilleur était prêt,
+       et abandonnait sinon — sans rien demander. Résultat : le client voyait
+       notre fenêtre, disait oui… et celle d'Android n'arrivait jamais. Or
+       Android ne pose la question qu'une fois, dans la seconde qui suit le
+       geste du client : tout ce qui retarde ce moment le fait rater. */
     let reponse = Notification.permission;
     if (reponse === 'default') reponse = await Notification.requestPermission();
     if (reponse !== 'granted') {
@@ -571,8 +588,17 @@ function useNotifications(token: string) {
       ecrire('non');
       return false;
     }
+
     setEtat('oui');
     ecrire('ok');
+
+    /* L'autorisation est acquise ; on peut prendre le temps qu'il faut pour
+       le reste. Si le veilleur n'est pas encore là, on l'installe maintenant. */
+    let reg = veilleur.current;
+    if (!reg) {
+      try { reg = await navigator.serviceWorker.register('/sw.js'); veilleur.current = reg; }
+      catch (e) { console.warn('[espace] veilleur impossible à installer', e); return false; }
+    }
     return abonner(reg);
   }, [abonner]);
 
@@ -649,7 +675,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const t = setTimeout(() => {
       setADemander(false);
       montrer(<DemandeNotif
-        onOui={async () => { await notif.demander(); fermer(); }}
+        onOui={async () => { const ok = await notif.demander(); if (ok) fermer(); return ok; }}
         onNon={() => { notif.refuser(); fermer(); }} />, 'pleine');
     }, 1200);
     return () => clearTimeout(t);
@@ -2910,8 +2936,18 @@ function Bienvenue({ client, onFermer }: any) {
    téléphone, qui arrive juste après s'il dit oui, ne se présente qu'une fois
    dans la vie du dossier — d'où ce filtre en amont. On explique d'abord, on
    demande ensuite. */
-function DemandeNotif({ onOui, onNon }: { onOui: () => void; onNon: () => void }) {
+function DemandeNotif({ onOui, onNon }: { onOui: () => Promise<boolean>; onNon: () => void }) {
   const [envoi, setEnvoi] = useState(false);
+  const [echec, setEchec] = useState(false);
+
+  /* Un échec ne doit pas se solder par une fenêtre qui se referme sans rien
+     dire : le client croirait que c'est fait, et n'aurait jamais de nouvelles. */
+  const accepter = async () => {
+    setEnvoi(true); setEchec(false);
+    const ok = await onOui();
+    if (!ok) { setEnvoi(false); setEchec(true); }
+  };
+
   return (
     <div className="bienv">
       <div className="bienv-sceau"><Ico n="etincelle" t={28} /></div>
@@ -2926,13 +2962,20 @@ function DemandeNotif({ onOui, onNon }: { onOui: () => void; onNon: () => void }
         <span><span className="k"><Ico n="check" t={15} /></span><span>Vous pouvez les couper quand vous voulez, depuis les réglages de votre téléphone.</span></span>
       </div>
       <button className="btn or" style={{ marginTop: 22, width: '100%' }} disabled={envoi}
-        onClick={() => { setEnvoi(true); onOui(); }}>
-        {envoi ? 'Un instant…' : 'Oui, prévenez-moi'}
+        onClick={accepter}>
+        {envoi ? 'Un instant…' : echec ? 'Réessayer' : 'Oui, prévenez-moi'}
       </button>
       <button className="btn fant" style={{ marginTop: 10, width: '100%' }} onClick={onNon}>
-        Non merci
+        {echec ? 'Fermer' : 'Non merci'}
       </button>
-      <div className="bienv-pied">Votre téléphone va vous demander confirmation juste après.</div>
+      {echec ? (
+        <div className="bienv-pied" style={{ color: 'var(--brique)' }}>
+          Votre téléphone n&apos;a pas donné son accord. Vous pouvez réessayer, ou le faire plus
+          tard depuis «&nbsp;M&apos;avertir des nouveaux biens&nbsp;» sur votre accueil.
+        </div>
+      ) : (
+        <div className="bienv-pied">Votre téléphone va vous demander confirmation juste après.</div>
+      )}
     </div>
   );
 }
