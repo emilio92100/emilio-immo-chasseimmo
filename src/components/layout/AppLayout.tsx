@@ -51,6 +51,38 @@ export default function AppLayout() {
   const [chargeFiche, setChargeFiche] = useState(false);
   const contenu = useRef<HTMLElement>(null);
 
+  /* ── La session Supabase, sans laquelle le CRM est aveugle ──
+     Deux serrures protègent ce CRM : le cookie, qui autorise l'affichage des
+     pages, et la session Supabase, qui autorise la lecture des données (le
+     RLS — voir migration-rls.sql). Le cookie tient trente jours, la session
+     beaucoup moins.
+
+     Sans ce garde-fou, une session perdue donnerait des écrans parfaitement
+     vides, sans le moindre message : les pages s'affichent (le cookie est
+     bon), mais chaque requête revient sans rien. On préfère renvoyer vers la
+     page de connexion, qui dit au moins quoi faire.
+
+     `onAuthStateChange` couvre aussi la déconnexion depuis un autre onglet. */
+  useEffect(() => {
+    let vivant = true;
+
+    const dehors = async () => {
+      try { await fetch('/api/login', { method: 'DELETE' }); } catch { /* on sort quand même */ }
+      window.location.href = '/login';
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (vivant && !data.session) dehors();
+    });
+
+    const { data: ecoute } = supabase.auth.onAuthStateChange((evenement, session) => {
+      if (!vivant) return;
+      if (evenement === 'SIGNED_OUT' || (!session && evenement !== 'INITIAL_SESSION')) dehors();
+    });
+
+    return () => { vivant = false; ecoute.subscription.unsubscribe(); };
+  }, []);
+
   /* Le serveur rend la page sans connaître l'URL du navigateur : on la lit
      après le montage, puis on ouvre ce qu'elle désigne. Le même chemin sert
      au retour arrière du navigateur. */
