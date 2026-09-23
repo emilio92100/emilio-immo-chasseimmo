@@ -186,7 +186,8 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
           <table role="presentation" width="100%"><tr>
             <td>
               <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
+              <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
+              <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
             <td align="right" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
@@ -219,6 +220,148 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
 
 
 
+/* ══ Le mail de bienvenue ══
+   Il part une fois, à l'ouverture de la recherche. Son seul travail : faire
+   ouvrir l'espace et le faire poser sur l'écran d'accueil du téléphone. Un
+   client qui l'a installé reçoit les biens en notification ; les autres
+   attendent un mail qu'ils ouvriront peut-être.
+
+   Pas de biens dedans, pas de chiffres : c'est une mise en route, pas une
+   proposition. Et un seul bouton — plusieurs liens dilueraient le geste. */
+function buildBienvenue(opts: { prenom: string; token?: string | null }): string {
+  const { prenom, token } = opts;
+  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const puce = (t: string, d: string) => `
+    <tr><td style="padding:0 0 13px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td width="22" valign="top" style="padding-top:3px;color:${DORE};font-size:15px;line-height:1;">&#9679;</td>
+        <td style="font-size:14px;color:${BLEU};line-height:1.6;">
+          <b style="font-weight:700;">${escapeHtml(t)}</b><br/>
+          <span style="color:#6b7b90;font-size:13.5px;">${escapeHtml(d)}</span>
+        </td>
+      </tr></table>
+    </td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Emilio Immobilier</title>
+<style>
+  @media only screen and (max-width:600px) { .sheet { width:100% !important; } }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+    <tr><td align="center" style="padding:26px 12px;">
+
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+
+        <tr><td style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td style="padding:30px 28px 0;">
+          <div style="font-size:21px;font-weight:700;color:${BLEU};line-height:1.3;">Bonjour ${escapeHtml(prenom)},</div>
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+            Votre recherche est enregistrée. J&#39;ai maintenant ce qu&#39;il me faut pour parcourir
+            le marché pour vous, et je vous ai ouvert un espace personnel où tout se retrouve
+            au même endroit.
+          </div>
+        </td></tr>
+
+        <tr><td align="center" style="padding:24px 28px 6px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td align="center" style="background:${DORE};border-radius:12px;">
+              <a href="${lien}" style="display:inline-block;padding:15px 34px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">Ouvrir mon espace</a>
+            </td>
+          </tr></table>
+          <div style="font-size:12px;color:#9aa6ba;margin-top:11px;">Ce lien est le vôtre, il ne change pas.</div>
+        </td></tr>
+
+        <tr><td style="padding:24px 28px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            ${puce('Les biens retenus pour vous', 'Ils arrivent au fil de l’eau. Vous dites en un geste ce que vous en pensez — et c’est ce qui affine la suite.')}
+            ${puce('Vos critères, modifiables à tout moment', 'Un budget qui bouge, un secteur à ajouter : vous le changez vous-même, j’en tiens compte dès la recherche suivante.')}
+            ${puce('L’avancée de votre dossier', 'Ce qui a été parcouru, ce qui a été retenu, vos visites à venir.')}
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:6px 28px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #ecdcb4;border-radius:14px;">
+            <tr><td style="padding:16px 18px;">
+              <div style="font-size:14px;font-weight:700;color:${BLEU};">Le conseil qui change tout</div>
+              <div style="font-size:13.5px;color:#5a6b80;line-height:1.65;margin-top:6px;">
+                Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
+                (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
+                prévenu dès qu&#39;un bien vous est proposé, sans avoir à guetter vos mails —
+                et sur ce marché, quelques heures font souvent la différence.
+              </div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:22px 28px 26px;">
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+            Une question, une précision à me donner&nbsp;? Répondez simplement à ce message,
+            ou appelez-moi.
+          </div>
+        </td></tr>
+
+        <tr><td style="background:${BLEU};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td>
+              <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
+            </td>
+            <td align="right" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+          </tr></table>
+        </td></tr>
+
+      </table>
+
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+        <tr><td align="center" style="padding:16px 28px 6px;">
+          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+            Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
+              lienFin(token)
+                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                : ''
+            }
+          </div>
+        </td></tr>
+      </table>
+
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function texteBienvenue(prenom: string, token?: string | null): string {
+  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  return `Bonjour ${prenom},
+
+Votre recherche est enregistrée. J'ai maintenant ce qu'il me faut pour parcourir le marché pour vous, et je vous ai ouvert un espace personnel où tout se retrouve au même endroit.
+
+Ouvrir mon espace : ${lien}
+Ce lien est le vôtre, il ne change pas.
+
+Vous y trouverez les biens retenus pour vous, vos critères — modifiables à tout moment — et l'avancée de votre dossier.
+
+Le conseil qui change tout : ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d'accueil. Vous serez prévenu dès qu'un bien vous est proposé, sans avoir à guetter vos mails.
+
+Une question ? Répondez à ce message, ou appelez-moi.
+
+Alexandre ROGELET — Emilio Immobilier
+06 58 95 76 32${lienFin(token) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''}`;
+}
+
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.MAILJET_API_KEY;
@@ -235,14 +378,20 @@ export async function POST(req: NextRequest) {
       corps: string;
       biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
-      mode?: 'libre' | 'biens';       // 'libre' = pas de biens (mail texte), 'biens' = avec biens (défaut)
+      mode?: 'libre' | 'biens' | 'bienvenue'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'biens' = défaut
     };
+    /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
+       et surtout aucun bien. On le traite donc avant les contrôles. */
+    const bienvenue = mode === 'bienvenue';
 
     if (!Array.isArray(client_ids) || client_ids.length === 0) {
       return NextResponse.json({ error: 'Aucun destinataire' }, { status: 400 });
     }
-    if (!objet?.trim()) {
+    if (!bienvenue && !objet?.trim()) {
       return NextResponse.json({ error: "L'objet est obligatoire" }, { status: 400 });
+    }
+    if (bienvenue && !recherche_id) {
+      return NextResponse.json({ error: 'Recherche manquante' }, { status: 400 });
     }
 
     // Récupère clients
@@ -267,7 +416,7 @@ export async function POST(req: NextRequest) {
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
     let tousBiens: (BienLite & { client_id: string })[] = [];
-    if (mode !== 'libre') {
+    if (mode !== 'libre' && !bienvenue) {
       let query = supabase
         .from('biens')
         .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour')
@@ -301,8 +450,13 @@ export async function POST(req: NextRequest) {
       }
 
       const biensClient = tousBiens.filter(b => b.client_id === client.id);
-      const corpsPerso = corps.replace(/\{\{prénom\}\}/g, client.prenom);
-      const html = buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: tokenEspace });
+      const corpsPerso = bienvenue
+        ? texteBienvenue(client.prenom, tokenEspace)
+        : corps.replace(/\{\{prénom\}\}/g, client.prenom);
+      const objetFinal = bienvenue ? 'Votre espace de recherche est ouvert' : objet;
+      const html = bienvenue
+        ? buildBienvenue({ prenom: client.prenom, token: tokenEspace })
+        : buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: tokenEspace });
       const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, tokenEspace)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
         lienFin(tokenEspace) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(tokenEspace)}` : ''
       }`;
@@ -318,8 +472,8 @@ export async function POST(req: NextRequest) {
             Messages: [{
               From: { Email: FROM_EMAIL, Name: FROM_NAME },
               To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
-              Subject: objet,
-              TextPart: text,
+              Subject: objetFinal,
+              TextPart: bienvenue ? corpsPerso : text,
               HTMLPart: html,
               CustomID: `chasse-${client.id}-${Date.now()}`,
               TrackOpens: 'disabled',
@@ -332,18 +486,31 @@ export async function POST(req: NextRequest) {
         const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
 
         if (ok) {
-          const typeEnvoi = biensClient.length === 0 ? 'mail_libre' : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
+          /* Le mail de bienvenue ne part qu'une fois : on horodate la recherche,
+             et c'est cette date qui grise le bouton dans le CRM. On l'écrit
+             après l'envoi, jamais avant — un échec Mailjet ne doit pas
+             condamner le bouton. */
+          if (bienvenue) {
+            await supabase.from('recherches')
+              .update({ bienvenue_envoye_le: new Date().toISOString() })
+              .eq('id', recherche_id);
+          }
+          const typeEnvoi = bienvenue ? 'mail_libre'
+            : biensClient.length === 0 ? 'mail_libre'
+              : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
           await supabase.from('envois').insert({
             client_id: client.id,
             recherche_id: recherche_id || null,
             type: typeEnvoi,
-            objet,
+            objet: objetFinal,
             corps: corpsPerso,
             destinataires: emails,
             biens_ids: biensClient.map(b => b.id),
             sms_envoye: false,
           });
-          const titreJournal = biensClient.length === 0
+          const titreJournal = bienvenue
+            ? '👋 Mail de bienvenue envoyé'
+            : biensClient.length === 0
             ? `✉️ Mail envoyé — ${objet}`
             : biensClient.length === 1
               ? `📤 Bien envoyé — ${biensClient[0].titre || biensClient[0].ville || 'bien'}`
