@@ -689,6 +689,44 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
   }
 
+  /* Le mail de bienvenue. Une confirmation avant, parce qu'un mail parti ne
+     se rattrape pas ; et la date se pose côté serveur, après l'accusé de
+     Mailjet seulement — un échec ne doit pas condamner le bouton. */
+  const [envoiBienvenue, setEnvoiBienvenue] = useState(false);
+  async function envoyerBienvenue() {
+    if (!rechercheActive || rechercheActive.bienvenue_envoye_le || envoiBienvenue) return;
+    const dest = (client.emails || []).filter((e: string) => e && e.includes('@'));
+    if (dest.length === 0) {
+      alert("Ce client n'a pas d'adresse mail valide.");
+      return;
+    }
+    if (!confirm(`Envoyer le mail de bienvenue à ${dest.join(', ')} ?\n\nIl contient le lien de son espace et l'invite à l'installer sur son téléphone. Il ne peut être envoyé qu'une fois.`)) return;
+    setEnvoiBienvenue(true);
+    try {
+      const r = await fetch('/api/send-mail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_ids: [client.id], recherche_id: rechercheActive.id, mode: 'bienvenue',
+          objet: '', corps: '',
+        }),
+      });
+      const d = await r.json();
+      if (!d?.success) {
+        alert(`Le mail n'est pas parti : ${d?.results?.[0]?.error || d?.error || 'erreur inconnue'}`);
+        return;
+      }
+      /* On relit la recherche plutôt que de deviner : c'est le serveur qui a
+         posé la date, et c'est elle qui fait foi. */
+      const { data } = await supabase.from('recherches').select('*').eq('id', rechercheActive.id).single();
+      if (data) setRecherches(rs => rs.map(x => x.id === (data as Recherche).id ? (data as Recherche) : x));
+      await addJournal(client.id, 'mail_envoye', '👋 Mail de bienvenue envoyé');
+    } catch (e) {
+      alert(`Le mail n'est pas parti : ${(e as Error).message}`);
+    } finally {
+      setEnvoiBienvenue(false);
+    }
+  }
+
   async function renommerRecherche() {
     if (!rechercheActive) return;
     const nom = prompt('Renommer la recherche :', rechercheActive.nom);
@@ -2454,6 +2492,23 @@ Emilio Immobilier
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: '0 0 0 3px rgba(239,68,68,.16)' }}>{histoNonVus}</span>
                   )}
+                </button>
+                {/* Le mail de mise en route. Il part une fois, à l'ouverture de
+                    la recherche : c'est lui qui fait poser l'espace sur l'écran
+                    d'accueil du client, et donc qui décide s'il recevra les
+                    biens en notification ou s'il les découvrira trois jours
+                    plus tard dans sa boîte mail. */}
+                <button className={styles.editBtn} onClick={envoyerBienvenue}
+                  disabled={!!rechercheActive?.bienvenue_envoye_le || envoiBienvenue}
+                  title={rechercheActive?.bienvenue_envoye_le
+                    ? `Déjà envoyé le ${new Date(rechercheActive.bienvenue_envoye_le).toLocaleDateString('fr-FR')}`
+                    : 'Envoyer au client son lien d’espace et l’inviter à l’installer sur son téléphone'}
+                  style={rechercheActive?.bienvenue_envoye_le
+                    ? { opacity: .45, cursor: 'default' }
+                    : undefined}>
+                  {envoiBienvenue ? '⏳ Envoi…'
+                    : rechercheActive?.bienvenue_envoye_le ? '✓ Bienvenue envoyée'
+                      : '👋 Mail de bienvenue'}
                 </button>
                 <button className={styles.editBtn} onClick={() => ouvrirCriteres()}>✏️ Modifier</button>
               </span>
