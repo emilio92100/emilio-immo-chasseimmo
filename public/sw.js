@@ -56,6 +56,15 @@ self.addEventListener('push', (event) => {
       }
     } catch (e) { /* tous les téléphones ne savent pas le faire */ }
 
+    /* Si l'espace est ouvert quelque part — au premier plan ou en veille
+       derrière une autre application — on le prévient : il se remettra à jour
+       tout seul, et le client ne trouvera jamais un écran qui dément la
+       notification qu'il vient de lire. */
+    try {
+      const fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const f of fenetres) f.postMessage({ type: 'emilio-nouveau' });
+    } catch (e) { /* sans effet sur la notification */ }
+
     await self.registration.showNotification(n.titre, {
       body: n.corps,
       icon: ICONE,
