@@ -70,6 +70,11 @@ export interface Client {
   reference: string
   prenom: string
   nom: string
+  /* Le lien permanent de son espace acheteur. Un seul par client, quel que
+     soit le nombre de recherches ouvertes ensuite (voir src/lib/espace.ts).
+     Les jetons posés sur les recherches restent valables : ce sont les liens
+     déjà envoyés, et ils retombent tout seuls sur celui-ci. */
+  token_espace?: string
   adresse?: string
   emails: string[]
   telephones: string[]
