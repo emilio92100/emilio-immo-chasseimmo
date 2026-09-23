@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { lienEspace } from '@/lib/jeton';
+import { lienEspace, lienBienPublic } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
 
 export const runtime = 'nodejs';
@@ -57,7 +57,7 @@ function escapeHtml(s: string) {
    nouveaux jetons, l'ancienne pour les liens déjà envoyés (voir
    src/lib/jeton.ts). Un client ne verra donc jamais son lien changer. */
 function lienBien(b: BienLite, token?: string | null, recherche?: string | null): string {
-  if (!token) return `${SITE_URL}/bien/${b.id}`;
+  if (!token) return lienBienPublic(b.id);
   /* `r` dit sur quelle recherche ouvrir l'espace. Sans lui, un client qui en
      a deux pourrait arriver sur l'autre, et la fiche ne s'ouvrirait pas :
      elle n'y existe pas (voir src/lib/espace.ts). */
