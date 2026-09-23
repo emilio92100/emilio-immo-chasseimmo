@@ -194,6 +194,34 @@ export async function ouvrirEspace(
 }
 
 /**
+ * À qui appartient ce lien, sans rien charger d'autre.
+ *
+ * Sert quand `ouvrirEspace` a rendu `null` : on ne sait pas encore si le lien
+ * est inconnu — une adresse recopiée de travers — ou s'il appartient bien à
+ * un client qui n'a simplement plus de recherche ouverte. Les deux méritent
+ * un écran différent : « ce lien n'est plus actif » d'un côté, « votre
+ * recherche est en préparation » de l'autre.
+ */
+export async function clientDuJeton(supabase: Base, token: string): Promise<ClientEspace | null> {
+  if (!jetonPlausible(token)) return null;
+
+  const { data } = await supabase
+    .from('clients')
+    .select('id, prenom, nom, reference, token_espace, created_at')
+    .eq('token_espace', token)
+    .maybeSingle();
+  if (data) return data as ClientEspace;
+
+  const { data: parRecherche } = await supabase
+    .from('recherches')
+    .select('clients(id, prenom, nom, reference, token_espace, created_at)')
+    .eq('token_espace', token)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((parRecherche as any)?.clients as ClientEspace) || null;
+}
+
+/**
  * Ce que l'espace affiche dans son sélecteur.
  *
  * Le nom d'une recherche est saisi par Alexandre (« Recherche principale »,
