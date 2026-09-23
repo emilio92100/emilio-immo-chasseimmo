@@ -33,6 +33,7 @@ type BienLite = {
   id: string; titre: string | null; type_bien: string | null;
   surface: number | null; nb_pieces: number | null;
   ville: string | null; quartier: string | null;
+  recherche_id: string;
 };
 
 /* « 3 pièces · 68 m² · Boulogne-Billancourt » — de quoi reconnaître le bien
@@ -63,29 +64,61 @@ export async function POST(req: NextRequest) {
     const supabase = base();
 
     const { data: abonnement } = await supabase
-      .from('push_abonnements').select('recherche_id').eq('endpoint', endpoint).maybeSingle();
+      .from('push_abonnements').select('client_id, recherche_id').eq('endpoint', endpoint).maybeSingle();
     if (!abonnement) return NextResponse.json(repli);
 
-    const { data: recherche } = await supabase
-      .from('recherches').select('id, token_espace, espace_actif')
-      .eq('id', abonnement.recherche_id).maybeSingle();
-    if (!recherche || recherche.espace_actif === false) return NextResponse.json(repli);
+    /* ⚠️ On raisonne par CLIENT, plus par recherche. Une seule application
+       porte tout son dossier (voir src/lib/espace.ts) : si on ne comptait que
+       la recherche sous laquelle il s'est abonné, la pastille de l'icône
+       mentirait dès qu'un bien arrive sur l'autre. */
+    let clientId = (abonnement.client_id as string | null) || null;
+    let jeton: string | null = null;
 
-    const lien = lienEspace(recherche.token_espace, SITE) || SITE;
+    if (clientId) {
+      const { data: c } = await supabase
+        .from('clients').select('token_espace').eq('id', clientId).maybeSingle();
+      jeton = (c?.token_espace as string) || null;
+    }
 
-    /* Les biens présentés que le client n'a pas encore ouverts. C'est ce
-       chiffre-là qui fait la notification ET la pastille sur l'icône : les
-       deux disent forcément la même chose. */
+    /* Un abonnement d'avant la bascule, ou un client qui n'a pas encore son
+       lien permanent : on remonte par la recherche. */
+    if (!clientId || !jeton) {
+      const { data: r } = await supabase
+        .from('recherches').select('client_id, token_espace, clients(token_espace)')
+        .eq('id', abonnement.recherche_id).maybeSingle();
+      if (!r) return NextResponse.json(repli);
+      clientId = clientId || (r.client_id as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      jeton = jeton || ((r as any).clients?.token_espace as string) || (r.token_espace as string) || null;
+    }
+    if (!clientId) return NextResponse.json(repli);
+
+    const { data: toutes } = await supabase
+      .from('recherches').select('id, espace_actif').eq('client_id', clientId);
+    const visibles = (toutes || []).filter((r) => r.espace_actif !== false);
+    if (visibles.length === 0) return NextResponse.json(repli);
+
+    const lien = lienEspace(jeton, SITE) || SITE;
+
+    /* Les biens présentés que le client n'a pas encore ouverts, toutes
+       recherches confondues. C'est ce chiffre-là qui fait la notification ET
+       la pastille sur l'icône : les deux disent forcément la même chose. */
     const { data: biens } = await supabase
       .from('biens')
-      .select('id, titre, type_bien, surface, nb_pieces, ville, quartier')
-      .eq('recherche_id', recherche.id)
+      .select('id, titre, type_bien, surface, nb_pieces, ville, quartier, recherche_id')
+      .in('recherche_id', visibles.map((r) => r.id))
       .eq('etape', 'presente')
       .is('vu_le', null)
       .order('envoye_le', { ascending: false, nullsFirst: false });
 
     const liste = (biens || []) as BienLite[];
     const n = liste.length;
+
+    /* Le lien ouvre l'espace sur la bonne recherche. Quand le nouveau est
+       réparti sur plusieurs, on n'en choisit aucune : le client arrive sur
+       celle où il y a le plus récent, et le sélecteur lui montre le reste. */
+    const memeRecherche = n > 0 && liste.every((b) => b.recherche_id === liste[0].recherche_id);
+    const vers = memeRecherche ? `${lien}?r=${liste[0].recherche_id}` : lien;
 
     /* Il a déjà tout ouvert entre l'envoi et maintenant. Rare, mais ça arrive :
        on ne lui annonce pas un bien qu'il vient de lire. */
@@ -102,7 +135,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         titre: 'Un nouveau bien pour vous',
         corps: decrire(liste[0]),
-        url: `${lien}?bien=${liste[0].id}`,
+        url: `${lien}?r=${liste[0].recherche_id}&bien=${liste[0].id}`,
         pastille: 1,
       });
     }
@@ -110,7 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       titre: `${n} nouveaux biens vous attendent`,
       corps: `Dont ${decrire(liste[0])}.`,
-      url: lien,
+      url: vers,
       pastille: n,
     });
   } catch {
