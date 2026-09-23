@@ -12,7 +12,15 @@
  */
 
 const CONTENU = '/api/espace/push/contenu';
+
+/* Deux images, et surtout pas la même.
+     ICONE      la grande, à droite quand on déroule la notification. En couleur.
+     SILHOUETTE la minuscule, en haut dans la barre d'état. Android n'en garde
+                que la forme : il jette les couleurs et remplit ce qui n'est pas
+                transparent. Lui donner l'icône dorée pleine donnait un carré
+                blanc — la silhouette d'un carré plein, c'est un carré. */
 const ICONE = '/icone?t=192';
+const SILHOUETTE = '/icone?t=96&mono=1';
 
 /* Une nouvelle version remplace l'ancienne tout de suite, sans attendre que
    le client ferme tous ses onglets. */
@@ -68,7 +76,7 @@ self.addEventListener('push', (event) => {
     await self.registration.showNotification(n.titre, {
       body: n.corps,
       icon: ICONE,
-      badge: ICONE,
+      badge: SILHOUETTE,
       lang: 'fr',
       /* Même étiquette pour tous : une deuxième notification remplace la
          première au lieu d'en empiler cinq. « renotify » fait quand même
