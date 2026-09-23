@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { lienBienPublic } from '@/lib/jeton';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -420,7 +421,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const { data: cl } = await supabase.from('clients')
           .select('prenom, nom').eq('id', recherche.client_id).maybeSingle();
         const prenom = cl?.prenom || 'Votre contact';
-        const lien = `${SITE}/bien/${bien.id}`;
+        /* Le domaine d'Emilio, pas celui de Vercel : ce lien part chez un
+           proche du client, il doit avoir l'air de ce qu'il est. */
+        const lien = lienBienPublic(bien.id as string);
         const prix = bien.prix_acquereur || bien.prix_vendeur;
         const carac = [bien.surface ? bien.surface + ' m²' : null,
           bien.nb_pieces ? bien.nb_pieces + ' pièce' + (bien.nb_pieces > 1 ? 's' : '') : null,
@@ -445,8 +448,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   </div>
   <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:24px">
     <p style="margin:0 0 16px">Bonjour,</p>
-    <p style="margin:0 0 20px;line-height:1.7">Voici un bien que je suis en train de regarder avec mon chasseur
-      immobilier. Dites-moi ce que vous en pensez.</p>
+    <p style="margin:0 0 20px;line-height:1.7">Voici un bien que je suis en train de regarder.
+      Dites-moi ce que vous en pensez.</p>
     <div style="border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc;overflow:hidden">
       ${photo ? `<img src="${echappe(photo)}" alt="" width="510" style="width:100%;max-width:510px;height:auto;display:block;border:0" />` : ''}
       <div style="padding:16px">
@@ -461,7 +464,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     <p style="margin:20px 0 0">${prenom}</p>
     <hr style="border:none;border-top:1px solid #e3e8f0;margin:24px 0 14px">
     <div style="font-size:12px;color:#94a3b8;line-height:1.6">
-      Fiche transmise par ${prenom} · Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32<br>
+      Fiche transmise par ${prenom}.<br>
+      Ce bien est présenté par Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32<br>
       Emilio Immobilier — RT Conseils · CPI 9201 2020 000 045 344
     </div>
   </div>
@@ -475,7 +479,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
               From: { Email: FROM_EMAIL, Name: FROM_NAME },
               To: [{ Email: dest }],
               Subject: `${prenom} vous partage un bien`,
-              TextPart: `Bonjour,\n\nVoici un bien que je suis en train de regarder avec mon chasseur immobilier.\n\n${bien.titre || ''}\n${[carac, prix ? Number(prix).toLocaleString('fr-FR') + ' \u20ac' : null].filter(Boolean).join(' \u00b7 ')}\n${lien}\n\n${prenom}\n\n— Alexandre Rogelet, Emilio Immobilier, 06 58 95 76 32`,
+              TextPart: `Bonjour,\n\nVoici un bien que je suis en train de regarder. Dites-moi ce que vous en pensez.\n\n${bien.titre || ''}\n${[carac, prix ? Number(prix).toLocaleString('fr-FR') + ' \u20ac' : null].filter(Boolean).join(' \u00b7 ')}\n${lien}\n\n${prenom}\n\n---\nFiche transmise par ${prenom}.\nCe bien est présenté par Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32\nEmilio Immobilier — RT Conseils · CPI 9201 2020 000 045 344`,
               HTMLPart: html,
               CustomID: `partage-${bien.id}-${Date.now()}`,
               TrackOpens: 'disabled', TrackClicks: 'disabled',
