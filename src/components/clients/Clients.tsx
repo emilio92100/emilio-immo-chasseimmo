@@ -525,6 +525,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
       const { data, error: err } = await supabase.from('clients').insert({
         reference, prenom: form.prenom || '', nom: form.nom || '',
+        /* Le lien de l'espace naît avec le client, pas avec la recherche.
+           C'est LE lien qu'on lui enverra : un seul, définitif, même s'il
+           ouvre trois recherches par la suite (voir src/lib/espace.ts). */
+        token_espace: jetonEspace(form.prenom, form.nom),
         adresse: adresse || null,
         emails, telephones, statut: form.statut,
         statut_occupation: form.statut_occupation || null,
@@ -547,8 +551,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
-          /* Le lien court de l'espace acheteur, posé dès la création :
-             espace.emilio-immo.com/dupont-k3n8vq2fab (voir src/lib/jeton.ts). */
+          /* L'adresse interne de la recherche. Elle ne s'envoie plus au
+             client — c'est le jeton du client, ci-dessus, qu'il reçoit — mais
+             les routes /api/espace/ s'en servent pour savoir de quelle
+             recherche l'espace parle. */
           token_espace: jetonEspace(form.prenom, form.nom),
           active: form.statut === 'actif',
           type_bien: crit.types_bien.length ? crit.types_bien.join(', ') : null,
