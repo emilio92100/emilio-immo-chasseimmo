@@ -26,7 +26,28 @@ const OR_CLAIR = '#dcc271';
 const OR_FONCE = '#b8923a';
 const ENCRE = '#1a2332';
 
-const TAILLES = [180, 192, 512];
+const TAILLES = [96, 180, 192, 512];
+
+/**
+ * La version « silhouette », pour la barre d'état d'Android : /icone?mono=1
+ *
+ * Android ne dessine pas cette petite icône-là. Il n'en garde que la forme —
+ * il jette les couleurs et remplit ce qui n'est pas transparent. Lui donner
+ * l'icône normale, un carré doré plein, donne donc un carré blanc : c'est
+ * toute la forme qui est pleine.
+ *
+ * D'où cette variante : aucun fond, seulement l'épingle. Sa silhouette est
+ * une épingle, et c'est une épingle qui s'affichera.
+ */
+function silhouette(): string {
+  /* Un seul tracé, avec le rond du milieu en « trou » (fill-rule evenodd) :
+     percée, la forme se lit comme une épingle et non comme une goutte. */
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path fill="#ffffff" fill-rule="evenodd"
+    d="M50 10c-15.5 0-28 12.5-28 28 0 21 28 52 28 52s28-31 28-52c0-15.5-12.5-28-28-28z
+       M50 27.5a10.5 10.5 0 1 0 0 21 10.5 10.5 0 1 0 0-21z"/>
+</svg>`;
+}
 
 /* Tout tient dans un carré de 100 × 100, puis on met à l'échelle. L'épingle va
    de 18 à 82 en hauteur et de 27 à 73 en largeur : elle reste entièrement dans
@@ -46,12 +67,14 @@ function dessin(): string {
 }
 
 export function GET(requete: Request) {
-  const demandee = Number(new URL(requete.url).searchParams.get('t'));
-  const t = TAILLES.includes(demandee) ? demandee : 512;
+  const params = new URL(requete.url).searchParams;
+  const demandee = Number(params.get('t'));
+  const mono = params.get('mono') === '1';
+  const t = TAILLES.includes(demandee) ? demandee : (mono ? 96 : 512);
 
   /* Le dessin passe par une image plutôt que par des balises SVG directes :
      c'est la seule forme que le convertisseur en PNG rend à l'identique. */
-  const source = `data:image/svg+xml;base64,${Buffer.from(dessin()).toString('base64')}`;
+  const source = `data:image/svg+xml;base64,${Buffer.from(mono ? silhouette() : dessin()).toString('base64')}`;
 
   return new ImageResponse(
     (
