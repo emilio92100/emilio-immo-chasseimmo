@@ -1308,7 +1308,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
     if (!confirm('Rouvrir ce dossier ?\n\nLe statut repasse à « Actif » et la veille reprend sur cette recherche.')) return;
     setSaving(true);
     await supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id);
-    if (rechercheId) await supabase.from('recherches').update({ active: true }).eq('id', rechercheId);
+    if (rechercheId) await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId);
     await addJournal(client.id, 'statut_change', '↩️ Dossier rouvert — la veille reprend');
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
     if (data) setClient(data as Client);
@@ -1354,7 +1354,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
        ensemble — seul « Actif » fait chercher. */
     const chercher = statut === 'actif';
     if (chercher) {
-      if (rechercheId) await supabase.from('recherches').update({ active: true }).eq('id', rechercheId);
+      if (rechercheId) await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId);
     } else {
       await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
     }
@@ -2108,7 +2108,11 @@ Emilio Immobilier
      parce qu'un compromis peut tomber et qu'un clic doit suffire à repartir. */
   async function veilleTx(active: boolean, pourquoi: string) {
     if (!rechercheId) return;
-    await supabase.from('recherches').update({ active }).eq('id', rechercheId);
+    /* `updated_at` n'est pas décoratif ici : l'espace du client s'en sert pour
+       savoir si une déclaration de fin de recherche est encore d'actualité.
+       Relancer la veille rallume sa pastille « Recherche en cours ». */
+    await supabase.from('recherches')
+      .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId);
     setRecherches(rs => rs.map(r => r.id === rechercheId ? ({ ...r, active } as Recherche) : r));
     await addJournal(client.id, 'statut_change',
       active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi);
