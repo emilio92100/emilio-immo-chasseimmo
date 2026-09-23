@@ -1521,10 +1521,10 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         {/* Une seule carte, deux issues. Faire évoluer sa recherche ou dire
             qu'elle est finie relèvent du même moment : on les met sous le même
             toit, séparées d'un simple filet. */}
-        <div className="case large bloc-rech">
-          {/* Le cadre vivant s'arrête au trait : « Ma recherche est terminée »
-              n'est pas la même conversation, il reste hors du cadre. */}
-          <button className={'rech-haut' + (enCours ? ' vivant' : '')} onClick={() => aller('recherche')}>
+        {/* Recherche en cours : la carte s'entoure d'une lueur verte qui
+            respire. Voir .bloc-rech.vivant dans la feuille de style. */}
+        <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
+          <button className="rech-haut" onClick={() => aller('recherche')}>
             {/* La pastille se pose contre le picto, là où l'œil arrive en
                 premier. Recherche arrêtée : elle disparaît entièrement, et la
                 carte redevient celle d'avant — pas de trou, pas de mention
@@ -4177,41 +4177,31 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 @keyframes respire{0%,100%{opacity:1; transform:scale(1)}50%{opacity:.55; transform:scale(.78)}}
 @media(max-width:400px){.vif{font-size:11px; padding:4px 10px 4px 9px}}
 
-/* ── Le cadre vivant de « Rappel de ma recherche » ────────────────
-   Un trait vert autour du bloc des critères, qui scintille sur place. Le
-   rythme est volontairement irrégulier — deux battements rapprochés, un
-   temps mort, un éclat plus fort : un aller-retour régulier donnerait un
-   clignotant, pas un scintillement.
+/* ── La carte vivante de « Rappel de ma recherche » ───────────────
+   Recherche en cours : une lueur verte entoure la carte et respire
+   lentement. On ne touche à rien d'autre — le trait de la carte reste
+   gris, comme sur toutes les autres. La couleur est dehors, autour ;
+   l'intérieur ne bouge pas.
 
-   Le cadre se referme sur le trait du bas. « Ma recherche est terminée »
-   reste dehors, et c'est voulu : les deux blocs ne disent pas la même
-   chose. Recherche arrêtée, tout s'éteint d'un coup.
+   C'est la carte entière qui s'éclaire, pas seulement le bloc du haut :
+   encadrer la moitié d'une carte arrondie donne deux angles droits en
+   bas, et ça ne ressemble à rien. Essayé, regardé, abandonné.
 
-   Le trait est écrit une première fois dans la règle, avant l'animation :
+   La lueur est écrite une première fois dans la règle, avant l'animation :
    si l'animation ne part pas — mouvement réduit, vieux navigateur — il
-   reste un cadre vert propre au lieu de rien du tout. */
-.rech-haut.vivant{position:relative;
-  background:linear-gradient(180deg,rgba(34,197,94,.05),rgba(255,255,255,0) 42%)}
-.rech-haut.vivant:hover{
-  background:linear-gradient(180deg,rgba(34,197,94,.12),rgba(34,197,94,.02) 42%)}
-.rech-haut.vivant::before{content:""; position:absolute; inset:0; z-index:3;
-  border-radius:inherit; pointer-events:none;
-  box-shadow:inset 0 0 0 2px rgba(34,197,94,.62), inset 0 0 13px -7px rgba(34,197,94,.55);
-  animation:scintille 3.4s ease-in-out infinite}
-@keyframes scintille{
-  0%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.40), inset 0 0 10px -7px rgba(34,197,94,.40)}
-  16%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.86), inset 0 0 17px -6px rgba(34,197,94,.80)}
-  27%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.50), inset 0 0 11px -7px rgba(34,197,94,.48)}
-  44%{box-shadow:inset 0 0 0 2px rgba(74,222,128,.98), inset 0 0 22px -5px rgba(34,197,94,.92)}
-  58%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.44), inset 0 0 10px -7px rgba(34,197,94,.42)}
-  76%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.72), inset 0 0 15px -6px rgba(34,197,94,.68)}
-  100%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.40), inset 0 0 10px -7px rgba(34,197,94,.40)}}
-/* Qui a demandé moins de mouvement en obtient moins : le cadre reste, vert
-   et net, mais il ne scintille plus et le point ne bat plus. La règle
-   globale plus bas ramène toutes les durées à .01 ms — sur une animation
-   infinie, ce serait pire que tout. */
+   reste une carte doucement éclairée au lieu de rien du tout. */
+.bloc-rech.vivant{
+  box-shadow:var(--ombre), 0 0 0 1px rgba(34,197,94,.27), 0 10px 30px -12px rgba(34,197,94,.5);
+  animation:halo-vif 3.6s ease-in-out infinite}
+@keyframes halo-vif{
+  0%,100%{box-shadow:var(--ombre), 0 0 0 1px rgba(34,197,94,.20), 0 8px 24px -12px rgba(34,197,94,.35)}
+  50%{box-shadow:var(--ombre), 0 0 0 1px rgba(34,197,94,.34), 0 12px 34px -12px rgba(34,197,94,.62)}}
+/* Qui a demandé moins de mouvement en obtient moins : la lueur reste, elle
+   ne respire plus, et le point ne bat plus. La règle globale plus bas
+   ramène toutes les durées à .01 ms — sur une animation infinie, ce serait
+   pire que tout. */
 @media(prefers-reduced-motion:reduce){
-  .rech-haut.vivant::before, .vif-pt{animation:none}
+  .bloc-rech.vivant, .vif-pt{animation:none}
 }
 
 .bloc-rech{padding:0; gap:0; cursor:default}
