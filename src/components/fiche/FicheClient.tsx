@@ -4157,7 +4157,7 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <p style={{ fontSize: 14, color: '#1a2332', margin: 0, lineHeight: 1.6 }}>
-                La fiche et <b>tout ce qu&apos;il y a dessous</b> disparaissent de la base. Il n&apos;y a
+                La fiche et <b>tout ce qu&apos;il y a dessous</b>{' '}disparaissent de la base. Il n&apos;y a
                 pas de corbeille : une fois parti, rien ne se récupère.
               </p>
 
