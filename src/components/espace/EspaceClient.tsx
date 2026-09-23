@@ -702,7 +702,22 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const t = setTimeout(() => {
       setADemander(false);
       montrer(<DemandeNotif
-        onOui={async () => { const r = await notif.demander(); if (r === 'ok') fermer(); return r; }}
+        onOui={async () => {
+          const r = await notif.demander();
+          /* Un accord doit être accusé réception. Sans cet écran, le client
+             vient de dire oui deux fois — à nous, puis à son téléphone — et
+             se retrouve devant sa page comme si rien ne s'était passé. Il
+             doit savoir ce qu'il vient d'obtenir. */
+          if (r === 'ok') {
+            montrer(<GrandOk
+              titre="C'est noté, merci"
+              texte={"Dorénavant, dès qu'un bien est déposé dans votre espace, votre téléphone vous le signale. Vous n'avez plus à venir vérifier : c'est nous qui venons à vous."}
+              rappel="Uniquement pour un nouveau bien — jamais de publicité, jamais de relance. Vous pouvez les couper quand vous voulez depuis les réglages de votre téléphone."
+              bouton="J'ai compris"
+              onFermer={fermer} />, 'pleine');
+          }
+          return r;
+        }}
         onNon={() => { notif.refuser(); fermer(); }} />, 'pleine');
     }, 1200);
     return () => clearTimeout(t);
@@ -3132,14 +3147,14 @@ function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => 
   );
 }
 
-function GrandOk({ titre, texte, rappel, onFermer }: any) {
+function GrandOk({ titre, texte, rappel, bouton, onFermer }: any) {
   return (
     <div className="grandok">
       <div className="rond-ok"><Ico n="check" t={36} /></div>
       <h3>{titre}</h3>
       <p>{texte}</p>
       {rappel && <div className="rappel" dangerouslySetInnerHTML={{ __html: rappel }} />}
-      <button className="btn or" style={{ marginTop: 22 }} onClick={onFermer}>Parfait</button>
+      <button className="btn or" style={{ marginTop: 22 }} onClick={onFermer}>{bouton || 'Parfait'}</button>
     </div>
   );
 }
