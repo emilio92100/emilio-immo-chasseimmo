@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienEspace } from '@/lib/jeton';
+import { nommerRecherche } from '@/lib/espace';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,9 +56,13 @@ function escapeHtml(s: string) {
    lienEspace() choisit tout seul la bonne adresse : la courte pour les
    nouveaux jetons, l'ancienne pour les liens déjà envoyés (voir
    src/lib/jeton.ts). Un client ne verra donc jamais son lien changer. */
-function lienBien(b: BienLite, token?: string | null): string {
+function lienBien(b: BienLite, token?: string | null, recherche?: string | null): string {
   if (!token) return `${SITE_URL}/bien/${b.id}`;
-  return `${lienEspace(token, SITE_URL)}?bien=${b.id}`;
+  /* `r` dit sur quelle recherche ouvrir l'espace. Sans lui, un client qui en
+     a deux pourrait arriver sur l'autre, et la fiche ne s'ouvrirait pas :
+     elle n'y existe pas (voir src/lib/espace.ts). */
+  const r = recherche ? `r=${encodeURIComponent(recherche)}&` : '';
+  return `${lienEspace(token, SITE_URL)}?${r}bien=${b.id}`;
 }
 
 /* « Je ne suis plus en recherche ».
@@ -69,10 +74,11 @@ function lienFin(token?: string | null): string {
   return token ? `${lienEspace(token, SITE_URL)}?fin=1` : '';
 }
 
-function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null }): string {
+function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null; recherche?: string | null }): string {
   const { corps, biens } = opts;
   const corpsHtml = escapeHtml(corps).replace(/\n/g, '<br/>');
   const token = opts.token;
+  const rech = opts.recherche || null;
   const single = biens.length === 1;
 
   const photoOf = (b: BienLite) => (Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null);
@@ -110,7 +116,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
       ${statsRow ? `<tr><td style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
       <tr><td style="padding:18px 28px 6px;">
         ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
-        <a href="${lienBien(b, token)}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
+        <a href="${lienBien(b, token, rech)}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
       </td></tr>`;
   }
 
@@ -131,7 +137,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
             ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
             ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
             ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:8px;">${fmt(prix)} €</div>` : ''}
-            <a href="${lienBien(b, token)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
+            <a href="${lienBien(b, token, rech)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
           </td>
         </tr></table>
       </td></tr>
@@ -387,6 +393,145 @@ Alexandre ROGELET — Emilio Immobilier
 }
 
 
+/* ══ La deuxième recherche ══
+   Le client a déjà son espace, et souvent déjà l'icône sur son téléphone. On
+   ne lui renvoie donc PAS un mail de bienvenue : ni nouveau lien, ni « posez
+   ceci sur votre écran d'accueil » — il l'a fait. Un mot court, qui dit
+   seulement que la recherche est ouverte et qu'elle se trouve au même
+   endroit que l'autre.
+
+   Le bouton porte quand même le lien : c'est le même qu'avant, et c'est le
+   geste le plus court pour aller voir. */
+function buildNouvelle(opts: { prenom: string; recherche: string; token?: string | null; total?: number }): string {
+  const { token } = opts;
+  /* Deux recherches, ou davantage : les tournures ne sont pas les mêmes, et
+     « à côté de la première » sonnerait faux sur la quatrième. */
+  const deux = (opts.total || 2) <= 2;
+  const prenom = escapeHtml(opts.prenom);
+  const recherche = escapeHtml(opts.recherche);
+  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+
+  const rond = (e: string, t = 44, police = 20) => `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#fdfaf1;border:1px solid #ecdcb4;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
+    </tr></table>`;
+
+  const puce = (e: string, titre: string, texte: string) => `
+    <tr><td style="padding:0 0 15px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td width="56" valign="top">${rond(e)}</td>
+        <td valign="top" style="padding-left:2px;">
+          <div style="font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.35;padding-top:6px;">${titre}</div>
+          <div style="font-size:13.5px;color:#6b7b90;line-height:1.65;margin-top:4px;">${texte}</div>
+        </td></tr></table></td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Emilio Immobilier</title>
+<style>
+  @media only screen and (max-width:600px) { .sheet { width:100% !important; } }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+    <tr><td align="center" style="padding:26px 12px;">
+
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+
+        <tr><td style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td align="center" style="padding:32px 34px 0;">
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">${deux ? 'Une deuxième recherche' : 'Une nouvelle recherche'}, ${prenom}.</div>
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+            <b style="color:${BLEU};">${recherche}</b> est enregistrée. Elle s&#39;ajoute à votre espace,
+            à côté ${deux ? 'de la première' : 'des précédentes'}&nbsp;: vous n&#39;avez rien de nouveau
+            à installer, c&#39;est le même endroit et le même lien qu&#39;avant.
+          </div>
+        </td></tr>
+
+        <tr><td align="center" style="padding:26px 28px 6px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td align="center" style="background:${DORE};border-radius:12px;">
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
+            </td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td style="padding:26px 28px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            ${puce('&#128260;',
+              deux ? 'Vos deux recherches au même endroit' : 'Toutes vos recherches au même endroit',
+              `Tout en haut de votre espace, une ligne indique celle que vous êtes en train de regarder. Appuyez dessus pour ${deux ? 'passer à l&#39;autre' : 'changer'}.`)}
+            ${puce('&#11088;',
+              deux ? 'Les biens arrivent dans les deux' : 'Les biens arrivent dans chacune',
+              'Vous êtes prévenu de la même façon, quelle que soit la recherche concernée.')}
+          </table>
+        </td></tr>
+
+        <tr><td align="center" style="padding:14px 40px 28px;">
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+            Une question, une précision à me donner&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
+          </div>
+        </td></tr>
+
+        <tr><td style="background:${BLEU};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td>
+              <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
+              <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
+              <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
+            </td>
+            <td align="right" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+          </tr></table>
+        </td></tr>
+
+      </table>
+
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+        <tr><td align="center" style="padding:16px 28px 6px;">
+          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+            Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
+              lienFin(token)
+                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                : ''
+            }
+          </div>
+        </td></tr>
+      </table>
+
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function texteNouvelle(prenom: string, recherche: string, token?: string | null, total?: number): string {
+  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const deux = (total || 2) <= 2;
+  return `${deux ? 'Une deuxième recherche' : 'Une nouvelle recherche'}, ${prenom}.
+
+${recherche} est enregistrée. Elle s'ajoute à votre espace, à côté ${deux ? 'de la première' : 'des précédentes'} : vous n'avez rien de nouveau à installer, c'est le même endroit et le même lien qu'avant.
+
+Ouvrir mon espace : ${lien}
+
+- ${deux ? 'Vos deux recherches' : 'Toutes vos recherches'} au même endroit. Tout en haut de votre espace, une ligne indique celle que vous êtes en train de regarder. Appuyez dessus pour ${deux ? "passer à l'autre" : 'changer'}.
+- Les biens arrivent dans ${deux ? 'les deux' : 'chacune'}. Vous êtes prévenu de la même façon, quelle que soit la recherche concernée.
+
+Une question, une précision à me donner ? Répondez simplement à ce message, ou appelez-moi.
+
+Alexandre ROGELET — Emilio Immobilier
+06 58 95 76 32${lienFin(token) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''}`;
+}
+
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.MAILJET_API_KEY;
@@ -422,7 +567,7 @@ export async function POST(req: NextRequest) {
     // Récupère clients
     const { data: clients } = await supabase
       .from('clients')
-      .select('id, prenom, nom, emails')
+      .select('id, prenom, nom, emails, token_espace')
       .in('id', client_ids);
 
     if (!clients || clients.length === 0) {
@@ -431,13 +576,50 @@ export async function POST(req: NextRequest) {
 
     /* Le jeton de l'espace acheteur, pour que chaque bouton du mail ouvre la
        bonne fiche. S'il manque, les liens retombent sur la page publique :
-       le mail part quand même, il est juste moins bien. */
+       le mail part quand même, il est juste moins bien.
+
+       ⚠️ C'est le jeton du CLIENT qu'on envoie (voir src/lib/espace.ts) : le
+       même lien toute sa vie, quel que soit le nombre de recherches. Celui de
+       la recherche ne sert plus qu'en secours, pour les dossiers qui n'ont
+       pas encore été repris. */
     let tokenEspace: string | null = null;
+    let recherche: Record<string, unknown> | null = null;
     if (recherche_id) {
       const { data: rech } = await supabase
-        .from('recherches').select('token_espace').eq('id', recherche_id).maybeSingle();
-      tokenEspace = (rech?.token_espace as string) || null;
+        .from('recherches').select('*, clients(token_espace)').eq('id', recherche_id).maybeSingle();
+      recherche = (rech as Record<string, unknown>) || null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tokenEspace = ((rech as any)?.clients?.token_espace as string) || (rech?.token_espace as string) || null;
     }
+
+    /* Mise en route, ou recherche qui s'ajoute à un espace déjà ouvert ?
+       On ne le demande pas au CRM : on le lit en base, comme ça les deux ne
+       peuvent pas se contredire. Le client qui a déjà reçu son lien ne doit
+       pas en recevoir un deuxième — il n'a rien à réinstaller. */
+    let nouvelleRecherche = false;
+    let totalRecherches = 2;
+    if (bienvenue && recherche?.client_id) {
+      const { data: soeurs } = await supabase
+        .from('recherches').select('id')
+        .eq('client_id', recherche.client_id as string)
+        .neq('id', recherche_id as string)
+        .not('bienvenue_envoye_le', 'is', null)
+        .limit(1);
+      nouvelleRecherche = !!(soeurs && soeurs.length > 0);
+      if (nouvelleRecherche) {
+        const { count } = await supabase
+          .from('recherches').select('id', { count: 'exact', head: true })
+          .eq('client_id', recherche.client_id as string);
+        totalRecherches = count || 2;
+      }
+    }
+
+    /* Le nom qu'on montre au client. « Recherche 2 » ne lui dit rien : on
+       retombe alors sur ses critères, comme dans son espace. */
+    const nomRecherche = recherche
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? nommerRecherche(recherche as any, 2)
+      : 'Votre nouvelle recherche';
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
     let tousBiens: (BienLite & { client_id: string })[] = [];
@@ -475,15 +657,26 @@ export async function POST(req: NextRequest) {
       }
 
       const biensClient = tousBiens.filter(b => b.client_id === client.id);
+      /* Chaque client reçoit SON lien. Celui tiré de la recherche ne sert
+         qu'en secours, pour les dossiers pas encore repris. */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const jeton = ((client as any).token_espace as string) || tokenEspace;
+
       const corpsPerso = bienvenue
-        ? texteBienvenue(client.prenom, tokenEspace)
+        ? (nouvelleRecherche
+          ? texteNouvelle(client.prenom, nomRecherche, jeton, totalRecherches)
+          : texteBienvenue(client.prenom, jeton))
         : corps.replace(/\{\{prénom\}\}/g, client.prenom);
-      const objetFinal = bienvenue ? 'Votre espace de recherche est ouvert' : objet;
+      const objetFinal = bienvenue
+        ? (nouvelleRecherche ? 'Votre nouvelle recherche est ouverte' : 'Votre espace de recherche est ouvert')
+        : objet;
       const html = bienvenue
-        ? buildBienvenue({ prenom: client.prenom, token: tokenEspace })
-        : buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: tokenEspace });
-      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, tokenEspace)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
-        lienFin(tokenEspace) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(tokenEspace)}` : ''
+        ? (nouvelleRecherche
+          ? buildNouvelle({ prenom: client.prenom, recherche: nomRecherche, token: jeton, total: totalRecherches })
+          : buildBienvenue({ prenom: client.prenom, token: jeton }))
+        : buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: jeton, recherche: recherche_id || null });
+      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, jeton, recherche_id || null)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
+        lienFin(jeton) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(jeton)}` : ''
       }`;
 
       try {
