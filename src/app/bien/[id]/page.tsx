@@ -19,9 +19,15 @@ import AboutPliable from './AboutPliable';
 
 export const dynamic = 'force-dynamic';
 
+/* ⚠️ La clé de service, pas la clé publique.
+   Cette page est publique, mais elle est rendue par le SERVEUR : la clé ne
+   quitte jamais Vercel, le navigateur du visiteur ne la voit pas. C'est ce
+   qui lui permet de continuer à lire un bien une fois le RLS allumé — la clé
+   publique, elle, n'aura plus le droit de rien (voir migration-rls.sql).
+   Le repli sur la clé publique reste là pour le développement local. */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 /* Les jetons de l'espace acheteur, repris à l'identique. */
