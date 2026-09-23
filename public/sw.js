@@ -66,6 +66,11 @@ self.addEventListener('push', (event) => {
          vibrer le téléphone. */
       tag: 'emilio-espace',
       renotify: true,
+      /* Une vibration courte. Ce n'est pas qu'un confort : sur Android, une
+         notification qui vibre a bien plus de chances d'être affichée en
+         bandeau sur l'écran plutôt que rangée en silence dans le tiroir. */
+      silent: false,
+      vibrate: [120, 60, 120],
       data: { url: n.url },
       actions: [
         { action: 'ouvrir', title: 'Ouvrir' },
@@ -76,22 +81,47 @@ self.addEventListener('push', (event) => {
 });
 
 /* ── le client tape sur la notification ───────────────────────── */
+/* Trois choses comptent ici, et chacune a sa raison :
+     — on lit l'adresse AVANT de fermer la notification : une fois fermée, ses
+       données ne sont plus garanties ;
+     — on ramène au premier plan une fenêtre déjà ouverte plutôt que d'en
+       empiler une deuxième ;
+     — et si quoi que ce soit échoue, on ouvre quand même quelque chose. Un
+       client qui tape sur « Ouvrir » et ne voit rien bouger perd confiance
+       dans la notification suivante. */
 self.addEventListener('notificationclick', (event) => {
+  const donnees = event.notification.data || {};
+  const action = event.action;
   event.notification.close();
-  if (event.action === 'fermer') return;
+  if (action === 'fermer') return;
 
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  /* Toujours une adresse complète : un chemin relatif se résout mal selon
+     d'où le téléphone réveille le veilleur. */
+  let cible;
+  try { cible = new URL(donnees.url || '/', self.location.origin).href; }
+  catch (e) { cible = self.location.origin + '/'; }
 
   event.waitUntil((async () => {
-    /* Si son espace est déjà ouvert quelque part, on l'y ramène plutôt que
-       d'ouvrir une deuxième fenêtre par-dessus. */
-    const fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    let fenetres = [];
+    try { fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }); }
+    catch (e) { /* on ouvrira une fenêtre neuve */ }
+
     for (const f of fenetres) {
-      if ('focus' in f) {
-        try { if ('navigate' in f) await f.navigate(url); } catch (e) { /* peu importe */ }
-        return f.focus();
+      if (!f.url || f.url.indexOf(self.location.origin) !== 0) continue;
+      /* Le premier plan d'abord : c'est le geste que le client attend. La
+         navigation ensuite, et si elle échoue il est au moins dans son espace
+         plutôt que devant un écran qui n'a pas bougé. */
+      try { await f.focus(); } catch (e) { /* on tente quand même la suite */ }
+      if (f.url !== cible) {
+        try { if (typeof f.navigate === 'function') await f.navigate(cible); } catch (e) { /* sans effet */ }
       }
+      return;
     }
-    return self.clients.openWindow(url);
+
+    try { await self.clients.openWindow(cible); }
+    catch (e) {
+      /* Dernier recours : la racine de l'espace, qui elle ouvrira toujours. */
+      try { await self.clients.openWindow(self.location.origin + '/'); } catch (e2) { /* rien à faire */ }
+    }
   })());
 });
