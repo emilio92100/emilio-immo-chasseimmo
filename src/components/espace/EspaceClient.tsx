@@ -768,11 +768,19 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      son espace… et ne voit rien de neuf. Le pire des scénarios : on lui a
      promis quelque chose et l'écran le dément.
 
-     On recharge donc les données dès que la page revient au premier plan.
-     Deux garde-fous : on ignore les passages éclair (changer d'application
-     deux secondes), et on ne recharge pas plus d'une fois par quart de
-     minute — sans quoi un client qui fait des allers-retours ferait travailler
-     le serveur pour rien. */
+     On recharge donc dès que la page revient au premier plan — d'un vrai
+     rechargement, pas d'une mise à jour « douce ».
+
+     ⚠️ La mise à jour douce de Next (router.refresh) a été essayée d'abord :
+     elle ne prend pas dans une application posée sur l'écran d'accueil, et le
+     client se retrouvait à tirer l'écran vers le bas à la main. Un
+     rechargement complet est plus brutal sur le papier, mais il est certain —
+     et l'écran d'ouverture de l'espace le rend présentable.
+
+     Deux garde-fous : on ignore les passages éclair (deux secondes sur une
+     autre application), et jamais plus d'un rechargement par quart de minute,
+     sans quoi un client qui fait des allers-retours ferait tourner le serveur
+     pour rien. */
   const router = useRouter();
   const masqueDepuis = useRef(0);
   const dernierRefresh = useRef(0);
@@ -782,16 +790,37 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   useEffect(() => { setBiens(biensInit); }, [biensInit]);
 
   useEffect(() => {
-    const surChangement = () => {
-      if (document.visibilityState === 'hidden') { masqueDepuis.current = Date.now(); return; }
-      const absence = masqueDepuis.current ? Date.now() - masqueDepuis.current : Infinity;
-      if (absence < 4000) return;
+    const recharger = () => {
       if (Date.now() - dernierRefresh.current < 15000) return;
       dernierRefresh.current = Date.now();
-      router.refresh();
+      try { window.location.reload(); } catch { router.refresh(); }
     };
+
+    const surChangement = () => {
+      if (document.visibilityState === 'hidden') { masqueDepuis.current = Date.now(); return; }
+      const absence = masqueDepuis.current ? Date.now() - masqueDepuis.current : 0;
+      if (absence < 2000) return;
+      recharger();
+    };
+
+    /* Deux signaux plutôt qu'un : selon les téléphones et selon la façon dont
+       l'application est rouverte, c'est tantôt l'un tantôt l'autre qui part. */
     document.addEventListener('visibilitychange', surChangement);
-    return () => document.removeEventListener('visibilitychange', surChangement);
+    window.addEventListener('pageshow', surChangement);
+
+    /* Et le veilleur prévient les fenêtres ouvertes dès qu'un bien arrive :
+       si le client a son espace ouvert en arrière-plan, il le trouvera à jour
+       en y revenant, sans même attendre le rechargement. */
+    const surMessage = (e: MessageEvent) => {
+      if (e?.data?.type === 'emilio-nouveau') recharger();
+    };
+    navigator.serviceWorker?.addEventListener('message', surMessage);
+
+    return () => {
+      document.removeEventListener('visibilitychange', surChangement);
+      window.removeEventListener('pageshow', surChangement);
+      navigator.serviceWorker?.removeEventListener('message', surMessage);
+    };
   }, [router]);
 
   /* Le petit chiffre sur l'icône, tant qu'il reste des biens non ouverts.
