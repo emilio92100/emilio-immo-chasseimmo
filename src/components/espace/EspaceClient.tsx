@@ -3467,7 +3467,7 @@ const ECHECS: Record<string, React.ReactNode> = {
     de ces applications ne sait pas gérer les alertes. Ouvrez plutôt cette page dans
     <b> Chrome</b> ou <b>Safari</b> — c&apos;est le cas le plus fréquent.
     <br /><br />
-    <b>2.</b> Les alertes ont été bloquées pour cet espace. Pour les rouvrir&nbsp;:
+    <b>2.</b>{' '}Les alertes ont été bloquées pour cet espace. Pour les rouvrir&nbsp;:
     <b>Réglages</b> de votre téléphone → <b>Applications</b> → <b>Ma recherche</b> →
     <b> Notifications</b>.</>,
   refuse: <>La fenêtre de votre téléphone a été refermée sans réponse. Vous pouvez réessayer.</>,
