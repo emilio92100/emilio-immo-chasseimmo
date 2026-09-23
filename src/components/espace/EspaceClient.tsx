@@ -68,6 +68,14 @@ type Props = {
   semaine: { quand: string | null; lues: number }[];
   /* Les visites calées et pas encore passées, la plus proche en premier. */
   visites: { id: string; date: string; heure: string | null; titre: string; adresse: string; photo?: string | null; bienId: string | null }[];
+  /* ── le sélecteur de recherche ──
+     Toutes les recherches visibles du client, la plus ancienne d'abord.
+     Un client n'en a le plus souvent qu'une : dans ce cas le sélecteur ne
+     s'affiche pas du tout, et son espace est exactement celui d'avant. */
+  recherches: { id: string; nom: string; resume: string; nonLus: number }[];
+  rechercheId: string;
+  /** La place de la recherche affichée dans la liste — le « 1 » de « 1 sur 2 ». */
+  rang: number;
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -412,6 +420,8 @@ const T: Record<string, string[]> = {
   visavis:['M3.2 4.5h5.8v15H3.2z','M15 4.5h5.8v15H15z','M10.6 12h2.8'],
   canape:['M4.5 11.4V9.2a2.2 2.2 0 0 1 4.4 0v2.2','M15.1 11.4V9.2a2.2 2.2 0 0 1 4.4 0v2.2','M3 11.4h18v5.4H3z','M5.8 16.8V19.4','M18.2 16.8V19.4'],
   petit:['M4 4h5','M4 4v5','M20 20h-5','M20 20v-5','m4 4 6 6','m20 20-6-6'],
+  /* Le chevron du sélecteur de recherche : « il y a autre chose en dessous ». */
+  chevron:['m6 9 6 6 6-6'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -725,7 +735,7 @@ function useNotifications(token: string) {
 }
 
 /* ══ composant ════════════════════════════════════ */
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
   const [crit, setCrit] = useState(criteres);
@@ -746,6 +756,32 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const montrer = (n: React.ReactNode, v = '') => { setFeuille(n); setVariante(v); setOuvert(true); };
   const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setVariante(''); }, 320); };
   const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  /* ── passer d'une recherche à l'autre ──
+     On recharge la page avec « ?r=<recherche> » plutôt que de rejouer le
+     dossier à l'écran. C'est une seconde d'attente, couverte par l'écran
+     d'ouverture (voir loading.tsx), et en échange rien ne peut rester à
+     cheval sur deux recherches : les biens, les visites, les critères et le
+     travail de veille sont relus d'un bloc par le serveur. */
+  const changerRecherche = (id: string) => {
+    if (!id || id === rechercheId) { fermer(); return; }
+    try {
+      const adresse = new URL(window.location.href);
+      adresse.searchParams.set('r', id);
+      /* « ?bien= » ouvre une fiche précise : elle appartient à la recherche
+         qu'on quitte, on ne la traîne pas dans l'autre. */
+      adresse.searchParams.delete('bien');
+      window.location.href = adresse.toString();
+    } catch { window.location.reload(); }
+  };
+
+  const plusieurs = recherches.length > 1;
+  const nomCourant = recherches.find(r => r.id === rechercheId)?.nom || '';
+  const autresNonLus = recherches.reduce((t, r) => t + (r.id === rechercheId ? 0 : r.nonLus), 0);
+  const ouvrirRecherches = () => montrer(
+    <ChoixRecherche liste={recherches} courante={rechercheId}
+      onChoisir={changerRecherche} onFermer={() => fermer()} />,
+  );
 
   const fermerRef = useCallback(() => {
     setOuvert(false);
@@ -1129,6 +1165,32 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               </div>
             </div>
 
+            {/* Le sélecteur de recherche. Il n'existe que si le client en a
+                plusieurs : pour l'immense majorité des dossiers, cette ligne
+                ne s'affiche jamais et l'en-tête est exactement celui d'avant.
+
+                Le compteur passe devant le mot : c'est lui qui annonce qu'il
+                y a autre chose à voir, et c'est ce qu'on lit en premier. */}
+            {plusieurs && (
+              <button type="button" className="selec" onClick={ouvrirRecherches}
+                aria-label={`Recherche ${rang} sur ${recherches.length} — changer de recherche`}>
+                <span className="selec-in">
+                  <span className="selec-h">
+                    <span className="selec-n">{rang} sur {recherches.length}</span>
+                    <span className="selec-l">Recherche en cours</span>
+                  </span>
+                  <span className="selec-v">{nomCourant}</span>
+                  {autresNonLus > 0 && (
+                    <span className="selec-d">
+                      <b>{autresNonLus} nouveau{autresNonLus > 1 ? 'x' : ''} bien{autresNonLus > 1 ? 's' : ''}</b>
+                      {recherches.length > 2 ? ' sur vos autres recherches' : ' sur votre autre recherche'}
+                    </span>
+                  )}
+                </span>
+                <span className="selec-cv"><Ico n="chevron" t={13} /></span>
+              </button>
+            )}
+
             <div className="agent">
               <div className="agent-id">
                 <span className="agent-sur">Suivi par</span>
@@ -1158,6 +1220,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
               onVisiteBien={(id: string) => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
               token={token}
+              /* Avec plusieurs recherches, « ma recherche » devient ambigu :
+                 l'accueil dit alors « cette recherche ». */
+              plusieurs={plusieurs}
               onBienvenue={ouvrirBienvenue}
               onEcran={ecran.appareil ? () => ecran.accepter(ouvrirGuideEcran) : null}
               motEcran={motEcran}
@@ -1293,7 +1358,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien, plusieurs }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -1397,7 +1462,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div className="case large bloc-rech">
           <button className="rech-haut" onClick={() => aller('recherche')}>
             <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
-            <div><h3>Rappel de ma recherche</h3>
+            <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
               <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
                 {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
                 {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
@@ -1408,7 +1473,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           <button className="rech-bas" onClick={onFin}>
             <span className="rb-ico">🏁</span>
             <span className="rb-txt">
-              <b>Ma recherche est terminée</b>
+              <b>{plusieurs ? 'Cette recherche est terminée' : 'Ma recherche est terminée'}</b>
               <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
             </span>
             <span className="chev"><Ico n="fleche" t={17} /></span>
@@ -3112,6 +3177,62 @@ function ChoixCriteres({ onFermer, onModifier, onRappel }: any) {
   );
 }
 
+/* ══ « Vos recherches » ═══════════════════════════
+   Ce qui s'ouvre quand le client appuie sur le sélecteur de l'en-tête.
+
+   On n'arrive ici qu'avec plusieurs recherches : la liste est donc toujours
+   courte. Chaque ligne dit deux choses, et pas une de plus — de quoi il
+   s'agit, et s'il y a du nouveau dedans.
+
+   Le choix recharge la page (voir `changerRecherche`) : on garde donc la
+   ligne marquée « Ouverture… » pendant la seconde d'attente, plutôt que de
+   laisser croire que l'appui n'a rien fait. */
+function ChoixRecherche({ liste, courante, onChoisir, onFermer }: {
+  liste: { id: string; nom: string; resume: string; nonLus: number }[];
+  courante: string;
+  onChoisir: (id: string) => void;
+  onFermer?: () => void;
+}) {
+  const [en, setEn] = useState<string | null>(null);
+  return (
+    <>
+      <div className="tete-f">
+        <div><div className="sur">Votre dossier</div><h3>Vos recherches</h3></div>
+        {onFermer && (
+          <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+        )}
+      </div>
+      <div className="corps-f">
+        <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
+          Vous en avez {liste.length} en cours. Choisissez celle que vous voulez suivre&nbsp;;
+          vous pourrez revenir à l&apos;autre quand vous voudrez.
+        </p>
+        <div className="recs">
+          {liste.map((r) => {
+            const prise = r.id === courante;
+            return (
+              <button key={r.id} type="button" disabled={!!en}
+                className={'rec' + (prise ? ' prise' : '') + (en === r.id ? ' en' : '')}
+                onClick={() => { if (prise || en) return; setEn(r.id); onChoisir(r.id); }}>
+                <span className="rec-rd">{prise ? <Ico n="check" t={12} /> : null}</span>
+                <span className="rec-txt">
+                  <b>{r.nom}</b>
+                  {r.resume ? <span>{r.resume}</span> : null}
+                </span>
+                {en === r.id
+                  ? <span className="rec-etat">Ouverture…</span>
+                  : (!prise && r.nonLus > 0)
+                    ? <span className="rec-neuf">{r.nonLus} nouveau{r.nonLus > 1 ? 'x' : ''}</span>
+                    : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Message({ onFermer, onEnvoi }: any) {
   const [txt, setTxt] = useState('');
   const [envoi, setEnvoi] = useState(false);
@@ -3554,6 +3675,63 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px; color:var(--or); flex:0 0 auto}
 .ident h1{margin:0; font-size:19.5px; font-weight:800; color:#fff; line-height:1.18; letter-spacing:-.2px}
 .ident .ref{font-size:11.5px; color:rgba(255,255,255,.45); margin-top:3px}
+
+/* — le sélecteur de recherche —
+   Il n'apparaît qu'à partir de la deuxième recherche du client. Le compteur
+   passe devant le mot : c'est « 1 sur 2 » qui annonce qu'il y a autre chose
+   à voir, et c'est donc lui qu'on doit lire en premier.
+
+   Le doré est en contour, pas plein : dans cet espace, le doré plein veut
+   dire « appuie ici » (Appeler, Envoyer mon retour). Ici c'est la ligne
+   entière qui est le bouton, pas la pastille. */
+.selec{position:relative; display:flex; align-items:center; gap:10px; width:100%;
+  background:rgba(255,255,255,.09); border:1px solid rgba(201,168,76,.4);
+  border-radius:14px; padding:10px 13px; text-align:left; cursor:pointer;
+  font-family:inherit; color:#fff;
+  transition:transform .16s cubic-bezier(.16,1,.3,1), background .2s}
+.selec:hover{background:rgba(255,255,255,.13)}
+.selec:active{transform:scale(.985)}
+.selec-in{min-width:0}
+.selec-h{display:flex; align-items:center; gap:8px}
+.selec-n{font-family:'Plus Jakarta Sans',sans-serif; font-size:10px; font-weight:800;
+  letter-spacing:.4px; color:var(--or); background:rgba(201,168,76,.18);
+  border:1px solid rgba(201,168,76,.55); border-radius:99px; padding:3px 8px; white-space:nowrap}
+.selec-l{font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase;
+  color:var(--or); font-weight:800; white-space:nowrap}
+.selec-v{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:14px;
+  font-weight:800; color:#fff; margin-top:4px; line-height:1.25;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.selec-d{display:block; font-size:11px; color:rgba(255,255,255,.5); margin-top:3px}
+.selec-d b{color:var(--or); font-weight:800}
+.selec-cv{margin-left:auto; flex:0 0 auto; width:26px; height:26px; border-radius:50%;
+  background:rgba(255,255,255,.1); color:var(--or);
+  display:flex; align-items:center; justify-content:center}
+/* Sur les petits écrans, « RECHERCHE EN COURS » passerait à la ligne à côté
+   du compteur : on garde le compteur, qui porte l'information. */
+@media(max-width:359px){.selec-l{display:none}}
+
+/* — la liste des recherches, dans la feuille — */
+.recs{display:flex; flex-direction:column; gap:10px; margin-top:14px}
+.rec{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:var(--carte); border:1px solid var(--trait); border-radius:15px;
+  padding:13px 14px; cursor:pointer; font-family:inherit; color:var(--encre);
+  transition:border-color .2s, background .2s, transform .16s cubic-bezier(.16,1,.3,1)}
+.rec:hover{border-color:var(--trait-fort)}
+.rec:active{transform:scale(.99)}
+.rec.prise{border-color:var(--or); background:#fdfaf1; cursor:default}
+.rec.en{opacity:.72}
+.rec:disabled{cursor:default}
+.rec-rd{width:20px; height:20px; border-radius:50%; border:2px solid var(--trait-fort);
+  flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:var(--encre)}
+.rec.prise .rec-rd{border-color:var(--or); background:var(--or)}
+.rec-txt{min-width:0}
+.rec-txt b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:14.5px;
+  font-weight:800; line-height:1.25}
+.rec-txt span{display:block; font-size:11.5px; color:var(--plume); margin-top:3px}
+.rec-neuf{margin-left:auto; flex:0 0 auto; font-size:10px; font-weight:800; letter-spacing:.6px;
+  text-transform:uppercase; color:var(--encre); background:#fdf1c9;
+  border:1px solid #f0e2bd; border-radius:99px; padding:4px 8px; white-space:nowrap}
+.rec-etat{margin-left:auto; flex:0 0 auto; font-size:11.5px; font-weight:700; color:var(--plume)}
 
 /* — le chasseur qui suit le dossier — */
 .agent{display:flex; align-items:center; gap:12px;
