@@ -57,6 +57,11 @@ export async function proxy(request: NextRequest) {
        fichier reconnaissable à son extension passent sans être touchés. */
     const technique =
       pathname.startsWith('/espace/') ||
+      /* La fiche publique d'un bien vit aussi sur ce domaine : c'est l'adresse
+         qu'un client envoie à un proche quand il partage un bien. Sans cette
+         ligne, /bien/<id> était réécrit en /espace/bien/<id> et ne menait
+         nulle part — et les liens partaient donc sur l'adresse Vercel. */
+      pathname.startsWith('/bien/') ||
       pathname.startsWith('/api/') ||
       pathname.startsWith('/_next/') ||
       /\.[a-z0-9]+$/i.test(pathname);
