@@ -104,15 +104,31 @@ function dateCourte(d: string) {
 }
 const JOURS = ['D','L','M','M','J','V','S'];
 
+/* Depuis quand ce bien est dans l'espace du client.
+   ⚠️ Le pas compte autant que le mot : « à l'instant » tenait une heure
+   entière, donc un client qui revenait dix minutes plus tard lisait encore
+   « à l'instant » et l'information ne voulait plus rien dire. On descend donc
+   à la minute sur la première heure, puis à l'heure, puis au jour.
+
+   Et on compte en jours de calendrier au-delà de 24 h : un bien envoyé
+   avant-hier à 23 h n'est pas « hier » parce qu'il a moins de 48 heures. */
 function depuis(d?: string | null) {
   if (!d) return '';
   const x = new Date(d); if (isNaN(x.getTime())) return '';
-  const h = (Date.now() - x.getTime()) / 3600000;
-  if (h < 1) return "à l'instant";
-  if (h < 5) return `il y a ${Math.round(h)} h`;
-  if (x.toDateString() === new Date().toDateString()) return "aujourd'hui";
-  if (h < 48) return 'hier';
-  return `${x.getDate()} ${MOIS[x.getMonth()]}`;
+  const min = (Date.now() - x.getTime()) / 60000;
+  if (min < 0) return '';                      // horloge du téléphone en avance
+  if (min < 2) return "à l'instant";
+  if (min < 60) return `il y a ${Math.floor(min)} min`;
+  if (min < 1440) {
+    const h = Math.floor(min / 60);
+    return `il y a ${h} h`;
+  }
+  const minuit = (v: Date) => new Date(v.getFullYear(), v.getMonth(), v.getDate()).getTime();
+  const j = Math.round((minuit(new Date()) - minuit(x)) / 86400000);
+  if (j <= 1) return 'hier';
+  if (j === 2) return 'avant-hier';
+  if (j < 7) return `il y a ${j} jours`;
+  return `le ${x.getDate()} ${MOIS[x.getMonth()]}`;
 }
 /* Le bandeau dit la même chose partout : « Actualisé à 19 h 05 » le jour même,
    « Actualisé le 14 sept. à 19 h 05 » ensuite. Pas de vocabulaire différent
