@@ -4962,6 +4962,32 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .fiche-droite[data-barre="1"] .corps-f{padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))}
 .barre-avis{padding-bottom:calc(13px + env(safe-area-inset-bottom,0px)); z-index:2}
 
+/* ── La barre reste en bas, meme sur une fiche courte ──
+   position:sticky ne colle que si le contenu depasse l'ecran. Sur un bien
+   sans photo ni description — un bien qu'on vient de saisir a la main — la
+   fiche est plus courte que l'ecran : la barre se posait juste sous le
+   dernier bouton, avec du blanc en dessous jusqu'en bas. Elle avait l'air
+   posee au milieu de nulle part.
+
+   On fait donc grandir la colonne jusqu'a remplir la hauteur, et
+   margin-top:auto pousse le rail tout en bas. Sur une fiche longue, rien ne
+   change : flex-grow ne retire jamais de hauteur (0 en flex-shrink), le
+   contenu deborde comme avant et sticky reprend la main au defilement. */
+@media(max-width:639px){
+  .feuille.fiche{display:flex; flex-direction:column}
+  .feuille.fiche > *{flex:0 0 auto}
+  .feuille.fiche .fiche-droite{flex:1 0 auto; display:flex; flex-direction:column}
+  .fiche-droite[data-barre="1"] .corps-f{flex:1 0 auto; display:flex; flex-direction:column;
+    padding-bottom:0}
+  /* Le rail porte lui-meme la reserve de place, au lieu de la laisser au
+     padding du corps. Sinon ce padding restait SOUS le rail et reproduisait
+     exactement le trou qu'on veut supprimer — c'est ce que le banc d'essai
+     a montre au premier essai. Sticky colle son bas au bas de l'ecran, donc
+     la barre, posee au bas du rail, y arrive aussi. */
+  .fiche-droite[data-barre="1"] .corps-f .rail-avis{
+    margin-top:auto; height:calc(132px + env(safe-area-inset-bottom,0px))}
+}
+
 /* Le voile : le panneau se pose sur la fiche au lieu de surgir. Un
    position:fixed se résout ici sur la feuille (elle porte un transform),
    donc il couvre bien tout l'écran sans défiler avec le contenu. */
