@@ -788,13 +788,33 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      `pointerdown` et non `click` : la vibration doit accompagner l'appui,
      pas le relâchement, sinon elle arrive après coup et sonne faux. */
   useEffect(() => {
-    const CIBLES = '.ch, .rep, .creneau, .dpe-b, .avis, .selec, .rec';
+    /* ⚠️ L'intensité ne se règle pas : la commande du navigateur n'accepte
+       qu'une DURÉE, et le moteur vibre à la puissance fixe qu'a choisie le
+       constructeur du téléphone. Une impulsion plus longue se *ressent* comme
+       plus forte, mais au-delà d'une trentaine de millisecondes on passe du
+       « toc » sec au bourdonnement, et ça devient agaçant. C'est le seul
+       réglage disponible — et c'est ici qu'il se touche. */
+    const DUREES: [string, number][] = [
+      /* Le choix principal sur un bien : c'est le geste qui compte, il mérite
+         d'être plus franc que le reste. */
+      ['.avis', 30],
+      /* Un créneau de visite : un engagement, donc un cran au-dessus d'un badge. */
+      ['.creneau', 26],
+      /* Tout le reste — badges de réponse, critères, DPE, sélecteur. */
+      ['.ch, .rep, .dpe-b, .selec, .rec', 22],
+    ];
     const toucher = (e: Event) => {
-      const cible = (e.target as HTMLElement | null)?.closest?.(CIBLES) as HTMLElement | null;
-      if (!cible || cible.hasAttribute('disabled') || cible.closest('.reponses.lu')) return;
-      /* 11 ms : on veut le « toc » sec d'un interrupteur, pas le bourdonnement
-         d'une notification. Au-delà de 20 ms, ça devient désagréable. */
-      try { navigator.vibrate?.(11); } catch { /* refusé, absent ou sur iPhone */ }
+      const depart = e.target as HTMLElement | null;
+      if (!depart?.closest) return;
+      for (const [selecteur, ms] of DUREES) {
+        const cible = depart.closest(selecteur) as HTMLElement | null;
+        if (!cible) continue;
+        /* Un bouton éteint, ou la relecture d'un retour déjà parti : rien ne
+           se passe à l'écran, donc rien ne doit se passer sous le doigt. */
+        if (cible.hasAttribute('disabled') || cible.closest('.reponses.lu')) return;
+        try { navigator.vibrate?.(ms); } catch { /* refusé, absent ou sur iPhone */ }
+        return;
+      }
     };
     document.addEventListener('pointerdown', toucher, { passive: true });
     return () => document.removeEventListener('pointerdown', toucher);
@@ -4347,20 +4367,42 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
    ils sont choisis : leur animation doit finir à cette hauteur-là, sinon ils
    retomberaient d'un coup à la fin. */
 @keyframes choisi{
-  0%  {transform:scale(.86)}
-  55% {transform:scale(1.06)}
+  0%  {transform:scale(.80)}
+  38% {transform:scale(1.16)}
+  62% {transform:scale(.95)}
+  82% {transform:scale(1.04)}
   100%{transform:scale(1)}
 }
 @keyframes choisi-haut{
-  0%  {transform:translateY(0) scale(.9)}
-  55% {transform:translateY(-5px) scale(1.05)}
+  0%  {transform:translateY(0)    scale(.84)}
+  38% {transform:translateY(-7px) scale(1.12)}
+  62% {transform:translateY(-1px) scale(.96)}
   100%{transform:translateY(-3px) scale(1)}
+}
+/* L'onde qui part du badge. C'est elle qu'on voit du coin de l'œil : le
+   changement de taille seul passait inaperçu au milieu d'un changement de
+   couleur. currentColor la teinte automatiquement — verte sur « ça me
+   plaît », brique sur « pas pour moi », marine sur un critère. */
+@keyframes onde{
+  0%  {box-shadow:0 0 0 0 currentColor; opacity:.45}
+  100%{box-shadow:0 0 0 14px currentColor; opacity:0}
 }
 .ch[aria-pressed="true"],
 .reponses:not(.lu) .rep[aria-pressed="true"],
 .creneau.pris,
-.dpe-b.pt{animation:choisi .32s cubic-bezier(.34,1.56,.64,1)}
-.avis[aria-pressed="true"]{animation:choisi-haut .34s cubic-bezier(.34,1.56,.64,1)}
+.dpe-b.pt{animation:choisi .42s cubic-bezier(.34,1.56,.64,1)}
+.avis[aria-pressed="true"]{animation:choisi-haut .46s cubic-bezier(.34,1.56,.64,1)}
+
+/* L'onde vit dans un ::after pour ne pas écraser l'ombre du bouton lui-même.
+   pointer-events:none : elle déborde du badge, elle ne doit rien intercepter. */
+.ch, .rep, .creneau, .dpe-b, .avis{position:relative}
+.ch[aria-pressed="true"]::after,
+.reponses:not(.lu) .rep[aria-pressed="true"]::after,
+.creneau.pris::after,
+.dpe-b.pt::after,
+.avis[aria-pressed="true"]::after{
+  content:""; position:absolute; inset:0; border-radius:inherit;
+  pointer-events:none; animation:onde .5s ease-out forwards}
 /* La relecture d'un retour déjà envoyé (.reponses.lu) arrive avec ses
    pastilles déjà sélectionnées : elles n'ont aucune raison de sautiller.
    ⚠️ Pas d'accent inverse dans ce bloc, il fermerait le gabarit JS. */
@@ -4371,7 +4413,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   .ch[aria-pressed="true"],
   .reponses:not(.lu) .rep[aria-pressed="true"],
   .creneau.pris, .dpe-b.pt,
-  .avis[aria-pressed="true"]{animation:none}
+  .avis[aria-pressed="true"],
+  .ch[aria-pressed="true"]::after,
+  .reponses:not(.lu) .rep[aria-pressed="true"]::after,
+  .creneau.pris::after, .dpe-b.pt::after,
+  .avis[aria-pressed="true"]::after{animation:none}
 }
 .avis[data-a="oui"][aria-pressed="true"]{border-color:var(--vert); background:var(--vert-fond)}
 .avis[data-a="oui"][aria-pressed="true"] .n{color:var(--vert)}
