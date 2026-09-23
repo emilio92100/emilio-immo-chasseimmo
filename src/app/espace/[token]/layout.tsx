@@ -35,6 +35,8 @@ export async function generateMetadata(
     manifest: `${racine}/manifeste`,
     appleWebApp: {
       capable: true,
+      /* Le nom sous l'icône, sur l'écran d'accueil. Il tient en douze
+         caractères sur Android — au-delà, le téléphone coupe. */
       title: 'Ma recherche',
       /* « default » et non « black-translucent » : la page garde sa place sous
          l'heure et la batterie, au lieu de passer dessous. */
