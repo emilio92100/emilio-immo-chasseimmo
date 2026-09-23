@@ -6,6 +6,9 @@ Trois faces : le **CRM** (`/`, derrière un code d'accès), la **fiche publique 
 (`/bien/<id>`) et l'**espace acheteur** (`/espace/<token>`, sans compte — le lien fait
 l'identification).
 
+⚠️ Le lien de l'espace appartient au **client**, pas à la recherche : un client = un lien = une
+application, quel que soit le nombre de recherches. Voir `AGENTS.md` §3.3.
+
 ## Les trois documents du dépôt
 
 | Fichier | Ce qu'il contient | Quand le lire |
@@ -31,10 +34,23 @@ npm run dev
 Il faut les variables d'environnement listées dans `context.md` §1 : sans elles, le build compile
 mais la collecte des pages échoue sur `supabaseUrl is required`.
 
+## Migrations SQL
+
+À passer dans Supabase → SQL Editor, dans cet ordre. Toutes relançables sans risque.
+
+| Fichier | Ce qu'elle fait | État |
+|---|---|---|
+| `migration-notifications.sql` | `push_abonnements` | passée |
+| `migration-bienvenue.sql` | `recherches.bienvenue_envoye_le` | passée |
+| `migration-espace-client.sql` | `clients.token_espace` + reprise des liens existants | passée le 23/09 |
+
 ## Outils
 
 ```bash
 # Détecte les espaces JSX que le compilateur de Next (SWC) supprime silencieusement.
-# Voir AGENTS.md §2.1 — ce bug a déjà produit « annoncesque » et « 4 500€commission » en production.
+# Voir AGENTS.md §2.1 — ce bug a produit « annoncesque », « 4 500€commission »
+# et, le 23 septembre, « Vous en avez 2en cours » en production.
 python3 outils/espaces-jsx.py $(find src -name '*.tsx' -o -name '*.ts')
 ```
+
+Il dégrossit ; **c'est le code compilé qui tranche** (voir `AGENTS.md` §2.1).
