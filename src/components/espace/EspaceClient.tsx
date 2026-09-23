@@ -145,7 +145,7 @@ const ETIQ: Record<string, { e: string; n: string; c: string }> = {
 const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string }> = {
   interesse: {
     t: 'Qu’est-ce qui vous a plu ?',
-    p: 'Plus vous êtes précis, plus les biens suivants ressembleront à celui-là.',
+    p: 'Sélectionnez ce qui compte, un ou plusieurs. Plus c’est précis, plus les biens suivants ressembleront à celui-là.',
     ph: 'Ex : la luminosité, le séjour, le quartier… et si je veux le visiter.',
     btn: 'Envoyer mon avis',
   },
@@ -154,13 +154,13 @@ const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string
     /* ⚠️ Jamais un mot sur l'agence, le confrère ou le propriétaire : le client
        n'a qu'un interlocuteur, son conseiller. C'était la seule phrase de tout
        l'espace qui laissait entendre le contraire. */
-    p: 'Donnez deux ou trois créneaux : votre conseiller s’organise pour vous y accompagner, et revient vers vous avec le rendez-vous.',
+    p: 'Sélectionnez un ou plusieurs créneaux. Votre conseiller s’organise pour vous y accompagner, et revient vers vous avec le rendez-vous.',
     ph: 'Ex : jeudi après 18 h, vendredi midi, samedi matin…',
     btn: 'Envoyer mes disponibilités',
   },
   refuse: {
     t: 'Qu’est-ce qui n’a pas convenu ?',
-    p: 'C’est l’information la plus utile de toutes : elle nous permet d’écarter ce type de bien et d’affiner votre recherche. Même une phrase suffit.',
+    p: 'Sélectionnez une ou plusieurs raisons — c’est ce qui nous permet d’écarter ce type de bien pour la suite. Vous pouvez aussi ajouter un mot.',
     ph: 'Ex : trop sombre, rue trop passante, cuisine trop petite, pas de vrai extérieur…',
     btn: 'Envoyer mon retour',
   },
@@ -2466,8 +2466,15 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           </>
         )}
 
-        <label className="lab">{envoye ? 'Votre retour' : 'Qu’en pensez-vous ?'}</label>
-        <TroisAvis avis={avis} onChoisir={choisir} fige={envoye} />
+        {/* Tant que le client n'a pas répondu, la question ne vit qu'à un seul
+            endroit : la barre du bas, qu'il a sous les yeux en permanence. La
+            poser deux fois sur la même fiche brouille plus qu'elle n'incite. */}
+        {envoye && (
+          <>
+            <label className="lab">Votre retour</label>
+            <TroisAvis avis={avis} onChoisir={choisir} fige />
+          </>
+        )}
 
         {/* Le retour est parti : on le montre tel qu'il est parti, et rien
             ne se remodifie ici. Le client qui change d'avis le dit de vive
@@ -2525,7 +2532,6 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           </div>
         )}
 
-        {!envoye && avis && <SuiteAvis {...propsSuite} />}
         <div className="duo">
           <button className="btn fant" onClick={() => setPartage(true)}><Ico n="partage" t={16} /> Partager</button>
           {/* Le téléchargement existe toujours à l'écran : quand la fiche est prête
@@ -2546,6 +2552,10 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           disparaît pour de bon sur ce bien. */}
       {!envoye && (
         <div className="rail-avis">
+          {panneau && (
+            <button type="button" className="voile-avis" aria-label="Fermer"
+              onClick={() => setPanneau(false)} />
+          )}
           <div className="barre-avis" data-ouvert={panneau ? '1' : undefined}>
             {panneau ? (
               <div className="ba-panneau">
@@ -4616,8 +4626,37 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .ba-fermer svg{transform:rotate(90deg)}
 .barre-avis .apres-avis{background:var(--carte)}
 .barre-avis .apres-avis textarea{min-height:86px}
-/* le bas de la fiche ne se cache pas derrière la barre */
-.fiche-droite[data-barre="1"] .corps-f{padding-bottom:128px}
+/* ⚠️ La barre doit toucher le bord bas de l'écran. Un sticky ne sort jamais
+   de son bloc conteneur : tant que la feuille portait son retrait bas, la
+   barre flottait 26 px trop haut et on voyait la fiche défiler dessous. On
+   déplace donc ce retrait du conteneur vers le contenu. */
+.feuille.fiche{padding-bottom:0}
+.fiche-droite .corps-f{padding-bottom:calc(26px + env(safe-area-inset-bottom,0px))}
+.fiche-droite[data-barre="1"] .corps-f{padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+.barre-avis{padding-bottom:calc(13px + env(safe-area-inset-bottom,0px)); z-index:2}
+
+/* Le voile : le panneau se pose sur la fiche au lieu de surgir. Un
+   position:fixed se résout ici sur la feuille (elle porte un transform),
+   donc il couvre bien tout l'écran sans défiler avec le contenu. */
+.voile-avis{position:fixed; inset:0; z-index:1; border:0; padding:0;
+  background:rgba(16,24,40,.34); -webkit-tap-highlight-color:transparent;
+  animation:avis-voile .26s ease both}
+@keyframes avis-voile{from{opacity:0} to{opacity:1}}
+
+/* L'ouverture : le panneau monte, il n'apparaît pas d'un coup. */
+.ba-panneau{animation:avis-monte .36s cubic-bezier(.16,1,.28,1) both}
+@keyframes avis-monte{from{opacity:0; transform:translateY(18px)} to{opacity:1; transform:none}}
+.barre-avis{transition:border-radius .3s ease, box-shadow .3s ease}
+.barre-avis[data-ouvert="1"]{box-shadow:0 -22px 54px -18px rgba(16,24,40,.55)}
+/* les pastilles arrivent l'une après l'autre, très légèrement */
+.barre-avis[data-ouvert="1"] .reponses .rep{animation:avis-pastille .3s ease both}
+@keyframes avis-pastille{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(1){animation-delay:.04s}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(2){animation-delay:.07s}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(3){animation-delay:.1s}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(4){animation-delay:.13s}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(5){animation-delay:.16s}
+.barre-avis[data-ouvert="1"] .reponses .rep:nth-child(n+6){animation-delay:.19s}
 
 
 /* ═══ La prochaine visite, en tête de l'accueil ═══ */
