@@ -227,20 +227,33 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
    attendent un mail qu'ils ouvriront peut-être.
 
    Pas de biens dedans, pas de chiffres : c'est une mise en route, pas une
-   proposition. Et un seul bouton — plusieurs liens dilueraient le geste. */
+   proposition. Et un seul bouton — plusieurs liens dilueraient le geste.
+
+   ⚠️ Les vignettes sont des emoji, pas des SVG ni des images hébergées.
+   Gmail n'affiche pas les SVG, et une image servie depuis le site peut être
+   bloquée tant que le client n'a pas cliqué « afficher les images ». Un emoji
+   s'affiche partout, sans rien à servir. */
 function buildBienvenue(opts: { prenom: string; token?: string | null }): string {
-  const { prenom, token } = opts;
+  const { token } = opts;
+  const prenom = escapeHtml(opts.prenom);
   const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
-  const puce = (t: string, d: string) => `
-    <tr><td style="padding:0 0 13px;">
+
+  /* L'emoji posé dans le même rond ivoire bordé d'or que dans l'espace. */
+  const rond = (e: string, t = 44, police = 20) => `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#fdfaf1;border:1px solid #ecdcb4;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
+    </tr></table>`;
+
+  /* Les trois lignes restent alignées à gauche : ce sont des listes, elles se
+     lisent mal centrées, et la vignette donne le rail visuel. */
+  const puce = (e: string, titre: string, texte: string) => `
+    <tr><td style="padding:0 0 15px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-        <td width="22" valign="top" style="padding-top:3px;color:${DORE};font-size:15px;line-height:1;">&#9679;</td>
-        <td style="font-size:14px;color:${BLEU};line-height:1.6;">
-          <b style="font-weight:700;">${escapeHtml(t)}</b><br/>
-          <span style="color:#6b7b90;font-size:13.5px;">${escapeHtml(d)}</span>
-        </td>
-      </tr></table>
-    </td></tr>`;
+        <td width="56" valign="top">${rond(e)}</td>
+        <td valign="top" style="padding-left:2px;">
+          <div style="font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.35;padding-top:6px;">${titre}</div>
+          <div style="font-size:13.5px;color:#6b7b90;line-height:1.65;margin-top:4px;">${texte}</div>
+        </td></tr></table></td></tr>`;
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -265,50 +278,58 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
           </tr></table>
         </td></tr>
 
-        <tr><td style="padding:30px 28px 0;">
-          <div style="font-size:21px;font-weight:700;color:${BLEU};line-height:1.3;">Bonjour ${escapeHtml(prenom)},</div>
+        <!-- L'accueil, centré : c'est la seule partie du mail qui doit se lire
+             comme une parole, pas comme une fiche. -->
+        <tr><td align="center" style="padding:32px 34px 0;">
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">Bienvenue, ${prenom}.</div>
           <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
-            Votre recherche est enregistrée. J&#39;ai maintenant ce qu&#39;il me faut pour parcourir
-            le marché pour vous, et je vous ai ouvert un espace personnel où tout se retrouve
-            au même endroit.
+            Ravi de commencer cette recherche avec vous. Elle est enregistrée&nbsp;: j&#39;ai maintenant
+            ce qu&#39;il me faut pour parcourir le marché, et je vous ai ouvert un espace personnel
+            où tout se retrouve au même endroit.
           </div>
         </td></tr>
 
-        <tr><td align="center" style="padding:24px 28px 6px;">
+        <tr><td align="center" style="padding:26px 28px 6px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
             <td align="center" style="background:${DORE};border-radius:12px;">
-              <a href="${lien}" style="display:inline-block;padding:15px 34px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">Ouvrir mon espace</a>
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
             </td>
           </tr></table>
           <div style="font-size:12px;color:#9aa6ba;margin-top:11px;">Ce lien est le vôtre, il ne change pas.</div>
         </td></tr>
 
-        <tr><td style="padding:24px 28px 0;">
+        <tr><td style="padding:26px 28px 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            ${puce('Les biens retenus pour vous', 'Ils arrivent au fil de l’eau. Vous dites en un geste ce que vous en pensez — et c’est ce qui affine la suite.')}
-            ${puce('Vos critères, modifiables à tout moment', 'Un budget qui bouge, un secteur à ajouter : vous le changez vous-même, j’en tiens compte dès la recherche suivante.')}
-            ${puce('L’avancée de votre dossier', 'Ce qui a été parcouru, ce qui a été retenu, vos visites à venir.')}
+            ${puce('&#11088;', 'Les biens retenus pour vous', 'Ils arrivent au fil de l&#39;eau. Vous dites en un geste ce que vous en pensez — et c&#39;est ce qui affine la suite.')}
+            ${puce('&#9999;&#65039;', 'Vos critères, modifiables à tout moment', 'Un budget qui bouge, un secteur à ajouter : vous le changez vous-même, j&#39;en tiens compte dès la recherche suivante.')}
+            ${puce('&#128270;', 'L&#39;avancée de votre dossier', 'Ce qui a été parcouru, ce qui a été retenu, vos visites à venir.')}
           </table>
         </td></tr>
 
-        <tr><td style="padding:6px 28px 0;">
+        <!-- Le conseil. C'est la ligne la plus rentable du mail : un client qui
+             pose l'espace sur son écran d'accueil reçoit les biens en
+             notification, les autres les découvrent trois jours plus tard. -->
+        <tr><td style="padding:8px 28px 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #ecdcb4;border-radius:14px;">
-            <tr><td style="padding:16px 18px;">
-              <div style="font-size:14px;font-weight:700;color:${BLEU};">Le conseil qui change tout</div>
-              <div style="font-size:13.5px;color:#5a6b80;line-height:1.65;margin-top:6px;">
-                Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
-                (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
-                prévenu dès qu&#39;un bien vous est proposé, sans avoir à guetter vos mails —
-                et sur ce marché, quelques heures font souvent la différence.
-              </div>
-            </td></tr>
+            <tr>
+              <td width="78" align="center" valign="top" style="padding:17px 0 17px 16px;">${rond('&#9889;', 52, 26)}</td>
+              <td style="padding:17px 18px 17px 10px;">
+                <div style="font-size:14.5px;font-weight:700;color:${BLEU};">Le conseil qui change tout</div>
+                <div style="font-size:13.5px;color:#5a6b80;line-height:1.65;margin-top:6px;">
+                  Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
+                  (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
+                  prévenu dès qu&#39;un bien vous est proposé, sans avoir à guetter vos mails —
+                  et sur ce marché, quelques heures font souvent la différence.
+                </div>
+              </td>
+            </tr>
           </table>
         </td></tr>
 
-        <tr><td style="padding:22px 28px 26px;">
+        <!-- Coupée en deux lignes : un bloc centré de longueurs inégales tient mal. -->
+        <tr><td align="center" style="padding:24px 40px 28px;">
           <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
-            Une question, une précision à me donner&nbsp;? Répondez simplement à ce message,
-            ou appelez-moi.
+            Une question, une précision à me donner&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
           </div>
         </td></tr>
 
@@ -316,6 +337,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
           <table role="presentation" width="100%"><tr>
             <td>
               <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
+              <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
             <td align="right" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
@@ -342,20 +364,23 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
 </html>`;
 }
 
+/* La version texte, pour les messageries qui n'affichent pas le HTML. */
 function texteBienvenue(prenom: string, token?: string | null): string {
   const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
-  return `Bonjour ${prenom},
+  return `Bienvenue, ${prenom}.
 
-Votre recherche est enregistrée. J'ai maintenant ce qu'il me faut pour parcourir le marché pour vous, et je vous ai ouvert un espace personnel où tout se retrouve au même endroit.
+Ravi de commencer cette recherche avec vous. Elle est enregistrée : j'ai maintenant ce qu'il me faut pour parcourir le marché, et je vous ai ouvert un espace personnel où tout se retrouve au même endroit.
 
 Ouvrir mon espace : ${lien}
 Ce lien est le vôtre, il ne change pas.
 
-Vous y trouverez les biens retenus pour vous, vos critères — modifiables à tout moment — et l'avancée de votre dossier.
+- Les biens retenus pour vous. Ils arrivent au fil de l'eau, et vous dites en un geste ce que vous en pensez.
+- Vos critères, modifiables à tout moment. Vous les changez vous-même, j'en tiens compte dès la recherche suivante.
+- L'avancée de votre dossier. Ce qui a été parcouru, ce qui a été retenu, vos visites à venir.
 
 Le conseil qui change tout : ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d'accueil. Vous serez prévenu dès qu'un bien vous est proposé, sans avoir à guetter vos mails.
 
-Une question ? Répondez à ce message, ou appelez-moi.
+Une question, une précision à me donner ? Répondez simplement à ce message, ou appelez-moi.
 
 Alexandre ROGELET — Emilio Immobilier
 06 58 95 76 32${lienFin(token) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''}`;
