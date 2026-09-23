@@ -4157,9 +4157,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
    avec un point vert qui bat en continu. Elle dit au client, sans qu'il
    ait à cliquer, que son dossier tourne aujourd'hui.
 
-   Le battement reprend celui de la ligne de veille (@keyframes pouls) :
+   Le battement dure 2,6 s, comme celui de la ligne de veille en entête :
    deux signaux vivants dans le même espace doivent battre pareil, sinon
-   l'œil croit qu'ils parlent de deux choses différentes. */
+   l'œil croit qu'ils parlent de deux choses différentes. Les images, elles,
+   sont à part (onde-vif) — le vert menthe de l'entête, posé sur le vert
+   pâle de l'étiquette, ne se verrait plus. */
 .tete-case.tc-vif{justify-content:flex-start; align-items:center}
 .vif{display:inline-flex; align-items:center; gap:7px; padding:5px 12px 5px 10px;
   border-radius:99px; background:var(--vert-fond); border:1px solid var(--vert-trait);
@@ -4176,83 +4178,40 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 @media(max-width:400px){.vif{font-size:11px; padding:4px 10px 4px 9px}}
 
 /* ── Le cadre vivant de « Rappel de ma recherche » ────────────────
-   Un filet vert qui tourne lentement autour du bloc des critères, avec
-   une lueur qui respire à l'intérieur. C'est le même message que la
-   pastille, dit en plus grand : ce dossier est vivant, aujourd'hui.
+   Un trait vert autour du bloc des critères, qui scintille sur place. Le
+   rythme est volontairement irrégulier — deux battements rapprochés, un
+   temps mort, un éclat plus fort : un aller-retour régulier donnerait un
+   clignotant, pas un scintillement.
 
-   Le filet se referme sur le trait du bas — « Ma recherche est terminée »
+   Le cadre se referme sur le trait du bas. « Ma recherche est terminée »
    reste dehors, et c'est voulu : les deux blocs ne disent pas la même
    chose. Recherche arrêtée, tout s'éteint d'un coup.
 
-   Sur un navigateur qui ne sait pas animer une variable d'angle, le
-   dégradé reste en place au lieu de tourner : un cadre vert fixe, et la
-   lueur qui respire quand même. Rien ne casse, c'est simplement plus
-   calme — d'où le --tour écrit en dur juste en dessous. */
-@property --tour{syntax:"<angle>"; initial-value:0deg; inherits:false}
-
-/* ── Le cadre vivant de « Rappel de ma recherche » ────────────────
-   Un filet vert qui tourne lentement autour du bloc des critères, une
-   lueur qui respire à l'intérieur, et un reflet qui le traverse. C'est
-   le même message que la pastille, dit en plus grand : ce dossier est
-   vivant, aujourd'hui.
-
-   Le cadre se referme sur le trait du bas — « Ma recherche est terminée »
-   reste dehors, et c'est voulu : les deux blocs ne disent pas la même
-   chose. Recherche arrêtée, tout s'éteint d'un coup.
-
-   « overflow:hidden » n'est pas décoratif : sans lui, Chromium promeut le
-   dégradé animé sur sa propre couche et le laisse déborder sur le bloc du
-   dessous — une grande tache verte en travers de « Ma recherche est
-   terminée ». Vu, reproduit, corrigé ici.
-
-   Sur un navigateur qui ne sait pas animer une variable d'angle, le
-   dégradé reste en place au lieu de tourner : un cadre vert fixe, et la
-   lueur qui respire quand même. Rien ne casse, c'est simplement plus
-   calme — d'où le --tour écrit en dur juste en dessous. */
-.rech-haut.vivant{position:relative; background:transparent;
-  overflow:hidden; isolation:isolate}
-.rech-haut.vivant > div{position:relative; z-index:2}
-/* Le filet : un disque de lumiere verte qui tourne a plat sous la carte.
-   Seuls ses 2,5 px de pourtour se voient — le reste est masque par le coeur
-   opaque pose juste apres. Le vert de fond est deja franc : le cadre ne
-   disparait jamais, c'est la lumiere vive qui en fait le tour. */
-.rech-haut.vivant::before{content:""; position:absolute; inset:0; z-index:0;
-  border-radius:inherit; pointer-events:none; --tour:0deg;
-  background:conic-gradient(from var(--tour) at 50% 50%,
-    rgba(34,197,94,.55) 0deg, rgba(34,197,94,.72) 30deg,
-    #22c55e 58deg, #bbf7d0 78deg, #22c55e 98deg,
-    rgba(34,197,94,.72) 130deg, rgba(34,197,94,.55) 185deg,
-    rgba(34,197,94,.48) 250deg, rgba(74,222,128,.66) 305deg,
-    rgba(34,197,94,.55) 360deg);
-  animation:tourne 4.6s linear infinite}
-/* Le coeur de la carte : blanc, opaque, il ne laisse depasser que le filet.
-   Il porte le halo serre qui bat contre le bord, et le reflet qui traverse.
-   Le blanc reste blanc : le texte du client doit se lire, pas baigner. */
-.rech-haut.vivant::after{content:""; position:absolute; inset:2.5px; z-index:1;
-  border-radius:18px 18px 0 0; pointer-events:none;
-  background:
-    linear-gradient(112deg,rgba(255,255,255,0) 42%,rgba(187,247,208,.22) 50%,rgba(255,255,255,0) 58%),
-    linear-gradient(180deg,rgba(34,197,94,.05),rgba(255,255,255,0) 42%),
-    var(--carte);
-  background-size:260% 100%, 100% 100%, 100% 100%;
-  background-position:180% 0, 0 0, 0 0;
-  animation:halo 3.4s ease-in-out infinite, balaye 6.4s ease-in-out infinite}
-.rech-haut.vivant:hover::after{
-  background:
-    linear-gradient(112deg,rgba(255,255,255,0) 42%,rgba(187,247,208,.26) 50%,rgba(255,255,255,0) 58%),
-    linear-gradient(180deg,rgba(34,197,94,.10),rgba(34,197,94,0) 42%),
-    var(--fond)}
-@keyframes tourne{to{--tour:360deg}}
-@keyframes halo{0%,100%{box-shadow:inset 0 0 7px -5px rgba(34,197,94,.5)}
-  50%{box-shadow:inset 0 0 12px -5px rgba(34,197,94,.78)}}
-@keyframes balaye{0%,14%{background-position:180% 0, 0 0, 0 0}
-  100%{background-position:-90% 0, 0 0, 0 0}}
-/* Qui a demande moins de mouvement en obtient moins : le cadre reste, vert et
-   net, mais la lumiere ne tourne plus et le point ne bat plus. La regle
-   globale plus bas ramene toutes les durees a .01ms — sur une animation
-   infinie qui repeint un degrade, ce serait pire que tout. */
+   Le trait est écrit une première fois dans la règle, avant l'animation :
+   si l'animation ne part pas — mouvement réduit, vieux navigateur — il
+   reste un cadre vert propre au lieu de rien du tout. */
+.rech-haut.vivant{position:relative;
+  background:linear-gradient(180deg,rgba(34,197,94,.05),rgba(255,255,255,0) 42%)}
+.rech-haut.vivant:hover{
+  background:linear-gradient(180deg,rgba(34,197,94,.12),rgba(34,197,94,.02) 42%)}
+.rech-haut.vivant::before{content:""; position:absolute; inset:0; z-index:3;
+  border-radius:inherit; pointer-events:none;
+  box-shadow:inset 0 0 0 2px rgba(34,197,94,.62), inset 0 0 13px -7px rgba(34,197,94,.55);
+  animation:scintille 3.4s ease-in-out infinite}
+@keyframes scintille{
+  0%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.40), inset 0 0 10px -7px rgba(34,197,94,.40)}
+  16%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.86), inset 0 0 17px -6px rgba(34,197,94,.80)}
+  27%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.50), inset 0 0 11px -7px rgba(34,197,94,.48)}
+  44%{box-shadow:inset 0 0 0 2px rgba(74,222,128,.98), inset 0 0 22px -5px rgba(34,197,94,.92)}
+  58%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.44), inset 0 0 10px -7px rgba(34,197,94,.42)}
+  76%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.72), inset 0 0 15px -6px rgba(34,197,94,.68)}
+  100%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.40), inset 0 0 10px -7px rgba(34,197,94,.40)}}
+/* Qui a demandé moins de mouvement en obtient moins : le cadre reste, vert
+   et net, mais il ne scintille plus et le point ne bat plus. La règle
+   globale plus bas ramène toutes les durées à .01 ms — sur une animation
+   infinie, ce serait pire que tout. */
 @media(prefers-reduced-motion:reduce){
-  .rech-haut.vivant::before, .rech-haut.vivant::after, .vif-pt{animation:none}
+  .rech-haut.vivant::before, .vif-pt{animation:none}
 }
 
 .bloc-rech{padding:0; gap:0; cursor:default}
