@@ -50,18 +50,36 @@ production — et rien du tout au banc d'essai.
 ```
 
 **Règle : après une balise ou une expression, jamais d'espace littérale suivie
-d'un passage à la ligne. Toujours `{' '}`.** Même chose pour l'espace *avant*
-une balise inline en début de ligne.
+d'un passage à la ligne.** Trois façons d'être tranquille :
 
-Le détecteur est dans `outils/espaces-jsx.py` (§5). Le lancer après toute
-retouche de texte, et **vérifier dans le code compilé**, pas au banc d'essai :
+1. `{' '}` juste après la balise ou l'accolade ;
+2. tout garder sur **une seule ligne** — sans retour à la ligne, rien n'est rogné ;
+3. écrire la phrase entière dans **une seule chaîne** :
+   ``{`Vous en avez ${n} en cours. Choisissez celle que vous voulez suivre.`}`` —
+   plus aucune règle JSX ne s'applique. C'est la forme la plus sûre quand un
+   chiffre tombe au milieu d'un paragraphe.
+
+⚠️ **Ce piège a resservi le 23 septembre**, dans du code écrit le jour même par
+quelqu'un qui n'avait pas lu ce fichier : `« Vous en avez 2en cours »`, repéré
+par Alexandre en production. Trois autres mots collés dormaient dans le dépôt
+depuis des semaines et sont sortis dans la foulée (« 2.Les alertes »,
+« clientse remplissent », « dessousdisparaissent »). **Lire ce paragraphe avant
+d'écrire du texte, pas après.**
+
+Le détecteur est dans `outils/espaces-jsx.py` (§7). Il dégrossit, il ne tranche
+pas. **Ce qui tranche, c'est le code compilé** — jamais le banc d'essai, qui
+passe par esbuild et ne reproduit pas le bug :
 
 ```bash
 npx next build
-grep -o '</b>.\{0,3\}[a-zà-ÿ]' .next/static/chunks/*.js | sort -u
+# une balise ou une expression collée à une lettre = un mot collé en prod
+grep -rhoP '\}\),"[a-zà-ÿ]' .next/static --include=*.js | sort -u
+# ou, pour une phrase précise qu'on vient d'écrire :
+grep -rhoP '.{16}Vous en avez' .next/static --include=*.js | sort -u
 ```
 
-Une balise fermante immédiatement suivie d'une lettre, sans `" "` entre les deux, est un mot collé.
+Ce qu'on veut lire : `…})," ","Vous en avez…` — l'espace est un enfant à part.
+Ce qui est cassé : `…}),"Vous en avez…`
 
 ### 2.2 `gap` dans un conteneur flex coupe les phrases
 
@@ -137,6 +155,28 @@ if (error) { alert("La relance n'a pas pu être créée.\n\n" + error.message); 
 Les relances n'ont jamais fonctionné pendant des semaines parce qu'un `insert` écrivait dans des
 colonnes qui n'existaient pas, sans que personne ne voie rien. `context.md` §6.2 liste la
 cinquantaine de points encore concernés. **Ne pas en ajouter.**
+
+### 3.3 Le lien de l'espace appartient au CLIENT, pas à la recherche
+
+Depuis le 23 septembre, `clients.token_espace` est **le** lien — un seul par
+client, définitif, quel que soit le nombre de recherches qu'il ouvrira ensuite.
+C'est lui qu'on met dans un mail, dans le bouton « Copier le lien », dans le
+manifeste de l'application.
+
+`recherches.token_espace` existe toujours et reste valable, mais il a changé de
+rôle : c'est **l'adresse interne d'une recherche**. Il sert à deux choses, et à
+rien d'autre :
+
+- les routes `/api/espace/` l'utilisent pour savoir de quelle recherche
+  l'espace parle (c'est ce que `page.tsx` passe à `EspaceClient` en `token`) ;
+- les liens envoyés avant la bascule continuent de fonctionner : `page.tsx`
+  les reconnaît et redirige vers le lien permanent du client.
+
+⚠️ **Ne jamais envoyer un jeton de recherche à un client.** Il marcherait, mais
+il mourrait avec la recherche — et le client aurait une icône morte sur son
+téléphone. Tout passe par `src/lib/espace.ts` : `ouvrirEspace()` accepte les
+deux sortes de jetons et rend toujours le client, toutes ses recherches
+visibles, et celle qu'il faut afficher.
 
 ---
 
@@ -243,10 +283,14 @@ de fond, pas de style.
 python3 outils/espaces-jsx.py $(find src -name '*.tsx' -o -name '*.ts')
 ```
 
-⚠️ **Il ne sort jamais en code 0 sur ce dépôt** : quatre faux positifs connus subsistent
-(`FicheClient.tsx:1498`, `ParcoursBien.tsx:295`, `send-mail/route.ts:244` et `:317` — des `>` de
-comparaison et un attribut de balise). Il n'est donc pas branchable en pré-commit tel quel : on le
-lit à l'œil, et on ne regarde que les lignes nouvelles. Mieux vaut ce bruit qu'un oubli.
+Il sort une vingtaine de lignes sur le dépôt, dont **une bonne moitié de faux
+positifs** : des commentaires JSX sur plusieurs lignes, et du HTML dans les
+gabarits de `send-mail/route.ts` (là, les espaces sont dans une chaîne, donc
+intactes). Il n'est pas branchable en pré-commit tel quel : on le lit à l'œil,
+et **on ne regarde que les lignes qu'on vient d'écrire**.
+
+Un signalement n'est un vrai bug que si le code compilé le confirme (§2.1).
+Quatre l'ont été le 23 septembre, tous corrigés le jour même.
 
 ---
 
