@@ -489,6 +489,24 @@ export default function FicheClient({ client: init, onBack }: Props) {
   }, [rechercheId]);
 
   useEffect(() => { chargerVeilleCount(); }, [chargerVeilleCount]);
+
+  /* ── le filet de sécurité du lien d'espace ──
+     Depuis `migration-espace-client.sql`, le lien est rangé sur le client.
+     La reprise l'a posé sur tous ceux qui avaient au moins une recherche ;
+     restent ceux qui n'en avaient aucune, et ceux créés avant la mise à jour
+     du formulaire. On leur en pose un à la première ouverture de leur fiche,
+     pour qu'Alexandre ait toujours un lien à copier. */
+  useEffect(() => {
+    if (!client.id || client.token_espace) return;
+    let vivant = true;
+    (async () => {
+      const jeton = jetonEspace(client.prenom, client.nom);
+      const { data } = await supabase.from('clients')
+        .update({ token_espace: jeton }).eq('id', client.id).select().single();
+      if (vivant && data) setClient(data as Client);
+    })();
+    return () => { vivant = false; };
+  }, [client.id, client.token_espace, client.prenom, client.nom]);
   const [suiviFiltre, setSuiviFiltre] = useState('appel');
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
@@ -693,6 +711,13 @@ export default function FicheClient({ client: init, onBack }: Props) {
      se rattrape pas ; et la date se pose côté serveur, après l'accusé de
      Mailjet seulement — un échec ne doit pas condamner le bouton. */
   const [envoiBienvenue, setEnvoiBienvenue] = useState(false);
+
+  /* Le client a-t-il déjà reçu son lien pour une AUTRE recherche ? Si oui, le
+     bouton ne lui renvoie pas un mail de bienvenue — il n'a rien à réinstaller,
+     son espace existe déjà. Il reçoit juste le mot qui dit qu'une nouvelle
+     recherche vient de s'ouvrir dedans. */
+  const dejaAccueilli = recherches.some(x => x.id !== rechercheActive?.id && !!x.bienvenue_envoye_le);
+
   async function envoyerBienvenue() {
     if (!rechercheActive || rechercheActive.bienvenue_envoye_le || envoiBienvenue) return;
     const dest = (client.emails || []).filter((e: string) => e && e.includes('@'));
@@ -700,7 +725,14 @@ export default function FicheClient({ client: init, onBack }: Props) {
       alert("Ce client n'a pas d'adresse mail valide.");
       return;
     }
-    if (!confirm(`Envoyer le mail de bienvenue à ${dest.join(', ')} ?\n\nIl contient le lien de son espace et l'invite à l'installer sur son téléphone. Il ne peut être envoyé qu'une fois.`)) return;
+    const quoi = dejaAccueilli
+      ? `Prévenir ${dest.join(', ')} que la recherche « ${rechercheActive.nom} » est ouverte ?\n\n`
+        + `Il a déjà son espace : le mail lui dit simplement qu'une nouvelle recherche s'y ajoute, `
+        + `avec le même lien qu'avant. Il ne peut être envoyé qu'une fois.`
+      : `Envoyer le mail de bienvenue à ${dest.join(', ')} ?\n\n`
+        + `Il contient le lien de son espace et l'invite à l'installer sur son téléphone. `
+        + `Il ne peut être envoyé qu'une fois.`;
+    if (!confirm(quoi)) return;
     setEnvoiBienvenue(true);
     try {
       const r = await fetch('/api/send-mail', {
@@ -719,7 +751,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
          posé la date, et c'est elle qui fait foi. */
       const { data } = await supabase.from('recherches').select('*').eq('id', rechercheActive.id).single();
       if (data) setRecherches(rs => rs.map(x => x.id === (data as Recherche).id ? (data as Recherche) : x));
-      await addJournal(client.id, 'mail_envoye', '👋 Mail de bienvenue envoyé');
+      await addJournal(client.id, 'mail_envoye', dejaAccueilli
+        ? `✉️ Nouvelle recherche annoncée — ${rechercheActive.nom}`
+        : '👋 Mail de bienvenue envoyé');
     } catch (e) {
       alert(`Le mail n'est pas parti : ${(e as Error).message}`);
     } finally {
@@ -762,20 +796,106 @@ export default function FicheClient({ client: init, onBack }: Props) {
     }
   }
 
+  /**
+   * Supprimer une recherche.
+   *
+   * On peut supprimer la DERNIÈRE, désormais. L'espace du client ne dépend
+   * plus d'une recherche : son lien est rangé sur lui (voir src/lib/espace.ts),
+   * son application reste posée sur son téléphone, et elle rouvrira toute
+   * seule le jour où on lui ouvre une nouvelle recherche.
+   *
+   * Ce qui part : tout ce qui ne parle que de CETTE recherche — ses biens et
+   * leurs photos, ses visites et leurs comptes rendus, ses envois, sa
+   * transaction, ses relances, tout son travail de veille, et les lignes de
+   * journal qui portent son nom ou celui d'un de ses biens.
+   *
+   * Ce qui reste : le client, et tout ce que le journal dit de LUI — les
+   * appels, les notes, les rendez-vous. Ces lignes-là racontent la relation,
+   * pas la recherche : elles ne doivent pas disparaître avec elle.
+   */
   async function supprimerRecherche(r: Recherche) {
-    if (recherches.length <= 1) { alert('Impossible de supprimer la seule recherche du client.'); return; }
-    const ok = confirm(`Supprimer la recherche « ${r.nom} » ?\n\n⚠️ Tous les biens, visites et envois rattachés à CETTE recherche seront également supprimés définitivement. Cette action est irréversible.`);
+    const reste = recherches.filter(x => x.id !== r.id);
+    const derniere = reste.length === 0;
+
+    const ok = confirm(
+      `Supprimer la recherche « ${r.nom} » ?\n\n` +
+      `⚠️ Ses biens et leurs photos, ses visites, ses envois et tout son travail de veille ` +
+      `seront supprimés définitivement.\n\n` +
+      (derniere
+        ? `C'est la dernière recherche de ce client. Sa fiche, son suivi de dossier et le lien ` +
+          `de son espace sont conservés : ouvrez-lui une nouvelle recherche et il la retrouvera ` +
+          `au même endroit, sans rien réinstaller.\n\n`
+        : `Ses autres recherches ne sont pas touchées.\n\n`) +
+      `Cette action est irréversible.`,
+    );
     if (!ok) return;
+
     /* Les photos se relèvent AVANT la suppression : après, les lignes qui
        portaient leurs adresses n'existent plus et elles seraient introuvables. */
-    const { data: aEffacer } = await supabase.from('biens').select('photos').eq('recherche_id', r.id);
+    const { data: sesBiens } = await supabase.from('biens').select('id, photos').eq('recherche_id', r.id);
+    const ids = (sesBiens || []).map((b: any) => b.id);
+    const chemins = cheminsPhotos(sesBiens || []);
+
+    /* ⚠️ Le suivi de dossier ne meurt pas avec la recherche.
+       Un appel, un rendez-vous, une note, un message du client : ça raconte la
+       relation, pas la recherche — même quand la ligne portait le numéro de la
+       recherche (le formulaire « Ajouter une action » le pose). On la détache
+       donc au lieu de l'effacer : elle remonte au niveau du client et reste
+       lisible dans l'onglet Suivi. Tout le reste — biens envoyés, visites,
+       critères modifiés, mails — part avec la recherche. */
+    const PROTEGES = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel'];
+    if (ids.length > 0) {
+      await supabase.from('journal')
+        .update({ bien_id: null, recherche_id: null }).in('bien_id', ids).in('type', PROTEGES);
+    }
+    await supabase.from('journal')
+      .update({ recherche_id: null }).eq('recherche_id', r.id).in('type', PROTEGES);
+
+    /* L'ordre compte : on enlève d'abord ce qui pointe vers un bien, le bien
+       en dernier, la recherche tout à la fin. Sinon une clé étrangère bloque. */
+    if (ids.length > 0) await supabase.from('journal').delete().in('bien_id', ids);
+    await supabase.from('journal').delete().eq('recherche_id', r.id);
+
+    await supabase.from('visites').delete().eq('recherche_id', r.id);
+    await supabase.from('envois').delete().eq('recherche_id', r.id);
+    await supabase.from('transactions').delete().eq('recherche_id', r.id);
+    await supabase.from('relances').delete().eq('recherche_id', r.id);
+    await supabase.from('veille_propositions').delete().eq('recherche_id', r.id);
+    await supabase.from('veille_passages').delete().eq('recherche_id', r.id);
+    await supabase.from('espace_evenements').delete().eq('recherche_id', r.id);
+
+    /* Les notifications appartiennent au client, pas à la recherche : son
+       téléphone reste abonné, on le rattache simplement à ce qui reste. */
+    if (derniere) {
+      await supabase.from('push_abonnements').delete().eq('recherche_id', r.id);
+    } else {
+      await supabase.from('push_abonnements').update({ recherche_id: reste[0].id }).eq('recherche_id', r.id);
+    }
+
+    await effacerPhotos(chemins);
+
+    const { error: eBiens } = await supabase.from('biens').delete().eq('recherche_id', r.id);
+    if (eBiens) { alert('Erreur : ' + eBiens.message); return; }
+
     const { error } = await supabase.from('recherches').delete().eq('id', r.id);
     if (error) { alert('Erreur : ' + error.message); return; }
-    await effacerPhotos(cheminsPhotos(aEffacer || []));
-    const reste = recherches.filter(x => x.id !== r.id);
+
+    /* On garde la trace de la suppression elle-même, au niveau du client :
+       sinon le dossier semblerait n'avoir jamais rien contenu. */
+    const ligne = {
+      client_id: client.id, recherche_id: null,
+      titre: `🗑️ Recherche supprimée — ${r.nom}`,
+      description: `${ids.length} bien(s) et tout le suivi de cette recherche ont été effacés.`
+        + (derniere ? ' C’était la dernière recherche du client ; son espace reste ouvert.' : ''),
+      metadata: {},
+    };
+    const { error: eJournal } = await supabase.from('journal').insert({ ...ligne, type: 'recherche_supprimee' });
+    if (eJournal) await supabase.from('journal').insert({ ...ligne, type: 'statut_change' });
+
     setRecherches(reste);
     if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('selection'); }
     setPosRecherche(null);
+    load();
   }
 
   /**
@@ -2497,18 +2617,26 @@ Emilio Immobilier
                     la recherche : c'est lui qui fait poser l'espace sur l'écran
                     d'accueil du client, et donc qui décide s'il recevra les
                     biens en notification ou s'il les découvrira trois jours
-                    plus tard dans sa boîte mail. */}
+                    plus tard dans sa boîte mail.
+
+                    Sur une DEUXIÈME recherche, le client a déjà son espace et
+                    son application : le bouton ne lui renvoie pas un lien, il
+                    lui annonce simplement que la nouvelle recherche est ouverte
+                    au même endroit. */}
                 <button className={styles.editBtn} onClick={envoyerBienvenue}
                   disabled={!!rechercheActive?.bienvenue_envoye_le || envoiBienvenue}
                   title={rechercheActive?.bienvenue_envoye_le
                     ? `Déjà envoyé le ${new Date(rechercheActive.bienvenue_envoye_le).toLocaleDateString('fr-FR')}`
-                    : 'Envoyer au client son lien d’espace et l’inviter à l’installer sur son téléphone'}
+                    : dejaAccueilli
+                      ? 'Prévenir le client que cette nouvelle recherche est ouverte dans son espace'
+                      : 'Envoyer au client son lien d’espace et l’inviter à l’installer sur son téléphone'}
                   style={rechercheActive?.bienvenue_envoye_le
                     ? { opacity: .45, cursor: 'default' }
                     : undefined}>
                   {envoiBienvenue ? '⏳ Envoi…'
-                    : rechercheActive?.bienvenue_envoye_le ? '✓ Bienvenue envoyée'
-                      : '👋 Mail de bienvenue'}
+                    : rechercheActive?.bienvenue_envoye_le
+                      ? (dejaAccueilli ? '✓ Client prévenu' : '✓ Bienvenue envoyée')
+                      : (dejaAccueilli ? '✉️ Prévenir le client' : '👋 Mail de bienvenue')}
                 </button>
                 <button className={styles.editBtn} onClick={() => ouvrirCriteres()}>✏️ Modifier</button>
               </span>
@@ -2524,9 +2652,9 @@ Emilio Immobilier
                         <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 800 : 600, color: '#1a2332' }}>{r.nom}</span>
                         {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
                       </button>
-                      {recherches.length > 1 && (
-                        <button title="Supprimer cette recherche" onClick={() => { setPosRecherche(null); supprimerRecherche(r); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 14px', alignSelf: 'stretch' }} onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')} onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
-                      )}
+                      {/* La corbeille est là même sur la dernière recherche :
+                          l'espace du client ne meurt plus avec elle. */}
+                      <button title="Supprimer cette recherche" onClick={() => { setPosRecherche(null); supprimerRecherche(r); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 14px', alignSelf: 'stretch' }} onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')} onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
                     </div>
                   ))}
                   <button onClick={() => { setPosRecherche(null); creerRecherche(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: '#fbfcfe', cursor: 'pointer', fontFamily: 'inherit', color: '#2d5c8f', fontWeight: 700, fontSize: 13.5 }}>+ Nouvelle recherche</button>
