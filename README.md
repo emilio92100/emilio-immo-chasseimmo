@@ -19,6 +19,12 @@ application, quel que soit le nombre de recherches. Voir `AGENTS.md` §3.3.
 
 `CLAUDE.md` ne fait que pointer vers `AGENTS.md`.
 
+## Connexion au CRM
+
+Un compte Supabase (`arogelet@emilio-immo.com`), pas un code partagé. La base reconnaît ce compte :
+c'est ce qui permet au RLS de distinguer Alexandre de n'importe quel visiteur. Voir `AGENTS.md`
+§3.4 avant de toucher à `/login`, `/api/login` ou aux politiques.
+
 ## Stack
 
 Next.js 16.2.3 + TypeScript · Supabase (base + Storage) · Mailjet · Claude API · Vercel.
@@ -43,6 +49,7 @@ mais la collecte des pages échoue sur `supabaseUrl is required`.
 | `migration-notifications.sql` | `push_abonnements` | passée |
 | `migration-bienvenue.sql` | `recherches.bienvenue_envoye_le` | passée |
 | `migration-espace-client.sql` | `clients.token_espace` + reprise des liens existants | passée le 23/09 |
+| `migration-rls.sql` | **RLS sur les 14 tables** + politique `authenticated` | passée le 23/09 |
 
 ## Outils
 
