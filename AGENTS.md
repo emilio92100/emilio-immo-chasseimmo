@@ -178,6 +178,32 @@ téléphone. Tout passe par `src/lib/espace.ts` : `ouvrirEspace()` accepte les
 deux sortes de jetons et rend toujours le client, toutes ses recherches
 visibles, et celle qu'il faut afficher.
 
+### 3.4 La base est fermée : deux serrures, et elles ne font pas la même chose
+
+Depuis le 23 septembre, le RLS est actif sur les 14 tables (`migration-rls.sql`). Conséquences
+directes pour quiconque écrit du code ici :
+
+| Qui | Ce qu'il peut lire |
+|---|---|
+| `anon` — la clé publique, lisible dans le code de toute page | **rien** |
+| `authenticated` — Alexandre connecté dans son navigateur | tout |
+| `service_role` — le serveur, clé jamais envoyée au navigateur | tout, RLS ignoré |
+
+⚠️ **Toute page publique doit lire la base côté SERVEUR avec `SUPABASE_SERVICE_ROLE_KEY`.**
+C'est déjà le cas de `/espace/[token]`, de `/bien/[id]` et de toutes les routes `/api/espace/`.
+Une nouvelle page publique qui utiliserait `@/lib/supabase` (clé publique) afficherait du vide,
+sans erreur : la requête réussit, elle renvoie `[]`.
+
+⚠️ **Le CRM, lui, lit depuis le navigateur** avec la session de l'utilisateur. Il faut donc une
+session Supabase valide — pas seulement le cookie. Les deux serrures :
+
+- le **cookie** `emilio_acces` (posé par `/api/login`, vérifié par `proxy.ts`) autorise
+  l'**affichage des pages** ;
+- la **session Supabase** (dans le navigateur) autorise la **lecture des données**.
+
+Le cookie seul ne donne accès à rien : les écrans s'afficheraient vides. `AppLayout` surveille la
+session et renvoie vers `/login` si elle disparaît — ne pas retirer ce garde-fou.
+
 ---
 
 ## 4. La barrière de qualité — obligatoire avant de livrer
