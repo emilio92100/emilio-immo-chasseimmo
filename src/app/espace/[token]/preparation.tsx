@@ -85,7 +85,7 @@ export default function EspaceEnPreparation({ prenom }: { prenom?: string | null
           margin: '12px 0 0', fontSize: 15, lineHeight: 1.7,
           color: 'rgba(255,255,255,.66)',
         }}>
-          {bonjour} aucune recherche n’est ouverte pour le moment. Votre
+          {bonjour}{' '}aucune recherche n’est ouverte pour le moment. Votre
           conseiller y travaille&nbsp;: dès qu’elle est en place, tout
           réapparaît ici, au même endroit et avec le même lien. Vous n’avez
           rien à réinstaller.
