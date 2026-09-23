@@ -5001,7 +5001,11 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
   /* La colonne grandit jusqu'a remplir la hauteur : sur une fiche plus courte
      que l'ecran, la barre descend quand meme tout en bas. */
   .feuille.fiche .fiche-droite{flex:1 0 auto; display:flex; flex-direction:column}
-  .fiche-droite[data-barre="1"] .corps-f{flex:1 0 auto; padding-bottom:0}
+  /* 20 px d'air sous le dernier bouton. A zero, le contenu touchait la barre :
+     l'ombre et le flou de celle-ci mordaient dessus, et « Partager » avait
+     l'air coupe. La reserve (le rail, ci-dessous) fait la hauteur exacte de la
+     barre ; cette marge-la est ce qui les separe. */
+  .fiche-droite[data-barre="1"] .corps-f{flex:1 0 auto; padding-bottom:20px}
   /* ⚠️ .corps-f et .rail-avis sont FRERES, tous deux enfants de .fiche-droite.
      Une version precedente ecrivait « .corps-f .rail-avis » : le selecteur ne
      designait rien, la reserve disparaissait, et la barre recouvrait la fin du
