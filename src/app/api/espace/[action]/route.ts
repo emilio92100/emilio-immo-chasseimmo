@@ -356,6 +356,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           trouve_avec_vous: 'a trouvé son bien avec nous',
           trouve_ailleurs: 'a trouvé son bien par un autre biais',
           pause: 'souhaite mettre sa recherche en pause',
+          /* Distinct de la pause, et la nuance compte : une pause se relance,
+             un arrêt se clôture. Le rappel ne se prépare pas pareil. */
+          abandon: 'arrête sa recherche',
         };
         const motif = typeof body.motif === 'string' ? body.motif : '';
         const quoi = MOTIFS[motif];
