@@ -60,6 +60,15 @@ function lienBien(b: BienLite, token?: string | null): string {
   return `${lienEspace(token, SITE_URL)}?bien=${b.id}`;
 }
 
+/* « Je ne suis plus en recherche ».
+   Le lien n'annule rien en arrivant : il ouvre l'espace sur la question, et
+   c'est le client qui choisit sa réponse. C'est volontaire — les messageries
+   et les antivirus ouvrent les liens des mails pour les vérifier, et un lien
+   qui agirait au simple clic clôturerait des dossiers tout seul. */
+function lienFin(token?: string | null): string {
+  return token ? `${lienEspace(token, SITE_URL)}?fin=1` : '';
+}
+
 function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null }): string {
   const { corps, biens } = opts;
   const corpsHtml = escapeHtml(corps).replace(/\n/g, '<br/>');
@@ -185,6 +194,22 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
 
       </table>
 
+      <!-- Sous la feuille, en gris sur gris : la sortie.
+           Elle a sa place dans chaque envoi — un client qui a trouvé ailleurs
+           et qui continue de recevoir des biens finit par ne plus ouvrir du
+           tout. Mieux vaut qu'il le dise, et qu'Alexandre l'apprenne. -->
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+        <tr><td align="center" style="padding:16px 28px 6px;">
+          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+            Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
+              lienFin(token)
+                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                : ''
+            }
+          </div>
+        </td></tr>
+      </table>
+
     </td></tr>
   </table>
 </body>
@@ -278,7 +303,9 @@ export async function POST(req: NextRequest) {
       const biensClient = tousBiens.filter(b => b.client_id === client.id);
       const corpsPerso = corps.replace(/\{\{prénom\}\}/g, client.prenom);
       const html = buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: tokenEspace });
-      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, tokenEspace)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32`;
+      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, tokenEspace)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
+        lienFin(tokenEspace) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(tokenEspace)}` : ''
+      }`;
 
       try {
         const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
