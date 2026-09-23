@@ -3203,9 +3203,16 @@ function ChoixRecherche({ liste, courante, onChoisir, onFermer }: {
         )}
       </div>
       <div className="corps-f">
+        {/* ⚠️ Une seule chaîne, pas du texte JSX autour d'un {…}.
+            Le compilateur rogne les espaces en bord d'un bloc de texte qui
+            court sur plusieurs lignes : « Vous en avez {n} en cours » ressortait
+            collé, « 2en cours ». Écrit d'un bloc, le problème ne peut plus se
+            poser — et les espaces insécables sont posés à la main. */}
         <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
-          Vous en avez {liste.length} en cours. Choisissez celle que vous voulez suivre&nbsp;;
-          vous pourrez revenir à l&apos;autre quand vous voudrez.
+          {`Vous en avez ${liste.length} en cours. Choisissez celle que vous voulez suivre ; `
+            + (liste.length > 2
+              ? 'vous pourrez changer quand vous voudrez.'
+              : 'vous pourrez revenir à l’autre quand vous voudrez.')}
         </p>
         <div className="recs">
           {liste.map((r) => {
