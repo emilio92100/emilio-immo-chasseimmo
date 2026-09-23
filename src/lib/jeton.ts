@@ -68,6 +68,21 @@ const LONGUEUR_ANCIEN = 40;
  *   jeton court  → https://espace.emilio-immo.com/dupont-k3n8vq2fab
  *   ancien jeton → https://<le site>/espace/<les 64 caractères>
  */
+/**
+ * L'adresse publique d'un bien — celle qu'on envoie à quelqu'un qui n'a pas
+ * d'espace : un conjoint, un proche, un confrère.
+ *
+ * Elle porte le domaine d'Emilio, pas celui de Vercel. Un lien en
+ * « …vercel.app » dans un mail fait bricolage, et il change si l'hébergement
+ * change un jour. Le domaine, lui, est à Alexandre.
+ *
+ * ⚠️ Le portail doit laisser passer /bien/ sur ce domaine (voir src/proxy.ts),
+ * sinon l'adresse est réécrite vers l'espace et ne mène nulle part.
+ */
+export function lienBienPublic(id: string): string {
+  return `https://${HOTE_ESPACE}/bien/${id}`;
+}
+
 export function lienEspace(token?: string | null, origine?: string): string {
   if (!token) return '';
   if (token.length <= LONGUEUR_ANCIEN) return `https://${HOTE_ESPACE}/${token}`;
