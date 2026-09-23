@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
+import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
@@ -2767,7 +2768,10 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
   const [erreur, setErreur] = useState(false);
   const [copie, setCopie] = useState(false);
   const [etat, setEtat] = useState<'saisie' | 'envoi' | 'ok' | 'ko'>('saisie');
-  const lien = typeof window !== 'undefined' ? `${window.location.origin}/bien/${b.id}` : '';
+  /* La même adresse que celle qui partira vraiment (voir /api/espace/partage) :
+     l'aperçu montrait window.location.origin, donc parfois une adresse qui
+     n'existe pas sur ce domaine. */
+  const lien = lienBienPublic(b.id);
 
   const fermerSiPossible = useCallback(() => { if (etat !== 'envoi') onFermer(); }, [etat, onFermer]);
   useEchap(true, fermerSiPossible);
