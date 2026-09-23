@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { HOTE_ESPACE } from '@/lib/jeton';
+import { ouvrirEspace } from '@/lib/espace';
 
 /**
  * La carte d'identité de l'espace, lue par le téléphone au moment où le client
@@ -10,6 +12,11 @@ import { HOTE_ESPACE } from '@/lib/jeton';
  * téléphone quelle page ouvrir quand on tape l'icône. Un manifeste commun
  * ramènerait tout le monde à la racine du site — donc nulle part.
  *
+ * ⚠️ C'est le lien du CLIENT qui part dans `start_url`, jamais celui d'une
+ * recherche. L'icône posée sur l'écran d'accueil doit survivre à la fin
+ * d'une recherche : le jour où Alexandre en supprime une, le client rouvre
+ * son espace et tombe sur celle qui reste.
+ *
  * Les deux adresses de l'espace cohabitent, et le manifeste suit celle par
  * laquelle le client est arrivé :
  *   espace.emilio-immo.com/dupont-k3n8vq2fab   →  start_url  /dupont-k3n8vq2fab
@@ -18,20 +25,38 @@ import { HOTE_ESPACE } from '@/lib/jeton';
 
 export const dynamic = 'force-dynamic';
 
+function base() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
+
 export async function GET(
   requete: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
 
+  /* Si le client est arrivé par une ancienne adresse de recherche, on pose
+     quand même son lien permanent dans le raccourci : l'application qu'il
+     installe aujourd'hui ne dépendra pas d'une recherche en particulier. */
+  let jeton = token;
+  try {
+    const espace = await ouvrirEspace(base(), token);
+    if (espace?.jetonClient) jeton = espace.jetonClient;
+  } catch { /* le manifeste ne doit jamais empêcher l'installation */ }
+
   const hote = (requete.headers.get('host') || '').toLowerCase().split(':')[0];
   const court = hote === HOTE_ESPACE;
-  const racine = court ? `/${token}` : `/espace/${token}`;
+  const racine = court ? `/${jeton}` : `/espace/${jeton}`;
 
   const manifeste = {
     /* Court, parce que c'est ce mot-là qu'Android affiche en grand sur l'écran
-       d'ouverture. « Ma recherche — Emilio Immobilier » y tenait sur deux
-       lignes et faisait brouillon ; la marque est déjà dans l'icône. */
+       d'ouverture, et sous l'icône : au-delà de douze caractères, il coupe.
+       « Ma recherche » les fait pile — et c'est le mot du métier, celui que le
+       client emploie lui-même. Un client qui en aurait deux ne s'y trompe pas :
+       c'est le sélecteur, à l'intérieur, qui dit laquelle il regarde. */
     name: 'Ma recherche',
     short_name: 'Ma recherche',
     description: 'Les biens retenus pour vous, vos critères et vos visites.',
