@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.5 · 23 septembre 2026**
+**Version 3.6 · 23 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -458,18 +458,18 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
 
 ### Sécurité
 
-5. **RLS désactivé sur toutes les tables** (état constaté en mai 2026 ; **invérifiable depuis le
-   dépôt**, qui ne contient aucun fichier SQL — à reconfirmer dans Supabase). Le code est cohérent
-   avec cet état : tout passe par la clé anonyme côté navigateur. Si c'est toujours vrai, quiconque
-   détient cette clé — visible dans le navigateur — peut lire et modifier toutes les données
-   clients. Risque RGPD réel, **devenu plus urgent depuis que l'espace acheteur et la fiche bien
-   sont des pages publiques.** À traiter en session dédiée : activer le RLS partout d'un coup avec
-   les bonnes policies, puis vérifier que l'application fonctionne encore.
+5. ✅ **RÉGLÉ le 23 septembre 2026.** Le RLS était désactivé sur les 14 tables, et le rôle `anon`
+   — dont la clé est lisible dans le code de n'importe quelle page publique — avait `SELECT`,
+   `INSERT`, `UPDATE`, `DELETE` **et `TRUNCATE`** sur toutes. N'importe qui pouvait donc copier ou
+   vider le fichier clients. Voir la V3.6 au §11 pour ce qui a été fait.
+   État vérifié après coup, depuis l'extérieur, avec la clé publique tirée de la page de
+   connexion : `clients`, `biens` et `journal` renvoient `[]`.
 6. **`PageParametres` écrit des secrets en clair** dans `parametres.valeur` : le mot de passe
    (`login`, `nouveau_mdp`) **et les clés Mailjet** (`mailjet_api_key`, `mailjet_secret_key`).
-   Aucun n'est utilisé — l'authentification repose sur `EMILIO_ACCESS_CODE` et l'envoi de mails sur
-   les variables d'environnement. Ces champs sont donc morts, trompeurs, et lisibles avec la clé
-   anonyme tant que le RLS est désactivé. À supprimer.
+   Aucun n'est utilisé — l'authentification repose depuis le 23 septembre sur un compte Supabase
+   (voir §11, V3.6), et l'envoi de mails sur les variables d'environnement. Ces champs sont donc
+   morts et trompeurs. Ils ne sont plus lisibles de l'extérieur depuis que le RLS est actif, mais
+   **ils restent à supprimer** : un secret en clair dans une table n'a aucune raison d'exister.
 7. **La recherche globale de `Topbar`** injecte la saisie telle quelle dans un filtre
    `.or(...ilike...)` sans échapper les virgules ni les parenthèses.
 
@@ -608,19 +608,24 @@ dessous sur toute la largeur.
 
 ### Décidé, pas encore construit
 
+0. **Double authentification sur les comptes Supabase, Vercel et GitHub.** Depuis que le RLS est
+   actif, ce sont eux les vraies clés : entrer dans le compte Supabase permet de rééteindre le RLS
+   en deux clics. Gratuit, cinq minutes chacun, et c'est aujourd'hui le meilleur rapport
+   sécurité/effort du projet. À faire aussi : passer `SUPABASE_SERVICE_ROLE_KEY` en variable
+   sensible sur Vercel (il le signale déjà en « Needs Attention »).
 1. **SMS à chaque dépôt de bien** — un SMS au client quand un bien arrive dans son espace, avec le
    lien. Voie retenue : **API SMS d'OVH** (~0,045 € le SMS), **un seul SMS groupé par client et par
    fenêtre de 2 h**, case à cocher dans la fenêtre d'envoi.
    ❌ **WhatsApp écarté** : la plateforme Business exige une vérification d'entreprise Meta et des
    modèles de message approuvés hors de la fenêtre de 24 h.
-2. **RLS Supabase** — voir §6.5. Le plus urgent.
 3. **Données de marché DVF, dans le CRM uniquement** (jamais dans l'espace client) :
    `https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/communes/{dept}/{insee}.csv` — structure
    vérifiée, 2021 à 2025 disponibles. ⚠️ `api.cquest.org` renvoie des 502, écarté.
 4. **Mandat de recherche avec signature électronique** (Yousign) — nécessite un avis juridique
    (loi Hoguet).
-5. **Vérifier le parcours complet sur un vrai iPhone.** Rien n'a été testé de bout en bout sur iOS :
-   installation sur l'écran d'accueil, notifications, sélecteur de recherche. Android a été testé.
+5. **Confirmer les notifications sur iPhone.** Le parcours a été testé sur iPhone le 23 septembre
+   et fonctionne. Reste à confirmer le point le plus fragile d'iOS : les notifications n'arrivent
+   que si l'espace a été posé sur l'écran d'accueil, jamais depuis Safari.
 6. **L'avertissement Play Protect** à l'installation, sur un deuxième téléphone Android : jamais
    reproduit, jamais infirmé.
 7. **Découper `recherche-immobiliere-emilio/SKILL.md`** (91 Ko) en `SKILL.md` + `references/`.
@@ -851,6 +856,48 @@ l'impression qu'il y a un autre intermédiaire) et « Chasse immobilière sur me
 **Migrations** : `migration-espace-client.sql`, `migration-bienvenue.sql` — **passées le
 23 septembre**, `clients_sans_lien = 0`.
 
-⚠️ **Ce qui n'a pas été vérifié** : rien n'a été testé sur un iPhone, ni le sélecteur, ni les
-notifications, ni l'installation. Et la base tourne toujours **sans RLS** (§6.5) : c'est le point
-le plus urgent du dépôt, et il n'a pas bougé.
+L'iPhone a été testé le 23 septembre et fonctionne.
+
+### V3.6 — 23 septembre 2026 · la base se referme
+
+**Le point le plus vieux de ce document, réglé en une soirée.** Le §6.5 disait depuis mai que le
+RLS était probablement désactivé et qu'il fallait une session dédiée. Vérifié dans Supabase ce
+soir-là : les **14 tables** étaient ouvertes, et le rôle `anon` — dont la clé est lisible dans le
+code de n'importe quelle page publique — avait `SELECT`, `INSERT`, `UPDATE`, `DELETE` et
+`TRUNCATE` sur chacune. Copier le fichier clients, ou le vider, tenait en une requête.
+
+**Pourquoi on ne pouvait pas simplement allumer le RLS.** Le CRM lit la base depuis le navigateur
+avec cette même clé : la base ne faisait aucune différence entre Alexandre et un visiteur. Fermer
+sans rien d'autre l'aurait mis dehors avec les robots. Il fallait donc d'abord lui donner une
+identité que la base reconnaisse.
+
+**Ce qui a été fait, dans l'ordre :**
+
+1. Un compte Supabase (`arogelet@emilio-immo.com`), créé à la main — c'est le seul du projet, il
+   n'y a aucune inscription ouverte.
+2. `/login` ne demande plus un code mais un mail et un mot de passe, vérifiés par Supabase.
+   `/api/login` revalide le jeton **côté serveur** avant de poser le cookie que `proxy.ts` attend :
+   `proxy.ts` n'a pas changé d'une ligne, et `EMILIO_ACCESS_CODE` sert désormais de secret du
+   cookie plutôt que de mot de passe.
+3. `/bien/<id>` lisait encore la base avec la clé publique : basculée sur la clé de service. La
+   page est rendue par le serveur, la clé ne quitte jamais Vercel.
+4. `AppLayout` renvoie vers la connexion si la session Supabase a disparu — sans ça, une session
+   expirée donnait des écrans vides sans le moindre message.
+5. `migration-rls.sql` : RLS actif sur les 14 tables, une politique `crm_authentifie` pour le rôle
+   `authenticated`. Le retour arrière est dans le même fichier.
+
+**Deux serrures désormais, et elles ne servent pas à la même chose** : le cookie autorise
+l'affichage des pages, la session Supabase autorise la lecture des données. Le cookie seul ne
+donne accès à rien.
+
+**Vérification faite depuis l'extérieur**, en refaisant le geste d'un robot : la clé publique a été
+extraite du code de la page de connexion — elle y est toujours, c'est normal et inévitable — puis
+utilisée pour interroger `clients`, `biens` et `journal`. Les trois renvoient `[]`. Le même appel,
+le matin même, rendait le fichier clients entier.
+
+**Ce que ça n'a PAS changé, et c'est voulu** : l'espace acheteur et les routes `/api/espace/`
+passent par le serveur avec la clé de service, qui ignore le RLS. Aucun client n'a rien vu, rien à
+réinstaller, aucun lien cassé.
+
+⚠️ **Ce qui reste** : la double authentification sur Supabase, Vercel et GitHub (§7). Ce sont eux
+les vraies clés maintenant — qui entre dans le compte Supabase peut rééteindre le RLS.
