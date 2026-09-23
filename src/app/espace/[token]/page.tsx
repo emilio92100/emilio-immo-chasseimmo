@@ -88,7 +88,7 @@ export default async function PageEspace({ params, searchParams }: {
     await supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id);
   }
 
-  const [biensRes, passagesRes, totalRes, visitesRes] = await Promise.all([
+  const [biensRes, passagesRes, totalRes, visitesRes, finRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
     supabase.from('veille_passages').select('*').eq('recherche_id', recherche.id)
@@ -101,6 +101,11 @@ export default async function PageEspace({ params, searchParams }: {
        un bien de « visite à venir » à « visite effectuée » à l'écran. */
     supabase.from('visites').select('*').eq('recherche_id', recherche.id)
       .in('statut', ['a_venir', 'effectuee']).order('date_visite', { ascending: true }),
+    /* La dernière fois que le client a déclaré lui-même que c'était fini.
+       Voir `enCours` plus bas. */
+    supabase.from('journal').select('created_at')
+      .eq('recherche_id', recherche.id).eq('type', 'fin_recherche')
+      .order('created_at', { ascending: false }).limit(1),
   ]);
   const tous = totalRes.data || [];
   const totalLues = tous.reduce((t, x) => t + (x.nb_lues || 0), 0);
@@ -189,6 +194,33 @@ export default async function PageEspace({ params, searchParams }: {
   const passages = passagesRes.data || [];
   const dernier = passages[0] || null;
 
+  /* ─── « Recherche en cours », la pastille verte de l'accueil ───
+     Elle s'éteint de deux façons, et il n'y en a pas de troisième :
+
+       · Alexandre met la veille en pause depuis le CRM → `active` passe à
+         false. C'est la vérité du dossier, elle prime sur tout.
+       · Le client déclare lui-même que c'est terminé → une ligne
+         « fin_recherche » au journal. Rien ne se clôture pour autant (c'est
+         volontaire, voir /api/espace/[action]) : on arrête simplement de lui
+         afficher « en cours » alors qu'il vient de dire le contraire.
+
+     La déclaration du client tient jusqu'à ce qu'Alexandre reprenne la main
+     sur la recherche — rouvrir le dossier, relancer la veille, modifier les
+     critères : tous ces gestes touchent `updated_at`. La pastille se rallume
+     alors d'elle-même, sans qu'il ait à y penser.
+
+     On compare des dates, pas des chaînes : Postgres écrit « +00:00 » là où
+     JavaScript écrit « Z », et deux écritures du même instant ne se classent
+     pas dans le bon ordre caractère par caractère. */
+  const quand = (v: unknown) => {
+    const t = v ? Date.parse(String(v)) : NaN;
+    return Number.isNaN(t) ? null : t;
+  };
+  const declareeLe = quand((finRes.data || [])[0]?.created_at);
+  const reprisLe = quand(recherche.updated_at);
+  const declaree = declareeLe !== null && (reprisLe === null || declareeLe > reprisLe);
+  const enCours = recherche.active !== false && !declaree;
+
   const jours = client?.created_at
     ? Math.max(1, Math.round((Date.now() - new Date(client.created_at).getTime()) / 86400000))
     : null;
@@ -233,6 +265,7 @@ export default async function PageEspace({ params, searchParams }: {
       }))}
       rechercheId={recherche.id}
       rang={rang}
+      enCours={enCours}
       criteres={{
         budgetMin: recherche.budget_min, budgetMax: recherche.budget_max,
         surfaceMin: recherche.surface_min, surfaceMax: recherche.surface_max ?? null,
