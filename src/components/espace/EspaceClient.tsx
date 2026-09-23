@@ -1,5 +1,6 @@
 'use client';
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
@@ -759,6 +760,39 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aDemander, ouvert, notif.etat]);
+
+  /* ── se remettre à jour tout seul au retour ──
+     Une application posée sur l'écran d'accueil ne se relance pas quand on y
+     revient : Android rend la page telle qu'on l'avait laissée, figée. Le
+     client tape sur la notification « un nouveau bien pour vous », arrive sur
+     son espace… et ne voit rien de neuf. Le pire des scénarios : on lui a
+     promis quelque chose et l'écran le dément.
+
+     On recharge donc les données dès que la page revient au premier plan.
+     Deux garde-fous : on ignore les passages éclair (changer d'application
+     deux secondes), et on ne recharge pas plus d'une fois par quart de
+     minute — sans quoi un client qui fait des allers-retours ferait travailler
+     le serveur pour rien. */
+  const router = useRouter();
+  const masqueDepuis = useRef(0);
+  const dernierRefresh = useRef(0);
+
+  /* Les biens vivent dans un état local (pour marquer « vu » sans attendre le
+     serveur) : quand le serveur renvoie une liste fraîche, il faut la reprendre. */
+  useEffect(() => { setBiens(biensInit); }, [biensInit]);
+
+  useEffect(() => {
+    const surChangement = () => {
+      if (document.visibilityState === 'hidden') { masqueDepuis.current = Date.now(); return; }
+      const absence = masqueDepuis.current ? Date.now() - masqueDepuis.current : Infinity;
+      if (absence < 4000) return;
+      if (Date.now() - dernierRefresh.current < 15000) return;
+      dernierRefresh.current = Date.now();
+      router.refresh();
+    };
+    document.addEventListener('visibilitychange', surChangement);
+    return () => document.removeEventListener('visibilitychange', surChangement);
+  }, [router]);
 
   /* Le petit chiffre sur l'icône, tant qu'il reste des biens non ouverts.
      Il tombe tout seul dès qu'il les a lus — personne n'a à l'effacer. */
