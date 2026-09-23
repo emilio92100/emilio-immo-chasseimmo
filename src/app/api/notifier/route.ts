@@ -42,8 +42,19 @@ export async function POST(req: NextRequest) {
 
     const supabase = base();
 
+    /* ⚠️ On réveille les appareils DU CLIENT, pas ceux d'une recherche.
+       Depuis que l'espace appartient au client (voir src/lib/espace.ts), il
+       n'installe qu'une seule application pour tout son dossier : elle est
+       enregistrée sous la recherche qu'il regardait ce jour-là. Chercher par
+       recherche_id ne préviendrait donc personne pour la deuxième recherche.
+       Le texte de la notification, lui, est calculé au dernier moment par
+       /api/espace/push/contenu, qui regarde tout le dossier. */
+    const { data: recherche } = await supabase
+      .from('recherches').select('client_id').eq('id', recherche_id).maybeSingle();
+    if (!recherche?.client_id) return NextResponse.json({ ok: true, prevenus: 0 });
+
     const { data: abonnements } = await supabase
-      .from('push_abonnements').select('id, endpoint').eq('recherche_id', recherche_id);
+      .from('push_abonnements').select('id, endpoint').eq('client_id', recherche.client_id);
 
     const liste = abonnements || [];
     if (liste.length === 0) return NextResponse.json({ ok: true, prevenus: 0 });
