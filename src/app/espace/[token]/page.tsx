@@ -1,13 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { after } from 'next/server';
 import EspaceClient from '@/components/espace/EspaceClient';
+import { ouvrirEspace, nommerRecherche, resumerRecherche } from '@/lib/espace';
+import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 
 /**
  * Espace acheteur — /espace/<token>
  *
  * Aucun compte, aucun mot de passe : le lien EST l'identification.
- * Il est tiré au hasard sur 64 caractères et rangé sur la recherche.
+ *
+ * ⚠️ Le lien appartient au CLIENT, pas à la recherche (voir src/lib/espace.ts).
+ * Un client qui a deux recherches n'a qu'un seul lien, une seule application
+ * sur son téléphone, et un sélecteur en haut de son espace pour passer de
+ * l'une à l'autre. Les liens envoyés avant ce changement pointaient sur une
+ * recherche : ils marchent toujours, et retombent sur le lien permanent.
  *
  * Cette page est publique (voir src/proxy.ts). Tout ce qu'elle lit passe
  * par le serveur : le navigateur du client ne reçoit que ce qui le regarde.
@@ -27,26 +35,48 @@ const ETAT = (b: { vu_le?: string | null; badge_retour?: string | null }) => {
   return 'avis';
 };
 
-export default async function PageEspace({ params }: { params: Promise<{ token: string }> }) {
+export default async function PageEspace({ params, searchParams }: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { token } = await params;
-  /* Deux générations de liens cohabitent, et les deux sont valables :
-       — les anciens, 64 caractères tirés au hasard ;
-       — les nouveaux, « dupont-k3n8vq2fab », dont seuls les dix derniers
-         caractères font la sécurité (voir src/lib/jeton.ts).
-     Le plancher à 12 caractères écarte les adresses fantaisistes sans
-     refuser un client dont le nom est court. */
-  if (!token || token.length < 12 || token.length > 128) notFound();
+  const requete = await searchParams;
+  /* `?r=` dit quelle recherche afficher : c'est ce que pose le sélecteur
+     quand le client bascule, et ce que portent les liens des notifications. */
+  const voulue = typeof requete.r === 'string' ? requete.r : null;
 
   const supabase = base();
 
-  const { data: recherche } = await supabase
-    .from('recherches')
-    .select('*, clients(id, prenom, nom, reference, created_at)')
-    .eq('token_espace', token)
-    .maybeSingle();
+  /* Le lien peut être celui du client (le cas normal) ou l'ancienne adresse
+     d'une recherche. Les deux entrent par la même porte. */
+  const espace = await ouvrirEspace(supabase, token, voulue);
+  if (!espace) notFound();
 
-  if (!recherche || recherche.espace_actif === false) notFound();
-  const client = (recherche as any).clients;
+  const { client, recherche, recherches, rang, nonLus, jetonClient, ancienLien } = espace;
+
+  /* Un lien d'avant la bascule : on le fait converger vers le lien permanent
+     du client, en gardant la recherche qu'il visait et le reste de l'adresse.
+     Le téléphone du client en profite pour mettre à jour son raccourci. */
+  if (ancienLien && jetonClient && jetonClient !== token) {
+    const entetes = await headers();
+    const hote = (entetes.get('host') || '').toLowerCase().split(':')[0];
+    const suite = new URLSearchParams();
+    for (const [cle, valeur] of Object.entries(requete)) {
+      if (typeof valeur === 'string') suite.set(cle, valeur);
+    }
+    suite.set('r', recherche.id);
+    redirect(`${hote === HOTE_ESPACE ? '' : '/espace'}/${jetonClient}?${suite.toString()}`);
+  }
+
+  /* Les routes /api/espace/ reconnaissent une recherche à son propre jeton :
+     c'est lui qu'on donnera à l'espace pour ses écritures. Une recherche qui
+     n'en aurait pas (un cas qui ne devrait pas exister) en reçoit un ici,
+     plutôt que de laisser le client devant des boutons qui ne répondent pas. */
+  let jetonRecherche = (recherche.token_espace as string | null) || null;
+  if (!jetonRecherche) {
+    jetonRecherche = jetonEspace(client.prenom, client.nom);
+    await supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id);
+  }
 
   const [biensRes, passagesRes, totalRes, visitesRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
@@ -179,8 +209,20 @@ export default async function PageEspace({ params }: { params: Promise<{ token: 
 
   return (
     <EspaceClient
-      token={token}
+      /* Ce que l'espace présente aux routes /api/espace/ : le jeton de la
+         recherche affichée, pas celui du client. C'est lui qui dit « voilà
+         de quelle recherche je parle » quand le client donne son avis. */
+      token={jetonRecherche}
       client={{ prenom: client?.prenom || '', nom: client?.nom || '', reference: client?.reference || '', jours }}
+      /* Le sélecteur. Une seule recherche → l'espace n'affiche rien. */
+      recherches={recherches.map((r, i) => ({
+        id: r.id,
+        nom: nommerRecherche(r, i + 1),
+        resume: resumerRecherche(r),
+        nonLus: nonLus[r.id] || 0,
+      }))}
+      rechercheId={recherche.id}
+      rang={rang}
       criteres={{
         budgetMin: recherche.budget_min, budgetMax: recherche.budget_max,
         surfaceMin: recherche.surface_min, surfaceMax: recherche.surface_max ?? null,
