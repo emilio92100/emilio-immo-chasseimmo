@@ -574,20 +574,28 @@ function useNotifications(token: string) {
   useEffect(() => {
     if (!CLE_PUBLIQUE) return;
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
-    setPossible(true);
+
+    /* ⚠️ On n'annonce « je sais faire » (possible) qu'UNE FOIS l'état connu.
+       Annoncer avant laissait une fraction de seconde pendant laquelle le
+       reste du code voyait « appareil capable » + « jamais répondu », et
+       programmait la question — même à un client qui avait déjà accepté la
+       veille. D'où un pop-up qui revenait à chaque ouverture, sans que le
+       téléphone ne redemande rien puisque lui savait. */
+    const etatConnu = (e: EtatNotif) => { setEtat(e); setPossible(true); };
 
     navigator.serviceWorker.register('/sw.js').then(async (reg) => {
       veilleur.current = reg;
       if (Notification.permission === 'granted') {
-        setEtat('oui');
+        etatConnu('oui');
         /* Il a déjà dit oui, peut-être sur un autre appareil ou avant une
            réinstallation : on réenregistre celui-ci, sans rien lui demander. */
         await abonner(reg);
-      } else if (Notification.permission === 'denied') {
-        setEtat('bloque');
-      } else {
-        try { if (localStorage.getItem(CLE_NOTIF) === 'non') setEtat('non'); } catch { /* indisponible */ }
+        return;
       }
+      if (Notification.permission === 'denied') { etatConnu('bloque'); return; }
+      let refuse = false;
+      try { refuse = localStorage.getItem(CLE_NOTIF) === 'non'; } catch { /* indisponible */ }
+      etatConnu(refuse ? 'non' : 'inconnu');
     }).catch(() => { /* pas de veilleur, pas de notifications, tant pis */ });
   }, [abonner]);
 
@@ -665,7 +673,31 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   /* ── l'espace sur l'écran d'accueil ── */
   const ecran = useEcranAccueil();
   const ouvrirGuideEcran = useCallback(() => {
-    montrer(<GuideEcran appareil={ecran.appareil || (ecran.tactile ? 'ios' : 'bureau')} onFermer={fermer} />, 'pleine');
+    const mode = ecran.appareil || (ecran.tactile ? 'ios' : 'bureau');
+    const sortie = mode === 'appli' || mode === 'appliandroid';
+    montrer(<GuideEcran appareil={mode} onFermer={() => {
+      /* Le guide « ouvrez-moi dans le vrai navigateur » n'a pas de suite : le
+         client a une manipulation à faire, on ne l'encombre pas d'un écran
+         de plus. */
+      if (sortie) { fermer(); return; }
+
+      /* Pour les autres, ce « c'est fait » est le moment le plus important de
+         tout le dispositif, et le plus facile à rater.
+         L'icône vient d'être posée, mais le client est encore dans la page
+         d'où il est parti — souvent celle ouverte depuis un mail. Or c'est
+         dans l'application, et seulement là, que nous pourrons lui proposer
+         les alertes. Aucun code ne peut la lancer à sa place : le navigateur
+         l'interdit. Alors on le lui dit, noir sur blanc, au seul instant où
+         il est encore attentif. */
+      montrer(<GrandOk
+        titre="Votre espace est posé"
+        texte={ecran.tactile
+          ? "Dernière étape : fermez cette page, et ouvrez « Ma recherche » depuis votre écran d'accueil. C'est là que nous vous proposerons de vous prévenir dès qu'un bien arrive."
+          : "Dernière étape : ouvrez « Ma recherche » depuis votre barre des tâches. C'est là que nous vous proposerons de vous prévenir dès qu'un bien arrive."}
+        rappel="Sans cette dernière ouverture, l'icône est bien là, mais les alertes ne sont pas encore activées."
+        bouton="J'ai compris"
+        onFermer={fermer} />, 'pleine');
+    }} />, 'pleine');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ecran.appareil, ecran.tactile]);
   /* Le vocabulaire suit l'appareil : on ne parle pas d'écran d'accueil à
@@ -699,6 +731,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      n'en lit aucune. */
   useEffect(() => {
     if (!aDemander || ouvert) return;
+    /* Le garde-fou : entre le moment où la question est programmée et celui où
+       elle s'affiche, la réponse a pu arriver. On ne redemande jamais à
+       quelqu'un qui a déjà accepté. */
+    if (notif.etat === 'oui') { setADemander(false); return; }
     const t = setTimeout(() => {
       setADemander(false);
       montrer(<DemandeNotif
@@ -722,7 +758,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     }, 1200);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aDemander, ouvert]);
+  }, [aDemander, ouvert, notif.etat]);
 
   /* Le petit chiffre sur l'icône, tant qu'il reste des biens non ouverts.
      Il tombe tout seul dès qu'il les a lus — personne n'a à l'effacer. */
