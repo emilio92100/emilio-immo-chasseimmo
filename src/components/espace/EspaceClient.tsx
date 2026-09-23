@@ -2435,6 +2435,28 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [envoiAvis, setEnvoiAvis] = useState(false);
   /* Les pastilles cochées, le texte libre seulement s'il le demande, et le
      panneau de la barre du bas. */
+  /* ── La place reservee sous la fiche, mesuree et non devinee ──
+     La barre flotte au-dessus du texte ; il faut donc laisser sous le dernier
+     paragraphe exactement sa hauteur, sinon elle en recouvre la fin. Cette
+     hauteur depend de la taille de police du telephone, de la longueur des
+     libelles et de la zone de securite du bas : une valeur ecrite en dur se
+     trompe forcement quelque part. On la mesure.
+
+     Le panneau ouvert est ignore volontairement : il monte par-dessus, la
+     reserve doit rester celle de la barre fermee. */
+  const barreRef = useRef<HTMLDivElement>(null);
+  const [hBarre, setHBarre] = useState(0);
+  useEffect(() => {
+    const el = barreRef.current;
+    if (!el || panneau) return;
+    const mesurer = () => setHBarre(el.offsetHeight);
+    mesurer();
+    if (typeof ResizeObserver === 'undefined') return;
+    const oeil = new ResizeObserver(mesurer);
+    oeil.observe(el);
+    return () => oeil.disconnect();
+  });
+
   const [choisies, setChoisies] = useState<string[]>([]);
   const [ecrire, setEcrire] = useState(false);
   const [panneau, setPanneau] = useState(false);
@@ -2681,12 +2703,12 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           de la fiche pour donner son avis. Une fois le retour parti, elle
           disparaît pour de bon sur ce bien. */}
       {!envoye && (
-        <div className="rail-avis">
+        <div className="rail-avis" style={hBarre ? { height: hBarre } : undefined}>
           {panneau && (
             <button type="button" className="voile-avis" aria-label="Fermer"
               onClick={() => setPanneau(false)} />
           )}
-          <div className="barre-avis" data-ouvert={panneau ? '1' : undefined}>
+          <div className="barre-avis" ref={barreRef} data-ouvert={panneau ? '1' : undefined}>
             {panneau ? (
               <div className="ba-panneau">
                 <button type="button" className="ba-fermer" aria-label="Replier"
@@ -4976,16 +4998,17 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 @media(max-width:639px){
   .feuille.fiche{display:flex; flex-direction:column}
   .feuille.fiche > *{flex:0 0 auto}
+  /* La colonne grandit jusqu'a remplir la hauteur : sur une fiche plus courte
+     que l'ecran, la barre descend quand meme tout en bas. */
   .feuille.fiche .fiche-droite{flex:1 0 auto; display:flex; flex-direction:column}
-  .fiche-droite[data-barre="1"] .corps-f{flex:1 0 auto; display:flex; flex-direction:column;
-    padding-bottom:0}
-  /* Le rail porte lui-meme la reserve de place, au lieu de la laisser au
-     padding du corps. Sinon ce padding restait SOUS le rail et reproduisait
-     exactement le trou qu'on veut supprimer — c'est ce que le banc d'essai
-     a montre au premier essai. Sticky colle son bas au bas de l'ecran, donc
-     la barre, posee au bas du rail, y arrive aussi. */
-  .fiche-droite[data-barre="1"] .corps-f .rail-avis{
-    margin-top:auto; height:calc(132px + env(safe-area-inset-bottom,0px))}
+  .fiche-droite[data-barre="1"] .corps-f{flex:1 0 auto; padding-bottom:0}
+  /* ⚠️ .corps-f et .rail-avis sont FRERES, tous deux enfants de .fiche-droite.
+     Une version precedente ecrivait « .corps-f .rail-avis » : le selecteur ne
+     designait rien, la reserve disparaissait, et la barre recouvrait la fin du
+     texte. La hauteur ci-dessous n'est qu'un repli pour le premier affichage —
+     ensuite elle est mesuree sur la vraie barre (voir hBarre). */
+  .fiche-droite[data-barre="1"] .rail-avis{
+    flex:0 0 auto; height:calc(132px + env(safe-area-inset-bottom,0px))}
 }
 
 /* Le voile : le panneau se pose sur la fiche au lieu de surgir. Un
