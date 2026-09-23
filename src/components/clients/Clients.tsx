@@ -1138,7 +1138,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                           <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={4} placeholder="Comment il est arrivé, ce qu'il a dit au téléphone, ce qu'il ne faut pas oublier…" />
                         </div>
                         <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>
-                          Les notes <b>visibles par le client</b> se remplissent à l&apos;étape « Sa recherche », tout en bas.
+                          Les notes <b>visibles par le client</b>{' '}se remplissent à l&apos;étape « Sa recherche », tout en bas.
                         </div>
                       </Bloc>
                     </div>
