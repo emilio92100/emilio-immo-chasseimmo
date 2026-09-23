@@ -77,6 +77,8 @@ type Props = {
   rechercheId: string;
   /** La place de la recherche affichée dans la liste — le « 1 » de « 1 sur 2 ». */
   rang: number;
+  /** La recherche tourne-t-elle encore ? Voir src/app/espace/[token]/page.tsx. */
+  enCours: boolean;
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -736,13 +738,17 @@ function useNotifications(token: string) {
 }
 
 /* ══ composant ════════════════════════════════════ */
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
   const [crit, setCrit] = useState(criteres);
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
   const [variante, setVariante] = useState('');
+  /* Le client vient de dire que sa recherche est finie : la pastille verte
+     s'éteint tout de suite, sans attendre un rechargement. Au retour, c'est
+     le serveur qui tranche — il lit le journal (voir page.tsx). */
+  const [finDite, setFinDite] = useState(false);
 
   const envoyer = useCallback(async (route: string, corps: Record<string, unknown>) => {
     try {
@@ -1142,6 +1148,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   async function declarerFin(motif: string, mot: string) {
     const r = await envoyer('fin', { motif, mot });
+    /* Dans les deux cas la déclaration existe — celle de maintenant ou celle
+       d'hier : on n'affiche plus « recherche en cours » à quelqu'un qui vient
+       de nous dire le contraire. */
+    setFinDite(true);
     if (r && r.ok === false) {
       montrer(<GrandOk titre="C'est déjà noté"
         texte="Votre conseiller en a déjà été prévenu. Il vous rappelle pour en parler avec vous — inutile de le signaler à nouveau."
@@ -1273,6 +1283,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               /* Avec plusieurs recherches, « ma recherche » devient ambigu :
                  l'accueil dit alors « cette recherche ». */
               plusieurs={plusieurs}
+              /* La pastille vivante de la carte des critères. */
+              enCours={enCours && !finDite}
               onBienvenue={ouvrirBienvenue}
               onEcran={ecran.appareil ? () => ecran.accepter(ouvrirGuideEcran) : null}
               motEcran={motEcran}
@@ -1408,7 +1420,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 }
 
 /* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien, plusieurs }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien, plusieurs, enCours }: any) {
   const dernier = donnes[0] || vus[0];
   return (
     <div className="accueil">
@@ -1511,7 +1523,16 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             toit, séparées d'un simple filet. */}
         <div className="case large bloc-rech">
           <button className="rech-haut" onClick={() => aller('recherche')}>
-            <div className="tete-case"><span className="ico"><Ico n="cible" /></span></div>
+            {/* La pastille se pose contre le picto, là où l'œil arrive en
+                premier. Recherche arrêtée : elle disparaît entièrement, et la
+                carte redevient celle d'avant — pas de trou, pas de mention
+                grise qui dirait la même chose en moins bien. */}
+            <div className={'tete-case' + (enCours ? ' tc-vif' : '')}>
+              <span className="ico"><Ico n="cible" /></span>
+              {enCours && (
+                <span className="vif"><i className="vif-pt" />Recherche en cours</span>
+              )}
+            </div>
             <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
               <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
                 {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
@@ -4129,6 +4150,29 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 
 /* Le choix du créneau, sous « Je souhaite être rappelé ». Trois cases et rien
    d'autre : on ne demande pas au client d'écrire pour obtenir un appel. */
+/* ── « Recherche en cours » ───────────────────────────────────────
+   Une étiquette d'état posée contre le picto de la carte des critères,
+   avec un point vert qui bat en continu. Elle dit au client, sans qu'il
+   ait à cliquer, que son dossier tourne aujourd'hui.
+
+   Le battement reprend celui de la ligne de veille (@keyframes pouls) :
+   deux signaux vivants dans le même espace doivent battre pareil, sinon
+   l'œil croit qu'ils parlent de deux choses différentes. */
+.tete-case.tc-vif{justify-content:flex-start; align-items:center}
+.vif{display:inline-flex; align-items:center; gap:7px; padding:5px 12px 5px 10px;
+  border-radius:99px; background:var(--vert-fond); border:1px solid var(--vert-trait);
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:11.5px; font-weight:800;
+  color:var(--vert); white-space:nowrap}
+/* Le point est plus soutenu que le halo : sur un fond vert pâle, le vert
+   menthe de l'entête disparaîtrait. Même battement, même durée. */
+.vif-pt{width:7px; height:7px; border-radius:50%; background:#22b573; flex:0 0 auto;
+  box-shadow:0 0 0 0 rgba(34,181,115,.6);
+  animation:onde-vif 2.6s ease-out infinite, respire 2.6s ease-in-out infinite}
+@keyframes onde-vif{0%{box-shadow:0 0 0 0 rgba(34,181,115,.5)}
+  70%{box-shadow:0 0 0 8px rgba(34,181,115,0)}100%{box-shadow:0 0 0 0 rgba(34,181,115,0)}}
+@keyframes respire{0%,100%{opacity:1; transform:scale(1)}50%{opacity:.55; transform:scale(.78)}}
+@media(max-width:400px){.vif{font-size:11px; padding:4px 10px 4px 9px}}
+
 .bloc-rech{padding:0; gap:0; cursor:default}
 .bloc-rech:hover{transform:none; box-shadow:var(--ombre); border-color:var(--trait)}
 .bloc-rech:active{transform:none}
