@@ -145,13 +145,16 @@ const ETIQ: Record<string, { e: string; n: string; c: string }> = {
 const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string }> = {
   interesse: {
     t: 'Qu’est-ce qui vous a plu ?',
-    p: 'Plus vous êtes précis, plus les biens suivants ressembleront à celui-là. Et si vous voulez le visiter, dites-le-nous ici.',
+    p: 'Plus vous êtes précis, plus les biens suivants ressembleront à celui-là.',
     ph: 'Ex : la luminosité, le séjour, le quartier… et si je veux le visiter.',
     btn: 'Envoyer mon avis',
   },
   souhaite_visiter: {
     t: 'Quelles sont vos disponibilités ?',
-    p: 'Votre conseiller organise la visite avec l’agence ou le propriétaire. Donnez-lui deux ou trois créneaux, il revient vers vous avec un rendez-vous.',
+    /* ⚠️ Jamais un mot sur l'agence, le confrère ou le propriétaire : le client
+       n'a qu'un interlocuteur, son conseiller. C'était la seule phrase de tout
+       l'espace qui laissait entendre le contraire. */
+    p: 'Donnez deux ou trois créneaux : votre conseiller s’organise pour vous y accompagner, et revient vers vous avec le rendez-vous.',
     ph: 'Ex : jeudi après 18 h, vendredi midi, samedi matin…',
     btn: 'Envoyer mes disponibilités',
   },
@@ -162,6 +165,57 @@ const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string
     btn: 'Envoyer mon retour',
   },
 };
+
+/* Les réponses déjà écrites, à cocher.
+
+   Le vrai frein n'a jamais été la position des boutons : c'est le cadre vide.
+   Un client sur dix remplit un champ libre ; une pastille se coche en un
+   geste. Écrire reste possible (« + Ajouter un mot »), ce n'est plus le
+   passage obligé.
+
+   Elles sont aussi choisies pour servir la recherche : sur « pas pour moi »,
+   chacune est un motif fermé que la veille reprend ensuite comme critère,
+   sans avoir à interpréter une phrase. */
+const PASTILLES: Record<string, { i: string; n: string }[]> = {
+  interesse: [
+    { i: 'soleil', n: 'La luminosité' },
+    { i: 'lieu', n: 'Le quartier' },
+    { i: 'canape', n: 'Le séjour' },
+    { i: 'etincelle', n: 'L’état' },
+    { i: 'plan', n: 'Le plan' },
+    { i: 'jardin', n: 'L’extérieur' },
+    { i: 'immeuble', n: 'L’immeuble' },
+    { i: 'euro', n: 'Le prix' },
+  ],
+  souhaite_visiter: [
+    { i: 'eclair', n: 'Dès que possible' },
+    { i: 'soleil', n: 'En semaine, en journée' },
+    { i: 'lune', n: 'En semaine après 18 h' },
+    { i: 'calendrier', n: 'Le mercredi' },
+    { i: 'calendrier', n: 'Samedi matin' },
+    { i: 'calendrier', n: 'Samedi après-midi' },
+  ],
+  refuse: [
+    { i: 'lune', n: 'Trop sombre' },
+    { i: 'travaux', n: 'Trop de travaux' },
+    { i: 'bruit', n: 'Rue trop passante' },
+    { i: 'lieu', n: 'Le quartier' },
+    { i: 'petit', n: 'Trop petit' },
+    { i: 'jardin', n: 'Pas d’extérieur' },
+    { i: 'ascenseur', n: 'L’étage' },
+    { i: 'visavis', n: 'Le vis-à-vis' },
+    { i: 'euro', n: 'Le prix' },
+    { i: 'cuisine', n: 'La cuisine' },
+  ],
+};
+/* Pour relire un retour déjà parti sous la forme où il a été coché. */
+const ICO_PASTILLE: Record<string, string> = {};
+Object.values(PASTILLES).forEach(l => l.forEach(x => { ICO_PASTILLE[x.n] = x.i; }));
+/* Ce qui part dans le CRM : les pastilles d'abord, le mot libre ensuite.
+   Le champ commentaire ne change pas de forme — il se relit tel quel dans la
+   fiche client, et il part dans le même export. */
+const SEP_PASTILLES = ' · ';
+const SEP_LIBRE = ' — ';
 
 /* Les cases de rangement de « Mes derniers biens consultés », dans l'ordre
    où elles comptent pour le client : ce qu'il attend de faire d'abord, puis
@@ -332,6 +386,16 @@ const T: Record<string, string[]> = {
   eclair:['M13 2 4.8 13.4h5.9L9.8 22 19.2 10.4H13z'],
   train:['M7.5 4h9a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z','M4.5 10h15','M8.6 13.6h.01','M15.4 13.6h.01','M8.5 16.5 6.5 20','M15.5 16.5l2 3.5'],
   note:['M6.5 3h8l4.5 4.5V20a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z','M14.5 3v4.5H19','M9 12.5h6','M9 16h4'],
+  /* Les pastilles de réponse (voir PASTILLES). Même trait que les équipements :
+     elles se lisent à 15 px dans une pastille, pas en pleine page. */
+  soleil:['c:12,12,4','M12 3v2.2','M12 18.8V21','M3 12h2.2','M18.8 12H21','m5.6 5.6 1.6 1.6','m16.8 16.8 1.6 1.6','m18.4 5.6-1.6 1.6','m7.2 16.8-1.6 1.6'],
+  lune:['M20.2 14.8A8.6 8.6 0 0 1 9.2 3.8a8.6 8.6 0 1 0 11 11z'],
+  travaux:['M12 3.6 2.8 20.4h18.4z','M12 10.2v4.4','M12 17.4h.02'],
+  bruit:['M3.5 9.4h3.2L11 5.8v12.4l-4.3-3.6H3.5z','M14.6 9.6a3.6 3.6 0 0 1 0 4.8','M17.4 7a7.4 7.4 0 0 1 0 10'],
+  plan:['M3.5 5.5h17v13h-17z','M10.5 5.5v13','M3.5 12h7','M10.5 10h10'],
+  visavis:['M3.2 4.5h5.8v15H3.2z','M15 4.5h5.8v15H15z','M10.6 12h2.8'],
+  canape:['M4.5 11.4V9.2a2.2 2.2 0 0 1 4.4 0v2.2','M15.1 11.4V9.2a2.2 2.2 0 0 1 4.4 0v2.2','M3 11.4h18v5.4H3z','M5.8 16.8V19.4','M18.2 16.8V19.4'],
+  petit:['M4 4h5','M4 4v5','M20 20h-5','M20 20v-5','m4 4 6 6','m20 20-6-6'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -2127,6 +2191,94 @@ function BtnEnvoi({ enCours, libelle, enCoursTexte = 'Envoi en cours…', classe
 }
 
 /* ══ feuilles ═════════════════════════════════════ */
+/* Les trois boutons. Deux endroits les affichent : le panneau qui monte
+   depuis la barre du bas, et le bas de la fiche. Une seule écriture pour que
+   les deux ne divergent jamais. */
+function TroisAvis({ avis, onChoisir, fige }:
+  { avis: string | null; onChoisir: (k: string) => void; fige?: boolean }) {
+  return (
+    <div className="avis3">
+      {Object.entries(AVIS).map(([k, a]) => (
+        <button key={k} type="button" className="avis" data-a={a.c}
+          data-fige={fige ? '1' : undefined}
+          aria-pressed={avis === k} disabled={fige}
+          onClick={() => onChoisir(k)}>
+          <span className="e">{a.e}</span><span className="n">{a.n}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* Ce qui suit le choix : la question, les pastilles, et le texte libre
+   seulement s'il le demande. L'ordre compte — les pastilles avant le clavier,
+   sinon on retombe sur le cadre vide qu'on cherchait à supprimer. */
+function SuiteAvis({ avis, choisies, onBasculer, com, setCom, ecrire, setEcrire,
+  enCours, onEnvoyer, onVisiter }: any) {
+  const s = SUITE_AVIS[avis];
+  if (!s) return null;
+  const liste = PASTILLES[avis] || [];
+  const ton = AVIS[avis] ? AVIS[avis].c : 'oui';
+  return (
+    <div className="apres-avis">
+      <div className="aa-t">{s.t}</div>
+      <p className="aa-p">{s.p}</p>
+      <div className="reponses">
+        {liste.map((x: { i: string; n: string }) => (
+          <button key={x.n} type="button" className="rep" data-a={ton}
+            aria-pressed={choisies.includes(x.n)} onClick={() => onBasculer(x.n)}>
+            <Ico n={x.i} t={15} /><span>{x.n}</span>
+          </button>
+        ))}
+        {!ecrire && (
+          <button type="button" className="rep plus" onClick={() => setEcrire(true)}>
+            + {avis === 'souhaite_visiter' ? 'Préciser' : 'Ajouter un mot'}
+          </button>
+        )}
+      </div>
+      {/* Celui qui aime un bien veut souvent le voir : on lui évite de revenir
+          changer sa réponse. C'est là que se gagnent les rendez-vous. */}
+      {avis === 'interesse' && (
+        <div className="reponses" style={{ marginTop: 10 }}>
+          <button type="button" className="rep bascule" onClick={onVisiter}>
+            <Ico n="calendrier" t={15} /><span>Et je veux le visiter</span>
+          </button>
+        </div>
+      )}
+      {ecrire && (
+        <textarea rows={4} value={com} onChange={(e: any) => setCom(e.target.value)}
+          placeholder={s.ph} autoFocus />
+      )}
+      <BtnEnvoi enCours={enCours} libelle={s.btn} style={{ marginTop: 12 }} onClick={onEnvoyer} />
+    </div>
+  );
+}
+
+/* Un retour déjà parti se relit comme il a été coché : les pastilles
+   redeviennent des pastilles, le mot libre reste du texte. Un commentaire
+   saisi par le conseiller, lui, ne correspond à aucune pastille : il
+   s'affiche tel quel. */
+function RetourLu({ texte, ton }: { texte: string; ton: string }) {
+  const bouts = texte.split(SEP_LIBRE);
+  const noms = bouts[0].split(SEP_PASTILLES).map(x => x.trim()).filter(Boolean);
+  const libre = bouts.slice(1).join(SEP_LIBRE).trim();
+  if (noms.length === 0 || !noms.every(n => ICO_PASTILLE[n])) {
+    return <div className="fige">{texte}</div>;
+  }
+  return (
+    <>
+      <div className="reponses lu">
+        {noms.map(n => (
+          <span key={n} className="rep" data-a={ton} aria-pressed="true">
+            <Ico n={ICO_PASTILLE[n]} t={15} /><span>{n}</span>
+          </span>
+        ))}
+      </div>
+      {libre ? <div className="fige" style={{ marginTop: 9 }}>{libre}</div> : null}
+    </>
+  );
+}
+
 function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
@@ -2151,6 +2303,30 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [partage, setPartage] = useState(false);
   const [bientot, setBientot] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
+  /* Les pastilles cochées, le texte libre seulement s'il le demande, et le
+     panneau de la barre du bas. */
+  const [choisies, setChoisies] = useState<string[]>([]);
+  const [ecrire, setEcrire] = useState(false);
+  const [panneau, setPanneau] = useState(false);
+  /* Changer d'avis remet les pastilles à zéro : celles de « pas pour moi »
+     n'ont aucun sens sous « ça me plaît ». */
+  const choisir = (k: string) => {
+    setAvis(v => (v === k ? null : k));
+    setChoisies([]); setEcrire(false);
+  };
+  const basculer = (n: string) =>
+    setChoisies(l => (l.includes(n) ? l.filter(x => x !== n) : [...l, n]));
+  const envoyerAvis = async () => {
+    if (!avis) return;
+    setEnvoiAvis(true);
+    const texte = [choisies.join(SEP_PASTILLES), com.trim()].filter(Boolean).join(SEP_LIBRE);
+    await onAvis(b, avis, texte);
+  };
+  const propsSuite = {
+    avis, choisies, onBasculer: basculer, com, setCom, ecrire, setEcrire,
+    enCours: envoiAvis, onEnvoyer: envoyerAvis,
+    onVisiter: () => { setAvis('souhaite_visiter'); setChoisies([]); setEcrire(false); },
+  };
   const photos: string[] = b.photos || [];
   /* Deux rubriques de plus sous la description. Elles se construisent ici
      pour que le rendu reste lisible, et surtout pour qu'une rubrique vide ne
@@ -2211,7 +2387,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
       {bientot && <ModaleBientot onFermer={() => setBientot(false)} />}
-      <div className="fiche-droite">
+      <div className="fiche-droite" data-barre={!envoye ? '1' : undefined}>
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
@@ -2291,16 +2467,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
         )}
 
         <label className="lab">{envoye ? 'Votre retour' : 'Qu’en pensez-vous ?'}</label>
-        <div className="avis3">
-          {Object.entries(AVIS).map(([k, a]) => (
-            <button key={k} type="button" className="avis" data-a={a.c}
-              data-fige={envoye ? '1' : undefined}
-              aria-pressed={avis === k} disabled={envoye}
-              onClick={() => setAvis(v => (v === k ? null : k))}>
-              <span className="e">{a.e}</span><span className="n">{a.n}</span>
-            </button>
-          ))}
-        </div>
+        <TroisAvis avis={avis} onChoisir={choisir} fige={envoye} />
 
         {/* Le retour est parti : on le montre tel qu'il est parti, et rien
             ne se remodifie ici. Le client qui change d'avis le dit de vive
@@ -2347,8 +2514,9 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
                 : `Votre conseiller a reçu ce retour${dateRetour ? ` le ${dateRetour}` : ''}. Il oriente déjà la suite de votre recherche.`}</p>
             {b.commentaire ? (
               <>
-                <div className="fige-t">{parConseiller ? 'Ce qu’il a retenu' : 'Ce que vous avez écrit'}</div>
-                <div className="fige">{b.commentaire}</div>
+                <div className="fige-t">{parConseiller ? 'Ce qu’il a retenu' : 'Ce que vous nous avez dit'}</div>
+                <RetourLu texte={b.commentaire}
+                  ton={(AVIS[b.avis] && AVIS[b.avis].c) || 'oui'} />
               </>
             ) : null}
             <p className="aa-n">{parConseiller
@@ -2357,16 +2525,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           </div>
         )}
 
-        {!envoye && avis && SUITE_AVIS[avis] && (
-          <div className="apres-avis">
-            <div className="aa-t">{SUITE_AVIS[avis].t}</div>
-            <p className="aa-p">{SUITE_AVIS[avis].p}</p>
-            <textarea rows={5} value={com} onChange={e => setCom(e.target.value)}
-              placeholder={SUITE_AVIS[avis].ph} />
-            <BtnEnvoi enCours={envoiAvis} libelle={SUITE_AVIS[avis].btn} style={{ marginTop: 12 }}
-              onClick={async () => { setEnvoiAvis(true); await onAvis(b, avis, com.trim()); }} />
-          </div>
-        )}
+        {!envoye && avis && <SuiteAvis {...propsSuite} />}
         <div className="duo">
           <button className="btn fant" onClick={() => setPartage(true)}><Ico n="partage" t={16} /> Partager</button>
           {/* Le téléchargement existe toujours à l'écran : quand la fiche est prête
@@ -2381,6 +2540,36 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           )}
         </div>
       </div>
+      {/* La barre du bas. Elle ne bouge pas avec le défilement : le client la
+          voit dès la première seconde, il n'a plus à descendre jusqu'au bout
+          de la fiche pour donner son avis. Une fois le retour parti, elle
+          disparaît pour de bon sur ce bien. */}
+      {!envoye && (
+        <div className="rail-avis">
+          <div className="barre-avis" data-ouvert={panneau ? '1' : undefined}>
+            {panneau ? (
+              <div className="ba-panneau">
+                <button type="button" className="ba-fermer" aria-label="Replier"
+                  onClick={() => setPanneau(false)}><Ico n="fleche" t={16} /></button>
+                <TroisAvis avis={avis} onChoisir={choisir} />
+                {avis && <SuiteAvis {...propsSuite} />}
+              </div>
+            ) : (
+              <>
+                <div className="ba-q">Qu’en pensez-vous&nbsp;?</div>
+                <div className="ba-trois">
+                  {Object.entries(AVIS).map(([k, a]) => (
+                    <button key={k} type="button" className="ba-b" data-a={a.c}
+                      onClick={() => { choisir(k); setPanneau(true); }}>
+                      <span className="e">{a.e}</span><span className="n">{a.n}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </>
   );
@@ -4376,6 +4565,59 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .fige-t{font-size:9.5px; letter-spacing:1.1px; text-transform:uppercase; font-weight:800;
   color:var(--plume-clair); margin:2px 0 6px}
 .aa-n{margin:12px 0 0; font-size:12.5px; line-height:1.6; color:var(--plume-clair)}
+
+/* ═══ Les réponses toutes prêtes ═══
+   Une pastille se coche en un geste ; un cadre vide se ferme. C'est tout
+   l'écart entre un dossier qui s'affine et un dossier muet. */
+.reponses{display:flex; flex-wrap:wrap; gap:7px; margin-top:12px}
+.rep{display:inline-flex; align-items:center; gap:6px; background:var(--carte);
+  border:1.5px solid var(--trait); border-radius:999px; padding:7px 13px 7px 10px;
+  font-size:12.5px; font-weight:600; color:var(--plume); white-space:nowrap; line-height:1.2;
+  transition:transform .12s ease, background .16s ease, border-color .16s ease, color .16s ease}
+.rep svg{flex:0 0 auto; color:var(--plume-clair)}
+.rep:active{transform:scale(.95)}
+.rep[aria-pressed="true"] svg{color:currentColor}
+.rep[aria-pressed="true"][data-a="oui"]{background:var(--vert-fond); border-color:var(--vert); color:var(--vert)}
+.rep[aria-pressed="true"][data-a="visite"]{background:var(--prune-fond); border-color:var(--prune); color:var(--prune)}
+.rep[aria-pressed="true"][data-a="non"]{background:var(--brique-fond); border-color:var(--brique); color:var(--brique)}
+.rep.plus{border-style:dashed; color:var(--plume-clair); padding-left:12px}
+/* la bascule vers la visite, depuis « ça me plaît » */
+.rep.bascule{border-color:var(--prune-trait); background:var(--prune-fond); color:var(--prune); font-weight:800}
+.rep.bascule svg{color:var(--prune)}
+/* relecture d'un retour déjà parti : plus rien ne se clique */
+.reponses.lu{margin-top:0}
+.reponses.lu .rep{cursor:default}
+.reponses.lu .rep:active{transform:none}
+
+/* ═══ La barre du bas de la fiche ═══
+   Même procédé que le bouton retour (voir .barre-retour) : la feuille porte
+   un transform, donc un position:fixed y filerait avec le contenu. On passe
+   par un rail collant de hauteur nulle, posé en tout dernier. */
+.rail-avis{position:sticky; bottom:0; z-index:7; height:0}
+.barre-avis{position:absolute; left:0; right:0; bottom:0;
+  background:rgba(255,255,255,.97); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  border-top:1px solid var(--trait); box-shadow:0 -14px 34px -22px rgba(16,24,40,.75);
+  /* la feuille porte déjà le retrait bas et la zone de sécurité : on n'en
+     rajoute pas, sinon la barre flotte au-dessus du bord de l'écran */
+  padding:11px 20px 13px}
+.ba-q{font-size:11px; font-weight:800; letter-spacing:.4px; color:var(--plume);
+  text-align:center; margin-bottom:9px}
+.ba-trois{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+.ba-b{border-radius:14px; padding:10px 4px; display:flex; flex-direction:column;
+  align-items:center; gap:4px; border:1.5px solid var(--trait); background:var(--fond)}
+.ba-b .e{font-size:19px; line-height:1}
+.ba-b .n{font-size:10.5px; font-weight:700; color:var(--plume); text-align:center; line-height:1.2}
+.ba-b:active{transform:scale(.95)}
+/* dépliée : le panneau monte, et il se referme sans avoir à répondre */
+.barre-avis[data-ouvert="1"]{border-radius:22px 22px 0 0; padding-top:14px;
+  max-height:78vh; overflow-y:auto; overscroll-behavior:contain}
+.ba-fermer{display:flex; align-items:center; justify-content:center; margin:0 0 6px auto;
+  width:32px; height:32px; border-radius:50%; background:var(--fond); color:var(--plume)}
+.ba-fermer svg{transform:rotate(90deg)}
+.barre-avis .apres-avis{background:var(--carte)}
+.barre-avis .apres-avis textarea{min-height:86px}
+/* le bas de la fiche ne se cache pas derrière la barre */
+.fiche-droite[data-barre="1"] .corps-f{padding-bottom:128px}
 
 
 /* ═══ La prochaine visite, en tête de l'accueil ═══ */
