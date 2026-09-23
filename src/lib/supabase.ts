@@ -43,6 +43,9 @@ export interface Recherche {
   gardien?: boolean
   interphone?: boolean
   historique_vu_le?: string
+  /* Posé par /api/send-mail quand le mail de bienvenue est parti. C'est lui
+     qui grise le bouton : le mail de mise en route ne s'envoie qu'une fois. */
+  bienvenue_envoye_le?: string
   exigences?: Record<string, 'souhaite' | 'indispensable'>
   etage_max_sans_ascenseur?: number
   cuisine_type?: string
