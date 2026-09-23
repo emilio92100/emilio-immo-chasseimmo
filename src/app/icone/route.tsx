@@ -36,16 +36,20 @@ const TAILLES = [96, 180, 192, 512];
  * l'icône normale, un carré doré plein, donne donc un carré blanc : c'est
  * toute la forme qui est pleine.
  *
- * D'où cette variante : aucun fond, seulement l'épingle. Sa silhouette est
- * une épingle, et c'est une épingle qui s'affichera.
+ * D'où cette variante : aucun fond, seulement la forme.
+ *
+ * C'est une maison, et pas l'épingle de l'icône principale : à dix-sept
+ * pixels de haut, une épingle se lit « localisation ». Une maison se lit
+ * « logement », et c'est large et plein — donc visible du premier coup d'œil
+ * au milieu des autres pictogrammes de la barre.
  */
 function silhouette(): string {
-  /* Un seul tracé, avec le rond du milieu en « trou » (fill-rule evenodd) :
-     percée, la forme se lit comme une épingle et non comme une goutte. */
+  /* Un seul tracé, avec la porte en « trou » (fill-rule evenodd) : c'est elle
+     qui empêche la forme de se lire comme un simple triangle sur un carré. */
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <path fill="#ffffff" fill-rule="evenodd"
-    d="M50 10c-15.5 0-28 12.5-28 28 0 21 28 52 28 52s28-31 28-52c0-15.5-12.5-28-28-28z
-       M50 27.5a10.5 10.5 0 1 0 0 21 10.5 10.5 0 1 0 0-21z"/>
+    d="M50 10 4 54h16v36h60V54h16z
+       M41 62h18v28H41z"/>
 </svg>`;
 }
 
