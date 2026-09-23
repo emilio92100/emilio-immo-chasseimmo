@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
-import { lienEspace } from '@/lib/jeton';
+import { lienEspace, lienBienPublic } from '@/lib/jeton';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
@@ -1618,7 +1618,10 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
   /* Le lien envoyé est toujours la fiche vivante, jamais le PDF : c'est la
      seule page où le client peut répondre. Le PDF reste téléchargeable depuis
      son espace, mais il ne remplace pas le lien. */
-  const lien = typeof window !== 'undefined' ? `${window.location.origin}/bien/${bien.id}` : '';
+  /* Le domaine d'Emilio, pas celui du CRM : ce lien part chez un client.
+     window.location.origin donnait « crm.emilio-immo.com/bien/… », ce qui
+     marche mais annonce l'outil interne. */
+  const lien = lienBienPublic(bien.id);
 
   async function viaWhatsapp() {
     const txt = `Bonjour ${client?.prenom || ''}, voici un bien qui correspond à votre recherche :\n\n${bien.titre || ''}\n${bien.surface ? bien.surface + ' m²' : ''}${bien.nb_pieces ? ' · ' + bien.nb_pieces + ' pièces' : ''}\nPrix : ${total.toLocaleString('fr-FR')} € tout compris\n\n${lien}`;
