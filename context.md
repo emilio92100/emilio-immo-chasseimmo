@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.3 · 20 septembre 2026**
+**Version 3.5 · 23 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -82,6 +82,10 @@ Les colonnes listées sont celles **réellement lues ou écrites par le code**
 (résidence principale + investissement, par exemple), chacune avec ses propres critères, biens,
 visites, envois et transaction.
 
+**Mais l'espace acheteur, lui, appartient au client** (23 septembre) : un seul lien, une seule
+application sur son téléphone, et un sélecteur en haut de l'écran pour passer d'une recherche à
+l'autre. Voir §3 et `src/lib/espace.ts`.
+
 ```
 Client (identité, contact, statut, chaleur, propriétaire/locataire)
    ├── Recherche 1 « RP Boulogne »   (budget, secteurs, critères, mandat, token d'espace…)
@@ -108,6 +112,10 @@ compensent.
 
 Identité et contact : `reference`, `prenom`, `nom`, `adresse`, `emails[]`, `telephones[]`,
 `statut`, `chaleur`, `notes`, `est_vendeur`.
+**`token_espace`** — le lien permanent de son espace acheteur, posé à la création du client
+(`Clients.tsx`), rattrapé à l'ouverture de la fiche s'il manque (`FicheClient.tsx`). Index unique
+partiel. C'est **ce** jeton qu'on envoie, jamais celui d'une recherche — voir §2 `recherches` et
+`AGENTS.md` §3.3.
 Occupation : `statut_occupation` (proprietaire / locataire / heberge / autre) et, si propriétaire,
 `bien_actuel_type`, `bien_actuel_surface`, `bien_actuel_valeur`, `bien_actuel_adresse`,
 `bien_actuel_a_vendre` (= **mandat de vente potentiel**), `bien_actuel_notes`.
@@ -135,12 +143,18 @@ périmés dans la recherche globale (voir §6).
 - Profil d'achat : `urgence`, `financement`, `apport`
 - Mandat : `sans_mandat`, `mandat_date_signature`, `mandat_duree`, `mandat_honoraires`,
   `mandat_date_expiration`
-- Espace acheteur : **`token_espace`** (64 caractères tirés au hasard — *c'est* l'identification),
+- Espace acheteur : **`token_espace`** (l'adresse **interne** de la recherche — voir ci-dessous),
   `espace_actif`, `espace_ouvert_le`, `historique_vu_le`
+- **`bienvenue_envoye_le`** — posé par `/api/send-mail` après l'accusé de Mailjet. C'est lui qui
+  grise le bouton : le mail de mise en route ne part qu'une fois par recherche.
 - `notes` (= « Précisions sur la recherche »), `created_at`, `updated_at`
 
-⚠️ `token_espace` et `espace_actif` sont **lus** partout et **jamais écrits** par le code de `src/` :
-ils viennent de la migration SQL et de la valeur par défaut de la colonne.
+⚠️ **`token_espace` n'est plus le lien du client.** Depuis le 23 septembre, le lien est sur
+`clients.token_espace`. Celui-ci reste écrit à la création d'une recherche et garde deux rôles :
+les routes `/api/espace/` s'en servent pour identifier la recherche dont parle l'espace, et les
+liens envoyés avant la bascule continuent d'ouvrir le bon dossier (`page.tsx` les redirige vers le
+lien permanent). Deux générations de format cohabitent : 64 caractères pour les anciens,
+`dupont-k3n8vq2fab` pour les nouveaux — `src/lib/jeton.ts` choisit l'adresse en conséquence.
 
 ### `biens`
 
@@ -295,8 +309,36 @@ la commission est renseignée.
 
 ### L'espace acheteur — `/espace/<token>`
 
-Sans compte ni mot de passe : le lien tiré sur 64 caractères **est** l'identification. Tout est lu
-côté serveur ; le navigateur du client ne reçoit que ce qui le regarde.
+Sans compte ni mot de passe : le lien **est** l'identification. Tout est lu côté serveur ; le
+navigateur du client ne reçoit que ce qui le regarde.
+
+**Un client = un lien = une application** (23 septembre). Le jeton est sur `clients.token_espace`.
+`src/lib/espace.ts` — `ouvrirEspace(token, ?r)` — accepte aussi bien ce jeton que l'ancienne adresse
+d'une recherche, et rend toujours : le client, **toutes ses recherches visibles**
+(`espace_actif ≠ false`), et celle qu'il faut afficher.
+
+Laquelle par défaut, dans l'ordre : celle que `?r=` demande → celle dont le lien a servi à entrer →
+**celle où il a des biens non lus** → la plus récemment alimentée. Le client qui rouvre son
+application tombe donc sur ce qu'il n'a pas encore vu.
+
+**Le sélecteur de recherche** — une ligne sous son nom, dans l'en-tête, **et seulement s'il a
+plusieurs recherches** : `« 1 sur 2 · RECHERCHE EN COURS »`, le nom de la recherche, et le nombre de
+biens non lus sur les autres. Il appuie, une feuille « Vos recherches » monte, il choisit ; la page
+se recharge avec `?r=<id>`. Le rechargement est volontaire : rien ne peut rester à cheval sur deux
+recherches. Le nom montré n'est pas celui du CRM quand il ne dit rien au client
+(« Recherche 2 ») — on retombe alors sur ses critères (« Studio · Levallois-Perret »),
+voir `nommerRecherche()`.
+
+**Trois écrans quand il n'y a rien à montrer**, à ne pas confondre :
+
+| Fichier | Quand | Ce qu'il dit |
+|---|---|---|
+| `loading.tsx` | pendant le chargement | l'icône + « Ouverture de votre espace… » |
+| `preparation.tsx` | le lien est bon, mais le client n'a **aucune** recherche visible | « Votre espace est en préparation », avec le téléphone d'Alexandre |
+| `not-found.tsx` | le jeton ne correspond **à personne** : fiche supprimée, lien tronqué | « Ce lien n'est plus actif » |
+
+⚠️ Supprimer une recherche — même la dernière — ne tue plus l'espace : le client bascule sur celle
+qui reste, ou voit l'écran de préparation.
 
 Accueil : la prochaine visite (avec ajout à l'agenda) · trois chiffres avec leur « ? » ·
 Nouveaux biens · Mes derniers biens consultés · Le marché sur vos critères · Rappel de ma recherche.
@@ -348,14 +390,20 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex) | `ANTHROPIC_API_KEY` facultative |
 | `POST /api/parse-texte-bien` | portail | Texte collé → Claude → JSON. **Prix = prix affiché en gros**, jamais le « hors honoraires » | idem |
 | `POST /api/reformuler-bien` | portail | Réécrit la description : retire confrère, téléphone, formules commerciales. Ne touche pas au prix | `ANTHROPIC_API_KEY` |
-| `POST /api/send-mail` | portail | Envoi Mailjet, mode `libre` ou avec biens | Mailjet |
+| `POST /api/send-mail` | portail | Envoi Mailjet. `mode` : `libre` · `biens` · **`bienvenue`** | Mailjet |
+| `POST /api/espace/push` | **publique** | Abonnement/désabonnement aux notifications | Supabase |
+| `POST /api/espace/push/contenu` | **publique** | Le texte de la notification, calculé à la seconde par `public/sw.js`. La serrure est l'adresse de poussée | Supabase |
+| `GET /espace/<token>/manifeste` | **publique** | Le manifeste PWA du dossier. `start_url` porte **le jeton du client** | Supabase |
+| `GET /icone?t=<taille>` | **publique** | L'icône de l'écran d'accueil, générée | — |
+| `POST /api/notifier` | portail | « Préviens le client, un bien est parti. » Réveille **tous les appareils du client**, pas ceux d'une recherche | clés VAPID |
 | `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
 
-Préalable commun : `token` d'au moins 32 caractères, `recherches.token_espace` existant,
-`espace_actif` différent de `false`.
+Préalable commun : `token` de 12 à 128 caractères, `recherches.token_espace` existant,
+`espace_actif` différent de `false`. ⚠️ C'est bien le jeton de la **recherche** que l'espace envoie
+ici (`page.tsx` le lui passe en `token`), pas celui du client — voir `AGENTS.md` §3.3.
 
 | Action | Effet |
 |---|---|
@@ -364,6 +412,19 @@ Préalable commun : `token` d'au moins 32 caractères, `recherches.token_espace`
 | `criteres` | Met à jour la recherche. Sémantique : **absent = on ne touche à rien, null = on efface**, pour toutes les colonnes. Quatre exceptions toujours présentes à l'écran client — `surface_min`, `nb_pieces_min`, `chambres_min`, `budget_max` — où un `null` est ignoré. Si l'envoi ne contient rien d'exploitable, la route ne écrit rien du tout |
 | `message` | Texte libre (1500 caractères max) → journal + **relance à J+1** + événement |
 | `partage` | Envoie la fiche d'un bien à un tiers par Mailjet. Plafonné à 5 partages par lien et par 24 h. **Seule action à exiger `MAILJET_API_KEY` et `MAILJET_API_SECRET`** — sans elles, 500 |
+
+### `/api/send-mail`, mode `bienvenue`
+
+Deux textes, choisis **en base** et non par le CRM, pour que les deux ne puissent pas se
+contredire : si une autre recherche du même client porte déjà `bienvenue_envoye_le`, c'est le mot
+court (« Une deuxième recherche, Camille ») ; sinon c'est le mail de mise en route complet, avec le
+lien et l'invitation à poser l'espace sur l'écran d'accueil. `apercu: true` envoie sans rien écrire
+en base — pour se faire un test sans griller le bouton d'un vrai client.
+
+Les trois mails partagent la même trame HTML. Sur téléphone (`@media max-width:600px`), la carte
+passe **bord à bord** : le liseré beige disparaît, les marges tombent de 28 à 18 px, le pied se
+range en deux lignes. Tout est en tableaux et en emoji — pas de SVG (Gmail les retire), pas d'image
+hébergée pour un pictogramme (bloquée tant que le client n'affiche pas les images).
 
 **Sourcing** : SeLoger bloque le téléchargement direct (Cloudflare) → copier-coller ou bouton Emilio.
 LeBonCoin, PAP, Orpi passent. Le DPE en image SVG est récupéré par regex, sinon saisie manuelle.
@@ -524,6 +585,27 @@ valeurs d'`ETIQ` comptent comme un vrai retour.
 **Le mail de partage n'avait pas de photo** — juste un titre et une ligne. La requête
 `bienDeLaRecherche` ne remontait ni `photos` ni `quartier`.
 
+### ✅ Corrigé le 23 septembre
+
+**Un client avec deux recherches recevait deux liens** et installait deux applications pour un seul
+dossier. Le lien est remonté sur le client ; voir la V3.5 au §11.
+
+**Supprimer la dernière recherche laissait la fiche inutilisable.** La corbeille venait d'être
+ouverte sur la dernière recherche, sans regarder ce qu'il y avait derrière : `saveCriteres()`
+commençait par `if (!rechercheId) return;`. Plus de recherche, donc plus de cible, donc
+« Enregistrer » ne faisait **rien, et ne disait rien** — Alexandre ne pouvait repartir qu'en
+supprimant la fiche. Désormais, remplir les critères quand il n'y a plus de recherche **en crée
+une**, et `creerRecherche()` remonte ses erreurs au lieu de mourir en silence.
+
+**Quatre mots collés en production** (`AGENTS.md` §2.1), dont un écrit le jour même :
+« Vous en avez 2en cours » (repéré par Alexandre), « 2.Les alertes », « clientse remplissent »,
+« dessousdisparaissent ». Tous vérifiés dans le code compilé après correction.
+
+**Les mails étaient illisibles sur téléphone** : le liseré beige mangeait les côtés, et le bloc
+« Le conseil qui change tout » posait sa phrase dans une colonne de cent pixels, à côté d'une
+icône en largeur fixe. Carte bord à bord sur mobile, icône et titre sur une ligne, phrase en
+dessous sur toute la largeur.
+
 ### Décidé, pas encore construit
 
 1. **SMS à chaque dépôt de bien** — un SMS au client quand un bien arrive dans son espace, avec le
@@ -537,8 +619,11 @@ valeurs d'`ETIQ` comptent comme un vrai retour.
    vérifiée, 2021 à 2025 disponibles. ⚠️ `api.cquest.org` renvoie des 502, écarté.
 4. **Mandat de recherche avec signature électronique** (Yousign) — nécessite un avis juridique
    (loi Hoguet).
-5. **Tester en production le multi-recherches** : créer une deuxième recherche, basculer, vérifier
-   que les biens ne se mélangent pas, supprimer.
+5. **Vérifier le parcours complet sur un vrai iPhone.** Rien n'a été testé de bout en bout sur iOS :
+   installation sur l'écran d'accueil, notifications, sélecteur de recherche. Android a été testé.
+6. **L'avertissement Play Protect** à l'installation, sur un deuxième téléphone Android : jamais
+   reproduit, jamais infirmé.
+7. **Découper `recherche-immobiliere-emilio/SKILL.md`** (91 Ko) en `SKILL.md` + `references/`.
 
 ### Plus tard
 
@@ -721,3 +806,51 @@ en troisième argument. Une même annonce peut être proposée à plusieurs clie
 ligne par recherche, toutes avec la même URL, et filtrer sur la seule URL écrivait chez tout le
 monde à la fois. Sans `recherche_id`, la mise à jour n'est acceptée que si l'URL ne désigne qu'une
 seule ligne ; sinon elle est refusée et la liste des recherches concernées est renvoyée.
+
+### V3.5 — 22-23 septembre 2026 · l'espace appartient au client
+
+**Le problème, trouvé par Alexandre.** Le lien de l'espace était posé sur la recherche. Un client
+qui ouvrait une deuxième recherche recevait donc un deuxième lien et se retrouvait avec **deux
+applications sur son téléphone pour un seul dossier**. Ce n'était pas un bug d'affichage : c'était
+le modèle qui était faux.
+
+**La bascule.** `clients.token_espace` devient le lien — un par client, définitif. La reprise SQL
+(`migration-espace-client.sql`) donne à chaque client le jeton de sa **plus ancienne** recherche :
+c'est celui qu'il a reçu par mail et posé sur son écran d'accueil, donc **aucun lien déjà envoyé ne
+casse et personne n'a rien à réinstaller**. Les jetons de recherche restent valables et redirigent.
+
+Tout ce qui en découle :
+
+- **Le sélecteur de recherche** dans l'en-tête de l'espace, invisible tant qu'il n'y a qu'une
+  recherche — c'est-à-dire pour l'immense majorité des clients. Voir §3.
+- **Les notifications suivent le client** : `/api/notifier` réveille les appareils par `client_id`,
+  et `/api/espace/push/contenu` compte les biens non lus **toutes recherches confondues**. Sans ça,
+  la pastille de l'icône aurait menti dès qu'un bien serait arrivé sur la deuxième recherche.
+- **Le manifeste PWA** porte le jeton du client : l'icône survit à la fin d'une recherche.
+- **Le mail de bienvenue** a un jumeau court pour les recherches suivantes — le client a déjà son
+  espace, on ne lui renvoie pas un lien.
+- **Supprimer la dernière recherche devient possible.** Ce qui appartient à la recherche part
+  (biens, photos, visites, envois, veille) ; **le suivi de dossier reste** — un appel, un RDV, une
+  note, un message du client sont détachés au niveau du client au lieu d'être effacés, même quand
+  la ligne portait le numéro de la recherche.
+- **`preparation.tsx`** : l'écran d'un client qui n'a plus aucune recherche. Il lisait « ce lien
+  n'est plus actif », ce qui était faux et inquiétant.
+
+**Avant ça, le 22 septembre** — les réponses en un geste sur la fiche d'un bien (pastilles
+pré-écrites avec icônes, barre collante en bas de l'écran), le bouton « Mail de bienvenue », et
+`depuis()` réécrit : « à l'instant » tenait une heure entière, un client qui revenait dix minutes
+plus tard lisait encore « à l'instant ».
+
+**Deux règles de vocabulaire violées en production, trouvées au passage** : « Votre conseiller
+organise la visite avec l'agence ou le propriétaire » dans l'espace (le client ne doit jamais avoir
+l'impression qu'il y a un autre intermédiaire) et « Chasse immobilière sur mesure » dans le pied de
+**tous** les mails. Corrigées.
+
+**Nouveaux fichiers** : `src/lib/espace.ts` · `app/espace/[token]/preparation.tsx` ·
+`app/espace/[token]/not-found.tsx` · `outils/espaces-jsx.py` (promis depuis la V3.3, jamais poussé).
+**Migrations** : `migration-espace-client.sql`, `migration-bienvenue.sql` — **passées le
+23 septembre**, `clients_sans_lien = 0`.
+
+⚠️ **Ce qui n'a pas été vérifié** : rien n'a été testé sur un iPhone, ni le sélecteur, ni les
+notifications, ni l'installation. Et la base tourne toujours **sans RLS** (§6.5) : c'est le point
+le plus urgent du dépôt, et il n'a pas bougé.
