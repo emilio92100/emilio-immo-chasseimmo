@@ -3,7 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { after } from 'next/server';
 import EspaceClient from '@/components/espace/EspaceClient';
-import { ouvrirEspace, nommerRecherche, resumerRecherche } from '@/lib/espace';
+import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '@/lib/espace';
+import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 
 /**
@@ -50,7 +51,16 @@ export default async function PageEspace({ params, searchParams }: {
   /* Le lien peut être celui du client (le cas normal) ou l'ancienne adresse
      d'une recherche. Les deux entrent par la même porte. */
   const espace = await ouvrirEspace(supabase, token, voulue);
-  if (!espace) notFound();
+
+  /* Rien à afficher. Reste à savoir pourquoi, parce que ce n'est pas le même
+     écran : un lien inconnu n'a rien à dire, alors qu'un client bien réel
+     entre deux recherches mérite qu'on le lui explique plutôt que de lui
+     annoncer que son lien est mort. */
+  if (!espace) {
+    const proprietaire = await clientDuJeton(supabase, token);
+    if (!proprietaire) notFound();
+    return <EspaceEnPreparation prenom={proprietaire.prenom} />;
+  }
 
   const { client, recherche, recherches, rang, nonLus, jetonClient, ancienLien } = espace;
 
