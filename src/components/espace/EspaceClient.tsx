@@ -775,6 +775,31 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     } catch { window.location.reload(); }
   };
 
+  /* ── Le retour physique sous le doigt ──
+     Une vibration très courte quand le doigt se pose sur un badge : c'est ce
+     qui fait la différence entre « j'ai appuyé » et « j'ai peut-être appuyé ».
+
+     ⚠️ Android seulement. iOS n'expose pas son moteur haptique aux pages web
+     et Safari ignore `navigator.vibrate` — un iPhone n'aura donc que
+     l'animation. Rien à corriger : c'est Apple qui ne l'ouvre pas.
+
+     Posé une fois à la racine plutôt que sur chaque bouton : aucun contrôle
+     ne peut être oublié, et il n'y a rien à penser quand on en ajoute un.
+     `pointerdown` et non `click` : la vibration doit accompagner l'appui,
+     pas le relâchement, sinon elle arrive après coup et sonne faux. */
+  useEffect(() => {
+    const CIBLES = '.ch, .rep, .creneau, .dpe-b, .avis, .selec, .rec';
+    const toucher = (e: Event) => {
+      const cible = (e.target as HTMLElement | null)?.closest?.(CIBLES) as HTMLElement | null;
+      if (!cible || cible.hasAttribute('disabled') || cible.closest('.reponses.lu')) return;
+      /* 11 ms : on veut le « toc » sec d'un interrupteur, pas le bourdonnement
+         d'une notification. Au-delà de 20 ms, ça devient désagréable. */
+      try { navigator.vibrate?.(11); } catch { /* refusé, absent ou sur iPhone */ }
+    };
+    document.addEventListener('pointerdown', toucher, { passive: true });
+    return () => document.removeEventListener('pointerdown', toucher);
+  }, []);
+
   const plusieurs = recherches.length > 1;
   const nomCourant = recherches.find(r => r.id === rechercheId)?.nom || '';
   const autresNonLus = recherches.reduce((t, r) => t + (r.id === rechercheId ? 0 : r.nonLus), 0);
@@ -4312,6 +4337,42 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .avis .n{font-size:12px; font-weight:700; color:var(--plume); text-align:center; line-height:1.3}
 .avis:active{transform:scale(.95)}
 .avis[aria-pressed="true"]{transform:translateY(-3px)}
+
+/* ── Le petit ressort de la sélection ──
+   Il se joue au moment où l'élément DEVIENT sélectionné, et une seule fois :
+   une animation CSS ne rejoue pas tant que le sélecteur reste vrai. Donc rien
+   à gérer en JavaScript, et aucun risque qu'elle reparte à chaque rendu.
+
+   Deux courbes, parce que les trois gros boutons d'avis montent de 3 px quand
+   ils sont choisis : leur animation doit finir à cette hauteur-là, sinon ils
+   retomberaient d'un coup à la fin. */
+@keyframes choisi{
+  0%  {transform:scale(.86)}
+  55% {transform:scale(1.06)}
+  100%{transform:scale(1)}
+}
+@keyframes choisi-haut{
+  0%  {transform:translateY(0) scale(.9)}
+  55% {transform:translateY(-5px) scale(1.05)}
+  100%{transform:translateY(-3px) scale(1)}
+}
+.ch[aria-pressed="true"],
+.reponses:not(.lu) .rep[aria-pressed="true"],
+.creneau.pris,
+.dpe-b.pt{animation:choisi .32s cubic-bezier(.34,1.56,.64,1)}
+.avis[aria-pressed="true"]{animation:choisi-haut .34s cubic-bezier(.34,1.56,.64,1)}
+/* La relecture d'un retour déjà envoyé (.reponses.lu) arrive avec ses
+   pastilles déjà sélectionnées : elles n'ont aucune raison de sautiller.
+   ⚠️ Pas d'accent inverse dans ce bloc, il fermerait le gabarit JS. */
+
+/* Certains règlent leur téléphone pour que rien ne bouge — souvent pour de
+   bonnes raisons (mal des transports, vertiges). Le système le dit, on écoute. */
+@media(prefers-reduced-motion:reduce){
+  .ch[aria-pressed="true"],
+  .reponses:not(.lu) .rep[aria-pressed="true"],
+  .creneau.pris, .dpe-b.pt,
+  .avis[aria-pressed="true"]{animation:none}
+}
 .avis[data-a="oui"][aria-pressed="true"]{border-color:var(--vert); background:var(--vert-fond)}
 .avis[data-a="oui"][aria-pressed="true"] .n{color:var(--vert)}
 .avis[data-a="visite"][aria-pressed="true"]{border-color:var(--prune); background:var(--prune-fond)}
