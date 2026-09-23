@@ -586,6 +586,12 @@ function useNotifications(token: string) {
 
     navigator.serviceWorker.register('/sw.js').then(async (reg) => {
       veilleur.current = reg;
+
+      /* On demande explicitement au navigateur d'aller voir s'il existe une
+         version plus récente du veilleur. Sans ça, il garde l'ancienne bien
+         plus longtemps qu'on ne l'imagine — et une correction livrée le matin
+         peut n'arriver sur le téléphone que le lendemain. */
+      try { reg.update(); } catch { /* sans conséquence */ }
       if (Notification.permission === 'granted') {
         etatConnu('oui');
         /* Il a déjà dit oui, peut-être sur un autre appareil ou avant une
@@ -977,11 +983,18 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         onFermer={fermer} />, 'pleine');
       return;
     }
-    const suite = motif === 'pause'
-      ? "Votre recherche est mise de côté le temps qu'il vous faut. Votre conseiller vous rappelle pour en convenir avec vous, et votre espace reste accessible."
-      : "Votre conseiller vous rappelle pour en parler et clôturer votre dossier proprement. Votre espace reste accessible en attendant.";
-    montrer(<GrandOk titre={motif === 'pause' ? "C'est noté, on met en pause" : 'Merci de nous avoir prévenus'}
-      texte={suite}
+    /* Un mot juste pour chaque situation. Celui qui a trouvé et celui qui
+       renonce ne sont pas au même endroit, et méritent qu'on le reconnaisse. */
+    const TITRES: Record<string, string> = {
+      pause: "C'est noté, on met en pause",
+      abandon: 'Merci de nous avoir prévenus',
+    };
+    const SUITES: Record<string, string> = {
+      pause: "Votre recherche est mise de côté le temps qu'il vous faut. Votre conseiller vous rappelle pour en convenir avec vous, et votre espace reste accessible.",
+      abandon: "C'est noté, et merci de l'avoir dit : ça nous évite de vous solliciter pour rien. Votre conseiller vous rappelle une dernière fois pour clôturer votre dossier proprement. Et si le projet repart un jour, vous savez où nous trouver.",
+    };
+    montrer(<GrandOk titre={TITRES[motif] || 'Merci de nous avoir prévenus'}
+      texte={SUITES[motif] || "Votre conseiller vous rappelle pour en parler et clôturer votre dossier proprement. Votre espace reste accessible en attendant."}
       rappel="Rien n'est définitif tant que vous n'en avez pas parlé ensemble."
       onFermer={fermer} />, 'pleine');
   }
@@ -2784,6 +2797,10 @@ function FinRecherche({ onFermer, onChoisir }: any) {
     ['trouve_avec_vous', "J'ai trouvé, grâce à vous", 'Le bien vient de votre sélection.'],
     ['trouve_ailleurs', "J'ai trouvé par un autre biais", 'Une autre agence, un particulier, une relation.'],
     ['pause', 'Je mets ma recherche en pause', 'Le projet est reporté, sans être abandonné.'],
+    /* Quatrième réponse, et pas un doublon de la pause : l'une se relance,
+       l'autre se clôture. Un client qui renonce et à qui on propose seulement
+       « pause » répondra « pause » — et continuera de recevoir des biens. */
+    ['abandon', "J'arrête ma recherche", 'Le projet ne se fera pas, au moins pour le moment.'],
   ];
   return (
     <>
