@@ -692,13 +692,18 @@ export default function FicheClient({ client: init, onBack }: Props) {
     /* Le lien de l'espace se pose ici, court et lisible. Sans ça, la base en
        fabrique un de 64 caractères — valable, mais impossible à envoyer par
        SMS sans avoir l'air d'un spam. */
-    const { data } = await supabase.from('recherches').insert({
+    const { data, error } = await supabase.from('recherches').insert({
       client_id: client.id,
       nom: nom.trim() || `Recherche ${recherches.length + 1}`,
       active: true,
       secteurs: [],
       token_espace: jetonEspace(client.prenom, client.nom),
     }).select().single();
+    /* Un échec muet ressemble à un bouton mort : on le dit. */
+    if (error || !data) {
+      alert(`La recherche n'a pas pu être créée.\n\n${error?.message || 'erreur inconnue'}`);
+      return;
+    }
     if (data) {
       setRecherches(rs => [...rs, data as Recherche]);
       setRechercheId((data as Recherche).id);
@@ -1136,10 +1141,44 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setSaving(false); setShowContact(false);
   }
 
+  /**
+   * Enregistrer les critères.
+   *
+   * ⚠️ Un client peut n'avoir AUCUNE recherche : la dernière vient d'être
+   * supprimée. Sa fiche reste ouverte, et c'est voulu. Mais dans cet état,
+   * « Enregistrer » n'avait plus de recherche où écrire et ne faisait
+   * silencieusement rien — impossible de repartir sans supprimer la fiche.
+   *
+   * Remplir les critères quand il n'y a plus de recherche, c'est vouloir en
+   * ouvrir une : on la crée, exactement comme à la création du client, et on
+   * y range ce qui vient d'être saisi.
+   */
   async function saveCriteres() {
-    if (!rechercheId) return;
     setSaving(true);
-    const avant = recherches.find(r => r.id === rechercheId) as unknown as Record<string, unknown> | undefined;
+
+    let cible = rechercheId;
+    if (!cible) {
+      const { data: neuve, error: eNeuve } = await supabase.from('recherches').insert({
+        client_id: client.id,
+        nom: 'Recherche principale',
+        active: true,
+        secteurs: [],
+        /* L'adresse interne de la recherche. Le lien envoyé au client, lui,
+           est rangé sur le client et n'a pas bougé (voir src/lib/espace.ts). */
+        token_espace: jetonEspace(client.prenom, client.nom),
+      }).select().single();
+      if (eNeuve || !neuve) {
+        setSaving(false);
+        alert(`La recherche n'a pas pu être créée.\n\n${eNeuve?.message || 'erreur inconnue'}`);
+        return;
+      }
+      cible = (neuve as Recherche).id;
+      setRecherches(rs => [...rs, neuve as Recherche]);
+      setRechercheId(cible);
+      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(neuve as Recherche).nom}`);
+    }
+
+    const avant = recherches.find(r => r.id === cible) as unknown as Record<string, unknown> | undefined;
     const { data, error } = await supabase.from('recherches').update({
       type_bien: crit.types_bien.length > 0 ? crit.types_bien.join(', ') : null,
       budget_min: crit.budget_min ? parseInt(crit.budget_min) : null,
@@ -1173,7 +1212,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
       financement: crit.financement || null,
       apport: crit.apport ? parseInt(crit.apport) : null,
       updated_at: new Date().toISOString(),
-    }).eq('id', rechercheId).select().single();
+    }).eq('id', cible).select().single();
     if (error) {
       /* Sans message, un échec ressemble à « ça n'a pas voulu s'afficher ».
          Le cas le plus courant : une colonne pas encore créée dans Supabase. */
@@ -1182,7 +1221,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
       return;
     }
     if (data) {
-      setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
+      setRecherches(rs => rs.map(r => r.id === cible ? (data as Recherche) : r));
       const change = resumeChangements(avant, data as unknown as Record<string, unknown>);
       if (change) {
         /* La recherche est notée sur la ligne : la veille lit ce journal pour
@@ -1190,7 +1229,7 @@ export default function FicheClient({ client: init, onBack }: Props) {
            peut avoir deux recherches ouvertes. Sans elle, les deux se
            mélangeaient. */
         await supabase.from('journal').insert({
-          client_id: client.id, recherche_id: rechercheId,
+          client_id: client.id, recherche_id: cible,
           type: 'criteres_modifies', titre: '🎯 Critères modifiés',
           description: change, metadata: {},
         });
@@ -2551,7 +2590,7 @@ Emilio Immobilier
               <span className={styles.critFilet} />
               <span style={{ minWidth: 0 }}>
                 <span className={styles.critSur}>
-                  {recherches.length > 1 ? 'Recherche active' : 'Recherche principale'} · critères
+                  {recherches.length === 0 ? 'Aucune recherche' : recherches.length > 1 ? 'Recherche active' : 'Recherche principale'} · critères
                 </span>
                 <span className={styles.critLigne}>
                   <button className={styles.critNom} onClick={(ev) => {
@@ -2559,7 +2598,7 @@ Emilio Immobilier
                     const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
                     setPosRecherche({ x: Math.max(12, Math.min(r.left, window.innerWidth - 292)), y: r.bottom + 7 });
                   }}>
-                    {rechercheActive?.nom || '—'}
+                    {rechercheActive?.nom || 'Aucune recherche — en ouvrir une'}
                     <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>▾</span>
                   </button>
                   {rechercheActive && (
