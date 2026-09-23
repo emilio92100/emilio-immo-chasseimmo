@@ -891,6 +891,25 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return () => clearTimeout(t);
   }, [ouvrirBienvenue]);
 
+  /* « Je ne suis plus en recherche », depuis le pied de page des mails.
+     Le lien n'annule rien : il amène ici, sur la question, et c'est le client
+     qui répond — a-t-il trouvé avec nous, ailleurs, ou met-il en pause. Rien
+     ne se clôture sans qu'Alexandre l'ait rappelé.
+     On nettoie l'adresse aussitôt : sans ça, le rechargement automatique au
+     retour rouvrirait la question à chaque fois. */
+  const finOuverte = useRef(false);
+  useEffect(() => {
+    if (finOuverte.current) return;
+    let veut = false;
+    try { veut = new URLSearchParams(window.location.search).get('fin') === '1'; } catch { return; }
+    if (!veut) return;
+    finOuverte.current = true;
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
+    const t = setTimeout(() => ouvrirFinRecherche(), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* Les mails envoyés au client pointent sur /espace/<jeton>?bien=<id> : il
      arrive directement sur le bien dont on lui parle, pas sur l'accueil à
      chercher lequel c'est. On n'ouvre qu'une fois, et on nettoie l'adresse
