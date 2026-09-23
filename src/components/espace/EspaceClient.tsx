@@ -390,7 +390,7 @@ const CLE_ECRAN = 'emilio_ecran';
 const REFUS_MAX = 2;
 const ATTENTE_MS = 40_000;
 
-type Appareil = null | 'ios' | 'android' | 'appli' | 'bureau';
+type Appareil = null | 'ios' | 'android' | 'appli' | 'appliandroid' | 'bureau';
 
 /* L'événement d'Android, que le navigateur nous confie pour qu'on choisisse le
    bon moment d'afficher sa boîte d'installation. Il n'est pas typé par TS. */
@@ -423,10 +423,18 @@ function useEcranAccueil() {
     const ua = navigator.userAgent || '';
     const ios = /iphone|ipad|ipod/i.test(ua)
       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    /* WhatsApp, Instagram, Messenger ouvrent les liens dans leur propre
-       navigateur, et celui-là n'a pas l'option sur iPhone. Il faut d'abord
-       repasser par Safari — c'est ce qu'on lui expliquera. */
-    const integre = /FBAN|FBAV|Instagram|Messenger|LinkedInApp|Line\/|Snapchat|Twitter|WhatsApp/i.test(ua);
+    /* ⚠️ Le cas le plus fréquent de tous : le client arrive par le mail.
+       Gmail, Outlook, WhatsApp, Instagram n'ouvrent pas les liens dans le vrai
+       navigateur — ils ont chacun le leur, en réduction, qui ne sait ni
+       installer une application ni activer des notifications.
+
+       Deux façons de les reconnaître, parce qu'aucune ne suffit seule :
+         — leur signature, quand ils en laissent une (« ; wv » est celle des
+           navigateurs embarqués d'Android) ;
+         — l'absence du veilleur, que ces navigateurs ne fournissent pas.
+       Le reste du code leur montrera comment repasser par le vrai navigateur. */
+    const integre = /FBAN|FBAV|Instagram|Messenger|LinkedInApp|Line\/|Snapchat|Twitter|WhatsApp|MicroMessenger|GSA\/|; ?wv[);]/i.test(ua)
+      || !('serviceWorker' in navigator);
 
     /* Sur téléphone, on sait tout de suite quoi montrer.
        Sur ordinateur, on ne montre rien tant que le navigateur n'a pas dit
@@ -434,7 +442,11 @@ function useEcranAccueil() {
        l'espace se range alors dans la barre des tâches, dans sa propre
        fenêtre), Safari et Firefox ne le proposent pas du tout. Inutile
        d'expliquer un chemin qui n'existe pas chez celui qui lit. */
-    if (surTactile) setAppareil(ios ? (integre ? 'appli' : 'ios') : 'android');
+    if (surTactile) {
+      setAppareil(ios
+        ? (integre ? 'appli' : 'ios')
+        : (integre ? 'appliandroid' : 'android'));
+    }
 
     const etat = lire();
     setAuto(etat !== 'ok' && (Number(etat) || 0) < REFUS_MAX);
@@ -507,6 +519,13 @@ const CLE_PUBLIQUE = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
 type EtatNotif = 'inconnu' | 'oui' | 'non' | 'bloque';
 
+/* Le résultat d'une demande, tel qu'on doit l'expliquer au client :
+     ok      → c'est en place
+     bloque  → le téléphone a dit non sans rien afficher : réglages obligatoires
+     refuse  → il a fermé la fenêtre du téléphone sans répondre : réessayable
+     erreur  → l'autorisation est là mais l'inscription n'a pas abouti */
+type Verdict = 'ok' | 'bloque' | 'refuse' | 'erreur';
+
 /* La clé publique voyage en base64 « url » ; le navigateur la veut en octets. */
 function enOctets(b64: string): ArrayBuffer {
   const p = (b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
@@ -572,7 +591,7 @@ function useNotifications(token: string) {
     }).catch(() => { /* pas de veilleur, pas de notifications, tant pis */ });
   }, [abonner]);
 
-  const demander = useCallback(async () => {
+  const demander = useCallback(async (): Promise<Verdict> => {
     /* ⚠️ On demande l'autorisation AVANT toute autre chose, et sans dépendre
        de quoi que ce soit d'autre.
 
@@ -583,11 +602,14 @@ function useNotifications(token: string) {
        geste du client : tout ce qui retarde ce moment le fait rater. */
     let reponse = Notification.permission;
     if (reponse === 'default') reponse = await Notification.requestPermission();
-    if (reponse !== 'granted') {
-      setEtat(reponse === 'denied' ? 'bloque' : 'non');
-      ecrire('non');
-      return false;
-    }
+
+    /* « denied » veut dire que le téléphone a répondu non SANS rien afficher :
+       les notifications ont été bloquées pour cet espace une fois pour toutes,
+       et seul un passage par les réglages peut les rouvrir. C'est un cas très
+       différent d'une fenêtre simplement refermée, et le client doit pouvoir
+       faire la différence — sinon il réessaie dix fois pour rien. */
+    if (reponse === 'denied') { setEtat('bloque'); ecrire('non'); return 'bloque'; }
+    if (reponse !== 'granted') { setEtat('non'); ecrire('non'); return 'refuse'; }
 
     setEtat('oui');
     ecrire('ok');
@@ -597,9 +619,9 @@ function useNotifications(token: string) {
     let reg = veilleur.current;
     if (!reg) {
       try { reg = await navigator.serviceWorker.register('/sw.js'); veilleur.current = reg; }
-      catch (e) { console.warn('[espace] veilleur impossible à installer', e); return false; }
+      catch (e) { console.warn('[espace] veilleur impossible à installer', e); return 'erreur'; }
     }
-    return abonner(reg);
+    return (await abonner(reg)) ? 'ok' : 'erreur';
   }, [abonner]);
 
   const refuser = useCallback(() => { setEtat('non'); ecrire('non'); }, []);
@@ -647,8 +669,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ecran.appareil, ecran.tactile]);
   /* Le vocabulaire suit l'appareil : on ne parle pas d'écran d'accueil à
-     quelqu'un qui est devant un ordinateur. */
-  const motEcran = ecran.tactile ? "Installer sur mon écran d'accueil" : "Installer l'application";
+     quelqu'un qui est devant un ordinateur, ni d'installation à quelqu'un qui
+     lit la page dans le navigateur de poche de sa messagerie — chez lui, la
+     première chose à faire est d'en sortir. */
+  const dansUneAppli = ecran.appareil === 'appli' || ecran.appareil === 'appliandroid';
+  const motEcran = dansUneAppli
+    ? 'Ouvrir dans mon navigateur'
+    : ecran.tactile ? "Installer sur mon écran d'accueil" : "Installer l'application";
 
   /* ── être prévenu des nouveaux biens ── */
   const notif = useNotifications(token);
@@ -675,7 +702,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const t = setTimeout(() => {
       setADemander(false);
       montrer(<DemandeNotif
-        onOui={async () => { const ok = await notif.demander(); if (ok) fermer(); return ok; }}
+        onOui={async () => { const r = await notif.demander(); if (r === 'ok') fermer(); return r; }}
         onNon={() => { notif.refuser(); fermer(); }} />, 'pleine');
     }, 1200);
     return () => clearTimeout(t);
@@ -911,7 +938,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               /* Une seule pastille à la fois : tant qu'il peut installer, c'est
                  la priorité. Une fois installé, on lui propose les alertes s'il
                  les avait passées ou refusées. */
-              onNotif={!ecran.appareil && notif.possible && notif.etat !== 'oui' && notif.etat !== 'bloque'
+              /* Y compris quand c'est bloqué : c'est justement là qu'il faut
+                 pouvoir rouvrir la fenêtre pour lire comment débloquer. */
+              onNotif={!ecran.appareil && notif.possible && notif.etat !== 'oui'
                 ? () => setADemander(true) : null}
               onFin={ouvrirFinRecherche}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
@@ -1009,15 +1038,17 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       {ecran.appareil && ecran.auto && ecran.visible && !ouvert && (
         <div className="ecran">
           <div className="ecran-dedans">
-            <span className="ecran-sceau"><Ico n="maison" t={19} /></span>
+            <span className="ecran-sceau"><Ico n={dansUneAppli ? 'partage' : 'maison'} t={19} /></span>
             <div className="ecran-txt">
               <b>Ne ratez aucun bien</b>
-              <span>{ecran.tactile
-                ? <>Posez votre espace sur votre écran d&apos;accueil&nbsp;: vous y êtes en un geste, et vous êtes prévenu dès que votre conseiller vous en envoie un.</>
-                : <>Posez votre espace dans votre barre des tâches&nbsp;: vous y êtes en un clic, et vous êtes prévenu dès que votre conseiller vous envoie un bien.</>}</span>
+              <span>{dansUneAppli
+                ? <>Ouvrez cet espace dans votre navigateur&nbsp;: vous pourrez le garder sous la main et être prévenu dès qu&apos;un bien arrive.</>
+                : ecran.tactile
+                  ? <>Posez votre espace sur votre écran d&apos;accueil&nbsp;: vous y êtes en un geste, et vous êtes prévenu dès que votre conseiller vous en envoie un.</>
+                  : <>Posez votre espace dans votre barre des tâches&nbsp;: vous y êtes en un clic, et vous êtes prévenu dès que votre conseiller vous envoie un bien.</>}</span>
             </div>
             <button type="button" className="ecran-oui" onClick={() => ecran.accepter(ouvrirGuideEcran)}>
-              Installer
+              {dansUneAppli ? 'Voir comment' : 'Installer'}
             </button>
             <button type="button" className="ecran-x" onClick={ecran.refuser} aria-label="Plus tard">
               <Ico n="croix" t={13} />
@@ -2936,16 +2967,33 @@ function Bienvenue({ client, onFermer }: any) {
    téléphone, qui arrive juste après s'il dit oui, ne se présente qu'une fois
    dans la vie du dossier — d'où ce filtre en amont. On explique d'abord, on
    demande ensuite. */
-function DemandeNotif({ onOui, onNon }: { onOui: () => Promise<boolean>; onNon: () => void }) {
+const ECHECS: Record<string, React.ReactNode> = {
+  bloque: <>Votre téléphone a refusé sans rien afficher. Deux causes possibles&nbsp;:
+    <br /><br />
+    <b>1.</b> Vous avez ouvert cette page depuis un mail ou un message. Le petit navigateur
+    de ces applications ne sait pas gérer les alertes. Ouvrez plutôt cette page dans
+    <b> Chrome</b> ou <b>Safari</b> — c&apos;est le cas le plus fréquent.
+    <br /><br />
+    <b>2.</b> Les alertes ont été bloquées pour cet espace. Pour les rouvrir&nbsp;:
+    <b>Réglages</b> de votre téléphone → <b>Applications</b> → <b>Ma recherche</b> →
+    <b> Notifications</b>.</>,
+  refuse: <>La fenêtre de votre téléphone a été refermée sans réponse. Vous pouvez réessayer.</>,
+  erreur: <>L&apos;autorisation est bien donnée, mais l&apos;inscription n&apos;a pas abouti.
+    Réessayez dans un instant&nbsp;; si ça persiste, prévenez votre conseiller.</>,
+};
+
+function DemandeNotif({ onOui, onNon }: { onOui: () => Promise<string>; onNon: () => void }) {
   const [envoi, setEnvoi] = useState(false);
-  const [echec, setEchec] = useState(false);
+  const [echec, setEchec] = useState<string | null>(null);
 
   /* Un échec ne doit pas se solder par une fenêtre qui se referme sans rien
-     dire : le client croirait que c'est fait, et n'aurait jamais de nouvelles. */
+     dire : le client croirait que c'est fait, et n'aurait jamais de nouvelles.
+     Et chaque échec a sa cause, donc son texte — « ça n'a pas marché » tout
+     court ne dit pas quoi faire ensuite. */
   const accepter = async () => {
-    setEnvoi(true); setEchec(false);
-    const ok = await onOui();
-    if (!ok) { setEnvoi(false); setEchec(true); }
+    setEnvoi(true); setEchec(null);
+    const r = await onOui();
+    if (r !== 'ok') { setEnvoi(false); setEchec(r); }
   };
 
   return (
@@ -2969,9 +3017,11 @@ function DemandeNotif({ onOui, onNon }: { onOui: () => Promise<boolean>; onNon: 
         {echec ? 'Fermer' : 'Non merci'}
       </button>
       {echec ? (
-        <div className="bienv-pied" style={{ color: 'var(--brique)' }}>
-          Votre téléphone n&apos;a pas donné son accord. Vous pouvez réessayer, ou le faire plus
-          tard depuis «&nbsp;M&apos;avertir des nouveaux biens&nbsp;» sur votre accueil.
+        <div className="bienv-pied" style={{
+          color: '#991b1b', background: 'var(--brique-fond)', border: '1px solid var(--brique-trait)',
+          borderRadius: 12, padding: '11px 13px', lineHeight: 1.55, textAlign: 'left',
+        }}>
+          {ECHECS[echec] || ECHECS.erreur}
         </div>
       ) : (
         <div className="bienv-pied">Votre téléphone va vous demander confirmation juste après.</div>
@@ -3020,7 +3070,7 @@ const CHEMINS: Record<string, { sur: string; titre: string; texte: string; etape
   appli: {
     sur: 'Une étape avant',
     titre: 'Ouvrez-le dans Safari',
-    texte: "Vous lisez cette page dans WhatsApp, Instagram ou Messenger. Ces applications ont leur propre navigateur, et il n'a pas l'option. Une fois dans Safari, tout devient possible.",
+    texte: "Vous lisez cette page dans le navigateur intégré de votre messagerie (ou de WhatsApp, Instagram…). Celui-là ne sait ni installer l'application, ni activer les alertes. Une fois dans Safari, tout devient possible.",
     etapes: [
       <>Appuyez sur <b>•••</b> ou sur la petite boussole, en bas de l&apos;écran.</>,
       <>Choisissez <b>« Ouvrir dans Safari »</b>.</>,
@@ -3028,11 +3078,27 @@ const CHEMINS: Record<string, { sur: string; titre: string; texte: string; etape
     ],
     pied: "Vous pouvez aussi copier le lien ci-dessous et le coller dans Safari.",
   },
+  /* Le même cas sur Android, et de loin le plus courant : le client ouvre le
+     mail dans Gmail, qui affiche la page dans son navigateur de poche. */
+  appliandroid: {
+    sur: 'Une étape avant',
+    titre: 'Ouvrez-le dans Chrome',
+    texte: "Vous lisez cette page dans le navigateur intégré de votre messagerie. Celui-là ne sait ni installer l'application, ni activer les alertes. Une fois dans Chrome, tout devient possible.",
+    etapes: [
+      <>Appuyez sur <b>⋮</b> en haut à droite de l&apos;écran.</>,
+      <>Choisissez <b>« Ouvrir dans Chrome »</b> — ou <b>« Ouvrir dans le navigateur »</b>.</>,
+      <>Puis <b>⋮</b> → <b>« Installer l&apos;application »</b>.</>,
+    ],
+    pied: "Vous pouvez aussi copier le lien ci-dessous et le coller dans Chrome.",
+  },
 };
 
 function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => void }) {
   const c = CHEMINS[appareil] || CHEMINS.ios;
   const [copie, setCopie] = useState(false);
+  /* Les deux navigateurs de poche, iPhone et Android, partagent le même
+     traitement : on ne peut rien y installer, on montre la sortie. */
+  const dansUneAppli = appareil === 'appli' || appareil === 'appliandroid';
 
   const copier = async () => {
     try {
@@ -3044,7 +3110,7 @@ function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => 
 
   return (
     <div className="bienv">
-      <div className="bienv-sceau"><Ico n={appareil === 'appli' ? 'partage' : 'lieu'} t={28} /></div>
+      <div className="bienv-sceau"><Ico n={dansUneAppli ? 'partage' : 'lieu'} t={28} /></div>
       <div className="bienv-sur">{c.sur}</div>
       <h3>{c.titre}</h3>
       <p>{c.texte}</p>
@@ -3053,13 +3119,13 @@ function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => 
           <span key={i}><span className="k num">{i + 1}</span><span>{t}</span></span>
         ))}
       </div>
-      {appareil === 'appli' && (
+      {dansUneAppli && (
         <button className="btn fant" style={{ marginTop: 18, width: '100%' }} onClick={copier}>
           {copie ? '✓ Lien copié' : 'Copier le lien'}
         </button>
       )}
       <button className="btn or" style={{ marginTop: 12, width: '100%' }} onClick={onFermer}>
-        {appareil === 'appli' ? 'Fermer' : "C'est fait"}
+        {dansUneAppli ? 'Fermer' : "C'est fait"}
       </button>
       <div className="bienv-pied">{c.pied}</div>
     </div>
