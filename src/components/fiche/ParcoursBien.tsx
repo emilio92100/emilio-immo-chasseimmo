@@ -1755,7 +1755,12 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
   const [deplie, setDeplie] = useState(false);
   const [evts, setEvts] = useState<any[] | null>(null);
 
-  const token = recherche?.token_espace;
+  /* Le lien qu'on donne au client est le SIEN, pas celui d'une recherche
+     (voir src/lib/espace.ts) : il ne bouge pas quand on lui en ouvre une
+     deuxième, et il survit à la suppression de la première. Le jeton de la
+     recherche ne sert plus qu'en secours, le temps que tous les dossiers
+     soient repris. */
+  const token = client?.token_espace || recherche?.token_espace;
   /* Les nouveaux jetons donnent l'adresse courte sur espace.emilio-immo.com ;
      les anciens gardent celle sous laquelle le client les a reçus. */
   const url = token ? lienEspace(token) : '';
