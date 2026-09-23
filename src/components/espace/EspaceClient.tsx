@@ -801,7 +801,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       /* Un créneau de visite : un engagement, donc un cran au-dessus d'un badge. */
       ['.creneau', 26],
       /* Tout le reste — badges de réponse, critères, DPE, sélecteur. */
-      ['.ch, .rep, .dpe-b, .selec, .rec', 22],
+      /* La barre collante du bas : ses trois boutons ouvrent le panneau,
+         c'est le meme geste que les gros boutons d'avis. */
+      ['.ba-b', 30],
+      /* Les onglets de « Mes derniers biens consultes » et tout le reste. */
+      ['.ch, .rep, .dpe-b, .selec, .rec, .fc', 22],
     ];
     const toucher = (e: Event) => {
       const depart = e.target as HTMLElement | null;
@@ -4367,11 +4371,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
    ils sont choisis : leur animation doit finir à cette hauteur-là, sinon ils
    retomberaient d'un coup à la fin. */
 @keyframes choisi{
-  0%  {transform:scale(.80)}
-  38% {transform:scale(1.16)}
-  62% {transform:scale(.95)}
-  82% {transform:scale(1.04)}
-  100%{transform:scale(1)}
+  0%  {transform:scale(.70) rotate(-2.5deg)}
+  32% {transform:scale(1.28) rotate(2deg)}
+  55% {transform:scale(.92)  rotate(-1.2deg)}
+  78% {transform:scale(1.09) rotate(.6deg)}
+  100%{transform:scale(1)    rotate(0)}
 }
 @keyframes choisi-haut{
   0%  {transform:translateY(0)    scale(.84)}
@@ -4384,25 +4388,39 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
    couleur. currentColor la teinte automatiquement — verte sur « ça me
    plaît », brique sur « pas pour moi », marine sur un critère. */
 @keyframes onde{
-  0%  {box-shadow:0 0 0 0 currentColor; opacity:.45}
-  100%{box-shadow:0 0 0 14px currentColor; opacity:0}
+  0%  {box-shadow:0 0 0 0 currentColor; opacity:.6}
+  55% {opacity:.3}
+  100%{box-shadow:0 0 0 22px currentColor; opacity:0}
 }
 .ch[aria-pressed="true"],
 .reponses:not(.lu) .rep[aria-pressed="true"],
 .creneau.pris,
-.dpe-b.pt{animation:choisi .42s cubic-bezier(.34,1.56,.64,1)}
-.avis[aria-pressed="true"]{animation:choisi-haut .46s cubic-bezier(.34,1.56,.64,1)}
+.dpe-b.pt,
+.fc.on{animation:choisi .5s cubic-bezier(.34,1.56,.64,1)}
+.avis[aria-pressed="true"]{animation:choisi-haut .5s cubic-bezier(.34,1.56,.64,1)}
 
 /* L'onde vit dans un ::after pour ne pas écraser l'ombre du bouton lui-même.
    pointer-events:none : elle déborde du badge, elle ne doit rien intercepter. */
-.ch, .rep, .creneau, .dpe-b, .avis{position:relative}
+.ch, .rep, .creneau, .dpe-b, .avis, .fc, .ba-b{position:relative}
 .ch[aria-pressed="true"]::after,
 .reponses:not(.lu) .rep[aria-pressed="true"]::after,
 .creneau.pris::after,
 .dpe-b.pt::after,
+.fc.on::after,
 .avis[aria-pressed="true"]::after{
   content:""; position:absolute; inset:0; border-radius:inherit;
-  pointer-events:none; animation:onde .5s ease-out forwards}
+  pointer-events:none; animation:onde .6s ease-out forwards}
+
+/* ── Les onglets et les gros boutons de la barre du bas ──
+   Ces deux-là n'ont pas d'etat « selectionne » sur lequel accrocher une
+   animation : un onglet filtre une liste, un bouton de la barre ouvre
+   aussitot le panneau. Le retour se joue donc a l'appui, et il doit etre
+   plus marque que le discret scale(.95) d'origine — c'est ce qu'Alexandre
+   ne voyait pas. */
+.fc{transition:background .18s, color .18s, transform .16s cubic-bezier(.34,1.56,.64,1)}
+.fc:active{transform:scale(.9)}
+.ba-b{transition:transform .16s cubic-bezier(.34,1.56,.64,1), border-color .2s, background .2s}
+.ba-b:active{transform:scale(.9)}
 /* La relecture d'un retour déjà envoyé (.reponses.lu) arrive avec ses
    pastilles déjà sélectionnées : elles n'ont aucune raison de sautiller.
    ⚠️ Pas d'accent inverse dans ce bloc, il fermerait le gabarit JS. */
@@ -4412,8 +4430,9 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 @media(prefers-reduced-motion:reduce){
   .ch[aria-pressed="true"],
   .reponses:not(.lu) .rep[aria-pressed="true"],
-  .creneau.pris, .dpe-b.pt,
+  .creneau.pris, .dpe-b.pt, .fc.on,
   .avis[aria-pressed="true"],
+  .fc.on::after,
   .ch[aria-pressed="true"]::after,
   .reponses:not(.lu) .rep[aria-pressed="true"]::after,
   .creneau.pris::after, .dpe-b.pt::after,
