@@ -75,6 +75,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       gardien: p.gardien || false, description: p.description, prix_vendeur: p.prix,
       commission_type: 'pourcentage', commission_val: null, prix_acquereur: p.prix,
       nb_lots: p.nb_lots, photos: p.photos || [],
+      // les charges et la taxe foncière suivent le bien jusqu'à l'espace du client
+      charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
       etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
       // infos marché — elles suivent le bien dans la Sélection
