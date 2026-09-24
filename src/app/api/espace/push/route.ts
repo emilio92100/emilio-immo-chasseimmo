@@ -58,6 +58,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'abonnement invalide' }, { status: 400 });
     }
 
+    /* Cet appareil était-il déjà inscrit ? L'espace réinscrit l'appareil à
+       CHAQUE ouverture quand les notifications sont déjà autorisées (c'est
+       voulu : ça répare un abonnement perdu). Mais le dossier ne doit dire
+       « a activé les notifications » qu'une fois, la vraie. */
+    const { data: deja } = await supabase.from('push_abonnements')
+      .select('endpoint').eq('endpoint', endpoint).maybeSingle();
+
     /* Un appareil qui se réabonne ne doit pas créer une deuxième ligne : on
        écrase la précédente. L'unicité de l'endpoint garantit le reste. */
     await supabase.from('push_abonnements').upsert({
@@ -72,12 +79,14 @@ export async function POST(req: NextRequest) {
 
     /* Pour qu'Alexandre voie dans le dossier que le client a activé les
        notifications — c'est un signal d'engagement, pas un détail technique. */
-    try {
-      await supabase.from('espace_evenements').insert({
-        recherche_id: recherche.id, client_id: recherche.client_id,
-        type: 'notifications', detail: 'Le client a activé les notifications',
-      });
-    } catch { /* le journal ne doit jamais faire échouer l'abonnement */ }
+    if (!deja) {
+      try {
+        await supabase.from('espace_evenements').insert({
+          recherche_id: recherche.id, client_id: recherche.client_id,
+          type: 'notifications', detail: 'Le client a activé les notifications',
+        });
+      } catch { /* le journal ne doit jamais faire échouer l'abonnement */ }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
