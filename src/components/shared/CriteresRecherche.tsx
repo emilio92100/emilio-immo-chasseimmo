@@ -69,6 +69,45 @@ export const URGENCES: [string, string, string][] = [
 export const CUISINES: [string, string, string][] = [
   ['', 'Indifférent', '🤷'], ['ouverte', 'Ouverte sur le séjour', '🍽️'], ['separee', 'Séparée', '🚪'],
 ];
+/* L'état souhaité se choisit à plusieurs (« travaux légers » ET « bon état »).
+   Les clés sont enregistrées à la suite, séparées par des virgules, dans
+   l'ordre de la liste. Rien d'enregistré = pas de préférence. Mêmes règles
+   dans l'espace acheteur (EspaceClient.tsx) et à l'enregistrement côté client
+   (api/espace/[action]). */
+export const etatsDe = (v?: string | null): string[] => {
+  const l = String(v || '').split(',').map(x => x.trim());
+  return ETATS.map(e => e[0]).filter(k => l.includes(k));
+};
+export const texteEtats = (v?: string | null): string | null => {
+  const l = etatsDe(v);
+  return l.length ? l.map(k => { const e = ETATS.find(x => x[0] === k)!; return `${e[2]} ${e[1]}`; }).join(' · ') : null;
+};
+export const ChoixEtats = ({ valeur, onChange, couleur = '#1a2332' }: { valeur: string; onChange: (v: string) => void; couleur?: string }) => {
+  const choisis = etatsDe(valeur);
+  const puce = (actif: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20,
+    border: `1px solid ${actif ? couleur : '#e2e8f0'}`, background: actif ? couleur : 'white',
+    color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+    fontFamily: 'inherit', transition: 'all 0.12s',
+  });
+  return (
+    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+      <button type="button" onClick={() => onChange('')} aria-pressed={!choisis.length} style={puce(!choisis.length)}>
+        <span style={{ fontSize: 14 }}>🤷</span>Pas de préférence
+      </button>
+      {ETATS.map(([k, l, i]) => {
+        const actif = choisis.includes(k);
+        return (
+          <button type="button" key={k} aria-pressed={actif} style={puce(actif)}
+            onClick={() => onChange(ETATS.map(e => e[0]).filter(x => (x === k ? !actif : choisis.includes(x))).join(','))}>
+            <span style={{ fontSize: 14 }}>{i}</span>{l}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 /* Retrouve « 💵 Cash » à partir de la valeur enregistrée. */
 export const texteChoix = (table: [string, string, string][], v?: string | null) => {
   const l = table.find(x => x[0] === v);
@@ -179,8 +218,8 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
               </div>
               <div className={styles.formRow}>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label className={styles.lbl}>État souhaité</label>
-                  <ChoixIco table={ETATS} valeur={crit.etat_souhaite} onChange={v => setCrit(f => ({ ...f, etat_souhaite: v }))} />
+                  <label className={styles.lbl}>État souhaité <span style={{ fontWeight: 500, color: '#94a3b8', textTransform: 'none', letterSpacing: 0 }}>· plusieurs choix possibles</span></label>
+                  <ChoixEtats valeur={crit.etat_souhaite} onChange={v => setCrit(f => ({ ...f, etat_souhaite: v }))} />
                 </div>
                 <div><label className={styles.lbl}>📅 Année de construction min</label><input className={styles.inp} type="number" value={crit.annee_min} onChange={e=>setCrit(f=>({...f,annee_min:e.target.value}))} /></div>
               </div>

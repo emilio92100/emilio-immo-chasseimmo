@@ -87,7 +87,8 @@ export default function ChoixDate({ valeur, onChange, min, placeholder = 'Choisi
           stroke={valeur ? OR_FONCE : '#94a3b8'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18" /><path d="M8 3v4" /><path d="M16 3v4" />
         </svg>
-        <span style={{ textTransform: 'capitalize' }}>{valeur ? texteDate(valeur) : placeholder}</span>
+        {/* Majuscule au premier mot seulement : « capitalize » écrivait « Mardi 29 Septembre ». */}
+        <span>{valeur ? (t => t.charAt(0).toUpperCase() + t.slice(1))(texteDate(valeur)) : placeholder}</span>
       </button>
 
       {pos && typeof document !== 'undefined' && createPortal(
@@ -114,8 +115,8 @@ export default function ChoixDate({ valeur, onChange, min, placeholder = 'Choisi
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <button type="button" className="cal-fl"
                 onClick={() => setCurseur(d => new Date(d.getFullYear(), d.getMonth() - 1, 1, 12))}>‹</button>
-              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800, textTransform: 'capitalize' }}>
-                {MOIS[curseur.getMonth()]} {curseur.getFullYear()}
+              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800 }}>
+                {`${MOIS[curseur.getMonth()].charAt(0).toUpperCase()}${MOIS[curseur.getMonth()].slice(1)} ${curseur.getFullYear()}`}
               </span>
               <button type="button" className="cal-fl"
                 onClick={() => setCurseur(d => new Date(d.getFullYear(), d.getMonth() + 1, 1, 12))}>›</button>
