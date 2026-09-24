@@ -59,9 +59,17 @@ export default function AppLayout() {
      hauteur. Posé directement sur l'élément, sans passer par l'état React :
      replier la barre ne redessine pas la fiche. Sans effet sur ordinateur. */
   const zoneBarre = useRef<HTMLDivElement>(null);
+  const barreCachee = useRef(false);
+  /* Replier ou déplier change la hauteur de la zone qui défile : en bas de
+     page, le navigateur recale alors le défilement de lui-même. Ce recalage
+     n'est pas un geste — on l'ignore le temps de l'animation, sinon la barre
+     clignoterait en boucle. */
+  const calmeJusqua = useRef(0);
   const replierBarre = (oui: boolean) => {
     const z = zoneBarre.current;
-    if (!z) return;
+    if (!z || barreCachee.current === oui) return;
+    barreCachee.current = oui;
+    calmeJusqua.current = performance.now() + 420;
     if (oui) z.setAttribute('data-barre', 'cachee'); else z.removeAttribute('data-barre');
   };
   const contenu = useRef<HTMLElement>(null);
@@ -171,6 +179,7 @@ export default function AppLayout() {
     const surDefilement = () => {
       if (!telephone.matches) return;
       const y = zone.scrollTop;
+      if (performance.now() < calmeJusqua.current) { repere = y; return; }
       const ecart = y - repere;
       if (y < 64) { replierBarre(false); repere = y; return; }
       if (Math.abs(ecart) < 8) return;
