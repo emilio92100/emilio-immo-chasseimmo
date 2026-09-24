@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import {
   Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
   useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
-  NotesVeille, ModaleScore,
+  NotesVeille, ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
 } from './ParcoursBien';
 
 /**
@@ -82,6 +83,49 @@ function depuisQuand(d?: string | null) {
   return 'le ' + x.toLocaleDateString('fr-FR');
 }
 
+/* ══ La barre des biens cochés ═════════════════════════════════
+   Elle monte du bas dès qu'un bien est coché, et reste à portée de pouce
+   pendant qu'on fait défiler la liste. Posée sur la page (portail) : le
+   panneau de l'onglet s'anime avec un transform, qui piégerait un
+   `position: fixed`. Sur téléphone, elle se cale au-dessus de la barre
+   d'onglets. */
+function BarreGroupe({ n, onEnvoyer, onVider }: { n: number; onEnvoyer: () => void; onVider: () => void }) {
+  const [monte, setMonte] = useState(false);
+  useEffect(() => { setMonte(true); }, []);
+  if (!monte) return null;
+  return createPortal(
+    <div className="emi-barre-groupe" role="region" aria-label="Biens cochés">
+      <style>{`
+        .emi-barre-groupe{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:12px;
+          background:${NAVY};color:#fff;border-radius:16px;padding:9px 9px 9px 14px;max-width:calc(100vw - 24px);box-sizing:border-box;
+          box-shadow:0 18px 40px -12px rgba(12,18,30,.55),0 2px 6px rgba(12,18,30,.2);font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+          animation:emiBarreMonte .28s cubic-bezier(.22,.9,.3,1) both}
+        @keyframes emiBarreMonte{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+        .emi-bg-n{min-width:26px;height:26px;border-radius:8px;background:${OR};color:${NAVY};font-weight:800;font-size:13.5px;display:inline-flex;align-items:center;justify-content:center;padding:0 7px;box-sizing:border-box}
+        .emi-bg-txt{font-size:13.5px;font-weight:700;white-space:nowrap}
+        .emi-bg-vider{background:none;border:none;color:rgba(255,255,255,.62);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;padding:6px 4px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+        .emi-bg-vider:hover{color:#fff}
+        .emi-bg-go{display:inline-flex;align-items:center;gap:8px;background:${OR};color:${NAVY};border:none;border-radius:11px;padding:10px 16px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;white-space:nowrap;margin-left:6px}
+        .emi-bg-go:hover{filter:brightness(1.06)}
+        @media (max-width:900px){
+          .emi-barre-groupe{left:10px;right:10px;transform:none;bottom:calc(74px + env(safe-area-inset-bottom,0px));animation-name:emiBarreMonteM}
+          .emi-bg-go{margin-left:auto}
+        }
+        @media (max-width:520px){ .emi-bg-txt{display:none} }
+        @keyframes emiBarreMonteM{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+      `}</style>
+      <span className="emi-bg-n">{n}</span>
+      <span className="emi-bg-txt">{n > 1 ? 'biens cochés' : 'bien coché'}</span>
+      <button type="button" className="emi-bg-vider" onClick={onVider}>Tout décocher</button>
+      <button type="button" className="emi-bg-go" onClick={onEnvoyer}>
+        <Icone nom="envoyer" taille={16} epaisseur={2} />
+        {n > 1 ? `Envoyer les ${n} ensemble` : 'Envoyer ce bien'}
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 interface Props {
   clientId: string;
   rechercheId: string;
@@ -91,9 +135,13 @@ interface Props {
   onMail: (bienId: string) => void;
   onFiche: (bienId: string) => void;
   onVisite: (bienId: string) => void;
+  /** Envoi groupé par mail : ouvre la fenêtre de mail du dossier avec ces biens. */
+  onMailGroupe?: (ids: string[]) => void;
+  /** Change quand la fiche vient d'envoyer un mail : la liste se recharge. */
+  rafraichir?: number;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0 }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [frise, setFrise] = useState<string | null>(null);
@@ -106,6 +154,9 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
      recherche sert à dire ce que le bien coche d'office. */
   const [scoreOuvert, setScoreOuvert] = useState<any>(null);
   const [recherche, setRecherche] = useState<any>(null);
+  /* Les biens cochés pour partir ensemble (onglet Sélection). */
+  const [coches, setCoches] = useState<string[]>([]);
+  const [envoiGroupe, setEnvoiGroupe] = useState<any[] | null>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -117,16 +168,20 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       .eq('etape', mode === 'selection' ? 'selection' : 'presente')
       .order(mode === 'selection' ? 'created_at' : 'envoye_le', { ascending: false, nullsFirst: false });
     setBiens(data || []);
+    /* Un bien parti en « Présentés » ou retiré n'est plus coché. */
+    setCoches(cs => cs.filter(id => (data || []).some((b: any) => b.id === id)));
     setChargement(false);
   }, [rechercheId, mode]);
 
+  /* Relue à chaque rechargement : le mandat a pu changer entre-temps, et ses
+     honoraires sont ceux qu'on propose à l'envoi. */
   useEffect(() => {
     if (!rechercheId) return;
     supabase.from('recherches').select('*').eq('id', rechercheId).maybeSingle()
       .then(({ data }) => setRecherche(data || null));
-  }, [rechercheId]);
+  }, [rechercheId, tick, rafraichir]);
 
-  useEffect(() => { charger(); }, [charger, tick]);
+  useEffect(() => { charger(); }, [charger, tick, rafraichir]);
 
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
 
@@ -241,6 +296,19 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     );
   };
 
+  /* Cocher plusieurs biens pour les envoyer ensemble : un seul mail, une
+     seule notification. Seulement dans « Sélection », et dès deux biens. */
+  const groupable = mode === 'selection' && biens.length >= 2;
+  const tout = groupable && coches.length === biens.length;
+  const basculer = (id: string) => setCoches(cs => (cs.includes(id) ? cs.filter(x => x !== id) : [...cs, id]));
+  const toutBasculer = () => setCoches(tout ? [] : biens.map(b => b.id));
+  const envoyerCoches = () => {
+    const lot = biens.filter(b => coches.includes(b.id));
+    if (lot.length === 1) setEnvoi(lot[0]);
+    else if (lot.length > 1) setEnvoiGroupe(lot);
+  };
+  const mandat = honorairesDuMandat(recherche);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 7 : 14 }}>
       <StylesEmilio />
@@ -261,6 +329,22 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
           <BasculeAffichage compact={compact} onChange={setCompact} />
         </span>
       </div>
+
+      {groupable && (
+        <div className="emi-tout-cocher" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '0 0 0 11px', minHeight: 30 }}>
+          <CaseACocher actif={tout} partiel={coches.length > 0 && !tout} onClick={toutBasculer}
+            titre={tout ? 'Tout décocher' : 'Tout cocher'} />
+          <button type="button" onClick={toutBasculer}
+            style={{ background: 'none', border: 'none', padding: '4px 0', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+            {tout ? 'Tout décocher' : `Tout cocher (${biens.length})`}
+          </button>
+          <span style={{ fontSize: 12.5, color: '#94a3b8', flex: '1 1 240px' }}>
+            {coches.length > 0
+              ? `${coches.length} sur ${biens.length} coché${coches.length > 1 ? 's' : ''} : ils partiront ensemble, en un seul mail.`
+              : 'Coche plusieurs biens pour les envoyer ensemble : un seul mail, une seule notification.'}
+          </span>
+        </div>
+      )}
 
       {mode === 'presentes' && groupesVisibles.length > 1 && (
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -286,7 +370,6 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       {affiches.map((b, idx) => {
         const r = RETOURS[b.badge_retour] || RETOURS.propose;
         const ouvert = frise === b.id;
-        const honoraires = b.prix_acquereur && b.prix_vendeur ? b.prix_acquereur - b.prix_vendeur : 0;
         const prixAff = b.prix_acquereur || b.prix_vendeur;
         // BandeauMarche lit `prix` : on lui donne le prix vendeur, celui du marché
         const marche = { ...b, prix: b.prix_vendeur, agence: b.agence_nom, portail: b.source_portail };
@@ -313,9 +396,9 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 lieu={b.adresse || b.adresse_probable || b.quartier || b.ville}
                 specs={resumeSpecs(b)}
                 prix={euros(prixAff)}
-                sousPrix={honoraires > 0
-                  ? `dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires`
-                  : prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null}
+                sousPrix={libelleHonoraires(b)
+                  || (prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null)}
+                coche={groupable ? { actif: coches.includes(b.id), onBascule: () => basculer(b.id) } : undefined}
                 accent={mode === 'presentes' ? r.c : undefined}
                 badge={mode === 'presentes' ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 800 }}>
@@ -356,7 +439,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
           <Fragment key={b.id}>
           {enTeteDe(b, idx)}
           <div className="emi-carte emi-arrivee"
-            style={{ ...CARTE, animationDelay: Math.min(idx, 6) * 55 + 'ms' }}>
+            style={{
+              ...CARTE, animationDelay: Math.min(idx, 6) * 55 + 'ms',
+              ...(groupable && coches.includes(b.id) ? { borderColor: OR, boxShadow: `0 0 0 3px rgba(201,168,76,.18), ${CARTE.boxShadow}` } : {}),
+              transition: 'border-color .14s, box-shadow .14s',
+            }}>
 
             <Vignettes photos={b.photos || []}
               coinGauche={mode === 'presentes'
@@ -389,7 +476,14 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
             {/* ── titre, adresse, prix ─────────────────────── */}
             <div className="emi-tete-carte" style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+              <div style={{ minWidth: 220, flex: '1 1 320px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                {groupable && (
+                  <span style={{ paddingTop: 3 }}>
+                    <CaseACocher actif={coches.includes(b.id)} onClick={() => basculer(b.id)}
+                      titre={coches.includes(b.id) ? 'Décocher ce bien' : 'Cocher ce bien pour l’envoyer avec d’autres'} />
+                  </span>
+                )}
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
                   {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
                 </div>
@@ -403,11 +497,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   </div>
                 )}
               </div>
+              </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                 <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
-                {honoraires > 0
-                  ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>dont {honoraires.toLocaleString('fr-FR')} € d&apos;honoraires</div>
+                {libelleHonoraires(b)
+                  ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{libelleHonoraires(b)}</div>
                   : prixAff && b.surface
                     ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²</div>
                     : null}
@@ -508,13 +603,23 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         );
       })}
 
+      {/* De la place sous le dernier bien : la barre ne doit pas le cacher. */}
+      {groupable && coches.length > 0 && <div aria-hidden="true" style={{ height: 64 }} />}
+      {groupable && coches.length > 0 && !envoi && !envoiGroupe && (
+        <BarreGroupe n={coches.length} onEnvoyer={envoyerCoches} onVider={() => setCoches([])} />
+      )}
+
       {scoreOuvert && <ModaleScore p={scoreOuvert} recherche={recherche} onFerme={() => setScoreOuvert(null)} />}
       {obs && (
         <ModaleObservation bien={obs} clientId={clientId} onFerme={() => setObs(null)} onEnregistre={recharge} />
       )}
       {envoi && (
-        <ModaleEnvoi bien={envoi} clientId={clientId} client={client}
+        <ModaleEnvoi bien={envoi} clientId={clientId} client={client} mandat={mandat}
           onFerme={() => setEnvoi(null)} onEnvoye={recharge} onMail={onMail} />
+      )}
+      {envoiGroupe && (
+        <ModaleEnvoiGroupe biens={envoiGroupe} clientId={clientId} client={client} recherche={recherche}
+          onFerme={() => setEnvoiGroupe(null)} onEnvoye={recharge} onMailGroupe={onMailGroupe} />
       )}
     </div>
   );

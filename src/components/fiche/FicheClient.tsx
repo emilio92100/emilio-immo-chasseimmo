@@ -630,6 +630,12 @@ export default function FicheClient({ client: init, onBack }: Props) {
   const [showEnvoiBien, setShowEnvoiBien] = useState(false);
   const [envoiBienId, setEnvoiBienId] = useState('');
   const [envoiBienIds, setEnvoiBienIds] = useState<string[]>([]); // sélection multiple
+  /* Envoi groupé depuis « Sélection » : la fenêtre de mail ne propose que les
+     biens cochés — ce sont eux dont les honoraires viennent d'être fixés. */
+  const [envoiPool, setEnvoiPool] = useState<string[] | null>(null);
+  /* Monte d'un cran quand un mail de biens est parti : les onglets Sélection
+     et Présentés, qui chargent leurs biens eux-mêmes, se rechargent. */
+  const [versionBiens, setVersionBiens] = useState(0);
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
   const [envoiSending, setEnvoiSending] = useState(false);
@@ -1711,12 +1717,17 @@ export default function FicheClient({ client: init, onBack }: Props) {
     setShowFicheBien(false); load();
   }
 
+  /* Les biens que la fenêtre « sélection de biens » propose : ceux cochés
+     dans l'onglet Sélection si l'envoi vient de là, sinon tous les actifs. */
+  const biensDuMail = biens.filter(b => (envoiPool ? envoiPool.includes(b.id) : b.badge_retour !== 'refuse'));
+
   function openEnvoiBien(bienId: string) {
     const b = biens.find(x => x.id === bienId);
     const emails = client.emails?.filter(Boolean) || [];
     const titre = b?.titre || `${b?.type_bien||'Bien'} — ${b?.ville||''}`;
     setEnvoiBienId(bienId);
     setEnvoiBienIds([bienId]);
+    setEnvoiPool(null);
     setEnvoiMode('unique');
     setEnvoiForm({
       destinataires: emails.join(', '),
@@ -1738,11 +1749,18 @@ Emilio Immobilier
     setShowEnvoiBien(true);
   }
 
-  function openEnvoiMulti() {
+  function openEnvoiMulti(ids?: string[]) {
     const emails = client.emails?.filter(Boolean) || [];
-    // Pré-sélectionne tous les biens non refusés
-    const biensActifs = biens.filter(b => b.badge_retour !== 'refuse');
-    setEnvoiBienIds(biensActifs.map(b => b.id));
+    if (ids && ids.length) {
+      // Les biens cochés dans « Sélection », et eux seuls
+      setEnvoiBienIds(ids);
+      setEnvoiPool(ids);
+    } else {
+      // Pré-sélectionne tous les biens non refusés
+      const biensActifs = biens.filter(b => b.badge_retour !== 'refuse');
+      setEnvoiBienIds(biensActifs.map(b => b.id));
+      setEnvoiPool(null);
+    }
     setEnvoiBienId('');
     setEnvoiMode('multi');
     setEnvoiForm({
@@ -1769,6 +1787,7 @@ Emilio Immobilier
     const emails = client.emails?.filter(Boolean) || [];
     setEnvoiBienIds([]);
     setEnvoiBienId('');
+    setEnvoiPool(null);
     setEnvoiMode('libre');
     setEnvoiForm({
       destinataires: emails.join(', '),
@@ -1859,6 +1878,8 @@ Emilio Immobilier
 
       setEnvoiSending(false);
       setShowEnvoiBien(false);
+      setEnvoiPool(null);
+      setVersionBiens(v => v + 1);
       chargerRelances();
       load();
       alert('✅ Mail envoyé avec succès !');
@@ -3627,7 +3648,9 @@ Emilio Immobilier
           <div key="p-selection" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="selection"
             onChange={() => { load(); chargerVeilleCount(); }}
-            onMail={(id) => openEnvoiBien(id)}
+            onMail={async (id) => { await load(); openEnvoiBien(id); }}
+            onMailGroupe={async (ids) => { await load(); openEnvoiMulti(ids); }}
+            rafraichir={versionBiens}
             onFiche={(id) => openFicheBien(id)}
             onVisite={(id) => planifierVisite(id)}
           /></div>
@@ -3638,7 +3661,8 @@ Emilio Immobilier
           <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
             onChange={() => { load(); chargerVeilleCount(); }}
-            onMail={(id) => openEnvoiBien(id)}
+            onMail={async (id) => { await load(); openEnvoiBien(id); }}
+            rafraichir={versionBiens}
             onFiche={(id) => openFicheBien(id)}
             onVisite={(id) => planifierVisite(id)}
           /></div>
@@ -4678,13 +4702,13 @@ Emilio Immobilier
               {/* MODE MULTI : checkboxes pour sélection */}
               {envoiMode === 'multi' && (
                 <div>
-                  <label className={styles.lbl}>Biens à inclure dans le mail <span style={{ fontWeight: 400, color: '#94a3b8' }}>({envoiBienIds.length}/{biens.filter(b => b.badge_retour !== 'refuse').length})</span></label>
+                  <label className={styles.lbl}>Biens à inclure dans le mail <span style={{ fontWeight: 400, color: '#94a3b8' }}>({envoiBienIds.length}/{biensDuMail.length})</span></label>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                    <button type="button" onClick={() => setEnvoiBienIds(biens.filter(b => b.badge_retour !== 'refuse').map(b => b.id))} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' }}>Tout sélectionner</button>
+                    <button type="button" onClick={() => setEnvoiBienIds(biensDuMail.map(b => b.id))} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' }}>Tout sélectionner</button>
                     <button type="button" onClick={() => setEnvoiBienIds([])} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' }}>Tout désélectionner</button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', border: '1px solid #e3e8f0', borderRadius: 10, padding: 8, background: '#fafbfc' }}>
-                    {biens.filter(b => b.badge_retour !== 'refuse').map(b => {
+                    {biensDuMail.map(b => {
                       const checked = envoiBienIds.includes(b.id);
                       return (
                         <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#c9a84c' : '#e3e8f0'}`, background: checked ? '#faf6ee' : 'white', cursor: 'pointer', transition: 'all 0.12s' }}>

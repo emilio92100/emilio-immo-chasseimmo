@@ -678,20 +678,28 @@ export function resumeSpecs(b: any): string {
 }
 
 /** Une ligne de liste : photo, titre, chiffres, prix, et les actions à droite. */
-export function LigneCompacte({ photo, numero, titre, lieu, specs, prix, sousPrix, badge, accent, onOuvrir, actions }: {
+export function LigneCompacte({ photo, numero, titre, lieu, specs, prix, sousPrix, badge, accent, onOuvrir, actions, coche }: {
   photo?: string | null; numero?: number; titre: string; lieu?: string | null; specs?: string;
   prix?: string; sousPrix?: string | null; badge?: React.ReactNode; accent?: string;
   onOuvrir?: () => void; actions?: React.ReactNode;
+  /** La case de la colonne de gauche, pour envoyer plusieurs biens d'un coup. */
+  coche?: { actif: boolean; onBascule: () => void };
 }) {
+  const choisi = !!coche?.actif;
   return (
-    <div className="emi-ligne" style={{
+    <div className="emi-ligne" data-coche={coche ? (choisi ? 'oui' : 'non') : undefined} style={{
       display: 'flex', alignItems: 'center', gap: 12, minWidth: 0,
-      background: 'white', border: `1px solid ${BORD}`, borderRadius: 13,
-      borderLeft: accent ? `4px solid ${accent}` : `1px solid ${BORD}`,
-      padding: '8px 12px 8px 10px',
+      background: choisi ? '#fffdf7' : 'white', border: `1px solid ${choisi ? OR : BORD}`, borderRadius: 13,
+      borderLeft: accent ? `4px solid ${accent}` : `1px solid ${choisi ? OR : BORD}`,
+      boxShadow: choisi ? '0 0 0 3px rgba(201,168,76,.16)' : 'none',
+      padding: '8px 12px 8px 10px', transition: 'background .14s, border-color .14s, box-shadow .14s',
     }}>
+      {coche && (
+        <CaseACocher actif={choisi} onClick={coche.onBascule}
+          titre={choisi ? `Décocher « ${titre} »` : `Cocher « ${titre} » pour l'envoyer avec d'autres`} />
+      )}
       {numero !== undefined && (
-        <span style={{
+        <span className="emi-ligne-num" style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           width: 22, height: 22, borderRadius: 7, background: '#f1f5f9', color: '#64748b',
           fontSize: 11, fontWeight: 800,
@@ -749,6 +757,128 @@ export function BoutonIcone({ icone, titre, onClick, href, ton = 'neutre' }: {
   const contenu = <Icone nom={icone} taille={15} epaisseur={1.9} />;
   if (href) return <a href={href} target="_blank" rel="noreferrer" title={titre} aria-label={titre} style={st}>{contenu}</a>;
   return <button type="button" onClick={onClick} title={titre} aria-label={titre} style={st}>{contenu}</button>;
+}
+
+/** Une case à cocher : marine quand elle est cochée, la coche en or.
+ *  `partiel` = une partie seulement de la liste est cochée (le trait). */
+export function CaseACocher({ actif, partiel, onClick, titre, taille = 20 }: {
+  actif: boolean; partiel?: boolean; onClick: () => void; titre: string; taille?: number;
+}) {
+  const plein = actif || !!partiel;
+  return (
+    <button type="button" role="checkbox" aria-checked={partiel && !actif ? 'mixed' : actif}
+      aria-label={titre} title={titre} className="emi-coche"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        width: taille + 12, height: taille + 12, margin: -6, padding: 0,
+        background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+      }}>
+      <span style={{
+        width: taille, height: taille, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        border: `1.5px solid ${plein ? NAVY : '#c3ccda'}`, background: plein ? NAVY : 'white', color: OR,
+        boxShadow: plein ? 'none' : 'inset 0 1px 2px rgba(16,24,40,.06)', transition: 'all .14s',
+      }}>
+        {actif ? <Icone nom="coche" taille={taille - 6} epaisseur={3} />
+          : partiel ? <Icone nom="moins" taille={taille - 6} epaisseur={3} /> : null}
+      </span>
+    </button>
+  );
+}
+
+/* ══ Honoraires : ce qu'on propose d'office ════════════════════
+   Le mandat de recherche en cours fixe les honoraires convenus avec le
+   client (« 3,5 % TTC », « 5 000 € TTC ») : c'est eux qu'on propose.
+   Un bien dont tu as déjà fixé les honoraires garde les siens — un
+   geste négocié bien par bien ne doit pas s'effacer. Sans l'un ni
+   l'autre : 3 %. */
+
+export type TypeHono = 'pourcentage' | 'fixe';
+export type HonoMandat = { type: TypeHono; val: number; texte: string };
+
+/** Les honoraires du mandat, s'il y en a un en cours et qu'on sait les lire. */
+export function honorairesDuMandat(r: any): HonoMandat | null {
+  if (!r || r.sans_mandat) return null;
+  if (!r.mandat_date_signature && !r.mandat_date_expiration) return null;
+  if (r.mandat_date_expiration) {
+    const fin = new Date(r.mandat_date_expiration);
+    if (!isNaN(fin.getTime()) && fin.getTime() + 86400000 < Date.now()) return null;   // expiré
+  }
+  const texte = String(r.mandat_honoraires || '').trim();
+  if (!texte) return null;
+  const serre = texte.replace(/[\s  ]/g, '');
+  const pct = serre.match(/(\d+(?:[.,]\d+)?)%/);
+  if (pct) {
+    const v = parseFloat(pct[1].replace(',', '.'));
+    return v > 0 && v < 30 ? { type: 'pourcentage', val: v, texte } : null;
+  }
+  const milliers = serre.match(/(\d+(?:[.,]\d+)?)k/i);
+  if (milliers) {
+    const v = Math.round(parseFloat(milliers[1].replace(',', '.')) * 1000);
+    return v > 0 ? { type: 'fixe', val: v, texte } : null;
+  }
+  const euros = serre.match(/(\d[\d.]*(?:,\d{1,2})?)(?:€|eur)/i) || serre.match(/^(\d[\d.]*(?:,\d{1,2})?)/);
+  if (euros) {
+    /* « 5.000 » est un millier, « 3.5 » une décimale. */
+    const brut = euros[1];
+    const v = /^\d+\.\d{1,2}$/.test(brut) ? parseFloat(brut) : parseFloat(brut.replace(/\./g, '').replace(',', '.'));
+    if (v >= 100) return { type: 'fixe', val: Math.round(v), texte };
+    if (v > 0 && v < 30) return { type: 'pourcentage', val: v, texte };
+  }
+  return null;
+}
+
+/** D'où partent les honoraires d'un bien : les siens, sinon le mandat, sinon 3 %. */
+export function honorairesDepart(bien: any, mandat: HonoMandat | null): { type: TypeHono; valeur: string } {
+  const v = Number(bien?.commission_val);
+  if (isFinite(v) && v > 0) return { type: bien.commission_type === 'fixe' ? 'fixe' : 'pourcentage', valeur: String(v) };
+  if (mandat) return { type: mandat.type, valeur: String(mandat.val) };
+  return { type: 'pourcentage', valeur: '3' };
+}
+
+export function montantHonoraires(base: number, type: TypeHono, valeur: string | number): number {
+  const v = parseFloat(String(valeur).replace(',', '.')) || 0;
+  return type === 'pourcentage' ? Math.round(base * (v / 100)) : Math.round(v);
+}
+
+const pctFr = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' %';
+
+/** « dont 24 600 € d'honoraires · 3 % » — le rappel sous le prix d'un bien envoyé. */
+export function libelleHonoraires(b: any): string | null {
+  const vendeur = Number(b?.prix_vendeur) || 0;
+  const acq = Number(b?.prix_acquereur) || 0;
+  const h = acq && vendeur ? acq - vendeur : 0;
+  if (h <= 0) return null;
+  const montant = `dont ${h.toLocaleString('fr-FR')} € d'honoraires`;
+  if (b.commission_type === 'pourcentage' && Number(b.commission_val) > 0) return `${montant} · ${pctFr(Number(b.commission_val))}`;
+  if (b.commission_type === 'fixe') return `${montant} · forfait, ${pctFr((h / vendeur) * 100)}`;
+  return `${montant} · ${pctFr((h / vendeur) * 100)}`;
+}
+
+/** La ligne « Mandat en cours : 3,5 % TTC » des fenêtres d'envoi, avec de quoi
+ *  revenir aux honoraires du mandat si le bien en porte d'autres. */
+function RappelMandat({ mandat, applique, onAppliquer, pour }: {
+  mandat: HonoMandat | null; applique: boolean; onAppliquer: () => void; pour?: string;
+}) {
+  if (!mandat) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12,
+      background: applique ? '#fdfaf1' : 'white', border: `1px solid ${applique ? '#ecdcb4' : BORD}`,
+      borderRadius: 10, padding: '7px 11px', fontSize: 12.5, color: '#64748b',
+    }}>
+      <span style={{ display: 'inline-flex', color: '#a17d2c' }}><Icone nom="liste" taille={14} epaisseur={1.9} /></span>
+      <span style={{ flex: '1 1 200px' }}>
+        {applique ? 'Honoraires du mandat en cours' : 'Mandat en cours'}&nbsp;: <b style={{ color: NAVY }}>{mandat.texte}</b>
+      </span>
+      {!applique && (
+        <button type="button" onClick={onAppliquer}
+          style={{ background: NAVY, color: 'white', border: 'none', borderRadius: 8, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {pour ? `Appliquer ${pour}` : 'Appliquer'}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /* ══ L'appréciation : ce bien vaut-il un coup de fil ═══════════
@@ -1818,17 +1948,21 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
 
 /* ══ Envoi ═════════════════════════════════════════════════════ */
 
-export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail }: {
+export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail, mandat = null }: {
   bien: any; clientId: string; client: any; onFerme: () => void; onEnvoye: () => void; onMail: (bienId: string) => void;
+  /** Les honoraires du mandat de recherche en cours : proposés d'office. */
+  mandat?: HonoMandat | null;
 }) {
-  const [type, setType] = useState<'pourcentage' | 'fixe'>(bien.commission_type === 'fixe' ? 'fixe' : 'pourcentage');
-  const [valeur, setValeur] = useState<string>(bien.commission_val ? String(bien.commission_val) : (bien.commission_type === 'fixe' ? '25000' : '3'));
+  const depart = honorairesDepart(bien, mandat);
+  const [type, setType] = useState<TypeHono>(depart.type);
+  const [valeur, setValeur] = useState<string>(depart.valeur);
   const [envoi, setEnvoi] = useState(false);
   const [copie, setCopie] = useState(false);
 
   const base = Number(bien.prix_vendeur) || 0;
   const v = parseFloat(String(valeur).replace(',', '.')) || 0;
-  const honoraires = type === 'pourcentage' ? Math.round(base * (v / 100)) : Math.round(v);
+  const honoraires = montantHonoraires(base, type, valeur);
+  const surMandat = !!mandat && mandat.type === type && mandat.val === v;
   const total = base + honoraires;
   const pctEq = base > 0 ? (honoraires / base) * 100 : 0;
 
@@ -1914,7 +2048,7 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
   const bascule = (id: 'pourcentage' | 'fixe', label: string) => {
     const actif = type === id;
     return (
-      <button type="button" onClick={() => { setType(id); setValeur(id === 'pourcentage' ? '3' : '25000'); }}
+      <button type="button" onClick={() => { setType(id); setValeur(mandat && mandat.type === id ? String(mandat.val) : id === 'pourcentage' ? '3' : '25000'); }}
         style={{
           flex: 1, background: actif ? 'white' : 'transparent', color: actif ? NAVY : '#94a3b8',
           border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 13, fontWeight: actif ? 800 : 600,
@@ -1947,6 +2081,8 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
         <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
           Tes honoraires de chasse
         </div>
+        <RappelMandat mandat={mandat} applique={surMandat}
+          onAppliquer={() => { if (mandat) { setType(mandat.type); setValeur(String(mandat.val)); } }} />
 
         <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 14 }}>
           <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
@@ -1984,6 +2120,265 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail 
 
       <div style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>Le bien passera dans « Présentés »</span>
+        <button type="button" onClick={onFerme} style={btnSecondaire}>Fermer</button>
+      </div>
+    </Modale>
+  );
+}
+
+/* ══ Envoi groupé ══════════════════════════════════════════════
+   Plusieurs biens cochés dans « Sélection » partent ensemble : un seul
+   mail, une seule notification sur le téléphone du client (« 3 nouveaux
+   biens vous attendent »), une seule relance. Les honoraires se fixent
+   ici, pour tous d'un coup ou bien par bien, avant l'envoi. */
+
+type LigneHono = { id: string; type: TypeHono; valeur: string };
+
+export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme, onEnvoye, onMailGroupe }: {
+  biens: any[]; clientId: string; client: any; recherche: any;
+  onFerme: () => void; onEnvoye: () => void;
+  /** Ouvre la fenêtre de mail du dossier avec ces biens-là, et eux seuls. */
+  onMailGroupe?: (ids: string[]) => void;
+}) {
+  const mandat = honorairesDuMandat(recherche);
+  const pourTous = honorairesDepart(null, mandat);
+  const [typeG, setTypeG] = useState<TypeHono>(pourTous.type);
+  const [valG, setValG] = useState<string>(pourTous.valeur);
+  const [lignes, setLignes] = useState<LigneHono[]>(() => biens.map(b => ({ id: b.id, ...honorairesDepart(b, mandat) })));
+  const [envoi, setEnvoi] = useState(false);
+  const [copie, setCopie] = useState(false);
+  const n = biens.length;
+
+  const ligneDe = (id: string) => lignes.find(l => l.id === id) || { id, ...pourTous };
+  const calc = (b: any) => {
+    const l = ligneDe(b.id);
+    const base = Number(b.prix_vendeur) || 0;
+    const h = montantHonoraires(base, l.type, l.valeur);
+    return { l, base, h, total: base + h, v: parseFloat(String(l.valeur).replace(',', '.')) || 0 };
+  };
+  const toutAppliquer = (type: TypeHono, valeur: string) => {
+    setTypeG(type); setValG(valeur);
+    setLignes(ls => ls.map(l => ({ ...l, type, valeur })));
+  };
+  const changerLigne = (id: string, m: Partial<LigneHono>) => setLignes(ls => ls.map(l => (l.id === id ? { ...l, ...m } : l)));
+  const vG = parseFloat(String(valG).replace(',', '.')) || 0;
+  const surMandat = !!mandat && lignes.every(l => l.type === mandat.type && (parseFloat(String(l.valeur).replace(',', '.')) || 0) === mandat.val);
+
+  /* Les prix d'abord : c'est ce que le mail et l'espace afficheront. */
+  function champsPrix(b: any) {
+    const { l, base, total, v } = calc(b);
+    return { commission_type: l.type, commission_val: v, ...(base > 0 ? { prix_acquereur: total } : {}) };
+  }
+
+  async function enregistrerPrix(): Promise<boolean> {
+    for (const b of biens) {
+      const { error } = await supabase.from('biens').update(champsPrix(b)).eq('id', b.id);
+      if (error) { alert(`Les honoraires de « ${b.titre || 'un bien'} » n'ont pas pu être enregistrés.\n\n${error.message}`); return false; }
+    }
+    return true;
+  }
+
+  /* WhatsApp et lien : pas de fenêtre de mail derrière, les biens passent
+     en « Présentés » tout de suite. */
+  async function presenter(canal: 'whatsapp' | 'lien'): Promise<boolean> {
+    const quand = new Date().toISOString();
+    const nomCanal = canal === 'whatsapp' ? 'WhatsApp' : 'lien';
+    let journalRate = '';
+    for (const b of biens) {
+      const { base, h, total } = calc(b);
+      const { error } = await supabase.from('biens').update({
+        ...champsPrix(b), etape: 'presente', envoye_le: quand, canal_envoi: canal, badge_retour: 'propose',
+      }).eq('id', b.id);
+      if (error) { alert(`« ${b.titre || 'Un bien'} » n'a pas pu passer en « Présentés ».\n\n${error.message}`); return false; }
+      const { error: ej } = await supabase.from('journal').insert({
+        client_id: clientId, bien_id: b.id, recherche_id: b.recherche_id, type: 'envoi_bien',
+        titre: `Envoyé au client · ${nomCanal} · avec ${n - 1} autre${n > 2 ? 's' : ''}`,
+        description: base > 0 ? `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${h.toLocaleString('fr-FR')} € d'honoraires de chasse` : null,
+        metadata: {},
+      });
+      if (ej) journalRate = ej.message;
+    }
+    const rid = biens[0]?.recherche_id || recherche?.id || null;
+    await programmerRelance(clientId, rid, n);
+    /* Une seule notification pour tout le lot : son texte (« 3 nouveaux
+       biens… ») est calculé au moment où elle s'affiche. */
+    if (rid) {
+      fetch('/api/notifier', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recherche_id: rid }),
+      }).catch(() => { /* sans effet sur l'envoi */ });
+    }
+    if (journalRate) alert(`Les biens sont bien envoyés, mais le parcours du bien n'a pas pu le noter.\n\n${journalRate}`);
+    return true;
+  }
+
+  async function viaMail() {
+    setEnvoi(true);
+    const ok = await enregistrerPrix();
+    setEnvoi(false);
+    if (!ok) return;
+    onFerme();
+    onMailGroupe?.(biens.map(b => b.id));
+  }
+
+  async function viaWhatsapp() {
+    const corps = biens.map((b, i) => {
+      const { total } = calc(b);
+      const specs = [b.surface && `${b.surface} m²`, b.nb_pieces && `${b.nb_pieces} pièces`].filter(Boolean).join(' · ');
+      return `${i + 1}. ${b.titre || b.ville || 'Bien'}${specs ? `\n${specs}` : ''}${total ? `\nPrix : ${total.toLocaleString('fr-FR')} € tout compris` : ''}\n${lienBienPublic(b.id)}`;
+    }).join('\n\n');
+    const txt = `Bonjour ${client?.prenom || ''}, voici ${n} biens qui correspondent à votre recherche :\n\n${corps}`;
+    /* WhatsApp s'ouvre tout de suite, dans le geste du clic : sur iPhone, une
+       fenêtre ouverte après une attente est bloquée. */
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
+    setEnvoi(true);
+    const ok = await presenter('whatsapp');
+    setEnvoi(false);
+    if (!ok) return;
+    onEnvoye(); onFerme();
+  }
+
+  const lienDossier = lienEspace(client?.token_espace || recherche?.token_espace);
+  async function viaLien() {
+    try { if (lienDossier) { await navigator.clipboard.writeText(lienDossier); setCopie(true); } } catch { /* ignore */ }
+    setEnvoi(true);
+    const ok = await presenter('lien');
+    setEnvoi(false);
+    if (!ok) return;
+    onEnvoye(); setTimeout(onFerme, 800);
+  }
+
+  const bascule = (actif: boolean, onClick: () => void, label: string, petit?: boolean) => (
+    <button type="button" onClick={onClick}
+      style={{
+        flex: 1, background: actif ? 'white' : 'transparent', color: actif ? NAVY : '#94a3b8',
+        border: 'none', borderRadius: petit ? 7 : 9, padding: petit ? '5px 0' : '8px 0',
+        fontSize: petit ? 12 : 13, fontWeight: actif ? 800 : 600, cursor: 'pointer', fontFamily: 'inherit',
+        boxShadow: actif ? '0 2px 6px rgba(16,24,40,.14)' : 'none', transition: 'all .2s cubic-bezier(.16,1,.3,1)',
+      }}>{label}</button>
+  );
+  const defautPour = (t: TypeHono) => (mandat && mandat.type === t ? String(mandat.val) : t === 'pourcentage' ? '3' : '25000');
+
+  const canal = (icone: string, titre: string, sous: string, action: () => void, teinte: string, principal?: boolean) => (
+    <button type="button" onClick={action} disabled={envoi}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left',
+        background: principal ? '#fdfaf1' : 'white', border: `1.5px solid ${principal ? '#ecdcb4' : BORD}`, borderRadius: 14, padding: '12px 15px',
+        cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .18s cubic-bezier(.16,1,.3,1)', opacity: envoi ? .6 : 1,
+      }}
+      onMouseEnter={e => { if (!envoi) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(4px)'; } }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = principal ? '#ecdcb4' : BORD; e.currentTarget.style.transform = 'none'; }}>
+      <span style={{ width: 38, height: 38, borderRadius: 11, background: `${teinte}18`, color: teinte, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icone nom={icone} taille={19} epaisseur={1.8} />
+      </span>
+      <span style={{ flexGrow: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: NAVY }}>{titre}</span>
+        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', marginTop: 1 }}>{sous}</span>
+      </span>
+      <span style={{ color: '#cbd5e1', fontSize: 19 }}>›</span>
+    </button>
+  );
+
+  return (
+    <Modale onFerme={onFerme} largeur={640}>
+      <div style={{ background: NAVY, padding: '20px 24px', display: 'flex', gap: 16, alignItems: 'center' }}>
+        <span style={{ display: 'flex', flexShrink: 0, paddingLeft: 12 }}>
+          {biens.slice(0, 3).map((b, i) => (
+            <span key={b.id} style={{
+              width: 46, height: 46, borderRadius: 12, marginLeft: -12, overflow: 'hidden', flexShrink: 0,
+              border: `2px solid ${NAVY}`, background: '#2a3547', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#7f8ca3', transform: `rotate(${(i - 1) * 4}deg)`,
+            }}>
+              {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icone nom="maison" taille={18} />}
+            </span>
+          ))}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>
+            {`Envoyer à ${client?.prenom || 'votre client'}`}
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: 'white', marginTop: 3, lineHeight: 1.25 }}>
+            {`${n} biens en un seul envoi`}
+          </div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.62)', marginTop: 3 }}>
+            Un seul message, une seule notification sur son téléphone.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '16px 24px 14px', borderBottom: `1px solid ${BORD}`, background: '#fbfcfe' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
+          {`Tes honoraires de chasse · pour les ${n}`}
+        </div>
+        <RappelMandat mandat={mandat} applique={surMandat} pour={`aux ${n}`}
+          onAppliquer={() => { if (mandat) toutAppliquer(mandat.type, String(mandat.val)); }} />
+        <div className="emi-hono-tous" style={{ display: 'flex', gap: 11, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
+            {bascule(typeG === 'pourcentage', () => toutAppliquer('pourcentage', defautPour('pourcentage')), '% du prix')}
+            {bascule(typeG === 'fixe', () => toutAppliquer('fixe', defautPour('fixe')), 'Montant fixe')}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 150px' }}>
+            <input type="number" step={typeG === 'pourcentage' ? '0.1' : '500'} min="0" value={valG}
+              onChange={e => toutAppliquer(typeG, e.target.value)} aria-label="Honoraires pour tous les biens"
+              style={{ width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 11, padding: '9px 13px', fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{typeG === 'pourcentage' ? '%' : '€'}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+          {`S'applique aux ${n} biens. Un bien à part ? Ajuste-le dans sa ligne.`}
+        </div>
+      </div>
+
+      <div style={{ padding: '6px 24px 4px' }}>
+        {biens.map((b, i) => {
+          const { l, base, h, total } = calc(b);
+          const aPart = l.type !== typeG || (parseFloat(String(l.valeur).replace(',', '.')) || 0) !== vG;
+          return (
+            <div key={b.id} className="emi-hono-ligne" style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '11px 0',
+              borderTop: i ? `1px solid ${BORD}` : 'none',
+            }}>
+              <span style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: '#eef2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
+                {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icone nom="maison" taille={16} />}
+              </span>
+              <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
+                </span>
+                <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
+                  {base > 0 ? `Annonce ${base.toLocaleString('fr-FR')} € · + ${h.toLocaleString('fr-FR')} €` : 'Prix de l’annonce manquant'}
+                  {aPart ? ' · à part' : ''}
+                </span>
+              </span>
+              <span className="emi-hono-droite" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <input type="number" step={l.type === 'pourcentage' ? '0.1' : '500'} min="0" value={l.valeur}
+                    onChange={e => changerLigne(b.id, { valeur: e.target.value })}
+                    aria-label={`Honoraires de ${b.titre || 'ce bien'}`}
+                    style={{ width: 78, border: `1.5px solid ${aPart ? OR : BORD}`, borderRadius: 9, padding: '6px 8px', fontSize: 13.5, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
+                  <span style={{ display: 'flex', background: '#eef2f7', borderRadius: 9, padding: 2, width: 62 }}>
+                    {bascule(l.type === 'pourcentage', () => changerLigne(b.id, { type: 'pourcentage', valeur: defautPour('pourcentage') }), '%', true)}
+                    {bascule(l.type === 'fixe', () => changerLigne(b.id, { type: 'fixe', valeur: defautPour('fixe') }), '€', true)}
+                  </span>
+                </span>
+                <span style={{ textAlign: 'right', minWidth: 104 }}>
+                  <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
+                  <span style={{ display: 'block', fontSize: 16, fontWeight: 800, color: OR, letterSpacing: -.3 }}>{base > 0 ? `${total.toLocaleString('fr-FR')} €` : '—'}</span>
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ padding: '10px 24px 16px', display: 'flex', flexDirection: 'column', gap: 9, borderTop: `1px solid ${BORD}` }}>
+        {onMailGroupe && canal('mail', 'Par mail', `Un seul mail avec les ${n} biens — tu le relis avant de l'envoyer`, viaMail, '#3b82f6', true)}
+        {canal('tel', 'WhatsApp', `Un seul message avec les ${n} liens`, viaWhatsapp, '#25d366')}
+        {lienDossier && canal('lien', copie ? 'Lien copié ✓' : 'Copier le lien de son espace', `Les ${n} biens y apparaissent tout de suite`, viaLien, OR)}
+      </div>
+
+      <div style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: '#94a3b8', flex: '1 1 220px' }}>{`Les ${n} biens passeront ensemble dans « Présentés »`}</span>
         <button type="button" onClick={onFerme} style={btnSecondaire}>Fermer</button>
       </div>
     </Modale>
