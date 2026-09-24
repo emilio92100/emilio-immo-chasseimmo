@@ -124,7 +124,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
         </div>
       ) : (
         <div className={styles.formWrap}>
-          <div className={styles.card} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
 
             {/* DESTINATAIRES */}
             <div>
@@ -140,6 +140,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder={selected.length === 0 ? 'Rechercher un client...' : 'Ajouter un autre client...'}
+                  className={styles.tagsChamp}
                   style={{ flex: 1, minWidth: 160, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', fontFamily: 'inherit' }}
                 />
               </div>
@@ -174,14 +175,14 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
 
             {/* MESSAGE */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
                 <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser</span></label>
                 <div style={{ position: 'relative' }}>
                   <button onClick={() => setShowPre(!showPre)} style={{ fontSize: 12, fontWeight: 600, color: '#3b82f6', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
                     💬 Messages pré-rédigés ▾
                   </button>
                   {showPre && (
-                    <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 280 }}>
+                    <div className={styles.preMenu} style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 280 }}>
                       {MESSAGES_PRE.map((m, i) => (
                         <div key={i} onClick={() => { setCorps(m.corps); setShowPre(false); }}
                           style={{ padding: '12px 16px', cursor: 'pointer', fontSize: 13, borderBottom: i < MESSAGES_PRE.length-1 ? '1px solid #f8fafc' : 'none', fontWeight: 600, color: '#1a2332' }}
@@ -204,7 +205,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             )}
 
             {/* FOOTER */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
+            <div className={styles.piedForm} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a5568', cursor: 'pointer' }}>
                 <input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} style={{ accentColor: '#1a2332' }} />
                 📱 Envoyer aussi un SMS de notification

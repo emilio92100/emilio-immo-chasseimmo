@@ -50,9 +50,9 @@ export default function PageParametres() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 20 }}>
+      <div className={styles.paramGrille} style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 20 }}>
         {/* NAV SECTIONS */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className={styles.paramNav} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {sections.map(s => (
             <button key={s.id} onClick={() => setActiveSection(s.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 10, border: 'none', background: activeSection === s.id ? '#1a2332' : 'white', color: activeSection === s.id ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 2 }}>
@@ -65,9 +65,9 @@ export default function PageParametres() {
         <div>
           {/* AGENCE */}
           {activeSection === 'agence' && (
-            <div className={styles.card} style={{ padding: 24 }}>
+            <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
               <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 20 }}>🏢 Informations agence</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className={styles.param2} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div><label className={styles.label}>Nom de l'agence</label><input className={styles.input} value={params.agence_nom||''} onChange={e=>set('agence_nom',e.target.value)} /></div>
                 <div><label className={styles.label}>Email professionnel</label><input className={styles.input} type="email" value={params.conseiller_email||''} onChange={e=>set('conseiller_email',e.target.value)} /></div>
                 <div><label className={styles.label}>Prénom conseiller</label><input className={styles.input} value={params.conseiller_prenom||''} onChange={e=>set('conseiller_prenom',e.target.value)} /></div>
@@ -86,7 +86,7 @@ export default function PageParametres() {
 
           {/* TEMPLATES EMAIL */}
           {activeSection === 'emails' && (
-            <div className={styles.card} style={{ padding: 24 }}>
+            <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
               <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 6 }}>✉️ Templates email</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Variables disponibles : <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{prenom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{nom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{reference}}'}</code></div>
 
@@ -109,7 +109,7 @@ export default function PageParametres() {
           {/* SMS & RELANCES */}
           {activeSection === 'sms' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className={styles.card} style={{ padding: 24 }}>
+              <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
                 <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 16 }}>📱 SMS Mailjet</div>
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
                   💡 Pour activer l'envoi SMS, renseignez vos clés Mailjet dans les paramètres ci-dessous.
@@ -127,7 +127,7 @@ export default function PageParametres() {
                 </div>
               </div>
 
-              <div className={styles.card} style={{ padding: 24 }}>
+              <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
                 <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 16 }}>🔔 Relances automatiques</div>
                 <div>
                   <label className={styles.label}>Délai relance après envoi PDF</label>
@@ -145,7 +145,7 @@ export default function PageParametres() {
 
           {/* SÉCURITÉ */}
           {activeSection === 'securite' && (
-            <div className={styles.card} style={{ padding: 24 }}>
+            <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
               <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 16 }}>🔒 Sécurité & Accès</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div><label className={styles.label}>Identifiant de connexion</label><input className={styles.input} value={params.login||'alexandre.rogelet'} onChange={e=>set('login',e.target.value)} /></div>
