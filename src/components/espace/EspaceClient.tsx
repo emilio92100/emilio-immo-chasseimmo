@@ -395,7 +395,7 @@ const T: Record<string, string[]> = {
   graph:['M3 20h18','M6 20V12','M11 20V6.5','M16 20v-5','M21 20v-9'],
   cible:['c:12,12,9','c:12,12,4.6','c:12,12,.9'],
   fleche:['m9.5 6 6 6-6 6'], retour:['m14 6-6 6 6 6'],
-  croix:['M6.5 6.5l11 11','M17.5 6.5l-11 11'], check:['m5 13 5 5L20 6'],
+  croix:['M6.5 6.5l11 11','M17.5 6.5l-11 11'], check:['m5 13 5 5L20 6'], moins:['M6 12h12'],
   tel:['M6.2 3h3.1l1.5 3.9-2 1.3a13.4 13.4 0 0 0 6.9 6.9l1.3-2 3.9 1.5v3.1a1.9 1.9 0 0 1-2.1 1.9A17.6 17.6 0 0 1 3.1 5.1 1.9 1.9 0 0 1 5 3z'],
   lieu:['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z','c:12,10,2.6'],
   crayon:['M12.5 20H21','M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6 3.4 19.8l1.2-4z'],
@@ -1025,7 +1025,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     /* Il vient de regarder un bien : c'est le bon moment pour lui proposer de
        garder l'espace sous la main, et pas avant. */
     ecran.eveiller();
-    montrer(<FicheBien b={b} client={client} onFermer={fermer}
+    montrer(<FicheBien b={b} client={client} crit={crit} onFermer={fermer}
       onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
   }
 
@@ -1303,7 +1303,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               sous={neufs.length
                 ? `${neufs.length} bien${neufs.length > 1 ? 's' : ''} retenu${neufs.length > 1 ? 's' : ''} pour vous depuis votre dernière visite, du plus récent au plus ancien. Ouvrez-les, puis dites-moi ce que vous en pensez.`
                 : 'Rien de nouveau depuis votre dernière visite. Votre dossier est repris chaque jour, vous n\'êtes pas en attente.'}>
-              <Liste biens={neufs} onOuvrir={ouvrirBien}
+              <Liste biens={neufs} onOuvrir={ouvrirBien} crit={crit}
                 vide="Rien de nouveau pour le moment.<br>Nous cherchons pour vous tous les jours : dès qu'un bien correspond à ce que vous voulez, il s'affiche ici." />
               {/* Le détail du travail de la veille n'a de sens que s'il a donné
                   quelque chose. Sinon on dit l'inverse, mais on le dit. */}
@@ -1363,7 +1363,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                       <span className="gn">{par[g.id].length}</span>
                     </div>
                     {g.note && <div className="gr-note">{g.note}</div>}
-                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" sansEtiq />
+                    <Liste biens={par[g.id]} onOuvrir={ouvrirBien} vide="" sansEtiq crit={crit} />
                   </div>
                 ))}
               </>)}
@@ -1608,14 +1608,239 @@ function Vue({ icone, titre, sous, aller, children }: any) {
   );
 }
 
+/* ══ la correspondance d'un bien avec la recherche ═══════════════
+   Une note sur 100, et son détail : ce qui correspond, ce qui s'en écarte.
+   Elle se calcule ici, à l'écran, avec ce que le client voit déjà : ses
+   critères et la fiche du bien. Rien d'autre n'entre dans le calcul — ni le
+   marché, ni les autres biens, ni les notes de travail du conseiller.
+
+   Chaque critère que le client a posé compte ; un « indispensable » pèse
+   trois fois plus, le budget, la surface et les chambres deux fois. Un
+   critère presque atteint compte pour moitié. Ce que l'annonce ne dit pas
+   ne se juge pas, sauf un équipement demandé : il est dit « non annoncé ».
+   En dessous de trois critères vérifiables, pas de note : elle ne voudrait
+   rien dire. */
+type Critere = { texte: string; poids: number; etat: 'oui' | 'presque' | 'non' };
+type Correspondance = { note: number; plus: string[]; moins: string[] };
+
+const EQUIP_CLE: Record<string, string> = {
+  Terrasse: 'terrasse', Balcon: 'balcon', Jardin: 'jardin', Parking: 'parking',
+  Ascenseur: 'ascenseur', Cave: 'cave', Gardien: 'gardien',
+};
+const EQUIP_NOM: Record<string, string> = {
+  terrasse: 'Terrasse', balcon: 'Balcon', jardin: 'Jardin', parking: 'Parking',
+  ascenseur: 'Ascenseur', cave: 'Cave', gardien: 'Gardien', exterieur: 'Extérieur',
+};
+const EQUIP_SANS: Record<string, string> = {
+  terrasse: 'Pas de terrasse annoncée', balcon: 'Pas de balcon annoncé', jardin: 'Pas de jardin annoncé',
+  parking: 'Pas de parking annoncé', ascenseur: 'Pas d’ascenseur annoncé', cave: 'Pas de cave annoncée',
+  gardien: 'Pas de gardien annoncé', exterieur: 'Pas d’extérieur annoncé',
+};
+
+function correspondance(b: Bien, c: Criteres | null | undefined): Correspondance | null {
+  if (!c) return null;
+  const j: Critere[] = [];
+  const ex = c.exigences || {};
+  const nb = (v: number) => String(v).replace('.', ',');
+  const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+  const dem = (n: number) => `demandée${n > 1 ? 's' : ''}`;
+
+  if (c.budgetMax && b.prix) {
+    const r = b.prix / c.budgetMax;
+    if (r <= 1) j.push({ texte: 'Dans votre budget', poids: 2, etat: 'oui' });
+    else if (r <= 1.02) j.push({ texte: 'Au niveau de votre budget', poids: 2, etat: 'oui' });
+    else if (r <= 1.1) j.push({ texte: 'Un peu au-dessus du budget fixé', poids: 2, etat: 'presque' });
+    else j.push({ texte: 'Au-dessus du budget fixé', poids: 2, etat: 'non' });
+  }
+
+  if (c.surfaceMin && b.surface) {
+    const s = b.surface, m = c.surfaceMin;
+    if (s >= m) j.push({ texte: `${nb(s)} m², pour ${nb(m)} m² demandés`, poids: 2, etat: 'oui' });
+    else if (s >= m * 0.95) j.push({ texte: `${nb(s)} m², un peu moins que les ${nb(m)} m² demandés`, poids: 2, etat: 'presque' });
+    else j.push({ texte: `${nb(s)} m², pour ${nb(m)} m² demandés`, poids: 2, etat: 'non' });
+  }
+
+  if (c.chambresMin && b.chambres != null) {
+    const n = b.chambres, m = c.chambresMin;
+    j.push(n >= m
+      ? { texte: n === m ? `${pl(n, 'chambre')}, comme demandé` : `${pl(n, 'chambre')}, pour ${m} ${dem(m)}`, poids: 2, etat: 'oui' }
+      : { texte: `${pl(n, 'chambre')}, pour ${m} ${dem(m)}`, poids: 2, etat: 'non' });
+  }
+
+  if (c.piecesMin && b.pieces != null) {
+    const n = b.pieces, m = c.piecesMin;
+    j.push(n >= m
+      ? { texte: n === m ? `${pl(n, 'pièce')}, comme demandé` : `${pl(n, 'pièce')}, pour ${m} ${dem(m)}`, poids: 1, etat: 'oui' }
+      : { texte: `${pl(n, 'pièce')}, pour ${m} ${dem(m)}`, poids: 1, etat: 'non' });
+  }
+
+  if (c.surfaceSejourMin && b.sejour) {
+    const s = b.sejour, m = c.surfaceSejourMin;
+    if (s >= m) j.push({ texte: `Séjour de ${nb(s)} m²`, poids: 1, etat: 'oui' });
+    else if (s >= m * 0.9) j.push({ texte: `Séjour de ${nb(s)} m², un peu moins que les ${nb(m)} m² souhaités`, poids: 1, etat: 'presque' });
+    else j.push({ texte: `Séjour de ${nb(s)} m², pour ${nb(m)} m² souhaités`, poids: 1, etat: 'non' });
+  }
+
+  const etageCompte = c.rdcExclu || c.etageMin != null || c.etageMax != null
+    || c.etageMaxSansAscenseur != null || c.dernierEtage;
+  if (etageCompte && b.etage != null) {
+    const e = b.etage;
+    const lib = e === 0 ? 'Rez-de-chaussée' : `${e}e étage`;
+    let ecart: string | null = null;
+    if (c.rdcExclu && e === 0) ecart = 'Au rez-de-chaussée';
+    else if (c.etageMin != null && e < c.etageMin) ecart = `${lib}, plus bas que souhaité`;
+    else if (c.etageMax != null && e > c.etageMax) ecart = `${lib}, plus haut que souhaité`;
+    else if (c.etageMaxSansAscenseur != null && !b.ascenseur && e > c.etageMaxSansAscenseur) ecart = `${lib} sans ascenseur`;
+    else if (c.dernierEtage && b.etageTotal && e < b.etageTotal) ecart = `${lib}, pas au dernier`;
+    j.push(ecart
+      ? { texte: ecart, poids: 1, etat: 'non' }
+      : { texte: c.dernierEtage && b.etageTotal && e === b.etageTotal ? `${lib}, au dernier étage` : lib, poids: 1, etat: 'oui' });
+  }
+
+  if (c.dpeMax && b.dpe) {
+    const ordre = 'ABCDEFG';
+    const i = ordre.indexOf(String(b.dpe).toUpperCase()[0]);
+    const m = ordre.indexOf(String(c.dpeMax).toUpperCase()[0]);
+    if (i >= 0 && m >= 0) {
+      const L = ordre[i];
+      j.push(i <= m
+        ? { texte: `DPE ${L}, dans votre limite`, poids: 1, etat: 'oui' }
+        : { texte: `DPE ${L}, au-delà de votre limite (${ordre[m]})`, poids: 1, etat: 'non' });
+    }
+  }
+
+  if (c.anneeMin && b.annee) {
+    j.push(b.annee >= c.anneeMin
+      ? { texte: `Construit en ${b.annee}`, poids: 1, etat: 'oui' }
+      : { texte: `Construit en ${b.annee}, avant ${c.anneeMin}`, poids: 1, etat: 'non' });
+  }
+
+  const vises = String(c.exposition || '').toLowerCase().split(/[,;/]+/).map(x => x.trim()).filter(Boolean);
+  if (vises.length && b.expo) {
+    const a = String(b.expo).toLowerCase();
+    j.push(vises.some(v => a.includes(v) || v.includes(a))
+      ? { texte: `Exposé ${b.expo}`, poids: 1, etat: 'oui' }
+      : { texte: `Exposé ${b.expo}`, poids: 1, etat: 'non' });
+  }
+
+  /* Les équipements : cochés dans la recherche, ou notés « souhaité » ou
+     « indispensable ». */
+  const voulus = new Set<string>();
+  (c.equip || []).forEach(l => { const k = EQUIP_CLE[l]; if (k) voulus.add(k); });
+  Object.keys(ex).forEach(k => { if (ex[k] && EQUIP_NOM[k]) voulus.add(k); });
+  const ext = b.exterieur || ((b.surfaceTerrasse || 0) + (b.surfaceBalcon || 0)) || 0;
+  voulus.forEach(k => {
+    const indis = ex[k] === 'indispensable';
+    const poids = indis ? 3 : 1;
+    const suffixe = indis ? ' — indispensable pour vous' : '';
+    if (k === 'exterieur') {
+      const a = !!(b.balcon || b.terrasse || b.jardin || ext > 0);
+      if (!a) { j.push({ texte: EQUIP_SANS[k] + suffixe, poids, etat: 'non' }); return; }
+      if (c.exterieurSurfaceMin && ext > 0 && ext < c.exterieurSurfaceMin) {
+        j.push({ texte: `Extérieur de ${nb(ext)} m², pour ${nb(c.exterieurSurfaceMin)} m² souhaités`, poids, etat: 'presque' });
+        return;
+      }
+      j.push({ texte: (ext > 0 ? `Extérieur de ${nb(ext)} m²` : 'Un extérieur') + suffixe, poids, etat: 'oui' });
+      return;
+    }
+    const a = !!(b as unknown as Record<string, unknown>)[k];
+    j.push(a
+      ? { texte: EQUIP_NOM[k] + suffixe, poids, etat: 'oui' }
+      : { texte: EQUIP_SANS[k] + suffixe, poids, etat: 'non' });
+  });
+
+  if (j.length < 3) return null;
+  const total = j.reduce((s, x) => s + x.poids, 0);
+  const points = j.reduce((s, x) => s + (x.etat === 'oui' ? x.poids : x.etat === 'presque' ? x.poids / 2 : 0), 0);
+  /* Le plus lourd d'abord : c'est ce qui décide. */
+  const tri = [...j].sort((a, z) => z.poids - a.poids);
+  return {
+    note: Math.round((100 * points) / total),
+    plus: tri.filter(x => x.etat === 'oui').map(x => x.texte),
+    moins: tri.filter(x => x.etat !== 'oui').map(x => x.texte),
+  };
+}
+
+function phraseCorrespondance(r: Correspondance) {
+  if (!r.moins.length) return 'Il coche tout ce que vous avez demandé';
+  return r.moins.length === 1 ? 'Un seul point s’écarte de votre recherche' : `${r.moins.length} points s’écartent de votre recherche`;
+}
+
+/* L'anneau de la note : un seul accent, l'or, sur le chiffre qui compte. */
+function AnneauNote({ note, t = 48 }: { note: number; t?: number }) {
+  const r = 20, tour = 2 * Math.PI * r;
+  return (
+    <span className="anneau" style={{ width: t, height: t }}>
+      <svg width={t} height={t} viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r={r} fill="none" stroke="var(--trait)" strokeWidth="4" />
+        <circle cx="24" cy="24" r={r} fill="none" stroke="var(--or)" strokeWidth="4" strokeLinecap="round"
+          strokeDasharray={`${(tour * note) / 100} ${tour}`} transform="rotate(-90 24 24)" />
+      </svg>
+      <span className="anneau-n tab">{note}<i>%</i></span>
+    </span>
+  );
+}
+
+function ModaleCorrespondance({ b, r, onFermer }: { b: Bien; r: Correspondance; onFermer: () => void }) {
+  useEchap(true, onFermer);
+  return createPortal(
+    <div className="pop" role="dialog" aria-modal="true">
+      <div className="pop-voile" onClick={onFermer} />
+      <div className="pop-carte">
+        <div className="pop-tete">
+          <div><div className="sur">Correspondance avec votre recherche</div><h3>{b.titre}</h3></div>
+          <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+        </div>
+        <div className="pop-corps">
+          <div className="cr-tete">
+            <AnneauNote note={r.note} t={64} />
+            <b>{phraseCorrespondance(r)}</b>
+          </div>
+          {r.plus.length > 0 && (
+            <div className="cr-bloc">
+              <div className="cr-t">Ce qui correspond</div>
+              <ul className="cr-liste">
+                {r.plus.map((t, i) => (
+                  <li key={i}><span className="k oui"><Ico n="check" t={12} /></span><span>{t}</span></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {r.moins.length > 0 && (
+            <div className="cr-bloc">
+              <div className="cr-t">Ce qui s’en écarte</div>
+              <ul className="cr-liste">
+                {r.moins.map((t, i) => (
+                  <li key={i}><span className="k non"><Ico n="moins" t={12} /></span><span>{t}</span></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="cr-aide">
+            <div className="cr-t">Comment cette note se calcule</div>
+            <div className="puces">
+              <span><span className="k"><Ico n="check" t={15} /></span><span>Elle compare ce bien aux critères de votre recherche, et à rien d’autre&nbsp;: ni au marché, ni aux autres biens.</span></span>
+              <span><span className="k"><Ico n="check" t={15} /></span><span>Chaque critère compte. Ceux que vous avez marqués «&nbsp;indispensable&nbsp;» comptent davantage, et un critère presque atteint compte pour moitié.</span></span>
+              <span><span className="k"><Ico n="check" t={15} /></span><span>Elle ne dit pas tout&nbsp;: la lumière, le calme, l’état ou le potentiel se jugent sur place. C’est pour ça que votre conseiller vous présente aussi des biens qui ne cochent pas toutes les cases.</span></span>
+            </div>
+          </div>
+          <button className="btn or" style={{ width: '100%', marginTop: 20 }} onClick={onFermer}>J&apos;ai compris</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* `sansEtiq` : dans « Mes derniers biens consultés », la catégorie est déjà
    écrite en grand au-dessus du groupe. La répéter sur chaque carte fait doublon. */
-function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (b: Bien) => void; vide: string; sansEtiq?: boolean }) {
+function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuvrir: (b: Bien) => void; vide: string; sansEtiq?: boolean; crit?: Criteres }) {
   if (!biens.length) return vide ? <div className="vide-sec" dangerouslySetInnerHTML={{ __html: vide }} /> : null;
   return (
     <div className="liste">
       {biens.map(b => {
         const a = etiqDe(b);
+        const corr = correspondance(b, crit);
         /* Une carte en hauteur : la bande de photos, puis le titre, puis le
              prix, puis le commentaire. L'ancienne grille « vignette | texte »
              s'étirait dès qu'un commentaire s'ajoutait, et la vignette flottait
@@ -1647,6 +1872,11 @@ function Liste({ biens, onOuvrir, vide, sansEtiq }: { biens: Bien[]; onOuvrir: (
                 b.chambres && b.chambres + ' chambres', b.secteur,
               ].filter(Boolean).join(' · ')}</span>
               <span className="prix tab">{EUR(b.prix)}</span>
+              {corr && (
+                <span className="corresp-l"><Ico n="cible" t={13} />
+                  <span><b className="tab">{corr.note}&nbsp;%</b>{' '}de correspondance avec votre recherche</span>
+                </span>
+              )}
               {b.visitePrevue && !b.visiteFaite && (
                 <span className="rdv-l"><Ico n="calendrier" t={13} />
                   Visite le {dateCourte(b.visitePrevue.date)}
@@ -2433,7 +2663,7 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
   );
 }
 
-function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
      de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
@@ -2456,6 +2686,9 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
   const [hTexte, setHTexte] = useState(0);
   const [partage, setPartage] = useState(false);
   const [bientot, setBientot] = useState(false);
+  /* La note de correspondance, et son détail en pop-up. */
+  const corr = correspondance(b, crit);
+  const [voirCorr, setVoirCorr] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   /* Les pastilles cochées, le texte libre seulement s'il le demande, et le
      panneau de la barre du bas. */
@@ -2563,6 +2796,7 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
           onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
       {bientot && <ModaleBientot onFermer={() => setBientot(false)} />}
+      {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
       <div className="fiche-droite" data-barre={!envoye ? '1' : undefined}>
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
@@ -2574,6 +2808,16 @@ function FicheBien({ b, client, onFermer, onAvis, onPartager }: any) {
             <Ico n="lieu" t={13} /> {b.secteur}</div>}</div>
       </div>
       <div className="corps-f">
+        {corr && (
+          <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
+            <AnneauNote note={corr.note} />
+            <span className="corresp-txt">
+              <i>Correspondance avec votre recherche</i>
+              <b>{phraseCorrespondance(corr)}</b>
+            </span>
+            <span className="corresp-ch"><Ico n="fleche" t={16} /></span>
+          </button>
+        )}
         <div className="specs">
           {b.surface ? <div className="spec"><div className="v tab">{b.surface} m²</div><div className="l">Surface</div></div> : null}
           {b.pieces ? <div className="spec"><div className="v tab">{b.pieces}</div><div className="l">Pièces</div></div> : null}
@@ -4405,6 +4649,39 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .err{margin-top:8px; font-size:12.5px; font-weight:700; color:var(--brique)}
 .mention{font-size:12.5px; color:var(--plume-clair); text-align:center; margin-bottom:0}
 .bandeau-prix{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:16px 20px 0}
+
+/* — la correspondance avec la recherche —
+   Une carte qui s'ouvre sur son détail. L'or ne marque que la note. */
+.corresp{display:flex; align-items:center; gap:13px; width:100%; margin:4px 0 2px; padding:12px 14px;
+  background:var(--carte); border:1px solid var(--trait); border-radius:16px; text-align:left;
+  box-shadow:var(--ombre); transition:transform .16s cubic-bezier(.16,1,.3,1), border-color .2s}
+.corresp:hover{border-color:var(--or-trait)}
+.corresp:active{transform:scale(.985)}
+.corresp-txt{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1}
+.corresp-txt i{font-style:normal; font-size:10px; letter-spacing:1.2px; text-transform:uppercase; font-weight:800; color:var(--plume-clair)}
+.corresp-txt b{font-size:14.5px; font-weight:800; color:var(--encre); line-height:1.35}
+.corresp-ch{color:var(--plume-clair); display:flex; flex:0 0 auto}
+.anneau{position:relative; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto}
+.anneau svg{position:absolute; inset:0}
+.anneau-n{position:relative; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:14px; color:var(--encre); letter-spacing:-.4px}
+.anneau-n i{font-style:normal; font-size:.62em; font-weight:800; color:var(--plume); margin-left:1px}
+.cr-tete .anneau-n{font-size:19px}
+.corresp-l{display:flex; align-items:center; gap:6px; margin-top:7px; font-size:12px; color:var(--plume); line-height:1.35}
+.corresp-l > svg{color:var(--or-fonce)}
+.corresp-l b{color:var(--encre); font-weight:800}
+.cr-tete{display:flex; align-items:center; gap:14px; padding:4px 0 16px; border-bottom:1px solid var(--trait)}
+.cr-tete b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; line-height:1.35}
+.cr-bloc{padding-top:16px}
+.cr-t{font-size:10px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--plume-clair); margin-bottom:8px}
+.cr-liste{list-style:none; margin:0; padding:0; border:1px solid var(--trait); border-radius:14px; overflow:hidden}
+.cr-liste li{display:flex; align-items:flex-start; gap:10px; padding:10px 13px; font-size:14px; line-height:1.45; color:var(--encre)}
+.cr-liste li + li{border-top:1px solid var(--trait)}
+.cr-liste .k{flex:0 0 auto; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-top:0}
+.cr-liste .k.oui{background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.cr-liste .k.non{background:var(--fond); color:var(--plume); border:1px solid var(--trait)}
+.cr-aide{margin-top:18px; padding:14px; background:var(--fond); border-radius:14px}
+.cr-aide .puces{margin-top:4px; padding-top:0; border-top:0}
+.cr-aide .puces > span{font-size:13px; color:var(--plume)}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
 .specs{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px; margin:16px 0 4px}
