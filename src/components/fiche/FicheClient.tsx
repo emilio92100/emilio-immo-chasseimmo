@@ -17,6 +17,7 @@ import {
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
+import { solderRelancesVisite } from '@/lib/demandes-visite';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -110,6 +111,54 @@ function resumeChangements(avant: Record<string, unknown> | undefined, apres: Re
   if ((avant.notes || '') !== (apres.notes || '')) lignes.push('Précisions sur la recherche modifiées');
 
   return lignes.join(' · ');
+}
+
+/* Ce que le client a changé lui-même depuis son espace, ligne par ligne :
+   l'ancienne valeur barrée, la nouvelle en gras. Écrit par la route
+   /api/espace/criteres dans journal.metadata.changements — une valeur
+   ({ l, a, p }, null = rien) ou une liste ({ l, plus, moins }). */
+type ChangementCrit =
+  | { l: string; a: string | null; p: string | null }
+  | { l: string; plus: string[]; moins: string[] };
+
+const PASTILLE_DIFF: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 0.6,
+  textTransform: 'uppercase', borderRadius: 6, padding: '2px 6px', marginRight: 6, whiteSpace: 'nowrap',
+};
+
+function DiffCriteres({ changements }: { changements: ChangementCrit[] }) {
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #e8edf4', borderRadius: 11, overflow: 'hidden', background: 'white' }}>
+      {changements.map((c, i) => (
+        <div key={i} style={{
+          display: 'grid', gridTemplateColumns: 'minmax(96px, 36%) minmax(0, 1fr)', gap: 10,
+          padding: '8px 11px', borderTop: i ? '1px solid #f0f3f8' : 'none', fontSize: 12.5, lineHeight: 1.45,
+        }}>
+          <span style={{ color: '#64748b', fontWeight: 600 }}>{c.l}</span>
+          {'plus' in c ? (
+            <span style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {c.plus.map(x => (
+                <span key={'+' + x} style={{ background: '#ecfdf3', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 7, padding: '1px 7px', fontWeight: 700 }}>{`+ ${x}`}</span>
+              ))}
+              {c.moins.map(x => (
+                <span key={'-' + x} style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 7, padding: '1px 7px', textDecoration: 'line-through', textDecorationColor: 'rgba(185,28,28,.45)' }}>{`− ${x}`}</span>
+              ))}
+            </span>
+          ) : c.a === null ? (
+            <span><span style={{ ...PASTILLE_DIFF, background: '#dcfce7', color: '#15803d' }}>Ajouté</span><b style={{ color: '#1a2332' }}>{c.p}</b></span>
+          ) : c.p === null ? (
+            <span><span style={{ ...PASTILLE_DIFF, background: '#fee2e2', color: '#b91c1c' }}>Retiré</span><s style={{ color: '#94a3b8' }}>{c.a}</s></span>
+          ) : (
+            <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 7px' }}>
+              <s style={{ color: '#94a3b8', textDecorationColor: 'rgba(148,163,184,.8)' }}>{c.a}</s>
+              <span style={{ color: '#c9a84c', fontWeight: 800 }}>→</span>
+              <b style={{ color: '#1a2332' }}>{c.p}</b>
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* Clore une recherche, c'est dire pourquoi. « Trouvé ailleurs » et « a
@@ -1937,12 +1986,18 @@ Emilio Immobilier
     /* Une ligne de visite par bien, toutes sur le même créneau : la table n'a
        qu'un `bien_id`, et l'agenda comme les comptes rendus raisonnent bien
        par bien. Ce qui est commun — date, heure, contact — est recopié. */
-    await supabase.from('visites').insert(bien_ids.map(bien_id => ({
+    const { error: errVis } = await supabase.from('visites').insert(bien_ids.map(bien_id => ({
       client_id: client.id, recherche_id: rechercheId, bien_id, statut: 'a_venir',
       date_visite: date || null, heure: heure || null,
       contact_agence: contact || null, commentaire: notes || null,
     })));
+    if (errVis) { alert("La visite n'a pas pu être enregistrée.\n\n" + errVis.message); return; }
     await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', bien_ids);
+    /* S'il l'avait demandée depuis son espace, la demande est servie : la
+       relance « Veut visiter » se solde, et la page Visites la range dans
+       « À venir ». */
+    const errRel = await solderRelancesVisite(client.id, bien_ids.map(id => biens.find(b => b.id === id)?.titre));
+    if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
     const noms = bien_ids
       .map(id => biens.find(b => b.id === id))
       .map(b => b?.titre || b?.ville || 'Bien')
@@ -3913,6 +3968,18 @@ Emilio Immobilier
                 const msg = ev.type === 'message';
                 const neuf = new Date(ev.created_at).getTime() > vuLe;
                 const d = new Date(ev.created_at);
+                /* Le détail avant → après est dans le journal, écrit dans la
+                   même seconde : on prend la ligne la plus proche dans le temps. */
+                let diff: ChangementCrit[] | null = null;
+                if (!msg) {
+                  let ecart = 60_000;
+                  for (const j of journal) {
+                    if (j.type !== 'criteres_modifies' || !Array.isArray(j.metadata?.changements)) continue;
+                    if (j.recherche_id && ev.recherche_id && j.recherche_id !== ev.recherche_id) continue;
+                    const e = Math.abs(new Date(j.created_at).getTime() - d.getTime());
+                    if (e < ecart) { ecart = e; diff = j.metadata.changements; }
+                  }
+                }
                 return (
                   <div key={ev.id} style={{
                     display: 'flex', gap: 11, padding: '11px 13px', borderRadius: 12,
@@ -3925,13 +3992,20 @@ Emilio Immobilier
                         <b style={{ fontSize: 13.5, color: '#1a2332' }}>
                           {msg ? 'Il vous a écrit' : 'Il a modifié ses critères'}
                         </b>
+                        {diff && <span style={{ fontSize: 12, color: '#64748b' }}>{`· ${diff.length} changement${diff.length > 1 ? 's' : ''}`}</span>}
                         {neuf && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#c2410c', background: '#ffedd5', borderRadius: 6, padding: '2px 6px' }}>Nouveau</span>}
                         <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                           {d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      {ev.detail && (
-                        <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{ev.detail}</div>
+                      {diff ? <DiffCriteres changements={diff} /> : ev.detail && (
+                        <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+                          {/* Avant le 24 septembre, seul le dossier complet était noté, pas ce qui avait bougé. */}
+                          {!msg && /^type :|budget|m² min/.test(ev.detail) && (
+                            <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginBottom: 2 }}>Ses critères après modification (ancien format, sans le détail avant → après) :</span>
+                          )}
+                          {ev.detail}
+                        </div>
                       )}
                     </div>
                   </div>
