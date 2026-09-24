@@ -25,17 +25,21 @@
 @media (max-width: 900px) {
   .appLayout { height: 100dvh; }
 
-  /* La barre du haut se replie en descendant, revient en remontant. */
-  .mainArea > header {
-    transition: margin-top .28s cubic-bezier(.22,.9,.3,1), opacity .2s ease;
-  }
-  .mainArea[data-barre="cachee"] > header {
-    margin-top: calc(-58px - env(safe-area-inset-top, 0px));
-    opacity: 0; pointer-events: none;
-  }
-  .content {
+  /* Rien ne reste collé en haut : c'est toute la colonne qui défile, barre
+     du haut comprise. Elle part avec la page quand on descend, et on la
+     retrouve en remontant tout en haut. Seule la barre d'onglets du bas
+     (posée en position fixe par Sidebar) reste à l'écran.
+     Avant, la barre se repliait en descendant et revenait au moindre geste
+     vers le haut : on avait l'impression qu'elle restait accrochée. */
+  .mainArea {
+    overflow-x: hidden; overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
+  }
+  .mainArea > header { flex-shrink: 0; }
+  .content {
+    flex: 1 0 auto;
+    overflow: visible;
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 }

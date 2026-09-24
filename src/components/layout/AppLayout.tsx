@@ -59,24 +59,11 @@ export default function AppLayout() {
      l'ouvre réduit, pour gagner la largeur de la semaine ; le bouton de la
      barre du haut le remet (ou le réduit) sur n'importe quel écran. */
   const [menuReduit, setMenuReduit] = useState(false);
-  /* Sur téléphone, la barre du haut (menu + recherche) se replie quand on
-     descend dans la page et revient dès qu'on remonte : l'écran gagne sa
-     hauteur. Posé directement sur l'élément, sans passer par l'état React :
-     replier la barre ne redessine pas la fiche. Sans effet sur ordinateur. */
+  /* Sur téléphone, c'est cette zone-ci qui défile, barre du haut comprise :
+     la barre part avec la page quand on descend, et seule la barre d'onglets
+     du bas reste à l'écran (voir AppLayout.module.css). Sur ordinateur,
+     c'est le <main> qui défile, sous une barre fixe. */
   const zoneBarre = useRef<HTMLDivElement>(null);
-  const barreCachee = useRef(false);
-  /* Replier ou déplier change la hauteur de la zone qui défile : en bas de
-     page, le navigateur recale alors le défilement de lui-même. Ce recalage
-     n'est pas un geste — on l'ignore le temps de l'animation, sinon la barre
-     clignoterait en boucle. */
-  const calmeJusqua = useRef(0);
-  const replierBarre = (oui: boolean) => {
-    const z = zoneBarre.current;
-    if (!z || barreCachee.current === oui) return;
-    barreCachee.current = oui;
-    calmeJusqua.current = performance.now() + 420;
-    if (oui) z.setAttribute('data-barre', 'cachee'); else z.removeAttribute('data-barre');
-  };
   const contenu = useRef<HTMLElement>(null);
 
   /* La classe « crm » sur <html> : les règles du téléphone s'appliquent au
@@ -164,39 +151,16 @@ export default function AppLayout() {
     ecrireUrl(page, null);
   }, []);
 
-  /* Le <main> est le seul élément qui défile du CRM (html et body sont en
-     overflow:hidden), et React ne le recrée jamais d'un écran à l'autre : il
-     gardait donc sa position. On arrivait sur une fiche déjà défilée de la
-     hauteur où on avait laissé la liste précédente, entête hors écran. */
+  /* Le <main> (sur téléphone : la zone qui le contient) est le seul élément
+     qui défile du CRM (html et body sont en overflow:hidden), et React ne le
+     recrée jamais d'un écran à l'autre : il gardait donc sa position. On
+     arrivait sur une fiche déjà défilée de la hauteur où on avait laissé la
+     liste précédente, entête hors écran. */
   useEffect(() => {
     contenu.current?.scrollTo({ top: 0 });
-    replierBarre(false);
+    zoneBarre.current?.scrollTo({ top: 0 });
   }, [activePage, ficheClient?.id]);
   useEffect(() => { setMenuReduit(activePage === 'agenda'); }, [activePage]);
-
-  /* On ne réagit qu'aux vrais gestes (plus de 8 px dans un sens) : un
-     tremblement du doigt ne fait pas clignoter la barre. En haut de page,
-     ou pendant qu'on tape une recherche, elle reste toujours visible. */
-  useEffect(() => {
-    const zone = contenu.current;
-    if (!zone) return;
-    let repere = zone.scrollTop;
-    const telephone = window.matchMedia('(max-width: 900px)');
-    const surDefilement = () => {
-      if (!telephone.matches) return;
-      const y = zone.scrollTop;
-      if (performance.now() < calmeJusqua.current) { repere = y; return; }
-      const ecart = y - repere;
-      if (y < 64) { replierBarre(false); repere = y; return; }
-      if (Math.abs(ecart) < 8) return;
-      const champ = document.activeElement as HTMLElement | null;
-      const enRecherche = !!champ?.closest?.('header');
-      replierBarre(ecart > 0 && !enRecherche);
-      repere = y;
-    };
-    zone.addEventListener('scroll', surDefilement, { passive: true });
-    return () => zone.removeEventListener('scroll', surDefilement);
-  }, []);
 
   const renderPage = () => {
     if (activePage === 'fiche') {
