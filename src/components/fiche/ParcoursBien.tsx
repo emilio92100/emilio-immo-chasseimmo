@@ -53,18 +53,11 @@ export function StylesEmilio() {
       .emi-vignette:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -12px rgba(16,24,40,.5); z-index:2 }
       .emi-vignette:hover img { transform: scale(1.07) }
       .emi-bande { display:flex; gap:7px; align-items:stretch }
-      /* Le plan : fond blanc, image entière, et une étiquette qui le dit. Il se
-         range juste après la première photo, pour se voir sans faire défiler. */
-      .emi-bande > .emi-vignette + .emi-vignette { order:2 }
-      .emi-bande > .emi-vignette.emi-plan { order:1 }
-      .emi-plan { background:#fff; box-shadow: inset 0 0 0 1px #e3e8f0 }
-      .emi-plan img { object-fit:contain; padding:7px; box-sizing:border-box }
-      .emi-plan:hover img { transform: scale(1.04) }
-      .emi-plan-tag { position:absolute; left:6px; bottom:6px; display:inline-flex; align-items:center; gap:4px;
-        background:rgba(26,35,50,.9); color:#fff; border-radius:7px; padding:3px 7px; font-size:10.5px; font-weight:800 }
-      .emi-sans-photo { flex:1 1 auto; min-width:120px; border-radius:12px; background:#f1f5f9; border:1px dashed #e3e8f0;
-        display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:12.5px; font-weight:600;
-        text-align:center; padding:0 10px }
+      /* Le bouton « Voir le plan », posé sur le bas du bandeau de photos. */
+      .emi-voir-plan { display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.96); color:#1a2332;
+        border:none; border-radius:20px; padding:7px 13px; font-size:12px; font-weight:800; cursor:pointer;
+        font-family:inherit; box-shadow:0 6px 16px -8px rgba(16,24,40,.55); transition: transform .18s ease }
+      .emi-voir-plan:hover { transform: translateY(-1px) }
 
       /* ── volet dépliant ────────────────────────────────── */
       .emi-volet { display:grid; grid-template-rows:0fr; opacity:0;
@@ -305,21 +298,36 @@ export function Vignettes({ photos, plans, max = 7, coinGauche, coinDroit }: {
   photos: string[]; plans?: string[]; max?: number; coinGauche?: React.ReactNode; coinDroit?: React.ReactNode;
 }) {
   const [lb, setLb] = useState<number | null>(null);
-  /* Le plan a sa case à lui, juste après la première photo, et s'ouvre sur
-     fond blanc : un plan se lit trait par trait, pas sur du noir. */
+  /* Le plan ne se mêle pas aux photos : un bouton « Voir le plan », posé sur le
+     bas du bandeau, l'ouvre en grand sur fond blanc — un plan se lit trait par
+     trait, pas sur du noir. */
   const [lbPlan, setLbPlan] = useState<number | null>(null);
   const nettes = (photos || []).filter(Boolean);
   const lesPlans = (plans || []).filter(Boolean);
-  const visibles = nettes.slice(0, lesPlans.length ? Math.max(1, max - 1) : max);
+  const visibles = nettes.slice(0, max);
   const reste = nettes.length - visibles.length;
+  const boutonPlan = lesPlans.length > 0 && (
+    <div style={{ position: 'absolute', bottom: 10, left: 24, zIndex: 3 }}>
+      <button type="button" className="emi-voir-plan" onClick={() => setLbPlan(0)}>
+        <Icone nom="plan" taille={15} epaisseur={2} />{lesPlans.length > 1 ? `Voir les plans · ${lesPlans.length}` : 'Voir le plan'}
+      </button>
+    </div>
+  );
+  const visionneusePlan = lbPlan !== null && (
+    <Visionneuse photos={lesPlans} depart={lbPlan} onFerme={() => setLbPlan(null)} clair />
+  );
 
-  if (!nettes.length && !lesPlans.length) {
+  if (!nettes.length) {
     return (
-      <div style={{ padding: '14px 16px 0' }}>
-        <div style={{ height: 96, borderRadius: 12, background: '#f1f5f9', border: `1px dashed ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12.5, fontWeight: 600 }}>
-          Pas de photo dans l&apos;annonce
+      <>
+        <div style={{ padding: '14px 16px 0', position: 'relative' }}>
+          <div style={{ height: 96, borderRadius: 12, background: '#f1f5f9', border: `1px dashed ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12.5, fontWeight: 600 }}>
+            Pas de photo dans l&apos;annonce
+          </div>
+          {boutonPlan}
         </div>
-      </div>
+        {visionneusePlan}
+      </>
     );
   }
 
@@ -343,20 +351,13 @@ export function Vignettes({ photos, plans, max = 7, coinGauche, coinDroit }: {
               </button>
             );
           })}
-          {!nettes.length && <div className="emi-sans-photo">Pas de photo dans l&apos;annonce</div>}
-          {lesPlans.length > 0 && (
-            <button type="button" className="emi-vignette emi-plan" onClick={() => setLbPlan(0)}
-              aria-label={lesPlans.length > 1 ? `Voir les ${lesPlans.length} plans` : 'Voir le plan'}>
-              <img src={lesPlans[0]} alt="" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
-              <span className="emi-plan-tag"><Icone nom="plan" taille={12} epaisseur={2} />{lesPlans.length > 1 ? `Plans · ${lesPlans.length}` : 'Plan'}</span>
-            </button>
-          )}
         </div>
         {coinGauche && <div style={{ position: 'absolute', top: 22, left: 24, zIndex: 3 }}>{coinGauche}</div>}
         {coinDroit && <div style={{ position: 'absolute', top: 22, right: 24, zIndex: 3 }}>{coinDroit}</div>}
+        {boutonPlan}
       </div>
       {lb !== null && <Visionneuse photos={nettes} depart={lb} onFerme={() => setLb(null)} />}
-      {lbPlan !== null && <Visionneuse photos={lesPlans} depart={lbPlan} onFerme={() => setLbPlan(null)} clair />}
+      {visionneusePlan}
     </>
   );
 }
