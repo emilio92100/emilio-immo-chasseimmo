@@ -238,7 +238,7 @@
   .filNom {
     flex: 1 1 auto; min-width: 0;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 16.5px !important; font-weight: 800 !important; letter-spacing: -0.2px;
+    font-size: 15.5px !important; font-weight: 800 !important; letter-spacing: -0.2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .filRelance { flex-shrink: 0; font-size: 11px !important; padding: 4px 9px !important; }
@@ -249,8 +249,8 @@
   }
   .actionsFiche .actionFiche {
     flex-direction: column; justify-content: center; align-items: center; gap: 4px;
-    min-height: 56px; padding: 7px 3px; border-radius: 14px;
-    font-size: 11px; font-weight: 700; line-height: 1.15; text-align: center;
+    min-height: 50px; padding: 6px 3px; border-radius: 13px;
+    font-size: 10.5px; font-weight: 700; line-height: 1.15; text-align: center;
     -webkit-tap-highlight-color: transparent;
   }
   .actionsFiche .actionFiche:not(.btnPrimary) { color: #334155; }

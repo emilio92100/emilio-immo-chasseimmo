@@ -46,6 +46,17 @@ function Portail({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
+/* Un budget se lit en entier sous le million — « 380 000 € », pas
+   « 380 k€ » — et en millions au-delà : « 1,25 M€ ». */
+function budgetLisible(n: number): string {
+  if (n >= 1000000) return `${String(Math.round(n / 10000) / 100).replace('.', ',')} M€`;
+  return `${Math.round(n).toLocaleString('fr-FR')} €`;
+}
+function fourchetteBudget(min: number, max: number): string {
+  if (max < 1000000) return `${Math.round(min).toLocaleString('fr-FR')} – ${budgetLisible(max)}`;
+  return `${budgetLisible(min)} – ${budgetLisible(max)}`;
+}
+
 /* Ce qui change dans une recherche mérite d'être raconté : « Budget maxi :
    900 000 € → 950 000 € » en dit plus que « critères modifiés ». Sans ça, une
    modification de critères ne laissait aucune trace au journal, et la liste
@@ -2793,9 +2804,9 @@ Emilio Immobilier
                     <span className="fc-budget" style={{ textAlign: 'right' }}>
                       <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1.1 }}>Budget</span>
                       <span style={{ display: 'block', fontSize: 25, fontWeight: 800, color: '#a9822f', letterSpacing: -0.6, marginTop: 2 }}>
-                        {cr.budget_min && cr.budget_max ? `${(cr.budget_min / 1000).toFixed(0)}–${(cr.budget_max / 1000).toFixed(0)} k€`
-                          : cr.budget_max ? `Jusqu'à ${(cr.budget_max / 1000).toFixed(0)} k€`
-                            : cr.budget_min ? `À partir de ${(cr.budget_min / 1000).toFixed(0)} k€`
+                        {cr.budget_min && cr.budget_max ? fourchetteBudget(cr.budget_min, cr.budget_max)
+                          : cr.budget_max ? `Jusqu'à ${budgetLisible(cr.budget_max)}`
+                            : cr.budget_min ? `À partir de ${budgetLisible(cr.budget_min)}`
                               : 'À préciser'}
                       </span>
                     </span>

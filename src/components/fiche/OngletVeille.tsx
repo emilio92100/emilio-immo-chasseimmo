@@ -140,7 +140,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -0.3 }}>
+          <span className="emi-titre-onglet" style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -0.3 }}>
             {props_.length === 0 ? 'Aucun bien à valider' : `${props_.length} bien${props_.length > 1 ? 's' : ''} à valider`}
           </span>
           {passage?.termine_le && (
@@ -207,7 +207,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
                     width: 26, height: 26, borderRadius: 8, background: NAVY, color: OR,
                     fontSize: 12, fontWeight: 800, marginTop: 1,
                   }}>{String(idx + 1).padStart(2, '0')}</span>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
+                  <div className="emi-titre-bien" style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
                     {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
                   </div>
                 </div>
@@ -229,7 +229,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7, flexShrink: 0 }}>
                 {p.score != null && <PastilleScore score={p.score} onClick={() => setScoreOuvert(p)} />}
-                <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1 }}>{euros(p.prix)}</div>
+                <div className="emi-prix-bien" style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1 }}>{euros(p.prix)}</div>
                 {p.prix && p.surface && (
                   <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
                     {Math.round(p.prix / Number(p.surface)).toLocaleString('fr-FR')} €/m²

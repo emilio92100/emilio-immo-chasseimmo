@@ -317,7 +317,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       <StylesEmilio />
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
+        <span className="emi-titre-onglet" style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
           {biens.length} bien{biens.length > 1 ? 's' : ''} {mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}
         </span>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
@@ -495,7 +495,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   </span>
                 )}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
+                <div className="emi-titre-bien" style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
                   {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
                 </div>
                 {(b.adresse || b.adresse_probable || b.quartier || b.ville) && (
@@ -511,7 +511,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
+                <div className="emi-prix-bien" style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
                 {libelleHonoraires(b)
                   ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{libelleHonoraires(b)}</div>
                   : prixAff && b.surface
