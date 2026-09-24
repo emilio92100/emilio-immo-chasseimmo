@@ -5077,7 +5077,13 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .page{max-width:1160px; padding:0 40px 90px}
   /* Colonne gauche : la présentation, puis le chasseur et l'engagement.
      Colonne droite : les cartes, qui tiennent sur les deux rangées. */
+  /* ⚠️ grid-template-rows:auto 1fr — la colonne droite couvre les deux
+     rangées et elle est plus haute que la gauche : sans « 1fr », la grille
+     répartissait ce surplus sur la PREMIÈRE rangée, et un grand blanc
+     s'ouvrait sous les chiffres, avant « Votre conseiller ». Le surplus va
+     maintenant tout en bas de la colonne gauche. */
   .accueil{display:grid; grid-template-columns:minmax(0,.94fr) minmax(0,1.06fr);
+    grid-template-rows:auto 1fr;
     column-gap:30px; row-gap:0; align-items:start; margin-top:26px}
   .accueil .col-a{grid-column:1; grid-row:1}
   .accueil .col-c{grid-column:1; grid-row:2}
