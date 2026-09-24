@@ -9,7 +9,7 @@ import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { signalerMaj } from '@/lib/intentions';
-import { jetonEspace } from '@/lib/jeton';
+import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import {
   BasculeCriteres, CorpsCriteres, CRIT_VIDE, ETATS, EXPOSITIONS, etapesCriteres,
   FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
@@ -1763,6 +1763,12 @@ Emilio Immobilier
     }
     setEnvoiBienId('');
     setEnvoiMode('multi');
+    /* Au-delà de BIENS_PAR_MAIL, le mail n'en détaille que les premiers et
+       renvoie vers l'espace pour les suivants : le texte le dit. */
+    const nb = ids && ids.length ? ids.length : biens.filter(b => b.badge_retour !== 'refuse').length;
+    const phraseDetail = nb > BIENS_PAR_MAIL
+      ? `Vous trouverez les ${BIENS_PAR_MAIL} premiers ci-dessous, avec un bouton pour consulter chaque fiche. Les ${nb - BIENS_PAR_MAIL} autres vous attendent dans votre espace.`
+      : `Vous trouverez le détail de chacun ci-dessous, avec un bouton pour consulter la fiche complète.`;
     setEnvoiForm({
       destinataires: emails.join(', '),
       objet: `Sélection de biens — Vos recherches immobilières`,
@@ -1770,7 +1776,7 @@ Emilio Immobilier
 
 Suite à votre projet de recherche, je suis heureux de vous présenter une sélection de biens susceptibles de répondre à vos critères.
 
-Vous trouverez le détail de chacun ci-dessous, avec un bouton pour consulter la fiche complète.
+${phraseDetail}
 
 N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez des questions, ou à me faire un retour afin d'affiner votre recherche si certains biens ne vous conviennent pas.
 
@@ -4745,7 +4751,9 @@ Emilio Immobilier
 
               {envoiMode !== 'libre' && envoiBienIds.length > 0 && (
                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
-                  ℹ️ Le mail inclura {envoiBienIds.length} bien{envoiBienIds.length > 1 ? 's' : ''} avec un bouton &quot;Consulter le bien&quot; vers la fiche complète.
+                  {envoiBienIds.length > BIENS_PAR_MAIL
+                    ? `ℹ️ Le mail montrera ${BIENS_PAR_MAIL} biens en détail (ceux que tu as ajoutés toi-même, puis les mieux notés par la veille), puis un bouton « Découvrir les ${envoiBienIds.length - BIENS_PAR_MAIL} autres » qui ouvre son espace sur ses nouveaux biens.`
+                    : `ℹ️ Le mail inclura ${envoiBienIds.length} bien${envoiBienIds.length > 1 ? 's' : ''} avec un bouton « Consulter le bien » vers la fiche complète.`}
                 </div>
               )}
             </div>
