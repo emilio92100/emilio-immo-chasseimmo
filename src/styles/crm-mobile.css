@@ -273,6 +273,10 @@ html.crm .fc-crit-bascule { display: none; }
   }
   html.crm .emi-voile[data-nu] { padding: 10px !important; }
 
+  /* ═══ FICHE · fenêtre « Ajouter une action » ═════════════════════════ */
+  /* Trois types par ligne sur ordinateur, deux sur téléphone. */
+  html.crm .fc-types-action { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
   /* ═══ PAGE VISITES ══════════════════════════════════════════════════ */
 
   html.crm .pv-carte { border-radius: 18px !important; }
