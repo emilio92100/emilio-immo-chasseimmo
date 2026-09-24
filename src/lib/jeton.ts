@@ -89,3 +89,11 @@ export function lienEspace(token?: string | null, origine?: string): string {
   const base = origine || (typeof window !== 'undefined' ? window.location.origin : '');
   return `${base}/espace/${token}`;
 }
+
+/**
+ * Combien de biens un mail montre en détail. Au-delà, il en montre ce nombre
+ * — les mieux notés par la veille — puis un bouton « Découvrir les N autres »
+ * qui ouvre l'espace du client sur ses nouveaux biens. Douze fiches à la
+ * suite, c'est un mail qu'on ne lit pas jusqu'au bout.
+ */
+export const BIENS_PAR_MAIL = 5;
