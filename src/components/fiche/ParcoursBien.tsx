@@ -53,6 +53,18 @@ export function StylesEmilio() {
       .emi-vignette:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -12px rgba(16,24,40,.5); z-index:2 }
       .emi-vignette:hover img { transform: scale(1.07) }
       .emi-bande { display:flex; gap:7px; align-items:stretch }
+      /* Le plan : fond blanc, image entière, et une étiquette qui le dit. Il se
+         range juste après la première photo, pour se voir sans faire défiler. */
+      .emi-bande > .emi-vignette + .emi-vignette { order:2 }
+      .emi-bande > .emi-vignette.emi-plan { order:1 }
+      .emi-plan { background:#fff; box-shadow: inset 0 0 0 1px #e3e8f0 }
+      .emi-plan img { object-fit:contain; padding:7px; box-sizing:border-box }
+      .emi-plan:hover img { transform: scale(1.04) }
+      .emi-plan-tag { position:absolute; left:6px; bottom:6px; display:inline-flex; align-items:center; gap:4px;
+        background:rgba(26,35,50,.9); color:#fff; border-radius:7px; padding:3px 7px; font-size:10.5px; font-weight:800 }
+      .emi-sans-photo { flex:1 1 auto; min-width:120px; border-radius:12px; background:#f1f5f9; border:1px dashed #e3e8f0;
+        display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:12.5px; font-weight:600;
+        text-align:center; padding:0 10px }
 
       /* ── volet dépliant ────────────────────────────────── */
       .emi-volet { display:grid; grid-template-rows:0fr; opacity:0;
@@ -170,6 +182,8 @@ const TRAITS: Record<string, string[]> = {
   moins: ['M6 12h12'],
   /* Les photos d'un bien : les réorganiser, en retirer. */
   photos: ['M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z', 'c:9,10,1.6', 'm20 15-4.5-4.5L7 19.5'],
+  /* Le plan d'un bien. */
+  plan: ['M3.5 5.5h17v13h-17z', 'M10.5 5.5v13', 'M3.5 12h7', 'M10.5 10h10'],
   poignee: ['c:9,6.5,1', 'c:15,6.5,1', 'c:9,12,1', 'c:15,12,1', 'c:9,17.5,1', 'c:15,17.5,1'],
   etoile: ['m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'],
   remettre: ['M4 12a8 8 0 1 0 2.4-5.7', 'M4 4.5v4h4'],
@@ -287,15 +301,19 @@ export const GRILLE_CARTE: React.CSSProperties = {
 
 /* ══ Bandeau de photos carrées + visionneuse ═══════════════════ */
 
-export function Vignettes({ photos, max = 7, coinGauche, coinDroit }: {
-  photos: string[]; max?: number; coinGauche?: React.ReactNode; coinDroit?: React.ReactNode;
+export function Vignettes({ photos, plans, max = 7, coinGauche, coinDroit }: {
+  photos: string[]; plans?: string[]; max?: number; coinGauche?: React.ReactNode; coinDroit?: React.ReactNode;
 }) {
   const [lb, setLb] = useState<number | null>(null);
+  /* Le plan a sa case à lui, juste après la première photo, et s'ouvre sur
+     fond blanc : un plan se lit trait par trait, pas sur du noir. */
+  const [lbPlan, setLbPlan] = useState<number | null>(null);
   const nettes = (photos || []).filter(Boolean);
-  const visibles = nettes.slice(0, max);
+  const lesPlans = (plans || []).filter(Boolean);
+  const visibles = nettes.slice(0, lesPlans.length ? Math.max(1, max - 1) : max);
   const reste = nettes.length - visibles.length;
 
-  if (!nettes.length) {
+  if (!nettes.length && !lesPlans.length) {
     return (
       <div style={{ padding: '14px 16px 0' }}>
         <div style={{ height: 96, borderRadius: 12, background: '#f1f5f9', border: `1px dashed ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12.5, fontWeight: 600 }}>
@@ -325,16 +343,25 @@ export function Vignettes({ photos, max = 7, coinGauche, coinDroit }: {
               </button>
             );
           })}
+          {!nettes.length && <div className="emi-sans-photo">Pas de photo dans l&apos;annonce</div>}
+          {lesPlans.length > 0 && (
+            <button type="button" className="emi-vignette emi-plan" onClick={() => setLbPlan(0)}
+              aria-label={lesPlans.length > 1 ? `Voir les ${lesPlans.length} plans` : 'Voir le plan'}>
+              <img src={lesPlans[0]} alt="" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+              <span className="emi-plan-tag"><Icone nom="plan" taille={12} epaisseur={2} />{lesPlans.length > 1 ? `Plans · ${lesPlans.length}` : 'Plan'}</span>
+            </button>
+          )}
         </div>
         {coinGauche && <div style={{ position: 'absolute', top: 22, left: 24, zIndex: 3 }}>{coinGauche}</div>}
         {coinDroit && <div style={{ position: 'absolute', top: 22, right: 24, zIndex: 3 }}>{coinDroit}</div>}
       </div>
       {lb !== null && <Visionneuse photos={nettes} depart={lb} onFerme={() => setLb(null)} />}
+      {lbPlan !== null && <Visionneuse photos={lesPlans} depart={lbPlan} onFerme={() => setLbPlan(null)} clair />}
     </>
   );
 }
 
-function Visionneuse({ photos, depart, onFerme }: { photos: string[]; depart: number; onFerme: () => void }) {
+function Visionneuse({ photos, depart, onFerme, clair }: { photos: string[]; depart: number; onFerme: () => void; clair?: boolean }) {
   const [i, setI] = useState(depart);
   const aller = useCallback((d: number) => setI((n) => (n + d + photos.length) % photos.length), [photos.length]);
 
@@ -357,7 +384,7 @@ function Visionneuse({ photos, depart, onFerme }: { photos: string[]; depart: nu
   return (
     <Modale onFerme={onFerme} largeur={1040} nu>
       <div style={{ position: 'relative' }}>
-        <img src={photos[i]} alt="" style={{ width: '100%', maxHeight: '76vh', objectFit: 'contain', borderRadius: 16, display: 'block' }} />
+        <img src={photos[i]} alt="" style={{ width: '100%', maxHeight: '76vh', objectFit: 'contain', borderRadius: 16, display: 'block', ...(clair ? { background: '#fff', padding: 14, boxSizing: 'border-box' as const } : {}) }} />
         {photos.length > 1 && (
           <>
             <button type="button" onClick={() => aller(-1)} style={fleche('left')} aria-label="Précédente">‹</button>
@@ -374,9 +401,9 @@ function Visionneuse({ photos, depart, onFerme }: { photos: string[]; depart: nu
             style={{
               width: 58, height: 58, borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer',
               border: n === i ? `2px solid ${OR}` : '2px solid rgba(255,255,255,.18)',
-              opacity: n === i ? 1 : .55, transition: 'all .2s ease', flex: '0 0 auto', background: '#000',
+              opacity: n === i ? 1 : .55, transition: 'all .2s ease', flex: '0 0 auto', background: clair ? '#fff' : '#000',
             }}>
-            <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: clair ? 'contain' : 'cover' }} />
           </button>
         ))}
       </div>
