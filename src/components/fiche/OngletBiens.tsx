@@ -210,7 +210,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
    *   2. la proposition de veille repasse en « écartée » AVANT la suppression,
    *      avec un motif : la prochaine veille ne le reproposera pas, et il
    *      reste rattrapable depuis « les écartées » de l'onglet Veille ;
-   *   3. les photos hébergées chez nous partent avec lui, sinon elles
+   *   3. les photos et les plans hébergés chez nous partent avec lui, sinon ils
    *      resteraient à occuper du stockage sans que rien ne les affiche.
    */
   async function retirer(b: any) {
@@ -242,7 +242,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       decide_le: new Date().toISOString(),
     }).eq('bien_id', b.id);
 
-    const photos: string[] = (b.photos || []).filter((p: string) => typeof p === 'string' && p.includes('supabase.co/storage'));
+    const photos: string[] = [...(b.photos || []), ...(b.plans || [])].filter((p: string) => typeof p === 'string' && p.includes('supabase.co/storage'));
     if (photos.length > 0) {
       const chemins = photos.map(u => (u.match(/photos-biens\/(.+)$/) || [])[1]).filter(Boolean) as string[];
       if (chemins.length > 0) { try { await supabase.storage.from('photos-biens').remove(chemins); } catch { /* le retrait prime */ } }
@@ -449,7 +449,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               transition: 'border-color .14s, box-shadow .14s',
             }}>
 
-            <Vignettes photos={b.photos || []}
+            <Vignettes photos={b.photos || []} plans={b.plans || []}
               coinGauche={mode === 'presentes'
                 ? <span style={{ background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, boxShadow: '0 4px 12px -6px rgba(16,24,40,.5)' }}>{r.i} {r.l}</span>
                 : undefined}
