@@ -36,6 +36,7 @@ const TR: Record<string, string[]> = {
   bulle: ['M4 5.5h16v10H9l-5 4z'],
   report: ['M4 12a8 8 0 1 0 2.4-5.7', 'M4 4v4.5h4.5'],
   fermer: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
+  oeil: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 'c:12,12,3'],
 };
 function Ic({ n, t = 16, ep = 2 }: { n: string; t?: number; ep?: number }) {
   const traits = TR[n];
@@ -63,6 +64,7 @@ type Origine = { lib: string; ico: string };
 function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'auto') return { lib: 'Biens présentés', ico: 'envoi' };
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
+  if (String(r.note || '').startsWith('Veut visiter')) return { lib: 'Veut visiter', ico: 'oeil' };
   if (r.type === 'rappel_client') return { lib: 'Demande de rappel', ico: 'tel' };
   if (typeAction === 'appel') return { lib: 'Après un appel', ico: 'tel' };
   if (typeAction === 'rdv') return { lib: 'Après un rendez-vous', ico: 'personne' };
