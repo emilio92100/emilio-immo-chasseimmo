@@ -1339,7 +1339,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             <div className="ch-rech">
               <span className="ch-rech-t">{phraseRecherche(crit) || nomCourant}</span>
               {enCours && !finDite && (
-                <span className="ch-vif"><i className="ch-vif-pt" /><span>Recherche en cours</span></span>
+                /* Un raccourci : la pastille mène au rappel de sa recherche. */
+                <button type="button" className="ch-vif" onClick={() => aller('recherche')} title="Voir le rappel de ma recherche">
+                  <i className="ch-vif-pt" /><span>Recherche en cours</span><Ico n="fleche" t={12} />
+                </button>
               )}
             </div>
           </div>
@@ -1372,6 +1375,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
               onOuvrir={ouvrirBien} onAvis={allerAvis}
+              onFiltre={(f: string) => { setFiltreC(f); aller('consultes'); }}
               /* Avec plusieurs recherches, « ma recherche » devient ambigu :
                  l'accueil dit alors « cette recherche ». */
               plusieurs={plusieurs}
@@ -1565,9 +1569,28 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, plusieurs, enCours }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
+  /* « Aujourd'hui pour vous » ne doit pas afficher 0 · 0 · 0. Une case à zéro
+     (plus d'avis à donner, pas de visite prévue) cède sa place à ce que le
+     client a déjà : les biens qui lui plaisent, puis tous ses biens
+     consultés. S'il ne reste vraiment rien, la case dit « Aucune visite
+     prévue » en toutes lettres, jamais « 0 ». */
+  type Case = { cle: string; cls: string; ico: string; n: number; l: string; go: () => void; aucun?: string };
+  const plait = donnes.filter((b: Bien) => groupeDe(b) === 'interesse').length;
+  const ouverts = vus.length + donnes.length;
+  const reserve: Case[] = [];
+  if (plait) reserve.push({ cle: 'plait', cls: 'c-plait', ico: 'pouce', n: plait,
+    l: plait > 1 ? 'biens qui vous plaisent' : 'bien qui vous plaît', go: () => onFiltre('interesse') });
+  if (ouverts) reserve.push({ cle: 'vus', cls: 'c-vus', ico: 'oeil', n: ouverts,
+    l: ouverts > 1 ? 'biens consultés' : 'bien consulté', go: () => onFiltre('tout') });
+  const case2: Case = vus.length
+    ? { cle: 'avis', cls: 'c-avis', ico: 'pouce', n: vus.length, l: 'avis à donner', go: onAvis }
+    : reserve.shift() || { cle: 'avis', cls: 'c-avis', ico: 'pouce', n: 0, l: 'avis à donner', go: onAvis, aucun: 'Aucun' };
+  const case3: Case = visites.length
+    ? { cle: 'vis', cls: 'c-vis', ico: 'calendrier', n: visites.length, l: visites.length > 1 ? 'visites prévues' : 'visite prévue', go: () => aller('visites') }
+    : reserve.shift() || { cle: 'vis', cls: 'c-vis', ico: 'calendrier', n: 0, l: 'visite prévue', go: () => aller('visites'), aucun: 'Aucune' };
   return (
     <div className="acc">
       <section className="auj" aria-label="Aujourd’hui pour vous">
@@ -1576,27 +1599,25 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           {passage?.quand && <span className="auj-maj">{`mis à jour ${actualiseLe(passage.quand)}`}</span>}
         </div>
         <div className="auj-g">
-          <button type="button" className={'auj-c c-neuf' + (neufs.length ? ' on' : '')} onClick={() => aller('neufs')}>
-            <span className="auj-ic"><Ico n="etoile" t={17} /></span>
+          {/* Rien de neuf : pas de « 0 », on dit qu'il est à jour. */}
+          <button type="button" className={'auj-c c-neuf' + (neufs.length ? ' on' : ' ajour')} onClick={() => aller('neufs')}>
+            <span className="auj-ic"><Ico n={neufs.length ? 'etoile' : 'check'} t={17} /></span>
             <span className="auj-tx">
-              <span className="auj-n tab">{neufs.length}</span>
-              <span className="auj-l">{neufs.length > 1 ? 'nouveaux biens' : 'nouveau bien'}</span>
+              {neufs.length
+                ? <span className="auj-n tab">{neufs.length}</span>
+                : <span className="auj-n mot">À jour</span>}
+              <span className="auj-l">{neufs.length ? (neufs.length > 1 ? 'nouveaux biens' : 'nouveau bien') : 'rien de nouveau'}</span>
             </span>
           </button>
-          <button type="button" className={'auj-c c-avis' + (vus.length ? ' on' : '')} onClick={onAvis}>
-            <span className="auj-ic"><Ico n="pouce" t={17} /></span>
-            <span className="auj-tx">
-              <span className="auj-n tab">{vus.length}</span>
-              <span className="auj-l">avis à donner</span>
-            </span>
-          </button>
-          <button type="button" className={'auj-c c-vis' + (visites.length ? ' on' : '')} onClick={() => aller('visites')}>
-            <span className="auj-ic"><Ico n="calendrier" t={17} /></span>
-            <span className="auj-tx">
-              <span className="auj-n tab">{visites.length}</span>
-              <span className="auj-l">{visites.length > 1 ? 'visites prévues' : 'visite prévue'}</span>
-            </span>
-          </button>
+          {[case2, case3].map(k => (
+            <button key={k.cle} type="button" className={'auj-c ' + k.cls + (k.n ? ' on' : '')} onClick={k.go}>
+              <span className="auj-ic"><Ico n={k.ico} t={17} /></span>
+              <span className="auj-tx">
+                {k.n ? <span className="auj-n tab">{k.n}</span> : <span className="auj-n mot">{k.aucun}</span>}
+                <span className="auj-l">{k.l}</span>
+              </span>
+            </button>
+          ))}
           {/* Sur ordinateur seulement : la quatrième case. Sur téléphone, le
               même chiffre est dans la ligne du pied. */}
           <div className="auj-c c-lues on">
@@ -6030,6 +6051,10 @@ button.vav-bien:hover{background:rgba(255,255,255,.14); border-color:rgba(255,25
 .ch-vif{display:inline-flex; align-items:center; gap:7px; padding:4px 10px 4px 8px; border-radius:99px;
   background:rgba(34,197,94,.24); border:1px solid rgba(134,239,172,.45);
   font-size:12px; font-weight:700; color:#fff; white-space:nowrap}
+.ch-vif{font-family:inherit; cursor:pointer; transition:background .2s, transform .15s}
+.ch-vif:hover{background:rgba(34,197,94,.34)}
+.ch-vif:active{transform:scale(.95)}
+.ch-vif svg{opacity:.8; margin-left:-2px}
 .ch-vif-pt{width:7px; height:7px; border-radius:50%; background:#4ade80; flex:0 0 auto;
   animation:onde-vif 2.6s ease-out infinite, respire 2.6s ease-in-out infinite}
 .chapeau .selec{margin-top:14px}
@@ -6061,6 +6086,14 @@ button.auj-c:active{transform:scale(.96)}
 .auj-c.c-vis.on{background:#f5f3fa; border-color:#e1dbef}
 .auj-c.c-vis.on .auj-ic{background:#ece8f6; color:#7b6ba8}
 .auj-c.c-vis.on .auj-n{color:#7b6ba8}
+.auj-c.c-plait.on{background:#f1fbf4; border-color:#c6ecd2}
+.auj-c.c-plait.on .auj-ic{background:#dcf5e4; color:#15803d}
+.auj-c.c-plait.on .auj-n{color:#15803d}
+.auj-c.c-vus.on{background:#f3f6fb; border-color:#d9e2ef}
+.auj-c.c-vus.on .auj-ic{background:#e6edf8; color:#3a5886}
+.auj-c.c-vus.on .auj-n{color:#3a5886}
+.auj-c.c-neuf.ajour .auj-ic{background:#e7f6ec; color:#15803d}
+.auj-n.mot{font-size:20px; letter-spacing:-.4px; color:var(--encre); line-height:1.25}
 .auj-c.c-lues{display:none}
 .auj-c.c-lues .auj-ic{background:#e6edf8; color:#3a5886}
 .auj-c.c-lues .auj-n{color:#3a5886}
