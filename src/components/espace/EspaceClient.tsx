@@ -3100,7 +3100,7 @@ function ModaleBientot({ onFermer, onPartager }: { onFermer: () => void; onParta
           <div className="rond-ok"><Ico n="horloge" t={30} /></div>
           <div className="bt-etiq">En cours de développement</div>
           <h3 id="bientot-t">{'Le téléchargement n\u2019est pas encore disponible'}</h3>
-          <p>{'Cette fonction est en cours de développement\u00a0: aucun fichier n\u2019est en train d\u2019arriver sur votre appareil, inutile d\u2019attendre. Vous pourrez télécharger la fiche du bien ici un peu plus tard.'}</p>
+          <p>{'Cette fonction est en cours de développement. Vous pourrez très bientôt télécharger la fiche du bien, directement ici.'}</p>
           <div className="bt-astuce">
             <Ico n="partage" t={18} />
             <span>{'En attendant, le bouton «\u00a0Partager\u00a0», juste à gauche, vous permet déjà d\u2019envoyer ce bien à vos proches.'}</span>
@@ -5116,15 +5116,19 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 /* La barre de défilement, sur ordinateur. globals.css (celle du CRM) la
    réduit à 4 px gris clair : dans la fiche d'un bien, les clients ne la
    voyaient pas, et ceux qui descendent en l'attrapant à la souris la
-   rataient. Ici elle est large, contrastée, et fonce au survol. Rien ne
-   change au doigt : sur téléphone, c'est le système qui la dessine. */
+   rataient. Ici elle est large, contrastée, et fonce au survol — dans la
+   fiche comme sur la page entière. Rien ne change au doigt : sur
+   téléphone, c'est le système qui la dessine.
+   ⚠️ La barre de la page entière se règle sur « body », pas sur « html » :
+   html et body sont tous deux en overflow:auto (voir plus haut), et Chrome
+   prend alors le style de body. « html » seul ne changeait rien. */
 @media (hover:hover) and (pointer:fine){
-  html::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:14px; height:14px}
-  html::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#eef1f6}
-  html::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
+  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:14px; height:14px}
+  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#eef1f6}
+  html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
     background:#9aa6b8; border-radius:10px; border:3px solid transparent; background-clip:padding-box; min-height:48px}
-  html::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#6b7890}
-  html::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:var(--encre2)}
+  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#6b7890}
+  html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:var(--encre2)}
   /* la fiche a des coins arrondis : la piste ne touche ni le haut ni le bas */
   .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px; border-radius:10px}
 }
