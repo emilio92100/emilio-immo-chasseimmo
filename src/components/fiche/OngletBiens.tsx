@@ -5,6 +5,7 @@ import {
   Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
   useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
+  NotesVeille, ModaleScore,
 } from './ParcoursBien';
 
 /**
@@ -101,6 +102,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [tick, setTick] = useState(0);
   const [filtreP, setFiltreP] = useState('tout');   // onglet « Présentés » : quel retour afficher
   const [compact, setCompact] = useAffichage('biens-' + mode);  // détaillé ou une ligne par bien
+  /* La note de la veille suit le bien : sa fenêtre s'ouvre ici aussi, et la
+     recherche sert à dire ce que le bien coche d'office. */
+  const [scoreOuvert, setScoreOuvert] = useState<any>(null);
+  const [recherche, setRecherche] = useState<any>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -114,6 +119,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     setBiens(data || []);
     setChargement(false);
   }, [rechercheId, mode]);
+
+  useEffect(() => {
+    if (!rechercheId) return;
+    supabase.from('recherches').select('*').eq('id', rechercheId).maybeSingle()
+      .then(({ data }) => setRecherche(data || null));
+  }, [rechercheId]);
 
   useEffect(() => { charger(); }, [charger, tick]);
 
@@ -436,6 +447,9 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   {b.pdf_message}
                 </div>
               )}
+
+              {/* ce que la veille en disait : ça reste, et ça reste ici */}
+              <NotesVeille p={b} onScore={() => setScoreOuvert(b)} />
             </div>
 
             {/* ── pied de carte : les actions ──────────────── */}
@@ -494,6 +508,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         );
       })}
 
+      {scoreOuvert && <ModaleScore p={scoreOuvert} recherche={recherche} onFerme={() => setScoreOuvert(null)} />}
       {obs && (
         <ModaleObservation bien={obs} clientId={clientId} onFerme={() => setObs(null)} onEnregistre={recharge} />
       )}

@@ -156,6 +156,18 @@ const TRAITS: Record<string, string[]> = {
   retour: ['M19 12H5.5', 'm11.5 18-6-6 6-6'],
   corbeille: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12', 'M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'],
   note: ['M5 4.5h14a1 1 0 0 1 1 1v10.2L15.7 20H5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z', 'M15.5 20v-3.8a.7.7 0 0 1 .7-.7H20', 'M8 9h8', 'M8 12.5h5'],
+  /* Les équipements d'un bien, le marché, la note. */
+  ascenseur: ['M6 3.5h12a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5z', 'm9 9.5 3-3 3 3', 'm9 14.5 3 3 3-3'],
+  cave: ['M3.5 20.5h5v-4.3h4.3v-4.3h4.3V7.6h3.4', 'M3.5 20.5V17'],
+  parking: ['M6 3.5h12a2.5 2.5 0 0 1 2.5 2.5v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5z', 'M10 16.5v-9h3.2a2.7 2.7 0 0 1 0 5.4H10'],
+  boussole: ['c:12,12,9', 'm15.6 8.4-2.3 4.9-4.9 2.3 2.3-4.9z'],
+  traversant: ['M3.5 12h17', 'm7.5 8-4 4 4 4', 'm16.5 8 4 4-4 4'],
+  cle: ['c:8,15.5,4.2', 'm11 12.5 8.8-8.8', 'm16.8 6.7 2.4 2.4', 'm14.6 8.9 1.9 1.9'],
+  arbre: ['M12 21v-5.5', 'M12 3.5a5.5 5.5 0 0 0-4.6 8.5A3.8 3.8 0 0 0 9.5 18.9h5A3.8 3.8 0 0 0 16.6 12 5.5 5.5 0 0 0 12 3.5z'],
+  cadenas: ['M6 10.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19v-7A1.5 1.5 0 0 1 6 10.5z', 'M8.2 10.5V7.8a3.8 3.8 0 0 1 7.6 0v2.7'],
+  courbe: ['M3.5 20.5h17', 'm4.5 15.5 4.7-4.7 3.6 2.8 6.7-7.1', 'M15.5 6.5h4v4'],
+  cible: ['c:12,12,9', 'c:12,12,5.2', 'c:12,12,1.4'],
+  moins: ['M6 12h12'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -519,6 +531,10 @@ export function Specs({ p, recherche }: { p: any; recherche?: any }) {
     <Tuile key={k('a')} icone="calendrier" val={p.annee_construction} lib="Immeuble" etat={e.annee} />
   );
   if (p.nb_lots) t.push(<Tuile key={k('l')} icone="lots" val={p.nb_lots} lib="Lots" />);
+  /* Les charges sont un chiffre, pas un équipement : elles ont leur tuile. */
+  if (Number(p.charges_trimestrielles) > 0) t.push(
+    <Tuile key={k('ch')} icone="euro" val={`${Math.round(Number(p.charges_trimestrielles) * 4).toLocaleString('fr-FR')} €`} lib="Charges / an" />
+  );
 
   const lettre = (v: string, lab: string, etat?: EtatCritere) => {
     const L = String(v).toUpperCase().slice(0, 1);
@@ -536,47 +552,74 @@ export function Specs({ p, recherche }: { p: any; recherche?: any }) {
   return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>;
 }
 
-/* ══ « Le bien » : ce qu'il a, rangé au même endroit ═══════════
-   Exposition, traversant, ascenseur, cave, parking, charges ne sont
-   pas des arguments de vente : ce sont des faits. Ils montent ici,
-   sous les tuiles, au lieu de traîner dans le texte des points forts.
-   Doré = le client l'a demandé dans sa recherche. */
+/* ══ Les équipements : ce que le bien a, rangé au même endroit ══
+   Exposition, traversant, ascenseur, cave, parking ne sont pas des
+   arguments de vente : ce sont des faits. Ils montent ici, sous les
+   tuiles, au lieu de traîner dans le texte des points forts.
+   Doré et coché = le client l'a demandé dans sa recherche — la
+   légende le dit sur la carte, pour ne pas avoir à s'en souvenir. */
+
+/** Le client l'a-t-il demandé ? Coché dans la recherche, ou noté
+    « souhaité » / « indispensable ». */
+function demande(recherche: any, cle: string) {
+  return !!recherche?.[cle] || !!recherche?.exigences?.[cle];
+}
+
 export function LigneBien({ p, recherche }: { p: any; recherche?: any }) {
-  const items: { texte: string; voulu?: boolean }[] = [];
+  const items: { texte: string; icone: string; voulu?: boolean }[] = [];
   const texte = `${p.titre || ''} ${p.description || ''}`.toLowerCase();
 
-  if (texte.includes('traversant')) items.push({ texte: 'Traversant' });
+  if (texte.includes('traversant')) items.push({ texte: 'Traversant', icone: 'traversant' });
   if (p.exposition) {
-    const vise = String(recherche?.exposition_souhaitee || '').toLowerCase();
+    /* « sud,ouest » dans la recherche, « Sud-Ouest » dans l'annonce : on
+       compare mot à mot, sinon un sud-ouest ne répond jamais à « sud ». */
+    const vises = String(recherche?.exposition_souhaitee || '').toLowerCase().split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
     const a = String(p.exposition).toLowerCase();
-    items.push({ texte: `Exposé ${p.exposition}`, voulu: !!vise && (a.includes(vise) || vise.includes(a)) });
+    items.push({ texte: `Exposé ${p.exposition}`, icone: 'boussole', voulu: vises.some(v => a.includes(v) || v.includes(a)) });
   }
-  if (p.ascenseur) items.push({ texte: 'Ascenseur', voulu: !!recherche?.ascenseur });
-  if (p.cave) items.push({ texte: 'Cave', voulu: !!recherche?.cave });
-  if (p.parking) items.push({ texte: p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking', voulu: !!recherche?.parking });
-  if (p.terrasse && !p.surface_exterieur) items.push({ texte: 'Terrasse', voulu: !!recherche?.terrasse });
-  if (p.balcon && !p.surface_exterieur) items.push({ texte: 'Balcon', voulu: !!recherche?.balcon });
-  if (p.jardin && !p.surface_exterieur) items.push({ texte: 'Jardin', voulu: !!recherche?.jardin });
-  if (p.gardien) items.push({ texte: 'Gardien', voulu: !!recherche?.gardien });
-  if (p.charges_trimestrielles) items.push({ texte: `Charges ${(Number(p.charges_trimestrielles) * 4).toLocaleString('fr-FR')} €/an` });
+  if (p.ascenseur) items.push({ texte: 'Ascenseur', icone: 'ascenseur', voulu: demande(recherche, 'ascenseur') });
+  if (p.cave) items.push({ texte: 'Cave', icone: 'cave', voulu: demande(recherche, 'cave') });
+  if (p.parking) items.push({ texte: p.nb_parking > 1 ? `${p.nb_parking} parkings` : 'Parking', icone: 'parking', voulu: demande(recherche, 'parking') });
+  if (p.terrasse && !p.surface_exterieur) items.push({ texte: 'Terrasse', icone: 'soleil', voulu: demande(recherche, 'terrasse') || demande(recherche, 'exterieur') });
+  if (p.balcon && !p.surface_exterieur) items.push({ texte: 'Balcon', icone: 'soleil', voulu: demande(recherche, 'balcon') || demande(recherche, 'exterieur') });
+  if (p.jardin && !p.surface_exterieur) items.push({ texte: 'Jardin', icone: 'arbre', voulu: demande(recherche, 'jardin') || demande(recherche, 'exterieur') });
+  if (p.gardien) items.push({ texte: 'Gardien', icone: 'cle', voulu: demande(recherche, 'gardien') });
 
   if (!items.length) return null;
+  const duDore = items.some(it => it.voulu);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Le bien</span>
-      {items.map((it, i) => (
-        <span key={i} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '4px 10px', borderRadius: 999, fontSize: 12,
-          fontWeight: it.voulu ? 700 : 500,
-          background: it.voulu ? '#fdfaf1' : '#f7f9fc',
-          border: `1px solid ${it.voulu ? '#ecdcb4' : BORD}`,
-          color: it.voulu ? '#8a6d24' : '#475569',
-        }}>
-          {it.voulu && <span style={{ width: 5, height: 5, borderRadius: '50%', background: OR }} />}
-          {it.texte}
-        </span>
-      ))}
+    <div className="emi-equipements" style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>Équipements</span>
+        {duDore && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#a17d2c' }}>
+            <span style={{ display: 'flex', width: 14, height: 14, borderRadius: '50%', background: OR, color: 'white', alignItems: 'center', justifyContent: 'center' }}>
+              <Icone nom="coche" taille={9} epaisseur={3.4} />
+            </span>
+            demandé par le client
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {items.map((it, i) => (
+          <span key={i} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 11px 5px 8px', borderRadius: 999, fontSize: 12.5,
+            fontWeight: it.voulu ? 700 : 600,
+            background: it.voulu ? '#fdfaf1' : 'white',
+            border: `1px solid ${it.voulu ? '#e6d29f' : BORD}`,
+            color: it.voulu ? '#8a6d24' : '#475569',
+          }}>
+            <span style={{ display: 'flex', color: it.voulu ? OR : '#94a3b8' }}><Icone nom={it.icone} taille={15} epaisseur={1.9} /></span>
+            <span>{it.texte}</span>
+            {it.voulu && (
+              <span style={{ display: 'flex', width: 14, height: 14, borderRadius: '50%', background: OR, color: 'white', alignItems: 'center', justifyContent: 'center', marginLeft: 1 }}>
+                <Icone nom="coche" taille={9} epaisseur={3.4} />
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -929,8 +972,23 @@ export function seriePrix(p: any): PointPrix[] {
 }
 
 export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hauteur?: number }) {
+  /* Le dessin prend la largeur réelle de sa boîte : avec une largeur fixe,
+     il rapetissait sur téléphone jusqu'à rendre les dates illisibles. */
+  const boite = useRef<HTMLDivElement>(null);
+  const [largeur, setLargeur] = useState(640);
+  useEffect(() => {
+    const el = boite.current;
+    if (!el) return;
+    const maj = () => { const w = Math.round(el.getBoundingClientRect().width); if (w > 0) setLargeur(Math.max(280, w)); };
+    maj();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(maj);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (points.length < 2) return null;
-  const L = 640, H = hauteur, hg = 14, hd = 14, ht = 24, hb = 26;
+  const L = largeur, H = hauteur, hg = 14, hd = 14, ht = 24, hb = 26;
 
   const t0 = new Date(points[0].date).getTime();
   const tFin = Math.max(new Date(points[points.length - 1].date).getTime(), Date.now());
@@ -955,6 +1013,7 @@ export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hau
   const dernier = points[points.length - 1];
 
   return (
+    <div ref={boite}>
     <svg viewBox={`0 0 ${L} ${H}`} width="100%" height={H} style={{ display: 'block', overflow: 'visible' }}>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
@@ -985,6 +1044,7 @@ export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hau
         {Math.round(dernier.prix / 1000)} k€
       </text>
     </svg>
+    </div>
   );
 }
 
@@ -1051,29 +1111,42 @@ export function diffuseurs(p: any): Diffuseur[] {
   return out.sort((a, b) => (a.prix ?? Number.MAX_SAFE_INTEGER) - (b.prix ?? Number.MAX_SAFE_INTEGER));
 }
 
-function Puce({ children, icone, onClick, ouvert, ton = 'neutre' }: {
-  children: React.ReactNode; icone?: string; onClick?: () => void; ouvert?: boolean;
-  ton?: 'neutre' | 'vert' | 'or';
+/* Une case du tableau de marché : un intitulé, un chiffre qui se lit de
+   loin, une précision. Elle s'ouvre sur son détail quand il y en a un. */
+function CaseMarche({ icone, titre, valeur, detail, ton = 'neutre', onClick, ouvert }: {
+  icone: string; titre: string; valeur: React.ReactNode; detail?: React.ReactNode;
+  ton?: 'neutre' | 'vert'; onClick?: () => void; ouvert?: boolean;
 }) {
-  const t = {
-    neutre: { bg: 'white', fg: '#475569', bd: BORD, ic: '#94a3b8' },
-    vert: { bg: '#f0fdf4', fg: '#15803d', bd: '#bbf7d0', ic: '#16a34a' },
-    or: { bg: '#fdfaf1', fg: '#a17d2c', bd: '#ecdcb4', ic: OR },
-  }[ton];
+  const t = ton === 'vert'
+    ? { bg: '#f0fdf4', bd: '#bbf7d0', ic: '#16a34a', val: '#15803d', det: '#15803d' }
+    : { bg: 'white', bd: '#e1e8f1', ic: '#8a9ab0', val: NAVY, det: '#8190a5' };
+  /* Sur ordinateur, trois cases côte à côte ; sur téléphone, trois lignes
+     (crm-mobile.css) : l'intitulé à gauche, le chiffre à droite. */
   const contenu = (
     <>
-      {icone && <span style={{ color: t.ic, display: 'flex' }}><Icone nom={icone} taille={14} epaisseur={1.9} /></span>}
-      {children}
-      {onClick && <span className="emi-chevron" data-ouvert={!!ouvert} style={{ color: t.ic, display: 'flex' }}><Icone nom="chevron" taille={13} epaisseur={2.2} /></span>}
+      <span className="emi-case-tete" style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, paddingRight: onClick ? 16 : 0 }}>
+        <span style={{ display: 'flex', color: ouvert ? OR : t.ic }}><Icone nom={icone} taille={13} epaisseur={2} /></span>
+        <span className="emi-case-titre" style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .8, textTransform: 'uppercase', color: ouvert ? 'rgba(255,255,255,.62)' : '#9aa8bd', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{titre}</span>
+      </span>
+      {onClick && (
+        <span className="emi-chevron emi-case-chev" data-ouvert={!!ouvert} style={{ position: 'absolute', top: 10, right: 10, display: 'flex', color: ouvert ? OR : '#b6c1d1' }}>
+          <Icone nom="chevron" taille={12} epaisseur={2.4} />
+        </span>
+      )}
+      <span className="emi-case-val" style={{ fontSize: 17, fontWeight: 800, color: ouvert ? 'white' : t.val, letterSpacing: -.3, lineHeight: 1.15 }}>{valeur}</span>
+      {detail && <span className="emi-case-det" style={{ fontSize: 11.5, fontWeight: 700, color: ouvert ? 'rgba(255,255,255,.7)' : t.det, lineHeight: 1.35 }}>{detail}</span>}
     </>
   );
   const st: React.CSSProperties = {
-    background: ouvert ? NAVY : t.bg, color: ouvert ? 'white' : t.fg,
-    border: `1px solid ${ouvert ? NAVY : t.bd}`,
-    boxShadow: ouvert ? '0 6px 16px -8px rgba(26,35,50,.9)' : 'none',
+    position: 'relative',
+    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, minWidth: 0,
+    textAlign: 'left', fontFamily: 'inherit', padding: '10px 11px 11px', borderRadius: 12,
+    background: ouvert ? NAVY : t.bg, border: `1px solid ${ouvert ? NAVY : t.bd}`,
+    boxShadow: ouvert ? '0 8px 18px -10px rgba(26,35,50,.9)' : '0 1px 2px rgba(16,24,40,.04)',
+    transition: 'background .2s ease, border-color .2s ease, box-shadow .2s ease',
   };
-  if (!onClick) return <span className="emi-puce" style={{ ...st, cursor: 'default' }}>{contenu}</span>;
-  return <button type="button" className="emi-puce" onClick={onClick} style={st}>{contenu}</button>;
+  if (!onClick) return <div className="emi-case" style={st}>{contenu}</div>;
+  return <button type="button" className="emi-case" onClick={onClick} aria-expanded={!!ouvert} style={{ ...st, cursor: 'pointer' }}>{contenu}</button>;
 }
 
 export function BandeauMarche({ p }: { p: any }) {
@@ -1100,37 +1173,52 @@ export function BandeauMarche({ p }: { p: any }) {
   if (!p.date_publication && !nbBaisses && !nbAgences && !agenceMandat && !portail) return null;
 
   const bascule = (v: 'date' | 'prix' | 'agences') => setOuvert(o => (o === v ? null : v));
+  const k = (n: number) => `${n.toLocaleString('fr-FR')} €`;
 
+  /* Le marché se lit comme un petit tableau de bord, sous un bandeau
+     sombre qui le détache du reste de la carte : trois cases, toujours
+     les mêmes, au même endroit. Ce sont des données de travail : elles
+     restent dans le CRM et ne partent jamais chez le client. */
   return (
-    <div style={{ background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 14, padding: '9px 12px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Marché</span>
+    <div className="emi-marche" style={{ border: '1px solid #d8e0eb', borderRadius: 14, overflow: 'hidden', background: '#f3f6fa' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: NAVY }}>
+        <span style={{ width: 24, height: 24, borderRadius: 7, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icone nom="courbe" taille={14} epaisseur={2.1} />
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: 'white', letterSpacing: 1.3, textTransform: 'uppercase' }}>Marché</span>
+        <span title="Visible dans le CRM seulement, jamais par le client"
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.5)' }}>
+          <Icone nom="cadenas" taille={12} epaisseur={2} />interne
+        </span>
+      </div>
 
+      <div style={{ padding: 9 }}>
+      <div className="emi-marche-grille" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 7 }}>
         {p.date_publication ? (
-          <Puce icone="horloge" onClick={() => bascule('date')} ouvert={ouvert === 'date'}>
-            en ligne depuis {anciennete(p.date_publication)}
-          </Puce>
+          <CaseMarche icone="horloge" titre="En ligne depuis" valeur={anciennete(p.date_publication)}
+            detail={`depuis le ${jour(p.date_publication)}`}
+            onClick={() => bascule('date')} ouvert={ouvert === 'date'} />
         ) : (
-          <Puce icone="horloge" ton="neutre">mise en ligne inconnue</Puce>
+          <CaseMarche icone="horloge" titre="En ligne depuis" valeur="—" detail="date inconnue" />
         )}
 
-        {aDuPrix && (
-          <Puce icone="baisse" ton={baissePct >= 8 ? 'vert' : 'neutre'}
-            onClick={() => bascule('prix')} ouvert={ouvert === 'prix'}>
-            {nbBaisses > 0 ? `${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}` : 'Historique du prix'}
-            {baisse > 0 && ` · − ${baisse.toLocaleString('fr-FR')} €`}
-          </Puce>
+        {aDuPrix ? (
+          <CaseMarche icone="baisse" titre="Prix" ton={baissePct >= 8 ? 'vert' : 'neutre'}
+            valeur={nbBaisses > 0 ? `${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}` : 'Historique'}
+            detail={baisse > 0 ? `− ${k(baisse)} · −${baissePct.toFixed(1).replace('.', ',')} %` : undefined}
+            onClick={() => bascule('prix')} ouvert={ouvert === 'prix'} />
+        ) : (
+          <CaseMarche icone="baisse" titre="Prix" valeur="Inchangé" detail="aucune baisse connue" />
         )}
 
-        {/* Une seule puce pour la commercialisation : le nombre d'agences.
-            Elle s'ouvre sur la liste, et chaque agence y est cliquable. */}
-        {nbAgences > 0 && (
-          <Puce icone="maison" ton={nbAgences >= 3 ? 'vert' : 'neutre'}
-            onClick={liste.length ? () => bascule('agences') : undefined}
-            ouvert={ouvert === 'agences'}>
-            {nbAgences === 1 ? 'Exclusivité' : `${nbAgences} agences`}
-            {ecart > 0 && ` · ${ecart.toLocaleString('fr-FR')} € d'écart`}
-          </Puce>
+        {/* Le nombre d'agences s'ouvre sur la liste, et chaque agence y est cliquable. */}
+        {nbAgences > 0 ? (
+          <CaseMarche icone="maison" titre="Diffusion" ton={nbAgences >= 3 ? 'vert' : 'neutre'}
+            valeur={nbAgences === 1 ? 'Exclusivité' : `${nbAgences} agences`}
+            detail={ecart > 0 ? `${k(ecart)} d'écart` : nbAgences === 1 && agenceMandat ? String(agenceMandat) : undefined}
+            onClick={liste.length ? () => bascule('agences') : undefined} ouvert={ouvert === 'agences'} />
+        ) : (
+          <CaseMarche icone="maison" titre="Diffusion" valeur="—" detail={portail ? `vu sur ${portail}` : 'agence inconnue'} />
         )}
       </div>
 
@@ -1145,18 +1233,18 @@ export function BandeauMarche({ p }: { p: any }) {
                   const estMoinsCher = liste.length >= 2 && moinsCher && d.agence === moinsCher.agence;
                   const corps = (
                     <>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
-                      <span style={{ fontWeight: 800, color: NAVY, flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
+                      <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
+                      <span className="emi-diff-nom" style={{ fontWeight: 800, color: NAVY, flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
                         {d.agence}
                         {estMandat && <span style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8' }}> · annonce retenue</span>}
                       </span>
                       {typeof d.prix === 'number' && (
-                        <span style={{ fontWeight: 800, color: estMoinsCher ? '#15803d' : NAVY, minWidth: 104, textAlign: 'right' }}>
+                        <span className="emi-diff-prix" style={{ fontWeight: 800, color: estMoinsCher ? '#15803d' : NAVY, minWidth: 104, textAlign: 'right' }}>
                           {d.prix.toLocaleString('fr-FR')} €
                         </span>
                       )}
-                      {d.date && <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 96, textAlign: 'right' }}>{jour(d.date)}</span>}
-                      <span style={{ color: d.url ? OR : '#e2e8f0', display: 'flex', flexShrink: 0 }}>
+                      {d.date && <span className="emi-diff-date" style={{ color: '#94a3b8', fontSize: 12, minWidth: 96, textAlign: 'right' }}>{jour(d.date)}</span>}
+                      <span className="emi-diff-lien" style={{ color: d.url ? OR : '#e2e8f0', display: 'flex', flexShrink: 0 }}>
                         <Icone nom="lien" taille={14} epaisseur={2} />
                       </span>
                     </>
@@ -1168,8 +1256,8 @@ export function BandeauMarche({ p }: { p: any }) {
                     textDecoration: 'none',
                   };
                   return d.url
-                    ? <a key={i} href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
-                    : <div key={i} style={style} title="Lien non renseigné par la veille">{corps}</div>;
+                    ? <a key={i} className="emi-diff" href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
+                    : <div key={i} className="emi-diff" style={style} title="Lien non renseigné par la veille">{corps}</div>;
                 })}
                 {ecart > 0 && (
                   <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -1259,6 +1347,7 @@ export function BandeauMarche({ p }: { p: any }) {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -1385,73 +1474,214 @@ export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: num
   );
 }
 
-/* ══ Score ═════════════════════════════════════════════════════ */
+/* ══ Score ═════════════════════════════════════════════════════
+   La note n'est pas calculée par le CRM : c'est la veille qui la pose,
+   avec une grille en quatre tranches (le règlement de la veille, « L'indice
+   sur 100 »). La fenêtre la rend lisible : où tombe la note, ce que veut
+   dire sa tranche, puis une liste à puces par catégorie — la base, ce qui
+   rapporte, ce qui en coûte, ce qui bloque. */
 
-export function ModaleScore({ p, onFerme }: { p: any; onFerme: () => void }) {
-  const score = p.score ?? 0;
-  const teinte = score >= 85 ? '#10b981' : score >= 70 ? OR : '#94a3b8';
-  const mention = score >= 85 ? 'Coche tout ce qui compte' : score >= 70 ? 'Mérite un regard' : 'À la limite';
+const TRANCHES = [
+  { min: 85, lib: '85+', mot: 'Coche tout ce qui compte', regle: "Aucun écart avec la recherche. La note monte avec les atouts.", c: '#16a34a' },
+  { min: 70, lib: '70–84', mot: 'Mérite un regard', regle: 'Un accroc, qui se dit en une phrase : un peu plus cher, un peu plus petit, un souhait absent.', c: OR },
+  { min: 50, lib: '50–69', mot: 'Sous réserve', regle: 'Deux accrocs, ou un « indispensable » qui manque.', c: '#d97706' },
+  { min: -Infinity, lib: '< 50', mot: 'Ne passe pas', regle: 'Découvert après coup : le bien ne correspond pas, il est là pour être écarté.', c: '#dc2626' },
+];
+const trancheDe = (score: number) => TRANCHES.find(t => score >= t.min) || TRANCHES[TRANCHES.length - 1];
 
-  const Lgn = ({ icone, titre, texte, couleur }: any) => (
-    <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
-      <span style={{ width: 34, height: 34, borderRadius: 10, background: `${couleur}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icone}</span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: couleur, marginBottom: 2 }}>{titre}</div>
-        <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.6 }}>{texte}</div>
+const NOMS_EXIGENCES: Record<string, string> = {
+  ascenseur: 'Ascenseur', balcon: 'Balcon', terrasse: 'Terrasse', jardin: 'Jardin', parking: 'Parking',
+  cave: 'Cave', gardien: 'Gardien', exterieur: 'Extérieur',
+};
+
+/** La base : ce qu'un bien doit cocher pour être proposé. On ne dit que ce
+    qui se vérifie sur la fiche ; le reste est la règle de la veille. */
+function baseDe(p: any, r: any): string[] {
+  const out: string[] = [];
+  const pl = (n: number, m: string) => `${n} ${m}${n > 1 ? 's' : ''}`;
+  if (p.type_bien) out.push(`${p.type_bien}, le type de bien recherché`);
+  if (p.nb_chambres && r?.chambres_min) out.push(`${pl(Number(p.nb_chambres), 'chambre')}, pour ${pl(Number(r.chambres_min), 'demandée')}`);
+  else if (p.nb_chambres) out.push(`${pl(Number(p.nb_chambres), 'chambre')}, le nombre demandé`);
+  out.push(p.ville ? `Dans le secteur recherché — ${p.ville}` : 'Dans le secteur recherché');
+
+  const ex = (r?.exigences || {}) as Record<string, string>;
+  const presents = Object.keys(ex)
+    .filter(cle => ex[cle] === 'indispensable' && NOMS_EXIGENCES[cle])
+    .filter(cle => cle === 'exterieur' ? !!(p.balcon || p.terrasse || p.jardin || Number(p.surface_exterieur) > 0) : !!p[cle])
+    .map(cle => NOMS_EXIGENCES[cle]);
+  if (presents.length) out.push(`${presents.join(', ')} : indispensable${presents.length > 1 ? 's' : ''}, présent${presents.length > 1 ? 's' : ''}`);
+  return out;
+}
+
+const TONS_SCORE = {
+  bleu: { c: '#2563eb', titre: '#1d4ed8', bg: '#f5f8ff', bd: '#dbe5fb', puce: '#e0e9fd', icone: 'cible', puceIcone: 'coche' },
+  vert: { c: '#16a34a', titre: '#15803d', bg: '#f3fbf5', bd: '#cdeed8', puce: '#dcfce7', icone: 'plus', puceIcone: 'plus' },
+  ambre: { c: '#d97706', titre: '#b45309', bg: '#fffaf0', bd: '#f8e3b5', puce: '#fef3c7', icone: 'moins', puceIcone: 'moins' },
+  rouge: { c: '#dc2626', titre: '#b91c1c', bg: '#fff6f6', bd: '#fbd5d5', puce: '#fee2e2', icone: 'alerte', puceIcone: 'alerte' },
+};
+
+function BlocScore({ ton, titre, sous, items, pied }: {
+  ton: keyof typeof TONS_SCORE; titre: string; sous?: string; items: string[]; pied?: string;
+}) {
+  const t = TONS_SCORE[ton];
+  return (
+    <section style={{ border: `1px solid ${t.bd}`, borderRadius: 14, overflow: 'hidden', background: 'white' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', background: t.bg, borderBottom: `1px solid ${t.bd}` }}>
+        <span style={{ width: 26, height: 26, borderRadius: 8, background: 'white', border: `1px solid ${t.bd}`, color: t.c, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icone nom={t.icone} taille={15} epaisseur={2.2} />
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: t.titre }}>{titre}</span>
+            {ton !== 'bleu' && <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 800, color: t.titre, background: 'white', border: `1px solid ${t.bd}`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>}
+          </div>
+          {sous && <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, marginTop: 2 }}>{sous}</div>}
+        </div>
       </div>
-    </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: '4px 0' }}>
+        {items.map((x, i) => (
+          <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 13px', borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+            <span style={{ width: 18, height: 18, borderRadius: '50%', background: t.puce, color: t.c, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+              <Icone nom={t.puceIcone} taille={11} epaisseur={2.8} />
+            </span>
+            <span style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.5, minWidth: 0 }}>{x}</span>
+          </li>
+        ))}
+      </ul>
+      {pied && <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, padding: '9px 13px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe' }}>{pied}</div>}
+    </section>
   );
+}
+
+/** La note, en pastille cliquable : la même dans la Veille et une fois le bien retenu. */
+export function PastilleScore({ score, onClick }: { score: any; onClick: () => void }) {
+  const n = Number(score);
+  const fort = n >= 85;
+  return (
+    <button type="button" onClick={onClick} title="Comment cette note est calculée" aria-label={`Note ${n} sur 100 : voir le détail`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        background: fort ? '#fdfaf1' : '#f7f9fc', color: fort ? '#a17d2c' : '#64748b',
+        border: `1px solid ${fort ? '#ecdcb4' : BORD}`, borderRadius: 20,
+        padding: '4px 10px 4px 11px', fontSize: 12, fontWeight: 800,
+        cursor: 'pointer', fontFamily: 'inherit',
+      }}>
+      {n}<span style={{ opacity: .6, fontWeight: 600 }}>/100</span>
+      <span style={{ opacity: .7, display: 'flex' }}><Icone nom="info" taille={13} epaisseur={2} /></span>
+    </button>
+  );
+}
+
+export function ModaleScore({ p, recherche, onFerme }: { p: any; recherche?: any; onFerme: () => void }) {
+  const score = Math.max(0, Math.min(100, Math.round(Number(p.score ?? 0)) || 0));
+  const tr = trancheDe(score);
+  const { atouts, verifier, bloquants } = partagePoints(p);
+  const base = baseDe(p, recherche);
+
+  /* La jauge : quatre tranches à l'échelle, la note posée dessus. */
+  const segments = [
+    { de: 0, a: 50, c: '#dc2626' }, { de: 50, a: 70, c: '#d97706' },
+    { de: 70, a: 85, c: OR }, { de: 85, a: 100, c: '#16a34a' },
+  ];
 
   return (
-    <Modale onFerme={onFerme} largeur={520}>
-      <div style={{ background: NAVY, padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{
-          width: 66, height: 66, borderRadius: 18, background: teinte, color: 'white',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          boxShadow: `0 8px 22px -8px ${teinte}`,
-        }}>
-          <span style={{ fontSize: 23, fontWeight: 800, lineHeight: 1 }}>{score}</span>
-          <span style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>/ 100</span>
-        </div>
-        <div>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>Score de correspondance</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'white', marginTop: 4 }}>{mention}</div>
-          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.5)', marginTop: 2 }}>
-            {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
+    <Modale onFerme={onFerme} largeur={540}>
+      <div style={{ background: NAVY, padding: '20px 22px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 18, background: tr.c, color: 'white',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            boxShadow: `0 8px 22px -8px ${tr.c}`,
+          }}>
+            <span style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{score}</span>
+            <span style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>/ 100</span>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>Note de correspondance</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'white', marginTop: 3, lineHeight: 1.25 }}>{tr.mot}</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.5)', marginTop: 2, lineHeight: 1.4 }}>
+              {p.titre || `${p.type_bien || 'Bien'} — ${p.ville || ''}`}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Lgn icone="🎯" titre="La base" couleur="#3b82f6"
-          texte="Les critères fermes : chambres, secteur, type de bien, et tout ce qui est marqué indispensable. Un bien qui n'en coche pas un ne remonte pas jusqu'ici. Le budget et la surface, eux, s'élargissent un peu quand ça vaut le coup — l'écart est alors dit en point d'attention." />
-        {!!p.points_forts?.length && (
-          <Lgn icone="✓" titre="Ce qui rapporte des points" couleur="#15803d" texte={p.points_forts.join(' · ')} />
-        )}
-        {!!p.points_attention?.length && (
-          <Lgn icone="!" titre="Ce qui en coûte" couleur="#b45309" texte={p.points_attention.join(' · ')} />
-        )}
-      </div>
-
-      <div style={{ padding: '16px 24px', background: '#fbfcfe', borderTop: `1px solid ${BORD}` }}>
-        <div style={{ display: 'flex', gap: 9, marginBottom: 13 }}>
-          {[
-            { min: '85+', t: 'Coche tout', c: '#10b981' },
-            { min: '70–85', t: 'Un point accroche', c: OR },
-            { min: '< 70', t: 'Un écart assumé', c: '#cbd5e1' },
-          ].map(x => (
-            <div key={x.min} style={{ flex: 1, textAlign: 'center', background: 'white', border: `1px solid ${(score >= 85 && x.min === '85+') || (score >= 70 && score < 85 && x.min === '70–85') ? x.c : BORD}`, borderRadius: 11, padding: '9px 6px' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: x.c }}>{x.min}</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{x.t}</div>
-            </div>
+        <div style={{ position: 'relative', margin: '20px 4px 0', paddingBottom: 18 }}>
+          <div style={{ display: 'flex', gap: 3, height: 8 }}>
+            {segments.map(sg => {
+              const dedans = score >= sg.de && (score < sg.a || (sg.a === 100 && score === 100));
+              return <span key={sg.de} style={{ flex: `${sg.a - sg.de} 0 0`, borderRadius: 99, background: sg.c, opacity: dedans ? 1 : .28 }} />;
+            })}
+          </div>
+          <span aria-hidden="true" style={{
+            position: 'absolute', top: -5, left: `${score}%`, transform: 'translateX(-50%)',
+            width: 18, height: 18, borderRadius: '50%', background: 'white', border: `4px solid ${tr.c}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+          }} />
+          {[0, 50, 70, 85, 100].map(v => (
+            <span key={v} style={{
+              position: 'absolute', top: 14, left: `${v}%`,
+              transform: v === 0 ? 'none' : v === 100 ? 'translateX(-100%)' : 'translateX(-50%)',
+              fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.42)', fontVariantNumeric: 'tabular-nums',
+            }}>{v}</span>
           ))}
         </div>
+
+        <div style={{ marginTop: 8, display: 'flex', gap: 9, alignItems: 'flex-start', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 11, padding: '9px 11px' }}>
+          <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: tr.c === OR ? OR : 'white', background: tr.c === OR ? 'rgba(201,168,76,.16)' : tr.c, borderRadius: 7, padding: '2px 7px', marginTop: 1 }}>{tr.lib}</span>
+          <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,.78)' }}>{tr.regle}</span>
+        </div>
+      </div>
+
+      <div style={{ padding: '16px 16px 6px', display: 'flex', flexDirection: 'column', gap: 12, background: '#f7f9fc' }}>
+        <BlocScore ton="bleu" titre="La base" sous="Ce que tout bien proposé coche d'office. Sans ça, il ne serait pas là."
+          items={base}
+          pied="Le budget et la surface, eux, peuvent déborder un peu quand le bien le vaut : l'écart est alors compté dans « Ce qui en coûte »." />
+        {!!atouts.length && <BlocScore ton="vert" titre="Ce qui rapporte des points" items={atouts} />}
+        {!!verifier.length && (
+          <BlocScore ton="ambre" titre="Ce qui en coûte"
+            sous="Un écart coûte des points. Une information manquante est à vérifier, sans rien retirer."
+            items={verifier} />
+        )}
+        {!!bloquants.length && (
+          <BlocScore ton="rouge" titre="Ce qui bloque" sous="À trancher avant de proposer le bien." items={bloquants} />
+        )}
+      </div>
+
+      <div style={{ padding: '12px 16px 16px', background: '#f7f9fc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', fontSize: 11.5, color: '#94a3b8', marginBottom: 11 }}>
+          <Icone nom="cadenas" taille={12} epaisseur={2} />
+          <span>Note posée par la veille, pour toi seul — jamais montrée au client.</span>
+        </div>
         <button type="button" onClick={onFerme}
-          style={{ width: '100%', background: NAVY, color: 'white', border: 'none', borderRadius: 11, padding: '11px 0', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ width: '100%', background: NAVY, color: 'white', border: 'none', borderRadius: 11, padding: '12px 0', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           Compris
         </button>
       </div>
     </Modale>
+  );
+}
+
+/* ══ Les notes de la veille, une fois le bien retenu ════════════
+   Le bien passe en Sélection puis en Présentés avec ce que la veille en
+   disait : la note, l'avis en une phrase, les atouts, ce qu'il reste à
+   vérifier. Tout ça reste ici, à Alexandre — l'espace du client ne lit
+   aucun de ces champs. */
+export function NotesVeille({ p, onScore }: { p: any; onScore: () => void }) {
+  const { atouts, verifier, bloquants } = partagePoints(p);
+  const aNote = p?.score !== null && p?.score !== undefined && p?.score !== '';
+  if (!aNote && !p?.appreciation && !atouts.length && !verifier.length && !bloquants.length) return null;
+  return (
+    <div className="emi-notes" style={{ display: 'flex', flexDirection: 'column', gap: 9, borderTop: `1px dashed ${BORD}`, paddingTop: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
+          <Icone nom="cadenas" taille={12} epaisseur={2.1} />Notes de la veille
+        </span>
+        <span style={{ fontSize: 11, color: '#b6c1d1', fontWeight: 600 }}>interne, jamais vu par le client</span>
+        {aNote && <span style={{ marginLeft: 'auto' }}><PastilleScore score={p.score} onClick={onScore} /></span>}
+      </div>
+      <Appreciation p={p} />
+      <BilanBien p={p} />
+    </div>
   );
 }
 

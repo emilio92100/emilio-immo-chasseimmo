@@ -4,7 +4,7 @@ import { supabase, addJournal } from '@/lib/supabase';
 import {
   Chip, BoutonLien, CARTE, Vignettes, Specs, BandeauMarche, ModaleScore,
   StylesEmilio, Icone, Action, NAVY, OR, BORD,
-  LigneBien, Appreciation, BilanBien, verdictDe,
+  LigneBien, Appreciation, BilanBien, verdictDe, PastilleScore,
 } from './ParcoursBien';
 
 /**
@@ -178,7 +178,6 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       }}>
       {props_.map((p, idx) => {
         const enEcart = ecartEnCours === p.id;
-        const fort = (p.score || 0) >= 85;
         const ouvertDesc = !!descriptif[p.id];
         const v = verdictDe(p);
         const rail = v === 'priorite' ? '#16a34a' : v === 'appeler' ? OR : v === 'reserve' ? '#d97706' : '#94a3b8';
@@ -229,19 +228,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7, flexShrink: 0 }}>
-                {p.score != null && (
-                  <button type="button" onClick={() => setScoreOuvert(p)} title="Comment ce score est calculé"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      background: fort ? '#fdfaf1' : '#f7f9fc', color: fort ? '#a17d2c' : '#64748b',
-                      border: `1px solid ${fort ? '#ecdcb4' : BORD}`, borderRadius: 20,
-                      padding: '4px 10px 4px 11px', fontSize: 12, fontWeight: 800,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                    {p.score}<span style={{ opacity: .6, fontWeight: 600 }}>/100</span>
-                    <span style={{ opacity: .7, display: 'flex' }}><Icone nom="info" taille={13} epaisseur={2} /></span>
-                  </button>
-                )}
+                {p.score != null && <PastilleScore score={p.score} onClick={() => setScoreOuvert(p)} />}
                 <div style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1 }}>{euros(p.prix)}</div>
                 {p.prix && p.surface && (
                   <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
@@ -316,7 +303,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       })}
       </div>
 
-      {scoreOuvert && <ModaleScore p={scoreOuvert} onFerme={() => setScoreOuvert(null)} />}
+      {scoreOuvert && <ModaleScore p={scoreOuvert} recherche={recherche} onFerme={() => setScoreOuvert(null)} />}
 
       {voirEcartees && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 6 }}>
