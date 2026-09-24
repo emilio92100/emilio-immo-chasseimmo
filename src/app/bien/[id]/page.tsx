@@ -119,6 +119,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   const labelPrix = bien.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix';
   const prixM2 = prix && bien.surface ? Math.round(prix / bien.surface) : null;
   const photos: string[] = Array.isArray(bien.photos) ? bien.photos.filter(Boolean) : [];
+  const plans: string[] = Array.isArray(bien.plans) ? bien.plans.filter(Boolean) : [];
   const lieu = [bien.quartier || bien.adresse_probable, bien.ville, bien.code_postal]
     .filter(Boolean).join(', ');
 
@@ -274,6 +275,21 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
           <div style={{ marginTop: 20 }}>
             <AboutPliable text={bien.description} />
           </div>
+        )}
+
+        {plans.length > 0 && (
+          <>
+            <Titre>{plans.length > 1 ? 'Les plans' : 'Le plan'}</Titre>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {plans.map((u, n) => (
+                <a key={u + n} href={u} target="_blank" rel="noopener noreferrer"
+                  style={{ ...carte, display: 'block', background: '#fff', padding: 12, cursor: 'zoom-in' }}>
+                  <img src={u} alt={plans.length > 1 ? `Plan ${n + 1}` : 'Plan du bien'} loading="lazy"
+                    style={{ display: 'block', width: '100%', maxHeight: 460, objectFit: 'contain', margin: '0 auto' }} />
+                </a>
+              ))}
+            </div>
+          </>
         )}
 
         {inclus.length > 0 && (
