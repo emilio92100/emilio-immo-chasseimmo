@@ -5650,11 +5650,15 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .fc.on{background:var(--encre); color:#fff; box-shadow:0 4px 10px -6px rgba(16,24,40,.9)}
 .fc.on i{background:rgba(255,255,255,.18); color:#fff}
 .fc.on:hover{background:var(--encre); color:#fff}
-/* Sur un écran étroit, le bandeau passe sur deux lignes plutôt que de cacher
-   la moitié des choix derrière un défilement qui ne se voit pas. */
+/* Sur un écran étroit, le bandeau passe en deux colonnes égales plutôt que
+   de cacher la moitié des choix derrière un défilement qui ne se voit pas.
+   Deux par ligne, chacun sur toute sa moitié : plus de vide à droite quand
+   un intitulé long (« Visite prévue ») ne tenait pas à côté des autres.
+   S'il en reste un seul sur la dernière ligne, il prend toute la largeur. */
 @media(max-width:560px){
-  .filtres{flex-wrap:wrap; overflow:visible; border-radius:22px; gap:3px}
-  .fc{padding:7px 12px; font-size:12px}
+  .filtres{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; border-radius:20px; gap:3px}
+  .fc{justify-content:center; padding:8px 8px; font-size:12px; min-width:0}
+  .fc:last-child:nth-child(odd){grid-column:1 / -1}
 }
 
 /* ═══ Une catégorie de biens consultés = une carte à sa couleur ═══ */
