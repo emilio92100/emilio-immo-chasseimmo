@@ -1,0 +1,248 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LE CRM SUR TÉLÉPHONE
+   ───────────────────────────────────────────────────────────────────────────
+   Chargée par AppLayout, donc uniquement sur le CRM (« / »). L'espace client
+   et la fiche publique d'un bien ne la voient jamais.
+
+   Tout est rangé sous « html.crm » (posée par AppLayout) : les fenêtres du
+   CRM sont rendues dans <body>, hors de la page, et doivent en profiter aussi.
+
+   Rien ici ne s'applique au-dessus de 900 px : l'écran d'ordinateur reste
+   exactement tel qu'il était.
+
+   Beaucoup d'écrans du CRM sont stylés « en ligne » (style={{ … }}) : pour
+   les reprendre sur téléphone, les éléments portent un nom de classe et les
+   règles ci-dessous ont besoin de « !important » pour passer devant.
+   Préfixes :  nc- nouveau client · fc- fiche client · pv- page Visites ·
+               emi- onglets Veille / Sélection / Présentés · le- lien de
+               l'espace · tx- transaction · crm- fenêtres génériques
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Le bouton qui déplie les critères n'existe que sur téléphone. */
+html.crm .fc-crit-bascule { display: none; }
+
+@media (max-width: 900px) {
+  /* La hauteur réelle de l'écran : 100vh compte la barre d'adresse de
+     Safari, et la barre d'onglets du bas passait dessous. */
+  html.crm, html.crm body { height: 100dvh; }
+  html.crm body { -webkit-text-size-adjust: 100%; }
+  html.crm button, html.crm a { -webkit-tap-highlight-color: transparent; }
+}
+
+@media (max-width: 760px) {
+
+  /* ── Les champs de saisie en 16 px : en dessous, l'iPhone zoome sur la
+        page à chaque fois qu'on touche un champ, et ne dézoome plus. ── */
+  html.crm input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html.crm select,
+  html.crm textarea { font-size: 16px !important; }
+
+  /* ═══ FENÊTRES GÉNÉRIQUES ═══════════════════════════════════════════ */
+
+  html.crm .crm-voile { align-items: flex-end !important; padding: 0 !important; }
+  html.crm .crm-feuille {
+    max-width: none !important; border-radius: 22px 22px 0 0 !important;
+    max-height: calc(100dvh - 10px); overflow-y: auto;
+    animation: crmFeuille .34s cubic-bezier(.22,.9,.3,1) !important;
+  }
+  html.crm .crm-pied { padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
+  html.crm .crm-pied > button { flex: 1 1 0; padding: 12px 10px !important; font-size: 14px !important; border-radius: 12px !important; }
+  html.crm .crm-g3 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* ═══ NOUVEAU CLIENT ════════════════════════════════════════════════ */
+
+  html.crm .nc-tete { padding: 16px 16px 0 !important; }
+  html.crm .nc-tete h2 { font-size: 20px !important; }
+  html.crm .nc-tete > div:nth-child(2) { padding-right: 44px !important; row-gap: 10px !important; }
+  html.crm .nc-fermer { top: 12px !important; right: 12px !important; width: 38px !important; height: 38px !important; border-radius: 12px !important; }
+  html.crm .nc-rail { margin-top: 14px; }
+  html.crm .nc-lig b { font-size: 11px; letter-spacing: .3px; }
+  html.crm .nc-defil { padding: 14px 12px 18px !important; }
+  html.crm .nc-bloc { padding: 14px !important; border-radius: 16px !important; }
+  html.crm .nc-etats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.crm .nc-etat { padding: 10px; }
+  html.crm .nc-etat span { font-size: 11px; }
+
+  /* Le pied : « Précédent » et « Créer maintenant » côte à côte, et
+     « Continuer » sur toute la largeur, sous le pouce. */
+  html.crm .nc-pied { padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)) !important; gap: 8px !important; }
+  html.crm .nc-pied > span { display: none; }
+  html.crm .nc-pied > button { flex: 1 1 0; justify-content: center; padding: 12px 8px; font-size: 14px; border-radius: 12px; }
+  html.crm .nc-pied > .nc-suite { order: 3; flex: 1 1 100%; padding: 14px 10px; font-size: 15px; }
+
+  /* ═══ FICHE CLIENT — le bloc identité ═══════════════════════════════ */
+
+  html.crm .fc-id-zone { padding: 12px 12px 0 !important; }
+  html.crm .fc-id-carte { padding-top: 18px !important; padding-left: 16px !important; padding-right: 16px !important; border-radius: 22px !important; }
+  html.crm .fc-id-rangee { gap: 16px !important; }
+  html.crm .fc-id-gauche { gap: 13px !important; flex-basis: 100% !important; }
+  html.crm .fc-id-avatar { width: 50px !important; height: 50px !important; font-size: 19px !important; }
+  html.crm .fc-id-nom { font-size: 21px !important; }
+
+  /* Les coordonnées : de vraies touches, larges, qui appellent ou écrivent. */
+  html.crm .fc-id-contacts { flex-direction: column; align-items: stretch !important; gap: 7px !important; margin-top: 14px !important; margin-left: -63px; }
+  html.crm .fc-id-lien {
+    white-space: normal !important; overflow-wrap: anywhere; line-height: 1.35;
+    gap: 10px !important; padding: 10px 12px; border-radius: 12px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+    font-size: 14px !important;
+  }
+  html.crm .fc-id-adresse { background: rgba(255,255,255,.035); font-size: 13px !important; }
+
+  html.crm .fc-kpis { width: 100%; flex-shrink: 1 !important; }
+  html.crm .fc-kpi { flex: 1 1 0; min-width: 0 !important; padding: 11px 4px !important; }
+  html.crm .fc-kpi > div:first-child { font-size: 22px !important; }
+  html.crm .fc-kpi > div:last-child { font-size: 8.5px !important; letter-spacing: .6px !important; line-height: 1.25; }
+
+  html.crm .fc-situation { margin: -20px 8px 0 !important; padding: 20px 14px 13px !important; border-radius: 16px !important; }
+  html.crm .fc-champs { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+  html.crm .fc-champ { padding: 0 !important; border-left: none !important; min-width: 0; }
+  html.crm .fc-champ > div:last-child { font-size: 14px !important; overflow-wrap: anywhere; }
+  html.crm .fc-vente { grid-column: 1 / -1; margin-left: 0 !important; justify-content: center; }
+
+  /* ═══ FICHE CLIENT — les critères ═══════════════════════════════════ */
+
+  html.crm .fc-bandeau { padding: 13px 14px !important; gap: 8px !important; }
+  html.crm .fc-bandeau > span:nth-last-child(2) { display: none; }
+  html.crm .fc-budget {
+    flex: 1 1 100%; text-align: left !important;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    border-top: 1px solid #efe3c6; padding-top: 10px; margin-top: 2px;
+  }
+  html.crm .fc-budget > span:last-child { font-size: 23px !important; margin-top: 0 !important; }
+  html.crm .fc-familles { grid-template-columns: 1fr !important; gap: 10px !important; }
+
+  /* Le détail des critères, replié par défaut : le suivi du dossier remonte
+     de deux écrans. Le bandeau (type, délai, financement, budget) reste
+     toujours visible. */
+  html.crm .fc-crit-bascule {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 11px 14px; border-radius: 12px;
+    background: #f8fafc; border: 1px solid #e3e8f0; color: #334155;
+    font-family: inherit; font-size: 13.5px; font-weight: 700;
+  }
+  html.crm .fc-crit-chevron { display: inline-flex; transition: transform .28s cubic-bezier(.16,1,.3,1); }
+  html.crm .fc-crit-chevron[data-ouvert="true"] { transform: rotate(180deg); }
+  html.crm .fc-crit-detail[data-ouvert="false"] { display: none !important; }
+  html.crm .fc-crit-detail[data-ouvert="true"] { animation: crmDeplie .3s cubic-bezier(.16,1,.3,1); }
+
+  /* ═══ FICHE CLIENT — les onglets du suivi ═══════════════════════════ */
+
+  html.crm .fiche-suivi { margin-top: 14px; padding: 12px 8px 0; border-radius: 18px 18px 0 0; }
+  html.crm .fiche-suivi-tete { padding: 0 6px 10px; row-gap: 6px; }
+  html.crm .fiche-suivi-tete i { display: none; }
+  html.crm .fiche-suivi-reinit { padding: 6px 11px; }
+  html.crm .fiche-tab { padding: 12px 10px; border-radius: 0 0 18px 18px; }
+
+  /* Six onglets : ils défilent au doigt au lieu de s'empiler sur trois
+     rangées. */
+  html.crm .emi-onglets {
+    flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity; padding: 0 2px !important;
+  }
+  html.crm .emi-onglets::-webkit-scrollbar { display: none; }
+  html.crm .emi-onglet { flex-shrink: 0; scroll-snap-align: start; padding: 10px 13px 11px; font-size: 13.5px; }
+  html.crm .emi-onglet[data-actif="true"] { padding-top: 10px; }
+  html.crm .emi-onglets.sombre .emi-onglet[data-actif="true"]::after { display: none; }
+
+  /* Onglet Suivi */
+  html.crm .fc-suivi-carte { padding: 14px 12px !important; }
+  html.crm .fc-suivi-barre { flex-direction: column; flex-wrap: nowrap !important; align-items: stretch !important; margin-bottom: 16px !important; }
+  html.crm .fc-suivi-filtres {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 0 12px 2px;
+  }
+  html.crm .fc-suivi-filtres::-webkit-scrollbar { display: none; }
+  html.crm .fc-suivi-filtres > button { flex-shrink: 0; white-space: nowrap; }
+  html.crm .fc-suivi-ajout { justify-content: center; padding: 12px 14px; font-size: 14px; border-radius: 12px; }
+
+  /* Onglet Visites */
+  html.crm .fc-visite { padding: 14px !important; }
+  html.crm .fc-visite input[type="date"], html.crm .fc-visite input[type="time"] { flex: 1 1 130px !important; width: auto !important; min-width: 0 !important; }
+  html.crm .fc-visite button { flex: 1 1 auto; justify-content: center; }
+
+  /* Onglet Transaction */
+  html.crm .tx-bien { flex-wrap: wrap; }
+  html.crm .tx-pied { padding: 12px; }
+  html.crm .tx-pied > button { flex: 1 1 auto; justify-content: center; }
+  html.crm .tx-pied > .tx-abandon { flex: 0 0 100%; order: 5; text-align: center; padding: 6px 0; }
+  html.crm .tx-corps { padding: 14px 12px; }
+  html.crm .tx-tete { padding: 12px; }
+
+  /* ═══ FICHE CLIENT — les formulaires du bien ════════════════════════ */
+
+  html.crm .fc-g4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  html.crm .fc-g4 > * { grid-column: auto !important; }
+  html.crm .fc-cache-mobile { display: none !important; }
+  html.crm .fc-photos { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+  html.crm .fc-fb-tete { padding: 16px !important; border-radius: 22px 22px 0 0 !important; align-items: flex-start !important; }
+  html.crm .fc-fb-tete h2 { font-size: 16px !important; line-height: 1.3; }
+
+  /* ═══ LE LIEN DE L'ESPACE CLIENT ════════════════════════════════════ */
+
+  html.crm .le-barre { gap: 8px !important; padding: 12px !important; }
+  html.crm .le-titre { flex: 1 1 100%; }
+  html.crm .le-lien { flex: 1 1 100%; max-width: none !important; padding: 8px 11px !important; font-size: 12px !important; }
+  html.crm .le-btn { flex: 1 1 0; justify-content: center; padding: 10px 8px !important; font-size: 13px !important; border-radius: 11px !important; }
+  html.crm .le-etat { flex: 1 1 100%; justify-content: center; margin-left: 0 !important; padding: 9px 11px !important; border-radius: 11px !important; }
+
+  /* ═══ ONGLETS VEILLE · SÉLECTION · PRÉSENTÉS ═════════════════════════ */
+
+  /* Les photos défilent au doigt au lieu de déborder de la carte. */
+  html.crm .emi-bande {
+    overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; margin: 0 -12px; padding: 0 12px;
+  }
+  html.crm .emi-bande::-webkit-scrollbar { display: none; }
+  html.crm .emi-vignette { flex: 0 0 auto; width: 118px; min-width: 0; max-width: none; scroll-snap-align: start; }
+  html.crm .emi-vignette:hover { transform: none; }
+
+  html.crm .emi-tete-carte { padding: 14px 14px 0 !important; gap: 10px !important; }
+  html.crm .emi-tete-carte > div:first-child { min-width: 0 !important; flex-basis: 100% !important; }
+  html.crm .emi-tete-carte > div:last-child {
+    flex: 1 1 100%; flex-direction: row !important; flex-wrap: wrap;
+    align-items: baseline !important; justify-content: space-between; gap: 4px 10px !important;
+  }
+  html.crm .emi-corps-carte { padding: 12px 14px 14px !important; }
+  html.crm .emi-bilan { grid-template-columns: 1fr !important; }
+
+  /* Le pied de carte : les boutons à la largeur du pouce. */
+  html.crm .emi-pied { padding: 12px 14px !important; gap: 10px !important; }
+  html.crm .emi-pied > div, html.crm .emi-pied > span { width: 100%; }
+  html.crm .emi-pied > div > a, html.crm .emi-pied > div > button { flex: 1 1 auto; justify-content: center; padding-top: 10px !important; padding-bottom: 10px !important; }
+
+  /* La ligne compacte : photo et titre en haut, chiffres, prix et
+     boutons en dessous. */
+  html.crm .emi-ligne { flex-wrap: wrap; row-gap: 8px !important; padding: 10px !important; }
+  html.crm .emi-ligne-titre { flex: 1 1 calc(100% - 110px) !important; }
+  html.crm .emi-ligne-specs { order: 5; flex: 1 1 100%; white-space: normal !important; }
+  html.crm .emi-ligne-prix { order: 6; margin-right: auto; text-align: left !important; min-width: 0 !important; }
+  html.crm .emi-ligne-actions { order: 7; }
+  html.crm .emi-ligne-actions > a, html.crm .emi-ligne-actions > button { width: 36px !important; height: 36px !important; }
+
+  /* Les fenêtres des onglets (envoi, retour, score) montent du bas. */
+  html.crm .emi-voile:not([data-nu]) { align-items: flex-end !important; padding: 0 !important; overflow: hidden !important; }
+  html.crm .emi-voile:not([data-nu]) > .emi-fenetre {
+    margin: 0 !important; border-radius: 22px 22px 0 0 !important;
+    max-height: calc(100dvh - 10px); overflow-y: auto !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: crmFeuille .34s cubic-bezier(.22,.9,.3,1) !important;
+  }
+  html.crm .emi-voile[data-nu] { padding: 10px !important; }
+
+  /* ═══ PAGE VISITES ══════════════════════════════════════════════════ */
+
+  html.crm .pv-carte { border-radius: 18px !important; }
+  html.crm .pv-ligne { flex-wrap: wrap; }
+  html.crm .pv-photo { width: 84px !important; min-height: 96px; }
+  html.crm .pv-corps { flex: 1 1 0 !important; min-width: 0; padding: 13px 14px !important; }
+  html.crm .pv-actions {
+    flex-direction: row !important; width: 100%;
+    padding: 0 14px 14px !important; gap: 8px !important;
+  }
+  html.crm .pv-actions > button { flex: 1 1 0; padding: 11px 10px !important; font-size: 13.5px !important; border-radius: 12px !important; }
+}
+
+@keyframes crmDeplie { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes crmFeuille { from { transform: translateY(60px); opacity: .4; } to { transform: none; opacity: 1; } }
