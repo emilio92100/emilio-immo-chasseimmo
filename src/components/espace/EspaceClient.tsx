@@ -118,6 +118,8 @@ function dateCourte(d: string) {
   return `${x.getDate()} ${MOIS[x.getMonth()]}`;
 }
 const JOURS = ['D','L','M','M','J','V','S'];
+/* Sous les barres de « jour après jour » : l'initiale ne suffit pas (deux M). */
+const JOURS_C = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
 
 /* Depuis quand ce bien est dans l'espace du client.
    ⚠️ Le pas compte autant que le mot : « à l'instant » tenait une heure
@@ -1718,11 +1720,11 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             <button className="case large" onClick={() => aller('marche')}>
               <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
               <div><h3>Le marché sur vos critères</h3>
-                <p>{semaine.reduce((s: number, x: any) => s + x.lues, 0)} annonces lues cette semaine</p></div>
+                <p>{`${nombre(semaine.reduce((s: number, x: any) => s + x.lues, 0))} annonces lues ces 7 derniers jours`}</p></div>
               <div className="apm">
                 <div className="apm-t">Annonces lues · 7 derniers jours</div>
                 <div className="mini">{semaine.map((d: any, i: number) => (
-                  <i key={i} className={i === semaine.length - 1 ? 'fort' : ''}
+                  <i key={i} className={i === semaine.reduce((k: number, x: any, j: number) => (x.lues > 0 ? j : k), -1) ? 'fort' : ''}
                     style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
                 ))}</div>
               </div>
@@ -2276,6 +2278,9 @@ function bilanRecherche(re: number, ret: number): string {
 
 function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
+  /* « semaine » : les sept derniers jours, un par un (voir page.tsx). */
+  const nbJours = semaine.filter((x: any) => x.lues > 0).length;
+  const derJour = semaine.reduce((k: number, x: any, i: number) => (x.lues > 0 ? i : k), -1);
   const lues = passage?.totalLues ?? 0;
   /* Le nombre de biens retenus, c'est le nombre de biens posés dans l'espace,
      point. Pas le compteur interne de la veille : les deux se mettent à
@@ -2433,20 +2438,23 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           <h3>Jour après jour</h3>
           <BtnAide cle="rythme" onAide={onAide} />
         </div>
-        {semaine.length > 1 ? (
+        {nbJours >= 2 ? (
           <>
-            <div className="gr-note"><span><b>{total.toLocaleString('fr-FR')} annonces</b>{' '}parcourues
-              sur les {semaine.length}{' '}derniers jours de recherche. Chaque barre, c&apos;est ce que nous avons
-              regardé ce jour-là sur vos secteurs et votre budget&nbsp;; la dorée est celle
-              d&apos;aujourd&apos;hui.</span></div>
+            <div className="gr-note"><span><b>{`${nombre(total)} annonces`}</b>
+              {` lues ces 7 derniers jours${nbJours < 7 ? `, sur ${nbJours} journées de recherche` : ''}. Chaque barre est une journée : ce que nous avons regardé ce jour-là sur vos secteurs et votre budget. La barre dorée est la dernière journée de recherche.`}</span></div>
             <div className="barres">
               {semaine.map((d: any, i: number) => {
-                const j = d.quand ? JOURS[new Date(d.quand).getDay()] : '·';
+                const x = new Date(String(d.quand).slice(0, 10) + 'T12:00:00');
+                const ok = !isNaN(x.getTime());
+                const auj = i === semaine.length - 1;
                 return (
-                  <span className={'barre' + (i === semaine.length - 1 ? ' auj' : '')} key={i}>
-                    <b>{d.lues || '—'}</b>
-                    <i style={{ height: Math.max(4, (d.lues / maxLues) * 100) + '%', animationDelay: i * 0.06 + 's' }} />
-                    <span>{j}</span>
+                  <span className={'barre' + (i === derJour ? ' dern' : '') + (d.lues ? '' : ' vide')} key={i}>
+                    <b className="tab">{d.lues ? nombre(d.lues) : '—'}</b>
+                    <span className="barre-t">
+                      <i style={{ height: d.lues ? Math.max(6, (d.lues / maxLues) * 100) + '%' : '3px', animationDelay: i * 0.06 + 's' }} />
+                    </span>
+                    <span className="barre-j">{auj ? 'auj.' : ok ? JOURS_C[x.getDay()] : ''}</span>
+                    <span className="barre-d tab">{ok ? x.getDate() : ''}</span>
                   </span>
                 );
               })}
@@ -2456,10 +2464,13 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           /* Une section vide inquiète plus qu'elle n'informe : on dit pourquoi. */
           <div className="vide-doux">
             <span className="vd-i"><Ico n="graph" t={26} /></span>
-            <b>Le graphique arrive à la deuxième recherche</b>
-            <span>Il faut au moins deux journées de recherche pour dessiner une courbe.
-              Revenez demain&nbsp;: vous verrez ici, jour par jour, combien d&apos;annonces ont été
-              parcourues pour vous.</span>
+            {nbJours === 1 ? (<>
+              <b>Le graphique arrive à la deuxième journée de recherche</b>
+              <span>{'Il faut au moins deux journées pour comparer. Revenez demain : vous verrez ici, jour par jour, combien d’annonces ont été lues pour vous.'}</span>
+            </>) : (<>
+              <b>Pas de recherche ces sept derniers jours</b>
+              <span>{'Le graphique reprend dès la prochaine journée de recherche. Vos biens et vos critères, eux, restent là.'}</span>
+            </>)}
           </div>
         )}
       </div>
@@ -4169,11 +4180,12 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
   },
   rythme: {
     ico: 'calendrier', sur: 'Le rythme', titre: 'Ce que montre « jour après jour »',
-    texte: "Chaque barre, c'est le nombre d'annonces que nous avons parcourues ce jour-là sur vos critères.",
+    texte: "Une barre par journée, sur les sept derniers jours : le nombre d'annonces que nous avons lues ce jour-là sur vos critères. Sous chaque barre, le jour et la date.",
     puces: [
       'Les barres bougent d’un jour à l’autre : le marché ne sort pas le même volume tous les jours, le lundi et le samedi n’ont rien à voir.',
       'Une barre basse ne veut pas dire qu’on a moins travaillé : elle veut dire qu’il est sorti moins d’annonces à regarder.',
-      'La barre dorée est celle d’aujourd’hui.',
+      'Un tiret : pas de recherche ce jour-là.',
+      'La barre dorée est la dernière journée de recherche.',
     ],
   },
   jours: {
@@ -4774,13 +4786,23 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .eb-i{color:var(--or-fonce); display:flex; margin-top:2px; flex:0 0 auto}
 @keyframes etire{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .graphe{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:18px; box-shadow:var(--ombre); margin-top:12px}
-.barres{display:flex; align-items:flex-end; gap:7px; height:110px; margin-top:14px}
-.barre{flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; height:100%; justify-content:flex-end}
-.barre i{width:100%; background:var(--or-trait); border-radius:5px 5px 0 0; min-height:5px;
+.barres{display:flex; align-items:flex-end; gap:7px; margin-top:14px}
+.barre{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:5px; justify-content:flex-end}
+/* La hauteur des barres se mesure dans une piste fixe : le chiffre et la date
+   au-dessus et en dessous ne peuvent plus l'écraser. */
+.barre-t{height:86px; width:100%; display:flex; align-items:flex-end; flex:0 0 auto}
+.barre .barre-j{margin-top:2px; font-size:10px; font-weight:700; color:var(--plume); line-height:1}
+.barre .barre-d{font-size:10.5px; font-weight:800; color:var(--plume-clair); line-height:1}
+.barre.dern .barre-j, .barre.dern .barre-d{color:var(--or-fonce)}
+.barre i{width:100%; background:var(--or-trait); border-radius:5px 5px 0 0; min-height:3px;
   animation:pousse .8s cubic-bezier(.16,1,.3,1) both; transform-origin:bottom}
-.barre.auj i{background:var(--or)}
+/* La barre dorée : la dernière journée de recherche. (Ne pas l'appeler
+   « .auj » : la case « Aujourd'hui pour vous » porte ce nom et venait
+   l'habiller d'une carte blanche qui l'écrasait.) */
+.barre.dern i{background:var(--or)}
 .barre b{font-family:'Plus Jakarta Sans',sans-serif; font-size:11px; font-weight:800; color:var(--encre)}
-.barre span{font-size:10px; color:var(--plume-clair); font-weight:700; text-transform:uppercase}
+.barre.vide b{color:var(--plume-clair); font-weight:600}
+.barre span{font-size:10px; color:var(--plume-clair); font-weight:700}
 
 .bloc{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:18px; box-shadow:var(--ombre)}
 .bloc + .bloc{margin-top:12px}
