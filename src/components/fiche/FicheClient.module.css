@@ -201,8 +201,9 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
    LA VERSION TÉLÉPHONE
-   En haut, une barre collante : le retour, le nom du client, sa relance,
-   puis les quatre gestes du quotidien en boutons à pictogramme. Les
+   En haut, une barre : le retour, le nom du client, sa relance, puis les
+   quatre gestes du quotidien en boutons à pictogramme. Elle ne reste plus
+   collée : elle part avec la page, pour laisser tout l'écran à la fiche. Les
    fenêtres montent du bas de l'écran, leurs boutons restent sous le pouce.
    Sur ordinateur, rien ne change : les libellés « bureau » restent affichés.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -212,14 +213,16 @@
 /* Tablette : les boutons de la barre passent sous le nom au lieu de
    l'écraser. */
 @media (max-width: 900px) {
-  .pageHeader { flex-wrap: wrap; row-gap: 10px; }
+  /* Sur téléphone, rien ne reste accroché en haut en descendant : la barre
+     défile avec la fiche (voir AppLayout.module.css). */
+  .pageHeader { flex-wrap: wrap; row-gap: 10px; position: static; }
 }
 
 @media (max-width: 760px) {
   .surBureau { display: none !important; }
   .surMobile { display: contents; }
 
-  /* ── La barre collante ── */
+  /* ── La barre du haut de la fiche ── */
   .pageHeader {
     flex-wrap: wrap; gap: 9px; padding: 9px 10px 10px;
     box-shadow: 0 6px 18px -14px rgba(15,22,35,.35);
