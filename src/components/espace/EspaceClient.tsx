@@ -2210,24 +2210,22 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
   );
 }
 
-/* La phrase qui situe la dernière recherche dans le dossier. « re » : ce
+/* La phrase qui relie la dernière recherche au total du dossier. « re » : ce
    qu'elle a retenu ; « ret » : ce qu'il y a dans l'espace, toutes recherches
-   confondues (plus ce que le conseiller a ajouté lui-même). */
-function bilanRecherche(nb: number, re: number, ret: number): string {
-  const rang = nb <= 1 ? 'la première recherche faite' : `la ${nb}e recherche faite`;
-  const tete = `C’est ${rang} sur votre dossier`;
+   confondues (plus ce que le conseiller a ajouté lui-même).
+   Pas de numéro de recherche (« la 6e ») : il se lisait sur le nombre de
+   dépôts faits dans le CRM, et un même jour de recherche peut en compter
+   plusieurs. Le chiffre était faux ; on ne le donne plus. */
+function bilanRecherche(re: number, ret: number): string {
   if (!re) {
     return ret
-      ? `${tete}. Elle n’a rien retenu de nouveau : vos ${ret} bien${ret > 1 ? 's' : ''} retenu${ret > 1 ? 's' : ''} depuis l’ouverture restent dans votre espace.`
-      : `${tete}. Elle n’a rien retenu : aucune annonce ne correspondait assez à ce que vous cherchez.`;
+      ? `Cette recherche n’a rien retenu de nouveau : vos ${ret} bien${ret > 1 ? 's' : ''} retenu${ret > 1 ? 's' : ''} depuis l’ouverture restent dans votre espace.`
+      : 'Cette recherche n’a rien retenu : aucune annonce ne correspondait assez à ce que vous cherchez.';
   }
-  const elle = `Elle a retenu ${re} bien${re > 1 ? 's' : ''}`;
-  if (ret > re) {
-    const avec = nb > 1 ? 'avec ceux des recherches précédentes' : 'avec ceux que votre conseiller a ajoutés';
-    return `${tete}. ${elle} : ${avec}, cela fait ${ret} biens retenus pour vous depuis l’ouverture.`;
-  }
-  if (ret < re) return `${tete}. ${elle} : votre conseiller les vérifie un par un avant de les déposer dans votre espace.`;
-  return `${tete}. ${elle}, que vous retrouvez dans votre espace.`;
+  const elle = `Cette recherche a retenu ${re} bien${re > 1 ? 's' : ''}`;
+  if (ret > re) return `${elle}. Avec ceux déjà retenus avant, cela fait ${ret} biens retenus pour vous depuis l’ouverture.`;
+  if (ret < re) return `${elle} : votre conseiller les vérifie un par un avant de les déposer dans votre espace.`;
+  return `${elle}, que vous retrouvez dans votre espace.`;
 }
 
 function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) {
@@ -2243,9 +2241,6 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
      verrait trois nombres qui ne s'additionnent pas. */
   const ecart = Math.max(0, lues - ret);
   const sur = ret > 0 ? Math.round(lues / ret) : 0;
-  /* Le nombre de recherches faites sur le dossier : il relie les deux blocs
-     (« 368 lues en 2 recherches », « la 2e recherche en a retenu 3 »). */
-  const nbRech = passage?.nbPassages ?? 0;
 
   const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
   const prix = avecPrix.map((b: Bien) => b.prix as number).sort((a: number, z: number) => a - z);
@@ -2292,7 +2287,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
               {/* Tout en chaînes : aucune espace ne peut se perdre à la
                   compilation (voir AGENTS.md §2.1). */}
               <span>{'Les trois chiffres s\u2019additionnent\u00a0: '}<b>{nombre(lues)}</b>
-                {` annonces lues${nbRech > 1 ? ` en ${nbRech} recherches` : ''}, `}<b>{nombre(ecart)}</b>
+                {' annonces lues, '}<b>{nombre(ecart)}</b>
                 {' qui ne vous correspondaient pas, '}<b>{nombre(ret)}</b>
                 {` déposée${ret > 1 ? 's' : ''} dans votre espace. Soit `}<b>{`une annonce retenue sur ${nombre(sur)}`}</b>{'.'}</span>
             </div>
@@ -2336,7 +2331,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
                 {!!passage?.quand && (
                   <div className="ent-bilan">
                     <span className="eb-i"><Ico n="etoile" t={15} /></span>
-                    <span>{bilanRecherche(nbRech, re, ret)}</span>
+                    <span>{bilanRecherche(re, ret)}</span>
                   </div>
                 )}
               </>
@@ -3518,6 +3513,8 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     arrets: [...(crit.transportArrets || [])] as Arret[],
     secteurs: [...crit.secteurs],
   });
+  /* Les valeurs de départ, pour savoir ensuite si le client a touché un curseur. */
+  const depart = useRef(t).current;
 
   /* Une borne ne tire plus l'autre : on bloque seulement quand elles se
      croisent, et on retient celle que l'on est en train de bouger. */
@@ -3720,13 +3717,22 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   }, [i]);
 
   async function enregistrer() {
+    /* Un curseur doit bien partir de quelque part : quand le dossier n'avait
+       ni budget, ni surface, ni pièces, ni chambres, l'écran propose une
+       valeur de départ (1 000 000 €, 60 m², 3 pièces, 2 chambres). Tant que
+       le client n'y a pas touché, ce n'est pas son choix : on renvoie ce qu'il
+       y avait avant, et rien ne s'écrit à sa place. */
+    type Curseur = 'budgetMax' | 'surfaceMin' | 'piecesMin' | 'chambresMin';
+    const choisi = (k: Curseur) => (t[k] === depart[k] ? (crit[k] ?? null) : t[k]);
+    const budgetMax = choisi('budgetMax'), surfaceMin = choisi('surfaceMin');
+    const piecesMin = choisi('piecesMin'), chambresMin = choisi('chambresMin');
     const c: string[] = [];
-    if ((t.budgetMin || null) !== (crit.budgetMin || null) || t.budgetMax !== crit.budgetMax) {
+    if ((t.budgetMin || null) !== (crit.budgetMin || null) || budgetMax !== (crit.budgetMax ?? null)) {
       c.push('budget ' + (t.budgetMin ? EUR(t.budgetMin) + ' – ' + EUR(t.budgetMax) : 'jusqu’à ' + EUR(t.budgetMax)));
     }
-    if (t.surfaceMin !== crit.surfaceMin) c.push(t.surfaceMin + ' m² minimum');
-    if (t.piecesMin !== crit.piecesMin) c.push(t.piecesMin + ' pièces minimum');
-    if (t.chambresMin !== crit.chambresMin) c.push(t.chambresMin + ' chambres minimum');
+    if (surfaceMin !== (crit.surfaceMin ?? null)) c.push(t.surfaceMin + ' m² minimum');
+    if (piecesMin !== (crit.piecesMin ?? null)) c.push(t.piecesMin + ' pièces minimum');
+    if (chambresMin !== (crit.chambresMin ?? null)) c.push(t.chambresMin + ' chambres minimum');
     if (t.typesBien.join() !== (crit.typesBien || []).join()) c.push(t.typesBien.length ? 'type de bien : ' + t.typesBien.join(', ') : 'plus de contrainte de type');
     if (t.secteurs.join() !== crit.secteurs.join()) c.push(t.secteurs.length + ' secteurs');
     if (JSON.stringify(t.exigences) !== JSON.stringify(crit.exigences || {})) c.push('équipements souhaités');
@@ -3742,6 +3748,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     setEnr(true);
     await onEnregistrer({
       ...crit, ...t,
+      budgetMax, surfaceMin, piecesMin, chambresMin,
       budgetMin: t.budgetMin || null,
       apport: nombre(t.apport), anneeMin: nombre(t.anneeMin),
       surfaceMax: nombre(t.surfaceMax), surfaceSejourMin: nombre(t.surfaceSejourMin),
