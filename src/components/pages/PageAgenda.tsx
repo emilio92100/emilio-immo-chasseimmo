@@ -5,6 +5,7 @@ import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/compone
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
 import { prendreDemandeRendezVous } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
+import { solderRelancesVisite } from '@/lib/demandes-visite';
 
 /**
  * L'agenda du CRM (maquette A : petit calendrier à gauche, semaine au centre).
@@ -1854,6 +1855,10 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
           const r = await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', aMarquer);
           if (r.error) alert("La visite est enregistrée, mais le bien n'a pas pu passer en « veut visiter ».\n\n" + r.error.message);
         }
+        /* Une demande de visite faite depuis l'espace est servie : sa relance
+           « Veut visiter » se solde (voir src/lib/demandes-visite.ts). */
+        const errRel = await solderRelancesVisite(dossier!.clientId, choisis.map(b => b.titre));
+        if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
         await addJournal(dossier!.clientId, 'visite_planifiee',
           choisis.length > 1 ? `📅 Visite planifiée — ${choisis.length} biens : ${choisis.map(b => b.titre || b.ville).join(' · ')}` : `📅 Visite planifiée — ${choisis[0].titre || choisis[0].ville || ''}`,
           `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${contact ? ` · Contact : ${contact}` : ''}`);

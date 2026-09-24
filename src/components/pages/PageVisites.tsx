@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVisite';
+import { chargerDemandesVisite, type DemandeVisite } from '@/lib/demandes-visite';
+import { demanderOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import styles from './Page.module.css';
 
 /* Petite enveloppe dessinée pour le bouton de rappel. */
@@ -30,13 +32,16 @@ const AVIS_COLORS: Record<string, { bg: string; color: string; border: string }>
 
 export default function PageVisites({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [visites, setVisites] = useState<any[]>([]);
+  /* Les clients qui ont demandé à visiter un bien depuis leur espace, et
+     pour qui aucune date n'est encore calée (voir src/lib/demandes-visite.ts). */
+  const [demandes, setDemandes] = useState<DemandeVisite[]>([]);
   const [loading, setLoading] = useState(true);
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
   const [showCR, setShowCR] = useState(false);
   const [saving, setSaving] = useState(false);
   /* Retrouver une visite : par le bien ou par le client, et par où elle en est. */
   const [cherche, setCherche] = useState('');
-  const [filtre, setFiltre] = useState<'tout' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees'>('tout');
+  const [filtre, setFiltre] = useState<'tout' | 'demandes' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees'>('tout');
   /* Le rappel au client : la fenêtre s'ouvre sur une visite et retrouve
      toutes celles du même jour pour ce client. */
   const [rappelDe, setRappelDe] = useState<string | null>(null);
@@ -54,12 +59,17 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase
-      .from('visites')
-      .select('*, clients(id, prenom, nom, reference), biens(titre, ville, photos)')
-      .order('date_visite', { ascending: true });
+    const [{ data }, dem] = await Promise.all([
+      supabase
+        .from('visites')
+        .select('*, clients(id, prenom, nom, reference), biens(titre, ville, photos)')
+        .order('date_visite', { ascending: true }),
+      chargerDemandesVisite().catch(() => [] as DemandeVisite[]),
+    ]);
     setVisites(data || []);
+    setDemandes(dem);
     setLoading(false);
+    signalerMaj();
     return data || [];
   }
 
@@ -123,6 +133,30 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const effectuees = recentes(trouvees.filter(v => v.statut === 'effectuee'));
   const annulees = recentes(trouvees.filter(v => v.statut === 'annulee'));
   const montrer = (f: typeof filtre) => filtre === 'tout' || filtre === f;
+  const demandesTrouvees = q
+    ? demandes.filter(d => sansAccent(`${d.client?.prenom || ''} ${d.client?.nom || ''} ${d.bien.titre || ''} ${d.bien.ville || ''}`).includes(q))
+    : demandes;
+
+  /* Une demande ouvre la fiche du client sur ses biens présentés : le bien y
+     est dans le groupe « Il veut visiter », avec de quoi caler la visite. */
+  function ouvrirDemande(d: DemandeVisite) {
+    if (!d.client) return;
+    demanderOuvertureFiche({ clientId: d.client.id, onglet: 'presentes', rechercheId: d.rechercheId });
+    onNavigate('fiche', d.client);
+  }
+  /* Depuis quand il attend, en jours de calendrier. Au-delà de deux jours,
+     l'attente s'écrit en rouge. */
+  const attente = (iso: string) => {
+    const d = new Date(iso);
+    const jour = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const j = Math.round((jour(maintenant) - jour(d)) / 86400000);
+    const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+    return {
+      texte: j <= 0 ? `Demandé aujourd’hui à ${h}` : j === 1 ? `Demandé hier à ${h}` : `Attend depuis ${j} jours`,
+      vieux: j >= 2,
+    };
+  };
+  const euros = (n: number) => n.toLocaleString('fr-FR').replace(/\u202f/g, '\u00a0') + '\u00a0€';
 
   const formatDate = (d: string) => {
     const date = new Date(d);
@@ -139,11 +173,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>Visites</h1>
-          <p className={styles.sub}>{`${aVenir.length} à venir · ${effectuees.length} effectuée${effectuees.length > 1 ? 's' : ''}${aFaire.length ? ` · ${aFaire.length} compte${aFaire.length > 1 ? 's' : ''} rendu${aFaire.length > 1 ? 's' : ''} à faire` : ''}`}</p>
+          <p className={styles.sub}>{`${demandes.length ? `${demandes.length} demande${demandes.length > 1 ? 's' : ''} de visite · ` : ''}${aVenir.length} à venir · ${effectuees.length} effectuée${effectuees.length > 1 ? 's' : ''}${aFaire.length ? ` · ${aFaire.length} compte${aFaire.length > 1 ? 's' : ''} rendu${aFaire.length > 1 ? 's' : ''} à faire` : ''}`}</p>
         </div>
       </div>
 
-      {visites.length > 0 && (
+      {(visites.length > 0 || demandes.length > 0) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ position: 'relative' }}>
             <span style={{ position: 'absolute', left: 14, top: 12, color: '#94a3b8', pointerEvents: 'none' }}>
@@ -155,11 +189,12 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {([
               { id: 'tout', lib: 'Toutes', n: trouvees.length, c: '#1a2332' },
+              { id: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, c: '#ef4444' },
               { id: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, c: '#b45309' },
               { id: 'a_venir', lib: 'À venir', n: aVenir.length, c: '#3b82f6' },
               { id: 'effectuees', lib: 'Effectuées', n: effectuees.length, c: '#10b981' },
               { id: 'annulees', lib: 'Annulées', n: annulees.length, c: '#94a3b8' },
-            ] as const).map(x => {
+            ] as const).filter(x => x.id !== 'demandes' || demandes.length > 0).map(x => {
               const actif = filtre === x.id;
               return (
                 <button key={x.id} type="button" onClick={() => setFiltre(x.id)} aria-pressed={actif}
@@ -176,7 +211,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
 
       {loading ? (
         <div className={styles.empty}><div className={styles.emptySub}>Chargement...</div></div>
-      ) : visites.length === 0 ? (
+      ) : visites.length === 0 && demandes.length === 0 ? (
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>📅</div>
           <div className={styles.emptyTitle}>Aucune visite planifiée</div>
@@ -185,8 +220,68 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {trouvees.length === 0 && (
+          {trouvees.length === 0 && demandesTrouvees.length === 0 && (
             <div className={styles.empty}><div className={styles.emptySub}>{`Aucune visite ne correspond à « ${cherche} ».`}</div></div>
+          )}
+
+          {/* DEMANDES DE VISITE — le client a appuyé sur « Je souhaite le visiter »
+              dans son espace, et aucune date n'est encore calée. Elles passent
+              en tête : c'est ce qui attend une action. */}
+          {demandesTrouvees.length > 0 && montrer('demandes') && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
+                {`Demandes de visite — ${demandesTrouvees.length}`}
+              </div>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.45 }}>
+                {'Demandées par le client depuis son espace. Dès qu’une visite est calée sur le bien, la demande passe dans « À venir ».'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {demandesTrouvees.map(d => {
+                  const photo = d.bien.photos?.[0];
+                  const nom = `${d.client?.prenom || ''} ${d.client?.nom || ''}`.trim() || 'Le client';
+                  const att = attente(d.quand);
+                  const lieu = [d.bien.quartier, d.bien.ville].filter(Boolean).join(', ');
+                  const carac = [d.bien.surface ? `${d.bien.surface}\u00a0m²` : '', d.bien.nb_pieces ? `${d.bien.nb_pieces}\u00a0pièces` : '', d.bien.prix ? euros(d.bien.prix) : ''].filter(Boolean).join(' · ');
+                  return (
+                    <div key={d.id} className="pv-carte" role="button" tabIndex={0}
+                      onClick={() => ouvrirDemande(d)} onKeyDown={e => { if (e.key === 'Enter') ouvrirDemande(d); }}
+                      style={{ background: 'white', borderRadius: 16, border: '1px solid #fbd5d5', borderLeft: '3px solid #ef4444', overflow: 'hidden', boxShadow: '0 8px 22px -18px rgba(220,38,38,.7)', cursor: 'pointer' }}>
+                      <div className="pv-ligne" style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
+                        {photo
+                          ? <img src={photo} alt="" className="pv-photo" style={{ width: 96, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          : <div className="pv-photo" style={{ width: 96, flexShrink: 0, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🏠</div>}
+                        <div className="pv-corps" style={{ flex: 1, padding: '14px 16px', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 9px', whiteSpace: 'nowrap' }}>{'👀 Veut visiter'}</span>
+                            <span style={{ fontSize: 12, fontWeight: att.vieux ? 700 : 500, color: att.vieux ? '#dc2626' : '#94a3b8' }}>{att.texte}</span>
+                          </div>
+                          <div style={{ fontSize: 15, color: '#1a2332', marginTop: 8, lineHeight: 1.35 }}>
+                            <b>{nom}</b>{' souhaite visiter ce logement'}
+                          </div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', marginTop: 3 }}>{d.bien.titre || lieu || 'Bien présenté'}</div>
+                          {(lieu || carac) && (
+                            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>{[lieu, carac].filter(Boolean).join(' · ')}</div>
+                          )}
+                          {d.dispos && (
+                            <div style={{ fontSize: 12.5, color: '#1a2332', background: '#fff8f8', border: '1px solid #fde4e4', borderRadius: 10, padding: '7px 11px', marginTop: 9, lineHeight: 1.5 }}>
+                              <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#b91c1c', marginBottom: 2 }}>Ses disponibilités</span>
+                              {d.dispos}
+                            </div>
+                          )}
+                        </div>
+                        <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
+                          <button type="button" onClick={e => { e.stopPropagation(); ouvrirDemande(d); }}
+                            style={{ background: '#1a2332', color: 'white', border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                            {'Ouvrir sa fiche →'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* À VENIR — et celles dont la date est passée, qui attendent leur compte rendu */}
