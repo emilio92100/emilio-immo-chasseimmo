@@ -215,6 +215,8 @@ html.crm .fc-crit-bascule { display: none; }
   html.crm .emi-tete-carte > div:first-child > div:nth-child(2) > span:nth-child(2) { flex: 1 1 calc(100% - 28px); min-width: 0; }
   /* L'avis de la veille : l'étiquette au-dessus, la phrase sur toute la largeur. */
   html.crm .emi-avis { flex-direction: column; gap: 9px !important; }
+  /* La fenêtre de la note : le bouton « Compris » à la largeur du pouce. */
+  html.crm .emi-score-pied > button { width: 100%; margin-left: 0 !important; padding: 12px 0 !important; }
   /* Le marché : trois lignes lisibles au lieu de trois cases trop étroites.
      L'intitulé à gauche, le chiffre et sa précision à droite. */
   html.crm .emi-marche-grille { grid-template-columns: 1fr !important; gap: 6px !important; }
