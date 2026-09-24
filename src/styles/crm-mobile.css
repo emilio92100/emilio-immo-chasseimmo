@@ -76,32 +76,36 @@ html.crm .fc-crit-bascule { display: none; }
 
   /* ═══ FICHE CLIENT — le bloc identité ═══════════════════════════════ */
 
-  html.crm .fc-id-zone { padding: 12px 12px 0 !important; }
-  html.crm .fc-id-carte { padding-top: 18px !important; padding-left: 16px !important; padding-right: 16px !important; border-radius: 22px !important; }
-  html.crm .fc-id-rangee { gap: 16px !important; }
-  html.crm .fc-id-gauche { gap: 13px !important; flex-basis: 100% !important; }
-  html.crm .fc-id-avatar { width: 50px !important; height: 50px !important; font-size: 19px !important; }
-  html.crm .fc-id-nom { font-size: 21px !important; }
+  /* Un cran plus petit qu'à l'origine, au niveau du tableau de bord : le
+     bloc bleu prenait presque tout le premier écran. */
+  html.crm .fc-id-zone { padding: 10px 10px 0 !important; }
+  html.crm .fc-id-carte { padding-top: 15px !important; padding-left: 14px !important; padding-right: 14px !important; border-radius: 18px !important; }
+  html.crm .fc-id-rangee { gap: 13px !important; }
+  html.crm .fc-id-gauche { gap: 11px !important; flex-basis: 100% !important; }
+  html.crm .fc-id-avatar { width: 42px !important; height: 42px !important; font-size: 16px !important; }
+  html.crm .fc-id-nom { font-size: 18px !important; letter-spacing: -0.3px !important; }
 
   /* Les coordonnées : de vraies touches, larges, qui appellent ou écrivent. */
-  html.crm .fc-id-contacts { flex-direction: column; align-items: stretch !important; gap: 7px !important; margin-top: 14px !important; margin-left: -63px; }
+  /* -53 px : la largeur de l'avatar (42) et de l'écart (11), pour que les
+     coordonnées repartent du bord de la carte. */
+  html.crm .fc-id-contacts { flex-direction: column; align-items: stretch !important; gap: 6px !important; margin-top: 12px !important; margin-left: -53px; }
   html.crm .fc-id-lien {
     white-space: normal !important; overflow-wrap: anywhere; line-height: 1.35;
-    gap: 10px !important; padding: 10px 12px; border-radius: 12px;
+    gap: 9px !important; padding: 8px 11px; border-radius: 11px;
     background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
-    font-size: 14px !important;
+    font-size: 13px !important;
   }
-  html.crm .fc-id-adresse { background: rgba(255,255,255,.035); font-size: 13px !important; }
+  html.crm .fc-id-adresse { background: rgba(255,255,255,.035); font-size: 12px !important; }
 
   html.crm .fc-kpis { width: 100%; flex-shrink: 1 !important; }
-  html.crm .fc-kpi { flex: 1 1 0; min-width: 0 !important; padding: 11px 4px !important; }
-  html.crm .fc-kpi > div:first-child { font-size: 22px !important; }
-  html.crm .fc-kpi > div:last-child { font-size: 8.5px !important; letter-spacing: .6px !important; line-height: 1.25; }
+  html.crm .fc-kpi { flex: 1 1 0; min-width: 0 !important; padding: 8px 3px !important; }
+  html.crm .fc-kpi > div:first-child { font-size: 18px !important; }
+  html.crm .fc-kpi > div:last-child { font-size: 8px !important; letter-spacing: .5px !important; line-height: 1.25; }
 
-  html.crm .fc-situation { margin: -20px 8px 0 !important; padding: 20px 14px 13px !important; border-radius: 16px !important; }
-  html.crm .fc-champs { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+  html.crm .fc-situation { margin: -20px 8px 0 !important; padding: 18px 12px 11px !important; border-radius: 15px !important; }
+  html.crm .fc-champs { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
   html.crm .fc-champ { padding: 0 !important; border-left: none !important; min-width: 0; }
-  html.crm .fc-champ > div:last-child { font-size: 14px !important; overflow-wrap: anywhere; }
+  html.crm .fc-champ > div:last-child { font-size: 13px !important; overflow-wrap: anywhere; }
   html.crm .fc-vente { grid-column: 1 / -1; margin-left: 0 !important; justify-content: center; }
 
   /* ═══ FICHE CLIENT — les critères ═══════════════════════════════════ */
@@ -113,7 +117,7 @@ html.crm .fc-crit-bascule { display: none; }
     display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
     border-top: 1px solid #efe3c6; padding-top: 10px; margin-top: 2px;
   }
-  html.crm .fc-budget > span:last-child { font-size: 23px !important; margin-top: 0 !important; }
+  html.crm .fc-budget > span:last-child { font-size: 19px !important; margin-top: 0 !important; }
   html.crm .fc-familles { grid-template-columns: 1fr !important; gap: 10px !important; }
 
   /* Le détail des critères, replié par défaut : le suivi du dossier remonte
@@ -203,6 +207,10 @@ html.crm .fc-crit-bascule { display: none; }
   html.crm .emi-vignette:hover { transform: none; }
 
   html.crm .emi-tete-carte { padding: 14px 14px 0 !important; gap: 10px !important; }
+  /* Les biens du suivi : titre et prix un cran plus petits sur téléphone. */
+  html.crm .emi-titre-bien { font-size: 15.5px !important; }
+  html.crm .emi-prix-bien { font-size: 20px !important; letter-spacing: -0.5px !important; }
+  html.crm .emi-titre-onglet { font-size: 16.5px !important; }
   html.crm .emi-tete-carte > div:first-child { min-width: 0 !important; flex-basis: 100% !important; }
   html.crm .emi-tete-carte > div:last-child {
     flex: 1 1 100%; flex-direction: row !important; flex-wrap: wrap;
