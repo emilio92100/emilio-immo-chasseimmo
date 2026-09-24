@@ -109,8 +109,11 @@ export default async function PageEspace({ params, searchParams }: {
   const [biensRes, passagesRes, totalRes, visitesRes, finRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
+    /* Les derniers passages : le tout premier dit « la dernière recherche »,
+       les autres servent à « jour après jour ». Soixante suffisent largement
+       pour couvrir sept jours, même avec plusieurs dépôts par jour. */
     supabase.from('veille_passages').select('*').eq('recherche_id', recherche.id)
-      .order('termine_le', { ascending: false, nullsFirst: false }).limit(7),
+      .order('termine_le', { ascending: false, nullsFirst: false }).limit(60),
     /* Tous les passages du dossier, pour le total d'annonces lues. On ne tire
        qu'une colonne d'entiers : même après des années, c'est quelques kilo-octets. */
     supabase.from('veille_passages').select('nb_lues, nb_proposees, nb_ecartees').eq('recherche_id', recherche.id),
@@ -215,6 +218,31 @@ export default async function PageEspace({ params, searchParams }: {
 
   const passages = passagesRes.data || [];
   const dernier = passages[0] || null;
+
+  /* ─── « Jour après jour » : une barre par JOURNÉE, pas par dépôt ───
+     Avant, chaque ligne de veille_passages faisait une barre : deux dépôts le
+     même jour donnaient deux barres, étiquetées toutes deux « M », et le
+     client lisait « 6 jours » là où il n'y en avait que deux. On range donc
+     les passages par jour (heure de Paris), on additionne les annonces lues,
+     et on montre toujours les sept derniers jours, aujourd'hui compris — un
+     jour sans recherche reste visible, à zéro. */
+  const jourParis = (d: Date) => new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+  const parJour = new Map<string, number>();
+  for (const p of passages) {
+    if (!p.termine_le) continue;
+    const k = jourParis(new Date(p.termine_le));
+    parJour.set(k, (parJour.get(k) || 0) + (p.nb_lues || 0));
+  }
+  /* Les sept jours se comptent à partir d'aujourd'hui à Paris, par le
+     calendrier (midi UTC comme point d'appui : aucun changement d'heure ne
+     peut faire sauter ou doubler un jour). */
+  const aujParis = jourParis(new Date());
+  const semaine = Array.from({ length: 7 }, (_, i) => {
+    const k = new Date(Date.parse(aujParis + 'T12:00:00Z') - (6 - i) * 86_400_000).toISOString().slice(0, 10);
+    return { quand: k, lues: parJour.get(k) || 0 };
+  });
 
   /* ─── « Recherche en cours », la pastille verte de l'accueil ───
      Elle s'éteint de deux façons, et il n'y en a pas de troisième :
@@ -326,9 +354,7 @@ export default async function PageEspace({ params, searchParams }: {
         quand: dernier.termine_le, lues: dernier.nb_lues, proposees: dernier.nb_proposees,
         ecartees: dernier.nb_ecartees, totalLues, totalRetenues, totalEcartees, nbPassages,
       } : null}
-      semaine={passages.slice().reverse().map((p) => ({
-        quand: p.termine_le, lues: p.nb_lues || 0,
-      }))}
+      semaine={semaine}
       visites={visites}
     />
   );
