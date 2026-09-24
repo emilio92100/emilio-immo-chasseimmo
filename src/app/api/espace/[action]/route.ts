@@ -34,6 +34,62 @@ const AVIS_OK = ['interesse', 'souhaite_visiter', 'refuse'];
 const nettoie = (s: unknown, max = 600) =>
   typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
+/* Le mail qui prévient Alexandre qu'un client veut visiter un bien. Court :
+   qui, quel bien, ses disponibilités, et le bouton vers sa fiche dans le CRM. */
+async function prevenirVisite(
+  supabase: ReturnType<typeof base>, clientId: string,
+  bien: { id: string; titre?: string | null; ville?: string | null; quartier?: string | null; photos?: string[] | null; prix_acquereur?: number | null; prix_vendeur?: number | null },
+  dispos: string,
+) {
+  const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
+  if (!apiKey || !apiSecret) return;
+  const { data: client } = await supabase.from('clients').select('id, prenom, nom').eq('id', clientId).maybeSingle();
+  const nom = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() : 'Un client';
+  const echappe = (t: string) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const crm = process.env.NEXT_PUBLIC_CRM_URL || 'https://crm.emilio-immo.com';
+  const lien = `${crm}/?page=fiche&client=${encodeURIComponent(clientId)}`;
+  const titre = bien.titre || 'un bien';
+  const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
+  const prix = bien.prix_acquereur || bien.prix_vendeur;
+  const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
+  const html = `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
+  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
+    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO · CRM</div>
+    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">${echappe(nom)} veut visiter</div>
+  </div>
+  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
+    <div style="border:1px solid #e3e8f0;border-radius:12px;overflow:hidden;background:#f8fafc">
+      ${photo ? `<img src="${echappe(photo)}" alt="" width="514" style="width:100%;max-width:514px;height:auto;display:block;border:0" />` : ''}
+      <div style="padding:14px 16px">
+        <div style="font-weight:700;font-size:15px;color:#1a2332">${echappe(titre)}</div>
+        ${lieu ? `<div style="color:#64748b;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
+        ${prix ? `<div style="font-weight:800;font-size:17px;color:#1a2332;margin-top:8px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
+      </div>
+    </div>
+    <div style="margin-top:16px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;font-weight:700">Ses disponibilités</div>
+    <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#1a2332">${dispos ? echappe(dispos) : 'Pas précisées : à lui demander.'}</div>
+    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
+    <div style="margin-top:14px;font-size:12px;color:#94a3b8">La demande est aussi dans tes Relances, pour aujourd’hui.</div>
+  </div>
+</div>`;
+  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+  await fetch('https://api.mailjet.com/v3.1/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({
+      Messages: [{
+        From: { Email: FROM_EMAIL, Name: 'Emilio · CRM' },
+        To: [{ Email: process.env.ALERTES_EMAIL || FROM_EMAIL }],
+        Subject: `👀 ${nom} veut visiter · ${titre}`,
+        TextPart: `${nom} veut visiter : ${titre}${lieu ? ` (${lieu})` : ''}${prix ? ` — ${Number(prix).toLocaleString('fr-FR')} €` : ''}.\n\nSes disponibilités : ${dispos || 'pas précisées, à lui demander.'}\n\nOuvrir sa fiche : ${lien}\n\nLa demande est aussi dans tes Relances, pour aujourd’hui.`,
+        HTMLPart: html,
+        CustomID: `visite-${bien.id}-${Date.now()}`,
+        TrackOpens: 'disabled', TrackClicks: 'disabled',
+      }],
+    }),
+  });
+}
+
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   try {
     const { action } = await ctx.params;
@@ -107,8 +163,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const libelle = avis === 'interesse' ? '👍 Ça lui plaît'
           : avis === 'souhaite_visiter' ? '👀 Il veut visiter' : '👎 Pas pour lui';
 
+        /* Ce qu'il avait déjà dit. Après un « ça me plaît », il peut encore
+           demander à visiter : on garde son premier mot s'il n'en ajoute pas,
+           et on ne prévient Alexandre qu'une fois par bien. */
+        const { data: avant } = await supabase.from('biens')
+          .select('badge_retour, retour_client').eq('id', bien.id).maybeSingle();
+        const dejaVisite = avant?.badge_retour === 'souhaite_visiter';
+        const garde = avis === 'souhaite_visiter' && avant?.badge_retour === 'interesse' ? (avant?.retour_client || null) : null;
+
         await supabase.from('biens').update({
-          badge_retour: avis, retour_client: com || null,
+          badge_retour: avis, retour_client: com || garde || null,
           retour_le: new Date().toISOString(), retour_par: 'client',
         }).eq('id', bien.id);
 
@@ -126,6 +190,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           .eq('recherche_id', recherche.id)
           .eq('type', 'auto')
           .eq('statut', 'en_attente');
+
+        /* Il veut visiter : Alexandre doit le savoir tout de suite. Une
+           relance du jour (elle sort en rouge dans Relances et sur le tableau
+           de bord ; « Veut visiter » ouvre la fiche sur Présentés), et un mail
+           pour l'avoir même loin du CRM. Un échec du mail ne bloque rien. */
+        if (avis === 'souhaite_visiter' && !dejaVisite) {
+          await supabase.from('relances').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id,
+            type: 'rappel_client', statut: 'en_attente',
+            date_echeance: new Date().toISOString(),
+            note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}`.slice(0, 600),
+          });
+          try { await prevenirVisite(supabase, recherche.client_id, bien, com); } catch { /* le CRM le montre déjà */ }
+        }
 
         await evt('avis', `${libelle}${com ? ' · ' + com : ''}`, bien.id);
         return NextResponse.json({ ok: true });
