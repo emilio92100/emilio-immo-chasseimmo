@@ -8,7 +8,7 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
-import { signalerMaj } from '@/lib/intentions';
+import { signalerMaj, demanderRendezVous } from '@/lib/intentions';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import {
   BasculeCriteres, CorpsCriteres, CRIT_VIDE, ETATS, EXPOSITIONS, etapesCriteres,
@@ -469,7 +469,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
   );
 }
 
-export default function FicheClient({ client: init, onBack }: Props) {
+export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
   const [client, setClient] = useState<Client>(init);
   const [recherches, setRecherches] = useState<Recherche[]>([]);
   const [rechercheId, setRechercheId] = useState<string>('');
@@ -4912,12 +4912,33 @@ Emilio Immobilier
       {showAction && (
         <Portail>
         <div className={styles.overlay}>
-          <div className={styles.modal} style={{ maxWidth: 500 }}>
+          <div className={styles.modal} style={{ maxWidth: 720 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={fermerAction}>✕</button></div>
             <div className={styles.modalBody}>
+              {/* Le rendez-vous se prend dans l'agenda : ce bouton y mène, la
+                  fenêtre « Nouveau rendez-vous » ouverte et ce dossier choisi. */}
+              {!actionEdit && rechercheActive && (
+                <button type="button" className="fc-rdv-agenda"
+                  onClick={() => { demanderRendezVous(rechercheActive.id); fermerAction(); onNavigate('agenda'); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #ecdcae', background: 'linear-gradient(135deg, #fffaf0 0%, #fbf1d8 100%)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: '#1a2332' }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 13, background: '#1a2332', color: '#c9a84c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icone nom="calendrier" taille={21} epaisseur={2} />
+                  </span>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+                    <b style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15.5, fontWeight: 800 }}>Créer un rendez-vous</b>
+                    <span style={{ fontSize: 12.5, color: '#5b6678', lineHeight: 1.45 }}>{`Visite, rendez-vous, appel ou signature, dans l’agenda. ${client.prenom || 'Le client'} est déjà choisi.`}</span>
+                  </span>
+                  <span style={{ color: '#8a6a1f', display: 'flex', flexShrink: 0 }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></span>
+                </button>
+              )}
+              {!actionEdit && rechercheActive && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#94a3b8', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  <span style={{ flex: 1, height: 1, background: '#eef1f6' }} /><span>ou noter une action</span><span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
+                </div>
+              )}
               <div>
                 <label className={styles.lbl}>Type d'action</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div className="fc-types-action" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                   {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? '#1a2332' : '#e2e8f0'}`, background: actionF.type === o.v ? '#1a2332' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
                 </div>
               </div>
