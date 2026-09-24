@@ -26,16 +26,18 @@ const NAVY = '#1a2332', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', 
 const DOUX = '#5b6678', PALE = '#8d99ab', FOND = '#f4f6fa', AUJ_FOND = '#fcfaf3', CHOISI = '#eef1f7';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
 
-type TypeRdv = 'visite' | 'client' | 'appel' | 'signature' | 'estimation' | 'perso';
+type TypeRdv = 'visite' | 'client' | 'libre' | 'appel' | 'signature' | 'estimation' | 'perso';
 const TYPES: Record<TypeRdv, { nom: string; fond: string; trait: string; encre: string; point: string; ico: string }> = {
   visite: { nom: 'Visite', fond: '#fbf4e1', trait: '#ecdcae', encre: '#5f450c', point: '#c9a84c', ico: 'maison' },
   client: { nom: 'Rendez-vous client', fond: '#e9edf5', trait: '#cdd5e4', encre: '#1a2332', point: '#1a2332', ico: 'personne' },
+  /* Un rendez-vous sans client : notaire, banque, partenaire, agence… */
+  libre: { nom: 'Rendez-vous libre', fond: '#e6f5f3', trait: '#bfe5df', encre: '#115e59', point: '#0d9488', ico: 'groupe' },
   appel: { nom: 'Appel · visio', fond: '#eaf1fe', trait: '#c8d9fb', encre: '#1e3a8a', point: '#2563eb', ico: 'visio' },
   signature: { nom: 'Signature', fond: '#e5f4ec', trait: '#bfe3cf', encre: '#0b5e41', point: '#0f8a5f', ico: 'stylo' },
   estimation: { nom: 'Estimation', fond: '#f1ecfb', trait: '#dccff6', encre: '#4c1d95', point: '#7c3aed', ico: 'estimer' },
   perso: { nom: 'Personnel', fond: '#f2f4f7', trait: '#dfe4eb', encre: '#475569', point: '#94a3b8', ico: 'lune' },
 };
-const ORDRE: TypeRdv[] = ['visite', 'client', 'appel', 'signature', 'estimation', 'perso'];
+const ORDRE: TypeRdv[] = ['visite', 'client', 'libre', 'appel', 'signature', 'estimation', 'perso'];
 const FAIT = { fond: '#f5f6f9', trait: '#e6e9ef', encre: '#7d899b' };
 /* Une visite passée dont le compte rendu n'est pas fait reste visible, en
    ambre : c'est une chose à faire, pas une chose finie. */
@@ -61,6 +63,8 @@ const TR: Record<string, string[]> = {
   chevB: ['m6 9.5 6 6 6-6'],
   horloge: ['c:12,12,9', 'M12 7.5V12l3 2'],
   personne: ['c:12,8,4', 'M4.5 20a7.5 7.5 0 0 1 15 0'],
+  soleil: ['c:12,12,4', 'M12 2.5v2', 'M12 19.5v2', 'M4.6 4.6 6 6', 'M18 18l1.4 1.4', 'M2.5 12h2', 'M19.5 12h2', 'M4.6 19.4 6 18', 'M18 6l1.4-1.4'],
+  groupe: ['c:9,8.5,3.4', 'M2.8 19.5a6.2 6.2 0 0 1 12.4 0', 'c:17,9.5,2.7', 'M15.8 14.3a5 5 0 0 1 5.4 5.2'],
   lieu: ['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z', 'c:12,10,2.6'],
   tel: ['M5.2 3.5h3.2l1.6 4.2-2.1 1.3a12.6 12.6 0 0 0 7.1 7.1l1.3-2.1 4.2 1.6v3.2a1.9 1.9 0 0 1-2.1 1.9A17 17 0 0 1 3.3 5.6a1.9 1.9 0 0 1 1.9-2.1z'],
   coche: ['m4 12.5 5 5L20 6.5'],
@@ -131,7 +135,11 @@ type Ev = {
      `suite` quand ce morceau ne commence pas le premier jour, `finReelle`
      pour dire jusqu'à quand il dure. */
   suite?: boolean; finReelle?: Date;
+  /* Long (6 h et plus, ou plusieurs jours) : dessiné en bande sur toute sa
+     hauteur, les autres rendez-vous par-dessus. */
+  longue?: boolean;
 };
+const LONGUE_MIN = 360;
 type Tache = { cle: string; jour: string; titre: string; genre: Genre; clientId: string | null };
 type Dossier = {
   rechercheId: string; clientId: string; nom: string; prenom: string; emails: string[]; libelle: string;
@@ -159,11 +167,14 @@ function duJour(evs: Ev[], k: string): Ev[] {
   const out: Ev[] = [];
   for (const e of evs) {
     if (!couvre(e, k)) continue;
-    if (dernierJour(e) === e.jour) { out.push(e); continue; }
+    if (dernierJour(e) === e.jour) {
+      out.push(e.fin.getTime() - e.debut.getTime() >= LONGUE_MIN * 60000 ? { ...e, longue: true } : e);
+      continue;
+    }
     const d = depuisCle(k);
     const debut = k === e.jour ? e.debut : new Date(d.getFullYear(), d.getMonth(), d.getDate(), H0, 0);
     const finJ = k === dernierJour(e) ? e.fin : new Date(d.getFullYear(), d.getMonth(), d.getDate(), H1, 0);
-    out.push({ ...e, debut, fin: finJ > debut ? finJ : new Date(debut.getTime() + 30 * 60000), jour: k, suite: k !== e.jour, finReelle: e.fin });
+    out.push({ ...e, debut, fin: finJ > debut ? finJ : new Date(debut.getTime() + 30 * 60000), jour: k, suite: k !== e.jour, finReelle: e.fin, longue: true });
   }
   return out.sort((a, b) => a.debut.getTime() - b.debut.getTime());
 }
@@ -367,7 +378,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     titre = maj(jourLong(dJour));
     const liste = duJour(visibles, jour);
     const p = liste.find(e => e.debut > maintenant);
-    sous = `${rdv(liste.length)}${p ? ` · le prochain à ${hhmm(p.debut)}` : ''}`;
+    sous = liste.length ? `${rdv(liste.length)}${p ? ` · le prochain à ${hhmm(p.debut)}` : ''}` : 'Aucun rendez-vous ce jour-là';
   } else if (vue === 'semaine') {
     const a = depuisCle(semaine[0]), b = depuisCle(semaine[6]);
     titre = a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} ${MOIS[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MOIS[a.getMonth()]} – ${b.getDate()} ${MOIS[b.getMonth()]}`;
@@ -413,10 +424,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   }
 
   const crAFaire = evs.filter(e => e.crAFaire).sort((a, b) => b.debut.getTime() - a.debut.getTime());
-  const prochains = visibles.filter(e => e.debut > maintenant).slice(0, 3);
-  const aujListe = duJour(visibles, auj);
-  const suivant = aujListe.find(e => e.debut > maintenant);
-  const resume = `${rdv(aujListe.length)} aujourd’hui${suivant ? `, le prochain à ${hhmm(suivant.debut)}.` : '.'}`;
+  const prochains = visibles.filter(e => e.debut > maintenant).slice(0, 5);
   /* Les compteurs de la légende portent sur la période affichée, types
      masqués compris : on voit ce qu'on cache. */
   const dansPeriode = (e: Ev) => vue === 'jour' ? couvre(e, jour)
@@ -456,7 +464,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
       ) : (
         <div style={{ display: 'flex', gap: 22, padding: '22px 28px 28px', alignItems: 'flex-start' }}>
           <Rail
-            maintenant={maintenant} jour={jour} setJour={k => { setJour(k); setSelCle(null); }} evs={visibles} resume={resume}
+            maintenant={maintenant} jour={jour} setJour={k => { setJour(k); setSelCle(null); }} evs={visibles}
             legende={legende} masques={masques} basculer={t => setMasques(m => ({ ...m, [t]: !m[t] }))}
             prochains={prochains} crAFaire={crAFaire} onNouveau={() => nouveau()} onVoirEv={e => { setJour(e.jour); setSelCle(e.cle); }} onCR={compteRendu} />
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -520,6 +528,11 @@ function StylesAgenda() {
       @keyframes agPanneau{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
       .ag-section{animation:agSection .45s cubic-bezier(.2,.9,.3,1) both}
       .ag-panneau{animation:agPanneau .26s cubic-bezier(.2,.9,.3,1) both;transform-origin:top center}
+      @keyframes agSoleil{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+      @keyframes agBattement{0%,100%{box-shadow:0 0 0 0 rgba(232,115,90,.6)}60%{box-shadow:0 0 0 6px rgba(232,115,90,0)}}
+      .ag-soleil svg{animation:agSoleil 24s linear infinite}
+      .ag-pouls-point{animation:agBattement 1.8s ease-out infinite}
+      .ag-carte-jour{animation:agSection .5s cubic-bezier(.2,.9,.3,1) both}
       .ag-champ{transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
       .ag-champ:hover:not(:focus):not(:disabled){border-color:#cfd7e3 !important}
       .ag-champ:focus{border-color:${OR} !important;box-shadow:0 0 0 4px rgba(201,168,76,.16);background:#fff !important}
@@ -564,9 +577,85 @@ function Etiquette({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: PALE }}>{children}</div>;
 }
 
-/* ══ La colonne de gauche ══════════════════════════════════════ */
-function Rail({ maintenant, jour, setJour, evs, resume, legende, masques, basculer, prochains, crAFaire, onNouveau, onVoirEv, onCR }: {
-  maintenant: Date; jour: string; setJour: (k: string) => void; evs: Ev[]; resume: string;
+/* ══ La colonne de gauche ══════════════════════════════════════
+   De haut en bas : la carte du jour (ce qui reste aujourd'hui, ou une
+   journée libre), les comptes rendus à faire, ce qui arrive, puis le
+   calendrier et les filtres, plus discrets. */
+const COURT: Record<TypeRdv, string> = { visite: 'Visites', client: 'Clients', libre: 'Libres', appel: 'Appels', signature: 'Signatures', estimation: 'Estimations', perso: 'Perso' };
+
+/* « dans 25 min », « dans 1 h 10 », « dans 3 h ». */
+function dans(d: Date, maintenant: Date): string {
+  const m = Math.max(1, Math.round((d.getTime() - maintenant.getTime()) / 60000));
+  if (m < 60) return `dans ${m} min`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return `dans ${h} h${r && h < 4 ? ` ${pad(r)}` : ''}`;
+}
+const jourCourt = (e: Ev, maintenant: Date) => e.jour === cleDe(maintenant) ? 'Aujourd’hui' : e.jour === cleDe(plusJours(maintenant, 1)) ? 'Demain' : `${maj(JOURS[e.debut.getDay()].slice(0, 3))}. ${e.debut.getDate()}`;
+
+/* Une journée sans rendez-vous : on le dit joliment, avec de quoi en poser un. */
+function JourneeLibre({ sous, action, onAction }: { sous: string; action?: string; onAction?: () => void }) {
+  return (
+    <div className="ag-panneau" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '26px 22px', borderRadius: 20, background: 'linear-gradient(180deg, #fffaf0 0%, #ffffff 100%)', border: '1px solid #f0e2bd', textAlign: 'center', pointerEvents: onAction ? 'auto' : 'none' }}>
+      <span className="ag-soleil" style={{ width: 58, height: 58, borderRadius: 20, background: '#fbf1d8', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="soleil" t={30} ep={1.8} /></span>
+      <b style={{ fontFamily: JAK, fontSize: 18, fontWeight: 800 }}>Journée libre</b>
+      <span style={{ fontSize: 13, color: DOUX, lineHeight: 1.5, maxWidth: 300 }}>{sous}</span>
+      {action && onAction && (
+        <button type="button" className="ag-appui" onClick={onAction}
+          style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <Ic n="plus" t={15} ep={2.4} />{action}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CarteDuJour({ maintenant, evs, prochain, onNouveau, onVoirEv }: { maintenant: Date; evs: Ev[]; prochain: Ev | null; onNouveau: () => void; onVoirEv: (e: Ev) => void }) {
+  const auj = duJour(evs, cleDe(maintenant));
+  const reste = auj.filter(e => e.fin > maintenant);
+  const suivant = reste.find(e => e.debut > maintenant) || null;
+  const enCours = reste.find(e => e.debut <= maintenant) || null;
+  const libre = auj.length === 0;
+  const e = enCours || suivant || (libre ? prochain : null);
+  const etiquette = !e ? '' : enCours ? 'En ce moment' : suivant ? dans(e.debut, maintenant) : `${jourCourt(e, maintenant)} à ${hhmm(e.debut)}`;
+  return (
+    <div className="ag-carte-jour" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 18, background: 'white', border: `1px solid ${BORD}`, boxShadow: '0 1px 2px rgba(16,24,40,.04)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 2px' }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: OR_FONCE }}>Aujourd’hui</span>
+          <b style={{ fontFamily: JAK, fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{maj(jourLong(maintenant))}</b>
+        </span>
+        {libre
+          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: 800, color: OR_FONCE, background: '#fbf4e1', borderRadius: 20, padding: '4px 10px' }}><span className="ag-soleil" style={{ display: 'flex' }}><Ic n="soleil" t={13} ep={2.2} /></span>Libre</span>
+          : <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 800, color: NAVY, background: '#f1f4f9', borderRadius: 20, padding: '4px 10px', fontVariantNumeric: 'tabular-nums' }}>{`${auj.length} rdv`}</span>}
+      </div>
+
+      {e ? (
+        <button type="button" className="ag-appui" onClick={() => onVoirEv(e)}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 9px', borderRadius: 12, border: `1px solid ${LIGNE}`, background: '#fbfcfe', color: NAVY, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+          <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 4, background: TYPES[e.type].point, flexShrink: 0 }} />
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 800, color: enCours ? '#b4452c' : OR_FONCE }}>
+              {enCours && <span className="ag-pouls-point" style={{ width: 6, height: 6, borderRadius: '50%', background: '#e8735a' }} />}{`${enCours ? '' : 'Prochain · '}${etiquette}`}
+            </span>
+            <b style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${hhmm(e.debut)} · ${e.titre}`}</b>
+          </span>
+        </button>
+      ) : libre ? (
+        <span style={{ fontSize: 12, color: PALE, padding: '0 2px' }}>Rien de prévu pour l’instant.</span>
+      ) : (
+        <span style={{ fontSize: 12, color: PALE, padding: '0 2px' }}>Tout est passé pour aujourd’hui.</span>
+      )}
+
+      <button type="button" className="ag-appui" onClick={onNouveau}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 40, borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 13.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 8px 18px -12px rgba(201,168,76,.9)' }}>
+        <Ic n="plus" t={16} ep={2.4} />Nouveau rendez-vous
+      </button>
+    </div>
+  );
+}
+
+function Rail({ maintenant, jour, setJour, evs, legende, masques, basculer, prochains, crAFaire, onNouveau, onVoirEv, onCR }: {
+  maintenant: Date; jour: string; setJour: (k: string) => void; evs: Ev[];
   legende: { t: TypeRdv; n: number }[]; masques: Partial<Record<TypeRdv, boolean>>; basculer: (t: TypeRdv) => void;
   prochains: Ev[]; crAFaire: Ev[]; onNouveau: () => void; onVoirEv: (e: Ev) => void; onCR: (e: Ev) => void;
 }) {
@@ -576,67 +665,21 @@ function Rail({ maintenant, jour, setJour, evs, resume, legende, masques, bascul
   const nbCases = Math.ceil((((mois.getDay() + 6) % 7) + new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate()) / 7) * 7;
   const jours = new Set(evs.flatMap(joursCouverts));
   const auj = cleDe(maintenant);
+  /* La carte du jour met déjà en avant le prochain : on ne le répète pas. */
+  const reste = duJour(evs, auj).filter(e => e.fin > maintenant);
+  const vedette = reste.find(e => e.debut <= maintenant) || reste.find(e => e.debut > maintenant) || prochains[0] || null;
+  const venir = prochains.filter(e => e.cle !== vedette?.cle).slice(0, 4);
+  const fl: React.CSSProperties = { width: 26, height: 26, border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center' };
   return (
-    <aside style={{ width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20, position: 'sticky', top: 12 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <div style={{ fontFamily: JAK, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: OR_FONCE, textTransform: 'uppercase' }}>Agenda</div>
-        <div style={{ fontFamily: JAK, fontSize: 21, fontWeight: 800, letterSpacing: -.3 }}>{maj(jourLong(maintenant))}</div>
-        <div style={{ fontSize: 13, color: DOUX, lineHeight: 1.5 }}>{resume}</div>
-      </div>
-      <button type="button" className="ag-appui" onClick={onNouveau}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, height: 46, borderRadius: 14, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 10px 22px -12px rgba(201,168,76,.9)' }}>
-        <Ic n="plus" t={17} ep={2.4} />Nouveau rendez-vous
-      </button>
-
-      <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 18, padding: '14px 12px 10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px 8px' }}>
-          <b style={{ fontFamily: JAK, fontSize: 14 }}>{maj(`${MOIS[mois.getMonth()]} ${mois.getFullYear()}`)}</b>
-          <span style={{ display: 'flex', gap: 2 }}>
-            <button type="button" aria-label="Mois précédent" onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() - 1, 1))} style={{ width: 28, height: 28, border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="chevG" t={15} /></button>
-            <button type="button" aria-label="Mois suivant" onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() + 1, 1))} style={{ width: 28, height: 28, border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="chevD" t={15} /></button>
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2, textAlign: 'center' }}>
-          {LETTRES.map(l => <span key={l} style={{ fontSize: 10, fontWeight: 700, color: PALE, padding: '3px 0' }}>{l.slice(0, 1)}</span>)}
-          {Array.from({ length: nbCases }, (_, i) => {
-            const d = plusJours(debut, i); const k = cleDe(d);
-            const estAuj = k === auj, choisi = k === jour, hors = d.getMonth() !== mois.getMonth();
-            return (
-              <button key={k} type="button" onClick={() => setJour(k)} aria-label={maj(jourLong(d))}
-                style={{ height: 34, border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: estAuj ? OR : choisi ? CHOISI : 'transparent', color: estAuj ? NAVY : hors ? '#b9c2d0' : NAVY, fontWeight: estAuj || choisi ? 800 : 500 }}>
-                {d.getDate()}
-                <span style={{ width: 4, height: 4, borderRadius: '50%', background: jours.has(k) ? (estAuj ? NAVY : OR_FONCE) : 'transparent' }} />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <Etiquette>Types · sur la période</Etiquette>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {legende.map(({ t, n }) => {
-            const actif = !masques[t];
-            return (
-              <button key={t} type="button" onClick={() => basculer(t)} aria-pressed={actif}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 6px', border: 'none', background: 'transparent', borderRadius: 9, cursor: 'pointer', opacity: actif ? 1 : .45, color: NAVY, fontFamily: 'inherit' }}>
-                <span style={{ width: 16, height: 16, boxSizing: 'border-box', borderRadius: 5, background: actif ? TYPES[t].point : 'transparent', border: `1.5px solid ${TYPES[t].point}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                  {actif && <Ic n="coche" t={11} ep={3} />}
-                </span>
-                <span style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 600 }}>{TYPES[t].nom}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: PALE, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <aside style={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 12 }}>
+      <CarteDuJour maintenant={maintenant} evs={evs} prochain={prochains[0] || null} onNouveau={onNouveau} onVoirEv={onVoirEv} />
 
       {crAFaire.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 12px 10px', borderRadius: 16, background: '#fff8e8', border: '1px solid #f3dcae' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#8a4b0f', fontSize: 12.5, fontWeight: 800 }}>
             <Ic n="note" t={15} />{`${pl(crAFaire.length, 'compte rendu')} à faire`}
           </div>
-          {crAFaire.slice(0, 3).map(e => (
+          {crAFaire.slice(0, 2).map(e => (
             <button key={e.cle} type="button" className="ag-appui" onClick={() => onCR(e)}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, padding: '7px 10px', borderRadius: 10, border: '1px solid #f3dcae', background: 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY }}>
               <b style={{ fontSize: 12.5, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.titre}</b>
@@ -646,23 +689,66 @@ function Rail({ maintenant, jour, setJour, evs, resume, legende, masques, bascul
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <Etiquette>À venir</Etiquette>
-        {prochains.length === 0 && <span style={{ fontSize: 12.5, color: PALE }}>Rien de prévu pour l’instant.</span>}
-        {prochains.map(e => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 18, background: 'white', border: `1px solid ${BORD}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px' }}>
+          <span style={{ width: 26, height: 26, borderRadius: 8, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="horloge" t={14} ep={2.2} /></span>
+          <b style={{ fontFamily: JAK, fontSize: 14, fontWeight: 800 }}>À venir</b>
+        </div>
+        {venir.length === 0 && <span style={{ fontSize: 12.5, color: PALE, padding: '2px 4px 4px' }}>Rien de prévu pour l’instant.</span>}
+        {venir.map(e => (
           <button key={e.cle} type="button" className="ag-appui" onClick={() => onVoirEv(e)}
-            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 10px', border: `1px solid ${LIGNE}`, borderRadius: 12, background: 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit' }}>
-            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 58 }}>
-              <b style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{hhmm(e.debut)}</b>
-              <span style={{ fontSize: 10.5, color: PALE }}>{e.jour === cleDe(maintenant) ? 'Aujourd’hui' : e.jour === cleDe(plusJours(maintenant, 1)) ? 'Demain' : `${maj(JOURS[e.debut.getDay()].slice(0, 3))}. ${e.debut.getDate()}`}</span>
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: `1px solid ${LIGNE}`, borderRadius: 12, background: '#fbfcfe', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit' }}>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48, padding: '4px 0', borderRadius: 9, background: TYPES[e.type].fond, color: TYPES[e.type].encre }}>
+              <b style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums' }}>{hhmm(e.debut)}</b>
+              <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .8 }}>{jourCourt(e, maintenant)}</span>
             </span>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: TYPES[e.type].point, flexShrink: 0 }} />
             <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <b style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.titre}</b>
               <span style={{ fontSize: 11.5, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.qui || TYPES[e.type].nom}</span>
             </span>
           </button>
         ))}
+      </div>
+
+      <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 18, padding: '10px 10px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px 4px' }}>
+          <b style={{ fontFamily: JAK, fontSize: 13 }}>{maj(`${MOIS[mois.getMonth()]} ${mois.getFullYear()}`)}</b>
+          <span style={{ display: 'flex', gap: 2 }}>
+            <button type="button" aria-label="Mois précédent" onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() - 1, 1))} style={fl}><Ic n="chevG" t={14} /></button>
+            <button type="button" aria-label="Mois suivant" onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() + 1, 1))} style={fl}><Ic n="chevD" t={14} /></button>
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, textAlign: 'center' }}>
+          {LETTRES.map(l => <span key={l} style={{ fontSize: 9.5, fontWeight: 700, color: PALE, padding: '2px 0' }}>{l.slice(0, 1)}</span>)}
+          {Array.from({ length: nbCases }, (_, i) => {
+            const d = plusJours(debut, i); const k = cleDe(d);
+            const estAuj = k === auj, choisi = k === jour, hors = d.getMonth() !== mois.getMonth();
+            return (
+              <button key={k} type="button" onClick={() => setJour(k)} aria-label={maj(jourLong(d))}
+                style={{ height: 28, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, background: estAuj ? OR : choisi ? CHOISI : 'transparent', color: estAuj ? NAVY : hors ? '#b9c2d0' : NAVY, fontWeight: estAuj || choisi ? 800 : 500 }}>
+                {d.getDate()}
+                <span style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: jours.has(k) ? (estAuj ? NAVY : OR_FONCE) : 'transparent' }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <Etiquette>Afficher · sur la période</Etiquette>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {legende.map(({ t, n }) => {
+            const actif = !masques[t];
+            return (
+              <button key={t} type="button" className="ag-appui" onClick={() => basculer(t)} aria-pressed={actif} title={actif ? `Masquer : ${TYPES[t].nom}` : `Afficher : ${TYPES[t].nom}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 20, border: `1px solid ${actif ? TYPES[t].trait : BORD}`, background: actif ? TYPES[t].fond : 'white', color: actif ? TYPES[t].encre : PALE, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: actif ? 'none' : 'line-through' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: actif ? TYPES[t].point : '#cbd3df' }} />
+                {COURT[t]}
+                <span style={{ fontVariantNumeric: 'tabular-nums', opacity: .7 }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </aside>
   );
@@ -679,7 +765,7 @@ function Bloc({ e, onVoir, large, rang }: { e: Ev & { col: number; cols: number 
   const pos: React.CSSProperties = {
     position: 'absolute', top, height: h, left: `calc(${e.col * largeur}% + ${large ? 10 : 4}px)`, width: `calc(${largeur}% - ${large ? 20 : 8}px)`,
     boxSizing: 'border-box', borderRadius: large ? 12 : 10, border: `1px solid ${c.trait}`, background: c.fond, color: c.encre,
-    textAlign: 'left', cursor: 'pointer', overflow: 'hidden', fontFamily: 'inherit', animationDelay: `${40 + rang * 35}ms`,
+    textAlign: 'left', cursor: 'pointer', overflow: 'hidden', fontFamily: 'inherit', animationDelay: `${40 + rang * 35}ms`, zIndex: 2,
   };
   const etroit = !large && e.cols >= 2;
   /* Le compte rendu à faire se reconnaît à sa petite feuille, à la place
@@ -738,13 +824,40 @@ function Bloc({ e, onVoir, large, rang }: { e: Ev & { col: number; cols: number 
   );
 }
 
+/* « 9 h – 18 h », « dès 14 h », « toute la journée », « jusqu'à 17 h ». */
+function quandLongue(e: Ev): string {
+  if (!e.finReelle) return `${hhmm(e.debut)} – ${hhmm(e.fin)}`;
+  const dernier = cleDe(e.finReelle) === e.jour;
+  return !e.suite ? `dès ${hhmm(e.debut)}` : dernier ? `jusqu’à ${hhmm(e.fin)}` : 'toute la journée';
+}
+
+/* La bande d'un rendez-vous long, dans la grille des heures : rayée aux
+   couleurs de son type, sur toute sa durée. Son titre reste en haut de
+   l'écran pendant qu'on fait défiler. Un clic à côté du titre passe au
+   travers : on peut toujours poser un rendez-vous dans le créneau. */
+function Bande({ e, onVoir }: { e: Ev; onVoir: (e: Ev) => void }) {
+  const t = TYPES[e.type], c = teinte(e);
+  const top = topDe(e.debut) + 1;
+  const h = Math.max(30, topDe(e.fin) - topDe(e.debut) - 2);
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', top, height: h, left: 2, right: 2, borderRadius: 12, pointerEvents: 'none', zIndex: 1,
+      borderLeft: `4px solid ${t.point}`, boxShadow: `inset 0 0 0 1px ${c.trait}`,
+      background: `repeating-linear-gradient(135deg, ${c.fond} 0 9px, rgba(255,255,255,.55) 9px 18px)` }}>
+      <button type="button" className="ag-appui" onClick={ev => { ev.stopPropagation(); onVoir(e); }} title={`${e.titre} · ${quandLongue(e)}`}
+        style={{ position: 'sticky', top: 6, display: 'flex', flexDirection: 'column', gap: 1, maxWidth: 'calc(100% - 12px)', boxSizing: 'border-box', margin: 6, padding: '6px 9px', borderRadius: 10, border: `1px solid ${c.trait}`, background: 'rgba(255,255,255,.92)', color: c.encre, textAlign: 'left', cursor: 'pointer', pointerEvents: 'auto', fontFamily: 'inherit', boxShadow: '0 6px 16px -10px rgba(16,24,40,.45)' }}>
+        <b style={{ fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{e.titre}</b>
+        <span style={{ fontSize: 10.5, fontWeight: 700, opacity: .8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{quandLongue(e)}</span>
+      </button>
+    </div>
+  );
+}
+
 /* Un rendez-vous sur plusieurs jours : une barre dans la ligne du haut de
    chaque jour qu'il couvre, plutôt qu'un bloc dans la grille des heures
    (il la mangerait en entier). */
 function PuceLongue({ e, onVoir, petit }: { e: Ev; onVoir: (e: Ev) => void; petit?: boolean }) {
   const c = teinte(e);
-  const dernier = !!e.finReelle && cleDe(e.finReelle) === e.jour;
-  const quand = !e.suite ? `dès ${hhmm(e.debut)}` : dernier ? `jusqu’à ${hhmm(e.fin)}` : 'toute la journée';
+  const quand = quandLongue(e);
   return (
     <button type="button" className="ag-appui" onClick={ev => { ev.stopPropagation(); onVoir(e); }} title={`${e.titre} · ${quand}`}
       style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, boxSizing: 'border-box', padding: petit ? '3px 7px' : '5px 10px', borderRadius: 7, border: `1px solid ${c.trait}`, borderLeft: `3px solid ${TYPES[e.type].point}`, background: c.fond, color: c.encre, fontSize: petit ? 10.5 : 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
@@ -826,7 +939,7 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
         <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: .2, color: PALE, textTransform: 'uppercase', padding: '11px 0 0 7px' }}>Journée</div>
         {semaine.map(k => (
           <div key={k} style={{ minHeight: 32, boxSizing: 'border-box', padding: 5, display: 'flex', flexDirection: 'column', gap: 4, borderLeft: `1px solid ${LIGNE}`, background: k === auj ? AUJ_FOND : 'white', minWidth: 0 }}>
-            {duJour(evs, k).filter(e => e.finReelle).map(e => <PuceLongue key={e.cle} e={e} onVoir={onVoirEv} petit />)}
+            {duJour(evs, k).filter(e => e.longue).map(e => <PuceLongue key={e.cle} e={e} onVoir={onVoirEv} petit />)}
             {taches.filter(t => t.jour === k).map(t => <PuceTache key={t.cle} t={t} petit />)}
           </div>
         ))}
@@ -835,10 +948,12 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
         <div style={{ display: 'grid', gridTemplateColumns: colonnes, height: (H1 - H0) * PX }}>
           <Heures />
           {semaine.map((k, ci) => {
-            const places = disposer(duJour(evs, k).filter(e => !e.finReelle));
+            const duJ = duJour(evs, k);
+            const places = disposer(duJ.filter(e => !e.longue));
             return (
               <div key={k} onClick={ev => onCreneau(k, creneauDe(ev))} title="Cliquer pour ajouter un rendez-vous"
                 style={{ position: 'relative', borderLeft: `1px solid ${LIGNE}`, backgroundColor: k === auj ? AUJ_FOND : 'white', backgroundImage: lignesHeures, cursor: 'copy' }}>
+                {duJ.filter(e => e.longue).map(e => <Bande key={'b' + e.cle} e={e} onVoir={onVoirEv} />)}
                 {places.map((e, i) => <Bloc key={e.cle} e={e} onVoir={onVoirEv} rang={ci * 2 + i} />)}
                 {k === auj && maintenant.getHours() >= H0 && maintenant.getHours() < H1 && <div className="ag-maintenant" style={{ top: topDe(maintenant) }} />}
               </div>
@@ -856,13 +971,15 @@ function VueJour({ jour, evs, taches, auj, maintenant, onVoirEv, onCreneau }: {
 }) {
   const defil = useDefilementInitial(maintenant);
   const liste = duJour(evs, jour);
-  const places = disposer(liste.filter(e => !e.finReelle));
-  const longs = liste.filter(e => e.finReelle);
+  const places = disposer(liste.filter(e => !e.longue));
+  const longs = liste.filter(e => e.longue);
   const tJ = taches.filter(t => t.jour === jour);
   return (
     <section className="ag-vue" key={jour} style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 20, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: `1px solid ${BORD}`, flexWrap: 'wrap', minHeight: 26 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: DOUX }}>{liste.length ? rdv(liste.length) : 'Aucun rendez-vous'}</span>
+        {liste.length
+          ? <span style={{ fontSize: 12.5, fontWeight: 700, color: DOUX }}>{rdv(liste.length)}</span>
+          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 800, color: OR_FONCE, background: '#fbf4e1', borderRadius: 20, padding: '5px 12px' }}><Ic n="soleil" t={14} ep={2.2} />Journée libre</span>}
         {longs.map(e => <span key={e.cle} style={{ display: 'flex', maxWidth: 360, minWidth: 0 }}><PuceLongue e={e} onVoir={onVoirEv} /></span>)}
         {tJ.map(t => <PuceTache key={t.cle} t={t} />)}
       </div>
@@ -871,6 +988,12 @@ function VueJour({ jour, evs, taches, auj, maintenant, onVoirEv, onCreneau }: {
           <Heures />
           <div onClick={ev => onCreneau(jour, creneauDe(ev))} title="Cliquer pour ajouter un rendez-vous"
             style={{ position: 'relative', borderLeft: `1px solid ${LIGNE}`, backgroundColor: jour === auj ? AUJ_FOND : 'white', backgroundImage: lignesHeures, cursor: 'copy' }}>
+            {liste.length === 0 && (
+              <div style={{ position: 'absolute', left: 0, right: 0, top: topDe(new Date(2000, 0, 1, 11, 0)), display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
+                <JourneeLibre sous="Rien de prévu ce jour-là. Clique sur un créneau pour y poser un rendez-vous." />
+              </div>
+            )}
+            {longs.map(e => <Bande key={'b' + e.cle} e={e} onVoir={onVoirEv} />)}
             {places.map((e, i) => <Bloc key={e.cle} e={e} onVoir={onVoirEv} large rang={i} />)}
             {jour === auj && maintenant.getHours() >= H0 && maintenant.getHours() < H1 && <div className="ag-maintenant" style={{ top: topDe(maintenant) }} />}
           </div>
@@ -1102,9 +1225,7 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
             {taches.filter(t => t.jour === jour).map(t => <div key={t.cle} style={{ display: 'flex' }}><PuceTache t={t} /></div>)}
             {cartesDe(jour)}
             {listeDe(jour).length === 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '36px 0', color: PALE }}>
-                <Ic n="calendrier" t={28} ep={1.6} /><b style={{ color: DOUX, fontSize: 14 }}>Rien de prévu</b>
-              </div>
+              <JourneeLibre sous={jour === auj ? 'Aucun rendez-vous aujourd’hui.' : 'Rien de prévu ce jour-là.'} action="Ajouter un rendez-vous" onAction={onNouveau} />
             )}
           </>
         )}
@@ -1512,7 +1633,11 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const [perso, setPerso] = useState(() => !DUREES.some(d => d.v === init.duree));
 
   const dossier = dossiers.find(d => d.rechercheId === f.rechercheId) || null;
-  const avecDossier = f.type !== 'perso' && f.type !== 'estimation';
+  /* Le client : obligatoire pour une visite (il faut ses biens), facultatif
+     pour un rendez-vous, un appel ou une signature, absent pour un
+     rendez-vous libre, une estimation ou un créneau personnel. */
+  const avecDossier = f.type !== 'perso' && f.type !== 'estimation' && f.type !== 'libre';
+  const dossierObligatoire = f.type === 'visite';
 
   /* Les biens du dossier : ceux de la Sélection et des Présentés. */
   useEffect(() => {
@@ -1531,6 +1656,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     titreAuto = choisis.length > 1 ? `${choisis.length} visites · ${nom}` : choisis.length === 1 ? `Visite · ${choisis[0].titre || choisis[0].ville || 'bien'}` : (nom ? `Visite · ${nom}` : 'Visite');
     lieuAuto = choisis.length ? lieuDuBien(choisis[0]) : '';
   } else if (f.type === 'client') { titreAuto = nom ? `Rendez-vous · ${nom}` : 'Rendez-vous client'; lieuAuto = 'Agence Emilio'; }
+  else if (f.type === 'libre') { titreAuto = 'Rendez-vous'; lieuAuto = ''; }
   else if (f.type === 'appel') { titreAuto = `${f.mode === 'visio' ? 'Visio' : 'Appel'}${nom ? ` · ${nom}` : ''}`; lieuAuto = f.mode === 'visio' ? 'Visio' : 'Téléphone'; }
   else if (f.type === 'signature') { titreAuto = `${ETAPES[f.etape]}${nom ? ` · ${nom}` : ''}`; lieuAuto = ''; }
   else if (f.type === 'estimation') { titreAuto = `Estimation${f.proprietaire ? ` · ${f.proprietaire}` : ''}`; lieuAuto = ''; }
@@ -1586,7 +1712,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
 
   async function enregistrer() {
     if (!f.date || !f.heure) { alert('Indique la date et l’heure.'); return; }
-    if (avecDossier && !dossier && !(ev && ev.source === 'visite')) { alert('Choisis le dossier du client.'); return; }
+    if (dossierObligatoire && !dossier && !(ev && ev.source === 'visite')) { alert('Choisis le dossier du client.'); return; }
     if (f.type === 'visite' && !ev && !choisis.length) { alert('Coche au moins un bien à visiter.'); return; }
     if (!titre.trim()) { alert('Donne un titre au rendez-vous.'); return; }
     if (rdvImpossible) { alert('Lance d’abord le SQL de l’agenda dans Supabase (agenda-rendez-vous.sql).'); return; }
@@ -1735,7 +1861,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         }
       `}</style>
       <section ref={feuille} className="ag-modale ag-feuille" role="dialog" aria-modal="true" aria-label={ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}
-        style={{ width: '100%', maxWidth: 1040, height: 'min(820px, 94dvh)', background: 'white', borderRadius: 24, boxShadow: '0 40px 100px -30px rgba(10,15,24,.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        style={{ width: '100%', maxWidth: 1320, height: 'min(900px, 95dvh)', background: 'white', borderRadius: 24, boxShadow: '0 40px 100px -30px rgba(10,15,24,.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', background: NAVY, color: 'white', flexShrink: 0 }}>
           <span style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="calendrier" t={19} ep={1.9} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1746,10 +1872,10 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         </header>
 
         <div className="ag-modale-corps" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div className="ag-modale-form" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px 26px', display: 'flex', flexDirection: 'column', gap: 14, background: '#f5f7fa' }}>
+          <div className="ag-modale-form" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '22px 28px 30px', display: 'flex', flexDirection: 'column', gap: 14, background: '#f5f7fa' }}>
             <Section n={1} ico="calendrier" titre="Quel rendez-vous" rang={0}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
                   {typesDispo.map(k => {
                     const t = TYPES[k], actif = f.type === k;
                     return (
@@ -1779,7 +1905,8 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
             </Section>
 
             {avecDossier && (
-              <Section n={2} ico="personne" titre="Pour quel client" aide="Le rendez-vous se range dans sa fiche." rang={1}>
+              <Section n={2} ico="personne" titre={dossierObligatoire ? 'Pour quel client' : 'Pour quel client (facultatif)'} rang={1}
+                aide={dossierObligatoire ? 'Le rendez-vous se range dans sa fiche.' : 'Laisse vide pour un rendez-vous sans client. Avec un client, il se range dans sa fiche.'}>
                 <ChoixDossier dossiers={dossiers} valeur={f.rechercheId} fige={!!ev && ev.source === 'visite'}
                   onChange={id => maj_({ rechercheId: id, choisis: {}, titre: null, lieu: null, contact: null })} />
               {f.type === 'visite' && dossier && !ev && (
@@ -1902,7 +2029,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
             )}
           </div>
 
-          <aside className="ag-modale-apercu" style={{ width: 340, flexShrink: 0, boxSizing: 'border-box', background: 'white', borderLeft: `1px solid ${BORD}`, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+          <aside className="ag-modale-apercu" style={{ width: 380, flexShrink: 0, boxSizing: 'border-box', background: 'white', borderLeft: `1px solid ${BORD}`, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Etiquette>Aperçu</Etiquette>
               <b style={{ fontFamily: JAK, fontSize: 15 }}>{maj(jourLong(debut))}</b>
@@ -1947,7 +2074,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         </div>
 
         <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '14px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
-          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : avecDossier ? 'Choisis le dossier du client.' : 'Rendez-vous sans dossier client.'}</span>
+          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
           <button type="button" onClick={onFerme} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
             style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', opacity: envoi ? .7 : 1, boxShadow: '0 12px 24px -12px rgba(201,168,76,.95)' }}>
