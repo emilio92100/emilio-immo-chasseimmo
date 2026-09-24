@@ -147,6 +147,12 @@ const VALEURS: [string, string, (v: any) => string][] = [
 ];
 /* Les oui/non : faux et vide disent la même chose. */
 const OUI_SEUL = new Set(['rdc_exclu', 'dernier_etage']);
+/* Jusqu'au 24 septembre, un champ laissé vide s'enregistrait 0 (voir n()
+   plus bas). Ces zéros-là ne viennent pas du client : quand ils repartent,
+   ce n'est pas lui qui a « retiré » quelque chose, et on ne l'écrit pas.
+   Pour l'apport et l'étage minimum, 0 et vide veulent dire la même chose. */
+const ZERO_COMME_VIDE = new Set(['apport', 'etage_min']);
+const ZERO_HERITE = new Set(['etage_max', 'etage_max_sans_ascenseur']);
 
 const vide = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
 const liste = (v: unknown): string[] => (Array.isArray(v) ? v.map(String)
@@ -172,6 +178,8 @@ function decrireChangements(avant: Record<string, any>, maj: Record<string, unkn
       if (!!a !== !!p) out.push({ l, a: f(!!a), p: f(!!p) });
       continue;
     }
+    if (ZERO_COMME_VIDE.has(k)) { if (Number(a) === 0) a = null; if (Number(p) === 0) p = null; }
+    if (ZERO_HERITE.has(k) && Number(a) === 0 && a !== null && vide(p)) continue;
     if (vide(a) && vide(p)) continue;
     if (!vide(a) && !vide(p) && String(a) === String(p)) continue;
     out.push({ l, a: vide(a) ? null : f(a), p: vide(p) ? null : f(p) });
