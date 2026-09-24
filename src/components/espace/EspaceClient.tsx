@@ -1111,6 +1111,21 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [biensInit]);
 
+  /* Un mail de plus de cinq biens se termine par « Découvrir les N autres »,
+     qui pointe sur /espace/<jeton>?vue=neufs : le client arrive sur la liste
+     de ses nouveaux biens, pas sur l'accueil. Même nettoyage de l'adresse
+     que pour `bien`. */
+  const vueOuverte = useRef(false);
+  useEffect(() => {
+    if (vueOuverte.current) return;
+    let voulue = '';
+    try { voulue = new URLSearchParams(window.location.search).get('vue') || ''; } catch { return; }
+    if (voulue !== 'neufs') return;
+    vueOuverte.current = true;
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
+    setVue('neufs');
+  }, []);
+
   /* « Mes critères ont évolué » ne mène plus directement à l'assistant : on
      demande d'abord au client ce qu'il préfère. Certains veulent corriger un
      chiffre eux-mêmes, d'autres veulent en parler — les deux sont légitimes,
