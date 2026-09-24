@@ -18,3 +18,15 @@
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+/* Sur téléphone : la hauteur réelle de l'écran (100vh compte la barre
+   d'adresse de Safari, et la barre du bas passait dessous), un défilement
+   souple, et de la place en bas pour la barre d'onglets. */
+@media (max-width: 900px) {
+  .appLayout { height: 100dvh; }
+  .content {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}

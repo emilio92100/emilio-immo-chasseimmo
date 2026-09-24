@@ -102,3 +102,99 @@
   font-size: 10.5px; font-weight: 700; letter-spacing: 0;
   margin-left: 4px; opacity: 0.7;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA VERSION TÉLÉPHONE
+   Sur ordinateur, rien de ce qui suit ne se voit : le pictogramme dessiné,
+   le bouton de fermeture, le voile et la barre du bas sont masqués.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.navPicto, .fermer, .voile, .barreBas { display: none; }
+
+@media (max-width: 900px) {
+  /* Le tiroir : la barre de gauche sort de la page et glisse par-dessus. */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 160;
+    width: min(84vw, 310px); min-width: 0;
+    height: 100vh; height: 100dvh;
+    border-right: none;
+    box-shadow: 0 0 0 rgba(15,22,35,0);
+    transform: translateX(-104%);
+    transition: transform .32s cubic-bezier(.22,.9,.3,1), box-shadow .32s ease;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .ouvert { transform: none; box-shadow: 18px 0 50px rgba(15,22,35,.22); }
+
+  .voile {
+    display: block; position: fixed; inset: 0; z-index: 150;
+    background: rgba(15,22,35,.42); backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none; transition: opacity .28s ease;
+  }
+  .voileOuvert { opacity: 1; pointer-events: auto; }
+
+  .logo { padding: 18px 16px 16px 20px; }
+  .fermer {
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-left: auto; width: 38px; height: 38px; border-radius: 12px;
+    border: 1px solid #e3e8f0; background: #f8fafc; color: #64748b;
+  }
+
+  /* Les rubriques : plus hautes, pour le doigt, avec un vrai pictogramme. */
+  .nav { padding: 6px 12px 12px; }
+  .navSection { padding: 14px 10px 6px; }
+  .navItem { padding: 12px 14px; font-size: 15px; gap: 13px; border-radius: 12px; margin-bottom: 3px; }
+  .navIcon { display: none; }
+  .navPicto {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    background: #f1f5f9; color: #64748b;
+  }
+  .navItem.active .navPicto { background: #1a2332; color: #c9a84c; }
+  .navItem.active::before { display: none; }
+  .userArea { padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ── La barre d'onglets du bas ── */
+  .barreBas {
+    display: flex; align-items: stretch; justify-content: space-around;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding: 0 4px env(safe-area-inset-bottom, 0px);
+    background: rgba(255,255,255,.94);
+    backdrop-filter: saturate(1.6) blur(14px); -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    border-top: 1px solid #e3e8f0;
+    box-shadow: 0 -6px 24px rgba(15,22,35,.06);
+  }
+  .onglet, .ongletPlus {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: none; padding: 6px 0 4px; color: #94a3b8;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ongletActif { color: #1a2332; }
+  .ongletPicto {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 46px; height: 30px; border-radius: 15px; transition: background .2s ease;
+  }
+  .ongletActif .ongletPicto { background: #fdf6e3; color: #a9822f; }
+  .ongletMot { font-size: 10.5px; font-weight: 700; letter-spacing: .1px; line-height: 1; }
+  .ongletActif .ongletMot { color: #1a2332; font-weight: 800; }
+
+  .ongletPastille {
+    position: absolute; top: -5px; right: -1px;
+    min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+    background: #3b82f6; color: #fff; border: 2px solid #fff;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9.5px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .ongletPastilleRouge { background: #ef4444; }
+
+  /* Le « + » : le geste le plus fréquent, posé au centre et en relief. */
+  .ongletPlus { color: #1a2332; }
+  .plusRond {
+    width: 48px; height: 48px; margin-top: -20px; border-radius: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #243044, #1a2332); color: #e8c96a;
+    box-shadow: 0 8px 20px -6px rgba(26,35,50,.55), 0 0 0 4px #fff;
+  }
+  .ongletPlus:active .plusRond { transform: scale(.94); }
+}

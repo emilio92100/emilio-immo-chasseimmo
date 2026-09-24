@@ -3,8 +3,12 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient } from '@/lib/intentions';
+import { Icone } from '@/components/fiche/ParcoursBien';
 
-export default function Topbar({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+/* Sur téléphone, la barre du haut garde l'essentiel : le menu ☰ à gauche, la
+   recherche au milieu, la cloche des relances à droite. « Nouveau mail » et
+   « Nouveau client » passent dans le tiroir et dans la barre du bas. */
+export default function Topbar({ onNavigate, onMenu }: { onNavigate: (page: string, data?: unknown) => void; onMenu?: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,10 +82,15 @@ export default function Topbar({ onNavigate }: { onNavigate: (page: string, data
 
   return (
     <header className={styles.topbar}>
+      <button type="button" className={styles.menuBtn} onClick={onMenu} aria-label="Ouvrir le menu">
+        <Icone nom="menu" taille={21} epaisseur={2} />
+      </button>
       <div className={styles.searchWrap} ref={ref}>
         <span className={styles.searchIco}>🔍</span>
+        <span className={styles.searchPicto}><Icone nom="loupe" taille={17} epaisseur={2} /></span>
         <input
           type="text"
+          enterKeyHint="search"
           placeholder="Rechercher un client, référence EMI..."
           className={styles.searchInput}
           value={query}
@@ -126,15 +135,17 @@ export default function Topbar({ onNavigate }: { onNavigate: (page: string, data
       <div className={styles.spacer} />
 
       {relancesCount > 0 && (
-        <button className={`${styles.alertBtn} pulse`} onClick={() => onNavigate('relances')}>
-          <span>🔔</span>
-          <span>{relancesCount} relance{relancesCount > 1 ? 's' : ''}</span>
+        <button className={`${styles.alertBtn} pulse`} onClick={() => onNavigate('relances')}
+          aria-label={`${relancesCount} relance${relancesCount > 1 ? 's' : ''} à faire`}>
+          <span className={styles.alertEmoji}>🔔</span>
+          <span className={styles.alertPicto}><Icone nom="cloche" taille={19} epaisseur={2} /></span>
+          <span>{relancesCount}<span className={styles.alertMot}>{relancesCount > 1 ? ' relances' : ' relance'}</span></span>
         </button>
       )}
-      <button className={styles.btn} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
+      <button className={`${styles.btn} ${styles.btnBureau}`} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
       {/* Le bouton créait un client… en affichant la liste des clients. Il
           ouvre maintenant le formulaire, depuis n'importe quel écran. */}
-      <button className={`${styles.btn} ${styles.btnDark}`}
+      <button className={`${styles.btn} ${styles.btnDark} ${styles.btnBureau}`}
         onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}>+ Nouveau client</button>
     </header>
   );

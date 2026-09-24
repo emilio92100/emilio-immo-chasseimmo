@@ -125,3 +125,50 @@
 .btn:hover { background: var(--bg); }
 .btnDark { background: var(--navy); color: white; border-color: var(--navy); }
 .btnDark:hover { background: var(--navy-mid); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA VERSION TÉLÉPHONE
+   ☰ · recherche · cloche. Les deux boutons « Nouveau » vivent dans la
+   barre du bas et dans le tiroir.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.menuBtn, .searchPicto, .alertPicto { display: none; }
+
+@media (max-width: 900px) {
+  .topbar {
+    height: calc(58px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 12px 0;
+    gap: 8px;
+  }
+  .menuBtn {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 42px; height: 42px; border-radius: 13px;
+    border: 1px solid var(--border); background: #fff; color: var(--navy);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .spacer, .btnBureau, .searchHint, .searchIco { display: none; }
+
+  .searchWrap { max-width: none; padding: 0 12px; height: 42px; border-radius: 13px; gap: 9px; }
+  .searchPicto { display: inline-flex; color: var(--text-3); flex-shrink: 0; }
+  .searchInput { font-size: 16px; }
+  .clearBtn { font-size: 15px; padding: 6px; margin-right: -6px; }
+
+  /* Les résultats prennent toute la largeur de l'écran, sous la barre. */
+  .searchDropdown {
+    position: fixed; left: 10px; right: 10px;
+    top: calc(62px + env(safe-area-inset-top, 0px));
+    max-height: calc(100dvh - 150px); overflow-y: auto;
+    border-radius: 16px;
+  }
+  .searchItem { padding: 12px 14px; }
+  .searchName { font-size: 14.5px; }
+  .searchMeta { font-size: 12px; }
+
+  /* La cloche : un pictogramme et le chiffre, sans le mot. */
+  .alertBtn {
+    flex-shrink: 0; height: 42px; padding: 0 11px; border-radius: 13px; gap: 4px;
+    font-size: 14px; font-weight: 800;
+  }
+  .alertEmoji, .alertMot { display: none; }
+  .alertPicto { display: inline-flex; }
+}

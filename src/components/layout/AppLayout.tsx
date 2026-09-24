@@ -12,6 +12,8 @@ import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
 import styles from './AppLayout.module.css';
+/* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
+import '@/styles/crm-mobile.css';
 import type { Client } from '@/lib/supabase';
 
 /**
@@ -49,7 +51,17 @@ export default function AppLayout() {
   const [sens, setSens] = useState<'avant' | 'arriere'>('avant');
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
   const [chargeFiche, setChargeFiche] = useState(false);
+  /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
+  const [menuOuvert, setMenuOuvert] = useState(false);
+  const fermerMenu = useCallback(() => setMenuOuvert(false), []);
   const contenu = useRef<HTMLElement>(null);
+
+  /* La classe « crm » sur <html> : les règles du téléphone s'appliquent au
+     CRM et à ses fenêtres (posées sur <body>), jamais à l'espace client. */
+  useEffect(() => {
+    document.documentElement.classList.add('crm');
+    return () => document.documentElement.classList.remove('crm');
+  }, []);
 
   /* ── La session Supabase, sans laquelle le CRM est aveugle ──
      Deux serrures protègent ce CRM : le cookie, qui autorise l'affichage des
@@ -112,6 +124,7 @@ export default function AppLayout() {
   }, []);
 
   const handleNavigate = useCallback((page: string, data?: unknown) => {
+    setMenuOuvert(false);
     /* Entrer dans une fiche pousse l'écran vers le haut, en sortir le fait
        redescendre : le mouvement dit d'où l'on vient. */
     setSens(page === 'fiche' ? 'avant' : 'arriere');
@@ -164,10 +177,10 @@ export default function AppLayout() {
   };
 
   return (
-    <div className={styles.appLayout}>
-      <Sidebar activePage={activePage} onNavigate={handleNavigate} />
+    <div className={`${styles.appLayout} crm-app`}>
+      <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} />
       <div className={styles.mainArea}>
-        <Topbar onNavigate={handleNavigate} />
+        <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} />
         <main className={styles.content} ref={contenu}>
           <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
             {renderPage()}
