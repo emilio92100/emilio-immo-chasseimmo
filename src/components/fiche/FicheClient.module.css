@@ -300,8 +300,36 @@
   .critNavD { flex: 1 1 100%; }
   .critNavD > .btn { flex: 1 1 0; justify-content: center; padding: 12px 10px; font-size: 14px; border-radius: 12px; }
 
+  /* « Étape par étape » : les neuf étapes tiennent sur une seule ligne,
+     sans défiler. Chaque pastille garde son pictogramme, l'étape en cours
+     est cerclée d'or, celles déjà faites sont dorées, le fil entre elles
+     se remplit au fur et à mesure. Le nom de l'étape est juste dessous,
+     dans l'en-tête du panneau. */
+  .critFrise { padding: 14px 16px 4px; gap: 0; overflow: visible; }
+  .critPuce {
+    flex: 0 0 32px; width: 32px; height: 32px; max-width: 32px;
+    padding: 0; justify-content: center; border-width: 1.5px;
+  }
+  .critPuceOn { max-width: 32px; box-shadow: 0 0 0 4px rgba(201,168,76,.3); }
+  .critPuceTxt { display: none; }
+  .critPuceIco { font-size: 15px; }
+  .critTrait { flex: 1 1 2px; min-width: 2px; margin: 0 1px; }
+
+  .critEnTete {
+    background: #f8fafc; border: 1px solid #eef1f6; border-radius: 16px;
+    padding: 12px; gap: 11px;
+  }
+  .critEnTeteT { font-size: 15px; }
+  .critEnTeteS { font-size: 12.5px; line-height: 1.35; }
+  .critCompteur {
+    align-self: flex-start; background: #fdf6e3; border: 1px solid #ecdcb4;
+    border-radius: 99px; padding: 3px 9px; letter-spacing: .4px; font-size: 10.5px;
+  }
+
   /* La fenêtre des critères : le titre et la croix en haut, la bascule
      « Tout afficher / Étape par étape » en dessous, sur toute la largeur. */
+  /* Hauteur fixe : le panneau ne saute plus d'une étape à l'autre. */
+  .critFenetre { height: calc(100dvh - 10px); }
   .critTete { flex-wrap: wrap; row-gap: 12px; }
   .critTete > div:last-child { display: contents !important; }
   .critTete .modalTitle { flex: 1 1 auto; order: 1; }

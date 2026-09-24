@@ -3883,7 +3883,7 @@ Emilio Immobilier
         return (
         <Portail>
         <div className={styles.overlay}>
-          <div className={styles.modal} style={{ maxWidth: 900 }}>
+          <div className={`${styles.modal} ${styles.critFenetre}`} style={{ maxWidth: 900 }}>
             <div className={`${styles.modalHeader} ${styles.critTete}`}>
               <h2 className={styles.modalTitle}>🎯 Critères de recherche</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

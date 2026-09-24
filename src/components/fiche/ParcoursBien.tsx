@@ -753,7 +753,7 @@ export function Appreciation({ p }: { p: any }) {
   const phrase = p?.appreciation || atouts[0] || null;
   if (!phrase) return null;
   return (
-    <div style={{
+    <div className="emi-avis" style={{
       display: 'flex', gap: 13, alignItems: 'flex-start',
       padding: '12px 15px', borderRadius: 12, background: '#fdfcf7', borderLeft: `3px solid ${OR}`,
     }}>
