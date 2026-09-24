@@ -85,9 +85,12 @@ export function oublierOuvertureFiche() {
    - un message ou une demande de rappel du client → Suivi › Messages ;
    - une relance posée avec une action (appel, note, rendez-vous…) → Suivi,
      sur le filtre de cette action, la ligne surlignée. */
-export function ouvertureDepuisRelance(r: { id: string; type?: string | null; client_id: string; recherche_id?: string | null }, typeAction?: string | null): OuvertureFiche {
+export function ouvertureDepuisRelance(r: { id: string; type?: string | null; client_id: string; recherche_id?: string | null; note?: string | null }, typeAction?: string | null): OuvertureFiche {
   const base = { clientId: r.client_id, rechercheId: r.recherche_id || null, relanceId: r.id };
   if (r.type === 'auto') return { ...base, onglet: 'presentes' };
+  /* « Veut visiter », posé depuis son espace : le bien est dans Présentés,
+     dans le groupe « Il veut visiter ». */
+  if (String(r.note || '').startsWith('Veut visiter')) return { ...base, onglet: 'presentes' };
   if (r.type === 'message_client' || r.type === 'rappel_client') return { ...base, onglet: 'suivi', filtre: 'message' };
   return { ...base, onglet: 'suivi', filtre: filtreDuSuivi(typeAction) };
 }
