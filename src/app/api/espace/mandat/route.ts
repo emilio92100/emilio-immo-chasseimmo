@@ -284,10 +284,20 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         }).eq('id', recherche.id);
 
+        /* Ce qu'il a corrigé par rapport à la fiche : une faute, un conjoint
+           qui signe à sa place, une autre adresse e-mail. Alexandre le voit
+           tout de suite. */
+        const net = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z@.0-9]/g, '');
+        const nomFiche = `${client.prenom || ''} ${client.nom || ''}`.trim();
+        const mailsFiche: string[] = Array.isArray(client.emails) ? client.emails.map(net) : [];
+        const ecarts = [
+          ...(nomFiche && net(nomFiche) !== net(nom) ? [`Nom sur le mandat : ${nom} — sur ta fiche : ${nomFiche}`] : []),
+          ...(mailsFiche.length && !mailsFiche.includes(net(m.email)) ? [`E-mail vérifié : ${m.email} — absent de ta fiche`] : []),
+        ];
         await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'mandat', titre: '✍️ Mandat signé en ligne par le client',
-          description: `n° ${l.numero} · ${tauxTexte(contenu.taux)} · ${DUREE.initiale} jours renouvelables, 12 mois au plus · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}`,
+          description: `n° ${l.numero} · ${tauxTexte(contenu.taux)} · ${DUREE.initiale} jours renouvelables, 12 mois au plus · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
           metadata: { signature_id: l.id, numero: l.numero, empreinte },
         });
         await evt('mandat', `Mandat n° ${l.numero} signé`);
@@ -311,11 +321,12 @@ export async function POST(req: NextRequest) {
         await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm', pj,
           sujet: `✍️ ${nom} a signé son mandat (n° ${l.numero})`,
-          texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${tauxTexte(contenu.taux)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
+          texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${tauxTexte(contenu.taux)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${ecarts.map(e => `\n⚠️ ${e}`).join('')}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
           html: gabarit(`${nom} a signé son mandat`, `<p><b>${echappe(nom)}</b> vient de signer son mandat de recherche <b>n° ${echappe(l.numero)}</b> depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.</p>
             <p>Prix maximum : ${echappe(prix)} · Honoraires : ${tauxTexte(contenu.taux)}</p>
             <p>${execution ? 'Il a demandé que la recherche commence <b>tout de suite</b>.' : `Il préfère attendre la fin de ses 14 jours : <b>pas de visite avant le ${dateCourte(limite)}</b>.`}</p>
             ${contenu.source === 'reserve' ? '<p>Numéro pris dans ta réserve : <b>reporte-le dans ImmoFacile</b>.</p>' : ''}
+            ${ecarts.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
             ${eClient ? `<p style="color:#b91c1c">⚠️ Sa copie n’a pas pu lui être envoyée (${echappe(eClient)}) : envoie-lui le PDF ci-joint.</p>` : ''}
             ${eFiche ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFiche.message)}) : remplis le bloc Mandat à la main.</p>` : ''}
             <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`,
