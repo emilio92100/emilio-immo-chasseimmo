@@ -2607,6 +2607,7 @@ const EVT: Record<string, { i: string; l: string; c: string }> = {
   message:   { i: '✉️', l: 'A écrit un message', c: OR },
   criteres:  { i: '🎯', l: 'A modifié ses critères', c: '#8b5cf6' },
   notifications: { i: '🔔', l: 'A activé les notifications', c: '#10b981' },
+  mandat: { i: '✍️', l: 'Mandat de recherche', c: '#c9a84c' },
 };
 
 export function LienEspace({ recherche, client }: { recherche: any; client: any }) {

@@ -230,6 +230,7 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
 
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
+import MandatEnLigne from './MandatEnLigne';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 
 const lienEntete: React.CSSProperties = {
@@ -2770,7 +2771,7 @@ Emilio Immobilier
               {/* Le mandat quitte l'ivoire — qui appartient aux critères — pour
                   l'ardoise : c'est une information de dossier, pas de recherche. */}
               <button className={styles.critMandat} onClick={() => setShowMandat(true)} title="Modifier le mandat">
-                <b>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}</b>
+                <b>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : ''}</b>
                 {cr.mandat_date_signature || cr.mandat_date_expiration ? (
                   <>
                     <span>
@@ -2787,10 +2788,17 @@ Emilio Immobilier
                     )}
                   </>
                 ) : (
-                  <>
-                    <span>non renseigné</span>
-                    <i>Remplir</i>
-                  </>
+                  cr.mandat_propose_le ? (
+                    <>
+                      <span>proposé, en attente de signature</span>
+                      <i style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}>À signer</i>
+                    </>
+                  ) : (
+                    <>
+                      <span>non renseigné</span>
+                      <i>Remplir</i>
+                    </>
+                  )
                 )}
               </button>
 
@@ -4201,9 +4209,14 @@ Emilio Immobilier
       {showMandat && (
         <Portail>
         <div className={styles.overlay}>
-          <div className={styles.modal} style={{ maxWidth: 500 }}>
+          <div className={styles.modal} style={{ maxWidth: 560 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📋 Mandat de recherche</h2><button className={styles.modalClose} onClick={() => setShowMandat(false)}>✕</button></div>
             <div className={styles.modalBody}>
+              {/* Le mandat signé en ligne depuis l'espace client, et « Faire
+                  signer le mandat ». La saisie manuelle reste dessous, pour un
+                  mandat signé ailleurs. */}
+              <MandatEnLigne recherche={cr} client={client}
+                onMaj={(d) => setRecherches(rs => rs.map(r => r.id === d.id ? (d as Recherche) : r))} />
               <div><label className={styles.lbl}>Date de signature</label><input className={styles.inp} type="date" value={mandat.date_signature} onChange={e => setMandat(f => ({ ...f, date_signature: e.target.value }))} /></div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Durée</label><select className={styles.inp} value={mandat.duree} onChange={e => setMandat(f => ({ ...f, duree: e.target.value }))}><option value="1">1 mois</option><option value="2">2 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></div>
