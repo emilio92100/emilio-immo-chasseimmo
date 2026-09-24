@@ -4216,7 +4216,8 @@ Emilio Immobilier
                   signer le mandat ». La saisie manuelle reste dessous, pour un
                   mandat signé ailleurs. */}
               <MandatEnLigne recherche={cr} client={client}
-                onMaj={(d) => setRecherches(rs => rs.map(r => r.id === d.id ? (d as Recherche) : r))} />
+                onMaj={(d) => setRecherches(rs => rs.map(r => r.id === d.id ? (d as Recherche) : r))}
+                onClient={(c) => setClient(c as Client)} />
               <div><label className={styles.lbl}>Date de signature</label><input className={styles.inp} type="date" value={mandat.date_signature} onChange={e => setMandat(f => ({ ...f, date_signature: e.target.value }))} /></div>
               <div className={styles.formRow}>
                 <div><label className={styles.lbl}>Durée</label><select className={styles.inp} value={mandat.duree} onChange={e => setMandat(f => ({ ...f, duree: e.target.value }))}><option value="1">1 mois</option><option value="2">2 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></div>

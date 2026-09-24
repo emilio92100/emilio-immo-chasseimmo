@@ -37,8 +37,42 @@ const SIGNATURE = 'agence/signature.png';
 type Sig = {
   id: string; numero: string; statut: string; signe_le: string | null; retracte_le: string | null;
   pdf_chemin: string | null; execution_immediate: boolean | null; code_envoye_le: string | null;
-  mandant: { prenom?: string; nom?: string; email?: string } | null;
+  mandant: { civilite?: string; prenom?: string; nom?: string; email?: string; telephone?: string; adresse?: string } | null;
 };
+
+/* ── Ce que le client a corrigé en signant ──
+   Nom, e-mail, téléphone et adresse sont modifiables dans l'espace : une
+   faute sur la fiche, un conjoint qui signe, une autre adresse e-mail. On
+   compare sans accents, sans majuscules ni ponctuation, et les téléphones
+   chiffre à chiffre (+33 6… = 06…). */
+type Ecart = { cle: 'nom' | 'email' | 'telephone' | 'adresse'; libelle: string; mandat: string; fiche: string; action: string };
+const net = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z@.0-9]/g, '');
+const tel = (t: unknown) => {
+  let d = String(t || '').replace(/\D/g, '');
+  if (d.startsWith('0033')) d = '0' + d.slice(4); else if (d.startsWith('33') && d.length === 11) d = '0' + d.slice(2);
+  return d;
+};
+const liste = (v: unknown): string[] => (Array.isArray(v) ? v : []).map(x => String(x || '').trim()).filter(Boolean);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ecartsDe(m: Sig['mandant'], client: any): Ecart[] {
+  if (!m || !client) return [];
+  const e: Ecart[] = [];
+  const nm = `${m.prenom || ''} ${m.nom || ''}`.trim();
+  const nf = `${client.prenom || ''} ${client.nom || ''}`.trim();
+  if (nm && net(nm) !== net(nf)) e.push({ cle: 'nom', libelle: 'Nom', mandat: nm, fiche: nf || '—', action: 'Remplacer sur la fiche' });
+  const mails = liste(client.emails);
+  if (m.email && !mails.map(net).includes(net(m.email))) {
+    e.push({ cle: 'email', libelle: 'E-mail (vérifié par le code)', mandat: m.email, fiche: mails.join(', ') || '—', action: mails.length ? 'Mettre en premier sur la fiche' : 'Ajouter à la fiche' });
+  }
+  const tels = liste(client.telephones);
+  if (tel(m.telephone) && !tels.map(tel).includes(tel(m.telephone))) {
+    e.push({ cle: 'telephone', libelle: 'Téléphone', mandat: String(m.telephone), fiche: tels.join(', ') || '—', action: tels.length ? 'Mettre en premier sur la fiche' : 'Ajouter à la fiche' });
+  }
+  if (m.adresse?.trim() && net(m.adresse) !== net(client.adresse)) {
+    e.push({ cle: 'adresse', libelle: 'Adresse', mandat: m.adresse.trim(), fiche: String(client.adresse || '').trim() || '—', action: client.adresse ? 'Remplacer sur la fiche' : 'Ajouter à la fiche' });
+  }
+  return e;
+}
 
 const quand = (iso: string) => new Date(iso).toLocaleString('fr-FR', {
   timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -61,13 +95,16 @@ const champ: React.CSSProperties = {
   width: '100%', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 14, fontFamily: 'inherit', color: '#1a2332',
 };
 
-export default function MandatEnLigne({ recherche, client, onMaj }: {
+export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recherche: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onMaj: (r: any) => void;
+  /* La fiche client rechargée, après « Reprendre dans la fiche ». */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onClient?: (c: any) => void;
 }) {
   const [sig, setSig] = useState<Sig | null>(null);
   const [numero, setNumero] = useState<string>(recherche?.mandat_numero || '');
@@ -115,6 +152,48 @@ export default function MandatEnLigne({ recherche, client, onMaj }: {
   const valide = !!recherche?.mandat_date_signature
     && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
   const signeEnLigne = sig?.statut === 'signe';
+  const ecarts = sig && (sig.statut === 'signe' || sig.statut === 'en_cours') ? ecartsDe(sig.mandant, client) : [];
+
+  /* ── Reprendre dans la fiche ce que le client a saisi en signant ──
+     Deux adresses e-mail et deux téléphones au plus : c'est ce que le
+     formulaire Contact sait afficher. La nouvelle passe en premier. */
+  async function reprendre(cles: Ecart['cle'][]) {
+    const m = sig?.mandant;
+    if (!m || !client?.id) return;
+    const maj: Record<string, unknown> = {};
+    const faits: string[] = [];
+    if (cles.includes('nom')) {
+      maj.prenom = (m.prenom || '').trim(); maj.nom = (m.nom || '').trim();
+      faits.push(`Nom : ${`${client.prenom || ''} ${client.nom || ''}`.trim() || '—'} → ${`${maj.prenom} ${maj.nom}`.trim()}`);
+    }
+    if (cles.includes('email') && m.email) {
+      const avant = liste(client.emails);
+      const apres = [m.email.trim(), ...avant.filter(x => net(x) !== net(m.email))].slice(0, 2);
+      const sort = avant.filter(x => !apres.map(net).includes(net(x)));
+      maj.emails = apres;
+      faits.push(`E-mail : ${apres.join(', ')}${sort.length ? ` (retiré : ${sort.join(', ')})` : ''}`);
+    }
+    if (cles.includes('telephone') && m.telephone) {
+      const avant = liste(client.telephones);
+      const apres = [String(m.telephone).trim(), ...avant.filter(x => tel(x) !== tel(m.telephone))].slice(0, 2);
+      const sort = avant.filter(x => !apres.map(tel).includes(tel(x)));
+      maj.telephones = apres;
+      faits.push(`Téléphone : ${apres.join(', ')}${sort.length ? ` (retiré : ${sort.join(', ')})` : ''}`);
+    }
+    if (cles.includes('adresse') && m.adresse?.trim()) {
+      maj.adresse = m.adresse.trim();
+      faits.push(`Adresse : ${maj.adresse}`);
+    }
+    if (!faits.length) return;
+    if (!confirm(`Mettre à jour la fiche d’après le mandat ?\n\n${faits.join('\n')}`)) return;
+    setTravail('reprendre'); setMsg(null);
+    const { data, error } = await supabase.from('clients').update(maj).eq('id', client.id).select().single();
+    setTravail('');
+    if (error || !data) { setMsg({ t: 'La fiche n’a pas pu être mise à jour : ' + (error?.message || 'aucune ligne modifiée'), ok: false }); return; }
+    onClient?.(data);
+    await addJournal(client.id, 'mandat', '✏️ Fiche mise à jour d’après le mandat', faits.join('\n'));
+    setMsg({ t: 'Fiche mise à jour.', ok: true });
+  }
 
   /* ── Proposer le mandat au client ── */
   async function proposer() {
@@ -270,6 +349,30 @@ export default function MandatEnLigne({ recherche, client, onMaj }: {
         <div style={boite('#fffbeb', '#fde68a', '#92400e')}>
           <b>{`⏳ Signature en cours · n° ${sig.numero}`}</b>
           <div>{sig.code_envoye_le ? `Code envoyé le ${quand(sig.code_envoye_le)} à ${sig.mandant?.email || 'son adresse'}. Il n’a pas encore signé.` : 'Il a commencé mais n’a pas encore signé.'}</div>
+        </div>
+      )}
+
+      {/* Ce que le client a saisi autrement que sur la fiche */}
+      {ecarts.length > 0 && (
+        <div style={{ ...boite('#fff7ed', '#fed7aa', '#7c2d12'), padding: '12px 14px 10px' }}>
+          <b>{sig?.statut === 'signe' ? '⚠️ Le mandat signé diffère de ta fiche' : '⚠️ Saisi pour la signature, différent de ta fiche'}</b>
+          <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 2 }}>{'Le client a modifié ses informations avant de signer. À toi de voir : une faute sur la fiche, un conjoint qui signe, une autre adresse… Si c’est normal, laisse la fiche telle quelle.'}</div>
+          {ecarts.map(e => (
+            <div key={e.cle} style={{ borderTop: '1px solid #fed7aa', marginTop: 9, paddingTop: 8 }}>
+              <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 800, color: '#c2410c' }}>{e.libelle}</div>
+              <div style={{ color: '#1a2332', wordBreak: 'break-word' }}>{'Sur le mandat : '}<b>{e.mandat}</b></div>
+              <div style={{ color: '#9a3412', wordBreak: 'break-word' }}>{`Sur ta fiche : ${e.fiche}`}</div>
+              <button type="button" disabled={travail === 'reprendre'} onClick={() => reprendre([e.cle])}
+                style={{ background: 'none', border: 'none', padding: '3px 0 0', color: '#a07c28', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
+                {e.action}
+              </button>
+            </div>
+          ))}
+          {ecarts.length > 1 && (
+            <button type="button" style={{ ...btn, marginTop: 10 }} disabled={travail === 'reprendre'} onClick={() => reprendre(ecarts.map(e => e.cle))}>
+              {travail === 'reprendre' ? '…' : 'Tout reprendre dans la fiche'}
+            </button>
+          )}
         </div>
       )}
 
