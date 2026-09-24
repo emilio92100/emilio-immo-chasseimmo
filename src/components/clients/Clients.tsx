@@ -1006,7 +1006,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 </div>
 
                 {/* La frise porte son propre retrait : on annule celui du bloc. */}
-                {surCriteres && <div style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
+                {surCriteres && <div className="nc-frise" style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
               </div>
 
               {/* ── Corps ── */}
