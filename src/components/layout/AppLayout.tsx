@@ -54,6 +54,16 @@ export default function AppLayout() {
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
+  /* Sur téléphone, la barre du haut (menu + recherche) se replie quand on
+     descend dans la page et revient dès qu'on remonte : l'écran gagne sa
+     hauteur. Posé directement sur l'élément, sans passer par l'état React :
+     replier la barre ne redessine pas la fiche. Sans effet sur ordinateur. */
+  const zoneBarre = useRef<HTMLDivElement>(null);
+  const replierBarre = (oui: boolean) => {
+    const z = zoneBarre.current;
+    if (!z) return;
+    if (oui) z.setAttribute('data-barre', 'cachee'); else z.removeAttribute('data-barre');
+  };
   const contenu = useRef<HTMLElement>(null);
 
   /* La classe « crm » sur <html> : les règles du téléphone s'appliquent au
@@ -147,7 +157,31 @@ export default function AppLayout() {
      hauteur où on avait laissé la liste précédente, entête hors écran. */
   useEffect(() => {
     contenu.current?.scrollTo({ top: 0 });
+    replierBarre(false);
   }, [activePage, ficheClient?.id]);
+
+  /* On ne réagit qu'aux vrais gestes (plus de 8 px dans un sens) : un
+     tremblement du doigt ne fait pas clignoter la barre. En haut de page,
+     ou pendant qu'on tape une recherche, elle reste toujours visible. */
+  useEffect(() => {
+    const zone = contenu.current;
+    if (!zone) return;
+    let repere = zone.scrollTop;
+    const telephone = window.matchMedia('(max-width: 900px)');
+    const surDefilement = () => {
+      if (!telephone.matches) return;
+      const y = zone.scrollTop;
+      const ecart = y - repere;
+      if (y < 64) { replierBarre(false); repere = y; return; }
+      if (Math.abs(ecart) < 8) return;
+      const champ = document.activeElement as HTMLElement | null;
+      const enRecherche = !!champ?.closest?.('header');
+      replierBarre(ecart > 0 && !enRecherche);
+      repere = y;
+    };
+    zone.addEventListener('scroll', surDefilement, { passive: true });
+    return () => zone.removeEventListener('scroll', surDefilement);
+  }, []);
 
   const renderPage = () => {
     if (activePage === 'fiche') {
@@ -179,7 +213,7 @@ export default function AppLayout() {
   return (
     <div className={`${styles.appLayout} crm-app`}>
       <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} />
-      <div className={styles.mainArea}>
+      <div className={styles.mainArea} ref={zoneBarre}>
         <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} />
         <main className={styles.content} ref={contenu}>
           <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>

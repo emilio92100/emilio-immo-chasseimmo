@@ -24,6 +24,15 @@
    souple, et de la place en bas pour la barre d'onglets. */
 @media (max-width: 900px) {
   .appLayout { height: 100dvh; }
+
+  /* La barre du haut se replie en descendant, revient en remontant. */
+  .mainArea > header {
+    transition: margin-top .28s cubic-bezier(.22,.9,.3,1), opacity .2s ease;
+  }
+  .mainArea[data-barre="cachee"] > header {
+    margin-top: calc(-58px - env(safe-area-inset-top, 0px));
+    opacity: 0; pointer-events: none;
+  }
   .content {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
