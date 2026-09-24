@@ -77,6 +77,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       nb_lots: p.nb_lots, photos: p.photos || [],
       // les charges et la taxe foncière suivent le bien jusqu'à l'espace du client
       charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
+      // le plan suit le bien ; la colonne n'est écrite que s'il y en a un
+      ...(Array.isArray(p.plans) && p.plans.length ? { plans: p.plans } : {}),
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
       etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
       // infos marché — elles suivent le bien dans la Sélection
@@ -195,7 +197,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
             <div style={{ flexGrow: 1, minWidth: 0 }}>
 
             {/* ── le bandeau de photos ─────────────────────── */}
-            <Vignettes photos={p.photos || []}
+            <Vignettes photos={p.photos || []} plans={p.plans || []}
               coinGauche={p.est_particulier
                 ? <span style={{ background: '#10b981', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800, boxShadow: '0 4px 12px -4px rgba(16,185,129,.9)' }}>Particulier</span>
                 : undefined} />
