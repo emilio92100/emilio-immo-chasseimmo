@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { lienEspace, lienBienPublic } from '@/lib/jeton';
+import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
 
 export const runtime = 'nodejs';
@@ -32,6 +32,7 @@ interface BienLite {
   prix_vendeur?: number | null;
   prix_acquereur?: number | null;
   photos?: string[] | null;
+  score?: number | null;
 }
 
 function fmt(n?: number | null) {
@@ -72,6 +73,30 @@ function lienBien(b: BienLite, token?: string | null, recherche?: string | null)
    qui agirait au simple clic clôturerait des dossiers tout seul. */
 function lienFin(token?: string | null): string {
   return token ? `${lienEspace(token, SITE_URL)}?fin=1` : '';
+}
+
+/* « Découvrir les 7 autres » : l'espace s'ouvre directement sur la liste des
+   nouveaux biens (voir `vue=neufs` dans EspaceClient), sur la bonne recherche. */
+function lienNeufs(token?: string | null, recherche?: string | null): string {
+  if (!token) return '';
+  const r = recherche ? `r=${encodeURIComponent(recherche)}&` : '';
+  return `${lienEspace(token, SITE_URL)}?${r}vue=neufs`;
+}
+
+/* L'ordre des biens dans un mail : c'est lui qui décide lesquels le client
+   voit en détail quand il y en a plus que BIENS_PAR_MAIL.
+   D'abord ceux qu'Alexandre a ajoutés lui-même (sans note : il les a choisis
+   à la main, c'est un choix fort), puis les mieux notés par la veille. À
+   égalité, le plus récent. */
+function ordonner<T extends BienLite>(biens: T[]): T[] {
+  const rang = (b: BienLite) => {
+    const s = Number(b.score);
+    return b.score == null || !isFinite(s) ? 101 : s;
+  };
+  return biens
+    .map((b, i) => ({ b, i }))
+    .sort((x, y) => rang(y.b) - rang(x.b) || x.i - y.i)
+    .map(v => v.b);
 }
 
 function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; token?: string | null; recherche?: string | null }): string {
@@ -144,9 +169,48 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
       ${idx < total - 1 ? hairline : ''}`;
   }
 
+  /* Au-delà de BIENS_PAR_MAIL, le mail s'arrête là et passe la main à
+     l'espace : un encart avec les vignettes des suivants et un seul bouton. */
+  function blocReste(reste: BienLite[]): string {
+    const n = reste.length;
+    const lien = lienNeufs(token, rech);
+    const vignettes = reste.slice(0, 4).map(b => {
+      const ph = photoOf(b);
+      return `<td width="68" style="padding-right:8px;">${ph
+        ? `<img src="${escapeHtml(ph)}" alt="" width="60" height="46" style="width:60px;height:46px;object-fit:cover;display:block;border-radius:8px;border:0;" />`
+        : `<div style="width:60px;height:46px;background:${BLEU};border-radius:8px;"></div>`}</td>`;
+    }).join('');
+    const plus = n > 4
+      ? `<td width="60"><div style="width:60px;height:46px;line-height:46px;text-align:center;background:#efe7d6;color:${BLEU};border-radius:8px;font-size:14px;font-weight:800;">+${n - 4}</div></td>`
+      : '';
+    /* Sans lien d'espace (dossier pas encore repris), on liste les suivants
+       avec leur fiche publique : le client ne perd aucun bien. */
+    const sansEspace = lien ? '' : reste.map(b => {
+      const prix = prixOf(b);
+      return `<div style="font-size:13px;color:#3a4a5f;margin-top:8px;"><a href="${lienBienPublic(b.id)}" style="color:${BLEU};font-weight:700;text-decoration:none;">${escapeHtml(titreOf(b))}</a>${prix ? ` · ${fmt(prix)} €` : ''}</div>`;
+    }).join('');
+    return `
+      ${hairline}
+      <tr><td class="bord" style="padding:20px 28px 26px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fbf8f2;border:1px solid #ecdcb4;border-radius:14px;">
+          <tr><td style="padding:18px 20px 20px;">
+            <div style="font-size:10.5px;letter-spacing:2px;color:${DORE};font-weight:700;">DANS VOTRE ESPACE</div>
+            <div style="font-size:18px;font-weight:800;color:${BLEU};margin-top:6px;line-height:1.3;">${n === 1 ? 'Un autre bien vous attend' : `${n} autres biens vous attendent`}</div>
+            <div style="font-size:13px;color:#5a6a85;line-height:1.6;margin-top:5px;">Pour que ce message reste agréable à lire, les ${BIENS_PAR_MAIL} premiers sont ci-dessus. ${n === 1 ? 'Le suivant est' : 'Les suivants sont'} dans votre espace, avec toutes leurs photos et leur fiche complète.</div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;"><tr>${vignettes}${plus}</tr></table>
+            ${lien
+              ? `<a href="${lien}" style="display:block;margin-top:16px;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:14px;border-radius:11px;font-size:15px;font-weight:700;">${n === 1 ? 'Découvrir l’autre bien' : `Découvrir les ${n} autres biens`} &rarr;</a>`
+              : sansEspace}
+          </td></tr>
+        </table>
+      </td></tr>`;
+  }
+
+  const montres = biens.length > BIENS_PAR_MAIL ? biens.slice(0, BIENS_PAR_MAIL) : biens;
+  const reste = biens.slice(montres.length);
   const propertyRows = single
     ? singleBloc(biens[0])
-    : biens.map((b, i) => multiItem(b, i, biens.length)).join('');
+    : montres.map((b, i) => multiItem(b, i, montres.length)).join('') + (reste.length ? blocReste(reste) : '');
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -681,7 +745,7 @@ export async function POST(req: NextRequest) {
     if (mode !== 'libre' && !bienvenue) {
       let query = supabase
         .from('biens')
-        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour')
+        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour, score')
         .in('client_id', client_ids)
         .order('created_at', { ascending: false });
 
@@ -711,7 +775,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const biensClient = tousBiens.filter(b => b.client_id === client.id);
+      const biensClient = ordonner(tousBiens.filter(b => b.client_id === client.id));
       /* Chaque client reçoit SON lien. Celui tiré de la recherche ne sert
          qu'en secours, pour les dossiers pas encore repris. */
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -730,7 +794,21 @@ export async function POST(req: NextRequest) {
           ? buildNouvelle({ prenom: client.prenom, recherche: nomRecherche, token: jeton, total: totalRecherches })
           : buildBienvenue({ prenom: client.prenom, token: jeton }))
         : buildHtml({ prenom: client.prenom, corps: corpsPerso, biens: biensClient, token: jeton, recherche: recherche_id || null });
-      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${biensClient.length > 0 ? `Biens proposés :\n${biensClient.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, jeton, recherche_id || null)}`).join('\n')}\n\n` : ''}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
+      /* La version texte suit la version illustrée : les premiers biens avec
+         leur lien, puis le lien vers les suivants dans l'espace. */
+      const enTete = biensClient.slice(0, BIENS_PAR_MAIL);
+      const suivants = biensClient.length - enTete.length;
+      const lienSuite = suivants > 0 ? lienNeufs(jeton, recherche_id || null) : '';
+      const listeTexte = biensClient.length > 0
+        ? `Biens proposés :\n${enTete.map(b => `- ${b.titre || 'Bien'} : ${lienBien(b, jeton, recherche_id || null)}`).join('\n')}${
+          suivants > 0
+            ? (lienSuite
+              ? `\n\nEt ${suivants} autre${suivants > 1 ? 's' : ''} dans votre espace : ${lienSuite}`
+              : `\n${biensClient.slice(BIENS_PAR_MAIL).map(b => `- ${b.titre || 'Bien'} : ${lienBienPublic(b.id)}`).join('\n')}`)
+            : ''
+        }\n\n`
+        : '';
+      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${listeTexte}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
         lienFin(jeton) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(jeton)}` : ''
       }`;
 
