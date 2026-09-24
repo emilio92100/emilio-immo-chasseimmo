@@ -169,7 +169,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         poser('apport', 'apport', n(c.apport, 0, 20_000_000));
         poser('rdc_exclu', 'rdcExclu', !!c.rdcExclu);
         poser('dernier_etage', 'dernierEtage', !!c.dernierEtage);
-        poser('etat_souhaite', 'etatSouhaite', parmi(c.etatSouhaite, ['a_renover', 'travaux_legers', 'bon_etat', 'refait_neuf']));
+        /* Plusieurs états possibles (« travaux_legers,bon_etat »), rien = pas de préférence. */
+        const etats = (v: unknown) => {
+          if (typeof v !== 'string') return null;
+          const l = v.split(',').map(x => x.trim());
+          const ok = ['a_renover', 'travaux_legers', 'bon_etat', 'refait_neuf'].filter(k => l.includes(k));
+          return ok.length ? ok.join(',') : null;
+        };
+        poser('etat_souhaite', 'etatSouhaite', etats(c.etatSouhaite));
         poser('financement', 'financement', parmi(c.financement, ['cash', 'pret_valide', 'pret_en_cours', 'a_monter', 'pret_relais',
           'mixte_cash_pret', 'mixte_cash_relais', 'mixte_pret_relais']));
         poser('urgence', 'urgence', parmi(c.urgence, ['immediate', '3_mois', '6_mois', 'annee']));
