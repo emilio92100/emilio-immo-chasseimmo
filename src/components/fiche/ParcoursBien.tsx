@@ -144,6 +144,18 @@ const TRAITS: Record<string, string[]> = {
   lignes: ['M3.5 6.5h17', 'M3.5 12h17', 'M3.5 17.5h17'],
   envoyer: ['M21.4 2.6 2.6 10.3l7.2 2.9 2.9 7.2z', 'M21.4 2.6 9.8 13.2'],
   alerte: ['M12 9v4.2', 'M12 17.2h.01', 'M10.3 3.9 2.4 17.6A1.9 1.9 0 0 0 4 20.5h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z'],
+  /* Les pictos de la version téléphone : barre du bas, menu, fiche. */
+  accueil: ['M3.5 10.6 12 3.8l8.5 6.8', 'M5.8 9v10.2a1.3 1.3 0 0 0 1.3 1.3h9.8a1.3 1.3 0 0 0 1.3-1.3V9', 'M9.8 20.5v-5.6h4.4v5.6'],
+  clients: ['c:9,8,3.4', 'M2.8 19.8a6.2 6.2 0 0 1 12.4 0', 'M15.6 4.9a3.3 3.3 0 0 1 0 6.3', 'M17.8 13.8a5.8 5.8 0 0 1 3.4 6'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  cloche: ['M6.2 16.8V11a5.8 5.8 0 0 1 11.6 0v5.8l1.7 2H4.5z', 'M10 21.2h4'],
+  menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
+  fermer: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
+  activite: ['M3.5 20.5h17', 'M7 17v-5', 'M12 17V6.5', 'M17 17v-8'],
+  reglages: ['M4 6.5h9', 'M18.5 6.5H20', 'c:15.8,6.5,2.2', 'M4 12h3', 'M11.5 12H20', 'c:9.2,12,2.2', 'M4 17.5h11', 'c:17.2,17.5,2.2'],
+  retour: ['M19 12H5.5', 'm11.5 18-6-6 6-6'],
+  corbeille: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12', 'M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'],
+  note: ['M5 4.5h14a1 1 0 0 1 1 1v10.2L15.7 20H5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z', 'M15.5 20v-3.8a.7.7 0 0 1 .7-.7H20', 'M8 9h8', 'M8 12.5h5'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -179,7 +191,7 @@ export function Modale({ children, onFerme, largeur = 560, nu }: { children: Rea
   if (!monte) return null;
 
   return createPortal(
-    <div className="emi-voile" onClick={onFerme}
+    <div className="emi-voile" data-nu={nu ? 'true' : undefined} onClick={onFerme}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: nu ? 'rgba(8,12,20,.9)' : 'rgba(12,18,30,.55)', backdropFilter: 'blur(3px)',
@@ -649,7 +661,7 @@ export function LigneCompacte({ photo, numero, titre, lieu, specs, prix, sousPri
             <Icone nom="maison" taille={16} />
           </span>}
 
-      <button type="button" onClick={onOuvrir} disabled={!onOuvrir}
+      <button type="button" className="emi-ligne-titre" onClick={onOuvrir} disabled={!onOuvrir}
         style={{
           flex: '1 1 220px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2,
           background: 'none', border: 'none', padding: 0, textAlign: 'left',
@@ -665,17 +677,17 @@ export function LigneCompacte({ photo, numero, titre, lieu, specs, prix, sousPri
       </button>
 
       {specs && (
-        <span style={{ flexShrink: 0, fontSize: 12, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>{specs}</span>
+        <span className="emi-ligne-specs" style={{ flexShrink: 0, fontSize: 12, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>{specs}</span>
       )}
 
       {prix && (
-        <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 96 }}>
+        <span className="emi-ligne-prix" style={{ flexShrink: 0, textAlign: 'right', minWidth: 96 }}>
           <span style={{ display: 'block', fontSize: 15, fontWeight: 800, color: OR, letterSpacing: -.3, lineHeight: 1.2 }}>{prix}</span>
           {sousPrix && <span style={{ display: 'block', fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{sousPrix}</span>}
         </span>
       )}
 
-      {actions && <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{actions}</span>}
+      {actions && <span className="emi-ligne-actions" style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{actions}</span>}
     </div>
   );
 }
@@ -800,7 +812,7 @@ function ListeNumerotee({ items, ton }: { items: string[]; ton: TonBilan }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: items.length > 3 ? 'repeat(auto-fit, minmax(270px, 1fr))' : '1fr',
+      gridTemplateColumns: items.length > 3 ? 'repeat(auto-fit, minmax(min(270px, 100%), 1fr))' : '1fr',
       gap: '7px 26px',
     }}>
       {items.map((t, i) => (
@@ -831,7 +843,7 @@ export function BilanBien({ p }: { p: any }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))`, gap: 9 }}>
+      <div className="emi-bilan" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))`, gap: 9 }}>
         {!!atouts.length && (
           <Compteur ton="vert" titre="Atouts" items={atouts} ouvert={ouvert === 'vert'} onClick={bascule('vert')} />
         )}
@@ -1134,7 +1146,7 @@ export function BandeauMarche({ p }: { p: any }) {
                   const corps = (
                     <>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
-                      <span style={{ fontWeight: 800, color: NAVY, flex: 1, minWidth: 150, textAlign: 'left' }}>
+                      <span style={{ fontWeight: 800, color: NAVY, flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
                         {d.agence}
                         {estMandat && <span style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8' }}> · annonce retenue</span>}
                       </span>
@@ -1150,7 +1162,7 @@ export function BandeauMarche({ p }: { p: any }) {
                     </>
                   );
                   const style: React.CSSProperties = {
-                    display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3,
                     padding: '9px 4px', fontSize: 13, background: 'none', color: 'inherit',
                     borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', borderLeft: 0, borderRight: 0, borderBottom: 0,
                     textDecoration: 'none',
@@ -1209,7 +1221,7 @@ export function BandeauMarche({ p }: { p: any }) {
                     const pc = i === 0 || !pts[i - 1].prix ? 0 : (d / pts[i - 1].prix) * 100;
                     return (
                       <div key={i} style={{
-                        display: 'flex', alignItems: 'center', gap: 12, padding: '7px 2px',
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '7px 2px', flexWrap: 'wrap', rowGap: 2,
                         borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', fontSize: 13,
                       }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#cbd5e1' : d < 0 ? '#16a34a' : '#ef4444', flexShrink: 0 }} />
@@ -1814,23 +1826,23 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
       background: 'white', border: `1px solid ${BORD}`, borderRadius: 13,
       boxShadow: '0 1px 2px rgba(16,24,40,.04)', overflow: 'hidden',
     }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '9px 13px' }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
+    <div className="le-barre" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '9px 13px' }}>
+      <span className="le-titre" style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
         Espace client
       </span>
-      <code style={{
+      <code className="le-lien" style={{
         fontSize: 11.5, color: '#64748b', background: '#f7f9fc', border: `1px solid ${BORD}`,
         borderRadius: 7, padding: '4px 9px', maxWidth: 190, overflow: 'hidden',
         textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace',
       }} title={url}>{court ? `espace.emilio-immo.com/${token}` : `/espace/${String(token).slice(0, 12)}…`}</code>
 
-      <button type="button" onClick={copier} style={btnEspace(copie ? '#ecfdf5' : '#f7f9fc', copie ? '#059669' : '#475569', copie ? '#a7f3d0' : BORD)}>
+      <button type="button" className="le-btn" onClick={copier} style={btnEspace(copie ? '#ecfdf5' : '#f7f9fc', copie ? '#059669' : '#475569', copie ? '#a7f3d0' : BORD)}>
         {copie ? '✓ Copié' : 'Copier le lien'}
       </button>
-      <button type="button" onClick={whatsapp} style={btnEspace('#f0fdf4', '#15803d', '#bbf7d0')}>WhatsApp</button>
-      <a href={url} target="_blank" rel="noopener noreferrer" style={btnEspace('#f7f9fc', '#475569', BORD)}>Ouvrir</a>
+      <button type="button" className="le-btn" onClick={whatsapp} style={btnEspace('#f0fdf4', '#15803d', '#bbf7d0')}>WhatsApp</button>
+      <a className="le-btn" href={url} target="_blank" rel="noopener noreferrer" style={btnEspace('#f7f9fc', '#475569', BORD)}>Ouvrir</a>
 
-      <button type="button" onClick={() => setDeplie(d => !d)}
+      <button type="button" className="le-etat" onClick={() => setDeplie(d => !d)}
         style={{
           marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7,
           background: derniere ? '#f0fdf4' : '#f7f9fc', border: `1px solid ${derniere ? '#bbf7d0' : BORD}`,

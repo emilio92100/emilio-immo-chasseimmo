@@ -200,7 +200,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
                 : undefined} />
 
             {/* ── titre, adresse, prix ─────────────────────── */}
-            <div style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div className="emi-tete-carte" style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 220, flex: '1 1 320px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <span style={{
@@ -252,7 +252,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
             </div>
 
             {/* ── caractéristiques + marché ────────────────── */}
-            <div style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div className="emi-corps-carte" style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
               {/* les faits d'abord : les chiffres, puis ce que le bien a */}
               <Specs p={p} recherche={recherche} />
               <LigneBien p={p} recherche={recherche} />
@@ -282,7 +282,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
             </div>
 
             {/* ── pied de carte : les actions ──────────────── */}
-            <div style={{
+            <div className="emi-pied" style={{
               borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '11px 18px',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             }}>

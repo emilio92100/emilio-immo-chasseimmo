@@ -257,7 +257,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 
       {/* ===== CARACTÉRISTIQUES ===== */}
       <div style={sectionTitle}>📐 Caractéristiques</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="fc-g4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div>
           <label className={styles.lbl}>Surface m²</label>
           <input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => set('surface', e.target.value)} />
@@ -313,7 +313,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
             <option value="À rénover">À rénover</option>
           </select>
         </div>
-        <div style={{ gridColumn: '3/5' }}>
+        <div className="fc-cache-mobile" style={{ gridColumn: '3/5' }}>
           <label className={styles.lbl} style={{ visibility: 'hidden' }}>spacer</label>
           <div style={{ height: 38 }} />
         </div>
@@ -360,7 +360,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 
       {/* ===== PERFORMANCE ÉNERGÉTIQUE ===== */}
       <div style={sectionTitle}>🔋 Performance énergétique</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="fc-g4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div>
           <label className={styles.lbl}>DPE</label>
           <select className={styles.inp} value={bienForm.dpe||''} onChange={e => set('dpe', e.target.value)}>
@@ -395,7 +395,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
             <option value="Électrique">Électrique</option>
           </select>
         </div>
-        <div style={{ gridColumn: '2/-1' }}>
+        <div className="fc-auto" style={{ gridColumn: '2/-1' }}>
           <label className={styles.lbl}>Source d&apos;énergie</label>
           <select className={styles.inp} value={bienForm.source_energie||''} onChange={e => set('source_energie', e.target.value)}>
             <option value="">—</option>
@@ -508,6 +508,9 @@ export default function FicheClient({ client: init, onBack }: Props) {
     return () => { vivant = false; };
   }, [client.id, client.token_espace, client.prenom, client.nom]);
   const [suiviFiltre, setSuiviFiltre] = useState('appel');
+  /* Sur téléphone, le détail des critères est replié : le suivi du dossier
+     (veille, sélection, présentés…) remonte d'autant. Sans effet sur ordinateur. */
+  const [critsOuverts, setCritsOuverts] = useState(false);
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
   const [transaction, setTransaction] = useState<any>(null);
@@ -2348,12 +2351,15 @@ Emilio Immobilier
     <div className={styles.page}>
 
       <div className={styles.pageHeader}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className={styles.backBtn} onClick={onBack}>← Clients</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
-          <span style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
+        <div className={styles.fil} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className={styles.backBtn} onClick={onBack} aria-label="Retour aux clients">
+            <span className={styles.surBureau}>← Clients</span>
+            <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
+          </button>
+          <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
+          <span className={styles.filNom} style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
           {etiquetteRelance && (
-            <span title={etiquetteRelance.note} style={{
+            <span className={styles.filRelance} title={etiquetteRelance.note} style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px',
               borderRadius: 99, fontSize: 12, fontWeight: 700,
               color: etiquetteRelance.couleur, background: etiquetteRelance.fond,
@@ -2361,18 +2367,35 @@ Emilio Immobilier
             }}>🔔 {etiquetteRelance.label}</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className={styles.btn} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>📤 Envoyer</button>
-          <button className={styles.btn} onClick={creerRelanceManuelle}>🔔 Relance J+{delaiJours}</button>
-          <button className={styles.btn} onClick={nouvelleAction}>+ Action</button>
-          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien</button>
+        {/* Sur téléphone, les quatre gestes deviennent une rangée de boutons
+            à pictogramme, tous visibles sans défiler. */}
+        <div className={styles.actionsFiche} style={{ display: 'flex', gap: 8 }}>
+          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>
+            <span className={styles.surBureau}>📤 Envoyer</span>
+            <span className={styles.surMobile}><Icone nom="envoi" taille={20} epaisseur={1.9} /><span>Envoyer</span></span>
+          </button>
+          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={creerRelanceManuelle}>
+            <span className={styles.surBureau}>🔔 Relance J+{delaiJours}</span>
+            <span className={styles.surMobile}><Icone nom="cloche" taille={20} epaisseur={1.9} /><span>{`Relance J+${delaiJours}`}</span></span>
+          </button>
+          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={nouvelleAction}>
+            <span className={styles.surBureau}>+ Action</span>
+            <span className={styles.surMobile}><Icone nom="note" taille={20} epaisseur={1.9} /><span>Action</span></span>
+          </button>
+          <button className={`${styles.btn} ${styles.btnPrimary} ${styles.actionFiche}`} onClick={() => setShowBien(true)}>
+            <span className={styles.surBureau}>+ Ajouter un bien</span>
+            <span className={styles.surMobile}><Icone nom="maison" taille={20} epaisseur={1.9} /><span>Ajouter un bien</span></span>
+          </button>
           {/* Effacer une personne ne se met pas à côté des actions du quotidien :
               discret, gris, et rouge seulement quand la souris s'y arrête. */}
-          <button onClick={() => { setSupprNom(''); ouvrirSuppressionClient(); }}
+          <button className={styles.actionSuppr} aria-label="Supprimer ce client" onClick={() => { setSupprNom(''); ouvrirSuppressionClient(); }}
             title="Supprimer définitivement ce client et tout son dossier"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 15, padding: '0 6px', alignSelf: 'center' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>🗑️</button>
+            onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>
+            <span className={styles.surBureau}>🗑️</span>
+            <span className={styles.surMobile}><Icone nom="corbeille" taille={19} epaisseur={1.8} /></span>
+          </button>
         </div>
       </div>
 
@@ -2396,17 +2419,17 @@ Emilio Immobilier
         ];
 
         const Champ = ({ lib, val, premier }: { lib: string; val: React.ReactNode; premier?: boolean }) => (
-          <div style={{ padding: premier ? '2px 26px 2px 0' : '2px 26px', borderLeft: premier ? 'none' : '1px solid #edf1f6' }}>
+          <div className="fc-champ" style={{ padding: premier ? '2px 26px 2px 0' : '2px 26px', borderLeft: premier ? 'none' : '1px solid #edf1f6' }}>
             <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>{lib}</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332', letterSpacing: -0.1 }}>{val}</div>
           </div>
         );
 
         return (
-          <div style={{ background: '#f8fafc', padding: '16px 24px 0' }}>
+          <div className="fc-id-zone" style={{ background: '#f8fafc', padding: '16px 24px 0' }}>
 
             {/* le bloc identité */}
-            <div style={{
+            <div className="fc-id-carte" style={{
               position: 'relative', borderRadius: 22, overflow: 'hidden',
               background: 'linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%)',
               border: '1px solid rgba(201,168,76,.2)',
@@ -2416,11 +2439,11 @@ Emilio Immobilier
               <span aria-hidden style={{ position: 'absolute', top: -140, right: -90, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.22), transparent 64%)', pointerEvents: 'none' }} />
               <span aria-hidden style={{ position: 'absolute', bottom: -160, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(125,185,255,.12), transparent 66%)', pointerEvents: 'none' }} />
 
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 26, flexWrap: 'wrap' }}>
+              <div className="fc-id-rangee" style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 26, flexWrap: 'wrap' }}>
 
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 17, flex: '1 1 420px', minWidth: 0 }}>
+                <div className="fc-id-gauche" style={{ display: 'flex', alignItems: 'flex-start', gap: 17, flex: '1 1 420px', minWidth: 0 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div style={{
+                    <div className="fc-id-avatar" style={{
                       width: 58, height: 58, borderRadius: '50%',
                       background: 'linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.02))',
                       border: '1px solid rgba(201,168,76,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2431,7 +2454,7 @@ Emilio Immobilier
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
+                      <div className="fc-id-nom" style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
                         {client.prenom} {client.nom}
                       </div>
                       {/* Le menu natif s'ouvrait en blanc brut sur le bandeau sombre.
@@ -2515,19 +2538,19 @@ Emilio Immobilier
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 9, alignItems: 'center', marginTop: 14 }}>
+                    <div className="fc-id-contacts" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 9, alignItems: 'center', marginTop: 14 }}>
                       {tels.map((t) => (
-                        <a key={t} href={`tel:${t}`} style={lienEntete}>
+                        <a key={t} className="fc-id-lien" href={`tel:${t}`} style={lienEntete}>
                           <Icone nom="tel" taille={14} /> {t}
                         </a>
                       ))}
                       {mails.map((e) => (
-                        <a key={e} href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
+                        <a key={e} className="fc-id-lien" href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
                           <Icone nom="mail" taille={14} /> {e}
                         </a>
                       ))}
                       {client.adresse && (
-                        <span style={{ ...lienEntete, color: 'rgba(255,255,255,.55)' }}>
+                        <span className="fc-id-lien fc-id-adresse" style={{ ...lienEntete, color: 'rgba(255,255,255,.55)' }}>
                           <Icone nom="lieu" taille={14} /> {client.adresse}
                         </span>
                       )}
@@ -2537,9 +2560,9 @@ Emilio Immobilier
                 </div>
 
                 {/* les compteurs, un seul panneau divisé */}
-                <div style={{ display: 'flex', background: 'rgba(255,255,255,.045)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
+                <div className="fc-kpis" style={{ display: 'flex', background: 'rgba(255,255,255,.045)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
                   {kpis.map((s, i) => (
-                    <div key={s.l} style={{ padding: '13px 21px', textAlign: 'center', minWidth: 78, borderLeft: i ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
+                    <div key={s.l} className="fc-kpi" style={{ padding: '13px 21px', textAlign: 'center', minWidth: 78, borderLeft: i ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
                       <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, lineHeight: 1, letterSpacing: -.8, color: s.or && s.val ? '#c9a84c' : s.val ? 'white' : 'rgba(255,255,255,.3)' }}>{s.val}</div>
                       <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.42)', marginTop: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .9 }}>{s.l}</div>
                     </div>
@@ -2550,17 +2573,17 @@ Emilio Immobilier
 
             {/* la situation actuelle, posée à cheval sur le bloc du dessus */}
             {aSituation && (
-              <div style={{ position: 'relative', margin: '-22px 20px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: '18px 22px 15px', boxShadow: '0 20px 40px -30px rgba(16,24,40,.8)' }}>
+              <div className="fc-situation" style={{ position: 'relative', margin: '-22px 20px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: '18px 22px 15px', boxShadow: '0 20px 40px -30px rgba(16,24,40,.8)' }}>
                 <span style={{ position: 'absolute', top: -10, left: 22, background: 'linear-gradient(135deg,#3a5178,#27395a)', color: '#e2c979', borderRadius: 20, padding: '4px 14px', fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, border: '1px solid rgba(201,168,76,.3)', boxShadow: '0 8px 18px -10px rgba(16,24,40,.9)' }}>
                   Situation actuelle
                 </span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', rowGap: 12 }}>
+                <div className="fc-champs" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', rowGap: 12 }}>
                   {occ.statut_occupation && <Champ lib="Statut" val={labelStatut} premier />}
                   {aVendre && occ.bien_actuel_type && <Champ lib="Bien à vendre" val={`${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`} premier={!occ.statut_occupation} />}
                   {aVendre && occ.bien_actuel_valeur && <Champ lib="Valeur estimée" val={<span style={{ color: '#c9a84c', fontWeight: 800 }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</span>} />}
                   {aVendre && <Champ lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
                   {aVendre && (
-                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fffaf3', color: '#b45309', border: '1px solid #f3dcb8', padding: '7px 14px', borderRadius: 11, fontSize: 12.5, fontWeight: 700 }}>
+                    <span className="fc-vente" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fffaf3', color: '#b45309', border: '1px solid #f3dcb8', padding: '7px 14px', borderRadius: 11, fontSize: 12.5, fontWeight: 700 }}>
                       <Icone nom="etiquette" taille={14} />{' '}Mandat de vente potentiel
                     </span>
                   )}
@@ -2643,7 +2666,7 @@ Emilio Immobilier
                 )}
               </button>
 
-              <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span className={styles.critOutils} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <button className={styles.editBtn} onClick={ouvrirHistorique}
                   title="Ce que le client a changé ou demandé depuis son espace"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -2709,13 +2732,13 @@ Emilio Immobilier
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Le bandeau : le client et son enveloppe */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#1a2332', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
+                  <div className="fc-bandeau" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#1a2332', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
                     {cr.type_bien && <span style={CRIT_CHIP_FORT}>🏡 {cr.type_bien}</span>}
                     {cr.urgence && <span style={CRIT_CHIP}>⏱️ {texteChoix(URGENCES, cr.urgence)}</span>}
                     {cr.financement && <span style={CRIT_CHIP}>💳 {texteChoix(FINANCEMENTS, cr.financement)}</span>}
                     {cr.apport != null && <span style={CRIT_CHIP}>💰 Apport {cr.apport.toLocaleString('fr-FR')} €</span>}
                     <span style={{ flexGrow: 1 }} />
-                    <span style={{ textAlign: 'right' }}>
+                    <span className="fc-budget" style={{ textAlign: 'right' }}>
                       <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#b09a63', textTransform: 'uppercase', letterSpacing: 1.1 }}>Budget</span>
                       <span style={{ display: 'block', fontSize: 25, fontWeight: 800, color: '#a9822f', letterSpacing: -0.6, marginTop: 2 }}>
                         {cr.budget_min && cr.budget_max ? `${(cr.budget_min / 1000).toFixed(0)}–${(cr.budget_max / 1000).toFixed(0)} k€`
@@ -2726,6 +2749,13 @@ Emilio Immobilier
                     </span>
                   </div>
 
+                  <button type="button" className="fc-crit-bascule" onClick={() => setCritsOuverts(v => !v)}
+                    aria-expanded={critsOuverts}>
+                    <span>{critsOuverts ? 'Masquer le détail des critères' : 'Voir le détail des critères'}</span>
+                    <span className="fc-crit-chevron" data-ouvert={critsOuverts ? 'true' : 'false'}><Icone nom="chevron" taille={15} epaisseur={2.2} /></span>
+                  </button>
+
+                  <div className="fc-crit-detail" data-ouvert={critsOuverts ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Trois familles. Une colonne sans aucun critère renseigné
                       ne s'affiche pas — une case vide en dirait moins que rien. */}
                   {(() => {
@@ -2757,7 +2787,7 @@ Emilio Immobilier
                     );
 
                     return (
-                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${[logement.length, immeuble.length, aTransport ? 1 : 0].filter(Boolean).length || 1}, minmax(0, 1fr))`, gap: 12 }}>
+                      <div className="fc-familles" style={{ display: 'grid', gridTemplateColumns: `repeat(${[logement.length, immeuble.length, aTransport ? 1 : 0].filter(Boolean).length || 1}, minmax(0, 1fr))`, gap: 12 }}>
                         <FamilleCrit titre="Le logement" couleur="#2d5c8f" fond="#eff4fb" trait="#d6e3f5" lignes={logement}
                           ico={ICO(<><path d="M3 21h18" /><path d="M5 21V9.5L12 4l7 5.5V21" /><path d="M10 21v-6h4v6" /></>, '#2d5c8f')} />
                         <FamilleCrit titre="L'immeuble" couleur="#6d28d9" fond="#f5f3ff" trait="#ddd6fe" lignes={immeuble}
@@ -2866,6 +2896,7 @@ Emilio Immobilier
                       <div style={{ fontSize: 14, color: '#1a2332', lineHeight: 1.6 }}>{cr.notes}</div>
                     </div>
                   )}
+                  </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -3132,7 +3163,7 @@ Emilio Immobilier
                   {visites.filter(v => v.statut === 'a_venir').map(v => {
                     const b = biens.find(x => x.id === v.bien_id);
                     return (
-                      <div key={v.id} className={styles.card} style={{ padding: 18, borderLeft: '3px solid #3b82f6' }}>
+                      <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: '3px solid #3b82f6' }}>
                         <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                           <div style={{ background: '#1a2332', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
                             {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>—</div>}
@@ -3174,7 +3205,7 @@ Emilio Immobilier
                   {visites.filter(v => v.statut === 'effectuee').map(v => {
                     const b = biens.find(x => x.id === v.bien_id);
                     return (
-                      <div key={v.id} className={styles.card} style={{ padding: 18, borderLeft: '3px solid #10b981' }}>
+                      <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: '3px solid #10b981' }}>
                         <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                           <div style={{ background: '#ecfdf5', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
                             {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: '#065f46', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: '#94a3b8', fontSize: 20 }}>—</div>}
@@ -3626,11 +3657,11 @@ Emilio Immobilier
 
         {/* TAB SUIVI (fusion Historique + Journal) */}
         {tab === 'suivi' && (
-          <div className={styles.card} style={{ padding: 22 }}>
+          <div className={`${styles.card} fc-suivi-carte`} style={{ padding: 22 }}>
 
             {/* Barre de filtres + ajouter une action */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="fc-suivi-barre" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+              <div className="fc-suivi-filtres" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[
                   { id: 'tout', label: 'Tout', count: suiviCount },
                   { id: 'appel', label: suiviGroupes.appel.label, count: suiviGroupes.appel.items.length },
@@ -3649,7 +3680,7 @@ Emilio Immobilier
                   </button>
                 ))}
               </div>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={nouvelleAction}>+ Ajouter une action</button>
+              <button className={`${styles.btn} ${styles.btnPrimary} fc-suivi-ajout`} onClick={nouvelleAction}>+ Ajouter une action</button>
             </div>
 
             {suiviItems.length === 0 ? (
@@ -3853,7 +3884,7 @@ Emilio Immobilier
         <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 900 }}>
-            <div className={styles.modalHeader}>
+            <div className={`${styles.modalHeader} ${styles.critTete}`}>
               <h2 className={styles.modalTitle}>🎯 Critères de recherche</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <BasculeCriteres mode={modeCrit} onMode={changerModeCrit} />
@@ -4358,7 +4389,7 @@ Emilio Immobilier
           <div className={styles.modal} style={{ maxWidth: 720 }}>
 
             {/* Header */}
-            <div className={styles.modalHeader} style={{ background: 'linear-gradient(135deg, #1a2332 0%, #243044 100%)', borderRadius: '20px 20px 0 0', borderBottom: 'none', padding: '20px 24px' }}>
+            <div className={`${styles.modalHeader} fc-fb-tete`} style={{ background: 'linear-gradient(135deg, #1a2332 0%, #243044 100%)', borderRadius: '20px 20px 0 0', borderBottom: 'none', padding: '20px 24px' }}>
               <div>
                 <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: 'white', margin: 0 }}>
                   {editBienForm.type_bien || '🏠'} — {editBienForm.titre?.substring(0, 45) || 'Détail du bien'}
@@ -4390,7 +4421,7 @@ Emilio Immobilier
                 </div>
 
                 {editBienForm.photos?.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+                  <div className="fc-photos" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
                     {editBienForm.photos.map((p: string, i: number) => (
                       <div
                         key={i}

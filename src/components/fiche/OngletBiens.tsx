@@ -377,7 +377,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             )}
 
             {/* ── titre, adresse, prix ─────────────────────── */}
-            <div style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div className="emi-tete-carte" style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 220, flex: '1 1 320px' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
                   {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
@@ -415,7 +415,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             </div>
 
             {/* ── caractéristiques, marché, retour ─────────── */}
-            <div style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div className="emi-corps-carte" style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
               <Specs p={b} />
               <BandeauMarche p={marche} />
 
@@ -439,7 +439,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             </div>
 
             {/* ── pied de carte : les actions ──────────────── */}
-            <div style={{
+            <div className="emi-pied" style={{
               borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '11px 18px',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             }}>

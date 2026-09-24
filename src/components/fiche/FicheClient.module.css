@@ -198,3 +198,122 @@
 @media (max-width: 860px) {
   .critMandat span { white-space: normal; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA VERSION TÉLÉPHONE
+   En haut, une barre collante : le retour, le nom du client, sa relance,
+   puis les quatre gestes du quotidien en boutons à pictogramme. Les
+   fenêtres montent du bas de l'écran, leurs boutons restent sous le pouce.
+   Sur ordinateur, rien ne change : les libellés « bureau » restent affichés.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.surMobile { display: none; }
+
+/* Tablette : les boutons de la barre passent sous le nom au lieu de
+   l'écraser. */
+@media (max-width: 900px) {
+  .pageHeader { flex-wrap: wrap; row-gap: 10px; }
+}
+
+@media (max-width: 760px) {
+  .surBureau { display: none !important; }
+  .surMobile { display: contents; }
+
+  /* ── La barre collante ── */
+  .pageHeader {
+    flex-wrap: wrap; gap: 9px; padding: 9px 10px 10px;
+    box-shadow: 0 6px 18px -14px rgba(15,22,35,.35);
+  }
+  .fil { flex: 1 1 100%; min-width: 0; gap: 9px !important; }
+  .filSep { display: none; }
+  .backBtn {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 38px; height: 38px; border-radius: 12px;
+    border: 1px solid #e3e8f0; background: #fff; color: #1a2332;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .filNom {
+    flex: 1 1 auto; min-width: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 16.5px !important; font-weight: 800 !important; letter-spacing: -0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .filRelance { flex-shrink: 0; font-size: 11px !important; padding: 4px 9px !important; }
+
+  .actionsFiche {
+    flex: 1 1 100%; display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) 42px; gap: 6px !important;
+  }
+  .actionsFiche .actionFiche {
+    flex-direction: column; justify-content: center; align-items: center; gap: 4px;
+    min-height: 56px; padding: 7px 3px; border-radius: 14px;
+    font-size: 11px; font-weight: 700; line-height: 1.15; text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .actionsFiche .actionFiche:not(.btnPrimary) { color: #334155; }
+  .actionsFiche .actionSuppr {
+    background: #fff !important; border: 1px solid #eef1f6 !important; border-radius: 14px !important;
+    padding: 0 !important; align-self: stretch !important; font-size: 16px !important;
+    display: inline-flex; align-items: center; justify-content: center; color: #b6c1d1 !important;
+  }
+
+  /* ── Le contenu ── */
+  .contentWrap { padding: 12px 12px 28px; gap: 12px; }
+  .infoCard { border-radius: 18px; }
+  .infoCardBody { padding: 12px; }
+
+  /* L'en-tête des critères : la recherche, le mandat, puis les trois
+     outils en pastilles, chacun sur une zone franche pour le doigt. */
+  .critEntete { gap: 10px; padding: 13px 13px 12px; }
+  .critEntete > span:nth-child(3) { display: none; }
+  .critMandat { width: 100%; justify-content: flex-start; flex-wrap: wrap; row-gap: 4px; padding: 9px 12px; }
+  .critMandat i { margin-left: auto; }
+  .critOutils { width: 100%; gap: 7px !important; flex-wrap: wrap; }
+  .critOutils > .editBtn {
+    flex: 1 1 auto; justify-content: center;
+    background: #f8fafc; border: 1px solid #e3e8f0; border-radius: 11px;
+    padding: 9px 10px; font-size: 12.5px; color: #475569;
+  }
+  .critNom { font-size: 17px; text-align: left; }
+
+  .secteurTag { font-size: 13px; padding: 4px 11px; }
+  .emptyTab { padding: 40px 18px; }
+  .card { border-radius: 16px; }
+
+  /* ── Les fenêtres : des panneaux qui montent du bas ── */
+  .overlay { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: none !important; max-height: calc(100dvh - 10px);
+    border-radius: 22px 22px 0 0;
+    animation: feuilleMonte .34s cubic-bezier(.22,.9,.3,1);
+  }
+  .modalHeader { padding: 16px 16px 13px; gap: 10px; }
+  .modalTitle { font-size: 17px; }
+  .modalClose { width: 36px; height: 36px; border-radius: 11px; font-size: 15px; flex-shrink: 0; }
+  .modalBody { padding: 14px 16px 18px; }
+  .modalFooter {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    flex-wrap: wrap; background: #fbfcfe;
+  }
+  .modalFooter > .btn, .modalFooter > button { flex: 1 1 0; justify-content: center; padding: 12px 10px; font-size: 14px; border-radius: 12px; }
+  .critNav { flex-wrap: wrap; }
+  .critNavD { flex: 1 1 100%; }
+  .critNavD > .btn { flex: 1 1 0; justify-content: center; padding: 12px 10px; font-size: 14px; border-radius: 12px; }
+
+  /* La fenêtre des critères : le titre et la croix en haut, la bascule
+     « Tout afficher / Étape par étape » en dessous, sur toute la largeur. */
+  .critTete { flex-wrap: wrap; row-gap: 12px; }
+  .critTete > div:last-child { display: contents !important; }
+  .critTete .modalTitle { flex: 1 1 auto; order: 1; }
+  .critTete .modalClose { order: 2; }
+  .critTete .critBasc { order: 3; flex: 1 1 100%; }
+  .critTete .critBascBtn { flex: 1 1 0; padding: 8px 10px; font-size: 13px; }
+  .modalBody:last-child { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+
+  .formRow { grid-template-columns: 1fr; gap: 12px; }
+  .lbl { font-size: 10.5px; }
+  .inp { font-size: 16px; padding: 11px 12px; border-radius: 11px; }
+  .btn { padding: 9px 14px; }
+}
+
+@keyframes feuilleMonte { from { transform: translateY(60px); opacity: .4; } to { transform: none; opacity: 1; } }
