@@ -35,6 +35,10 @@ type Bien = {
   retourPar?: string | null;
   /* Ce que dit l'agenda d'Alexandre, pas le badge du bien : une visite calée
      et pas encore passée, et la visite faite avec son compte rendu. */
+  /* Pour la note de correspondance : où est le bien, et à combien de
+     minutes à pied de la station (voir trajetDe dans page.tsx). */
+  ville?: string | null; quartier?: string | null;
+  trajet?: { minutes: number; arret: string | null } | null;
   visitePrevue?: { date: string; heure: string | null } | null;
   visiteFaite?: { date: string | null; commentaire: string | null; etoiles: number | null } | null;
   etat: string;
@@ -1609,19 +1613,20 @@ function Vue({ icone, titre, sous, aller, children }: any) {
 }
 
 /* ══ la correspondance d'un bien avec la recherche ═══════════════
-   Une note sur 100, et son détail : ce qui correspond, ce qui s'en écarte.
-   Elle se calcule ici, à l'écran, avec ce que le client voit déjà : ses
-   critères et la fiche du bien. Rien d'autre n'entre dans le calcul — ni le
-   marché, ni les autres biens, ni les notes de travail du conseiller.
+   Une note sur 100 et son détail, critère par critère : ce que le client a
+   demandé, face à ce que le bien a. Elle se calcule ici, à l'écran, avec ce
+   que le client voit déjà : ses critères et la fiche du bien. Rien d'autre
+   n'entre dans le calcul — ni le marché, ni les autres biens, ni les notes
+   de travail du conseiller.
 
-   Chaque critère que le client a posé compte ; un « indispensable » pèse
-   trois fois plus, le budget, la surface et les chambres deux fois. Un
-   critère presque atteint compte pour moitié. Ce que l'annonce ne dit pas
-   ne se juge pas, sauf un équipement demandé : il est dit « non annoncé ».
-   En dessous de trois critères vérifiables, pas de note : elle ne voudrait
-   rien dire. */
-type Critere = { texte: string; poids: number; etat: 'oui' | 'presque' | 'non' };
-type Correspondance = { note: number; plus: string[]; moins: string[] };
+   Chaque critère que le client a posé compte. Un « indispensable » pèse
+   trois fois plus ; le budget, le secteur, le trajet, la surface et les
+   chambres deux fois. Un critère presque atteint compte pour moitié. Ce que
+   l'annonce ne dit pas ne se juge pas, sauf un équipement demandé : il est
+   dit « non annoncé ». En dessous de trois critères vérifiables, pas de
+   note : elle ne voudrait rien dire. */
+type LigneCorr = { ico: string; lib: string; demande: string; valeur: string; etat: 'oui' | 'presque' | 'non'; poids: number };
+type Correspondance = { note: number; lignes: LigneCorr[] };
 
 const EQUIP_CLE: Record<string, string> = {
   Terrasse: 'terrasse', Balcon: 'balcon', Jardin: 'jardin', Parking: 'parking',
@@ -1631,100 +1636,100 @@ const EQUIP_NOM: Record<string, string> = {
   terrasse: 'Terrasse', balcon: 'Balcon', jardin: 'Jardin', parking: 'Parking',
   ascenseur: 'Ascenseur', cave: 'Cave', gardien: 'Gardien', exterieur: 'Extérieur',
 };
-const EQUIP_SANS: Record<string, string> = {
-  terrasse: 'Pas de terrasse annoncée', balcon: 'Pas de balcon annoncé', jardin: 'Pas de jardin annoncé',
-  parking: 'Pas de parking annoncé', ascenseur: 'Pas d’ascenseur annoncé', cave: 'Pas de cave annoncée',
-  gardien: 'Pas de gardien annoncé', exterieur: 'Pas d’extérieur annoncé',
+const EQUIP_ICO: Record<string, string> = {
+  terrasse: 'terrasse', balcon: 'terrasse', jardin: 'jardin', parking: 'parking',
+  ascenseur: 'ascenseur', cave: 'cave', gardien: 'gardien', exterieur: 'jardin',
 };
 
 function correspondance(b: Bien, c: Criteres | null | undefined): Correspondance | null {
   if (!c) return null;
-  const j: Critere[] = [];
+  const L: LigneCorr[] = [];
   const ex = c.exigences || {};
   const nb = (v: number) => String(v).replace('.', ',');
-  const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
-  const dem = (n: number) => `demandée${n > 1 ? 's' : ''}`;
+  const min = (v: number | string, u = '') => `${v}${u} minimum`;
 
+  /* Le budget : au-dessus, même d'un euro, ce n'est plus coché — c'est « presque ». */
   if (c.budgetMax && b.prix) {
     const r = b.prix / c.budgetMax;
-    if (r <= 1) j.push({ texte: 'Dans votre budget', poids: 2, etat: 'oui' });
-    else if (r <= 1.02) j.push({ texte: 'Au niveau de votre budget', poids: 2, etat: 'oui' });
-    else if (r <= 1.1) j.push({ texte: 'Un peu au-dessus du budget fixé', poids: 2, etat: 'presque' });
-    else j.push({ texte: 'Au-dessus du budget fixé', poids: 2, etat: 'non' });
+    L.push({ ico: 'euro', lib: 'Budget', demande: `jusqu’à ${EUR(c.budgetMax)}`, valeur: EUR(b.prix),
+      etat: r <= 1 ? 'oui' : r <= 1.1 ? 'presque' : 'non', poids: 2 });
   }
 
-  if (c.surfaceMin && b.surface) {
-    const s = b.surface, m = c.surfaceMin;
-    if (s >= m) j.push({ texte: `${nb(s)} m², pour ${nb(m)} m² demandés`, poids: 2, etat: 'oui' });
-    else if (s >= m * 0.95) j.push({ texte: `${nb(s)} m², un peu moins que les ${nb(m)} m² demandés`, poids: 2, etat: 'presque' });
-    else j.push({ texte: `${nb(s)} m², pour ${nb(m)} m² demandés`, poids: 2, etat: 'non' });
+  /* Le secteur : la ville du bien parmi celles de la recherche, et son
+     quartier quand il fait partie de ceux demandés. On ne dit jamais « hors
+     de vos quartiers » : les portails ne découpent pas les villes comme nous. */
+  if (c.secteurs?.length && b.ville) {
+    const villes = grouperSecteurs(c.secteurs);
+    const v = villes.find(x => normVille(x.ville) === normVille(b.ville as string));
+    const q = v && b.quartier ? v.quartiers.find(x => normVille(x).includes(normVille(b.quartier as string)) || normVille(b.quartier as string).includes(normVille(x))) : null;
+    const demande = villes.length === 1
+      ? (villes[0].quartiers.length ? `${villes[0].quartiers.slice(0, 2).join(', ')}${villes[0].quartiers.length > 2 ? '…' : ''}` : villes[0].ville)
+      : `${villes.slice(0, 2).map(x => x.ville).join(', ')}${villes.length > 2 ? '…' : ''}`;
+    L.push({ ico: 'lieu', lib: 'Secteur', demande, valeur: q || b.quartier || b.ville, etat: v ? 'oui' : 'non', poids: 2 });
   }
 
-  if (c.chambresMin && b.chambres != null) {
-    const n = b.chambres, m = c.chambresMin;
-    j.push(n >= m
-      ? { texte: n === m ? `${pl(n, 'chambre')}, comme demandé` : `${pl(n, 'chambre')}, pour ${m} ${dem(m)}`, poids: 2, etat: 'oui' }
-      : { texte: `${pl(n, 'chambre')}, pour ${m} ${dem(m)}`, poids: 2, etat: 'non' });
-  }
-
-  if (c.piecesMin && b.pieces != null) {
-    const n = b.pieces, m = c.piecesMin;
-    j.push(n >= m
-      ? { texte: n === m ? `${pl(n, 'pièce')}, comme demandé` : `${pl(n, 'pièce')}, pour ${m} ${dem(m)}`, poids: 1, etat: 'oui' }
-      : { texte: `${pl(n, 'pièce')}, pour ${m} ${dem(m)}`, poids: 1, etat: 'non' });
-  }
-
-  if (c.surfaceSejourMin && b.sejour) {
-    const s = b.sejour, m = c.surfaceSejourMin;
-    if (s >= m) j.push({ texte: `Séjour de ${nb(s)} m²`, poids: 1, etat: 'oui' });
-    else if (s >= m * 0.9) j.push({ texte: `Séjour de ${nb(s)} m², un peu moins que les ${nb(m)} m² souhaités`, poids: 1, etat: 'presque' });
-    else j.push({ texte: `Séjour de ${nb(s)} m², pour ${nb(m)} m² souhaités`, poids: 1, etat: 'non' });
-  }
-
-  const etageCompte = c.rdcExclu || c.etageMin != null || c.etageMax != null
-    || c.etageMaxSansAscenseur != null || c.dernierEtage;
-  if (etageCompte && b.etage != null) {
-    const e = b.etage;
-    const lib = e === 0 ? 'Rez-de-chaussée' : `${e}e étage`;
-    let ecart: string | null = null;
-    if (c.rdcExclu && e === 0) ecart = 'Au rez-de-chaussée';
-    else if (c.etageMin != null && e < c.etageMin) ecart = `${lib}, plus bas que souhaité`;
-    else if (c.etageMax != null && e > c.etageMax) ecart = `${lib}, plus haut que souhaité`;
-    else if (c.etageMaxSansAscenseur != null && !b.ascenseur && e > c.etageMaxSansAscenseur) ecart = `${lib} sans ascenseur`;
-    else if (c.dernierEtage && b.etageTotal && e < b.etageTotal) ecart = `${lib}, pas au dernier`;
-    j.push(ecart
-      ? { texte: ecart, poids: 1, etat: 'non' }
-      : { texte: c.dernierEtage && b.etageTotal && e === b.etageTotal ? `${lib}, au dernier étage` : lib, poids: 1, etat: 'oui' });
-  }
-
-  if (c.dpeMax && b.dpe) {
-    const ordre = 'ABCDEFG';
-    const i = ordre.indexOf(String(b.dpe).toUpperCase()[0]);
-    const m = ordre.indexOf(String(c.dpeMax).toUpperCase()[0]);
-    if (i >= 0 && m >= 0) {
-      const L = ordre[i];
-      j.push(i <= m
-        ? { texte: `DPE ${L}, dans votre limite`, poids: 1, etat: 'oui' }
-        : { texte: `DPE ${L}, au-delà de votre limite (${ordre[m]})`, poids: 1, etat: 'non' });
+  /* Le trajet : minutes à pied jusqu'à la station, quand l'annonce permet de le dire. */
+  if (b.trajet) {
+    const arret = b.trajet.arret ? (c.transportArrets || []).find(a => a.nom === b.trajet?.arret) : null;
+    const max = (arret?.minutes as number | undefined) || c.transportMinutes || null;
+    if (max) {
+      const m = b.trajet.minutes;
+      L.push({ ico: 'train', lib: 'Trajet à pied', demande: `${max} min maximum${arret ? ` · ${arret.nom}` : ''}`, valeur: `${m} min`,
+        etat: m <= max ? 'oui' : m <= max + Math.min(5, Math.max(2, Math.round(max / 2))) ? 'presque' : 'non', poids: 2 });
     }
   }
 
+  if (c.surfaceMin && b.surface) {
+    const r = b.surface / c.surfaceMin;
+    L.push({ ico: 'regle', lib: 'Surface', demande: min(nb(c.surfaceMin), ' m²'), valeur: `${nb(b.surface)} m²`, etat: r >= 1 ? 'oui' : r >= 0.95 ? 'presque' : 'non', poids: 2 });
+  }
+  if (c.chambresMin && b.chambres != null) {
+    L.push({ ico: 'plan', lib: 'Chambres', demande: min(c.chambresMin), valeur: String(b.chambres), etat: b.chambres >= c.chambresMin ? 'oui' : 'non', poids: 2 });
+  }
+  if (c.piecesMin && b.pieces != null) {
+    L.push({ ico: 'plan', lib: 'Pièces', demande: min(c.piecesMin), valeur: String(b.pieces), etat: b.pieces >= c.piecesMin ? 'oui' : 'non', poids: 1 });
+  }
+  if (c.surfaceSejourMin && b.sejour) {
+    const r = b.sejour / c.surfaceSejourMin;
+    L.push({ ico: 'canape', lib: 'Séjour', demande: min(nb(c.surfaceSejourMin), ' m²'), valeur: `${nb(b.sejour)} m²`, etat: r >= 1 ? 'oui' : r >= 0.9 ? 'presque' : 'non', poids: 1 });
+  }
+
+  const etageCompte = c.rdcExclu || c.etageMin != null || c.etageMax != null || c.etageMaxSansAscenseur != null || c.dernierEtage;
+  if (etageCompte && b.etage != null) {
+    const e = b.etage;
+    const valeur = e === 0 ? 'RDC' : `${e}e${b.etageTotal ? ` sur ${b.etageTotal}` : ''}`;
+    const dem: string[] = [];
+    if (c.etageMin != null) dem.push(`à partir du ${c.etageMin}e`);
+    else if (c.rdcExclu) dem.push('pas de rez-de-chaussée');
+    if (c.etageMax != null) dem.push(`jusqu’au ${c.etageMax}e`);
+    if (c.dernierEtage) dem.push('dernier étage');
+    if (c.etageMaxSansAscenseur != null && !dem.length) dem.push(`${c.etageMaxSansAscenseur}e max sans ascenseur`);
+    let etat: LigneCorr['etat'] = 'oui';
+    if (c.rdcExclu && e === 0) etat = 'non';
+    else if (c.etageMin != null && e < c.etageMin) etat = 'non';
+    else if (c.etageMax != null && e > c.etageMax) etat = 'non';
+    else if (c.etageMaxSansAscenseur != null && !b.ascenseur && e > c.etageMaxSansAscenseur) etat = 'non';
+    else if (c.dernierEtage && b.etageTotal && e < b.etageTotal) etat = 'non';
+    L.push({ ico: 'immeuble', lib: 'Étage', demande: dem.join(', '), valeur, etat, poids: 1 });
+  }
+
+  if (c.dpeMax && b.dpe) {
+    const o = 'ABCDEFG';
+    const i = o.indexOf(String(b.dpe).toUpperCase()[0]), m = o.indexOf(String(c.dpeMax).toUpperCase()[0]);
+    if (i >= 0 && m >= 0) L.push({ ico: 'eclair', lib: 'Énergie (DPE)', demande: `${o[m]} au plus`, valeur: o[i], etat: i <= m ? 'oui' : 'non', poids: 1 });
+  }
   if (c.anneeMin && b.annee) {
-    j.push(b.annee >= c.anneeMin
-      ? { texte: `Construit en ${b.annee}`, poids: 1, etat: 'oui' }
-      : { texte: `Construit en ${b.annee}, avant ${c.anneeMin}`, poids: 1, etat: 'non' });
+    L.push({ ico: 'calendrier', lib: 'Construction', demande: `${c.anneeMin} ou après`, valeur: String(b.annee), etat: b.annee >= c.anneeMin ? 'oui' : 'non', poids: 1 });
   }
 
   const vises = String(c.exposition || '').toLowerCase().split(/[,;/]+/).map(x => x.trim()).filter(Boolean);
   if (vises.length && b.expo) {
     const a = String(b.expo).toLowerCase();
-    j.push(vises.some(v => a.includes(v) || v.includes(a))
-      ? { texte: `Exposé ${b.expo}`, poids: 1, etat: 'oui' }
-      : { texte: `Exposé ${b.expo}`, poids: 1, etat: 'non' });
+    L.push({ ico: 'soleil', lib: 'Exposition', demande: vises.map(v => v.charAt(0).toUpperCase() + v.slice(1)).join(', '), valeur: b.expo,
+      etat: vises.some(v => a.includes(v) || v.includes(a)) ? 'oui' : 'non', poids: 1 });
   }
 
-  /* Les équipements : cochés dans la recherche, ou notés « souhaité » ou
-     « indispensable ». */
+  /* Les équipements : cochés dans la recherche, ou notés « souhaité » / « indispensable ». */
   const voulus = new Set<string>();
   (c.equip || []).forEach(l => { const k = EQUIP_CLE[l]; if (k) voulus.add(k); });
   Object.keys(ex).forEach(k => { if (ex[k] && EQUIP_NOM[k]) voulus.add(k); });
@@ -1732,38 +1737,51 @@ function correspondance(b: Bien, c: Criteres | null | undefined): Correspondance
   voulus.forEach(k => {
     const indis = ex[k] === 'indispensable';
     const poids = indis ? 3 : 1;
-    const suffixe = indis ? ' — indispensable pour vous' : '';
+    const demande = indis ? 'indispensable' : 'souhaité';
     if (k === 'exterieur') {
       const a = !!(b.balcon || b.terrasse || b.jardin || ext > 0);
-      if (!a) { j.push({ texte: EQUIP_SANS[k] + suffixe, poids, etat: 'non' }); return; }
-      if (c.exterieurSurfaceMin && ext > 0 && ext < c.exterieurSurfaceMin) {
-        j.push({ texte: `Extérieur de ${nb(ext)} m², pour ${nb(c.exterieurSurfaceMin)} m² souhaités`, poids, etat: 'presque' });
-        return;
-      }
-      j.push({ texte: (ext > 0 ? `Extérieur de ${nb(ext)} m²` : 'Un extérieur') + suffixe, poids, etat: 'oui' });
+      const presque = a && !!c.exterieurSurfaceMin && ext > 0 && ext < c.exterieurSurfaceMin;
+      L.push({ ico: EQUIP_ICO[k], lib: 'Extérieur', demande: c.exterieurSurfaceMin ? `${nb(c.exterieurSurfaceMin)} m² minimum, ${demande}` : demande,
+        valeur: a ? (ext > 0 ? `${nb(ext)} m²` : 'Oui') : 'Non annoncé', etat: !a ? 'non' : presque ? 'presque' : 'oui', poids });
       return;
     }
     const a = !!(b as unknown as Record<string, unknown>)[k];
-    j.push(a
-      ? { texte: EQUIP_NOM[k] + suffixe, poids, etat: 'oui' }
-      : { texte: EQUIP_SANS[k] + suffixe, poids, etat: 'non' });
+    L.push({ ico: EQUIP_ICO[k], lib: EQUIP_NOM[k], demande, valeur: a ? 'Oui' : 'Non annoncé', etat: a ? 'oui' : 'non', poids });
   });
 
-  if (j.length < 3) return null;
-  const total = j.reduce((s, x) => s + x.poids, 0);
-  const points = j.reduce((s, x) => s + (x.etat === 'oui' ? x.poids : x.etat === 'presque' ? x.poids / 2 : 0), 0);
-  /* Le plus lourd d'abord : c'est ce qui décide. */
-  const tri = [...j].sort((a, z) => z.poids - a.poids);
-  return {
-    note: Math.round((100 * points) / total),
-    plus: tri.filter(x => x.etat === 'oui').map(x => x.texte),
-    moins: tri.filter(x => x.etat !== 'oui').map(x => x.texte),
-  };
+  if (L.length < 3) return null;
+  const total = L.reduce((t, x) => t + x.poids, 0);
+  const points = L.reduce((t, x) => t + (x.etat === 'oui' ? x.poids : x.etat === 'presque' ? x.poids / 2 : 0), 0);
+  return { note: Math.round((100 * points) / total), lignes: L };
 }
 
-function phraseCorrespondance(r: Correspondance) {
-  if (!r.moins.length) return 'Il coche tout ce que vous avez demandé';
-  return r.moins.length === 1 ? 'Un seul point s’écarte de votre recherche' : `${r.moins.length} points s’écartent de votre recherche`;
+/* La phrase qui accompagne la note : elle dit où en est le bien, jamais ce qui cloche. */
+function motCorrespondance(n: number) {
+  return n >= 90 ? 'Très proche de votre recherche'
+    : n >= 75 ? 'Proche de votre recherche'
+      : n >= 60 ? 'Correspond en partie à votre recherche'
+        : 'S’éloigne de votre recherche sur plusieurs points';
+}
+
+/* Les plus du bien : des faits de la fiche, en dehors des critères déjà
+   comparés. Ils valorisent l'annonce sans toucher à la note. */
+function plusDuBien(b: Bien, lignes: LigneCorr[]): { ico: string; t: string }[] {
+  const deja = new Set(lignes.map(x => x.lib.toLowerCase()));
+  const out: { ico: string; t: string }[] = [];
+  const ext = b.exterieur || ((b.surfaceTerrasse || 0) + (b.surfaceBalcon || 0)) || 0;
+  const m2 = ext ? ` de ${String(ext).replace('.', ',')} m²` : '';
+  if (b.traversant) out.push({ ico: 'traversant', t: 'Traversant' });
+  if (b.terrasse && !deja.has('terrasse') && !deja.has('extérieur')) out.push({ ico: 'terrasse', t: `Terrasse${m2}` });
+  else if (b.balcon && !deja.has('balcon') && !deja.has('extérieur')) out.push({ ico: 'terrasse', t: `Balcon${m2}` });
+  if (b.jardin && !deja.has('jardin') && !deja.has('extérieur')) out.push({ ico: 'jardin', t: 'Jardin' });
+  if (b.parking && !deja.has('parking')) out.push({ ico: 'parking', t: b.nbParking && b.nbParking > 1 ? `${b.nbParking} parkings` : 'Parking' });
+  if (b.cave && !deja.has('cave')) out.push({ ico: 'cave', t: 'Cave' });
+  if (b.ascenseur && !deja.has('ascenseur')) out.push({ ico: 'ascenseur', t: 'Ascenseur' });
+  if (b.gardien && !deja.has('gardien')) out.push({ ico: 'gardien', t: 'Gardien' });
+  if (b.cuisineEquipee) out.push({ ico: 'cuisine', t: 'Cuisine équipée' });
+  if (b.clim) out.push({ ico: 'clim', t: 'Climatisation' });
+  if (b.etage != null && b.etageTotal && b.etage === b.etageTotal && b.etage > 0 && !deja.has('étage')) out.push({ ico: 'immeuble', t: 'Dernier étage' });
+  return out;
 }
 
 /* L'anneau de la note : un seul accent, l'or, sur le chiffre qui compte. */
@@ -1781,50 +1799,68 @@ function AnneauNote({ note, t = 48 }: { note: number; t?: number }) {
   );
 }
 
+function LigneCritere({ x }: { x: LigneCorr }) {
+  return (
+    <div className={'an-l ' + x.etat}>
+      <span className="an-case">{x.etat === 'oui' ? <Ico n="check" t={12} /> : x.etat === 'presque' ? '≈' : <Ico n="moins" t={12} />}</span>
+      <span className="an-lib"><b>{x.lib}</b><i>{x.demande}</i></span>
+      <span className="an-val tab">{x.valeur}</span>
+    </div>
+  );
+}
+
+/* La fiche d'analyse : ce qui correspond, ce qui s'en écarte, les plus du
+   bien, et comment la note se calcule. Deux colonnes sur ordinateur, une
+   seule sur téléphone. */
 function ModaleCorrespondance({ b, r, onFermer }: { b: Bien; r: Correspondance; onFermer: () => void }) {
   useEchap(true, onFermer);
+  const oui = r.lignes.filter(x => x.etat === 'oui');
+  const autres = [...r.lignes.filter(x => x.etat === 'presque'), ...r.lignes.filter(x => x.etat === 'non')];
+  const plus = plusDuBien(b, r.lignes);
   return createPortal(
     <div className="pop" role="dialog" aria-modal="true">
       <div className="pop-voile" onClick={onFermer} />
-      <div className="pop-carte">
-        <div className="pop-tete">
-          <div><div className="sur">Correspondance avec votre recherche</div><h3>{b.titre}</h3></div>
-          <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+      <div className="pop-carte an-carte">
+        <div className="an-tete">
+          <div className="an-tete-txt">
+            <div className="an-sur">Correspondance avec vos critères</div>
+            <div className="an-titre">{b.titre}</div>
+          </div>
+          <div className="an-note"><b className="tab">{r.note}<i>%</i></b><span>{motCorrespondance(r.note)}</span></div>
+          <button className="fermer an-x" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+        </div>
+        <div className="pop-corps an-corps">
+          <div className="an-col">
+            <div className="an-t"><Ico n="check" t={14} /> {`Ce qui correspond · ${oui.length}`}</div>
+            <div className="an-liste">{oui.map((x, i) => <LigneCritere key={i} x={x} />)}</div>
+            {autres.length > 0 && (
+              <>
+                <div className="an-t autre"><Ico n="moins" t={14} /> {`Ce qui s’en écarte · ${autres.length}`}</div>
+                <div className="an-liste">{autres.map((x, i) => <LigneCritere key={i} x={x} />)}</div>
+              </>
+            )}
+          </div>
+          <div className="an-col">
+            {plus.length > 0 && (
+              <>
+                <div className="an-t"><Ico n="etoile" t={14} /> Les plus de ce bien</div>
+                <div className="an-plus">{plus.map((x, i) => (
+                  <span key={i}><span className="an-plus-i"><Ico n={x.ico} t={16} /></span>{x.t}</span>
+                ))}</div>
+              </>
+            )}
+            <div className="an-aide">
+              <div className="an-t neutre">Comment cette note se calcule</div>
+              <div className="puces">
+                <span><span className="k"><Ico n="check" t={15} /></span><span>Elle compare ce bien à chacun de vos critères&nbsp;: budget, secteur, trajet jusqu’à la station, surfaces, pièces, étage, énergie, exposition et équipements. Rien d’autre&nbsp;: ni le marché, ni les autres biens.</span></span>
+                <span><span className="k"><Ico n="check" t={15} /></span><span>Vos indispensables comptent trois fois plus&nbsp;; le budget, le secteur, le trajet, la surface et les chambres, deux fois. Un critère presque atteint compte pour moitié.</span></span>
+                <span><span className="k"><Ico n="check" t={15} /></span><span>Elle ne juge pas ce qui se découvre sur place&nbsp;: la lumière, le calme, l’état. C’est pour ça que votre conseiller vous présente aussi des biens qui ne cochent pas toutes les cases.</span></span>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="pop-corps">
-          <div className="cr-tete">
-            <AnneauNote note={r.note} t={64} />
-            <b>{phraseCorrespondance(r)}</b>
-          </div>
-          {r.plus.length > 0 && (
-            <div className="cr-bloc">
-              <div className="cr-t">Ce qui correspond</div>
-              <ul className="cr-liste">
-                {r.plus.map((t, i) => (
-                  <li key={i}><span className="k oui"><Ico n="check" t={12} /></span><span>{t}</span></li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {r.moins.length > 0 && (
-            <div className="cr-bloc">
-              <div className="cr-t">Ce qui s’en écarte</div>
-              <ul className="cr-liste">
-                {r.moins.map((t, i) => (
-                  <li key={i}><span className="k non"><Ico n="moins" t={12} /></span><span>{t}</span></li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="cr-aide">
-            <div className="cr-t">Comment cette note se calcule</div>
-            <div className="puces">
-              <span><span className="k"><Ico n="check" t={15} /></span><span>Elle compare ce bien aux critères de votre recherche, et à rien d’autre&nbsp;: ni au marché, ni aux autres biens.</span></span>
-              <span><span className="k"><Ico n="check" t={15} /></span><span>Chaque critère compte. Ceux que vous avez marqués «&nbsp;indispensable&nbsp;» comptent davantage, et un critère presque atteint compte pour moitié.</span></span>
-              <span><span className="k"><Ico n="check" t={15} /></span><span>Elle ne dit pas tout&nbsp;: la lumière, le calme, l’état ou le potentiel se jugent sur place. C’est pour ça que votre conseiller vous présente aussi des biens qui ne cochent pas toutes les cases.</span></span>
-            </div>
-          </div>
-          <button className="btn or" style={{ width: '100%', marginTop: 20 }} onClick={onFermer}>J&apos;ai compris</button>
+          <button className="btn or" style={{ width: '100%', marginTop: 4 }} onClick={onFermer}>J&apos;ai compris</button>
         </div>
       </div>
     </div>,
@@ -1849,7 +1885,8 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
           const cases = vues.length ? vues : [null];
           return (
           <button key={b.id} className={'bien' + (b.etat === 'neuf' ? ' neuf' : '')} onClick={() => onOuvrir(b)}>
-            <span className={'bande-ph n' + cases.length}>
+            <span className={'bande-ph n' + cases.length} style={{ position: 'relative' }}>
+              {corr && <span className="an-badge"><b className="tab">{corr.note}&nbsp;%</b><i>correspondance</i></span>}
               {cases.map((ph, i) => (
                 <span className="ph" key={i}>
                   {ph ? <img src={ph} alt="" /> : <span className="ph-vide">▣</span>}
@@ -1872,11 +1909,6 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
                 b.chambres && b.chambres + ' chambres', b.secteur,
               ].filter(Boolean).join(' · ')}</span>
               <span className="prix tab">{EUR(b.prix)}</span>
-              {corr && (
-                <span className="corresp-l"><Ico n="cible" t={13} />
-                  <span><b className="tab">{corr.note}&nbsp;%</b>{' '}de correspondance avec votre recherche</span>
-                </span>
-              )}
               {b.visitePrevue && !b.visiteFaite && (
                 <span className="rdv-l"><Ico n="calendrier" t={13} />
                   Visite le {dateCourte(b.visitePrevue.date)}
@@ -2812,8 +2844,8 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
             <AnneauNote note={corr.note} />
             <span className="corresp-txt">
-              <i>Correspondance avec votre recherche</i>
-              <b>{phraseCorrespondance(corr)}</b>
+              <i>Correspondance avec vos critères</i>
+              <b>{motCorrespondance(corr.note)}</b>
             </span>
             <span className="corresp-ch"><Ico n="fleche" t={16} /></span>
           </button>
@@ -4666,22 +4698,44 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .anneau-n{position:relative; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:14px; color:var(--encre); letter-spacing:-.4px}
 .anneau-n i{font-style:normal; font-size:.62em; font-weight:800; color:var(--plume); margin-left:1px}
 .cr-tete .anneau-n{font-size:19px}
-.corresp-l{display:flex; align-items:center; gap:6px; margin-top:7px; font-size:12px; color:var(--plume); line-height:1.35}
-.corresp-l > svg{color:var(--or-fonce)}
-.corresp-l b{color:var(--encre); font-weight:800}
-.cr-tete{display:flex; align-items:center; gap:14px; padding:4px 0 16px; border-bottom:1px solid var(--trait)}
-.cr-tete b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; line-height:1.35}
-.cr-bloc{padding-top:16px}
-.cr-t{font-size:10px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--plume-clair); margin-bottom:8px}
-.cr-liste{list-style:none; margin:0; padding:0; border:1px solid var(--trait); border-radius:14px; overflow:hidden}
-.cr-liste li{display:flex; align-items:flex-start; gap:10px; padding:10px 13px; font-size:14px; line-height:1.45; color:var(--encre)}
-.cr-liste li + li{border-top:1px solid var(--trait)}
-.cr-liste .k{flex:0 0 auto; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-top:0}
-.cr-liste .k.oui{background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
-.cr-liste .k.non{background:var(--fond); color:var(--plume); border:1px solid var(--trait)}
-.cr-aide{margin-top:18px; padding:14px; background:var(--fond); border-radius:14px}
-.cr-aide .puces{margin-top:4px; padding-top:0; border-top:0}
-.cr-aide .puces > span{font-size:13px; color:var(--plume)}
+/* la fiche d'analyse */
+.an-carte{max-width:780px !important}
+.an-tete{position:relative; display:flex; align-items:center; gap:14px 18px; flex-wrap:wrap; padding:20px 58px 20px 22px;
+  background:linear-gradient(152deg,#3a5178 0%,#27395a 60%,#2e4166 100%); color:#fff}
+.an-tete-txt{flex:1 1 240px; min-width:0}
+.an-sur{font-size:10px; letter-spacing:1.4px; text-transform:uppercase; font-weight:800; color:var(--or)}
+.an-titre{font-family:'Plus Jakarta Sans',sans-serif; font-size:17px; font-weight:800; line-height:1.3; margin-top:4px}
+.an-note{display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.08); border:1px solid rgba(201,168,76,.45); border-radius:16px; padding:10px 14px}
+.an-note b{font-family:'Plus Jakarta Sans',sans-serif; font-size:30px; font-weight:800; color:var(--or); line-height:1}
+.an-note b i{font-style:normal; font-size:15px}
+.an-note span{font-size:13px; font-weight:700; max-width:160px; line-height:1.35}
+.an-x{position:absolute; top:14px; right:14px; background:rgba(255,255,255,.1) !important; border-color:rgba(255,255,255,.22) !important; color:#fff}
+.an-corps{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(310px,100%),1fr)); gap:18px 22px; padding-top:18px !important}
+.an-col{min-width:0}
+.an-t{display:flex; align-items:center; gap:6px; font-size:11px; letter-spacing:1px; text-transform:uppercase; font-weight:800; color:var(--or-fonce); margin:0 0 6px}
+.an-t.autre{color:var(--plume); margin-top:18px}
+.an-t.neutre{color:var(--plume-clair); margin-bottom:2px}
+.an-liste{display:flex; flex-direction:column}
+.an-l{display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--trait)}
+.an-case{width:22px; height:22px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800}
+.an-l.oui .an-case{background:var(--or); color:#fff}
+.an-l.presque .an-case{background:var(--or-fond); color:var(--or-fonce); border:1.5px solid var(--or-trait)}
+.an-l.non .an-case{background:var(--fond); color:var(--plume); border:1.5px solid var(--trait-fort)}
+.an-lib{display:flex; flex-direction:column; min-width:0}
+.an-lib b{font-size:14px; font-weight:800; line-height:1.3}
+.an-lib i{font-style:normal; font-size:12px; color:var(--plume); line-height:1.35}
+.an-val{font-size:14px; font-weight:800; text-align:right; white-space:nowrap}
+.an-l.non .an-val, .an-l.presque .an-val{color:var(--plume)}
+.an-plus{display:flex; flex-direction:column; gap:2px; margin-bottom:16px}
+.an-plus > span{display:flex; align-items:center; gap:10px; padding:5px 0; font-size:14px; font-weight:700}
+.an-plus-i{width:32px; height:32px; border-radius:10px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.an-aide{background:var(--fond); border-radius:14px; padding:13px 14px}
+.an-aide .puces{margin-top:6px; padding-top:0; border-top:0; gap:9px}
+.an-aide .puces > span{font-size:12.5px; color:var(--plume); line-height:1.5}
+.an-badge{position:absolute; left:10px; bottom:10px; z-index:2; display:flex; align-items:baseline; gap:5px;
+  background:rgba(26,35,50,.82); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); color:#fff; border-radius:99px; padding:5px 11px; pointer-events:none}
+.an-badge b{font-size:14px; font-weight:800; color:var(--or)}
+.an-badge i{font-style:normal; font-size:11px; opacity:.82}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
 .specs{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px; margin:16px 0 4px}
