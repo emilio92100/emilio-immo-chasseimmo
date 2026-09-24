@@ -6,6 +6,8 @@ import EspaceClient from '@/components/espace/EspaceClient';
 import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '@/lib/espace';
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
+import { etatMandat, finRetractation, rechercheDepuis, type Mandant } from '@/lib/mandat';
+import { lireReserve } from '@/lib/mandat-serveur';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -106,7 +108,7 @@ export default async function PageEspace({ params, searchParams }: {
     await supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id);
   }
 
-  const [biensRes, passagesRes, totalRes, visitesRes, finRes] = await Promise.all([
+  const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
     /* Les derniers passages : le tout premier dit « la dernière recherche »,
@@ -127,6 +129,14 @@ export default async function PageEspace({ params, searchParams }: {
     supabase.from('journal').select('created_at')
       .eq('recherche_id', recherche.id).eq('type', 'fin_recherche')
       .order('created_at', { ascending: false }).limit(1),
+    /* Pour le mandat : ses coordonnées (pré-remplies à la signature), sa
+       dernière signature, et la réserve de numéros d'Alexandre. Avant que le
+       SQL soit passé, la table n'existe pas : la lecture échoue sans bruit,
+       et l'espace se comporte comme avant. */
+    supabase.from('clients').select('emails, telephones, adresse').eq('id', client.id).maybeSingle(),
+    supabase.from('mandats_signatures').select('*').eq('recherche_id', recherche.id)
+      .order('created_at', { ascending: false }).limit(1),
+    lireReserve(supabase),
   ]);
   const tous = totalRes.data || [];
   const totalLues = tous.reduce((t, x) => t + (x.nb_lues || 0), 0);
@@ -273,6 +283,37 @@ export default async function PageEspace({ params, searchParams }: {
   const declaree = declareeLe !== null && (reprisLe === null || declareeLe > reprisLe);
   const enCours = recherche.active !== false && !declaree;
 
+  /* ─── Le mandat de recherche ───
+     'valide' : signé et pas expiré ; 'a_signer' : un numéro est prêt (sur la
+     recherche, ou dans la réserve d'Alexandre) ; 'sans_numero' : rien. */
+  const derniereSig = (signRes.data || [])[0] || null;
+  let etatM = etatMandat({
+    mandat_date_signature: recherche.mandat_date_signature, mandat_date_expiration: recherche.mandat_date_expiration,
+    mandat_numero: recherche.mandat_numero,
+  });
+  if (etatM === 'sans_numero' && reserve.approuveLe && reserve.numeros.length) etatM = 'a_signer';
+  const coord = coordRes.data || null;
+  const prefill: Mandant = derniereSig && derniereSig.statut === 'en_cours' && derniereSig.mandant
+    ? derniereSig.mandant as Mandant
+    : {
+      civilite: '', prenom: client?.prenom || '', nom: client?.nom || '',
+      naissanceDate: '', naissanceLieu: '', adresse: coord?.adresse || '',
+      email: (Array.isArray(coord?.emails) ? coord!.emails[0] : '') || '',
+      telephone: (Array.isArray(coord?.telephones) ? coord!.telephones[0] : '') || '',
+    };
+  const mandat = {
+    etat: etatM,
+    numero: (recherche.mandat_numero as string | null) || (derniereSig?.statut === 'en_cours' ? derniereSig.numero : null) || null,
+    propose: !!recherche.mandat_propose_le && etatM === 'a_signer',
+    signe: etatM === 'valide' && derniereSig?.statut === 'signe' && derniereSig.signe_le
+      ? { le: derniereSig.signe_le as string, numero: derniereSig.numero as string,
+          fin: finRetractation(derniereSig.signe_le).toISOString(), execution: derniereSig.execution_immediate ?? null }
+      : null,
+    expiration: (recherche.mandat_date_expiration as string | null) || null,
+    recherche: rechercheDepuis(recherche),
+    mandant: prefill,
+  };
+
   const jours = client?.created_at
     ? Math.max(1, Math.round((Date.now() - new Date(client.created_at).getTime()) / 86400000))
     : null;
@@ -358,6 +399,7 @@ export default async function PageEspace({ params, searchParams }: {
       } : null}
       semaine={semaine}
       visites={visites}
+      mandat={mandat}
     />
   );
 }
