@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
-import { demanderNouveauClient } from '@/lib/intentions';
+import { demanderNouveauClient, demanderOuvertureFiche, ouvertureDepuisRelance } from '@/lib/intentions';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [clients, setClients] = useState<Client[]>([]);
@@ -51,7 +51,13 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
     const jours = Math.abs(Math.round((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
     const cli = clients.find(c => c.id === r.client_id);
     return (
-      <div className={styles.listRow} onClick={() => { if (cli) onNavigate('fiche', cli); }}>
+      <div className={styles.listRow} onClick={() => {
+        if (!cli) return;
+        /* La fiche s'ouvre là où la relance a du sens : Présentés, ou le Suivi
+           sur l'action qui l'a créée (voir src/lib/intentions.ts). */
+        demanderOuvertureFiche(ouvertureDepuisRelance(r as Relance & { recherche_id?: string | null }));
+        onNavigate('fiche', cli);
+      }}>
         <div className={styles.urgBar} style={{ background: enRetard || cejour ? '#ef4444' : '#f59e0b' }} />
         <div className={styles.listInfo}>
           <div className={styles.listName}>{cli ? `${cli.prenom} ${cli.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
