@@ -2781,6 +2781,16 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
     const texte = [choisies.join(SEP_PASTILLES), com.trim()].filter(Boolean).join(SEP_LIBRE);
     await onAvis(b, avis, texte);
   };
+  /* « Ça me plaît » déjà envoyé : le client peut encore dire qu'il veut le
+     visiter, sans rien défaire. Ses disponibilités partent avec, et Alexandre
+     est prévenu (une relance du jour dans le CRM, et un mail). */
+  const peutVisiter = envoye && b.avis === 'interesse' && !b.visitePrevue && !b.visiteFaite;
+  const [versVisite, setVersVisite] = useState(false);
+  const envoyerVisite = async () => {
+    setEnvoiAvis(true);
+    const texte = [choisies.join(SEP_PASTILLES), com.trim()].filter(Boolean).join(SEP_LIBRE);
+    await onAvis(b, 'souhaite_visiter', texte);
+  };
   const propsSuite = {
     avis, choisies, onBasculer: basculer, com, setCom, ecrire, setEcrire,
     enCours: envoiAvis, onEnvoyer: envoyerAvis,
@@ -2996,6 +3006,24 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
                   ton={(AVIS[b.avis] && AVIS[b.avis].c) || 'oui'} />
               </>
             ) : null}
+            {peutVisiter && (
+              <div className="envie-visite" data-ouvert={versVisite ? '1' : undefined}>
+                {!versVisite ? (
+                  <>
+                    <div className="ev-t"><Ico n="calendrier" t={16} /><span>{'Envie de le voir en vrai\u00a0?'}</span></div>
+                    <p className="ev-p">{'Dites-le en un geste\u00a0: votre conseiller organise la visite et revient vers vous avec le rendez-vous.'}</p>
+                    <button type="button" className="btn ev-b" onClick={() => { setVersVisite(true); setChoisies([]); setEcrire(false); setCom(''); }}>
+                      <Ico n="calendrier" t={16} /><span>Je souhaite le visiter</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <SuiteAvis {...propsSuite} avis="souhaite_visiter" onEnvoyer={envoyerVisite} />
+                    <button type="button" className="btn lien" style={{ marginTop: 4 }} onClick={() => setVersVisite(false)}>Finalement, pas maintenant</button>
+                  </>
+                )}
+              </div>
+            )}
             <p className="aa-n">{parConseiller
               ? 'Ce n’est pas tout à fait ça ? Dites-le à votre conseiller, il corrige.'
               : 'Vous avez changé d’avis sur ce bien ? Dites-le à votre conseiller, il met le dossier à jour.'}</p>
@@ -5376,6 +5404,16 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .rep[aria-pressed="true"][data-a="visite"]{background:var(--prune-fond); border-color:var(--prune); color:var(--prune)}
 .rep[aria-pressed="true"][data-a="non"]{background:var(--brique-fond); border-color:var(--brique); color:var(--brique)}
 .rep.plus{border-style:dashed; color:var(--plume-clair); padding-left:12px}
+/* « Je souhaite le visiter », après un « ça me plaît » déjà envoyé */
+.envie-visite{margin-top:14px; padding:14px; border-radius:16px; background:var(--prune-fond);
+  border:1px solid var(--prune-trait); animation:evEntre .4s cubic-bezier(.16,1,.3,1) both}
+.envie-visite[data-ouvert]{background:var(--carte)}
+.envie-visite .apres-avis{margin-top:0; border-left-color:var(--prune)}
+.ev-t{display:flex; align-items:center; gap:8px; font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:15px; font-weight:800; color:var(--prune)}
+.ev-p{margin:6px 0 12px; font-size:13px; line-height:1.6; color:var(--plume)}
+.btn.ev-b{background:var(--prune); color:#fff; box-shadow:0 12px 24px -14px var(--prune)}
+@keyframes evEntre{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
 /* la bascule vers la visite, depuis « ça me plaît » */
 .rep.bascule{border-color:var(--prune-trait); background:var(--prune-fond); color:var(--prune); font-weight:800}
 .rep.bascule svg{color:var(--prune)}
