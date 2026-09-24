@@ -8,12 +8,12 @@ import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
-import { signalerMaj, demanderRendezVous } from '@/lib/intentions';
+import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi } from '@/lib/intentions';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import {
-  BasculeCriteres, CorpsCriteres, CRIT_VIDE, ETATS, EXPOSITIONS, etapesCriteres,
+  BasculeCriteres, CorpsCriteres, CRIT_VIDE, EXPOSITIONS, etapesCriteres,
   FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
-  texteChoix, URGENCES, CUISINES,
+  texteChoix, texteEtats, URGENCES, CUISINES,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
@@ -64,7 +64,7 @@ const CHAMPS_SUIVIS: { cle: string; nom: string; fmt?: (v: unknown) => string }[
   { cle: 'etage_max', nom: 'Étage maxi' },
   { cle: 'dpe_max', nom: 'DPE maxi' },
   { cle: 'annee_construction_min', nom: 'Construit après' },
-  { cle: 'etat_souhaite', nom: 'État' },
+  { cle: 'etat_souhaite', nom: 'État', fmt: (v) => texteEtats(String(v)) || 'Pas de préférence' },
   { cle: 'urgence', nom: 'Urgence' },
   { cle: 'financement', nom: 'Financement' },
   { cle: 'apport', nom: 'Apport', fmt: (v) => `${Number(v).toLocaleString('fr-FR')} €` },
@@ -470,12 +470,15 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 }
 
 export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
+  /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
+     Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
+  const [ouverture] = useState(() => lireOuvertureFiche(init.id));
   const [client, setClient] = useState<Client>(init);
   const [recherches, setRecherches] = useState<Recherche[]>([]);
-  const [rechercheId, setRechercheId] = useState<string>('');
+  const [rechercheId, setRechercheId] = useState<string>(ouverture?.rechercheId || '');
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
-  const [tab, setTab] = useState('presentes');   // c'est là qu'on regarde en premier : ce que le client a reçu
+  const [tab, setTab] = useState<string>(ouverture?.onglet || 'presentes');   // c'est là qu'on regarde en premier : ce que le client a reçu
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -507,7 +510,11 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     })();
     return () => { vivant = false; };
   }, [client.id, client.token_espace, client.prenom, client.nom]);
-  const [suiviFiltre, setSuiviFiltre] = useState('appel');
+  const [suiviFiltre, setSuiviFiltre] = useState<string>(ouverture?.onglet === 'suivi' ? (ouverture.filtre || 'tout') : 'appel');
+  /* La ligne du Suivi à surligner : l'action qui a créé la relance. */
+  const [surligne, setSurligne] = useState<string | null>(null);
+  const ouvertureFaite = useRef(false);
+  useEffect(() => { if (ouverture) oublierOuvertureFiche(); }, [ouverture]);
   /* Sur téléphone, le détail des critères est replié : le suivi du dossier
      (veille, sélection, présentés…) remonte d'autant. Sans effet sur ordinateur. */
   const [critsOuverts, setCritsOuverts] = useState(false);
@@ -516,6 +523,24 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [transaction, setTransaction] = useState<any>(null);
   const [envois, setEnvois] = useState<any[]>([]);
   const [journal, setJournal] = useState<any[]>([]);
+  /* Venu d'une relance : dès que le journal est là, on retrouve l'action qui
+     l'a créée, on règle le filtre du Suivi sur son type, on la surligne et on
+     l'amène à l'écran. Sans action liée, on descend simplement aux onglets. */
+  useEffect(() => {
+    if (!ouverture || ouvertureFaite.current || !journal.length) return;
+    ouvertureFaite.current = true;
+    const j = ouverture.relanceId ? journal.find(x => x?.metadata?.relance_id === ouverture.relanceId) : null;
+    if (ouverture.onglet === 'suivi' && j) {
+      setSuiviFiltre(filtreDuSuivi(j.type));
+      setSurligne(j.id);
+    }
+    const t1 = setTimeout(() => {
+      const cible = (j && ouverture.onglet === 'suivi' && document.getElementById(`suivi-${j.id}`)) || document.querySelector('.fiche-suivi');
+      cible?.scrollIntoView({ block: j ? 'center' : 'start', behavior: 'smooth' });
+    }, 380);
+    const t2 = setTimeout(() => setSurligne(null), 6000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [journal, ouverture]);
   /* Ce que le client a fait de son côté : modifications de critères et messages.
      Le bloc « Critères » porte une pastille tant qu'Alexandre ne les a pas lus. */
   const [histoEvts, setHistoEvts] = useState<any[]>([]);
@@ -2793,7 +2818,7 @@ Emilio Immobilier
                     if (cr.nb_pieces_min || cr.nb_pieces_max) logement.push({ lib: 'Pièces', val: cr.nb_pieces_min && cr.nb_pieces_max ? `${cr.nb_pieces_min}–${cr.nb_pieces_max}` : cr.nb_pieces_max ? `${cr.nb_pieces_max} maximum` : <>{cr.nb_pieces_min}<Mini /></> });
                     if (cr.chambres_min) logement.push({ lib: 'Chambres', val: <>{cr.chambres_min}<Mini fort /></>, fort: true });
                     if (cr.surface_sejour_min) logement.push({ lib: 'Séjour', val: <>{cr.surface_sejour_min} m²<Mini /></> });
-                    if (cr.etat_souhaite) logement.push({ lib: 'État', val: <span style={{ fontSize: 13.5 }}>{texteChoix(ETATS, cr.etat_souhaite)}</span> });
+                    if (texteEtats(cr.etat_souhaite)) logement.push({ lib: 'État', val: <span style={{ fontSize: 13.5 }}>{texteEtats(cr.etat_souhaite)}</span> });
 
                     const immeuble: LigneC[] = [];
                     if (cr.etage_min || cr.etage_max) immeuble.push({ lib: 'Étage', val: cr.etage_min && cr.etage_max ? `${ordinal(cr.etage_min)} – ${ordinal(cr.etage_max)}` : cr.etage_max ? `jusqu'au ${ordinal(cr.etage_max || 0)}` : `${ordinal(cr.etage_min || 0)} et plus` });
@@ -2955,6 +2980,14 @@ Emilio Immobilier
            changeait de sujet. Ce bandeau sombre le dit d'un seul contraste. */
         /* Discrets par défaut : le suivi se lit d'abord, il se corrige ensuite. */
         .suivi-actions { opacity: 0; transition: opacity .16s ease; }
+        /* L'action d'où vient la relance, quand on arrive depuis la page Relances. */
+        @keyframes suiviLueur {
+          0% { background: rgba(201,168,76,0); box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+          15% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
+          75% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
+          100% { background: rgba(255,246,221,0); box-shadow: 0 0 0 6px rgba(255,246,221,0); }
+        }
+        .suivi-surligne { border-radius: 12px; animation: suiviLueur 5.5s ease both; }
         .suivi-ligne:hover .suivi-actions, .suivi-actions:focus-within { opacity: 1; }
         @media (hover: none) { .suivi-actions { opacity: 1; } }
 
@@ -3746,7 +3779,7 @@ Emilio Immobilier
               const j = it.data;
               const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : j.type === 'etape_transaction' ? '💼' : '📝';
               return (
-                <div key={`e-${j.id}`} className="suivi-ligne" style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
+                <div key={`e-${j.id}`} id={`suivi-${j.id}`} className={`suivi-ligne${surligne === j.id ? ' suivi-surligne' : ''}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f8fafc', border: '1px solid #e3e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{evIcon}</div>
                     {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
