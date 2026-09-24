@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
+import { tauxDe, tauxTexte, DUREE, RETRACTATION_JOURS } from '@/lib/mandat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -726,6 +727,56 @@ function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string 
   return coque({ etiquette: 'VOS VISITES', corpsHtml, contenu: rows, token: o.token });
 }
 
+/* ══ « Votre mandat de recherche est prêt » ══
+   Envoyé depuis la fiche (« Faire signer le mandat » → « Envoyer par
+   e-mail »). L'essentiel en trois lignes — dont les honoraires, au taux
+   qu'Alexandre a choisi — et un seul bouton, qui ouvre l'espace sur le
+   mandat (…?mandat=1). */
+function lienMandat(token?: string | null, recherche?: string | null): string {
+  if (!token) return '';
+  return `${lienEspace(token, SITE_URL)}?${recherche ? `r=${encodeURIComponent(recherche)}&` : ''}mandat=1`;
+}
+function buildMandatPret(o: { prenom: string; taux: number; token?: string | null; recherche?: string | null }): string {
+  const corpsHtml = `Bonjour ${escapeHtml(o.prenom)},<br/><br/>Comme convenu, votre <b>mandat de recherche</b> est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.`;
+  const ligne = (t: string, v: string, d: string) => `
+    <tr><td style="padding:10px 0;border-top:1px solid #eee5d6;">
+      <div style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:#a07c28;">${t}</div>
+      <div style="font-size:15px;font-weight:700;color:${BLEU};margin-top:3px;">${v}</div>
+      <div style="font-size:12.5px;color:#5a6a85;margin-top:2px;">${d}</div>
+    </td></tr>`;
+  const lien = lienMandat(o.token, o.recherche);
+  const contenu = `
+    <tr><td class="bord" style="padding:18px 28px 6px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${ligne('Honoraires', `${escapeHtml(tauxTexte(o.taux))} du prix d’achat`, 'réglés le jour de l’acte, chez le notaire — rien avant')}
+        ${ligne('Durée', `${DUREE.initiale} jours, renouvelables`, `${DUREE.total} jours au plus · vous pouvez y mettre fin à chaque échéance`)}
+        ${ligne('Votre liberté', 'Mandat non exclusif', `aucune obligation d’acheter · ${RETRACTATION_JOURS} jours pour changer d’avis`)}
+      </table>
+    </td></tr>
+    ${lien ? `<tr><td class="bord" align="center" style="padding:14px 28px 26px;">
+      <a href="${lien}" style="display:inline-block;background:${DORE};color:${BLEU};text-decoration:none;font-size:15px;font-weight:800;padding:14px 26px;border-radius:12px;">Lire et signer mon mandat</a>
+      <div style="font-size:12px;color:#7a879b;margin-top:12px;line-height:1.6;">Une question avant de signer&nbsp;? Répondez simplement à ce message.</div>
+    </td></tr>` : ''}`;
+  return coque({ etiquette: 'VOTRE MANDAT', corpsHtml, contenu, token: o.token });
+}
+function texteMandatPret(prenom: string, taux: number, token?: string | null, recherche?: string | null): string {
+  const lien = lienMandat(token, recherche);
+  return `Bonjour ${prenom},
+
+Comme convenu, votre mandat de recherche est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.
+
+- Honoraires : ${tauxTexte(taux)} du prix d'achat, réglés le jour de l'acte chez le notaire
+- Durée : ${DUREE.initiale} jours renouvelables, ${DUREE.total} jours au plus
+- Mandat non exclusif, aucune obligation d'acheter, ${RETRACTATION_JOURS} jours pour changer d'avis
+${lien ? `
+Lire et signer mon mandat : ${lien}
+` : ''}
+Une question avant de signer ? Répondez simplement à ce message.
+
+---
+Alexandre Rogelet · Emilio Immobilier · 06 58 95 76 32`;
+}
+
 function texteVisites(corps: string, lignes: LigneVisite[], token?: string | null): string {
   const plusieursJours = new Set(lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
   const liste = lignes.map(l => {
@@ -756,7 +807,7 @@ export async function POST(req: NextRequest) {
       corps: string;
       biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
-      mode?: 'libre' | 'biens' | 'bienvenue' | 'visites'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'visites' = rappel de visites, 'biens' = défaut
+      mode?: 'libre' | 'biens' | 'bienvenue' | 'visites' | 'mandat'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'visites' = rappel de visites, 'mandat' = mandat prêt à signer, 'biens' = défaut
       visites_ids?: string[];         // mode 'visites' : les visites à annoncer
     };
     /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
@@ -766,10 +817,10 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(client_ids) || client_ids.length === 0) {
       return NextResponse.json({ error: 'Aucun destinataire' }, { status: 400 });
     }
-    if (!bienvenue && !objet?.trim()) {
+    if (!bienvenue && mode !== 'mandat' && !objet?.trim()) {
       return NextResponse.json({ error: "L'objet est obligatoire" }, { status: 400 });
     }
-    if (bienvenue && !recherche_id) {
+    if ((bienvenue || mode === 'mandat') && !recherche_id) {
       return NextResponse.json({ error: 'Recherche manquante' }, { status: 400 });
     }
 
@@ -912,6 +963,62 @@ export async function POST(req: NextRequest) {
       }
       const nbOk = resultats.filter(r => r.success).length;
       return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, avertissement });
+    }
+
+    /* « Votre mandat de recherche est prêt » : un envoi par client, au taux
+       enregistré sur la recherche (celui que le client verra en ouvrant). */
+    if (mode === 'mandat') {
+      if (!recherche) return NextResponse.json({ error: 'Recherche introuvable' }, { status: 404 });
+      const taux = tauxDe(recherche.mandat_taux);
+      const authM = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+      const resultats: { client_id: string; success: boolean; error?: string }[] = [];
+      for (const client of clients) {
+        const sourceEmails = Array.isArray(destinataires_override) && destinataires_override.length > 0
+          ? destinataires_override : (client.emails || []);
+        const emails = sourceEmails.filter((e: string) => e && e.includes('@'));
+        if (emails.length === 0) { resultats.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' }); continue; }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const jeton = ((client as any).token_espace as string) || tokenEspace;
+        const sujet = objet?.trim() || 'Votre mandat de recherche est prêt';
+        try {
+          const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Basic ${authM}` },
+            body: JSON.stringify({
+              Messages: [{
+                From: { Email: FROM_EMAIL, Name: FROM_NAME },
+                To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
+                Subject: sujet,
+                TextPart: texteMandatPret(client.prenom || '', taux, jeton, recherche_id || null),
+                HTMLPart: buildMandatPret({ prenom: client.prenom || '', taux, token: jeton, recherche: recherche_id || null }),
+                CustomID: `mandat-pret-${client.id}-${Date.now()}`,
+                TrackOpens: 'disabled',
+                TrackClicks: 'disabled',
+              }],
+            }),
+          });
+          const mjJson = await mjRes.json();
+          const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
+          if (!ok) {
+            resultats.push({ client_id: client.id, success: false, error: mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200) });
+            continue;
+          }
+          await supabase.from('envois').insert({
+            client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
+            objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${tauxTexte(taux)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
+          });
+          await supabase.from('journal').insert({
+            client_id: client.id, type: 'mail_envoye',
+            titre: `✉️ Mail envoyé — ${sujet}`,
+            description: `À : ${emails.join(', ')}\nMandat de recherche prêt à signer · honoraires ${tauxTexte(taux)}`,
+          });
+          resultats.push({ client_id: client.id, success: true });
+        } catch (e) {
+          resultats.push({ client_id: client.id, success: false, error: (e as Error).message });
+        }
+      }
+      const nbOk = resultats.filter(r => r.success).length;
+      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, error: nbOk ? undefined : resultats[0]?.error });
     }
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
