@@ -87,7 +87,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     {
       section: 'SUIVI',
       items: [
-        { id: 'visites', label: 'Visites', icon: '◷', picto: 'calendrier', badge: counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
+        { id: 'agenda', label: 'Agenda', icon: '▦', picto: 'calendrier', badge: null },
+        { id: 'visites', label: 'Visites', icon: '◷', picto: 'cle', badge: counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
         { id: 'relances', label: 'Relances', icon: '◉', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
         { id: 'mail', label: 'Nouveau mail', icon: '◻', picto: 'mail', badge: null },
       ]
@@ -108,7 +109,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     { id: 'dashboard', label: 'Accueil', picto: 'accueil' },
     { id: 'clients', label: 'Clients', picto: 'clients' },
     { id: '+', label: 'Nouveau', picto: 'plus' },
-    { id: 'visites', label: 'Visites', picto: 'calendrier', pastille: counts.visites },
+    { id: 'visites', label: 'Visites', picto: 'cle', pastille: counts.visites },
     { id: 'relances', label: 'Relances', picto: 'cloche', pastille: counts.relances },
   ];
 
