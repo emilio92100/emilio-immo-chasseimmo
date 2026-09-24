@@ -59,6 +59,13 @@ export interface Recherche {
   mandat_duree?: number
   mandat_honoraires?: string
   mandat_date_expiration?: string
+  /* Le mandat signé en ligne (voir src/lib/mandat.ts) : le numéro réservé
+     dans le registre ImmoFacile, son type, et quand Alexandre l'a proposé. */
+  mandat_numero?: string | null
+  mandat_type?: string | null
+  mandat_propose_le?: string | null
+  /* Le taux des honoraires proposé (2,5 % au plus : le barème). Vide = 2,5 %. */
+  mandat_taux?: number | null
   notes?: string
   created_at: string
   updated_at: string
