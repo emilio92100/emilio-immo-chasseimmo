@@ -121,6 +121,16 @@ type ChangementCrit =
   | { l: string; a: string | null; p: string | null }
   | { l: string; plus: string[]; moins: string[] };
 
+const BRUIT_CRITERES: Record<string, string> = {
+  'Apport': '0\u00a0€', 'Étage minimum': 'rez-de-chaussée', 'Étage maximum': 'rez-de-chaussée',
+  'Sans ascenseur, pas au-dessus du': 'rez-de-chaussée',
+};
+function estBruitCritere(c: ChangementCrit): boolean {
+  if ('plus' in c) return false;
+  const v = BRUIT_CRITERES[c.l];
+  return !!v && ((c.a === null && c.p === v) || (c.p === null && c.a === v));
+}
+
 const PASTILLE_DIFF: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 0.6,
   textTransform: 'uppercase', borderRadius: 6, padding: '2px 6px', marginRight: 6, whiteSpace: 'nowrap',
@@ -3979,6 +3989,10 @@ Emilio Immobilier
                     const e = Math.abs(new Date(j.created_at).getTime() - d.getTime());
                     if (e < ecart) { ecart = e; diff = j.metadata.changements; }
                   }
+                  /* Les zéros écrits tout seuls avant le 24 septembre (apport 0 €,
+                     étages « rez-de-chaussée ») ne sont pas des choix du client :
+                     ni leur arrivée ni leur départ ne s'affichent. */
+                  if (diff) diff = diff.filter(c => !estBruitCritere(c));
                 }
                 return (
                   <div key={ev.id} style={{
@@ -3992,13 +4006,15 @@ Emilio Immobilier
                         <b style={{ fontSize: 13.5, color: '#1a2332' }}>
                           {msg ? 'Il vous a écrit' : 'Il a modifié ses critères'}
                         </b>
-                        {diff && <span style={{ fontSize: 12, color: '#64748b' }}>{`· ${diff.length} changement${diff.length > 1 ? 's' : ''}`}</span>}
+                        {diff && diff.length > 0 && <span style={{ fontSize: 12, color: '#64748b' }}>{`· ${diff.length} changement${diff.length > 1 ? 's' : ''}`}</span>}
                         {neuf && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#c2410c', background: '#ffedd5', borderRadius: 6, padding: '2px 6px' }}>Nouveau</span>}
                         <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                           {d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      {diff ? <DiffCriteres changements={diff} /> : ev.detail && (
+                      {diff && diff.length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>{'Il a revalidé ses critères sans rien changer.'}</div>
+                      ) : diff ? <DiffCriteres changements={diff} /> : ev.detail && (
                         <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
                           {/* Avant le 24 septembre, seul le dossier complet était noté, pas ce qui avait bougé. */}
                           {!msg && /^type :|budget|m² min/.test(ev.detail) && (
