@@ -61,7 +61,7 @@ const initForm = {
 // Carte de section pour le formulaire en étapes
 function Bloc({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: '#fafbfd', border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px' }}>
+    <div className="nc-bloc" style={{ background: '#fafbfd', border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px' }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 14 }}>{titre}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
     </div>
@@ -480,6 +480,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
      posée elle ne bouge plus, sinon on ne pourrait pas aller cliquer dedans. */
   const LARGEUR_FICHE = 306, HAUTEUR_FICHE = 340;
   function entrer(id: string, ev: React.MouseEvent) {
+    /* Au doigt, il n'y a pas de survol : un toucher ouvre la fiche. Sans ce
+       garde-fou, la bulle surgissait trois secondes plus tard sur l'écran
+       suivant. */
+    if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return;
     if (minuteur.current) clearTimeout(minuteur.current);
     souris.current = { x: ev.clientX, y: ev.clientY };
     minuteur.current = setTimeout(() => {
@@ -632,7 +636,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           <h1 className={styles.title}>Mes Clients</h1>
           <p className={styles.sub}>{clients.length} clients · {clients.filter(c => c.statut === 'actif').length} actifs · {clients.filter(c => c.statut === 'prospect').length} prospects</p>
         </div>
-        <button className={styles.btnPrimary} onClick={openModal}>+ Nouveau client</button>
+        <button className={`${styles.btnPrimary} ${styles.btnNouveau}`} onClick={openModal}>+ Nouveau client</button>
       </div>
 
       {/* FILTRES */}
@@ -650,7 +654,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           ))}
         </div>
         <div className={styles.searchBox}>
-          <span>🔍</span>
+          <span className={styles.searchLoupe}>🔍</span>
           <input
             type="text"
             placeholder="Nom, email, secteur, référence..."
@@ -938,7 +942,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         const dernierCran = step === 2;
 
         return (
-          <div className={styles.modalOverlay} style={{ animation: 'crmFadeIn 0.2s ease' }}>
+          <div className={`${styles.modalOverlay} nc-voile`} style={{ animation: 'crmFadeIn 0.2s ease' }}>
             <style>{`
               @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
               @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -974,11 +978,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
             `}</style>
 
-            <div className={styles.modal} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <div className={`${styles.modal} nc-fenetre`} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
 
               {/* ── En-tête ── */}
-              <div style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
-                <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
+              <div className="nc-tete" style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
+                <button className="nc-fermer" aria-label="Fermer" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
                   <div style={{ flexGrow: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a2332', letterSpacing: -0.4 }}>
@@ -1006,7 +1010,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               </div>
 
               {/* ── Corps ── */}
-              <div style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
+              <div className="nc-defil" style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
                 {error && <div className={styles.errorBox} style={{ marginBottom: 16 }}>{error}</div>}
 
                 <div key={`${step}-${surCriteres ? iC : 'x'}`} className="nc-corps">
@@ -1147,13 +1151,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               </div>
 
               {/* ── Pied ── */}
-              <div style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
-                <button type="button" className={styles.btnSecondary} onClick={revenir}>
+              <div className="nc-pied" style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+                <button type="button" className={`${styles.btnSecondary} nc-prec`} onClick={revenir}>
                   {step === 0 ? 'Annuler' : '← Précédent'}
                 </button>
                 <span style={{ flexGrow: 1 }} />
                 {!dernierCran && (
-                  <button type="button" className={styles.btnSecondary} disabled={saving || !nomRempli}
+                  <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli}
                     style={{ opacity: nomRempli ? 1 : 0.45 }}
                     title="Crée le dossier avec ce qui est déjà rempli — le reste se complète depuis la fiche"
                     onClick={handleCreate}>
@@ -1161,11 +1165,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   </button>
                 )}
                 {dernierCran ? (
-                  <button type="button" className={styles.btnPrimary} disabled={saving} onClick={handleCreate}>
+                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={saving} onClick={handleCreate}>
                     {saving ? 'Création…' : '✓ Créer le dossier'}
                   </button>
                 ) : (
-                  <button type="button" className={styles.btnPrimary} onClick={continuer}>Continuer →</button>
+                  <button type="button" className={`${styles.btnPrimary} nc-suite`} onClick={continuer}>Continuer →</button>
                 )}
               </div>
             </div>

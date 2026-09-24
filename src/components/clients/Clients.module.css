@@ -389,3 +389,90 @@
   display: block; font-size: 11px; font-weight: 600; color: #a3b0c2;
   margin-top: 1px; text-transform: none; letter-spacing: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA VERSION TÉLÉPHONE
+   Le tableau devient une pile de cartes : le client et son budget en haut,
+   ce qu'il cherche au milieu, le secteur et le signal en bas. Les filtres
+   défilent au doigt, la recherche prend toute la largeur, et la fenêtre
+   « Nouveau client » monte du bas de l'écran.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Dès que l'écran ne tient plus les cinq colonnes (tablette, téléphone),
+   chaque ligne devient une carte. */
+@media (max-width: 900px) {
+  /* L'en-tête du tableau n'a plus de colonnes à nommer : il ne garde que
+     le bouton de classement. */
+  .entete { background: none; border: none; padding: 0 2px; margin-bottom: 8px; }
+  .entete > span:not(:first-child) { display: none !important; }
+  .entete > .colClient { width: auto; }
+
+  .list { gap: 10px; }
+  .ligne {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "client bud" "rech rech" "sect sig";
+    align-items: center; gap: 11px 10px;
+    padding: 14px 14px 13px; border-radius: 17px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ligne:active { background: #fbfaf6; border-color: #d8c48a; }
+  .ligne > .colClient { grid-area: client; width: auto; }
+  .ligne > .colRech { grid-area: rech; padding-right: 0; }
+  .ligne > .colSect { grid-area: sect; width: auto; }
+  .ligne > .colBud { grid-area: bud; width: auto; align-self: start; padding-top: 4px; }
+  .ligne > .colSig { grid-area: sig; width: auto; }
+
+  .avatar { width: 42px; height: 42px; font-size: 16px; }
+  .nom { font-size: 16px; }
+  .ref { font-size: 11px; }
+  .budget { font-size: 17px; }
+  .pastilles { flex-wrap: wrap; gap: 6px; }
+  .pastilles > span { padding: 3px 8px 3px 7px !important; gap: 5px !important; font-size: 12px !important; }
+  .ville { font-size: 12px; padding: 3px 10px; }
+  .signal { font-size: 11.5px; padding: 5px 11px; }
+
+}
+
+@media (max-width: 760px) {
+  .page { padding: 16px 12px 24px; gap: 12px; }
+  .header { align-items: center; gap: 12px; }
+  .title { font-size: 25px; letter-spacing: -0.5px; line-height: 1.1; }
+  .sub { font-size: 12.5px; margin-top: 4px; }
+  .btnNouveau { padding: 10px 14px; border-radius: 13px; font-size: 13.5px; flex-shrink: 0; }
+
+  /* Les filtres : une rangée de pastilles qui défile sous le doigt. */
+  /* Une seule colonne, sans retour à la ligne : avec « wrap », la rangée de
+     filtres imposait sa largeur à la recherche, qui sortait de l'écran. */
+  .filtres { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
+  .filtreGroup {
+    background: none; border: none; padding: 2px 12px; margin: 0 -12px; gap: 7px;
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .filtreGroup::-webkit-scrollbar { display: none; }
+  .filtreBtn {
+    flex-shrink: 0; padding: 8px 14px; border-radius: 99px; font-size: 13.5px; font-weight: 600;
+    background: #fff; border: 1px solid #e3e8f0; white-space: nowrap;
+  }
+  .filtreBtnActive { border-color: #1a2332; }
+  .filtreBadge { font-size: 11px; padding: 1px 6px; }
+
+  .searchBox { padding: 0 14px; height: 46px; border-radius: 14px; gap: 9px; }
+  .searchInput { width: 100%; font-size: 16px; }
+
+  /* La fenêtre « Nouveau client » : un panneau qui monte du bas. */
+  .modalOverlay { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: none !important;
+    max-height: calc(100dvh - 10px) !important;
+    border-radius: 22px 22px 0 0 !important;
+    animation: feuilleMonte .34s cubic-bezier(.22,.9,.3,1) !important;
+  }
+  .formRow { grid-template-columns: 1fr; gap: 12px; }
+  .label { font-size: 12px; }
+  .input, .textarea { font-size: 16px; padding: 11px 13px; border-radius: 11px; }
+  .btnPrimary, .btnSecondary { justify-content: center; }
+}
+
+@keyframes feuilleMonte { from { transform: translateY(60px); opacity: .4; } to { transform: none; opacity: 1; } }
