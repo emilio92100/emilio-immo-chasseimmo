@@ -809,6 +809,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
   const [variante, setVariante] = useState('');
+  /* Sur téléphone, hors de l'accueil : dès qu'on a un peu descendu, une
+     petite pastille « Accueil » apparaît en haut à gauche. Le client n'a pas
+     à chercher le chemin du retour dans la barre du bas. */
+  const [descendu, setDescendu] = useState(false);
+  useEffect(() => {
+    const suivre = () => setDescendu(window.scrollY > 220);
+    suivre();
+    window.addEventListener('scroll', suivre, { passive: true });
+    return () => window.removeEventListener('scroll', suivre);
+  }, []);
   /* Le client vient de dire que sa recherche est finie : la pastille verte
      s'éteint tout de suite, sans attendre un rechargement. Au retour, c'est
      le serveur qui tranche — il lit le journal (voir page.tsx). */
@@ -1493,6 +1503,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       {/* La barre du bas, sur téléphone : les cinq endroits de l'espace, et une
           pastille qui vit tant qu'il reste quelque chose à voir. Elle passe
           sous les fiches et les fenêtres (z-index plus bas que la feuille). */}
+      {vue !== 'accueil' && !ouvert && (
+        <button type="button" className={'retour-flot' + (descendu ? ' vu' : '')} onClick={() => aller('accueil')}
+          aria-label="Retour à l'accueil" tabIndex={descendu ? 0 : -1}>
+          <Ico n="retour" t={16} /><span>Accueil</span>
+        </button>
+      )}
       <nav className="barre-bas" aria-label="Menu">
         {ONGLETS.filter(o => !o.pc).map(o => {
           const n = compte[o.id] || 0;
@@ -2139,12 +2155,15 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
           return (
           <button key={b.id} className={'bien' + (b.etat === 'neuf' ? ' neuf' : '')} onClick={() => onOuvrir(b)}>
             <span className={'bande-ph n' + cases.length} style={{ position: 'relative' }}>
-              {corr && <span className="an-badge"><b className="tab">{corr.note}&nbsp;%</b><i>correspondance</i></span>}
+              {/* Les photos d'abord, le badge ensuite : la grande vue doit rester
+                  le premier enfant, sinon elle perd sa double hauteur et une
+                  case grise vide apparaît dans la mosaïque. */}
               {cases.map((ph, i) => (
                 <span className="ph" key={i}>
                   {ph ? <img src={ph} alt="" /> : <span className="ph-vide">▣</span>}
                 </span>
               ))}
+              {corr && <span className="an-badge"><b className="tab">{corr.note}&nbsp;%</b><i>correspondance</i></span>}
             </span>
             <span className="corps-bien">
               <span className="haut-bien">
@@ -2191,6 +2210,26 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
   );
 }
 
+/* La phrase qui situe la dernière recherche dans le dossier. « re » : ce
+   qu'elle a retenu ; « ret » : ce qu'il y a dans l'espace, toutes recherches
+   confondues (plus ce que le conseiller a ajouté lui-même). */
+function bilanRecherche(nb: number, re: number, ret: number): string {
+  const rang = nb <= 1 ? 'la première recherche faite' : `la ${nb}e recherche faite`;
+  const tete = `C’est ${rang} sur votre dossier`;
+  if (!re) {
+    return ret
+      ? `${tete}. Elle n’a rien retenu de nouveau : vos ${ret} bien${ret > 1 ? 's' : ''} retenu${ret > 1 ? 's' : ''} depuis l’ouverture restent dans votre espace.`
+      : `${tete}. Elle n’a rien retenu : aucune annonce ne correspondait assez à ce que vous cherchez.`;
+  }
+  const elle = `Elle a retenu ${re} bien${re > 1 ? 's' : ''}`;
+  if (ret > re) {
+    const avec = nb > 1 ? 'avec ceux des recherches précédentes' : 'avec ceux que votre conseiller a ajoutés';
+    return `${tete}. ${elle} : ${avec}, cela fait ${ret} biens retenus pour vous depuis l’ouverture.`;
+  }
+  if (ret < re) return `${tete}. ${elle} : votre conseiller les vérifie un par un avant de les déposer dans votre espace.`;
+  return `${tete}. ${elle}, que vous retrouvez dans votre espace.`;
+}
+
 function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) {
   const total = semaine.reduce((s: number, x: any) => s + x.lues, 0);
   const lues = passage?.totalLues ?? 0;
@@ -2204,6 +2243,9 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
      verrait trois nombres qui ne s'additionnent pas. */
   const ecart = Math.max(0, lues - ret);
   const sur = ret > 0 ? Math.round(lues / ret) : 0;
+  /* Le nombre de recherches faites sur le dossier : il relie les deux blocs
+     (« 368 lues en 2 recherches », « la 2e recherche en a retenu 3 »). */
+  const nbRech = passage?.nbPassages ?? 0;
 
   const avecPrix = (biens || []).filter((b: Bien) => b.prix && b.prix > 0);
   const prix = avecPrix.map((b: Bien) => b.prix as number).sort((a: number, z: number) => a - z);
@@ -2247,12 +2289,12 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           </div>
           {sur > 1 && (
             <div className="gr-note">
-              <span>Les trois chiffres s&apos;additionnent&nbsp;:{' '}
-                <b>{nombre(lues)}</b>{' '}annonces lues,{' '}
-                <b>{ecart.toLocaleString('fr-FR')}</b>{' '}qui ne vous correspondaient pas,{' '}
-                <b>{ret.toLocaleString('fr-FR')}</b>{' '}
-                déposée{ret > 1 ? 's' : ''} dans votre espace. Soit{' '}
-                <b>une annonce retenue sur {sur.toLocaleString('fr-FR')}</b>.</span>
+              {/* Tout en chaînes : aucune espace ne peut se perdre à la
+                  compilation (voir AGENTS.md §2.1). */}
+              <span>{'Les trois chiffres s\u2019additionnent\u00a0: '}<b>{nombre(lues)}</b>
+                {` annonces lues${nbRech > 1 ? ` en ${nbRech} recherches` : ''}, `}<b>{nombre(ecart)}</b>
+                {' qui ne vous correspondaient pas, '}<b>{nombre(ret)}</b>
+                {` déposée${ret > 1 ? 's' : ''} dans votre espace. Soit `}<b>{`une annonce retenue sur ${nombre(sur)}`}</b>{'.'}</span>
             </div>
           )}
         </div>
@@ -2285,9 +2327,18 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
                 </div>
                 <div className="ent">
                   <div className="ent-h"><b className="tab or">{re || '—'}</b>
-                    <span className="or">retenue{re > 1 ? 's' : ''} ce jour-là, et ajoutée{re > 1 ? 's' : ''} à votre espace</span></div>
+                    <span className="or">{`retenue${re > 1 ? 's' : ''} lors de cette recherche`}</span></div>
                   <div className="ent-b"><i className="or" style={{ width: pc(re) + '%' }} /></div>
                 </div>
+                {/* Ce qui manquait : dire où se place cette recherche dans le
+                    dossier. Sans ça, « 3 retenues » à côté de « 12 retenus
+                    depuis l'ouverture » ressemblait à une erreur. */}
+                {!!passage?.quand && (
+                  <div className="ent-bilan">
+                    <span className="eb-i"><Ico n="etoile" t={15} /></span>
+                    <span>{bilanRecherche(nbRech, re, ret)}</span>
+                  </div>
+                )}
               </>
             );
           })()}
@@ -4596,7 +4647,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .bloc-titre .n.or{background:var(--ambre); color:#fff}
 
 .liste{display:flex; flex-direction:column; gap:11px}
-.bien{display:block; background:var(--carte); border:1px solid var(--trait); border-radius:18px;
+/* Une carte est un bouton, et un bouton centre son contenu en hauteur : sur
+   ordinateur, à côté d'une carte plus haute (avec un commentaire), la photo
+   descendait et laissait une bande blanche au-dessus. En colonne flex, le
+   contenu part du haut et les deux cartes restent alignées. */
+.bien{display:flex; flex-direction:column; justify-content:flex-start; background:var(--carte); border:1px solid var(--trait); border-radius:18px;
   padding:0; text-align:left; width:100%; box-shadow:var(--ombre); position:relative; overflow:hidden;
   transition:transform .2s cubic-bezier(.16,1,.3,1), box-shadow .2s ease, border-color .2s ease}
 .bien:hover{transform:translateY(-3px); border-color:var(--trait-fort); box-shadow:var(--ombre-f)}
@@ -4661,6 +4716,9 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   animation:etire .8s cubic-bezier(.16,1,.3,1) both; transform-origin:left}
 .ent-b i.pale{background:var(--trait-fort)}
 .ent-b i.or{background:linear-gradient(90deg,var(--or),var(--ambre))}
+.ent-bilan{display:flex; gap:9px; align-items:flex-start; margin-top:16px; padding:11px 13px; border-radius:13px;
+  background:var(--or-fond); border:1px solid var(--or-trait); font-size:13px; line-height:1.55; color:var(--encre)}
+.eb-i{color:var(--or-fonce); display:flex; margin-top:2px; flex:0 0 auto}
 @keyframes etire{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .graphe{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:18px; box-shadow:var(--ombre); margin-top:12px}
 .barres{display:flex; align-items:flex-end; gap:7px; height:110px; margin-top:14px}
@@ -6154,16 +6212,26 @@ button.auj-c:active{transform:scale(.96)}
 }
 @media(max-width:359px){.bb-l{font-size:10px}}
 /* Hors de l'accueil, sur téléphone : l'en-tête se fait discret (le bonjour
-   en petit, sans la ligne de recherche), et « Retour à l'accueil » s'efface —
-   la barre du bas fait ce travail, et le contenu remonte d'autant. */
+   en petit, sans la ligne de recherche). « Retour à l'accueil » reste en haut
+   de chaque page, et une pastille le relaie quand on descend (.retour-flot). */
 @media(max-width:1023px){
   .chapeau:not(.ch-acc){padding-bottom:16px}
   .chapeau:not(.ch-acc) .ch-salut{margin-top:6px}
   .chapeau:not(.ch-acc) .ch-salut h1{font-size:20px; letter-spacing:-.3px}
   .chapeau:not(.ch-acc) .ch-rech{display:none}
-  .retour{display:none}
-  .vue > .retour + div{margin-top:22px}
+  .retour{margin:18px 0 14px; padding:8px 14px 8px 11px; font-size:13px}
 }
+/* La pastille « Accueil » qui suit le client quand il descend (téléphone). */
+.retour-flot{position:fixed; z-index:44; top:calc(10px + env(safe-area-inset-top,0px)); left:12px;
+  display:inline-flex; align-items:center; gap:6px; height:38px; padding:0 15px 0 11px; border-radius:99px;
+  background:rgba(255,255,255,.96); border:1px solid var(--trait); color:#24385c;
+  box-shadow:0 10px 24px -12px rgba(36,56,92,.5); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:700;
+  opacity:0; transform:translateY(-14px); pointer-events:none;
+  transition:opacity .25s ease, transform .3s cubic-bezier(.16,1,.3,1)}
+.retour-flot.vu{opacity:1; transform:none; pointer-events:auto}
+.retour-flot:active{transform:scale(.94)}
+@media(min-width:1024px){ .retour-flot{display:none} }
 @media(min-width:1024px){
   .chapeau:not(.ch-acc) .ch-salut{margin-top:22px}
   .chapeau:not(.ch-acc) .ch-salut h1{font-size:30px}
