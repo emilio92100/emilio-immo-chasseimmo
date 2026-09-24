@@ -6,6 +6,8 @@ import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
+import SignatureMandat, { CarteMonMandat, CartePret, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
+import { jourParis, DUREE } from '@/lib/mandat';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -83,6 +85,8 @@ type Props = {
   rang: number;
   /** La recherche tourne-t-elle encore ? Voir src/app/espace/[token]/page.tsx. */
   enCours: boolean;
+  /** Le mandat de recherche : à signer, signé, ou rien de préparé. Voir SignatureMandat.tsx. */
+  mandat: MandatEspace;
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -825,7 +829,7 @@ function useNotifications(token: string) {
 }
 
 /* ══ composant ════════════════════════════════════ */
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
   const [crit, setCrit] = useState(criteres);
@@ -1129,10 +1133,63 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
   }
 
+  /* ── Le mandat de recherche ──
+     Pas de visite sans mandat : « Je souhaite le visiter » ouvre d'abord la
+     signature quand un mandat peut lui être proposé, et la demande ne part
+     qu'une fois signé. Le serveur fait la même vérification de son côté
+     (réponse « mandat ») : l'écran ne peut pas être contourné. */
+  const [mandat, setMandat] = useState<MandatEspace>(mandatInit);
+  const mandatRef = useRef(mandat);
+  mandatRef.current = mandat;
+
+  function ouvrirMandat(raison: 'visite' | 'libre', apres?: () => Promise<void>, bienId?: string) {
+    montrer(<SignatureMandat mandat={mandatRef.current} raison={raison} envoyer={envoyer} tel={AGENT.tel}
+      bienId={bienId} onFermer={fermer}
+      onSigne={async (r) => {
+        const fin = new Date(Date.parse(jourParis(r.signeLe) + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
+        setMandat(x => ({
+          ...x, etat: 'valide', numero: r.numero, propose: false, expiration: fin,
+          signe: { le: r.signeLe, numero: r.numero, fin: r.finRetractation, execution: r.execution },
+        }));
+        if (apres) await apres();
+      }} />, 'pleine mandat');
+  }
+
+  function ouvrirRenonciation() {
+    montrer(<Renonciation mandat={mandatRef.current} envoyer={envoyer} onFermer={fermer}
+      onFait={() => {
+        setMandat(x => ({ ...x, etat: 'sans_numero', numero: null, signe: null, expiration: null, propose: false }));
+        montrer(<GrandOk titre="C'est enregistré"
+          texte="Votre mandat de recherche a pris fin, sans aucun frais. Un accusé de réception vient de vous être envoyé par e-mail."
+          rappel="Votre espace reste ouvert : vous pouvez en parler à Alexandre quand vous voulez."
+          onFermer={fermer} />, 'pleine');
+      }} />);
+  }
+
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
+    if (avis === 'souhaite_visiter' && mandatRef.current.etat === 'a_signer') {
+      ouvrirMandat('visite', () => poserAvis(b, avis, commentaire, true), b.id);
+      return;
+    }
+    await poserAvis(b, avis, commentaire, false);
+  }
+
+  async function poserAvis(b: Bien, avis: string, commentaire: string, apresMandat: boolean) {
+    const r = await envoyer('retour', { bien_id: b.id, avis, commentaire });
+    /* Le serveur réclame un mandat que l'écran ne savait pas nécessaire
+       (Alexandre vient de le préparer) : on ouvre la signature, et la
+       demande repartira juste après. */
+    if (r?.error === 'mandat' && !apresMandat) {
+      setMandat(x => ({ ...x, etat: 'a_signer' }));
+      mandatRef.current = { ...mandatRef.current, etat: 'a_signer' };
+      ouvrirMandat('visite', () => poserAvis(b, avis, commentaire, true), b.id);
+      return;
+    }
     setBiens(l => l.map(x => x.id === b.id
       ? { ...x, avis, commentaire, etat: 'avis', retourLe: new Date().toISOString() } : x));
-    await envoyer('retour', { bien_id: b.id, avis, commentaire });
+    /* Juste après la signature, l'écran « Mandat signé » dit déjà que la
+       demande de visite est partie : pas de second écran par-dessus. */
+    if (apresMandat) return;
     montrer(<GrandOk
       titre="C'est noté, merci"
       texte={avis === 'refuse'
@@ -1192,6 +1249,26 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      arrive directement sur le bien dont on lui parle, pas sur l'accueil à
      chercher lequel c'est. On n'ouvre qu'une fois, et on nettoie l'adresse
      pour qu'un rafraîchissement ne rouvre pas la fiche par surprise. */
+  /* Le lien « Faire signer le mandat » du CRM pointe sur /espace/<jeton>?mandat=1 :
+     le client arrive directement sur la signature. Même nettoyage de
+     l'adresse, pour qu'un rechargement ne la rouvre pas. */
+  const mandatOuvert = useRef(false);
+  useEffect(() => {
+    if (mandatOuvert.current) return;
+    let veut = false;
+    try { veut = new URLSearchParams(window.location.search).get('mandat') === '1'; } catch { return; }
+    if (!veut) return;
+    /* Tout se fait dans le minuteur : si l'effet est rejoué (mode strict),
+       le premier minuteur est annulé et le second ouvre bien le mandat. */
+    const t = setTimeout(() => {
+      mandatOuvert.current = true;
+      try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
+      if (mandatRef.current.etat === 'a_signer') ouvrirMandat('libre');
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const bienOuvert = useRef(false);
   useEffect(() => {
     if (bienOuvert.current) return;
@@ -1325,7 +1402,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   return (
     <>
-      <style>{CSS}</style>
+      <style>{CSS + CSS_MANDAT}</style>
 
       {/* L'en-tête. Sur téléphone : la marque et la date, le bonjour, la
           recherche en une ligne et son badge vivant. Sur ordinateur, le menu
@@ -1418,6 +1495,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               onNotif={!ecran.appareil && notif.possible && notif.etat !== 'oui'
                 ? () => setADemander(true) : null}
               onFin={ouvrirFinRecherche}
+              /* Alexandre a préparé le mandat : une carte le propose, sans
+                 attendre la première demande de visite. */
+              mandatPret={mandat.propose && mandat.etat === 'a_signer'
+                ? <CartePret onSigner={() => ouvrirMandat('libre')} /> : null}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'neufs' && (
@@ -1497,7 +1578,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'recherche' && (
-            <Recherche crit={crit} aller={aller} onCriteres={ouvrirCriteres} onMessage={ouvrirMessage} />
+            <Recherche crit={crit} aller={aller} onCriteres={ouvrirCriteres} onMessage={ouvrirMessage}
+              mandatCarte={<CarteMonMandat mandat={mandat} envoyer={envoyer}
+                onSigner={() => ouvrirMandat('libre')} onRenoncer={ouvrirRenonciation} />} />
           )}
           {vue === 'visites' && (() => {
             const faites = biens.filter(b => b.visiteFaite);
@@ -1596,7 +1679,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
   /* « Aujourd'hui pour vous » ne doit pas afficher 0 · 0 · 0. Une case à zéro
@@ -1662,6 +1745,8 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           </div>
         )}
       </section>
+
+      {mandatPret}
 
       <div className="sep-liens acc-liens">
         {/* Toujours là, même après un « plus tard » : celui qui change d'avis
@@ -2528,7 +2613,7 @@ function morceauxResume(crit: any, villes: { ville: string }[]) {
   return m;
 }
 
-function Recherche({ crit, aller, onCriteres, onMessage }: any) {
+function Recherche({ crit, aller, onCriteres, onMessage, mandatCarte }: any) {
   /* On n'invente rien : s'il n'y a pas de minimum, on écrit « jusqu'à ». */
   const bmin: number | null = crit.budgetMin || null;
   const bmax: number | null = crit.budgetMax || null;
@@ -2708,6 +2793,7 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
       </CatE>
 
       <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
+      {mandatCarte}
     </Vue>
   );
 }
