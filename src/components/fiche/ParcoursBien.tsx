@@ -2578,6 +2578,7 @@ const EVT: Record<string, { i: string; l: string; c: string }> = {
   partage:   { i: '↗️', l: 'A partagé une fiche', c: '#0ea5e9' },
   message:   { i: '✉️', l: 'A écrit un message', c: OR },
   criteres:  { i: '🎯', l: 'A modifié ses critères', c: '#8b5cf6' },
+  notifications: { i: '🔔', l: 'A activé les notifications', c: '#10b981' },
 };
 
 export function LienEspace({ recherche, client }: { recherche: any; client: any }) {
@@ -2607,10 +2608,19 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
 
   useEffect(() => {
     if (!deplie || evts || !recherche?.id) return;
-    supabase.from('espace_evenements').select('*')
-      .eq('recherche_id', recherche.id)
-      .order('created_at', { ascending: false }).limit(30)
-      .then(({ data }) => setEvts(data || []));
+    /* « A activé les notifications » : une seule ligne, la première. Jusqu'au
+       24 septembre, l'espace en écrivait une à chaque ouverture sur un
+       téléphone déjà autorisé — ces doublons ne veulent rien dire et
+       noyaient le reste. */
+    Promise.all([
+      supabase.from('espace_evenements').select('*')
+        .eq('recherche_id', recherche.id).neq('type', 'notifications')
+        .order('created_at', { ascending: false }).limit(30),
+      supabase.from('espace_evenements').select('*')
+        .eq('recherche_id', recherche.id).eq('type', 'notifications')
+        .order('created_at', { ascending: true }).limit(1),
+    ]).then(([a, b]) => setEvts([...(a.data || []), ...(b.data || [])]
+      .sort((x: any, y: any) => String(y.created_at).localeCompare(String(x.created_at)))));
   }, [deplie, evts, recherche?.id]);
 
   if (!token) {
@@ -2699,7 +2709,7 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
               <span style={{ fontSize: 13, width: 18, flexShrink: 0 }}>{t.i}</span>
               <span style={{ minWidth: 0, flexGrow: 1 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{t.l}</span>
-                {e.detail && <span style={{ fontSize: 13, color: '#475569' }}> — {e.detail}</span>}
+                {e.detail && e.type !== 'notifications' && <span style={{ fontSize: 13, color: '#475569' }}>{` — ${e.detail}`}</span>}
               </span>
               <span style={{ fontSize: 11.5, color: '#94a3b8', flexShrink: 0, fontWeight: 600 }}>
                 {quand}
