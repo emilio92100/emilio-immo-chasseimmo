@@ -299,12 +299,13 @@ export async function POST(req: NextRequest) {
         const eClient = await envoyerMail({
           a: m.email, nomA: nom, pj, repondreA: 'agence@emilio-immo.com',
           sujet: `Votre mandat de recherche n° ${l.numero}`,
-          texte: `Bonjour ${m.prenom},\n\nMerci pour votre confiance. Vous trouverez ci-joint votre mandat de recherche n° ${l.numero}, signé le ${dateLongue(le)}, avec son certificat de signature.\n\nVous le retrouvez aussi à tout moment dans votre espace, rubrique « Ma recherche ».\n\nVous avez ${RETRACTATION_JOURS} jours pour changer d'avis, jusqu'au ${dateLongue(limite)} inclus : depuis votre espace (« Mon mandat »), par simple réponse à ce message, ou avec le formulaire joint au mandat.\n\nÀ très vite,\nAlexandre Rogelet — Emilio Immobilier`,
+          texte: `Bonjour ${m.prenom},\n\nMerci pour votre confiance. Vous trouverez ci-joint votre mandat de recherche n° ${l.numero}, signé le ${dateLongue(le)}, avec son certificat de signature.\n\nVous le retrouvez aussi à tout moment dans votre espace, rubrique « Ma recherche ».\n\nAlexandre travaille désormais pour vous : les biens hors marché de son réseau, chaque dossier vérifié avant toute offre, la négociation, et un suivi jusqu'à la signature chez le notaire.\n\nÀ très vite,\nAlexandre Rogelet — Emilio Immobilier\n\n—\nLe mandat joint rappelle votre délai de rétractation de ${RETRACTATION_JOURS} jours (jusqu'au ${dateLongue(limite)} inclus) et la façon de l'exercer.`,
           html: gabarit('Votre mandat de recherche', `<p>Bonjour ${echappe(m.prenom)},</p>
             <p>Merci pour votre confiance. Vous trouverez ci-joint votre <b>mandat de recherche n° ${echappe(l.numero)}</b>, signé le ${dateLongue(le)}, avec son certificat de signature.</p>
             <p>Vous le retrouvez aussi à tout moment dans votre espace, rubrique « Ma recherche ».</p>
-            <p>Vous avez ${RETRACTATION_JOURS} jours pour changer d’avis, jusqu’au <b>${dateLongue(limite)}</b> inclus : depuis votre espace (« Mon mandat »), par simple réponse à ce message, ou avec le formulaire joint au mandat.</p>
-            <p>À très vite,<br>Alexandre Rogelet — Emilio Immobilier</p>`),
+            <p>Alexandre travaille désormais pour vous&nbsp;: les biens hors marché de son réseau, chaque dossier vérifié avant toute offre, la négociation, et un suivi jusqu’à la signature chez le notaire.</p>
+            <p>À très vite,<br>Alexandre Rogelet — Emilio Immobilier</p>`,
+            `Le mandat joint rappelle votre délai de rétractation de ${RETRACTATION_JOURS} jours (jusqu’au ${dateLongue(limite)} inclus) et la façon de l’exercer.`),
         });
         const prix = contenu.prixMax ? `${euros(contenu.prixMax)} hors honoraires` : 'selon son budget';
         await envoyerMail({
@@ -362,6 +363,13 @@ export async function POST(req: NextRequest) {
           metadata: { signature_id: l.id, numero: l.numero },
         });
         await evt('mandat', `Renonciation au mandat n° ${l.numero}`);
+        /* Une relance du jour : elle sort en rouge dans Relances et sur le
+           tableau de bord. Colonnes réelles : date_echeance / note / statut. */
+        await sb.from('relances').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'rappel_client', statut: 'en_attente', date_echeance: le,
+          note: `À rappeler : il a renoncé à son mandat de recherche n° ${l.numero} (délai de rétractation). Le noter dans le registre ImmoFacile.`,
+        });
 
         const m = l.mandant;
         /* L'accusé de réception, sur un support durable : la loi l'exige. */
