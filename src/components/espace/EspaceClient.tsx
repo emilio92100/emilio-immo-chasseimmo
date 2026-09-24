@@ -18,7 +18,7 @@ type Bien = {
   surface: number | null; pieces: number | null; chambres: number | null;
   etage: number | null; etageTotal: number | null; expo: string | null;
   dpe: string | null; ges: string | null; annee: number | null;
-  description: string | null; photos: string[];
+  description: string | null; photos: string[]; plans?: string[];
   terrasse?: boolean; balcon?: boolean; jardin?: boolean; parking?: boolean;
   ascenseur?: boolean; cave?: boolean; gardien?: boolean;
   cuisineEquipee?: boolean; clim?: boolean; traversant?: boolean;
@@ -3069,6 +3069,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
     ? new Date(b.retourLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
     : null;
   const [plein, setPlein] = useState<number | null>(null);
+  const [pleinPlan, setPleinPlan] = useState<number | null>(null);
   const [texteOuvert, setTexteOuvert] = useState(false);
   const refTexte = useRef<HTMLDivElement>(null);
   const [hTexte, setHTexte] = useState(0);
@@ -3135,6 +3136,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
     onVisiter: () => { setAvis('souhaite_visiter'); setChoisies([]); setEcrire(false); },
   };
   const photos: string[] = b.photos || [];
+  const plans: string[] = b.plans || [];
   /* Deux rubriques de plus sous la description. Elles se construisent ici
      pour que le rendu reste lisible, et surtout pour qu'une rubrique vide ne
      laisse aucune trace à l'écran — pas de titre orphelin. */
@@ -3188,6 +3190,9 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
       <Galerie photos={photos} onAgrandir={setPlein} />
       {plein !== null && (
         <PleinEcran photos={photos} depart={plein} onFermer={() => setPlein(null)} />
+      )}
+      {pleinPlan !== null && (
+        <PleinEcran photos={plans} depart={pleinPlan} onFermer={() => setPleinPlan(null)} />
       )}
       {partage && (
         <ModalePartage b={b} client={client} onFermer={() => setPartage(false)}
@@ -3260,6 +3265,21 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
               </button>
             )}
           </div>
+        )}
+
+        {plans.length > 0 && (
+          <>
+            <label className="lab">{plans.length > 1 ? 'Les plans' : 'Le plan'}</label>
+            <div className="plans-f">
+              {plans.map((u, n) => (
+                <button type="button" className="plan-f" key={u + n} onClick={() => setPleinPlan(n)}
+                  aria-label={plans.length > 1 ? `Agrandir le plan ${n + 1}` : 'Agrandir le plan'}>
+                  <img src={u} alt={plans.length > 1 ? `Plan ${n + 1}` : 'Plan du bien'} loading="lazy" draggable={false} />
+                  <span className="plan-z"><Ico n="loupe" t={14} />Agrandir</span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
         {inclus.length > 0 && (
@@ -5213,6 +5233,15 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px}
 .cout .c .u{display:block; font-family:'Inter',sans-serif; font-size:11px;
   color:var(--plume-clair); font-weight:700; margin-top:3px; letter-spacing:.3px}
+
+/* Le plan : sur fond blanc, entier, et on l'agrandit d'un geste. */
+.plans-f{display:grid; gap:9px; margin-top:10px}
+.plan-f{position:relative; display:block; width:100%; padding:12px; background:#fff;
+  border:1px solid var(--trait); border-radius:15px; cursor:zoom-in; font:inherit}
+.plan-f img{display:block; width:100%; max-height:440px; object-fit:contain; margin:0 auto}
+.plan-z{position:absolute; right:10px; bottom:10px; display:inline-flex; align-items:center; gap:6px;
+  background:rgba(26,35,50,.88); color:#fff; border-radius:10px; padding:6px 10px;
+  font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:800}
 
 /* La description : un pavé de dix lignes décourage la lecture. On n'en montre
    que le début, le bas s'estompe, et « Lire la suite » déroule le reste. */
