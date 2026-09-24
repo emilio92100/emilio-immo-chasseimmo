@@ -17,6 +17,8 @@ import { supabase } from '@/lib/supabase';
  *                                          La recherche est à préciser : la même
  *                                          annonce peut être proposée à plusieurs
  *                                          clients, avec la même URL.
+ *   await window.majPlansBien(bienId, plans)
+ *                                        → pose ou remplace les plans d'un bien déjà retenu.
  *
  * Aucune clé ne circule : c'est la page, déjà authentifiée, qui écrit.
  */
@@ -215,6 +217,27 @@ export default function PageImportVeille() {
               }
             }
 
+            // Le plan : même traitement que les photos, mais rangé à part
+            let plans: string[] = Array.isArray(p.plans) ? p.plans.filter(Boolean) : [];
+            if (plans.length > 0) {
+              try {
+                const res = await fetch('/api/upload-photos', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    photos: plans.slice(0, 6),
+                    bien_id: `veille/${recherche_id}/plans-${Date.now()}`,
+                  }),
+                });
+                if (res.ok) {
+                  const d = await res.json();
+                  if (d.urls?.length) plans = d.urls;
+                }
+              } catch {
+                /* on garde les URLs d'origine */
+              }
+            }
+
             const { error } = await supabase.from('veille_propositions').insert({
               client_id,
               recherche_id,
@@ -252,6 +275,8 @@ export default function PageImportVeille() {
               exposition: p.exposition || null,
               description: p.description || null,
               photos,
+              // la colonne n'est écrite que s'il y a un plan
+              ...(plans.length ? { plans } : {}),
               points_forts: p.points_forts || [],
               points_attention: p.points_attention || [],
               score: p.score ?? null,
@@ -415,6 +440,14 @@ export default function PageImportVeille() {
       return { ok: true };
     }
 
+    /** Pose ou remplace les plans d'un bien déjà retenu. */
+    async function majPlansBien(bienId: string, plans: string[]) {
+      const { error } = await supabase.from('biens').update({ plans }).eq('id', bienId);
+      if (error) return { ok: false, error: error.message };
+      log(`Plans mis à jour (${plans.length})`);
+      return { ok: true };
+    }
+
     (window as any).veilleLire = veilleLire;
     (window as any).veilleDeposer = veilleDeposer;
     (window as any).veilleMaj = veilleMaj;
@@ -422,6 +455,7 @@ export default function PageImportVeille() {
     (window as any).pdfMorceau = pdfMorceau;
     (window as any).pdfTermine = pdfTermine;
     (window as any).majPhotosBien = majPhotosBien;
+    (window as any).majPlansBien = majPlansBien;
     (window as any).__VEILLE_PRETE__ = true;
     setPret(true);
 
@@ -440,6 +474,7 @@ export default function PageImportVeille() {
       delete (window as any).pdfMorceau;
       delete (window as any).pdfTermine;
       delete (window as any).majPhotosBien;
+      delete (window as any).majPlansBien;
       delete (window as any).__VEILLE_PRETE__;
     };
   }, [log]);
