@@ -117,8 +117,6 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
     return '';
   };
 
-  // Séparateur doux (petite barre dorée centrée) pour lier les sections
-  const softDivider = `<tr><td class="bord" align="center" style="padding:18px 28px 0;"><div style="width:46px;height:2px;background:${DORE};opacity:0.55;line-height:2px;font-size:0;">&nbsp;</div></td></tr>`;
   const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #eee5d6;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
 
   function singleBloc(b: BienLite): string {
@@ -212,6 +210,16 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
     ? singleBloc(biens[0])
     : montres.map((b, i) => multiItem(b, i, montres.length)).join('') + (reste.length ? blocReste(reste) : '');
 
+  return coque({ etiquette: 'SÉLECTION PRIVÉE', corpsHtml, contenu: biens.length > 0 ? propertyRows : '', token });
+}
+
+/* La feuille commune à tous les mails illustrés : en-tête marine avec le
+   logo, le message d'Alexandre, le contenu (biens ou visites), le pied, et
+   la sortie « Je ne suis plus en recherche » dessous. */
+function coque(o: { etiquette: string; corpsHtml: string; contenu: string; token?: string | null }): string {
+  const { etiquette, corpsHtml, contenu, token } = o;
+  // Séparateur doux (petite barre dorée centrée) pour lier les sections
+  const softDivider = `<tr><td class="bord" align="center" style="padding:18px 28px 0;"><div style="width:46px;height:2px;background:${DORE};opacity:0.55;line-height:2px;font-size:0;">&nbsp;</div></td></tr>`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -246,7 +254,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">SÉLECTION PRIVÉE</td>
+            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">${etiquette}</td>
           </tr></table>
         </td></tr>
 
@@ -255,10 +263,10 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
           <div style="font-size:14.5px;color:#3a4a5f;line-height:1.7;">${corpsHtml}</div>
         </td></tr>
 
-        ${biens.length > 0 ? softDivider : ''}
+        ${contenu ? softDivider : ''}
 
         <!-- Annonce(s) -->
-        ${propertyRows}
+        ${contenu}
 
         <!-- Pied -->
         <tr><td class="bord" style="background:${BLEU};padding:20px 28px;margin-top:10px;">
@@ -295,6 +303,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
 </body>
 </html>`;
 }
+
 
 
 
@@ -651,6 +660,86 @@ Alexandre ROGELET — Emilio Immobilier
 }
 
 
+/* ══ Le mail « vos visites » ═══════════════════════════════════════════
+   Un rappel (ou une confirmation) pour une ou plusieurs visites du même
+   client : l'heure, la photo, l'adresse, un lien vers le bien dans son
+   espace et l'itinéraire. Même feuille que les autres mails. */
+type BienVisite = BienLite & { adresse?: string | null; adresse_probable?: string | null; quartier?: string | null };
+interface LigneVisite { id: string; date_visite: string | null; heure: string | null; bien: BienVisite | null }
+
+const JOURS_MAIL = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const MOIS_MAIL = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+function jourMail(iso: string): string {
+  const [a, m, j] = iso.slice(0, 10).split('-').map(Number);
+  const d = new Date(Date.UTC(a, (m || 1) - 1, j || 1));
+  return `${JOURS_MAIL[d.getUTCDay()]} ${d.getUTCDate() === 1 ? '1er' : d.getUTCDate()} ${MOIS_MAIL[d.getUTCMonth()]}`;
+}
+function heureMail(h: string): string {
+  const [hh, mm] = h.slice(0, 5).split(':');
+  return `${Number(hh)} h${mm && mm !== '00' ? ` ${mm}` : ''}`;
+}
+function lieuMail(b: BienVisite | null): string {
+  if (!b) return '';
+  const adresse = b.adresse || b.adresse_probable || '';
+  const ville = b.ville || '';
+  if (adresse) return ville && !adresse.toLowerCase().includes(ville.toLowerCase()) ? `${adresse}, ${ville}` : adresse;
+  return [b.quartier, ville].filter(Boolean).join(', ');
+}
+function quandMail(l: LigneVisite, plusieursJours: boolean): string {
+  const h = l.heure ? heureMail(l.heure) : 'Heure à confirmer';
+  if (!plusieursJours || !l.date_visite) return h;
+  const j = jourMail(l.date_visite);
+  return `${j.charAt(0).toUpperCase() + j.slice(1)} · ${h}`;
+}
+
+function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string | null; recherche?: string | null }): string {
+  const corpsHtml = escapeHtml(o.corps).replace(/\n/g, '<br/>');
+  const plusieursJours = new Set(o.lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
+  const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #eee5d6;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
+  const rows = o.lignes.map((l, i) => {
+    const b = l.bien;
+    const photo = b && Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null;
+    const titre = b ? (b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` de ${b.surface} m²` : ''}`) : 'Visite';
+    const adresse = lieuMail(b);
+    const itineraire = adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}` : '';
+    const liens = [
+      b ? `<a href="${lienBien(b, o.token, o.recherche)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Revoir le bien &rarr;</a>` : '',
+      itineraire ? `<a href="${itineraire}" style="color:${BLEU};text-decoration:none;font-size:13px;font-weight:700;">Itinéraire &rarr;</a>` : '',
+    ].filter(Boolean).join('<span style="color:#d8cfbd;">&nbsp;&nbsp;·&nbsp;&nbsp;</span>');
+    return `
+      <tr><td class="bord" style="padding:${i === 0 ? '20' : '18'}px 28px 18px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td width="150" class="miphoto" style="vertical-align:top;">
+            ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="150" class="miimg" style="width:150px;height:115px;object-fit:cover;display:block;border-radius:10px;border:0;" />` : `<div class="miimg" style="width:150px;height:115px;background:${BLEU};border-radius:10px;"></div>`}
+          </td>
+          <td class="mibody" style="vertical-align:top;padding-left:16px;">
+            <div style="display:inline-block;background:${BLEU};color:#ffffff;font-size:13px;font-weight:800;padding:5px 11px;border-radius:8px;margin-bottom:9px;">${escapeHtml(quandMail(l, plusieursJours))}</div>
+            <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:4px;line-height:1.35;">${escapeHtml(titre)}</div>
+            ${adresse ? `<div style="font-size:13px;color:#5a6a85;margin-bottom:9px;line-height:1.5;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(adresse)}</div>` : ''}
+            ${liens ? `<div>${liens}</div>` : ''}
+          </td>
+        </tr></table>
+      </td></tr>
+      ${i < o.lignes.length - 1 ? hairline : ''}`;
+  }).join('');
+  return coque({ etiquette: 'VOS VISITES', corpsHtml, contenu: rows, token: o.token });
+}
+
+function texteVisites(corps: string, lignes: LigneVisite[], token?: string | null): string {
+  const plusieursJours = new Set(lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
+  const liste = lignes.map(l => {
+    const b = l.bien;
+    const titre = b?.titre || b?.ville || 'Visite';
+    const adresse = lieuMail(b);
+    return `- ${quandMail(l, plusieursJours)} : ${titre}${adresse ? ` (${adresse})` : ''}`;
+  }).join('\n');
+  return `${corps}\n\n${liste}\n\n---\nAlexandre Rogelet · Emilio Immobilier · 06 58 95 76 32${
+    lienFin(token) ? `\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''
+  }`;
+}
+
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.MAILJET_API_KEY;
@@ -660,14 +749,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode } = body as {
+    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode, visites_ids } = body as {
       client_ids: string[];
       recherche_id?: string;
       objet: string;
       corps: string;
       biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
-      mode?: 'libre' | 'biens' | 'bienvenue'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'biens' = défaut
+      mode?: 'libre' | 'biens' | 'bienvenue' | 'visites'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'visites' = rappel de visites, 'biens' = défaut
+      visites_ids?: string[];         // mode 'visites' : les visites à annoncer
     };
     /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
        et surtout aucun bien. On le traite donc avant les contrôles. */
@@ -739,6 +829,90 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? nommerRecherche(recherche as any, 2)
       : 'Votre nouvelle recherche';
+
+    /* Le mail « vos visites » : les visites demandées, leurs biens, un envoi
+       par client. Chaque visite du mail garde la date d'envoi
+       (rappel_envoye_le), qui affiche « Rappel envoyé le … » dans le CRM. */
+    if (mode === 'visites') {
+      if (!Array.isArray(visites_ids) || visites_ids.length === 0) {
+        return NextResponse.json({ error: 'Aucune visite' }, { status: 400 });
+      }
+      const { data: vis, error: eVis } = await supabase
+        .from('visites').select('id, client_id, date_visite, heure, bien_id').in('id', visites_ids);
+      if (eVis || !vis || vis.length === 0) {
+        return NextResponse.json({ error: eVis?.message || 'Visites introuvables' }, { status: 404 });
+      }
+      const idsBiens = [...new Set(vis.map(v => v.bien_id).filter(Boolean))] as string[];
+      const { data: bs } = idsBiens.length
+        ? await supabase.from('biens')
+          .select('id, titre, ville, code_postal, quartier, adresse, adresse_probable, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos')
+          .in('id', idsBiens)
+        : { data: [] as BienVisite[] };
+      const parId = Object.fromEntries(((bs || []) as BienVisite[]).map(b => [b.id, b]));
+      const cle = (v: { date_visite: string | null; heure: string | null }) => `${(v.date_visite || '').slice(0, 10)} ${(v.heure || '99:99').slice(0, 5)}`;
+      const authV = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+      const resultats: { client_id: string; success: boolean; error?: string }[] = [];
+      let avertissement: string | null = null;
+
+      for (const client of clients) {
+        const sourceEmails = Array.isArray(destinataires_override) && destinataires_override.length > 0
+          ? destinataires_override : (client.emails || []);
+        const emails = sourceEmails.filter((e: string) => e && e.includes('@'));
+        if (emails.length === 0) { resultats.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' }); continue; }
+        const lignes: LigneVisite[] = vis
+          .filter(v => !v.client_id || v.client_id === client.id)
+          .sort((a, b) => cle(a).localeCompare(cle(b)))
+          .map(v => ({ id: v.id, date_visite: v.date_visite, heure: v.heure, bien: v.bien_id ? parId[v.bien_id] || null : null }));
+        if (lignes.length === 0) { resultats.push({ client_id: client.id, success: false, error: 'Aucune visite pour ce client' }); continue; }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const jeton = ((client as any).token_espace as string) || tokenEspace;
+        const corpsPerso = (corps || '').replace(/\{\{prénom\}\}/g, client.prenom);
+        try {
+          const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Basic ${authV}` },
+            body: JSON.stringify({
+              Messages: [{
+                From: { Email: FROM_EMAIL, Name: FROM_NAME },
+                To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
+                Subject: objet,
+                TextPart: texteVisites(corpsPerso, lignes, jeton),
+                HTMLPart: buildVisites({ corps: corpsPerso, lignes, token: jeton, recherche: recherche_id || null }),
+                CustomID: `chasse-visites-${client.id}-${Date.now()}`,
+                TrackOpens: 'disabled',
+                TrackClicks: 'disabled',
+              }],
+            }),
+          });
+          const mjJson = await mjRes.json();
+          const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
+          if (!ok) {
+            resultats.push({ client_id: client.id, success: false, error: mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200) });
+            continue;
+          }
+          /* Après l'envoi, jamais avant : un échec Mailjet ne doit pas afficher
+             « Rappel envoyé ». Si la colonne manque (SQL pas encore lancé), le
+             mail est parti quand même : on le dit au CRM. */
+          const { error: eDate } = await supabase.from('visites')
+            .update({ rappel_envoye_le: new Date().toISOString() }).in('id', lignes.map(l => l.id));
+          if (eDate) avertissement = eDate.message;
+          await supabase.from('envois').insert({
+            client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
+            objet, corps: corpsPerso, destinataires: emails, biens_ids: [], sms_envoye: false,
+          });
+          await supabase.from('journal').insert({
+            client_id: client.id, type: 'mail_envoye',
+            titre: `📅 Mail envoyé — ${objet}`,
+            description: `À : ${emails.join(', ')}\n\n${corpsPerso}\n\n${lignes.map(l => `- ${quandMail(l, false)} : ${l.bien?.titre || 'Visite'}`).join('\n')}`,
+          });
+          resultats.push({ client_id: client.id, success: true });
+        } catch (e) {
+          resultats.push({ client_id: client.id, success: false, error: (e as Error).message });
+        }
+      }
+      const nbOk = resultats.filter(r => r.success).length;
+      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, avertissement });
+    }
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
     let tousBiens: (BienLite & { client_id: string })[] = [];
