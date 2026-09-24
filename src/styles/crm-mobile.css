@@ -57,6 +57,10 @@ html.crm .fc-crit-bascule { display: none; }
   html.crm .nc-fermer { top: 12px !important; right: 12px !important; width: 38px !important; height: 38px !important; border-radius: 12px !important; }
   html.crm .nc-rail { margin-top: 14px; }
   html.crm .nc-lig b { font-size: 11px; letter-spacing: .3px; }
+  /* Le panneau garde la même hauteur d'une étape à l'autre : il ne saute
+     plus quand on passe de « Surfaces » à « Étage ». */
+  html.crm .nc-fenetre { height: calc(100dvh - 10px); }
+  html.crm .nc-frise { margin: 0 -16px !important; }
   html.crm .nc-defil { padding: 14px 12px 18px !important; }
   html.crm .nc-bloc { padding: 14px !important; border-radius: 16px !important; }
   html.crm .nc-etats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -205,6 +209,12 @@ html.crm .fc-crit-bascule { display: none; }
     align-items: baseline !important; justify-content: space-between; gap: 4px 10px !important;
   }
   html.crm .emi-corps-carte { padding: 12px 14px 14px !important; }
+  /* L'adresse reste à côté de son épingle au lieu de passer dessous. */
+  html.crm .emi-tete-carte > div:first-child > div:nth-child(2) { align-items: flex-start !important; }
+  html.crm .emi-tete-carte > div:first-child > div:nth-child(2) > span:first-child { margin-top: 2px; }
+  html.crm .emi-tete-carte > div:first-child > div:nth-child(2) > span:nth-child(2) { flex: 1 1 calc(100% - 28px); min-width: 0; }
+  /* L'avis de la veille : l'étiquette au-dessus, la phrase sur toute la largeur. */
+  html.crm .emi-avis { flex-direction: column; gap: 9px !important; }
   html.crm .emi-bilan { grid-template-columns: 1fr !important; }
 
   /* Le pied de carte : les boutons à la largeur du pouce. */
