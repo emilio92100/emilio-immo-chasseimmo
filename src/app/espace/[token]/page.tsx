@@ -30,6 +30,24 @@ function base() {
   return createClient(url, cle);
 }
 
+/* Le trajet jusqu'à la station, pour la note de correspondance.
+   La veille décrit la situation d'un bien en toutes lettres (« À 6 min à
+   pied du métro Boulogne – Jean Jaurès (ligne 10), au pied des Passages »).
+   On n'en envoie au navigateur que deux faits : le nombre de minutes à pied,
+   et l'arrêt du client qu'elle cite, s'il y en a un. Le texte lui-même
+   reste ici. */
+const sansAccents = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+function trajetDe(situation: string | null | undefined, arrets: { nom?: string }[]) {
+  if (!situation) return null;
+  const m = String(situation).match(/(\d{1,2})\s*min(?:utes?)?\.?\s*(?:environ\s*)?(?:à|a)\s*pied/i);
+  if (!m) return null;
+  const minutes = Number(m[1]);
+  if (!isFinite(minutes) || minutes <= 0) return null;
+  const texte = sansAccents(String(situation));
+  const arret = (arrets || []).find(a => a?.nom && sansAccents(a.nom).length > 3 && texte.includes(sansAccents(a.nom)));
+  return { minutes, arret: arret?.nom || null };
+}
+
 const ETAT = (b: { vu_le?: string | null; badge_retour?: string | null }) => {
   if (!b.vu_le) return 'neuf';
   if (!b.badge_retour || b.badge_retour === 'propose') return 'vu';
@@ -145,6 +163,10 @@ export default async function PageEspace({ params, searchParams }: {
     id: b.id,
     titre: b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`,
     secteur: [b.quartier || b.adresse_probable, b.ville].filter(Boolean).join(', ') || b.ville || '',
+    /* Pour la note de correspondance : la ville et le quartier du bien, et
+       son temps à pied jusqu'à la station (voir trajetDe). */
+    ville: b.ville || null, quartier: b.quartier || null,
+    trajet: trajetDe(b.situation, recherche.transport_arrets || []),
     prix: b.prix_acquereur || b.prix_vendeur,
     surface: b.surface, pieces: b.nb_pieces, chambres: b.nb_chambres,
     etage: b.etage, etageTotal: b.etage_total, expo: b.exposition,
