@@ -26,3 +26,21 @@ export function prendreIntentionNouveauClient(): boolean {
 export function signalerMaj() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_MAJ));
 }
+
+/* « Créer un rendez-vous » depuis la fiche d'un client : l'agenda s'ouvre sur
+   sa fenêtre « Nouveau rendez-vous », ce dossier déjà choisi. Rangé dans la
+   session du navigateur, pour tenir le changement d'écran ; consommé une
+   seule fois par l'agenda. */
+const CLE_RDV = 'emi-rdv';
+
+export function demanderRendezVous(rechercheId: string) {
+  try { window.sessionStorage.setItem(CLE_RDV, rechercheId); } catch { /* l'agenda s'ouvrira sans dossier choisi */ }
+}
+
+export function prendreDemandeRendezVous(): string | null {
+  try {
+    const id = window.sessionStorage.getItem(CLE_RDV);
+    if (id) window.sessionStorage.removeItem(CLE_RDV);
+    return id;
+  } catch { return null; }
+}
