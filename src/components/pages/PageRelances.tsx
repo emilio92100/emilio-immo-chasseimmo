@@ -221,14 +221,21 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-cartes{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:8px !important}
           .rl-carte{padding:10px !important;border-radius:16px !important;flex-direction:column !important;align-items:flex-start !important;gap:6px !important}
           .rl-carte-sous{display:none !important}
-          .rl-carte-ico{width:30px !important;height:30px !important}
-          .rl-carte-n{font-size:26px !important}
           .rl-ligne{flex-wrap:wrap !important}
           .rl-actions{width:100%;justify-content:stretch !important}
           .rl-actions > button{flex:1 1 0;padding:0 8px !important;white-space:nowrap}
           .rl-long{display:none}
           .rl-court{display:inline !important}
-          .rl-titre{font-size:25px !important}
+          .rl-titre{font-size:22px !important}
+          /* Un cran plus petit sur téléphone, au niveau du tableau de bord :
+             les lignes étaient écrites trop gros. */
+          .rl-carte-n{font-size:22px !important}
+          .rl-carte-ico{width:26px !important;height:26px !important}
+          .rl-ligne{gap:11px !important;padding:11px 12px 11px 15px !important;border-radius:16px !important}
+          .rl-av{width:36px !important;height:36px !important;border-radius:11px !important;font-size:13px !important}
+          .rl-nom{font-size:14px !important}
+          .rl-note{font-size:12.5px !important}
+          .rl-actions > button{height:34px !important;font-size:12.5px !important;border-radius:11px !important}
         }
       `}</style>
 
@@ -296,15 +303,15 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
                     <div className="rl-ligne" data-partante={partantes[r.id] ? '' : undefined}
                       style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
                       <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
-                      <span style={{ width: 44, height: 44, borderRadius: 14, background: NAVY, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: JAK, fontSize: 15, fontWeight: 800 }}>{initiales}</span>
+                      <span className="rl-av" style={{ width: 44, height: 44, borderRadius: 14, background: NAVY, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: JAK, fontSize: 15, fontWeight: 800 }}>{initiales}</span>
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <b style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
+                          <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
                             {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
                           </span>
                         </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
+                        <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: OR_FONCE, background: '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{r.note && r.note !== o.lib ? r.note : ''}</span>
                         </span>

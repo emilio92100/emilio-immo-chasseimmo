@@ -541,6 +541,8 @@ function StylesAgenda() {
       .ag-jour{transition:background-color .12s ease,transform .12s ease}
       @keyframes agMoisG{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
       @keyframes agMoisD{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+      @keyframes agSemG{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+      @keyframes agSemD{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
       .ag-cal-grille[data-sens="-1"],.ag-cal-titre[data-sens="-1"]{animation:agMoisG .28s cubic-bezier(.2,.9,.3,1) both}
       .ag-cal-grille[data-sens="1"],.ag-cal-titre[data-sens="1"]{animation:agMoisD .28s cubic-bezier(.2,.9,.3,1) both}
       @keyframes agSortie{to{opacity:0;transform:translateY(12px) scale(.965)}}
@@ -1189,6 +1191,46 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
     ));
     return cartes;
   };
+  /* La bande des jours se fait glisser au doigt : vers la gauche, la
+     semaine suivante ; vers la droite, la précédente. Elle suit le doigt
+     pendant le geste, puis la nouvelle semaine entre par le côté. Avant, elle
+     était figée : pour aller au-delà de dimanche, il fallait passer par la
+     vue Mois. */
+  const [glisse, setGlisse] = useState(0);
+  /* La semaine qui vient d'entrer, et par quel côté : l'animation ne joue
+     qu'une fois, à son arrivée. */
+  const [entree, setEntree] = useState<{ sem: string; sens: 'suiv' | 'prec' } | null>(null);
+  const geste = useRef<{ x: number; y: number; axe: '' | 'x' | 'y' } | null>(null);
+  const vientDeGlisser = useRef(false);
+  const surPose = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    geste.current = { x: e.clientX, y: e.clientY, axe: '' };
+  };
+  const surGlisse = (e: React.PointerEvent) => {
+    const g = geste.current;
+    if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.axe) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      g.axe = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (g.axe === 'x') setGlisse(dx);
+  };
+  const surLeve = () => {
+    const g = geste.current;
+    geste.current = null;
+    if (g?.axe === 'x') {
+      vientDeGlisser.current = true;
+      setTimeout(() => { vientDeGlisser.current = false; }, 60);
+      if (Math.abs(glisse) > 48) {
+        const sens = glisse < 0 ? 1 : -1;
+        const cible = plusJours(dJour, 7 * sens);
+        setEntree({ sem: cleDe(lundiDe(cible)), sens: sens > 0 ? 'suiv' : 'prec' });
+        setJour(cleDe(cible));
+      }
+    }
+    setGlisse(0);
+  };
   const debutMois = new Date(dJour.getFullYear(), dJour.getMonth(), 1);
   const debutGrille = lundiDe(debutMois);
   const nbCases = Math.ceil((((debutMois.getDay() + 6) % 7) + new Date(debutMois.getFullYear(), debutMois.getMonth() + 1, 0).getDate()) / 7) * 7;
@@ -1207,7 +1249,14 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}><Segment vue={vue} setVue={setVue} largeur={Math.floor((Math.min(typeof window !== 'undefined' ? window.innerWidth : 390, 420) - 36) / 3)} /></div>
         {vue !== 'mois' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+          <div className="ag-bande-jours" style={{ touchAction: 'pan-y', overflow: 'hidden', margin: '0 -14px', padding: '0 14px' }}
+            onPointerDown={surPose} onPointerMove={surGlisse} onPointerUp={surLeve} onPointerCancel={surLeve}
+            onClickCapture={e => { if (vientDeGlisser.current) { e.stopPropagation(); e.preventDefault(); } }}>
+          <div key={semaine[0]} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4,
+            transform: glisse ? `translateX(${Math.round(glisse * 0.85)}px)` : undefined,
+            opacity: glisse ? Math.max(.45, 1 - Math.abs(glisse) / 420) : undefined,
+            transition: glisse ? 'none' : 'transform .26s cubic-bezier(.2,.9,.3,1), opacity .2s ease',
+            animation: entree && entree.sem === semaine[0] ? `${entree.sens === 'suiv' ? 'agSemD' : 'agSemG'} .32s cubic-bezier(.2,.9,.3,1) backwards` : undefined }}>
             {semaine.map(k => {
               const d = depuisCle(k), estAuj = k === auj, choisi = k === jour;
               const pts = listeDe(k).slice(0, 4);
@@ -1220,6 +1269,7 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
                 </button>
               );
             })}
+          </div>
           </div>
         )}
       </div>
