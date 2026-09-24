@@ -539,6 +539,15 @@ function StylesAgenda() {
       .ag-champ-bouton{transition:border-color .15s ease,box-shadow .2s ease,background-color .2s ease,transform .15s ease}
       .ag-champ-bouton:hover:not([data-ouvert]){border-color:#cfd7e3 !important;transform:translateY(-1px)}
       .ag-jour{transition:background-color .12s ease,transform .12s ease}
+      @keyframes agMoisG{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+      @keyframes agMoisD{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+      .ag-cal-grille[data-sens="-1"],.ag-cal-titre[data-sens="-1"]{animation:agMoisG .28s cubic-bezier(.2,.9,.3,1) both}
+      .ag-cal-grille[data-sens="1"],.ag-cal-titre[data-sens="1"]{animation:agMoisD .28s cubic-bezier(.2,.9,.3,1) both}
+      @keyframes agSortie{to{opacity:0;transform:translateY(12px) scale(.965)}}
+      @keyframes agSortieFond{to{opacity:0}}
+      .ag-modale-fond[data-sortie]{animation:agSortieFond .24s ease both !important}
+      .ag-modale-fond[data-sortie] .ag-modale{animation:agSortie .24s cubic-bezier(.4,0,.2,1) both !important}
+      @media (max-width: 760px){.ag-cal-raccourcis{max-width:none !important;flex-direction:row !important;flex-wrap:wrap !important}.ag-cal-raccourcis > span{width:100%}.ag-cal-raccourcis > button{flex:1 1 40%}.ag-cal-raccourcis > button > span:last-child{display:none}}
       .ag-jour:hover:not(:disabled):not([aria-pressed="true"]){background:#f1f4f9 !important}
       .ag-jour:active:not(:disabled){transform:scale(.94)}
       @media (prefers-reduced-motion: reduce){.ag-section,.ag-panneau{animation:none}}
@@ -1459,47 +1468,67 @@ function useMontrer<T extends HTMLElement>() {
    raccourcis. Choisir un jour referme le panneau. */
 function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string; onChoisir: (k: string) => void; min?: string; occupes: Record<string, number> }) {
   const [mois, setMois] = useState(() => { const d = depuisCle(valeur || cleDe(new Date())); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [sens, setSens] = useState(0);
   const auj = cleDe(new Date());
-  const debut = lundiDe(mois);
-  const nbCases = Math.ceil((((mois.getDay() + 6) % 7) + new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate()) / 7) * 7;
+  /* Un vrai mois : seulement ses jours, avec des cases vides avant le 1er
+     (la semaine commence lundi) — pas les jours des mois voisins. */
+  const decalage = (mois.getDay() + 6) % 7;
+  const nbJours = new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate();
+  const cases: (Date | null)[] = [...Array(decalage).fill(null), ...Array.from({ length: nbJours }, (_, i) => new Date(mois.getFullYear(), mois.getMonth(), i + 1))];
+  const court = (d: Date) => `${JOURS[d.getDay()].slice(0, 3)}. ${d.getDate()}`;
   const lundiProchain = plusJours(lundiDe(new Date()), 7);
   const raccourcis = [
-    { lib: 'Aujourd’hui', k: auj },
-    { lib: 'Demain', k: cleDe(plusJours(new Date(), 1)) },
-    { lib: 'Lundi prochain', k: cleDe(lundiProchain) },
-  ].filter(r => !min || r.k >= min);
-  const fl: React.CSSProperties = { width: 34, height: 34, borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
+    { lib: 'Aujourd’hui', d: new Date() },
+    { lib: 'Demain', d: plusJours(new Date(), 1) },
+    { lib: 'Lundi prochain', d: lundiProchain },
+    { lib: 'Dans une semaine', d: plusJours(new Date(), 7) },
+  ].filter(r => !min || cleDe(r.d) >= min);
+  const changer = (n: number) => { setSens(n); setMois(m => new Date(m.getFullYear(), m.getMonth() + n, 1)); };
+  const fl: React.CSSProperties = { width: 32, height: 32, borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
   const ref = useMontrer<HTMLDivElement>();
   return (
-    <div ref={ref} className="ag-panneau" style={{ border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {raccourcis.map(r => (
-          <button key={r.lib} type="button" className="ag-appui" onClick={() => onChoisir(r.k)}
-            style={{ height: 32, padding: '0 12px', borderRadius: 10, border: `1px solid ${r.k === valeur ? OR : BORD}`, background: r.k === valeur ? '#fffaf0' : 'white', color: NAVY, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{r.lib}</button>
-        ))}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' }}>
-          <button type="button" className="ag-appui" aria-label="Mois précédent" onClick={() => setMois(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={fl}><Ic n="chevG" t={16} /></button>
-          <b style={{ fontFamily: JAK, fontSize: 14, fontWeight: 800, minWidth: 128, textAlign: 'center' }}>{maj(`${MOIS[mois.getMonth()]} ${mois.getFullYear()}`)}</b>
-          <button type="button" className="ag-appui" aria-label="Mois suivant" onClick={() => setMois(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={fl}><Ic n="chevD" t={16} /></button>
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
-        {LETTRES.map(l => <span key={l} style={{ textAlign: 'center', fontSize: 10.5, fontWeight: 800, letterSpacing: .6, color: PALE, textTransform: 'uppercase', paddingBottom: 2 }}>{l}</span>)}
-        {Array.from({ length: nbCases }, (_, i) => {
-          const d = plusJours(debut, i); const k = cleDe(d);
-          const hors = d.getMonth() !== mois.getMonth(), choisi = k === valeur, estAuj = k === auj;
-          const interdit = !!min && k < min;
-          const n = occupes[k] || 0;
+    <div ref={ref} className="ag-panneau ag-cal" style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start', border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
+      <div className="ag-cal-raccourcis" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 150px', maxWidth: 200 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE, padding: '2px 2px 4px' }}>Raccourcis</span>
+        {raccourcis.map(r => {
+          const k = cleDe(r.d), actif = k === valeur;
           return (
-            <button key={k} type="button" className="ag-jour" disabled={interdit} onClick={() => onChoisir(k)} aria-pressed={choisi} aria-label={`${maj(jourLong(d))}${n ? `, ${rdv(n)}` : ''}`}
-              style={{ position: 'relative', height: 42, borderRadius: 12, border: estAuj && !choisi ? `1.5px solid ${OR}` : '1.5px solid transparent', background: choisi ? NAVY : 'transparent', color: choisi ? OR : interdit ? '#cfd6e0' : NAVY, opacity: hors && !choisi ? .45 : 1, fontFamily: JAK, fontSize: 14, fontWeight: choisi || estAuj ? 800 : 600, cursor: interdit ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {d.getDate()}
-              {n > 0 && <span style={{ position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2 }}>{Array.from({ length: Math.min(3, n) }, (_, j) => <span key={j} style={{ width: 4, height: 4, borderRadius: '50%', background: choisi ? OR : '#9aa7b9' }} />)}</span>}
+            <button key={r.lib} type="button" className="ag-appui" onClick={() => onChoisir(k)} aria-pressed={actif}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, height: 38, padding: '0 12px', borderRadius: 11, border: `1px solid ${actif ? OR : BORD}`, background: actif ? '#fffaf0' : '#fbfcfe', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span>{r.lib}</span><span style={{ fontSize: 11.5, fontWeight: 600, color: PALE }}>{court(r.d)}</span>
             </button>
           );
         })}
       </div>
-      <span style={{ fontSize: 11.5, color: PALE }}>Les points disent combien de rendez-vous ce jour-là.</span>
+
+      <div className="ag-cal-mois" style={{ width: 296, maxWidth: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <button type="button" className="ag-appui" aria-label="Mois précédent" onClick={() => changer(-1)} style={fl}><Ic n="chevG" t={16} /></button>
+          <b key={`${mois.getFullYear()}-${mois.getMonth()}`} className="ag-cal-titre" data-sens={sens} style={{ fontFamily: JAK, fontSize: 15, fontWeight: 800 }}>{maj(`${MOIS[mois.getMonth()]} ${mois.getFullYear()}`)}</b>
+          <button type="button" className="ag-appui" aria-label="Mois suivant" onClick={() => changer(1)} style={fl}><Ic n="chevD" t={16} /></button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2 }}>
+          {LETTRES.map(l => <span key={l} style={{ textAlign: 'center', fontSize: 10.5, fontWeight: 800, color: PALE, padding: '2px 0 4px' }}>{l.slice(0, 1)}</span>)}
+        </div>
+        <div key={`g-${mois.getFullYear()}-${mois.getMonth()}`} className="ag-cal-grille" data-sens={sens} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2 }}>
+          {cases.map((d, i) => {
+            if (!d) return <span key={`v${i}`} />;
+            const k = cleDe(d);
+            const choisi = k === valeur, estAuj = k === auj;
+            const interdit = !!min && k < min;
+            const passe = k < auj;
+            const n = occupes[k] || 0;
+            return (
+              <button key={k} type="button" className="ag-jour" disabled={interdit} onClick={() => onChoisir(k)} aria-pressed={choisi} aria-label={`${maj(jourLong(d))}${n ? `, ${rdv(n)}` : ''}`}
+                style={{ position: 'relative', height: 38, borderRadius: 11, border: estAuj && !choisi ? `1.5px solid ${OR}` : '1.5px solid transparent', background: choisi ? NAVY : 'transparent', color: choisi ? OR : interdit ? '#cfd6e0' : passe ? '#a7b1c0' : NAVY, fontFamily: JAK, fontSize: 13.5, fontWeight: choisi || estAuj ? 800 : 600, cursor: interdit ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>
+                {d.getDate()}
+                {n > 0 && <span style={{ position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: choisi ? OR : '#9aa7b9' }} />}
+              </button>
+            );
+          })}
+        </div>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: PALE, paddingTop: 2 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#9aa7b9' }} />déjà des rendez-vous ce jour-là</span>
+      </div>
     </div>
   );
 }
@@ -1823,6 +1852,9 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
      fenêtre bouge un peu et le pied de page le rappelle. */
   const [retenue, setRetenue] = useState(0);
   const feuille = useRef<HTMLElement>(null);
+  /* ✕ et Annuler : la fenêtre s'efface en douceur avant de disparaître. */
+  const [sortie, setSortie] = useState(false);
+  const fermer = () => { if (sortie) return; setSortie(true); setTimeout(onFerme, 230); };
   useEffect(() => {
     if (!retenue) return;
     /* Relancer la secousse à chaque clic, sans redessiner le formulaire. */
@@ -1840,7 +1872,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const typesDispo = ev ? (ev.source === 'visite' ? ['visite'] as TypeRdv[] : ORDRE.filter(t => t !== 'visite')) : ORDRE;
 
   return createPortal(
-    <div className="ag-voile ag-modale-fond" style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
+    <div className="ag-voile ag-modale-fond" data-sortie={sortie || undefined} style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
       onClick={e => { if (e.target === e.currentTarget) setRetenue(Date.now()); }}>
       <StylesAgenda />
       <style>{`
@@ -1868,7 +1900,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1.6, textTransform: 'uppercase', color: OR }}>Agenda</div>
             <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>{ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}</b>
           </div>
-          <button type="button" aria-label="Fermer" onClick={onFerme} style={{ width: 38, height: 38, borderRadius: 11, border: 'none', background: 'rgba(255,255,255,.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Ic n="fermer" t={15} /></button>
+          <button type="button" aria-label="Fermer" onClick={fermer} style={{ width: 38, height: 38, borderRadius: 11, border: 'none', background: 'rgba(255,255,255,.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Ic n="fermer" t={15} /></button>
         </header>
 
         <div className="ag-modale-corps" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -2075,7 +2107,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
 
         <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '14px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
           <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
-          <button type="button" onClick={onFerme} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
+          <button type="button" className="ag-appui" onClick={fermer} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
             style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', opacity: envoi ? .7 : 1, boxShadow: '0 12px 24px -12px rgba(201,168,76,.95)' }}>
             <Ic n="coche" t={16} ep={2.6} />{envoi ? 'Enregistrement…' : ev ? 'Enregistrer les changements' : 'Enregistrer dans l’agenda'}
