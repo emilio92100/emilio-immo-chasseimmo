@@ -8,7 +8,11 @@ import { Icone } from '@/components/fiche/ParcoursBien';
 /* Sur téléphone, la barre du haut garde l'essentiel : le menu ☰ à gauche, la
    recherche au milieu, la cloche des relances à droite. « Nouveau mail » et
    « Nouveau client » passent dans le tiroir et dans la barre du bas. */
-export default function Topbar({ onNavigate, onMenu }: { onNavigate: (page: string, data?: unknown) => void; onMenu?: () => void }) {
+export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBasculerMenu }: {
+  onNavigate: (page: string, data?: unknown) => void; onMenu?: () => void;
+  /* Ordinateur : réduire le menu de gauche à ses icônes, ou le remettre. */
+  menuReduit?: boolean; onBasculerMenu?: () => void;
+}) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -85,6 +89,12 @@ export default function Topbar({ onNavigate, onMenu }: { onNavigate: (page: stri
       <button type="button" className={styles.menuBtn} onClick={onMenu} aria-label="Ouvrir le menu">
         <Icone nom="menu" taille={21} epaisseur={2} />
       </button>
+      {onBasculerMenu && (
+        <button type="button" className={`${styles.menuBureau} ${menuReduit ? styles.menuBureauReduit : ''}`} onClick={onBasculerMenu}
+          aria-label={menuReduit ? 'Afficher le menu' : 'Réduire le menu'} title={menuReduit ? 'Afficher le menu' : 'Réduire le menu'} aria-pressed={!menuReduit}>
+          <Icone nom="menu" taille={19} epaisseur={2} />
+        </button>
+      )}
       <div className={styles.searchWrap} ref={ref}>
         <span className={styles.searchIco}>🔍</span>
         <span className={styles.searchPicto}><Icone nom="loupe" taille={17} epaisseur={2} /></span>

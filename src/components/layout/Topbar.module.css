@@ -134,6 +134,17 @@
 
 .menuBtn, .searchPicto, .alertPicto { display: none; }
 
+/* Ordinateur : le bouton qui réduit le menu de gauche ou le remet. */
+.menuBureau {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: #fff; color: var(--text-3, #64748b);
+  cursor: pointer; transition: all .15s ease;
+}
+.menuBureau:hover { color: var(--navy, #1a2332); border-color: #cbd3df; }
+.menuBureauReduit { background: var(--navy, #1a2332); border-color: var(--navy, #1a2332); color: #c9a84c; }
+.menuBureauReduit:hover { color: #fff; border-color: var(--navy, #1a2332); }
+
 @media (max-width: 900px) {
   .topbar {
     height: calc(58px + env(safe-area-inset-top, 0px));
@@ -146,7 +157,7 @@
     border: 1px solid var(--border); background: #fff; color: var(--navy);
     -webkit-tap-highlight-color: transparent;
   }
-  .spacer, .btnBureau, .searchHint, .searchIco { display: none; }
+  .spacer, .btnBureau, .searchHint, .searchIco, .menuBureau { display: none; }
 
   .searchWrap { max-width: none; padding: 0 12px; height: 42px; border-radius: 13px; gap: 9px; }
   .searchPicto { display: inline-flex; color: var(--text-3); flex-shrink: 0; }

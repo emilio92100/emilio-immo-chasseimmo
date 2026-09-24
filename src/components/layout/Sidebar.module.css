@@ -104,6 +104,31 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   LA BARRE RÉDUITE (ordinateur)
+   L'agenda ouvre le menu réduit à ses icônes : la semaine gagne près de
+   170 px. Le bouton de la barre du haut le remet. Les pictogrammes dessinés
+   remplacent les symboles, le nom apparaît au survol, les chiffres restent.
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 901px) {
+  .sidebar { transition: width .28s cubic-bezier(.22,.9,.3,1), min-width .28s cubic-bezier(.22,.9,.3,1); }
+  .reduit { width: 76px; min-width: 76px; }
+  .reduit .logo { padding: 22px 0 18px; justify-content: center; }
+  .reduit .logo > div:not(.logoMark) { display: none; }
+  .reduit .nav { padding: 10px 11px; }
+  .reduit .navSection { height: 10px; padding: 8px 0 0; overflow: hidden; color: transparent; }
+  .reduit .navItem { justify-content: center; padding: 11px 0; gap: 0; }
+  .reduit .navIcon, .reduit .navLabel, .reduit .navBadgeMot { display: none; }
+  .reduit .navPicto { display: inline-flex; }
+  .reduit .navBadge {
+    position: absolute; top: 2px; right: 3px;
+    font-size: 10px; padding: 1px 5px; min-width: 17px; line-height: 14px;
+  }
+  .reduit .userArea { padding: 12px 0; }
+  .reduit .userCard { justify-content: center; padding: 6px 0; background: transparent; }
+  .reduit .userCard > div:not(.userAvatar) { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    LA VERSION TÉLÉPHONE
    Sur ordinateur, rien de ce qui suit ne se voit : le pictogramme dessiné,
    le bouton de fermeture, le voile et la barre du bas sont masqués.

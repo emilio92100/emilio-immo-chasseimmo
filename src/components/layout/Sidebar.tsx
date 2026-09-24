@@ -16,11 +16,13 @@ import { Icone } from '@/components/fiche/ParcoursBien';
  * nouveau client, Visites, Relances. Les compteurs sont les mêmes des deux
  * côtés — ils ne sont lus qu'une fois, ici.
  */
-export default function Sidebar({ activePage, onNavigate, ouvert = false, onFermer }: {
+export default function Sidebar({ activePage, onNavigate, ouvert = false, onFermer, reduit = false }: {
   activePage: string;
   onNavigate: (page: string) => void;
   ouvert?: boolean;
   onFermer?: () => void;
+  /* Ordinateur seulement : la barre réduite à ses icônes (l'agenda). */
+  reduit?: boolean;
 }) {
   const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0 });
 
@@ -118,7 +120,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       {/* Le voile derrière le tiroir : un toucher à côté le referme. */}
       <div className={`${styles.voile} ${ouvert ? styles.voileOuvert : ''}`} onClick={onFermer} aria-hidden="true" />
 
-      <aside className={`${styles.sidebar} ${ouvert ? styles.ouvert : ''}`}>
+      <aside className={`${styles.sidebar} ${ouvert ? styles.ouvert : ''} ${reduit ? styles.reduit : ''}`}>
         <div className={styles.logo}>
           <div className={styles.logoMark}><span>EI</span></div>
           <div>
@@ -139,6 +141,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                   key={item.id}
                   className={`${styles.navItem} ${courant === item.id ? styles.active : ''}`}
                   onClick={() => onNavigate(item.id)}
+                  title={reduit ? item.label : undefined}
+                  aria-label={reduit ? item.label : undefined}
                 >
                   <span className={styles.navIcon}>{item.icon}</span>
                   <span className={styles.navPicto}><Icone nom={item.picto} taille={19} epaisseur={1.9} /></span>

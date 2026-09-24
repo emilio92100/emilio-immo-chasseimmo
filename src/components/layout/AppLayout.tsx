@@ -55,6 +55,10 @@ export default function AppLayout() {
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
+  /* Sur ordinateur, le menu de gauche peut se réduire à ses icônes. L'agenda
+     l'ouvre réduit, pour gagner la largeur de la semaine ; le bouton de la
+     barre du haut le remet (ou le réduit) sur n'importe quel écran. */
+  const [menuReduit, setMenuReduit] = useState(false);
   /* Sur téléphone, la barre du haut (menu + recherche) se replie quand on
      descend dans la page et revient dès qu'on remonte : l'écran gagne sa
      hauteur. Posé directement sur l'élément, sans passer par l'état React :
@@ -168,6 +172,7 @@ export default function AppLayout() {
     contenu.current?.scrollTo({ top: 0 });
     replierBarre(false);
   }, [activePage, ficheClient?.id]);
+  useEffect(() => { setMenuReduit(activePage === 'agenda'); }, [activePage]);
 
   /* On ne réagit qu'aux vrais gestes (plus de 8 px dans un sens) : un
      tremblement du doigt ne fait pas clignoter la barre. En haut de page,
@@ -223,9 +228,9 @@ export default function AppLayout() {
 
   return (
     <div className={`${styles.appLayout} crm-app`}>
-      <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} />
+      <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} reduit={menuReduit} />
       <div className={styles.mainArea} ref={zoneBarre}>
-        <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} />
+        <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={() => setMenuReduit(r => !r)} />
         <main className={styles.content} ref={contenu}>
           <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
             {renderPage()}
