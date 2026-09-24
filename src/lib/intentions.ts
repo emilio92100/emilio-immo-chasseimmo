@@ -44,3 +44,58 @@ export function prendreDemandeRendezVous(): string | null {
     return id;
   } catch { return null; }
 }
+
+/* ── Ouvrir une fiche au bon endroit ─────────────────────────────────
+   « Voir fiche » depuis une relance ouvrait toujours la fiche sur les biens
+   présentés. On dit maintenant à la fiche OÙ arriver : l'onglet, le filtre du
+   Suivi, et la relance dont on vient (la fiche retrouve l'action qui l'a
+   créée et la surligne). Rangé dans la session du navigateur le temps de
+   changer d'écran, valable une minute, lu par la fiche de ce client-là. */
+export type OuvertureFiche = {
+  clientId: string;
+  onglet: 'suivi' | 'presentes' | 'selection' | 'visites';
+  filtre?: 'tout' | 'appel' | 'rdv' | 'note' | 'message' | 'communications' | 'systeme';
+  relanceId?: string;
+  rechercheId?: string | null;
+};
+const CLE_FICHE = 'emi-fiche';
+
+export function demanderOuvertureFiche(o: OuvertureFiche) {
+  try { window.sessionStorage.setItem(CLE_FICHE, JSON.stringify({ ...o, ts: Date.now() })); } catch { /* la fiche s'ouvrira normalement */ }
+}
+
+/* Lue sans être effacée : la fiche l'efface elle-même une fois montée
+   (le mode strict de React appelle deux fois les initialisations). */
+export function lireOuvertureFiche(clientId: string): OuvertureFiche | null {
+  try {
+    const brut = window.sessionStorage.getItem(CLE_FICHE);
+    if (!brut) return null;
+    const o = JSON.parse(brut) as OuvertureFiche & { ts?: number };
+    if (o.clientId !== clientId || !o.ts || Date.now() - o.ts > 60000) return null;
+    return o;
+  } catch { return null; }
+}
+
+export function oublierOuvertureFiche() {
+  try { window.sessionStorage.removeItem(CLE_FICHE); } catch { /* rien à faire */ }
+}
+
+/* D'où vient une relance, et donc où ouvrir la fiche :
+   - « auto » : des biens présentés sans réponse → l'onglet Présentés ;
+   - un message ou une demande de rappel du client → Suivi › Messages ;
+   - une relance posée avec une action (appel, note, rendez-vous…) → Suivi,
+     sur le filtre de cette action, la ligne surlignée. */
+export function ouvertureDepuisRelance(r: { id: string; type?: string | null; client_id: string; recherche_id?: string | null }, typeAction?: string | null): OuvertureFiche {
+  const base = { clientId: r.client_id, rechercheId: r.recherche_id || null, relanceId: r.id };
+  if (r.type === 'auto') return { ...base, onglet: 'presentes' };
+  if (r.type === 'message_client' || r.type === 'rappel_client') return { ...base, onglet: 'suivi', filtre: 'message' };
+  return { ...base, onglet: 'suivi', filtre: filtreDuSuivi(typeAction) };
+}
+
+/* Le filtre du Suivi qui montre une ligne de journal de ce type. */
+export function filtreDuSuivi(type?: string | null): NonNullable<OuvertureFiche['filtre']> {
+  if (type === 'appel' || type === 'rdv' || type === 'note') return type;
+  if (type === 'message_client' || type === 'demande_rappel') return 'message';
+  if (type === 'email_libre' || type === 'envoi_externe') return 'communications';
+  return 'tout';
+}
