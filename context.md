@@ -172,7 +172,8 @@ Suivi de lecture : `envoye_le`, `vu_le` (première ouverture seulement), `nb_vue
 `retour_client` (son commentaire), `retour_le`.
 Descriptif : titre, ville, CP, quartier, adresse, surfaces, pièces, chambres, étage, exposition,
 DPE/GES avec conso et émissions, chauffage, équipements booléens, charges, taxe foncière,
-prix vendeur / commission / prix acquéreur, photos, agence source.
+prix vendeur / commission / prix acquéreur, photos, plans (`plans`, rangés à part des photos),
+agence source.
 Marché (rempli par la veille) : `date_publication`, `prix_initial`, `nb_baisses`, `nb_agences`,
 `historique_prix`, `date_derniere_baisse`, `score`, `points_forts`, `points_attention`.
 PDF : `pdf_statut`, `pdf_demande_le`, `pdf_pret_le`, `pdf_url`, `pdf_message`.
@@ -185,6 +186,8 @@ Divers : `url` (clé de tous les contrôles de doublon), `canal_envoi`, `source_
 `motif_ecart`, `decide_le`, `bien_id` (rempli quand on retient), plus tout le descriptif de
 l'annonce et les infos de marché.
 « Retenir » crée le bien (ou retrouve celui qui a la même URL) et passe la proposition à `retenu`.
+Tout le descriptif suit le bien, charges, taxe foncière et plans compris (depuis le 24 septembre
+2026 ; avant, les charges et la taxe foncière se perdaient à ce moment-là).
 
 ### `veille_passages` — le compteur de travail
 
@@ -499,8 +502,8 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
     base ; et la case « SMS » n'envoie rien, elle écrit seulement une trace dans le journal.
 14. **`OngletVeille`** : si `rechercheId` est vide, l'onglet reste bloqué sur « Chargement… »
     indéfiniment. Double journalisation à chaque « Retenir » (un insert direct **plus** un
-    `addJournal`). Et `charges_trimestrielles`, `taxe_fonciere`, `date_annonce` sont perdus au
-    passage proposition → bien.
+    `addJournal`). Et `date_annonce` est perdu au passage proposition → bien
+    (`charges_trimestrielles` et `taxe_fonciere` sont recopiés depuis le 24 septembre 2026).
 15. **`PageVisites`** : l'insert d'un `compte_rendu_visite` dans `envois` n'envoie rien mais pollue
     le compteur d'envois. Les visites `annulee` ne s'affichent nulle part tout en comptant dans le
     total, donc l'état vide ne s'affiche pas si la seule visite est annulée.
