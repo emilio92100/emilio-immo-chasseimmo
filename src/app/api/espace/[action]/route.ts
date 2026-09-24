@@ -90,6 +90,142 @@ async function prevenirVisite(
   });
 }
 
+/* ── Ce que le client a changé dans ses critères, avant → après ─────────
+   Alexandre ne veut pas relire tout le dossier à chaque modification : il
+   veut savoir ce qui a bougé. On compare donc la recherche AVANT l'écriture
+   avec ce qui va être écrit, colonne par colonne, et on ne garde que les
+   différences, en français. Le résultat part dans le journal (metadata
+   « changements », lu par la fenêtre « Historique client ») et, en une
+   ligne, dans la description et dans espace_evenements.detail. */
+
+type Changement =
+  | { l: string; a: string | null; p: string | null }   // une valeur : avant → après (null = rien)
+  | { l: string; plus: string[]; moins: string[] };      // une liste : ajoutés / retirés
+
+const EUR_T = (v: number) => v.toLocaleString('fr-FR').replace(/\u202f/g, '\u00a0') + '\u00a0€';
+const ETIQ_ETATS: Record<string, string> = {
+  a_renover: 'à rénover', travaux_legers: 'travaux légers', bon_etat: 'bon état', refait_neuf: 'refait à neuf',
+};
+const ETIQ_FINANCEMENT: Record<string, string> = {
+  cash: 'cash', pret_valide: 'prêt validé', pret_en_cours: 'prêt en cours', a_monter: 'prêt à monter',
+  pret_relais: 'prêt relais', mixte_cash_pret: 'cash + prêt', mixte_cash_relais: 'cash + prêt relais',
+  mixte_pret_relais: 'prêt + prêt relais',
+};
+const ETIQ_URGENCE: Record<string, string> = {
+  immediate: 'immédiate', '3_mois': 'sous 3 mois', '6_mois': 'sous 6 mois', annee: 'dans l’année',
+};
+const ETIQ_EXIGENCE: Record<string, string> = {
+  parking: 'Parking', cave: 'Cave', balcon: 'Balcon', terrasse: 'Terrasse', jardin: 'Jardin',
+  ascenseur: 'Ascenseur', gardien: 'Gardien', interphone: 'Interphone', digicode: 'Digicode',
+  exterieur: 'Extérieur', cuisine: 'Cuisine',
+};
+const etage = (v: number) => (v === 0 ? 'rez-de-chaussée' : v === 1 ? '1er étage' : `${v}e étage`);
+
+/* Les valeurs simples : [colonne, libellé, mise en forme]. */
+const VALEURS: [string, string, (v: any) => string][] = [
+  ['budget_min', 'Budget minimum', (v) => EUR_T(Number(v))],
+  ['budget_max', 'Budget maximum', (v) => EUR_T(Number(v))],
+  ['apport', 'Apport', (v) => EUR_T(Number(v))],
+  ['surface_min', 'Surface minimum', (v) => `${v}\u00a0m²`],
+  ['surface_max', 'Surface maximum', (v) => `${v}\u00a0m²`],
+  ['surface_sejour_min', 'Séjour minimum', (v) => `${v}\u00a0m²`],
+  ['exterieur_surface_min', 'Extérieur minimum', (v) => `${v}\u00a0m²`],
+  ['nb_pieces_min', 'Pièces minimum', (v) => `${v} pièce${Number(v) > 1 ? 's' : ''}`],
+  ['nb_pieces_max', 'Pièces maximum', (v) => `${v} pièce${Number(v) > 1 ? 's' : ''}`],
+  ['chambres_min', 'Chambres minimum', (v) => (Number(v) === 0 ? 'aucune exigence' : `${v} chambre${Number(v) > 1 ? 's' : ''}`)],
+  ['etage_min', 'Étage minimum', (v) => etage(Number(v))],
+  ['etage_max', 'Étage maximum', (v) => etage(Number(v))],
+  ['etage_max_sans_ascenseur', 'Sans ascenseur, pas au-dessus du', (v) => etage(Number(v))],
+  ['annee_construction_min', 'Construit après', (v) => String(v)],
+  ['transport_minutes', 'Temps de trajet maximum', (v) => `${v}\u00a0min`],
+  ['rdc_exclu', 'Rez-de-chaussée', (v) => (v ? 'exclu' : 'accepté')],
+  ['dernier_etage', 'Dernier étage', (v) => (v ? 'souhaité' : 'indifférent')],
+  ['financement', 'Financement', (v) => ETIQ_FINANCEMENT[v] || String(v)],
+  ['urgence', 'Échéance', (v) => ETIQ_URGENCE[v] || String(v)],
+  ['cuisine_type', 'Cuisine', (v) => (v === 'ouverte' ? 'ouverte sur le séjour' : v === 'separee' ? 'séparée' : String(v))],
+  ['dpe_max', 'DPE maximum', (v) => String(v)],
+];
+/* Les oui/non : faux et vide disent la même chose. */
+const OUI_SEUL = new Set(['rdc_exclu', 'dernier_etage']);
+
+const vide = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+const liste = (v: unknown): string[] => (Array.isArray(v) ? v.map(String)
+  : typeof v === 'string' ? v.split(',').map((x) => x.trim()).filter(Boolean) : []);
+
+function comparerListe(l: string, avant: string[], apres: string[], out: Changement[]) {
+  const plus = apres.filter((x) => !avant.includes(x));
+  const moins = avant.filter((x) => !apres.includes(x));
+  if (plus.length || moins.length) out.push({ l, plus, moins });
+}
+
+function decrireChangements(avant: Record<string, any>, maj: Record<string, unknown>): Changement[] {
+  const out: Changement[] = [];
+  const dans = (k: string) => Object.prototype.hasOwnProperty.call(maj, k);
+
+  if (dans('type_bien')) comparerListe('Type de bien', liste(avant.type_bien), liste(maj.type_bien), out);
+
+  for (const [k, l, f] of VALEURS) {
+    if (!dans(k)) continue;
+    let a: any = avant[k], p: any = maj[k];
+    /* Un oui/non se lit « exclu → accepté », jamais « retiré ». */
+    if (OUI_SEUL.has(k)) {
+      if (!!a !== !!p) out.push({ l, a: f(!!a), p: f(!!p) });
+      continue;
+    }
+    if (vide(a) && vide(p)) continue;
+    if (!vide(a) && !vide(p) && String(a) === String(p)) continue;
+    out.push({ l, a: vide(a) ? null : f(a), p: vide(p) ? null : f(p) });
+  }
+
+  if (dans('etat_souhaite')) {
+    const e = (v: unknown) => liste(v).map((x) => ETIQ_ETATS[x] || x);
+    comparerListe('État du bien', e(avant.etat_souhaite), e(maj.etat_souhaite), out);
+  }
+  if (dans('exposition_souhaitee')) comparerListe('Exposition', liste(avant.exposition_souhaitee), liste(maj.exposition_souhaitee), out);
+  if (dans('secteurs')) comparerListe('Secteurs', liste(avant.secteurs), liste(maj.secteurs), out);
+  if (dans('transport_lignes')) comparerListe('Lignes de transport', liste(avant.transport_lignes), liste(maj.transport_lignes), out);
+
+  if (dans('transport_arrets')) {
+    type Arret = { nom: string; minutes?: number };
+    const av = (Array.isArray(avant.transport_arrets) ? avant.transport_arrets : []) as Arret[];
+    const ap = (Array.isArray(maj.transport_arrets) ? maj.transport_arrets : []) as Arret[];
+    const plus: string[] = [], moins: string[] = [];
+    ap.forEach((x) => {
+      const y = av.find((z) => z.nom === x.nom);
+      if (!y) plus.push(`${x.nom} (${x.minutes} min)`);
+      else if (Number(y.minutes) !== Number(x.minutes)) {
+        out.push({ l: `Trajet jusqu’à ${x.nom}`, a: `${y.minutes}\u00a0min`, p: `${x.minutes}\u00a0min` });
+      }
+    });
+    av.forEach((y) => { if (!ap.some((x) => x.nom === y.nom)) moins.push(`${y.nom} (${y.minutes} min)`); });
+    if (plus.length || moins.length) out.push({ l: 'Arrêts de transport', plus, moins });
+  }
+
+  /* Équipements : « souhaité » / « indispensable » / rien, un par un. */
+  if (dans('exigences')) {
+    const ea = (avant.exigences && typeof avant.exigences === 'object' ? avant.exigences : {}) as Record<string, string>;
+    const ep = (maj.exigences && typeof maj.exigences === 'object' ? maj.exigences : {}) as Record<string, string>;
+    const mot = (v?: string) => (v === 'indispensable' ? 'indispensable' : v === 'souhaite' ? 'souhaité' : null);
+    Object.keys(ETIQ_EXIGENCE).forEach((k) => {
+      const a = mot(ea[k]), p = mot(ep[k]);
+      if (a !== p) out.push({ l: ETIQ_EXIGENCE[k], a, p });
+    });
+  }
+  return out;
+}
+
+/* La même chose en une ligne, pour les endroits qui n'affichent que du texte. */
+function ligneChangements(ch: Changement[]): string {
+  return ch.map((c) => {
+    if ('plus' in c) {
+      return `${c.l} : ${[...c.plus.map((x) => '+ ' + x), ...c.moins.map((x) => '− ' + x)].join(', ')}`;
+    }
+    if (c.a === null) return `${c.l} : ajouté${c.p ? ` (${c.p})` : ''}`;
+    if (c.p === null) return `${c.l} : retiré (était ${c.a})`;
+    return `${c.l} : ${c.a} → ${c.p}`;
+  }).join(' · ');
+}
+
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   try {
     const { action } = await ctx.params;
@@ -329,9 +465,36 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         if (Object.keys(maj).length === 0) {
           return NextResponse.json({ ok: true, rien: true });
         }
+        /* Ce qu'il y avait avant, pour dire exactement ce qui a changé. Les
+           colonnes lues sont celles qu'on s'apprête à écrire : elles existent
+           forcément. Si la lecture échoue, on retombe sur l'ancien résumé. */
+        const colonnes = Object.keys(maj);
+        const { data: avant, error: errAvant } = await supabase.from('recherches')
+          .select(colonnes.join(', ')).eq('id', recherche.id).maybeSingle();
+        const changements = !errAvant && avant
+          ? decrireChangements(avant as unknown as Record<string, unknown>, maj) : null;
+
         maj.updated_at = new Date().toISOString();
 
-        await supabase.from('recherches').update(maj).eq('id', recherche.id);
+        const { error: errMaj } = await supabase.from('recherches').update(maj).eq('id', recherche.id);
+        if (errMaj) {
+          return NextResponse.json({ ok: false, error: 'enregistrement impossible' }, { status: 500 });
+        }
+
+        /* Il a validé sans rien changer : rien à raconter à Alexandre. */
+        if (changements && changements.length === 0) {
+          return NextResponse.json({ ok: true, rien: true });
+        }
+        if (changements) {
+          const ligne = ligneChangements(changements).slice(0, 1500);
+          await supabase.from('journal').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id,
+            type: 'criteres_modifies', titre: 'Critères modifiés par le client, depuis son espace',
+            description: ligne || null, metadata: { changements },
+          });
+          await evt('criteres', ligne || null);
+          return NextResponse.json({ ok: true });
+        }
 
         /* Ce résumé est ce qu'Alexandre lit dans « Historique client » : il doit
            dire en une ligne ce que le client a touché, pas seulement le budget. */
