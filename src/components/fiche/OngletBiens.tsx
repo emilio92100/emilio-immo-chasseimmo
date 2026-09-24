@@ -7,6 +7,7 @@ import {
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
   useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
   NotesVeille, ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
+  ModalePhotos,
 } from './ParcoursBien';
 
 /**
@@ -157,6 +158,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   /* Les biens cochés pour partir ensemble (onglet Sélection). */
   const [coches, setCoches] = useState<string[]>([]);
   const [envoiGroupe, setEnvoiGroupe] = useState<any[] | null>(null);
+  /* Le bien dont on réorganise les photos. */
+  const [photosDe, setPhotosDe] = useState<any>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -413,6 +416,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 actions={
                   <>
                     {b.url && <BoutonIcone icone="lien" titre="Ouvrir l'annonce d'origine" href={b.url} />}
+                    {(b.photos || []).length > 0 && <BoutonIcone icone="photos" titre="Réorganiser les photos" onClick={() => setPhotosDe(b)} />}
                     <BoutonIcone icone="crayon" titre="Ouvrir le détail du bien" onClick={() => onFiche(b.id)} />
                     {mode === 'selection'
                       ? <BoutonIcone icone="envoyer" titre="Envoyer au client" ton="or" onClick={() => setEnvoi(b)} />
@@ -448,7 +452,14 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             <Vignettes photos={b.photos || []}
               coinGauche={mode === 'presentes'
                 ? <span style={{ background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, boxShadow: '0 4px 12px -6px rgba(16,24,40,.5)' }}>{r.i} {r.l}</span>
-                : undefined} />
+                : undefined}
+              coinDroit={(b.photos || []).length > 0 ? (
+                <button type="button" className="emi-reorg" onClick={() => setPhotosDe(b)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.95)', color: NAVY, border: 'none', borderRadius: 20, padding: '7px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 16px -8px rgba(16,24,40,.55)' }}>
+                  <Icone nom="photos" taille={14} epaisseur={2} />
+                  {`Réorganiser · ${(b.photos || []).length}`}
+                </button>
+              ) : undefined} />
 
             {/* Le retour du client se lit AVANT la fiche, pas en bas en petit :
                 c'est l'information qui décide de ce que tu fais ensuite. */}
@@ -616,6 +627,9 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       {envoi && (
         <ModaleEnvoi bien={envoi} clientId={clientId} client={client} mandat={mandat}
           onFerme={() => setEnvoi(null)} onEnvoye={recharge} onMail={onMail} />
+      )}
+      {photosDe && (
+        <ModalePhotos bien={photosDe} onFerme={() => setPhotosDe(null)} onEnregistre={recharge} />
       )}
       {envoiGroupe && (
         <ModaleEnvoiGroupe biens={envoiGroupe} clientId={clientId} client={client} recherche={recherche}

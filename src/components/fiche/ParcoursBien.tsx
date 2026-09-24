@@ -168,6 +168,11 @@ const TRAITS: Record<string, string[]> = {
   courbe: ['M3.5 20.5h17', 'm4.5 15.5 4.7-4.7 3.6 2.8 6.7-7.1', 'M15.5 6.5h4v4'],
   cible: ['c:12,12,9', 'c:12,12,5.2', 'c:12,12,1.4'],
   moins: ['M6 12h12'],
+  /* Les photos d'un bien : les réorganiser, en retirer. */
+  photos: ['M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z', 'c:9,10,1.6', 'm20 15-4.5-4.5L7 19.5'],
+  poignee: ['c:9,6.5,1', 'c:15,6.5,1', 'c:9,12,1', 'c:15,12,1', 'c:9,17.5,1', 'c:15,17.5,1'],
+  etoile: ['m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'],
+  remettre: ['M4 12a8 8 0 1 0 2.4-5.7', 'M4 4.5v4h4'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -2380,6 +2385,176 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
       <div style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#94a3b8', flex: '1 1 220px' }}>{`Les ${n} biens passeront ensemble dans « Présentés »`}</span>
         <button type="button" onClick={onFerme} style={btnSecondaire}>Fermer</button>
+      </div>
+    </Modale>
+  );
+}
+
+/* ══ Les photos d'un bien ══════════════════════════════════════
+   Avant l'envoi, Alexandre choisit ce que le client verra : l'ordre (la
+   première est la photo principale du mail et de l'espace) et celles qui ne
+   partent pas. On glisse une photo pour la déplacer — à la souris, ou au
+   doigt par sa poignée, pour que la page défile encore normalement sur
+   téléphone. Rien n'est écrit avant « Enregistrer ». */
+
+export function ModalePhotos({ bien, onFerme, onEnregistre }: {
+  bien: any; onFerme: () => void; onEnregistre: () => void;
+}) {
+  const depart: string[] = Array.from(new Set(((bien?.photos || []) as string[]).filter(Boolean)));
+  const [ordre, setOrdre] = useState<string[]>(depart);
+  const [retirees, setRetirees] = useState<string[]>([]);
+  const [tire, setTire] = useState<number | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const tireRef = useRef<number | null>(null);
+
+  const change = ordre.join('\n') !== depart.join('\n');
+
+  function commencer(e: React.PointerEvent, i: number) {
+    const cible = e.target as HTMLElement;
+    const parPoignee = !!cible.closest('[data-poignee]');
+    if (e.pointerType !== 'mouse' && !parPoignee) return;       // au doigt : seulement par la poignée
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (!parPoignee && cible.closest('button')) return;           // les boutons de la vignette restent des boutons
+    e.preventDefault();
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* sans effet */ }
+    tireRef.current = i; setTire(i);
+  }
+  function bouger(e: React.PointerEvent) {
+    const de = tireRef.current;
+    if (de === null) return;
+    const sous = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const case_ = sous?.closest('[data-case-photo]') as HTMLElement | null;
+    if (!case_) return;
+    const vers = Number(case_.dataset.casePhoto);
+    if (isNaN(vers) || vers === de) return;
+    setOrdre(o => { const a = [...o]; const [x] = a.splice(de, 1); a.splice(vers, 0, x); return a; });
+    tireRef.current = vers; setTire(vers);
+  }
+  function lacher() { tireRef.current = null; setTire(null); }
+
+  const enPremier = (i: number) => setOrdre(o => { const a = [...o]; const [x] = a.splice(i, 1); a.unshift(x); return a; });
+  const retirer = (u: string) => { setOrdre(o => o.filter(x => x !== u)); setRetirees(r => [...r, u]); };
+  const remettre = (u: string) => { setRetirees(r => r.filter(x => x !== u)); setOrdre(o => [...o, u]); };
+
+  async function enregistrer() {
+    if (!ordre.length && !window.confirm('Retirer toutes les photos de ce bien ?\n\nLe client ne verra plus aucune photo, ni dans le mail ni dans son espace.')) return;
+    setEnvoi(true);
+    const { error } = await supabase.from('biens').update({ photos: ordre }).eq('id', bien.id);
+    if (error) { setEnvoi(false); alert("Les photos n'ont pas pu être enregistrées.\n\n" + error.message); return; }
+    /* Les photos retirées que nous hébergeons ne servent plus à rien : on les
+       efface du stockage. Un échec ici ne compte pas, le bien est à jour. */
+    const chemins = retirees
+      .filter(u => u.includes('supabase.co/storage'))
+      .map(u => (u.match(/photos-biens\/(.+)$/) || [])[1])
+      .filter(Boolean) as string[];
+    if (chemins.length) { try { await supabase.storage.from('photos-biens').remove(chemins); } catch { /* sans effet */ } }
+    setEnvoi(false); onEnregistre(); onFerme();
+  }
+
+  const titre = bien?.titre || `${bien?.type_bien || 'Bien'} — ${bien?.ville || ''}`;
+  const pied = `${ordre.length} photo${ordre.length > 1 ? 's' : ''}${retirees.length ? ` · ${retirees.length} retirée${retirees.length > 1 ? 's' : ''}` : ''}`;
+
+  return (
+    <Modale onFerme={onFerme} largeur={900}>
+      <style>{`
+        .emi-ph-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+        .emi-ph-case{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:4/3;background:#eef2f8;user-select:none;-webkit-user-select:none;cursor:grab;transition:box-shadow .18s ease,transform .18s ease,outline-color .18s ease;outline:2px solid transparent;outline-offset:2px}
+        .emi-ph-case:hover{box-shadow:0 12px 26px -16px rgba(16,24,40,.55)}
+        .emi-ph-case[data-tire="oui"]{cursor:grabbing;transform:scale(1.04);outline-color:${OR};box-shadow:0 20px 40px -18px rgba(16,24,40,.6);z-index:2}
+        .emi-ph-case img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none}
+        .emi-ph-bouton{width:32px;height:32px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,.94);color:${NAVY};box-shadow:0 2px 8px rgba(16,24,40,.22);transition:transform .15s ease}
+        .emi-ph-bouton:hover{transform:scale(1.08)}
+        .emi-ph-poignee{touch-action:none;cursor:grab}
+        @keyframes emiPhIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+        .emi-ph-case{animation:emiPhIn .3s cubic-bezier(.2,.9,.3,1) both}
+        @media (max-width:760px){
+          .emi-ph-grille{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px} .emi-ph-bouton{width:36px;height:36px}
+          .emi-ph-pied > span{flex:1 1 100% !important} .emi-ph-pied > button{flex:1 1 0;padding-top:13px !important;padding-bottom:13px !important}
+        }
+      `}</style>
+
+      <div style={{ background: NAVY, padding: '18px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
+        <span style={{ width: 42, height: 42, borderRadius: 13, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icone nom="photos" taille={21} epaisseur={1.8} />
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>Photos du bien</div>
+          <div style={{ fontSize: 16.5, fontWeight: 800, color: 'white', marginTop: 3, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titre}</div>
+        </div>
+        <button type="button" onClick={onFerme} aria-label="Fermer"
+          style={{ width: 36, height: 36, borderRadius: 11, border: 'none', background: 'rgba(255,255,255,.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <Icone nom="fermer" taille={15} epaisseur={2} />
+        </button>
+      </div>
+
+      <div style={{ padding: '16px 24px 18px', display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '64vh', overflowY: 'auto' }}>
+        <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.55 }}>
+          Glisse une photo pour la déplacer. La première est la <b style={{ color: NAVY }}>photo principale</b>{' '}: c’est elle que le client voit en premier, dans le mail comme dans son espace.
+        </div>
+
+        {ordre.length > 0 ? (
+          <div className="emi-ph-grille" onPointerMove={bouger} onPointerUp={lacher} onPointerCancel={lacher}>
+            {ordre.map((u, i) => (
+              <div key={u} className="emi-ph-case" data-case-photo={i} data-tire={tire === i ? 'oui' : undefined}
+                onPointerDown={e => commencer(e, i)} style={{ animationDelay: Math.min(i, 12) * 25 + 'ms' }}>
+                <img src={u} alt={`Photo ${i + 1}`} draggable={false}
+                  onError={e => { (e.target as HTMLImageElement).style.opacity = '0.25'; }} />
+                <span style={{ position: 'absolute', top: 8, left: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 800, background: i === 0 ? OR : 'rgba(16,24,40,.62)', color: i === 0 ? NAVY : 'white' }}>
+                  {i === 0 ? <><Icone nom="etoile" taille={11} epaisseur={2.4} />Principale</> : i + 1}
+                </span>
+                <span style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 6 }}>
+                  {i > 0 && (
+                    <button type="button" className="emi-ph-bouton" onClick={() => enPremier(i)} title="Mettre en photo principale" aria-label={`Mettre la photo ${i + 1} en photo principale`}>
+                      <Icone nom="etoile" taille={15} epaisseur={2} />
+                    </button>
+                  )}
+                  <button type="button" className="emi-ph-bouton" onClick={() => retirer(u)} title="Retirer cette photo" aria-label={`Retirer la photo ${i + 1}`} style={{ color: '#b42318' }}>
+                    <Icone nom="corbeille" taille={15} epaisseur={2} />
+                  </button>
+                </span>
+                <button type="button" data-poignee className="emi-ph-bouton emi-ph-poignee" aria-label={`Déplacer la photo ${i + 1}`}
+                  style={{ position: 'absolute', bottom: 7, left: 7 }}>
+                  <Icone nom="poignee" taille={16} epaisseur={2.6} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '34px 10px', textAlign: 'center', color: '#94a3b8', fontSize: 13.5, border: `1.5px dashed ${BORD}`, borderRadius: 14 }}>
+            Plus aucune photo : le client n’en verra pas. Remets-en une ci-dessous si c’était une erreur.
+          </div>
+        )}
+
+        {retirees.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>
+              {`Retirées · ${retirees.length}`}
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {retirees.map(u => (
+                <button key={u} type="button" onClick={() => remettre(u)} title="Remettre cette photo"
+                  style={{ position: 'relative', width: 104, height: 78, borderRadius: 11, overflow: 'hidden', border: `1px solid ${BORD}`, padding: 0, cursor: 'pointer', background: '#eef2f8' }}>
+                  <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1)', opacity: .5, display: 'block' }} />
+                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: NAVY }}>
+                    <Icone nom="remettre" taille={13} epaisseur={2.4} />Remettre
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>
+              Elles seront effacées pour de bon à l’enregistrement.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="emi-ph-pied" style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, color: '#94a3b8', flex: '1 1 160px' }}>{pied}</span>
+        <button type="button" onClick={onFerme} style={btnSecondaire}>Annuler</button>
+        <button type="button" onClick={enregistrer} disabled={envoi || (!change && !retirees.length)}
+          style={{ ...btnPrincipal, background: change || retirees.length ? OR : '#cbd5e1', color: change || retirees.length ? NAVY : 'white', cursor: change || retirees.length ? 'pointer' : 'default' }}>
+          {envoi ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
       </div>
     </Modale>
   );
