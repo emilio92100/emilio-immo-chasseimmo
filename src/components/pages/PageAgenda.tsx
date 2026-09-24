@@ -1,6 +1,9 @@
 'use client';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
+import { nommerRecherche, resumerRecherche } from '@/lib/espace';
+import { prendreDemandeRendezVous } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
 
 /**
@@ -47,7 +50,7 @@ const TACHES: Record<Genre, { fond: string; encre: string; trait: string }> = {
   visite: { fond: '#fbf4e1', encre: '#5f450c', trait: '#ecdcae' },
 };
 
-/* La grille horaire : de 7 h à 22 h. On arrive défilé sur 8 h. */
+/* La grille horaire : de 7 h à 22 h. On arrive défilé sur 9 h 30. */
 const H0 = 7, H1 = 22, PX = 48;
 
 /* ══ Icônes (dessinées, pas d'émoji) ═══════════════════════════ */
@@ -106,6 +109,12 @@ const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const numJour = (d: Date) => (d.getDate() === 1 ? '1er' : String(d.getDate()));
 const jourLong = (d: Date) => `${JOURS[d.getDay()]} ${numJour(d)} ${MOIS[d.getMonth()]}`;
 const heureFr = (d: Date) => `${d.getHours()} h ${pad(d.getMinutes())}`.replace(' h 00', ' h');
+/* « 2 jours et 1 h » pour un rendez-vous sur plusieurs jours. */
+const dureeLongue = (m: number) => {
+  if (m < 1440) return duree(m);
+  const j = Math.floor(m / 1440), r = m % 1440;
+  return `${j} jour${j > 1 ? 's' : ''}${r ? ` et ${duree(r)}` : ''}`;
+};
 const duree = (m: number) => { const h = Math.floor(m / 60), n = m % 60; return h ? `${h} h${n ? ' ' + pad(n) : ''}` : `${n} min`; };
 const nomDe = (c: any) => (c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : '');
 const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
@@ -118,12 +127,45 @@ type Ev = {
   biens: { id: string; titre: string; photo?: string }[];
   clientId: string | null; rechercheId: string | null;
   fait: boolean; crAFaire: boolean; details: any; relanceId: string | null;
+  /* Rendez-vous sur plusieurs jours, découpé jour par jour pour l'affichage :
+     `suite` quand ce morceau ne commence pas le premier jour, `finReelle`
+     pour dire jusqu'à quand il dure. */
+  suite?: boolean; finReelle?: Date;
 };
 type Tache = { cle: string; jour: string; titre: string; genre: Genre; clientId: string | null };
-type Dossier = { rechercheId: string; clientId: string; nom: string; prenom: string; emails: string[]; libelle: string };
+type Dossier = {
+  rechercheId: string; clientId: string; nom: string; prenom: string; emails: string[]; libelle: string;
+  /* Pour le choix du client : le nom de la recherche, son résumé, et sa
+     date (les plus récentes d'abord quand on n'a rien tapé). */
+  recherche: string; resume: string; plusieurs: boolean; cree: string;
+};
 
 function lieuDuBien(b: any): string {
   return b?.adresse || b?.adresse_probable || [b?.quartier, b?.ville].filter(Boolean).join(', ') || '';
+}
+
+/* ══ Les rendez-vous sur plusieurs jours ═════════════════════════
+   Un salon, des congés, une visite longue : il apparaît sur chacun de ses
+   jours. Le premier depuis son heure, les suivants depuis le matin
+   (« suite »), le dernier jusqu'à son heure. */
+function dernierJour(e: Ev): string { return cleDe(new Date(Math.max(e.debut.getTime(), e.fin.getTime() - 1))); }
+function couvre(e: Ev, k: string): boolean { return k >= e.jour && k <= dernierJour(e); }
+function joursCouverts(e: Ev): string[] {
+  const fin = dernierJour(e), l: string[] = [];
+  for (let d = depuisCle(e.jour), i = 0; i < 62; i++, d = plusJours(d, 1)) { const k = cleDe(d); l.push(k); if (k >= fin) break; }
+  return l;
+}
+function duJour(evs: Ev[], k: string): Ev[] {
+  const out: Ev[] = [];
+  for (const e of evs) {
+    if (!couvre(e, k)) continue;
+    if (dernierJour(e) === e.jour) { out.push(e); continue; }
+    const d = depuisCle(k);
+    const debut = k === e.jour ? e.debut : new Date(d.getFullYear(), d.getMonth(), d.getDate(), H0, 0);
+    const finJ = k === dernierJour(e) ? e.fin : new Date(d.getFullYear(), d.getMonth(), d.getDate(), H1, 0);
+    out.push({ ...e, debut, fin: finJ > debut ? finJ : new Date(debut.getTime() + 30 * 60000), jour: k, suite: k !== e.jour, finReelle: e.fin });
+  }
+  return out.sort((a, b) => a.debut.getTime() - b.debut.getTime());
 }
 
 function construire(visites: any[], rdvs: any[], relances: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date) {
@@ -159,7 +201,7 @@ function construire(visites: any[], rdvs: any[], relances: any[], transactions: 
       debut, fin, jour, qui, lieu: lieuDuBien(v0.biens), contact: v0.contact_agence || '', notes: v0.commentaire && !toutesFaites ? v0.commentaire : '',
       biens, clientId: v0.client_id || null, rechercheId: v0.recherche_id || null,
       fait: fin <= maintenant, crAFaire: fin <= maintenant && lot.some(v => v.statut === 'a_venir'),
-      details: {}, relanceId: v0.rappel_relance_id || null,
+      details: { rappelLe: lot.map(v => v.rappel_envoye_le).filter(Boolean).sort().pop() || null }, relanceId: v0.rappel_relance_id || null,
     });
   }
 
@@ -241,7 +283,7 @@ function useEtroit() {
 
 /* ══ La page ═══════════════════════════════════════════════════ */
 
-type Modale = { mode: 'nouveau'; jour: string; heure: string } | { mode: 'modifier'; ev: Ev } | null;
+type Modale = { mode: 'nouveau'; jour: string; heure: string; rechercheId?: string } | { mode: 'modifier'; ev: Ev } | null;
 
 export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const etroit = useEtroit();
@@ -251,6 +293,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   const [masques, setMasques] = useState<Partial<Record<TypeRdv, boolean>>>({});
   const [selCle, setSelCle] = useState<string | null>(null);
   const [modale, setModale] = useState<Modale>(null);
+  const [rappelDe, setRappelDe] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [tableAbsente, setTableAbsente] = useState(false);
   const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[] }>({ visites: [], rdvs: [], relances: [], transactions: [], recherches: [], clients: [] });
@@ -275,6 +318,16 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     setChargement(false);
   }, []);
   useEffect(() => { charger(); }, [charger]);
+  useEffect(() => {
+    if (chargement) return;
+    /* Venu de la fiche d'un client (« Créer un rendez-vous ») : la fenêtre
+       s'ouvre tout de suite, son dossier déjà choisi. */
+    const id = prendreDemandeRendezVous();
+    if (id) {
+      const n = new Date(); const suiv = Math.min(20, Math.max(8, n.getHours() + 1));
+      setModale({ mode: 'nouveau', jour: cleDe(n), heure: `${pad(suiv)}:00`, rechercheId: id });
+    }
+  }, [chargement]);
 
   const clientsParId = useMemo(() => Object.fromEntries(brut.clients.map(c => [c.id, c])), [brut.clients]);
   const { evs, taches } = useMemo(
@@ -291,6 +344,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
         rechercheId: r.id, clientId: c.id, nom: nomDe(c), prenom: c.prenom || nomDe(c),
         emails: (c.emails || []).filter(Boolean),
         libelle: parClient[c.id] > 1 ? `${nomDe(c)} — ${r.nom || 'Recherche'}` : nomDe(c),
+        recherche: nommerRecherche(r, 1), resume: resumerRecherche(r), plusieurs: parClient[c.id] > 1, cree: String(r.created_at || ''),
       }))
       .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
   }, [brut.recherches, clientsParId]);
@@ -302,15 +356,16 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   const semaine = [0, 1, 2, 3, 4, 5, 6].map(i => cleDe(plusJours(lundi, i)));
   const sel = selCle ? evs.find(e => e.cle === selCle) || null : null;
 
-  const deLaSemaine = visibles.filter(e => semaine.includes(e.jour));
+  const deLaSemaine = visibles.filter(e => semaine.some(k => couvre(e, k)));
   const debutMois = new Date(dJour.getFullYear(), dJour.getMonth(), 1);
-  const duMois = visibles.filter(e => e.debut.getMonth() === dJour.getMonth() && e.debut.getFullYear() === dJour.getFullYear());
+  const premierDuMois = cleDe(new Date(dJour.getFullYear(), dJour.getMonth(), 1)), dernierDuMois = cleDe(new Date(dJour.getFullYear(), dJour.getMonth() + 1, 0));
+  const duMois = visibles.filter(e => e.jour <= dernierDuMois && dernierJour(e) >= premierDuMois);
   const compter = (l: Ev[], t: TypeRdv) => l.filter(e => e.type === t).length;
 
   let titre = '', sous = '';
   if (vue === 'jour') {
     titre = maj(jourLong(dJour));
-    const liste = visibles.filter(e => e.jour === jour);
+    const liste = duJour(visibles, jour);
     const p = liste.find(e => e.debut > maintenant);
     sous = `${rdv(liste.length)}${p ? ` · le prochain à ${hhmm(p.debut)}` : ''}`;
   } else if (vue === 'semaine') {
@@ -359,14 +414,14 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   const crAFaire = evs.filter(e => e.crAFaire).sort((a, b) => b.debut.getTime() - a.debut.getTime());
   const prochains = visibles.filter(e => e.debut > maintenant).slice(0, 3);
-  const aujListe = visibles.filter(e => e.jour === auj);
+  const aujListe = duJour(visibles, auj);
   const suivant = aujListe.find(e => e.debut > maintenant);
   const resume = `${rdv(aujListe.length)} aujourd’hui${suivant ? `, le prochain à ${hhmm(suivant.debut)}.` : '.'}`;
   /* Les compteurs de la légende portent sur la période affichée, types
      masqués compris : on voit ce qu'on cache. */
-  const dansPeriode = (e: Ev) => vue === 'jour' ? e.jour === jour
-    : vue === 'semaine' ? semaine.includes(e.jour)
-    : e.debut.getMonth() === dJour.getMonth() && e.debut.getFullYear() === dJour.getFullYear();
+  const dansPeriode = (e: Ev) => vue === 'jour' ? couvre(e, jour)
+    : vue === 'semaine' ? semaine.some(k => couvre(e, k))
+    : e.jour <= dernierDuMois && dernierJour(e) >= premierDuMois;
   const legende = ORDRE.map(t => ({ t, n: evs.filter(e => e.type === t && dansPeriode(e)).length }));
 
   /* Sans heure donnée : l'heure pleine suivante si c'est aujourd'hui (entre
@@ -423,10 +478,14 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
       {sel && (
         <Detail ev={sel} etroit={etroit} onFerme={() => setSelCle(null)}
           onModifier={() => { setModale({ mode: 'modifier', ev: sel }); setSelCle(null); }}
-          onAnnuler={() => annuler(sel)} onCR={() => compteRendu(sel)} onDossier={() => ouvrirDossier(sel.clientId)} />
+          onAnnuler={() => annuler(sel)} onCR={() => compteRendu(sel)} onDossier={() => ouvrirDossier(sel.clientId)}
+          onRappel={() => setRappelDe(sel.ids[0])} />
+      )}
+      {rappelDe && (
+        <ModaleRappelVisite visiteId={rappelDe} onFerme={() => setRappelDe(null)} onEnvoye={() => { setRappelDe(null); charger(); }} />
       )}
       {modale && (
-        <ModaleRdv modale={modale} dossiers={dossiers} relances={brut.relances} tableAbsente={tableAbsente}
+        <ModaleRdv modale={modale} dossiers={dossiers} relances={brut.relances} tableAbsente={tableAbsente} evs={evs}
           onFerme={() => setModale(null)} onEnregistre={() => { setModale(null); charger(); }} />
       )}
     </div>
@@ -457,7 +516,20 @@ function StylesAgenda() {
       .ag-tiroir{animation:agTiroir .42s cubic-bezier(.2,.9,.3,1) both}
       .ag-feuille{animation:agFeuille .38s cubic-bezier(.22,.9,.3,1) both}
       .ag-voile{animation:agVoile .25s ease both}
-      .ag-champ:focus{border-color:${OR} !important;box-shadow:0 0 0 4px rgba(201,168,76,.16)}
+      @keyframes agSection{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+      @keyframes agPanneau{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+      .ag-section{animation:agSection .45s cubic-bezier(.2,.9,.3,1) both}
+      .ag-panneau{animation:agPanneau .26s cubic-bezier(.2,.9,.3,1) both;transform-origin:top center}
+      .ag-champ{transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+      .ag-champ:hover:not(:focus):not(:disabled){border-color:#cfd7e3 !important}
+      .ag-champ:focus{border-color:${OR} !important;box-shadow:0 0 0 4px rgba(201,168,76,.16);background:#fff !important}
+      .ag-champ-bouton{transition:border-color .15s ease,box-shadow .2s ease,background-color .2s ease,transform .15s ease}
+      .ag-champ-bouton:hover:not([data-ouvert]){border-color:#cfd7e3 !important;transform:translateY(-1px)}
+      .ag-jour{transition:background-color .12s ease,transform .12s ease}
+      .ag-jour:hover:not(:disabled):not([aria-pressed="true"]){background:#f1f4f9 !important}
+      .ag-jour:active:not(:disabled){transform:scale(.94)}
+      @media (prefers-reduced-motion: reduce){.ag-section,.ag-panneau{animation:none}}
+      @media (max-width: 760px){.ag-heure-ligne{grid-template-columns:1fr !important;gap:6px !important}}
       .ag-grille-defil::-webkit-scrollbar{width:8px}.ag-grille-defil::-webkit-scrollbar-thumb{background:#dde3ec;border-radius:8px}
     `}</style>
   );
@@ -502,7 +574,7 @@ function Rail({ maintenant, jour, setJour, evs, resume, legende, masques, bascul
   useEffect(() => { const d = depuisCle(jour); setMois(m => (m.getMonth() === d.getMonth() && m.getFullYear() === d.getFullYear() ? m : new Date(d.getFullYear(), d.getMonth(), 1))); }, [jour]);
   const debut = lundiDe(mois);
   const nbCases = Math.ceil((((mois.getDay() + 6) % 7) + new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate()) / 7) * 7;
-  const jours = new Set(evs.map(e => e.jour));
+  const jours = new Set(evs.flatMap(joursCouverts));
   const auj = cleDe(maintenant);
   return (
     <aside style={{ width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20, position: 'sticky', top: 12 }}>
@@ -628,7 +700,7 @@ function Bloc({ e, onVoir, large, rang }: { e: Ev & { col: number; cols: number 
       <button type="button" className="ag-ev" onClick={ev => { ev.stopPropagation(); onVoir(e); }} title={`${hhmm(e.debut)} ${e.titre}`}
         style={{ ...pos, display: 'flex', alignItems: 'center', gap: 5, padding: '0 7px', whiteSpace: 'nowrap', fontSize: 11 }}>
         {point}
-        <span style={{ fontWeight: 700, opacity: .85, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{hhmm(e.debut)}</span>
+        <span style={{ fontWeight: 700, opacity: .85, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{e.suite ? 'suite' : hhmm(e.debut)}</span>
         <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{e.titre}</span>
       </button>
     );
@@ -642,7 +714,7 @@ function Bloc({ e, onVoir, large, rang }: { e: Ev & { col: number; cols: number 
       }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: large ? 12 : 10.5, fontWeight: 700, opacity: .9, whiteSpace: 'nowrap', minWidth: large ? 96 : 0, fontVariantNumeric: 'tabular-nums' }}>
         {point}
-        {large ? `${hhmm(e.debut)} – ${hhmm(e.fin)}` : hhmm(e.debut)}
+        {e.suite ? (large ? `suite – ${e.finReelle && cleDe(e.finReelle) === e.jour ? hhmm(e.fin) : 'toute la journée'}` : 'suite') : large ? `${hhmm(e.debut)} – ${hhmm(e.fin)}` : hhmm(e.debut)}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
         <span style={{
@@ -662,6 +734,22 @@ function Bloc({ e, onVoir, large, rang }: { e: Ev & { col: number; cols: number 
           <Ic n={e.crAFaire ? 'note' : 'coche'} t={12} ep={2.4} />{e.crAFaire ? 'Compte rendu à faire' : 'Passé'}
         </span>
       )}
+    </button>
+  );
+}
+
+/* Un rendez-vous sur plusieurs jours : une barre dans la ligne du haut de
+   chaque jour qu'il couvre, plutôt qu'un bloc dans la grille des heures
+   (il la mangerait en entier). */
+function PuceLongue({ e, onVoir, petit }: { e: Ev; onVoir: (e: Ev) => void; petit?: boolean }) {
+  const c = teinte(e);
+  const dernier = !!e.finReelle && cleDe(e.finReelle) === e.jour;
+  const quand = !e.suite ? `dès ${hhmm(e.debut)}` : dernier ? `jusqu’à ${hhmm(e.fin)}` : 'toute la journée';
+  return (
+    <button type="button" className="ag-appui" onClick={ev => { ev.stopPropagation(); onVoir(e); }} title={`${e.titre} · ${quand}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, boxSizing: 'border-box', padding: petit ? '3px 7px' : '5px 10px', borderRadius: 7, border: `1px solid ${c.trait}`, borderLeft: `3px solid ${TYPES[e.type].point}`, background: c.fond, color: c.encre, fontSize: petit ? 10.5 : 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{e.titre}</span>
+      {!petit && <span style={{ fontWeight: 600, opacity: .75, whiteSpace: 'nowrap', flexShrink: 0 }}>{quand}</span>}
     </button>
   );
 }
@@ -700,9 +788,9 @@ function creneauDe(ev: React.MouseEvent<HTMLDivElement>): string {
 function useDefilementInitial(maintenant: Date) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    /* On arrive toujours sur 8 h : la journée de travail entière est à
-       l'écran, et la ligne rouge dit où on en est. */
-    ref.current?.scrollTo({ top: (8 - H0) * PX - 12 });
+    /* On arrive toujours sur 9 h 30 (demandé par Alexandre : 8 h, c'est
+       trop tôt), et la ligne rouge dit où on en est. */
+    ref.current?.scrollTo({ top: (9.5 - H0) * PX - 6 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return ref;
@@ -721,7 +809,7 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
         <div />
         {semaine.map(k => {
           const d = depuisCle(k), estAuj = k === auj;
-          const n = evs.filter(e => e.jour === k).length;
+          const n = duJour(evs, k).length;
           return (
             <button key={k} type="button" className="ag-appui" onClick={() => onJour(k)} aria-label={`Voir le ${jourLong(d)}`}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', border: 'none', borderLeft: `1px solid ${LIGNE}`, background: estAuj ? AUJ_FOND : 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit', minWidth: 0 }}>
@@ -735,9 +823,10 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
         })}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: colonnes, borderBottom: `1px solid ${BORD}` }}>
-        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .9, color: PALE, textTransform: 'uppercase', padding: '11px 0 0 10px' }}>À faire</div>
+        <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: .2, color: PALE, textTransform: 'uppercase', padding: '11px 0 0 7px' }}>Journée</div>
         {semaine.map(k => (
           <div key={k} style={{ minHeight: 32, boxSizing: 'border-box', padding: 5, display: 'flex', flexDirection: 'column', gap: 4, borderLeft: `1px solid ${LIGNE}`, background: k === auj ? AUJ_FOND : 'white', minWidth: 0 }}>
+            {duJour(evs, k).filter(e => e.finReelle).map(e => <PuceLongue key={e.cle} e={e} onVoir={onVoirEv} petit />)}
             {taches.filter(t => t.jour === k).map(t => <PuceTache key={t.cle} t={t} petit />)}
           </div>
         ))}
@@ -746,7 +835,7 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
         <div style={{ display: 'grid', gridTemplateColumns: colonnes, height: (H1 - H0) * PX }}>
           <Heures />
           {semaine.map((k, ci) => {
-            const places = disposer(evs.filter(e => e.jour === k));
+            const places = disposer(duJour(evs, k).filter(e => !e.finReelle));
             return (
               <div key={k} onClick={ev => onCreneau(k, creneauDe(ev))} title="Cliquer pour ajouter un rendez-vous"
                 style={{ position: 'relative', borderLeft: `1px solid ${LIGNE}`, backgroundColor: k === auj ? AUJ_FOND : 'white', backgroundImage: lignesHeures, cursor: 'copy' }}>
@@ -766,13 +855,15 @@ function VueJour({ jour, evs, taches, auj, maintenant, onVoirEv, onCreneau }: {
   jour: string; evs: Ev[]; taches: Tache[]; auj: string; maintenant: Date; onVoirEv: (e: Ev) => void; onCreneau: (j: string, h: string) => void;
 }) {
   const defil = useDefilementInitial(maintenant);
-  const liste = evs.filter(e => e.jour === jour);
-  const places = disposer(liste);
+  const liste = duJour(evs, jour);
+  const places = disposer(liste.filter(e => !e.finReelle));
+  const longs = liste.filter(e => e.finReelle);
   const tJ = taches.filter(t => t.jour === jour);
   return (
     <section className="ag-vue" key={jour} style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 20, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: `1px solid ${BORD}`, flexWrap: 'wrap', minHeight: 26 }}>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: DOUX }}>{liste.length ? rdv(liste.length) : 'Aucun rendez-vous'}</span>
+        {longs.map(e => <span key={e.cle} style={{ display: 'flex', maxWidth: 360, minWidth: 0 }}><PuceLongue e={e} onVoir={onVoirEv} /></span>)}
         {tJ.map(t => <PuceTache key={t.cle} t={t} />)}
       </div>
       <div ref={defil} className="ag-grille-defil" style={{ maxHeight: 'calc(100vh - 250px)', minHeight: 360, overflowY: 'auto' }}>
@@ -803,7 +894,7 @@ function VueMois({ debutMois, evs, taches, auj, jourSel, onJour }: {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: 'minmax(128px, auto)' }}>
         {Array.from({ length: nbCases }, (_, i) => {
           const d = plusJours(debut, i); const k = cleDe(d);
-          const liste = evs.filter(e => e.jour === k);
+          const liste = duJour(evs, k);
           const t = taches.filter(x => x.jour === k);
           const hors = d.getMonth() !== debutMois.getMonth(), estAuj = k === auj;
           return (
@@ -818,7 +909,7 @@ function VueMois({ debutMois, evs, taches, auj, jourSel, onJour }: {
                 return (
                   <span key={e.cle} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, padding: '3px 6px', borderRadius: 6, background: c.fond, color: c.encre, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: TYPES[e.type].point, flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${hhmm(e.debut)} ${e.qui || e.titre}`}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${e.suite ? 'suite' : hhmm(e.debut)} ${e.qui || e.titre}`}</span>
                   </span>
                 );
               })}
@@ -832,8 +923,8 @@ function VueMois({ debutMois, evs, taches, auj, jourSel, onJour }: {
 }
 
 /* ══ Le détail d'un rendez-vous ════════════════════════════════ */
-function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier }: {
-  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void;
+function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, onRappel }: {
+  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void; onRappel: () => void;
 }) {
   const [monte, setMonte] = useState(false);
   useEffect(() => { setMonte(true); }, []);
@@ -871,7 +962,9 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier }:
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <h2 style={{ margin: 0, fontFamily: JAK, fontSize: 21, fontWeight: 800, lineHeight: 1.25, letterSpacing: -.3 }}>{ev.titre}</h2>
-          <span style={{ fontSize: 13, color: DOUX }}>{`${maj(jourLong(ev.debut))} · ${hhmm(ev.debut)} – ${hhmm(ev.fin)} (${duree(Math.round((ev.fin.getTime() - ev.debut.getTime()) / 60000))})`}</span>
+          <span style={{ fontSize: 13, color: DOUX }}>{dernierJour(ev) !== ev.jour
+            ? `Du ${jourLong(ev.debut)} à ${hhmm(ev.debut)} au ${jourLong(ev.fin)} à ${hhmm(ev.fin)}`
+            : `${maj(jourLong(ev.debut))} · ${hhmm(ev.debut)} – ${hhmm(ev.fin)} (${duree(Math.round((ev.fin.getTime() - ev.debut.getTime()) / 60000))})`}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
           {ev.qui && ligne('personne', ev.qui, ev.type === 'estimation' ? 'Propriétaire' : 'Client')}
@@ -895,6 +988,16 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier }:
         )}
         {ev.notes && (
           <div style={{ padding: '11px 13px', borderRadius: 13, background: CHOISI, fontSize: 13, lineHeight: 1.55, color: DOUX, whiteSpace: 'pre-line' }}>{ev.notes}</div>
+        )}
+        {ev.source === 'visite' && !ev.fait && ev.clientId && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', borderRadius: 14, background: ev.details?.rappelLe ? '#ecfdf5' : '#fffaf0', border: `1px solid ${ev.details?.rappelLe ? '#bfe3cf' : '#ecdcae'}` }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, background: 'white', color: ev.details?.rappelLe ? '#0b5e41' : OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={ev.details?.rappelLe ? 'coche' : 'mail'} t={16} ep={ev.details?.rappelLe ? 2.6 : 2} /></span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+              <b style={{ fontSize: 13, color: ev.details?.rappelLe ? '#0b5e41' : NAVY }}>{ev.details?.rappelLe ? libelleRappel(ev.details.rappelLe) : 'Pas encore de rappel au client'}</b>
+              <span style={{ fontSize: 11.5, color: DOUX }}>{ev.details?.rappelLe ? 'Tu peux le renvoyer si besoin.' : 'Un mail avec l’heure et l’adresse de ses visites du jour.'}</span>
+            </span>
+            <button type="button" className="ag-appui" onClick={onRappel} style={{ height: 36, padding: '0 13px', borderRadius: 10, border: 'none', background: ev.details?.rappelLe ? 'white' : NAVY, color: ev.details?.rappelLe ? NAVY : 'white', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{ev.details?.rappelLe ? 'Renvoyer' : 'Envoyer'}</button>
+          </div>
         )}
         <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           {ev.crAFaire && (
@@ -924,8 +1027,8 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
       <button key={e.cle} type="button" className="ag-ev" onClick={() => onVoirEv(e)}
         style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 16, border: `1px solid ${c.trait}`, background: c.fond, color: c.encre, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', animationDelay: `${40 + i * 45}ms` }}>
         <span style={{ display: 'flex', flexDirection: 'column', minWidth: 50, fontVariantNumeric: 'tabular-nums' }}>
-          <b style={{ fontFamily: JAK, fontSize: 15 }}>{hhmm(e.debut)}</b>
-          <span style={{ fontSize: 11, opacity: .75 }}>{duree(Math.round((e.fin.getTime() - e.debut.getTime()) / 60000))}</span>
+          <b style={{ fontFamily: JAK, fontSize: 15 }}>{e.suite ? 'Suite' : hhmm(e.debut)}</b>
+          <span style={{ fontSize: 11, opacity: .75 }}>{e.finReelle ? `→ ${JOURS[e.finReelle.getDay()].slice(0, 3)}. ${e.finReelle.getDate()}` : duree(Math.round((e.fin.getTime() - e.debut.getTime()) / 60000))}</span>
         </span>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: TYPES[e.type].point, flexShrink: 0 }} />
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
@@ -936,7 +1039,7 @@ function VueTelephone({ vue, setVue, jour, setJour, semaine, evs, taches, auj, t
       </button>
     );
   };
-  const listeDe = (k: string) => evs.filter(e => e.jour === k);
+  const listeDe = (k: string) => duJour(evs, k);
   /* Aujourd'hui, la ligne rouge de l'ordinateur devient un repère entre ce
      qui est passé et ce qui vient. */
   const cartesDe = (k: string) => {
@@ -1069,7 +1172,12 @@ function BoutonFlottant({ onClick }: { onClick: () => void }) {
 
 /* ══ Créer / modifier un rendez-vous ═══════════════════════════ */
 
-const CHAMP: React.CSSProperties = { width: '100%', boxSizing: 'border-box', height: 44, padding: '0 14px', borderRadius: 12, border: `1.5px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 14, fontWeight: 600, outline: 'none', fontFamily: 'inherit' };
+const CHAMP: React.CSSProperties = { width: '100%', boxSizing: 'border-box', height: 48, padding: '0 14px', borderRadius: 14, border: `1.5px solid ${BORD}`, background: '#fbfcfe', color: NAVY, fontSize: 14, fontWeight: 600, outline: 'none', fontFamily: 'inherit' };
+/* Les durées proposées. « Journée » cale aussi le début à 9 h. */
+const DUREES: { v: number; lib: string }[] = [
+  { v: 30, lib: '30 min' }, { v: 60, lib: '1 h' }, { v: 90, lib: '1 h 30' }, { v: 120, lib: '2 h' },
+  { v: 240, lib: 'Demi-journée' }, { v: 540, lib: 'Journée' },
+];
 
 function Libelle({ texte, aide }: { texte: string; aide?: string }) {
   return (
@@ -1093,6 +1201,228 @@ function Puces<T extends string | number>({ options, valeur, onChange }: { optio
   );
 }
 
+/* ══ Le choix du client ════════════════════════════════════════
+   Un champ de recherche plutôt qu'un menu déroulant : avec beaucoup de
+   dossiers, on tape trois lettres et on choisit. Sans rien taper, les
+   dossiers les plus récents. */
+const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const initiales = (nom: string) => nom.split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]).join('').toUpperCase() || '?';
+
+function Pastille({ nom, taille = 38 }: { nom: string; taille?: number }) {
+  return (
+    <span style={{ width: taille, height: taille, borderRadius: taille * .32, background: NAVY, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: JAK, fontSize: taille * .36, fontWeight: 800, letterSpacing: .3 }}>{initiales(nom)}</span>
+  );
+}
+
+function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[]; valeur: string; fige: boolean; onChange: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [actif, setActif] = useState(0);
+  const choisi = dossiers.find(d => d.rechercheId === valeur) || null;
+
+  if (choisi) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, border: `1.5px solid ${OR}`, background: '#fffaf0' }}>
+        <Pastille nom={choisi.nom} />
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+          <b style={{ fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{choisi.nom}</b>
+          <span style={{ fontSize: 12, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[choisi.recherche, choisi.resume].filter(Boolean).join(' · ') || 'Recherche en cours'}</span>
+        </span>
+        {!fige && (
+          <button type="button" onClick={() => { onChange(''); setQ(''); }}
+            style={{ height: 34, padding: '0 12px', borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Changer</button>
+        )}
+      </div>
+    );
+  }
+
+  const t = sansAccent(q.trim());
+  const liste = t
+    ? dossiers.filter(d => sansAccent(`${d.nom} ${d.recherche} ${d.resume}`).includes(t)).slice(0, 8)
+    : [...dossiers].sort((a, b) => b.cree.localeCompare(a.cree)).slice(0, 5);
+  const choisir = (d: Dossier) => { onChange(d.rechercheId); setQ(''); };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: PALE, display: 'flex', pointerEvents: 'none' }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7" /><path d="m20.5 20.5-4.7-4.7" /></svg>
+        </span>
+        <input className="ag-champ" value={q} autoComplete="off" placeholder="Tape le nom du client…" aria-label="Chercher un client"
+          onChange={e => { setQ(e.target.value); setActif(0); }}
+          onKeyDown={e => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActif(i => Math.min(liste.length - 1, i + 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActif(i => Math.max(0, i - 1)); }
+            else if (e.key === 'Enter' && liste[actif]) { e.preventDefault(); choisir(liste[actif]); }
+          }}
+          style={{ ...CHAMP, paddingLeft: 40 }} />
+      </div>
+      <div role="listbox" aria-label="Dossiers" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${BORD}`, borderRadius: 14, background: 'white', overflow: 'hidden' }}>
+        <span style={{ padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE }}>{t ? (liste.length ? `${liste.length === 8 ? '8 premiers' : liste.length} résultat${liste.length > 1 ? 's' : ''}` : 'Aucun dossier') : 'Dossiers récents'}</span>
+        {t && liste.length === 0 && <span style={{ padding: '4px 12px 12px', fontSize: 12.5, color: DOUX }}>{`Aucun client ne correspond à « ${q.trim()} ».`}</span>}
+        {liste.map((d, i) => (
+          <button key={d.rechercheId} type="button" role="option" aria-selected={i === actif} onClick={() => choisir(d)} onMouseEnter={() => setActif(i)}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 12px', border: 'none', borderTop: i ? `1px solid ${LIGNE}` : 'none', background: i === actif ? '#f6f8fc' : 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY }}>
+            <Pastille nom={d.nom} taille={34} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+              <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.nom}</b>
+              <span style={{ fontSize: 11.5, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[d.plusieurs ? d.recherche : '', d.resume].filter(Boolean).join(' · ') || d.recherche}</span>
+            </span>
+            {d.emails.length === 0 && <span title="Pas d’adresse mail" style={{ fontSize: 10.5, fontWeight: 700, color: PALE, flexShrink: 0 }}>sans mail</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══ Les pièces de la fenêtre « Nouveau rendez-vous » ═════════════
+   Des sections numérotées qui entrent l'une après l'autre, des champs avec
+   leur icône, et des sélecteurs maison pour la date et l'heure : le champ
+   du navigateur était minuscule et différent sur chaque appareil. */
+
+function Section({ n, ico, titre, aide, rang, children }: { n: number; ico: string; titre: string; aide?: string; rang: number; children: React.ReactNode }) {
+  return (
+    <section className="ag-section" style={{ animationDelay: `${60 + rang * 70}ms`, background: 'white', border: `1px solid ${BORD}`, borderRadius: 18, padding: '16px 18px 18px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 1px 2px rgba(16,24,40,.04), 0 12px 28px -24px rgba(16,24,40,.35)' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+        <span style={{ position: 'relative', width: 34, height: 34, borderRadius: 11, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Ic n={ico} t={16} ep={2.1} />
+          <span style={{ position: 'absolute', top: -5, right: -5, width: 17, height: 17, borderRadius: '50%', background: NAVY, color: OR, fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: JAK }}>{n}</span>
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+          <b style={{ fontFamily: JAK, fontSize: 15, fontWeight: 800 }}>{titre}</b>
+          {aide && <span style={{ fontSize: 12, color: PALE }}>{aide}</span>}
+        </span>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/* Un champ texte avec son icône à gauche. */
+function ChampIcone({ ico, children }: { ico: string; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <span style={{ position: 'absolute', left: 14, top: 14, color: PALE, display: 'flex', pointerEvents: 'none' }}><Ic n={ico} t={17} /></span>
+      {children}
+    </div>
+  );
+}
+
+/* Le « champ » de la date ou de l'heure : un gros bouton qui dit la valeur
+   en clair, et s'ouvre sur son sélecteur juste dessous. */
+function BoutonChamp({ ico, valeur, aide, ouvert, onClick, etiquette }: { ico: string; valeur: string; aide?: string; ouvert: boolean; onClick: () => void; etiquette: string }) {
+  return (
+    <button type="button" className="ag-champ-bouton" aria-expanded={ouvert} aria-label={etiquette} onClick={onClick} data-ouvert={ouvert || undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 58, padding: '8px 14px 8px 9px', boxSizing: 'border-box', borderRadius: 15, border: `1.5px solid ${ouvert ? OR : BORD}`, background: ouvert ? '#fffaf0' : '#fbfcfe', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY, boxShadow: ouvert ? '0 0 0 4px rgba(201,168,76,.14)' : 'none' }}>
+      <span style={{ width: 40, height: 40, borderRadius: 12, background: ouvert ? OR : '#fbf4e1', color: ouvert ? NAVY : OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .2s ease, color .2s ease' }}><Ic n={ico} t={18} ep={2} /></span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+        <b style={{ fontFamily: JAK, fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{valeur}</b>
+        {aide && <span style={{ fontSize: 12, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{aide}</span>}
+      </span>
+      <span className="ag-chevron" style={{ color: PALE, display: 'flex', transform: ouvert ? 'rotate(180deg)' : 'none', transition: 'transform .3s cubic-bezier(.2,.9,.3,1)' }}><Ic n="chevB" t={17} /></span>
+    </button>
+  );
+}
+
+/* Un panneau qui s'ouvre se montre en entier : la fenêtre défile jusqu'à lui. */
+function useMontrer<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const t = setTimeout(() => ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+    return () => clearTimeout(t);
+  }, []);
+  return ref;
+}
+
+/* Le calendrier : un mois, les jours déjà chargés marqués d'un point, et des
+   raccourcis. Choisir un jour referme le panneau. */
+function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string; onChoisir: (k: string) => void; min?: string; occupes: Record<string, number> }) {
+  const [mois, setMois] = useState(() => { const d = depuisCle(valeur || cleDe(new Date())); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const auj = cleDe(new Date());
+  const debut = lundiDe(mois);
+  const nbCases = Math.ceil((((mois.getDay() + 6) % 7) + new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate()) / 7) * 7;
+  const lundiProchain = plusJours(lundiDe(new Date()), 7);
+  const raccourcis = [
+    { lib: 'Aujourd’hui', k: auj },
+    { lib: 'Demain', k: cleDe(plusJours(new Date(), 1)) },
+    { lib: 'Lundi prochain', k: cleDe(lundiProchain) },
+  ].filter(r => !min || r.k >= min);
+  const fl: React.CSSProperties = { width: 34, height: 34, borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
+  const ref = useMontrer<HTMLDivElement>();
+  return (
+    <div ref={ref} className="ag-panneau" style={{ border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {raccourcis.map(r => (
+          <button key={r.lib} type="button" className="ag-appui" onClick={() => onChoisir(r.k)}
+            style={{ height: 32, padding: '0 12px', borderRadius: 10, border: `1px solid ${r.k === valeur ? OR : BORD}`, background: r.k === valeur ? '#fffaf0' : 'white', color: NAVY, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{r.lib}</button>
+        ))}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' }}>
+          <button type="button" className="ag-appui" aria-label="Mois précédent" onClick={() => setMois(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={fl}><Ic n="chevG" t={16} /></button>
+          <b style={{ fontFamily: JAK, fontSize: 14, fontWeight: 800, minWidth: 128, textAlign: 'center' }}>{maj(`${MOIS[mois.getMonth()]} ${mois.getFullYear()}`)}</b>
+          <button type="button" className="ag-appui" aria-label="Mois suivant" onClick={() => setMois(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={fl}><Ic n="chevD" t={16} /></button>
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+        {LETTRES.map(l => <span key={l} style={{ textAlign: 'center', fontSize: 10.5, fontWeight: 800, letterSpacing: .6, color: PALE, textTransform: 'uppercase', paddingBottom: 2 }}>{l}</span>)}
+        {Array.from({ length: nbCases }, (_, i) => {
+          const d = plusJours(debut, i); const k = cleDe(d);
+          const hors = d.getMonth() !== mois.getMonth(), choisi = k === valeur, estAuj = k === auj;
+          const interdit = !!min && k < min;
+          const n = occupes[k] || 0;
+          return (
+            <button key={k} type="button" className="ag-jour" disabled={interdit} onClick={() => onChoisir(k)} aria-pressed={choisi} aria-label={`${maj(jourLong(d))}${n ? `, ${rdv(n)}` : ''}`}
+              style={{ position: 'relative', height: 42, borderRadius: 12, border: estAuj && !choisi ? `1.5px solid ${OR}` : '1.5px solid transparent', background: choisi ? NAVY : 'transparent', color: choisi ? OR : interdit ? '#cfd6e0' : NAVY, opacity: hors && !choisi ? .45 : 1, fontFamily: JAK, fontSize: 14, fontWeight: choisi || estAuj ? 800 : 600, cursor: interdit ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {d.getDate()}
+              {n > 0 && <span style={{ position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2 }}>{Array.from({ length: Math.min(3, n) }, (_, j) => <span key={j} style={{ width: 4, height: 4, borderRadius: '50%', background: choisi ? OR : '#9aa7b9' }} />)}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <span style={{ fontSize: 11.5, color: PALE }}>Les points disent combien de rendez-vous ce jour-là.</span>
+    </div>
+  );
+}
+
+/* L'heure : les heures de la journée par moments, puis les minutes. Une
+   heure déjà prise ce jour-là porte un point. Choisir les minutes referme. */
+function PanneauHeure({ valeur, onChoisir, onFini, prises }: { valeur: string; onChoisir: (h: string) => void; onFini: () => void; prises: Set<number> }) {
+  const [hh, mm] = (valeur || '10:00').split(':').map(Number);
+  const moments: { lib: string; heures: number[] }[] = [
+    { lib: 'Matin', heures: [7, 8, 9, 10, 11, 12] },
+    { lib: 'Après-midi', heures: [13, 14, 15, 16, 17] },
+    { lib: 'Soir', heures: [18, 19, 20, 21] },
+  ];
+  const minutes = [0, 15, 30, 45].includes(mm) ? [0, 15, 30, 45] : [0, 15, 30, 45, mm].sort((a, b) => a - b);
+  const ref = useMontrer<HTMLDivElement>();
+  const puce = (actif: boolean): React.CSSProperties => ({ position: 'relative', height: 40, borderRadius: 11, border: `1.5px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white', color: actif ? OR : NAVY, fontFamily: JAK, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' });
+  return (
+    <div ref={ref} className="ag-panneau" style={{ border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
+      {moments.map(m => (
+        <div key={m.lib} className="ag-heure-ligne" style={{ display: 'grid', gridTemplateColumns: '92px 1fr', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE }}>{m.lib}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6 }}>
+            {m.heures.map(h => (
+              <button key={h} type="button" className="ag-appui" aria-pressed={h === hh} onClick={() => onChoisir(`${pad(h)}:${pad(mm || 0)}`)} title={prises.has(h) ? 'Tu as déjà un rendez-vous à cette heure-là' : undefined} style={puce(h === hh)}>
+                {`${h} h`}
+                {prises.has(h) && <span style={{ position: 'absolute', top: 5, right: 6, width: 6, height: 6, borderRadius: '50%', background: h === hh ? OR : '#d6543c' }} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="ag-heure-ligne" style={{ display: 'grid', gridTemplateColumns: '92px 1fr', alignItems: 'center', gap: 10, paddingTop: 12, borderTop: `1px dashed ${BORD}` }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE }}>Minutes</span>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${minutes.length}, minmax(0, 1fr))`, gap: 6 }}>
+          {minutes.map(m => (
+            <button key={m} type="button" className="ag-appui" aria-pressed={m === mm} onClick={() => { onChoisir(`${pad(hh)}:${pad(m)}`); onFini(); }} style={puce(m === mm)}>{`${hh} h ${pad(m)}`}</button>
+          ))}
+        </div>
+      </div>
+      <span style={{ fontSize: 11.5, color: PALE, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d6543c' }} />déjà un rendez-vous à cette heure-là</span>
+    </div>
+  );
+}
+
 function Interrupteur({ actif, onChange, titre, sous, desactive }: { actif: boolean; onChange: () => void; titre: string; sous: string; desactive?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={actif} onClick={desactive ? undefined : onChange} disabled={desactive}
@@ -1112,11 +1442,13 @@ function texteMail(o: { type: TypeRdv; prenom: string; debut: Date; lieu: string
   const quand = `${jourLong(o.debut)} à ${heureFr(o.debut)}`;
   let objet = '', phrase = '';
   if (o.type === 'visite') {
+    /* La liste des biens n'est pas dans le texte : le mail « vos visites »
+       la montre dessous, avec photo, adresse et itinéraire. */
     objet = `${o.biens.length > 1 ? `${o.biens.length} visites confirmées` : 'Visite confirmée'} · ${quand}`;
     phrase = o.biens.length > 1
-      ? `Je vous confirme nos visites du ${quand} :\n${o.biens.map(b => `- ${b.titre}${b.lieu ? ` (${b.lieu})` : ''}`).join('\n')}`
-      : `Je vous confirme notre visite du ${quand}${o.biens[0] ? ` : ${o.biens[0].titre}${o.biens[0].lieu ? `, ${o.biens[0].lieu}` : ''}` : ''}.`;
-    phrase += '\n\nVous retrouverez aussi cette visite dans votre espace.';
+      ? `Je vous confirme nos ${o.biens.length} visites du ${quand}. Le programme est juste en dessous, avec les adresses.`
+      : `Je vous confirme notre visite du ${quand}. L’adresse est juste en dessous.`;
+    phrase += `\n\nVous ${o.biens.length > 1 ? 'les' : 'la'} retrouverez aussi dans votre espace.`;
   } else if (o.type === 'appel') {
     objet = `${o.mode === 'visio' ? 'Visio' : 'Appel'} prévu · ${quand}`;
     phrase = o.mode === 'visio'
@@ -1140,8 +1472,8 @@ type Formulaire = {
   mode: string; etape: string; proprietaire: string; telephone: string;
 };
 
-function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregistre }: {
-  modale: NonNullable<Modale>; dossiers: Dossier[]; relances: any[]; tableAbsente: boolean; onFerme: () => void; onEnregistre: () => void;
+function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onEnregistre }: {
+  modale: NonNullable<Modale>; dossiers: Dossier[]; relances: any[]; tableAbsente: boolean; evs: Ev[]; onFerme: () => void; onEnregistre: () => void;
 }) {
   const ev = modale.mode === 'modifier' ? modale.ev : null;
   const init = useMemo<Formulaire>(() => {
@@ -1159,10 +1491,10 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
       };
     }
     return {
-      type: 'visite', rechercheId: '', choisis: {},
+      type: 'visite', rechercheId: modale.mode === 'nouveau' ? modale.rechercheId || '' : '', choisis: {},
       date: modale.mode === 'nouveau' ? modale.jour : cleDe(new Date()), heure: modale.mode === 'nouveau' ? modale.heure : '10:00',
       duree: 60, titre: null, lieu: null, contact: null, notes: '',
-      rappel: 'veille', prevenir: true, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '',
+      rappel: 'veille', prevenir: false, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '',
     };
   }, [ev, modale, relances]);
   const [f, setF] = useState<Formulaire>(init);
@@ -1171,6 +1503,13 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
   const [monte, setMonte] = useState(false);
   useEffect(() => { setMonte(true); }, []);
   const maj_ = (o: Partial<Formulaire>) => setF(x => ({ ...x, ...o }));
+  /* Un seul sélecteur ouvert à la fois : date, heure, ou la fin. */
+  const [panneau, setPanneau] = useState<null | 'date' | 'heure' | 'finDate' | 'finHeure'>(null);
+  const basculer = (q: 'date' | 'heure' | 'finDate' | 'finHeure') => setPanneau(x => (x === q ? null : q));
+  /* « Personnalisé » : la fin se règle à la main, sur plusieurs jours si
+     besoin. Ouvert d'office pour un rendez-vous dont la durée ne tombe sur
+     aucun des choix proposés. */
+  const [perso, setPerso] = useState(() => !DUREES.some(d => d.v === init.duree));
 
   const dossier = dossiers.find(d => d.rechercheId === f.rechercheId) || null;
   const avecDossier = f.type !== 'perso' && f.type !== 'estimation';
@@ -1203,6 +1542,28 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
   const [hh, mm] = (f.heure || '10:00').split(':').map(Number);
   const debut = depuisCle(f.date || cleDe(new Date())); debut.setHours(hh || 0, mm || 0, 0, 0);
   const fin = new Date(debut.getTime() + f.duree * 60000);
+  const surPlusieurs = cleDe(new Date(fin.getTime() - 1)) !== cleDe(debut);
+  const changerFin = (k: string, h: string) => {
+    const [a, b] = h.split(':').map(Number);
+    const x = depuisCle(k); x.setHours(a || 0, b || 0, 0, 0);
+    maj_({ duree: Math.max(15, Math.round((x.getTime() - debut.getTime()) / 60000)) });
+  };
+  const choisirDuree = (v: number) => {
+    setPerso(false);
+    maj_(v === 540 ? { duree: 540, heure: '09:00' } : { duree: v });
+  };
+  /* Ce qui est déjà dans l'agenda : un point par jour chargé dans le
+     calendrier, un point rouge sur les heures prises, et l'alerte si le
+     nouveau rendez-vous en chevauche un autre. */
+  const autres = evs.filter(e => !ev || e.cle !== ev.cle);
+  const occupes: Record<string, number> = {};
+  autres.forEach(e => joursCouverts(e).forEach(k => { occupes[k] = (occupes[k] || 0) + 1; }));
+  const duJourChoisi = duJour(autres, f.date || cleDe(new Date()));
+  const prises = new Set<number>();
+  duJourChoisi.forEach(e => { for (let h = e.debut.getHours(); h < Math.max(e.debut.getHours() + 1, e.fin.getHours() + (e.fin.getMinutes() ? 1 : 0)); h++) prises.add(h); });
+  const chevauche = autres.filter(e => e.debut < fin && e.fin > debut).sort((a, b) => a.debut.getTime() - b.debut.getTime());
+  const ecartJours = Math.round((depuisCle(f.date || cleDe(new Date())).getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
+  const relatif = ecartJours === 0 ? 'Aujourd’hui' : ecartJours === 1 ? 'Demain' : ecartJours === -1 ? 'Hier' : ecartJours > 1 ? `Dans ${ecartJours} jours` : `Il y a ${-ecartJours} jours`;
   const peutPrevenir = avecDossier && !!dossier && dossier.emails.length > 0;
   const mail = peutPrevenir ? texteMail({ type: f.type, prenom: dossier!.prenom, debut, lieu, biens: choisis.map(b => ({ titre: b.titre || b.ville || 'Bien', lieu: lieuDuBien(b) })), mode: f.mode, etape: f.etape }) : null;
   const rdvImpossible = f.type !== 'visite' && tableAbsente;
@@ -1235,6 +1596,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
     /* 1. Le rappel, dans les Relances. */
     let relanceId: string | null = ev?.relanceId || null;
     let relanceNeuve: string | null = null;
+    let visitesCreees: string[] = [];
     if (avecDossier && dossier) {
       const quand = quandRappel;
       const note = `Rendez-vous : ${titre} · ${jourTxt}`;
@@ -1270,11 +1632,12 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
         }).in('id', ev.ids);
         if (error) { await echec("La visite n'a pas pu être modifiée.\n\n" + error.message); return; }
       } else {
-        const { error } = await supabase.from('visites').insert(choisis.map(b => ({
+        const { data: creees, error } = await supabase.from('visites').insert(choisis.map(b => ({
           client_id: dossier!.clientId, recherche_id: dossier!.rechercheId, bien_id: b.id, statut: 'a_venir',
           date_visite: f.date, heure: f.heure, duree_min: f.duree, contact_agence: contact || null,
           commentaire: f.notes || null, rappel_relance_id: relanceId,
-        })));
+        }))).select('id');
+        visitesCreees = (creees || []).map((x: any) => x.id);
         if (error) {
           await echec("La visite n'a pas pu être créée.\n\n" + error.message + (/duree_min|rappel_relance_id/.test(error.message) ? '\n\nLance d’abord le SQL de l’agenda dans Supabase (agenda-rendez-vous.sql).' : ''));
           return;
@@ -1306,7 +1669,14 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
 
     /* 3. Le mail au client. Le rendez-vous est déjà enregistré : un échec ici
        ne l'annule pas, on le dit simplement. */
-    if (f.prevenir && mail && dossier) {
+    const idsVisites = f.type === 'visite' ? (ev ? ev.ids : visitesCreees) : [];
+    if (f.prevenir && mail && dossier && idsVisites.length) {
+      /* Une visite : le mail « vos visites » (photo, adresse, itinéraire),
+         qui note aussi la date d'envoi sur chaque visite. */
+      const r = await envoyerMailVisites({ clientId: dossier.clientId, rechercheId: dossier.rechercheId, visitesIds: idsVisites, objet: mail.objet, corps: mail.corps });
+      if (r.erreur) alert(`La visite est bien enregistrée, mais le mail n'est pas parti.\n\n${r.erreur}\n\nTu peux le renvoyer depuis la page Visites.`);
+      else if (r.avertissement) alert(`La visite est enregistrée et le mail est parti, mais sa date n'a pas pu être notée.\n\nLance le SQL rappel-visites.sql dans Supabase.`);
+    } else if (f.prevenir && mail && dossier) {
       try {
         const res = await fetch('/api/send-mail', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1322,31 +1692,49 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
     onEnregistre();
   }
 
+  /* Un clic à côté, ou la touche Échap, ne ferme PAS la fenêtre : ce qui
+     était commencé serait perdu. Seuls ✕ et « Annuler » la ferment. La
+     fenêtre bouge un peu et le pied de page le rappelle. */
+  const [retenue, setRetenue] = useState(0);
+  const feuille = useRef<HTMLElement>(null);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onFerme(); };
+    if (!retenue) return;
+    /* Relancer la secousse à chaque clic, sans redessiner le formulaire. */
+    const el = feuille.current;
+    if (el) { el.removeAttribute('data-retenue'); void el.offsetWidth; el.setAttribute('data-retenue', ''); }
+    const t = setTimeout(() => setRetenue(0), 2600);
+    return () => clearTimeout(t);
+  }, [retenue]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setRetenue(Date.now()); };
     window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc);
-  }, [onFerme]);
+  }, []);
   if (!monte) return null;
 
   const typesDispo = ev ? (ev.source === 'visite' ? ['visite'] as TypeRdv[] : ORDRE.filter(t => t !== 'visite')) : ORDRE;
 
   return createPortal(
     <div className="ag-voile ag-modale-fond" style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
-      onClick={e => { if (e.target === e.currentTarget) onFerme(); }}>
+      onClick={e => { if (e.target === e.currentTarget) setRetenue(Date.now()); }}>
       <StylesAgenda />
       <style>{`
+        @keyframes agRetenue{0%,100%{transform:none}20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}}
+        .ag-modale[data-retenue]{animation:agRetenue .42s ease both !important}
+        @media (prefers-reduced-motion: reduce){.ag-modale[data-retenue]{animation:none !important}}
         @media (max-width: 760px){
           .ag-modale-fond{padding:0 !important;align-items:flex-end !important}
           .ag-modale{border-radius:22px 22px 0 0 !important;max-height:96dvh !important;height:auto !important}
           .ag-modale-corps{flex-direction:column !important;overflow-y:auto !important}
-          .ag-modale-apercu{width:auto !important;border-left:none !important;border-top:1px solid ${BORD}}
+          .ag-modale-apercu{width:auto !important;border-left:none !important;border-top:1px solid ${BORD};flex:none !important;overflow:visible !important}
+          .ag-modale-form{flex:none !important;overflow:visible !important;padding:14px 12px 20px !important}
+          .ag-quand{grid-template-columns:1fr !important}
           .ag-modale-types{grid-template-columns:repeat(2, minmax(0, 1fr)) !important}
           .ag-modale-pied{padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px)) !important}
           .ag-modale-pied > span{flex-basis:100% !important}
           .ag-modale-pied > button{flex:1 1 0}
         }
       `}</style>
-      <section className="ag-modale ag-feuille" role="dialog" aria-label={ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}
+      <section ref={feuille} className="ag-modale ag-feuille" role="dialog" aria-modal="true" aria-label={ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}
         style={{ width: '100%', maxWidth: 1040, height: 'min(820px, 94dvh)', background: 'white', borderRadius: 24, boxShadow: '0 40px 100px -30px rgba(10,15,24,.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', background: NAVY, color: 'white', flexShrink: 0 }}>
           <span style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="calendrier" t={19} ep={1.9} /></span>
@@ -1358,126 +1746,170 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
         </header>
 
         <div className="ag-modale-corps" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Libelle texte="Type de rendez-vous" />
-              <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                {typesDispo.map(k => {
-                  const t = TYPES[k], actif = f.type === k;
-                  return (
-                    <button key={k} type="button" className="ag-appui" aria-pressed={actif}
-                      onClick={() => maj_({ type: k, titre: null, lieu: null, duree: k === 'appel' ? 30 : k === 'visite' || k === 'signature' ? 60 : f.duree, prevenir: k === 'visite' || k === 'client' || k === 'signature' })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 12px', borderRadius: 14, border: `1.5px solid ${actif ? t.point : BORD}`, background: actif ? t.fond : 'white', color: actif ? t.encre : NAVY, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', boxShadow: actif ? `0 10px 22px -16px ${t.point}` : 'none' }}>
-                      <span style={{ width: 30, height: 30, borderRadius: 9, background: actif ? t.point : '#f1f4f8', color: actif ? 'white' : DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={t.ico} t={16} /></span>
-                      {t.nom}
-                    </button>
-                  );
-                })}
+          <div className="ag-modale-form" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px 26px', display: 'flex', flexDirection: 'column', gap: 14, background: '#f5f7fa' }}>
+            <Section n={1} ico="calendrier" titre="Quel rendez-vous" rang={0}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                  {typesDispo.map(k => {
+                    const t = TYPES[k], actif = f.type === k;
+                    return (
+                      <button key={k} type="button" className="ag-appui" aria-pressed={actif}
+                        onClick={() => maj_({ type: k, titre: null, lieu: null, duree: k === 'appel' ? 30 : k === 'visite' || k === 'signature' ? 60 : f.duree })}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 12px', borderRadius: 14, border: `1.5px solid ${actif ? t.point : BORD}`, background: actif ? t.fond : 'white', color: actif ? t.encre : NAVY, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', boxShadow: actif ? `0 10px 22px -16px ${t.point}` : 'none' }}>
+                        <span style={{ width: 30, height: 30, borderRadius: 9, background: actif ? t.point : '#f1f4f8', color: actif ? 'white' : DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={t.ico} t={16} /></span>
+                        {t.nom}
+                      </button>
+                    );
+                  })}
+                </div>
+                {rdvImpossible && <span style={{ fontSize: 12.5, color: '#92400e' }}>Ce type de rendez-vous s’enregistrera une fois le SQL de l’agenda lancé dans Supabase.</span>}
               </div>
-              {rdvImpossible && <span style={{ fontSize: 12.5, color: '#92400e' }}>Ce type de rendez-vous s’enregistrera une fois le SQL de l’agenda lancé dans Supabase.</span>}
-            </div>
+              {f.type === 'appel' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Comment" /><Puces options={[{ v: 'tel', lib: 'Téléphone' }, { v: 'visio', lib: 'Visio' }]} valeur={f.mode} onChange={v => maj_({ mode: v, titre: null, lieu: null })} /></div>
+              )}
+              {f.type === 'signature' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Quelle signature" /><Puces options={[{ v: 'offre', lib: 'Offre' }, { v: 'compromis', lib: 'Compromis' }, { v: 'acte', lib: 'Acte' }]} valeur={f.etape} onChange={v => maj_({ etape: v, titre: null })} /></div>
+              )}
+              {f.type === 'estimation' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Propriétaire" /><input className="ag-champ" value={f.proprietaire} onChange={e => maj_({ proprietaire: e.target.value, titre: null })} placeholder="M. et Mme Roche" style={CHAMP} aria-label="Propriétaire" /></div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Téléphone" /><input className="ag-champ" value={f.telephone} onChange={e => maj_({ telephone: e.target.value })} placeholder="06 …" style={CHAMP} aria-label="Téléphone du propriétaire" /></div>
+                </div>
+              )}
+            </Section>
 
             {avecDossier && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Libelle texte="Dossier client" aide="le rendez-vous se range dans sa fiche" />
-                <select className="ag-champ" value={f.rechercheId} disabled={!!ev && ev.source === 'visite'}
-                  onChange={e => maj_({ rechercheId: e.target.value, choisis: {}, titre: null, lieu: null, contact: null })}
-                  style={{ ...CHAMP, cursor: 'pointer' }} aria-label="Dossier client">
-                  <option value="">Choisir un client…</option>
-                  {dossiers.map(d => <option key={d.rechercheId} value={d.rechercheId}>{d.libelle}</option>)}
-                </select>
+              <Section n={2} ico="personne" titre="Pour quel client" aide="Le rendez-vous se range dans sa fiche." rang={1}>
+                <ChoixDossier dossiers={dossiers} valeur={f.rechercheId} fige={!!ev && ev.source === 'visite'}
+                  onChange={id => maj_({ rechercheId: id, choisis: {}, titre: null, lieu: null, contact: null })} />
+              {f.type === 'visite' && dossier && !ev && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Libelle texte="Biens à visiter" aide={choisis.length ? `${choisis.length} choisi${choisis.length > 1 ? 's' : ''} · Sélection et Présentés` : 'Sélection et Présentés'} />
+                  {biens.length === 0 && <span style={{ fontSize: 12.5, color: PALE }}>Ce dossier n’a pas encore de bien en Sélection ou en Présentés.</span>}
+                  {biens.map(b => {
+                    const actif = !!f.choisis[b.id];
+                    const prix = b.prix_acquereur || b.prix_vendeur;
+                    return (
+                      <button key={b.id} type="button" className="ag-appui" aria-pressed={actif}
+                        onClick={() => maj_({ choisis: { ...f.choisis, [b.id]: !actif }, titre: null, lieu: null, contact: null })}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px 7px 7px', borderRadius: 14, border: `1.5px solid ${actif ? OR : BORD}`, background: actif ? '#fffaf0' : 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit' }}>
+                        <span style={{ width: 54, height: 42, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
+                          {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}>
+                          <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || b.ville || 'Bien'}</b>
+                          <span style={{ fontSize: 12, color: DOUX }}>{[prix ? `${Number(prix).toLocaleString('fr-FR')} €` : '', b.etape === 'presente' ? 'Présenté' : 'En sélection'].filter(Boolean).join(' · ')}</span>
+                        </span>
+                        <span style={{ width: 22, height: 22, boxSizing: 'border-box', borderRadius: 7, border: `1.5px solid ${actif ? OR : '#c3ccda'}`, background: actif ? OR : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>{actif && <Ic n="coche" t={13} ep={3} />}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {f.type === 'visite' && (dossier || ev) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <Libelle texte="Contact sur place" aide="l’agence ou le vendeur" />
+                  <ChampIcone ico="tel">
+                    <input className="ag-champ" value={contact} onChange={e => maj_({ contact: e.target.value })} placeholder="Agence du Parc · M. Lambert, 06 …" style={{ ...CHAMP, paddingLeft: 42 }} aria-label="Contact sur place" />
+                  </ChampIcone>
               </div>
+            )}
+              </Section>
             )}
 
-            {f.type === 'visite' && dossier && !ev && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Libelle texte="Biens à visiter" aide={choisis.length ? `${choisis.length} choisi${choisis.length > 1 ? 's' : ''} · Sélection et Présentés` : 'Sélection et Présentés'} />
-                {biens.length === 0 && <span style={{ fontSize: 12.5, color: PALE }}>Ce dossier n’a pas encore de bien en Sélection ou en Présentés.</span>}
-                {biens.map(b => {
-                  const actif = !!f.choisis[b.id];
-                  const prix = b.prix_acquereur || b.prix_vendeur;
-                  return (
-                    <button key={b.id} type="button" className="ag-appui" aria-pressed={actif}
-                      onClick={() => maj_({ choisis: { ...f.choisis, [b.id]: !actif }, titre: null, lieu: null, contact: null })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px 7px 7px', borderRadius: 14, border: `1.5px solid ${actif ? OR : BORD}`, background: actif ? '#fffaf0' : 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit' }}>
-                      <span style={{ width: 54, height: 42, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
-                        {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}>
-                        <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || b.ville || 'Bien'}</b>
-                        <span style={{ fontSize: 12, color: DOUX }}>{[prix ? `${Number(prix).toLocaleString('fr-FR')} €` : '', b.etape === 'presente' ? 'Présenté' : 'En sélection'].filter(Boolean).join(' · ')}</span>
-                      </span>
-                      <span style={{ width: 22, height: 22, boxSizing: 'border-box', borderRadius: 7, border: `1.5px solid ${actif ? OR : '#c3ccda'}`, background: actif ? OR : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>{actif && <Ic n="coche" t={13} ep={3} />}</span>
-                    </button>
-                  );
-                })}
+            <Section n={avecDossier ? 3 : 2} ico="horloge" titre="Quand" rang={2}
+              aide={surPlusieurs ? `Du ${jourLong(debut)} à ${hhmm(debut)} au ${jourLong(fin)} à ${hhmm(fin)}` : `${maj(jourLong(debut))}, de ${hhmm(debut)} à ${hhmm(fin)}`}>
+              <div className="ag-quand" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                <BoutonChamp ico="calendrier" etiquette="Date" ouvert={panneau === 'date'} onClick={() => basculer('date')}
+                  valeur={maj(jourLong(debut))} aide={relatif} />
+                <BoutonChamp ico="horloge" etiquette="Heure" ouvert={panneau === 'heure'} onClick={() => basculer('heure')}
+                  valeur={heureFr(debut)} aide={surPlusieurs ? 'heure de début' : `jusqu’à ${heureFr(fin)}`} />
               </div>
-            )}
-            {f.type === 'visite' && (dossier || ev) && (
+              {panneau === 'date' && <PanneauCalendrier valeur={f.date} occupes={occupes} onChoisir={k => { maj_({ date: k }); setPanneau(null); }} />}
+              {panneau === 'heure' && <PanneauHeure valeur={f.heure} prises={prises} onChoisir={h => maj_({ heure: h })} onFini={() => setPanneau(null)} />}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Libelle texte="Durée" aide={surPlusieurs ? `sur ${joursCouverts({ debut, fin, jour: cleDe(debut) } as Ev).length} jours` : `fin à ${hhmm(fin)}`} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {DUREES.map(o => {
+                    const actif = !perso && o.v === f.duree;
+                    return (
+                      <button key={o.v} type="button" className="ag-appui" onClick={() => choisirDuree(o.v)} aria-pressed={actif}
+                        style={{ height: 40, padding: '0 15px', borderRadius: 12, border: `1.5px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white', color: actif ? 'white' : NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{o.lib}</button>
+                    );
+                  })}
+                  <button type="button" className="ag-appui" aria-pressed={perso} onClick={() => { setPerso(true); setPanneau(null); }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 15px', borderRadius: 12, border: `1.5px ${perso ? 'solid' : 'dashed'} ${perso ? OR : '#c9d2de'}`, background: perso ? '#fffaf0' : 'white', color: perso ? '#8a6a1f' : NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <Ic n="crayon" t={14} />Personnalisé
+                  </button>
+                </div>
+              </div>
+
+              {perso && (
+                <div className="ag-panneau" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 16, background: '#fffaf0', border: '1px solid #f0e2bd' }}>
+                  <Libelle texte="Fin" aide="sur plusieurs jours si besoin" />
+                  <div className="ag-quand" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                    <BoutonChamp ico="calendrier" etiquette="Date de fin" ouvert={panneau === 'finDate'} onClick={() => basculer('finDate')}
+                      valeur={maj(jourLong(fin))} aide={surPlusieurs ? `${joursCouverts({ debut, fin, jour: cleDe(debut) } as Ev).length} jours` : 'le même jour'} />
+                    <BoutonChamp ico="horloge" etiquette="Heure de fin" ouvert={panneau === 'finHeure'} onClick={() => basculer('finHeure')}
+                      valeur={heureFr(fin)} aide={`durée : ${dureeLongue(f.duree)}`} />
+                  </div>
+                  {panneau === 'finDate' && <PanneauCalendrier valeur={cleDe(fin)} min={f.date} occupes={occupes} onChoisir={k => { changerFin(k, hhmm(fin)); setPanneau(null); }} />}
+                  {panneau === 'finHeure' && <PanneauHeure valeur={hhmm(fin)} prises={new Set()} onChoisir={h => changerFin(cleDe(fin), h)} onFini={() => setPanneau(null)} />}
+                </div>
+              )}
+
+              {chevauche.length > 0 && (
+                <div className="ag-panneau" role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 13, background: '#fff4ed', border: '1px solid #f6d3bd', color: '#9a3412', fontSize: 12.5, lineHeight: 1.45 }}>
+                  <span style={{ display: 'flex', flexShrink: 0, marginTop: 1 }}><Ic n="alerte" t={16} /></span>
+                  <span>{`Ça chevauche ${chevauche.length > 1 ? `${chevauche.length} rendez-vous` : 'un rendez-vous'} : ${chevauche.slice(0, 2).map(e => `${e.titre} (${hhmm(e.debut)} – ${hhmm(e.fin)})`).join(', ')}.`}</span>
+                </div>
+              )}
+            </Section>
+
+            <Section n={avecDossier ? 4 : 3} ico="crayon" titre="Titre, lieu et notes" rang={3}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <Libelle texte="Contact sur place" aide="l’agence ou le vendeur" />
-                <input className="ag-champ" value={contact} onChange={e => maj_({ contact: e.target.value })} placeholder="Agence du Parc · M. Lambert, 06 …" style={CHAMP} aria-label="Contact sur place" />
+                <Libelle texte="Titre" aide="proposé tout seul, tu peux le changer" />
+                <ChampIcone ico="crayon">
+                  <input className="ag-champ" value={titre} onChange={e => maj_({ titre: e.target.value })} style={{ ...CHAMP, paddingLeft: 42, fontSize: 15, fontWeight: 700 }} aria-label="Titre" />
+                </ChampIcone>
               </div>
-            )}
-            {f.type === 'appel' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Comment" /><Puces options={[{ v: 'tel', lib: 'Téléphone' }, { v: 'visio', lib: 'Visio' }]} valeur={f.mode} onChange={v => maj_({ mode: v, titre: null, lieu: null })} /></div>
-            )}
-            {f.type === 'signature' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Quelle signature" /><Puces options={[{ v: 'offre', lib: 'Offre' }, { v: 'compromis', lib: 'Compromis' }, { v: 'acte', lib: 'Acte' }]} valeur={f.etape} onChange={v => maj_({ etape: v, titre: null })} /></div>
-            )}
-            {f.type === 'estimation' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Propriétaire" /><input className="ag-champ" value={f.proprietaire} onChange={e => maj_({ proprietaire: e.target.value, titre: null })} placeholder="M. et Mme Roche" style={CHAMP} aria-label="Propriétaire" /></div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Téléphone" /><input className="ag-champ" value={f.telephone} onChange={e => maj_({ telephone: e.target.value })} placeholder="06 …" style={CHAMP} aria-label="Téléphone du propriétaire" /></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Libelle texte="Lieu" aide={f.type === 'visite' && choisis.length ? 'repris du bien' : undefined} />
+                <ChampIcone ico="lieu">
+                  <input className="ag-champ" value={lieu} onChange={e => maj_({ lieu: e.target.value })} placeholder="Adresse, agence, visio…" style={{ ...CHAMP, paddingLeft: 42, opacity: f.type === 'visite' ? .8 : 1 }} aria-label="Lieu" disabled={f.type === 'visite'} />
+                </ChampIcone>
               </div>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Libelle texte="Titre" aide="proposé tout seul, tu peux le changer" />
-              <input className="ag-champ" value={titre} onChange={e => maj_({ titre: e.target.value })} style={{ ...CHAMP, fontSize: 15, fontWeight: 700 }} aria-label="Titre" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Date" /><input className="ag-champ" type="date" value={f.date} onChange={e => maj_({ date: e.target.value })} style={CHAMP} aria-label="Date" /></div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Heure" /><input className="ag-champ" type="time" value={f.heure} step={300} onChange={e => maj_({ heure: e.target.value })} style={CHAMP} aria-label="Heure" /></div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Libelle texte="Durée" aide={`fin à ${hhmm(fin)}`} />
-              <Puces options={[{ v: 30, lib: '30 min' }, { v: 60, lib: '1 h' }, { v: 90, lib: '1 h 30' }, { v: 120, lib: '2 h' }, { v: 240, lib: 'Demi-journée' }]} valeur={f.duree} onChange={v => maj_({ duree: v })} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Libelle texte="Lieu" aide={f.type === 'visite' && choisis.length ? 'repris du bien' : undefined} />
-              <input className="ag-champ" value={lieu} onChange={e => maj_({ lieu: e.target.value })} placeholder="Adresse, agence, visio…" style={CHAMP} aria-label="Lieu" disabled={f.type === 'visite'} />
-            </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Libelle texte="Notes" aide="pour toi seul, le client ne les voit pas" />
+                <ChampIcone ico="note">
+                  <textarea className="ag-champ" rows={3} value={f.notes} onChange={e => maj_({ notes: e.target.value })} placeholder="Code d’entrée, étage, points à vérifier sur place…" aria-label="Notes"
+                    style={{ ...CHAMP, height: 'auto', minHeight: 92, padding: '13px 14px 13px 42px', lineHeight: 1.5, resize: 'vertical', fontWeight: 500 }} />
+                </ChampIcone>
+              </div>
+            </Section>
 
             {avecDossier && dossier && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Libelle texte="Me le rappeler" aide="dans tes Relances" />
-                <Puces options={[{ v: 'aucun', lib: 'Aucun rappel' }, { v: 'veille', lib: 'La veille' }, { v: 'jour', lib: 'Le jour même' }]} valeur={f.rappel} onChange={v => maj_({ rappel: v })} />
-              </div>
+              <Section n={5} ico="cloche" titre="Rappel et client" rang={4}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Libelle texte="Me le rappeler" aide="dans tes Relances" />
+                  <Puces options={[{ v: 'aucun', lib: 'Aucun rappel' }, { v: 'veille', lib: 'La veille' }, { v: 'jour', lib: 'Le jour même' }]} valeur={f.rappel} onChange={v => maj_({ rappel: v })} />
+                </div>
+                <Interrupteur actif={f.prevenir && peutPrevenir} onChange={() => maj_({ prevenir: !f.prevenir })} desactive={!peutPrevenir}
+                  titre={`Prévenir ${dossier.prenom} par mail`}
+                  sous={!peutPrevenir ? 'Pas d’adresse mail dans sa fiche' : f.prevenir ? 'Un mail de confirmation part à l’enregistrement' : f.type === 'visite' ? 'Rien ne part. Tu pourras envoyer le rappel plus tard, depuis Visites' : 'Rien ne part : allume-le pour envoyer une confirmation'} />
+              </Section>
             )}
-            {avecDossier && dossier && (
-              <Interrupteur actif={f.prevenir && peutPrevenir} onChange={() => maj_({ prevenir: !f.prevenir })} desactive={!peutPrevenir}
-                titre={`Prévenir ${dossier.prenom} par mail`}
-                sous={peutPrevenir ? 'Un mail de confirmation, avec la date, l’heure et le lieu' : 'Pas d’adresse mail dans sa fiche'} />
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Libelle texte="Notes" aide="pour toi seul, le client ne les voit pas" />
-              <textarea className="ag-champ" rows={3} value={f.notes} onChange={e => maj_({ notes: e.target.value })} placeholder="Code d’entrée, étage, points à vérifier sur place…" aria-label="Notes"
-                style={{ ...CHAMP, height: 'auto', padding: '12px 14px', lineHeight: 1.5, resize: 'vertical', fontWeight: 500 }} />
-            </div>
           </div>
 
-          <aside className="ag-modale-apercu" style={{ width: 340, flexShrink: 0, boxSizing: 'border-box', background: '#f6f7fa', borderLeft: `1px solid ${BORD}`, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+          <aside className="ag-modale-apercu" style={{ width: 340, flexShrink: 0, boxSizing: 'border-box', background: 'white', borderLeft: `1px solid ${BORD}`, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Etiquette>Aperçu</Etiquette>
               <b style={{ fontFamily: JAK, fontSize: 15 }}>{maj(jourLong(debut))}</b>
             </div>
             <div style={{ padding: '10px 12px', borderRadius: 14, background: TYPES[f.type].fond, border: `1.5px solid ${TYPES[f.type].point}`, color: TYPES[f.type].encre, display: 'flex', flexDirection: 'column', gap: 3, transition: 'background-color .3s ease, border-color .3s ease' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: TYPES[f.type].point }} />{`${hhmm(debut)} – ${hhmm(fin)}`}
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: TYPES[f.type].point }} />{surPlusieurs ? `${JOURS[debut.getDay()].slice(0, 3)}. ${debut.getDate()}, ${hhmm(debut)} → ${JOURS[fin.getDay()].slice(0, 3)}. ${fin.getDate()}, ${hhmm(fin)}` : `${hhmm(debut)} – ${hhmm(fin)}`}
               </span>
               <b style={{ fontSize: 14, lineHeight: 1.3 }}>{titre || '—'}</b>
               {lieu && <span style={{ fontSize: 12, opacity: .85 }}>{lieu}</span>}
@@ -1496,13 +1928,26 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, onFerme, onEnregi
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: DOUX }}><Ic n="mail" t={14} />{`Ce que reçoit ${dossier!.prenom}`}</span>
                 <b style={{ fontSize: 13.5, lineHeight: 1.4 }}>{mail.objet}</b>
                 <span style={{ fontSize: 12.5, color: DOUX, lineHeight: 1.55, whiteSpace: 'pre-line' }}>{mail.corps}</span>
+                {f.type === 'visite' && choisis.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingTop: 10, borderTop: `1px dashed ${BORD}` }}>
+                    {choisis.map(b => (
+                      <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                        {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: 40, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} /> : <span style={{ width: 40, height: 32, borderRadius: 6, background: NAVY, flexShrink: 0 }} />}
+                        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <b style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${heureFr(debut)} · ${b.titre || b.ville || 'Bien'}`}</b>
+                          <span style={{ fontSize: 11.5, color: PALE, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lieuDuBien(b) || 'Pas d’adresse sur le bien'}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </aside>
         </div>
 
         <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '14px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
-          <span style={{ fontSize: 12.5, color: DOUX, flex: '1 1 200px' }}>{avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : avecDossier ? 'Choisis le dossier du client.' : 'Rendez-vous sans dossier client.'}</span>
+          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : avecDossier ? 'Choisis le dossier du client.' : 'Rendez-vous sans dossier client.'}</span>
           <button type="button" onClick={onFerme} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
             style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', opacity: envoi ? .7 : 1, boxShadow: '0 12px 24px -12px rgba(201,168,76,.95)' }}>

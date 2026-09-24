@@ -1,7 +1,17 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
+import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVisite';
 import styles from './Page.module.css';
+
+/* Petite enveloppe dessinée pour le bouton de rappel. */
+function Enveloppe() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 7.2a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="m3.6 7.6 8.4 5.8 8.4-5.8" />
+    </svg>
+  );
+}
 
 const AVIS_LABELS: Record<string, string> = {
   tres_interesse: '🔥 Très intéressé',
@@ -27,6 +37,9 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   /* Retrouver une visite : par le bien ou par le client, et par où elle en est. */
   const [cherche, setCherche] = useState('');
   const [filtre, setFiltre] = useState<'tout' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees'>('tout');
+  /* Le rappel au client : la fenêtre s'ouvre sur une visite et retrouve
+     toutes celles du même jour pour ce client. */
+  const [rappelDe, setRappelDe] = useState<string | null>(null);
 
   /* L'agenda envoie ici pour un compte rendu : la visite s'ouvre directement. */
   useEffect(() => {
@@ -86,7 +99,8 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
 
   async function annuler(id: string) {
     if (!confirm('Annuler cette visite ?')) return;
-    await supabase.from('visites').update({ statut: 'annulee' }).eq('id', id);
+    const { error } = await supabase.from('visites').update({ statut: 'annulee' }).eq('id', id);
+    if (error) { alert("L'annulation n'a pas pu être enregistrée.\n\n" + error.message); return; }
     load();
   }
 
@@ -104,7 +118,8 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     : visites;
   const recentes = (l: any[]) => [...l].sort((a, b) => String(b.date_visite || '').localeCompare(String(a.date_visite || '')));
   const aFaire = recentes(trouvees.filter(v => v.statut === 'a_venir' && passee(v)));
-  const aVenir = trouvees.filter(v => v.statut === 'a_venir' && !passee(v));
+  const quand = (v: any) => `${String(v.date_visite || '9999').slice(0, 10)} ${v.heure ? String(v.heure).slice(0, 5) : '99:99'}`;
+  const aVenir = trouvees.filter(v => v.statut === 'a_venir' && !passee(v)).sort((a, b) => quand(a).localeCompare(quand(b)));
   const effectuees = recentes(trouvees.filter(v => v.statut === 'effectuee'));
   const annulees = recentes(trouvees.filter(v => v.statut === 'annulee'));
   const montrer = (f: typeof filtre) => filtre === 'tout' || filtre === f;
@@ -205,6 +220,19 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                               <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{v.biens?.titre || v.biens?.ville || '—'}</div>
                               {v.heure && <div style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700, marginTop: 4 }}>🕐 {v.heure}</div>}
                               {v.contact_agence && <div style={{ fontSize: 12, color: '#94a3b8' }}>📞 {v.contact_agence}</div>}
+                              {g.id === 'a_venir' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                                  {v.rappel_envoye_le && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#047857', background: '#ecfdf5', borderRadius: 20, padding: '4px 10px' }}>
+                                      <span aria-hidden="true">✓</span><span>{libelleRappel(v.rappel_envoye_le)}</span>
+                                    </span>
+                                  )}
+                                  <button type="button" onClick={() => setRappelDe(v.id)}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: v.rappel_envoye_le ? 'white' : '#fffaf0', color: '#8a6a1f', border: `1px solid ${v.rappel_envoye_le ? '#e3e8f0' : '#ecdcae'}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                    <Enveloppe />{v.rappel_envoye_le ? 'Renvoyer' : 'Envoyer le rappel'}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -296,6 +324,10 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
             </div>
           )}
         </div>
+      )}
+
+      {rappelDe && (
+        <ModaleRappelVisite visiteId={rappelDe} onFerme={() => setRappelDe(null)} onEnvoye={() => { setRappelDe(null); load(); }} />
       )}
 
       {/* MODAL COMPTE-RENDU */}
