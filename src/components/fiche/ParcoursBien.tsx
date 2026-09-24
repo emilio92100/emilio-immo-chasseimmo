@@ -1584,10 +1584,33 @@ export function ModaleScore({ p, recherche, onFerme }: { p: any; recherche?: any
     { de: 70, a: 85, c: OR }, { de: 85, a: 100, c: '#16a34a' },
   ];
 
+  /* En largeur sur ordinateur : l'en-tête sur une ligne (la note à gauche,
+     la jauge à droite), puis les catégories côte à côte — la base, ce qui
+     rapporte, ce qui coûte. Tout se lit d'un coup d'œil, sans défiler. Sur
+     téléphone, les colonnes s'empilent d'elles-mêmes. */
+  const colonnes: React.ReactNode[] = [
+    <BlocScore key="base" ton="bleu" titre="La base" sous="Ce que tout bien proposé coche d'office. Sans ça, il ne serait pas là."
+      items={base}
+      pied="Le budget et la surface, eux, peuvent déborder un peu quand le bien le vaut : l'écart est alors compté dans « Ce qui en coûte »." />,
+  ];
+  if (atouts.length) colonnes.push(<BlocScore key="plus" ton="vert" titre="Ce qui rapporte des points" items={atouts} />);
+  if (verifier.length || bloquants.length) colonnes.push(
+    <div key="moins" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      {!!verifier.length && (
+        <BlocScore ton="ambre" titre="Ce qui en coûte"
+          sous="Un écart coûte des points. Une information manquante est à vérifier, sans rien retirer."
+          items={verifier} />
+      )}
+      {!!bloquants.length && (
+        <BlocScore ton="rouge" titre="Ce qui bloque" sous="À trancher avant de proposer le bien." items={bloquants} />
+      )}
+    </div>
+  );
+
   return (
-    <Modale onFerme={onFerme} largeur={540}>
-      <div style={{ background: NAVY, padding: '20px 22px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+    <Modale onFerme={onFerme} largeur={colonnes.length >= 3 ? 1060 : colonnes.length === 2 ? 820 : 560}>
+      <div style={{ background: NAVY, padding: '18px 24px 16px', display: 'flex', alignItems: 'center', gap: '16px 32px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 15, flex: '1 1 300px', minWidth: 0 }}>
           <div style={{
             width: 64, height: 64, borderRadius: 18, background: tr.c, color: 'white',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -1605,55 +1628,48 @@ export function ModaleScore({ p, recherche, onFerme }: { p: any; recherche?: any
           </div>
         </div>
 
-        <div style={{ position: 'relative', margin: '20px 4px 0', paddingBottom: 18 }}>
-          <div style={{ display: 'flex', gap: 3, height: 8 }}>
-            {segments.map(sg => {
-              const dedans = score >= sg.de && (score < sg.a || (sg.a === 100 && score === 100));
-              return <span key={sg.de} style={{ flex: `${sg.a - sg.de} 0 0`, borderRadius: 99, background: sg.c, opacity: dedans ? 1 : .28 }} />;
-            })}
+        <div style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <div style={{ position: 'relative', margin: '8px 4px 0', paddingBottom: 18 }}>
+            <div style={{ display: 'flex', gap: 3, height: 8 }}>
+              {segments.map(sg => {
+                const dedans = score >= sg.de && (score < sg.a || (sg.a === 100 && score === 100));
+                return <span key={sg.de} style={{ flex: `${sg.a - sg.de} 0 0`, borderRadius: 99, background: sg.c, opacity: dedans ? 1 : .28 }} />;
+              })}
+            </div>
+            <span aria-hidden="true" style={{
+              position: 'absolute', top: -5, left: `${score}%`, transform: 'translateX(-50%)',
+              width: 18, height: 18, borderRadius: '50%', background: 'white', border: `4px solid ${tr.c}`,
+              boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+            }} />
+            {[0, 50, 70, 85, 100].map(v => (
+              <span key={v} style={{
+                position: 'absolute', top: 14, left: `${v}%`,
+                transform: v === 0 ? 'none' : v === 100 ? 'translateX(-100%)' : 'translateX(-50%)',
+                fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.42)', fontVariantNumeric: 'tabular-nums',
+              }}>{v}</span>
+            ))}
           </div>
-          <span aria-hidden="true" style={{
-            position: 'absolute', top: -5, left: `${score}%`, transform: 'translateX(-50%)',
-            width: 18, height: 18, borderRadius: '50%', background: 'white', border: `4px solid ${tr.c}`,
-            boxShadow: '0 2px 8px rgba(0,0,0,.35)',
-          }} />
-          {[0, 50, 70, 85, 100].map(v => (
-            <span key={v} style={{
-              position: 'absolute', top: 14, left: `${v}%`,
-              transform: v === 0 ? 'none' : v === 100 ? 'translateX(-100%)' : 'translateX(-50%)',
-              fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.42)', fontVariantNumeric: 'tabular-nums',
-            }}>{v}</span>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 8, display: 'flex', gap: 9, alignItems: 'flex-start', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 11, padding: '9px 11px' }}>
-          <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: tr.c === OR ? OR : 'white', background: tr.c === OR ? 'rgba(201,168,76,.16)' : tr.c, borderRadius: 7, padding: '2px 7px', marginTop: 1 }}>{tr.lib}</span>
-          <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,.78)' }}>{tr.regle}</span>
+          <div style={{ marginTop: 8, display: 'flex', gap: 9, alignItems: 'flex-start', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 11, padding: '8px 11px' }}>
+            <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: tr.c === OR ? OR : 'white', background: tr.c === OR ? 'rgba(201,168,76,.16)' : tr.c, borderRadius: 7, padding: '2px 7px', marginTop: 1 }}>{tr.lib}</span>
+            <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,.78)' }}>{tr.regle}</span>
+          </div>
         </div>
       </div>
 
-      <div style={{ padding: '16px 16px 6px', display: 'flex', flexDirection: 'column', gap: 12, background: '#f7f9fc' }}>
-        <BlocScore ton="bleu" titre="La base" sous="Ce que tout bien proposé coche d'office. Sans ça, il ne serait pas là."
-          items={base}
-          pied="Le budget et la surface, eux, peuvent déborder un peu quand le bien le vaut : l'écart est alors compté dans « Ce qui en coûte »." />
-        {!!atouts.length && <BlocScore ton="vert" titre="Ce qui rapporte des points" items={atouts} />}
-        {!!verifier.length && (
-          <BlocScore ton="ambre" titre="Ce qui en coûte"
-            sous="Un écart coûte des points. Une information manquante est à vérifier, sans rien retirer."
-            items={verifier} />
-        )}
-        {!!bloquants.length && (
-          <BlocScore ton="rouge" titre="Ce qui bloque" sous="À trancher avant de proposer le bien." items={bloquants} />
-        )}
+      <div style={{
+        padding: 16, background: '#f7f9fc', display: 'grid', gap: 12, alignItems: 'start',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(270px, 100%), 1fr))',
+      }}>
+        {colonnes}
       </div>
 
-      <div style={{ padding: '12px 16px 16px', background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', fontSize: 11.5, color: '#94a3b8', marginBottom: 11 }}>
+      <div className="emi-score-pied" style={{ padding: '0 16px 16px', background: '#f7f9fc', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#94a3b8', flex: '1 1 260px' }}>
           <Icone nom="cadenas" taille={12} epaisseur={2} />
           <span>Note posée par la veille, pour toi seul — jamais montrée au client.</span>
         </div>
         <button type="button" onClick={onFerme}
-          style={{ width: '100%', background: NAVY, color: 'white', border: 'none', borderRadius: 11, padding: '12px 0', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ background: NAVY, color: 'white', border: 'none', borderRadius: 11, padding: '11px 34px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>
           Compris
         </button>
       </div>
