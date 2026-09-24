@@ -211,6 +211,27 @@ const ONGLETS: { id: string; lib: string; libPc?: string; ico: string; ton: stri
 ];
 
 
+/* Une petite vibration au toucher d'un onglet. Android sait faire
+   (navigator.vibrate). L'iPhone ne l'autorise pas aux pages web ; depuis
+   iOS 18, basculer un interrupteur natif produit un léger retour haptique :
+   on en pose un invisible, le temps d'un clic. Sans effet ailleurs, jamais
+   d'erreur. À appeler dans le clic lui-même. */
+function vibrer() {
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') { navigator.vibrate(12); return; }
+    const l = document.createElement('label');
+    const i = document.createElement('input');
+    i.type = 'checkbox';
+    i.setAttribute('switch', '');
+    l.appendChild(i);
+    l.setAttribute('aria-hidden', 'true');
+    l.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
+    document.body.appendChild(l);
+    l.click();
+    document.body.removeChild(l);
+  } catch { /* pas de vibration, pas de souci */ }
+}
+
 const DPEC: Record<string, string> = { A:'#319834', B:'#4ab84a', C:'#a8d84a', D:'#f7e017', E:'#f5b912', F:'#ee8235', G:'#e2231a' };
 const AVIS: Record<string, { e: string; n: string; c: string }> = {
   interesse: { e: '👍', n: 'Ça me plaît', c: 'oui' },
@@ -813,6 +834,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      petite pastille « Accueil » apparaît en haut à gauche. Le client n'a pas
      à chercher le chemin du retour dans la barre du bas. */
   const [descendu, setDescendu] = useState(false);
+  /* Le dernier onglet touché dans la barre du bas : sa clé change à chaque
+     toucher, ce qui rejoue son animation même s'il était déjà ouvert. */
+  const [tape, setTape] = useState({ id: '', n: 0 });
   useEffect(() => {
     const suivre = () => setDescendu(window.scrollY > 220);
     suivre();
@@ -1518,13 +1542,14 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           const n = compte[o.id] || 0;
           const actif = vue === o.id;
           return (
-            <button key={o.id} type="button" className={'bb' + (actif ? ' on' : '')}
-              aria-current={actif ? 'page' : undefined} onClick={() => aller(o.id)}>
-              <span className="bb-i">
+            <button key={o.id} type="button" className={'bb' + (actif ? ' on' : '')} data-o={o.id}
+              aria-current={actif ? 'page' : undefined}
+              onClick={() => { vibrer(); setTape(t => ({ id: o.id, n: t.n + 1 })); aller(o.id); }}>
+              <span className="bb-i" key={'i' + (tape.id === o.id ? tape.n : 0)}>
                 <span className={'bb-ic' + (n > 0 && !actif ? ' lueur' : '')}><Ico n={o.ico} t={20} /></span>
                 {n > 0 && <span className={'bb-n ' + o.ton}>{n}</span>}
               </span>
-              <span className="bb-l">{o.lib}</span>
+              <span className="bb-l" key={'l' + (tape.id === o.id ? tape.n : 0)}>{o.lib}</span>
             </button>
           );
         })}
@@ -6249,6 +6274,24 @@ button.auj-c:active{transform:scale(.96)}
 .bb-n.vio{background:#7b6ba8; color:#fff; animation:halo-vio 2.4s ease-out infinite, tic 4s ease-in-out 1.6s infinite}
 .bb.on .bb-n{border-color:#fff}
 .bb-ic.lueur{color:#24385c; animation:lueur 3s ease-in-out infinite}
+/* Au toucher : une onde autour de la pastille, le mot qui remonte, et une
+   animation propre à chaque onglet — la maison rebondit, l'étoile tourne,
+   l'œil cligne, la cible se resserre, le calendrier se balance. */
+.bb-i::after{content:""; position:absolute; inset:0; border-radius:99px; pointer-events:none}
+.bb.on .bb-i::after{animation:bb-onde .6s ease-out}
+@keyframes bb-onde{from{box-shadow:0 0 0 0 rgba(58,88,134,.45)}to{box-shadow:0 0 0 12px rgba(58,88,134,0)}}
+.bb.on .bb-l{animation:bb-mot .45s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes bb-mot{from{transform:translateY(5px); opacity:.25}to{transform:none; opacity:1}}
+.bb.on[data-o="accueil"] .bb-ic{animation:bb-maison .6s cubic-bezier(.3,1.5,.5,1)}
+@keyframes bb-maison{0%{transform:none}35%{transform:translateY(-6px) scale(1.12)}65%{transform:translateY(1px) scale(.95)}100%{transform:none}}
+.bb.on[data-o="neufs"] .bb-ic{animation:bb-etoile .7s cubic-bezier(.3,1.4,.5,1)}
+@keyframes bb-etoile{0%{transform:rotate(-140deg) scale(.4)}70%{transform:rotate(14deg) scale(1.22)}100%{transform:none}}
+.bb.on[data-o="consultes"] .bb-ic{animation:bb-oeil .55s ease-in-out}
+@keyframes bb-oeil{0%,100%{transform:none}30%{transform:scaleY(.1)}60%{transform:scaleY(1.15)}}
+.bb.on[data-o="recherche"] .bb-ic{animation:bb-cible .6s cubic-bezier(.3,1.5,.5,1)}
+@keyframes bb-cible{0%{transform:scale(.45)}45%{transform:scale(1.32)}72%{transform:scale(.92)}100%{transform:none}}
+.bb.on[data-o="visites"] .bb-ic{animation:bb-cal .7s ease-in-out}
+@keyframes bb-cal{0%,100%{transform:none}20%{transform:rotate(-15deg)}40%{transform:rotate(11deg)}60%{transform:rotate(-7deg)}80%{transform:rotate(3deg)}}
 @media(max-width:1023px){
   .page{padding-bottom:112px}
   /* la bande « installer » passe au-dessus de la barre, jamais dessous */
