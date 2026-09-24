@@ -2855,7 +2855,8 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
         <ModalePartage b={b} client={client} onFermer={() => setPartage(false)}
           onEnvoyer={(mail: string) => onPartager(b, mail)} />
       )}
-      {bientot && <ModaleBientot onFermer={() => setBientot(false)} />}
+      {bientot && <ModaleBientot onFermer={() => setBientot(false)}
+        onPartager={() => { setBientot(false); setPartage(true); }} />}
       {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
       <div className="fiche-droite" data-barre={!envoye ? '1' : undefined}>
       <div className="bandeau-prix">
@@ -3083,24 +3084,33 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
   );
 }
 
-/* Le téléchargement de la fiche n'est pas encore ouvert. Plutôt que de cacher
-   le bouton, on dit ce qui arrive : le client sait que le dossier avance, et il
-   sait aussi qu'il peut l'obtenir tout de suite en le demandant. */
-function ModaleBientot({ onFermer }: { onFermer: () => void }) {
+/* Le téléchargement de la fiche n'est pas encore ouvert. Le premier message
+   (« Nous préparons un document à télécharger… ») se lisait comme un
+   téléchargement en cours : des clients attendaient un fichier qui n'arrivait
+   pas. On dit donc en toutes lettres que la fonction est en cours de
+   développement, que rien n'est en route vers l'appareil, et ce qu'on peut
+   faire à la place tout de suite : partager le bien. */
+function ModaleBientot({ onFermer, onPartager }: { onFermer: () => void; onPartager: () => void }) {
   useEchap(true, onFermer);
   return createPortal(
-    <div className="pop" role="dialog" aria-modal="true">
+    <div className="pop" role="dialog" aria-modal="true" aria-labelledby="bientot-t">
       <div className="pop-voile" onClick={onFermer} />
       <div className="pop-carte">
-        <div className="pop-fin">
-          <div className="rond-ok"><Ico n="pdf" t={30} /></div>
-          <h3>La fiche du bien, bientôt</h3>
-          <p>Nous préparons un document à télécharger&nbsp;: les photos, le plan quand il existe,
-            les surfaces pièce par pièce, les charges et les diagnostics. De quoi garder le bien
-            sous la main, l&apos;imprimer, ou le montrer autour de vous.</p>
-          <p>Il sera disponible ici prochainement. En attendant, votre conseiller vous l&apos;envoie
-            sur simple demande.</p>
-          <button type="button" className="btn or" onClick={onFermer}>C&apos;est noté</button>
+        <div className="pop-fin bientot">
+          <div className="rond-ok"><Ico n="horloge" t={30} /></div>
+          <div className="bt-etiq">En cours de développement</div>
+          <h3 id="bientot-t">{'Le téléchargement n\u2019est pas encore disponible'}</h3>
+          <p>{'Cette fonction est en cours de développement\u00a0: aucun fichier n\u2019est en train d\u2019arriver sur votre appareil, inutile d\u2019attendre. Vous pourrez télécharger la fiche du bien ici un peu plus tard.'}</p>
+          <div className="bt-astuce">
+            <Ico n="partage" t={18} />
+            <span>{'En attendant, le bouton «\u00a0Partager\u00a0», juste à gauche, vous permet déjà d\u2019envoyer ce bien à vos proches.'}</span>
+          </div>
+          <div className="bt-actions">
+            <button type="button" className="btn or" onClick={onPartager}>
+              <Ico n="partage" t={16} /><span>Partager ce bien</span>
+            </button>
+            <button type="button" className="btn lien" onClick={onFermer}>Fermer</button>
+          </div>
         </div>
       </div>
     </div>,
@@ -4725,6 +4735,17 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .pop-fin .rond-ok{width:68px; height:68px; border-radius:50%; margin:0 auto 18px; display:flex;
   align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce);
   border:1px solid var(--or-trait)}
+/* « Télécharger la fiche » : la fonction n'existe pas encore, et on le dit. */
+.bientot .bt-etiq{display:inline-block; margin:0 0 12px; padding:4px 11px; border-radius:99px;
+  font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; font-weight:800;
+  color:var(--or-fonce); background:var(--or-fond); border:1px solid var(--or-trait)}
+.bientot h3{text-wrap:balance}
+.bientot .bt-astuce{display:flex; gap:11px; align-items:flex-start; text-align:left;
+  margin:0 0 18px; padding:13px 14px; border-radius:14px; background:var(--fond);
+  border:1px solid var(--trait); color:var(--encre); font-size:13.5px; line-height:1.55}
+.bientot .bt-astuce > svg{flex:none; margin-top:1px; color:var(--or-fonce)}
+.bientot .bt-actions{display:flex; flex-direction:column; align-items:stretch; gap:2px}
+.bientot .bt-actions .btn.lien{align-self:center}
 .ape{margin-top:14px; border:1px solid var(--trait); border-radius:15px; overflow:hidden; background:var(--fond)}
 .ape-t{font-size:10px; letter-spacing:1.1px; text-transform:uppercase; font-weight:800;
   color:var(--plume-clair); padding:12px 14px 0}
@@ -5090,6 +5111,28 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .feuille.fiche .tete-f{padding:14px 26px 12px}
   .feuille.fiche .corps-f{padding:0 26px}
   .feuille.fiche .corps-f .txt{max-width:74ch}
+}
+
+/* La barre de défilement, sur ordinateur. globals.css (celle du CRM) la
+   réduit à 4 px gris clair : dans la fiche d'un bien, les clients ne la
+   voyaient pas, et ceux qui descendent en l'attrapant à la souris la
+   rataient. Ici elle est large, contrastée, et fonce au survol. Rien ne
+   change au doigt : sur téléphone, c'est le système qui la dessine. */
+@media (hover:hover) and (pointer:fine){
+  html::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:14px; height:14px}
+  html::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#eef1f6}
+  html::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
+    background:#9aa6b8; border-radius:10px; border:3px solid transparent; background-clip:padding-box; min-height:48px}
+  html::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#6b7890}
+  html::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:var(--encre2)}
+  /* la fiche a des coins arrondis : la piste ne touche ni le haut ni le bas */
+  .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px; border-radius:10px}
+}
+/* Firefox ne connaît pas les règles ci-dessus : il a les siennes. */
+@supports (-moz-appearance:none){
+  @media (hover:hover) and (pointer:fine){
+    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#9aa6b8 #eef1f6}
+  }
 }
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
