@@ -175,6 +175,8 @@ export default async function PageEspace({ params, searchParams }: {
     etage: b.etage, etageTotal: b.etage_total, expo: b.exposition,
     dpe: b.dpe, ges: b.ges, annee: b.annee_construction,
     description: b.description, photos: b.photos || [],
+    /* Le plan, rangé à part des photos : il a sa rubrique sur la fiche. */
+    plans: Array.isArray(b.plans) ? b.plans.filter(Boolean) : [],
     terrasse: b.terrasse, balcon: b.balcon, jardin: b.jardin, parking: b.parking,
     ascenseur: b.ascenseur, cave: b.cave,
     /* La requête lit déjà toutes les colonnes : ces champs-là existaient en
