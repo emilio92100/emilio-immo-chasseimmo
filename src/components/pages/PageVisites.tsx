@@ -24,8 +24,20 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
   const [showCR, setShowCR] = useState(false);
   const [saving, setSaving] = useState(false);
+  /* Retrouver une visite : par le bien ou par le client, et par où elle en est. */
+  const [cherche, setCherche] = useState('');
+  const [filtre, setFiltre] = useState<'tout' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees'>('tout');
 
-  useEffect(() => { load(); }, []);
+  /* L'agenda envoie ici pour un compte rendu : la visite s'ouvre directement. */
+  useEffect(() => {
+    load().then(() => {
+      try {
+        const id = window.sessionStorage.getItem('emi-cr');
+        if (id) { window.sessionStorage.removeItem('emi-cr'); setFiltre('a_faire'); openCR(id); }
+      } catch { /* sans effet */ }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -35,6 +47,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       .order('date_visite', { ascending: true });
     setVisites(data || []);
     setLoading(false);
+    return data || [];
   }
 
   function openCR(visiteId: string) {
@@ -77,8 +90,24 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     load();
   }
 
-  const aVenir = visites.filter(v => v.statut === 'a_venir');
-  const effectuees = visites.filter(v => v.statut === 'effectuee');
+  /* Une visite « à venir » dont la date est passée attend son compte rendu. */
+  const maintenant = new Date();
+  const passee = (v: any) => {
+    if (!v.date_visite) return false;
+    const d = new Date(`${String(v.date_visite).slice(0, 10)}T${v.heure ? String(v.heure).slice(0, 5) : '23:59'}:00`);
+    return !isNaN(d.getTime()) && d < maintenant;
+  };
+  const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const q = sansAccent(cherche.trim());
+  const trouvees = q
+    ? visites.filter(v => sansAccent(`${v.clients?.prenom || ''} ${v.clients?.nom || ''} ${v.biens?.titre || ''} ${v.biens?.ville || ''} ${v.contact_agence || ''}`).includes(q))
+    : visites;
+  const recentes = (l: any[]) => [...l].sort((a, b) => String(b.date_visite || '').localeCompare(String(a.date_visite || '')));
+  const aFaire = recentes(trouvees.filter(v => v.statut === 'a_venir' && passee(v)));
+  const aVenir = trouvees.filter(v => v.statut === 'a_venir' && !passee(v));
+  const effectuees = recentes(trouvees.filter(v => v.statut === 'effectuee'));
+  const annulees = recentes(trouvees.filter(v => v.statut === 'annulee'));
+  const montrer = (f: typeof filtre) => filtre === 'tout' || filtre === f;
 
   const formatDate = (d: string) => {
     const date = new Date(d);
@@ -95,9 +124,40 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>Visites</h1>
-          <p className={styles.sub}>{aVenir.length} à venir · {effectuees.length} effectuée{effectuees.length > 1 ? 's' : ''}</p>
+          <p className={styles.sub}>{`${aVenir.length} à venir · ${effectuees.length} effectuée${effectuees.length > 1 ? 's' : ''}${aFaire.length ? ` · ${aFaire.length} compte${aFaire.length > 1 ? 's' : ''} rendu${aFaire.length > 1 ? 's' : ''} à faire` : ''}`}</p>
         </div>
       </div>
+
+      {visites.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 14, top: 12, color: '#94a3b8', pointerEvents: 'none' }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7" /><path d="m20.5 20.5-4.7-4.7" /></svg>
+            </span>
+            <input value={cherche} onChange={e => setCherche(e.target.value)} placeholder="Chercher un bien ou un client…" aria-label="Chercher une visite"
+              style={{ width: '100%', boxSizing: 'border-box', height: 42, padding: '0 14px 0 40px', borderRadius: 12, border: '1.5px solid #e3e8f0', background: 'white', fontSize: 14, fontFamily: 'inherit', color: '#1a2332', outline: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {([
+              { id: 'tout', lib: 'Toutes', n: trouvees.length, c: '#1a2332' },
+              { id: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, c: '#b45309' },
+              { id: 'a_venir', lib: 'À venir', n: aVenir.length, c: '#3b82f6' },
+              { id: 'effectuees', lib: 'Effectuées', n: effectuees.length, c: '#10b981' },
+              { id: 'annulees', lib: 'Annulées', n: annulees.length, c: '#94a3b8' },
+            ] as const).map(x => {
+              const actif = filtre === x.id;
+              return (
+                <button key={x.id} type="button" onClick={() => setFiltre(x.id)} aria-pressed={actif}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 20, padding: '7px 13px', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${actif ? '#1a2332' : '#e3e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b' }}>
+                  {x.id !== 'tout' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: x.c }} />}
+                  {x.lib}
+                  <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '1px 7px', background: actif ? 'rgba(255,255,255,.18)' : '#f1f5f9', color: actif ? 'white' : '#94a3b8' }}>{x.n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className={styles.empty}><div className={styles.emptySub}>Chargement...</div></div>
@@ -105,24 +165,31 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>📅</div>
           <div className={styles.emptyTitle}>Aucune visite planifiée</div>
-          <div className={styles.emptySub}>Les visites s'ajoutent depuis la fiche client → onglet Biens</div>
+          <div className={styles.emptySub}>Les visites s'ajoutent depuis l'Agenda ou depuis la fiche client</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* À VENIR */}
-          {aVenir.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }}></span>
-                À venir — {aVenir.length}
+          {trouvees.length === 0 && (
+            <div className={styles.empty}><div className={styles.emptySub}>{`Aucune visite ne correspond à « ${cherche} ».`}</div></div>
+          )}
+
+          {/* À VENIR — et celles dont la date est passée, qui attendent leur compte rendu */}
+          {([
+            { id: 'a_faire' as const, liste: aFaire, titre: 'Compte rendu à faire', c: '#b45309' },
+            { id: 'a_venir' as const, liste: aVenir, titre: 'À venir', c: '#3b82f6' },
+          ]).filter(g => g.liste.length > 0 && montrer(g.id)).map(g => (
+            <div key={g.id}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: g.c, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.c, display: 'inline-block' }}></span>
+                {`${g.titre} — ${g.liste.length}`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {aVenir.map(v => {
+                {g.liste.map(v => {
                   const date = v.date_visite ? formatDate(v.date_visite) : null;
                   const photo = v.biens?.photos?.[0];
                   return (
-                    <div key={v.id} className="pv-carte" style={{ background: 'white', borderRadius: 16, border: '1px solid #e3e8f0', borderLeft: '3px solid #3b82f6', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <div key={v.id} className="pv-carte" style={{ background: 'white', borderRadius: 16, border: '1px solid #e3e8f0', borderLeft: `3px solid ${g.c}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                       <div className="pv-ligne" style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
                         {photo && <img src={photo} alt="" className="pv-photo" style={{ width: 90, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                         <div className="pv-corps" style={{ flex: 1, padding: '14px 16px' }}>
@@ -142,7 +209,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                           </div>
                         </div>
                         <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
-                          <button onClick={() => openCR(v.id)} style={{ background: '#1a2332', color: 'white', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>✓ Effectuée</button>
+                          <button onClick={() => openCR(v.id)} style={{ background: g.id === 'a_faire' ? '#c9a84c' : '#1a2332', color: g.id === 'a_faire' ? '#1a2332' : 'white', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{g.id === 'a_faire' ? 'Compte rendu' : '✓ Effectuée'}</button>
                           <button onClick={() => annuler(v.id)} style={{ background: 'white', color: '#64748b', border: '1px solid #e3e8f0', borderRadius: 10, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
                         </div>
                       </div>
@@ -151,10 +218,10 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                 })}
               </div>
             </div>
-          )}
+          ))}
 
           {/* EFFECTUÉES */}
-          {effectuees.length > 0 && (
+          {effectuees.length > 0 && montrer('effectuees') && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
@@ -198,6 +265,30 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                           </div>
                         </div>
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ANNULÉES — gardées pour mémoire, sans action */}
+          {annulees.length > 0 && montrer('annulees') && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block' }}></span>
+                {`Annulées — ${annulees.length}`}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {annulees.map(v => {
+                  const date = v.date_visite ? formatDate(v.date_visite) : null;
+                  return (
+                    <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fafbfd', borderRadius: 14, border: '1px solid #e3e8f0', padding: '10px 14px', opacity: .8 }}>
+                      {date && <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', minWidth: 70 }}>{`${date.day} ${date.mon} ${date.year}`}</span>}
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <b style={{ fontSize: 13.5, color: '#64748b', textDecoration: 'line-through' }}>{`${v.clients?.prenom || ''} ${v.clients?.nom || ''}`.trim() || '—'}</b>
+                        <span style={{ fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.biens?.titre || v.biens?.ville || '—'}</span>
+                      </span>
                     </div>
                   );
                 })}
