@@ -156,6 +156,60 @@ function actualiseLe(d?: string | null) {
   return `le ${x.getDate()} ${MOIS[x.getMonth()]} ${h}`;
 }
 
+/* ── L'en-tête : le bonjour, la date du jour, la recherche en une ligne ──
+   L'heure est celle de Paris, calculée pareil sur le serveur et dans le
+   téléphone : sans ça, le serveur (réglé en heure universelle) disait
+   « Bonjour » à 19 h, et la page se corrigeait sous les yeux du client. */
+function momentParis() {
+  try {
+    const f = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', hourCycle: 'h23' });
+    const p: Record<string, string> = {};
+    for (const x of f.formatToParts(new Date())) p[x.type] = x.value;
+    const jour = `${p.weekday} ${p.day === '1' ? '1er' : p.day} ${p.month}`;
+    return { heure: Number(p.hour), date: jour.charAt(0).toUpperCase() + jour.slice(1) };
+  } catch {
+    return { heure: new Date().getHours(), date: '' };
+  }
+}
+const salutation = (h: number) => (h >= 18 || h < 5 ? 'Bonsoir' : 'Bonjour');
+/* « 1 200 » : l'espace fine que met toLocaleString n'existe pas dans la
+   police de l'espace, et le chiffre s'affichait collé (« 1200 »). */
+const nombre = (n: number) => n.toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, '\u00a0');
+
+/* « Appartement · 4 pièces et plus · Boulogne-Billancourt · jusqu’à 950 000 € ».
+   Lue dans les critères affichés, pas dans un résumé figé côté serveur : si
+   le client change son budget, la phrase suit tout de suite. */
+function phraseRecherche(c: Criteres): string {
+  const types = (c.typesBien && c.typesBien.length ? c.typesBien : String(c.typeBien || '').split(','))
+    .map(t => String(t).trim()).filter(Boolean);
+  const bouts: string[] = [];
+  if (types.length) {
+    const t = types.slice(0, 2).map(x => x.toLowerCase()).join(' ou ');
+    bouts.push(t.charAt(0).toUpperCase() + t.slice(1));
+  }
+  if (c.piecesMin) {
+    bouts.push(c.piecesMax && c.piecesMax > c.piecesMin
+      ? `${c.piecesMin} à ${c.piecesMax} pièces`
+      : `${c.piecesMin} pièce${c.piecesMin > 1 ? 's' : ''}${c.piecesMax === c.piecesMin ? '' : ' et plus'}`);
+  } else if (c.surfaceMin) bouts.push(`${c.surfaceMin} m² et plus`);
+  const villes = grouperSecteurs(c.secteurs || []).map(v => v.ville);
+  if (villes.length) bouts.push(villes.length > 2 ? `${villes.slice(0, 2).join(', ')} +${villes.length - 2}` : villes.join(', '));
+  if (c.budgetMax) bouts.push(`jusqu’à ${EUR(c.budgetMax)}`);
+  return bouts.join(' · ');
+}
+
+/* Les onglets : la barre du bas sur téléphone, le menu de l'en-tête sur
+   ordinateur. « ton » donne la couleur de la pastille quand il y a quelque
+   chose à voir ; « pc » : seulement dans le menu de l'ordinateur. */
+const ONGLETS: { id: string; lib: string; libPc?: string; ico: string; ton: string; pc?: boolean }[] = [
+  { id: 'accueil', lib: 'Accueil', ico: 'maison', ton: '' },
+  { id: 'neufs', lib: 'Nouveautés', ico: 'etoile', ton: 'or' },
+  { id: 'consultes', lib: 'Consultés', ico: 'oeil', ton: 'bleu' },
+  { id: 'recherche', lib: 'Recherche', libPc: 'Ma recherche', ico: 'cible', ton: '' },
+  { id: 'visites', lib: 'Visites', ico: 'calendrier', ton: 'vio' },
+  { id: 'marche', lib: 'Le marché', ico: 'graph', ton: '', pc: true },
+];
+
 
 const DPEC: Record<string, string> = { A:'#319834', B:'#4ab84a', C:'#a8d84a', D:'#f7e017', E:'#f5b912', F:'#ee8235', G:'#e2231a' };
 const AVIS: Record<string, { e: string; n: string; c: string }> = {
@@ -432,6 +486,9 @@ const T: Record<string, string[]> = {
   petit:['M4 4h5','M4 4v5','M20 20h-5','M20 20v-5','m4 4 6 6','m20 20-6-6'],
   /* Le chevron du sélecteur de recherche : « il y a autre chose en dessous ». */
   chevron:['m6 9 6 6 6-6'],
+  /* La barre du bas et l'accueil : « Consultés » et « donner mon avis ». */
+  oeil:['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z','c:12,12,3'],
+  pouce:['M7 10.5v10H4v-10z','M7 10.5l4-7a2 2 0 0 1 2.6 2.3l-.9 4.7H19a2 2 0 0 1 2 2.3l-1.2 6.9A2 2 0 0 1 17.8 20.5H7'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -1224,74 +1281,78 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }
 
   const maxLues = Math.max(1, ...semaine.map(s => s.lues));
+  const moment = momentParis();
+  /* Les pastilles du menu : ce qu'il reste à voir, à faire, à venir. */
+  const compte: Record<string, number> = { neufs: neufs.length, consultes: vus.length, visites: visites.length };
+  /* « avis à donner » mène droit aux biens en attente de son avis. */
+  const allerAvis = () => { setFiltreC('attente'); aller('consultes'); };
 
   return (
     <>
       <style>{CSS}</style>
 
-      <div className="chapeau">
+      {/* L'en-tête. Sur téléphone : la marque et la date, le bonjour, la
+          recherche en une ligne et son badge vivant. Sur ordinateur, le menu
+          se loge dans la même bande, et le conseiller à droite. Le bleu est
+          celui d'Emilio, en plus clair que l'ancien : le marine presque noir
+          faisait austère. */}
+      <div className={'chapeau' + (vue === 'accueil' ? ' ch-acc' : '')}>
         <div className="dedans">
           <div className="marque">
             <span className="motmarque">EMILIO IMMOBILIER</span>
-            <span className="confid">Espace privé</span>
+            <nav className="nav-haut" aria-label="Menu">
+              {ONGLETS.map(o => {
+                const n = compte[o.id] || 0;
+                const actif = vue === o.id;
+                return (
+                  <button key={o.id} type="button" className={'nh' + (actif ? ' on' : '')}
+                    aria-current={actif ? 'page' : undefined} onClick={() => aller(o.id)}>
+                    <span>{o.libPc || o.lib}</span>
+                    {n > 0 && <span className={'nh-n ' + o.ton}>{n}</span>}
+                  </button>
+                );
+              })}
+            </nav>
+            <span className="ch-date" suppressHydrationWarning>{moment.date}</span>
+            <a className="ch-agent" href={'tel:' + AGENT.telUrl} aria-label={'Appeler ' + AGENT.nom}>
+              <span className="ch-av">AR</span>
+              <span className="ch-an">Alexandre</span>
+              <span className="ch-ap"><Ico n="tel" t={14} /><span>Appeler</span></span>
+            </a>
           </div>
 
-          <div className="rangee">
-            <div className="ident">
-              <div className="mono">{(client.prenom[0] || '') + (client.nom[0] || '')}</div>
-              <div>
-                <h1>{client.prenom} {client.nom}</h1>
-                <div className="ref">
-                  Dossier {client.reference}{client.jours ? ` · suivi depuis ${client.jours} jours` : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Le sélecteur de recherche. Il n'existe que si le client en a
-                plusieurs : pour l'immense majorité des dossiers, cette ligne
-                ne s'affiche jamais et l'en-tête est exactement celui d'avant.
-
-                Le compteur passe devant le mot : c'est lui qui annonce qu'il
-                y a autre chose à voir, et c'est ce qu'on lit en premier. */}
-            {plusieurs && (
-              <button type="button" className="selec" onClick={ouvrirRecherches}
-                aria-label={`Recherche ${rang} sur ${recherches.length} — changer de recherche`}>
-                <span className="selec-in">
-                  <span className="selec-h">
-                    <span className="selec-n">{rang} sur {recherches.length}</span>
-                    <span className="selec-l">Recherche en cours</span>
-                  </span>
-                  <span className="selec-v">{nomCourant}</span>
-                  {autresNonLus > 0 && (
-                    <span className="selec-d">
-                      <b>{autresNonLus} nouveau{autresNonLus > 1 ? 'x' : ''} bien{autresNonLus > 1 ? 's' : ''}</b>
-                      {recherches.length > 2 ? ' sur vos autres recherches' : ' sur votre autre recherche'}
-                    </span>
-                  )}
-                </span>
-                <span className="selec-cv"><Ico n="chevron" t={13} /></span>
-              </button>
-            )}
-
-            <div className="agent">
-              <div className="agent-id">
-                <span className="agent-sur">Suivi par</span>
-                <b>{AGENT.nom}</b>
-                <span className="agent-role">{AGENT.role}</span>
-              </div>
-              {/* Sur téléphone, la pastille de veille se glisse sur la même ligne que
-                  l'agent : une ligne gagnée sur un écran où tout compte. */}
-              {passage?.quand && (
-                <div className="veilleligne"><span className="pouls" />
-                  {/* un seul bloc de texte : sinon le « gap » du flex écarte chaque mot */}
-                  <span>Actualisé {actualiseLe(passage.quand)}</span></div>
+          <div className="ch-salut">
+            <span className="ch-sur" suppressHydrationWarning>
+              {moment.date + (passage?.quand ? ` · mis à jour ${actualiseLe(passage.quand)}` : '')}
+            </span>
+            <h1 suppressHydrationWarning>{`${salutation(moment.heure)} ${client.prenom || ''}`.trim()}</h1>
+            <div className="ch-rech">
+              <span className="ch-rech-t">{phraseRecherche(crit) || nomCourant}</span>
+              {enCours && !finDite && (
+                <span className="ch-vif"><i className="ch-vif-pt" /><span>Recherche en cours</span></span>
               )}
-              <div className="agent-act">
-                <a className="act" href={'tel:' + AGENT.telUrl}><Ico n="tel" t={15} /><span>Appeler</span></a>
-                <a className="act fant" href={'mailto:' + AGENT.mail}><Ico n="mail" t={15} /><span>Écrire</span></a>
-              </div>
             </div>
           </div>
+
+          {plusieurs && (
+            <button type="button" className="selec" onClick={ouvrirRecherches}
+              aria-label={`Recherche ${rang} sur ${recherches.length} — changer de recherche`}>
+              <span className="selec-in">
+                <span className="selec-h">
+                  <span className="selec-n">{rang} sur {recherches.length}</span>
+                  <span className="selec-l">Recherche en cours</span>
+                </span>
+                <span className="selec-v">{nomCourant}</span>
+                {autresNonLus > 0 && (
+                  <span className="selec-d">
+                    <b>{autresNonLus} nouveau{autresNonLus > 1 ? 'x' : ''} bien{autresNonLus > 1 ? 's' : ''}</b>
+                    {recherches.length > 2 ? ' sur vos autres recherches' : ' sur votre autre recherche'}
+                  </span>
+                )}
+              </span>
+              <span className="selec-cv"><Ico n="chevron" t={13} /></span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1300,8 +1361,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
-              onVisiteBien={(id: string) => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
-              token={token}
+              onOuvrir={ouvrirBien} onAvis={allerAvis}
               /* Avec plusieurs recherches, « ma recherche » devient ambigu :
                  l'accueil dit alors « cette recherche ». */
               plusieurs={plusieurs}
@@ -1360,7 +1420,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             const visibles = GROUPES.filter(g => (par[g.id] || []).length > 0);
             const montres = filtreC === 'tout' ? visibles : visibles.filter(g => g.id === filtreC);
             return (
-            <Vue icone="horloge" titre="Mes derniers biens consultés" aller={aller}
+            <Vue icone="oeil" titre="Mes biens consultés" aller={aller}
               sous="Tout ce que vous avez déjà ouvert, du plus récent au plus ancien, avec vos retours.">
               {ouverts.length === 0 ? (
                 <div className="vide-sec">Vous n&apos;avez encore ouvert aucun bien.<br />Ils se rangeront ici au fur et à mesure, avec vos retours.</div>
@@ -1399,6 +1459,28 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           {vue === 'recherche' && (
             <Recherche crit={crit} aller={aller} onCriteres={ouvrirCriteres} onMessage={ouvrirMessage} />
           )}
+          {vue === 'visites' && (() => {
+            const faites = biens.filter(b => b.visiteFaite);
+            return (
+              <Vue icone="calendrier" aller={aller}
+                titre={visites.length > 1 ? `${visites.length} visites à venir` : visites.length ? '1 visite à venir' : 'Vos visites'}
+                sous={visites.length
+                  ? 'Calées par votre conseiller, qui vous accompagne sur place.'
+                  : 'Aucune visite prévue pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
+                {visites.map((v, i) => (
+                  <ProchaineVisite key={v.id} v={v} autres={0} token={token}
+                    titre={i === 0 ? 'Votre prochaine visite' : 'Visite suivante'}
+                    onBien={v.bienId ? () => { const b = biens.find(x => x.id === v.bienId); if (b) ouvrirBien(b); } : undefined} />
+                ))}
+                {faites.length > 0 && (
+                  <div className="vis-faites">
+                    <div className="sep"><span>Déjà visités</span><i /></div>
+                    <Liste biens={faites} onOuvrir={ouvrirBien} vide="" crit={crit} />
+                  </div>
+                )}
+              </Vue>
+            );
+          })()}
         </div>
 
         <div className="pied">
@@ -1407,6 +1489,26 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine
         </div>
       </div>
+
+      {/* La barre du bas, sur téléphone : les cinq endroits de l'espace, et une
+          pastille qui vit tant qu'il reste quelque chose à voir. Elle passe
+          sous les fiches et les fenêtres (z-index plus bas que la feuille). */}
+      <nav className="barre-bas" aria-label="Menu">
+        {ONGLETS.filter(o => !o.pc).map(o => {
+          const n = compte[o.id] || 0;
+          const actif = vue === o.id;
+          return (
+            <button key={o.id} type="button" className={'bb' + (actif ? ' on' : '')}
+              aria-current={actif ? 'page' : undefined} onClick={() => aller(o.id)}>
+              <span className="bb-i">
+                <span className={'bb-ic' + (n > 0 && !actif ? ' lueur' : '')}><Ico n={o.ico} t={20} /></span>
+                {n > 0 && <span className={'bb-n ' + o.ton}>{n}</span>}
+              </span>
+              <span className="bb-l">{o.lib}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       {/* La proposition d'écran d'accueil. Elle ne s'affiche jamais par-dessus
           une fiche ouverte : on ne coupe pas la parole. */}
@@ -1441,37 +1543,63 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   );
 }
 
-/* ══ accueil ══════════════════════════════════════ */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, token, onVisiteBien, plusieurs, enCours }: any) {
-  const dernier = donnes[0] || vus[0];
+/* ══ accueil ══════════════════════════════════════
+   Dans l'ordre où le client en a besoin : ce qui l'attend aujourd'hui (trois
+   cases, toujours cliquables, même à zéro), les nouveaux biens en grand, les
+   biens qui attendent son avis, ses derniers retours ; puis, à côté sur
+   ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
+   et son conseiller. */
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, plusieurs, enCours }: any) {
+  const lues = passage?.totalLues ?? passage?.lues;
+  const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
   return (
-    <div className="accueil">
-      <div className="col-a">
-      {/* Une visite calée passe avant tout le reste : c'est la seule chose de
-          cet écran qui a une heure et une date. */}
-      {visites?.length > 0 && (
-        <ProchaineVisite v={visites[0]} autres={visites.length - 1} token={token}
-          onBien={visites[0].bienId && onVisiteBien ? () => onVisiteBien(visites[0].bienId) : undefined} />
-      )}
+    <div className="acc">
+      <section className="auj" aria-label="Aujourd’hui pour vous">
+        <div className="auj-h">
+          <span className="auj-t">Aujourd’hui pour vous</span>
+          {passage?.quand && <span className="auj-maj">{`mis à jour ${actualiseLe(passage.quand)}`}</span>}
+        </div>
+        <div className="auj-g">
+          <button type="button" className={'auj-c c-neuf' + (neufs.length ? ' on' : '')} onClick={() => aller('neufs')}>
+            <span className="auj-ic"><Ico n="etoile" t={17} /></span>
+            <span className="auj-tx">
+              <span className="auj-n tab">{neufs.length}</span>
+              <span className="auj-l">{neufs.length > 1 ? 'nouveaux biens' : 'nouveau bien'}</span>
+            </span>
+          </button>
+          <button type="button" className={'auj-c c-avis' + (vus.length ? ' on' : '')} onClick={onAvis}>
+            <span className="auj-ic"><Ico n="pouce" t={17} /></span>
+            <span className="auj-tx">
+              <span className="auj-n tab">{vus.length}</span>
+              <span className="auj-l">avis à donner</span>
+            </span>
+          </button>
+          <button type="button" className={'auj-c c-vis' + (visites.length ? ' on' : '')} onClick={() => aller('visites')}>
+            <span className="auj-ic"><Ico n="calendrier" t={17} /></span>
+            <span className="auj-tx">
+              <span className="auj-n tab">{visites.length}</span>
+              <span className="auj-l">{visites.length > 1 ? 'visites prévues' : 'visite prévue'}</span>
+            </span>
+          </button>
+          {/* Sur ordinateur seulement : la quatrième case. Sur téléphone, le
+              même chiffre est dans la ligne du pied. */}
+          <div className="auj-c c-lues on">
+            <span className="auj-ic"><Ico n="loupe" t={17} /></span>
+            <span className="auj-tx">
+              <span className="auj-n tab"><span className="nv">{lues != null ? nombre(lues) : '—'}<BtnAide cle="lues" onAide={onAide} /></span></span>
+              <span className="auj-l">{client.jours ? `annonces lues en ${client.jours} jours` : 'annonces lues'}</span>
+            </span>
+          </div>
+        </div>
+        {lues != null && (
+          <div className="auj-pied">
+            <span><span className="nv"><b className="tab">{nombre(lues)}</b><BtnAide cle="lues" onAide={onAide} /></span>{' '}annonces lues pour vous</span>
+            {client.jours ? <span><span className="nv"><b className="tab">{client.jours}</b><BtnAide cle="jours" onAide={onAide} /></span>{' '}jours de suivi</span> : null}
+          </div>
+        )}
+      </section>
 
-      <div className="bandeau-chiffres">
-        <div className="bc"><div className="n or tab"><span className="nv">{neufs.length}<BtnAide cle="decouvrir" onAide={onAide} /></span></div>
-          <div className="l">à découvrir</div></div>
-        {/* Le total du dossier, pas le dernier passage : ce chiffre ne redescend
-            jamais, il dit le travail fourni depuis le début. */}
-        <div className="bc"><div className="n tab"><span className="nv">{(passage?.totalLues ?? passage?.lues)?.toLocaleString('fr-FR') ?? '—'}<BtnAide cle="lues" onAide={onAide} /></span></div>
-          <div className="l">annonces lues</div></div>
-        <div className="bc"><div className="n tab"><span className="nv">{client.jours ?? '—'}<BtnAide cle="jours" onAide={onAide} /></span></div>
-          <div className="l">jours de suivi</div></div>
-      </div>
-      </div>
-
-      <div className="col-b">
-      {/* Le titre garde sa ligne à lui, les deux liens la leur : à deux
-          boutons sur la même rangée, le second finissait coupé sur un
-          téléphone, et « Votre espace » passait à la ligne. */}
-      <div className="sep"><span>Votre espace</span><i /></div>
-      <div className="sep-liens">
+      <div className="sep-liens acc-liens">
         {/* Toujours là, même après un « plus tard » : celui qui change d'avis
             trois semaines plus tard doit le retrouver sans chercher. */}
         {onEcran && (
@@ -1487,132 +1615,239 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
       </div>
 
-      <div className="grille">
-        <button className={'case' + (neufs.length ? ' phare' : '')} onClick={() => aller('neufs')}>
-          <div className="tete-case">
-            <span className="ico"><Ico n="etoile" /></span>
-            {!!neufs.length && <span className="badge">{neufs.length}</span>}
-          </div>
-          <div><h3>Nouveaux biens pour vous</h3>
-            <p>{neufs.length ? `${neufs.length} bien${neufs.length > 1 ? 's' : ''} retenu${neufs.length > 1 ? 's' : ''} depuis votre dernière visite` : 'Sélection à jour'}</p></div>
-          {neufs.length > 0 && (
-            <div className="apercu">
-              {neufs.slice(0, 2).map((b: Bien) => (
-                <span className="apl" key={b.id}>
-                  <span className="pt">{b.photos[0] ? <img src={b.photos[0]} alt="" /> : '▣'}</span>
-                  <span className="et"><b>{EUR(b.prix)}</b><i>{b.surface ? b.surface + ' m²' : b.titre.slice(0, 22)}</i></span>
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="pied-case">
-            <span style={{ fontSize: 13, fontWeight: 700 }}>{neufs.length ? 'Les découvrir' : 'Revoir la sélection'}</span>
-            <span className="chev"><Ico n="fleche" t={18} /></span></div>
-        </button>
-
-        <button className="case" onClick={() => aller('consultes')}>
-          <div className="tete-case"><span className="ico"><Ico n="horloge" t={21} /></span>
-            {!!(vus.length || donnes.length) && <span className={'badge' + (vus.length ? '' : ' gris')}>{vus.length || donnes.length}</span>}</div>
-          <div><h3>Mes derniers biens consultés</h3>
-            {vus.length ? (
-              /* Une demande d'action ne se met pas en gris clair : elle s'annonce. */
-              <span className="alerte-avis">⏳ {vus.length} bien{vus.length > 1 ? 's' : ''} attend{vus.length > 1 ? 'ent' : ''} votre avis</span>
-            ) : (
-              <p>{donnes.length
-                ? `${donnes.length} bien${donnes.length > 1 ? 's' : ''} déjà ouvert${donnes.length > 1 ? 's' : ''}, avec vos retours`
-                : 'Vos avis et vos retours'}</p>
-            )}</div>
-          {/* Un intitulé d'avis tout seul (« Je veux visiter ») ne veut rien dire :
-              on dit de quel bien il s'agit et qu'il s'agit de SON retour. */}
-          {dernier && (
-            <div className="apercu">
-              <span className="apl"><span className="pt">▣</span>
-                <span className="et"><b>{dernier.avis && ETIQ[dernier.avis]
-                  ? `${ETIQ[dernier.avis].e} ${ETIQ[dernier.avis].n}`
-                  : 'Votre avis est attendu'}</b></span></span>
-              <span className="apl-s">{dernier.avis ? 'Votre dernier retour · ' : 'Dernier bien ouvert · '}{dernier.titre}</span>
-            </div>
-          )}
-          <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
-        </button>
-
-        {/* Ordre de lecture sur mobile : ce sur quoi on agit en tête, côte à
-            côte ; ce qu'on consulte en dessous, sur toute la largeur. Le rappel
-            des critères et le graphe du marché ont besoin de la ligne entière
-            pour rester lisibles — à mi-largeur, leur texte se casse en quatre. */}
-        {/* Une seule carte, deux issues. Faire évoluer sa recherche ou dire
-            qu'elle est finie relèvent du même moment : on les met sous le même
-            toit, séparées d'un simple filet. */}
-        {/* Recherche en cours : la carte s'entoure d'une lueur verte qui
-            respire. Voir .bloc-rech.vivant dans la feuille de style. */}
-        <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
-          <button className="rech-haut" onClick={() => aller('recherche')}>
-            {/* La pastille se pose contre le picto, là où l'œil arrive en
-                premier. Recherche arrêtée : elle disparaît entièrement, et la
-                carte redevient celle d'avant — pas de trou, pas de mention
-                grise qui dirait la même chose en moins bien. */}
-            <div className={'tete-case' + (enCours ? ' tc-vif' : '')}>
-              <span className="ico"><Ico n="cible" /></span>
-              {enCours && (
-                <span className="vif"><i className="vif-pt" />Recherche en cours</span>
-              )}
-            </div>
-            <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
-              <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
-                {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
-                {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
-            <div className="pied-case">
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
-              <span className="chev"><Ico n="fleche" t={18} /></span></div>
-          </button>
-          <button className="rech-bas" onClick={onFin}>
-            <span className="rb-ico">🏁</span>
-            <span className="rb-txt">
-              <b>{plusieurs ? 'Cette recherche est terminée' : 'Ma recherche est terminée'}</b>
-              <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
-            </span>
-            <span className="chev"><Ico n="fleche" t={17} /></span>
-          </button>
+      <div className="acc-cols">
+        <div className="acc-g">
+          {neufs.length > 0
+            ? <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} />
+            : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} />}
+          {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
+          {retours.length > 0 && <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} />}
         </div>
-        <button className="case large" onClick={() => aller('marche')}>
-          <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
-          <div><h3>Le marché sur vos critères</h3>
-            <p>{semaine.reduce((s: number, x: any) => s + x.lues, 0)} annonces lues cette semaine</p></div>
-          <div className="apm">
-            <div className="apm-t">Annonces lues · 7 derniers jours</div>
-            <div className="mini">{semaine.map((d: any, i: number) => (
-              <i key={i} className={i === semaine.length - 1 ? 'fort' : ''}
-                style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
-            ))}</div>
+
+        <div className="acc-d">
+          {visites?.length > 0 && (
+            <VisiteCourte v={visites[0]} autres={visites.length - 1} onVoir={() => aller('visites')} />
+          )}
+          <div className="acc-cartes">
+            <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
+              <button className="rech-haut" onClick={() => aller('recherche')}>
+                {/* Le badge « Recherche en cours » est monté dans l'en-tête ;
+                    la carte garde sa lueur verte quand la recherche tourne. */}
+                <div className="tete-case">
+                  <span className="ico"><Ico n="cible" /></span>
+                </div>
+                <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
+                  <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
+                    {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
+                    {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
+                <div className="pied-case">
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
+                  <span className="chev"><Ico n="fleche" t={18} /></span></div>
+              </button>
+              <button className="rech-bas" onClick={onFin}>
+                <span className="rb-ico">🏁</span>
+                <span className="rb-txt">
+                  <b>{plusieurs ? 'Cette recherche est terminée' : 'Ma recherche est terminée'}</b>
+                  <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
+                </span>
+                <span className="chev"><Ico n="fleche" t={17} /></span>
+              </button>
+            </div>
+            <button className="case large" onClick={() => aller('marche')}>
+              <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
+              <div><h3>Le marché sur vos critères</h3>
+                <p>{semaine.reduce((s: number, x: any) => s + x.lues, 0)} annonces lues cette semaine</p></div>
+              <div className="apm">
+                <div className="apm-t">Annonces lues · 7 derniers jours</div>
+                <div className="mini">{semaine.map((d: any, i: number) => (
+                  <i key={i} className={i === semaine.length - 1 ? 'fort' : ''}
+                    style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
+                ))}</div>
+              </div>
+              <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
+            </button>
           </div>
-          <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
-        </button>
+          <div className="sep"><span>Votre conseiller</span><i /></div>
+          <div className="chasseur">
+            <div className="av">AR</div>
+            <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
+            <a className="tel" href="tel:0658957632"><Ico n="tel" t={15} /> Appeler</a>
+          </div>
 
-      </div>
+          <div className="engage" style={{ marginTop: 12 }}>
+            <div className="t">Mon engagement</div>
+            <div><span className="k"><Ico n="check" t={15} /></span><span>Une recherche menée chaque jour&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
+            <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
+            <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
+          </div>
 
-      </div>
-
-      <div className="col-c">
-      <div className="sep"><span>Votre conseiller</span><i /></div>
-      <div className="chasseur">
-        <div className="av">AR</div>
-        <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
-        <a className="tel" href="tel:0658957632"><Ico n="tel" t={15} /> Appeler</a>
-      </div>
-
-      <div className="engage" style={{ marginTop: 12 }}>
-        <div className="t">Mon engagement</div>
-        <div><span className="k"><Ico n="check" t={15} /></span><span>Une recherche menée chaque jour&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
-        <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
-        <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
-      </div>
-
-      <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
-        <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
-          — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
-          il verra exactement la même chose.</span></div>
+          <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
+            <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
+              — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
+              il verra exactement la même chose.</span></div>
+        </div>
       </div>
     </div>
+  );
+}
+
+/* Les nouveaux biens, en grand : la photo, le prix, et ce qui compte. Sur
+   téléphone ils défilent au doigt ; sur ordinateur, deux par ligne. */
+function CarrouselNeufs({ biens, crit, onOuvrir, aller }: { biens: Bien[]; crit: Criteres; onOuvrir: (b: Bien) => void; aller: (v: string) => void }) {
+  return (
+    <section className="bloc-n">
+      <div className="bloc-h">
+        <h2>Nouveaux biens pour vous</h2>
+        <button type="button" className="bloc-lien" onClick={() => aller('neufs')}>Tout voir</button>
+      </div>
+      <div className="carrou">
+        {biens.slice(0, 6).map(b => {
+          const corr = correspondance(b, crit);
+          const quand = depuis(b.envoyeLe);
+          return (
+            <button key={b.id} type="button" className="cn" onClick={() => onOuvrir(b)}>
+              <span className="cn-ph">
+                {b.photos[0] ? <img src={b.photos[0]} alt="" /> : <span className="cn-vide"><Ico n="maison" t={40} /></span>}
+                <span className="cn-new">{quand ? `Nouveau · ${quand}` : 'Nouveau'}</span>
+                {b.photos.length > 1 && <span className="cn-nb">{`${b.photos.length} photos`}</span>}
+              </span>
+              <span className="cn-c">
+                <span className="cn-p">
+                  <b className="tab">{EUR(b.prix)}</b>
+                  {b.prix && b.surface ? <i className="tab">{`${nombre(Math.round(b.prix / b.surface))} €/m²`}</i> : null}
+                </span>
+                <span className="cn-t">{b.titre}</span>
+                <span className="cn-m">{[b.surface && b.surface + ' m²', b.pieces && b.pieces + ' pièces', b.secteur].filter(Boolean).join(' · ')}</span>
+                {corr && (
+                  <span className="cn-j">
+                    <span className="cn-jb"><i style={{ width: corr.note + '%' }} /></span>
+                    <b className="tab">{`${corr.note} % de vos critères`}</b>
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* Rien de nouveau : on le dit, et on dit pourquoi — jamais un bloc vide. */
+function RienDeNeuf({ passage, aVoir, aller }: { passage: Props['passage']; aVoir: boolean; aller: (v: string) => void }) {
+  return (
+    <section className="calme">
+      <div className="calme-h">
+        <span className="calme-ic"><Ico n="loupe" t={21} /></span>
+        <div>
+          <h2>Rien de nouveau depuis votre dernière visite</h2>
+          <p>Votre recherche continue, rien n’est bloqué.</p>
+        </div>
+      </div>
+      <div className="calme-l">
+        {!!passage?.lues && (
+          <span><span className="calme-k"><Ico n="check" t={15} /></span>
+            <span>{passage.proposees
+              ? `Lors de la dernière recherche, ${passage.lues} annonces ont été lues sur vos critères et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} : vous les avez déjà ouverts.`
+              : `Lors de la dernière recherche, ${passage.lues} annonces ont été lues sur vos critères : aucune ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.`}</span>
+          </span>
+        )}
+        <span><span className="calme-k"><Ico n="etincelle" t={15} /></span>
+          <span>Dès qu’un bien correspond à ce que vous voulez, il arrive ici.</span>
+        </span>
+      </div>
+      {aVoir && (
+        <button type="button" className="calme-b" onClick={() => aller('consultes')}>
+          <span>Revoir les biens déjà consultés</span><Ico n="fleche" t={16} />
+        </button>
+      )}
+    </section>
+  );
+}
+
+/* Les biens ouverts sans avis : une seule phrase, et un bouton par bien qui
+   ouvre sa fiche — là où se trouvent les boutons d'avis habituels. */
+function AvisAttendus({ biens, onOuvrir }: { biens: Bien[]; onOuvrir: (b: Bien) => void }) {
+  const n = biens.length;
+  return (
+    <section className="avis-att">
+      <div className="aa-h">
+        <span className="aa-ic"><Ico n="pouce" t={18} /></span>
+        <div>
+          <h2>{`${n} bien${n > 1 ? 's' : ''} attend${n > 1 ? 'ent' : ''} votre avis`}</h2>
+          <p>Vous les avez ouverts : dites-nous ce que vous en pensez.</p>
+        </div>
+      </div>
+      <div className="aa-l">
+        {biens.slice(0, 8).map(b => {
+          const quand = depuis(b.vuLe);
+          return (
+            <button key={b.id} type="button" className="aa-c" onClick={() => onOuvrir(b)}>
+              <span className="aa-ph">
+                {b.photos[0] ? <img src={b.photos[0]} alt="" /> : <Ico n="maison" t={30} />}
+                {quand && <span className="aa-q">{`Ouvert ${quand}`}</span>}
+              </span>
+              <span className="aa-t">{b.titre}</span>
+              <span className="aa-m">{EUR(b.prix) + (b.surface ? ` · ${b.surface} m²` : '')}</span>
+              <span className="aa-b">Donner mon avis</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* Ses trois derniers retours, avec l'avis en toutes lettres. */
+function DerniersRetours({ biens, onOuvrir, aller }: { biens: Bien[]; onOuvrir: (b: Bien) => void; aller: (v: string) => void }) {
+  return (
+    <section className="dr">
+      <div className="bloc-h">
+        <h2>Vos derniers retours</h2>
+        <button type="button" className="bloc-lien" onClick={() => aller('consultes')}>Tout voir</button>
+      </div>
+      <div className="dr-l">
+        {biens.slice(0, 3).map(b => {
+          const a = etiqDe(b);
+          return (
+            <button key={b.id} type="button" className="dr-c" onClick={() => onOuvrir(b)}>
+              <span className="dr-ph">{b.photos[0] ? <img src={b.photos[0]} alt="" /> : <Ico n="maison" t={24} />}</span>
+              <span className="dr-x">
+                {a && <span className={'etiq ' + a.c}>{`${a.e} ${a.n}`}</span>}
+                <span className="dr-t">{b.titre}</span>
+                <span className="dr-m">{EUR(b.prix) + (b.commentaire ? ` · « ${b.commentaire} »` : '')}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* La prochaine visite, en une ligne : la date, l'heure, le bien. Le détail
+   (adresse, agenda) est dans l'onglet Visites. */
+function VisiteCourte({ v, autres, onVoir }: { v: any; autres: number; onVoir: () => void }) {
+  const x = new Date(String(v.date).slice(0, 10) + 'T12:00:00');
+  const ok = !isNaN(x.getTime());
+  const bientot = joursAvant(v.date);
+  const heure = v.heure ? String(v.heure).slice(0, 5).replace(':', ' h ') : '';
+  const bas = [bientot ? bientot.charAt(0).toUpperCase() + bientot.slice(1) : v.adresse,
+    autres > 0 ? `et ${autres} autre${autres > 1 ? 's' : ''} ensuite` : ''].filter(Boolean).join(' · ');
+  return (
+    <button type="button" className="vc" onClick={onVoir}>
+      <span className="vc-d">
+        <i>{ok ? JOURS_L[x.getDay()].slice(0, 3) + '.' : ''}</i>
+        <b className="tab">{ok ? x.getDate() : ''}</b>
+        <i>{ok ? MOIS[x.getMonth()] : ''}</i>
+      </span>
+      <span className="vc-t">
+        <span className="vc-s">{heure ? `Visite à venir · ${heure}` : 'Visite à venir'}</span>
+        <span className="vc-b">{v.titre}</span>
+        {bas && <span className="vc-a">{bas}</span>}
+      </span>
+      <span className="vc-f"><Ico n="fleche" t={18} /></span>
+    </button>
   );
 }
 
@@ -1997,7 +2232,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
             <div className="tu">
               <span className="tu-i"><Ico n="note" t={19} /></span>
               <span className="tu-c">
-                <b className="tab"><span className="nv">{lues.toLocaleString('fr-FR')}<BtnAide cle="lues" onAide={onAide} /></span></b>
+                <b className="tab"><span className="nv">{nombre(lues)}<BtnAide cle="lues" onAide={onAide} /></span></b>
                 <span>annonce{lues > 1 ? 's' : ''} lue{lues > 1 ? 's' : ''} pour vous</span></span></div>
             <div className="tu gris">
               <span className="tu-i"><Ico n="croix" t={19} /></span>
@@ -2013,7 +2248,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           {sur > 1 && (
             <div className="gr-note">
               <span>Les trois chiffres s&apos;additionnent&nbsp;:{' '}
-                <b>{lues.toLocaleString('fr-FR')}</b>{' '}annonces lues,{' '}
+                <b>{nombre(lues)}</b>{' '}annonces lues,{' '}
                 <b>{ecart.toLocaleString('fr-FR')}</b>{' '}qui ne vous correspondaient pas,{' '}
                 <b>{ret.toLocaleString('fr-FR')}</b>{' '}
                 déposée{ret > 1 ? 's' : ''} dans votre espace. Soit{' '}
@@ -3740,14 +3975,14 @@ function lienGoogle(v: { date: string; heure: string | null; titre: string; adre
   return 'https://calendar.google.com/calendar/render?' + p.toString();
 }
 
-function ProchaineVisite({ v, autres, token, onBien }: { v: any; autres: number; token: string; onBien?: () => void }) {
+function ProchaineVisite({ v, autres, token, onBien, titre = 'Votre prochaine visite' }: { v: any; autres: number; token: string; onBien?: () => void; titre?: string }) {
   const bientot = joursAvant(v.date);
   /* La photo et le titre mènent au bien : quand le rendez-vous tombe une
      semaine plus tard, la première question est « c'était lequel, déjà ? ». */
   const Rappel = onBien ? 'button' : 'div';
   return (
     <div className="visite-a-venir">
-      <div className="vav-t"><Ico n="calendrier" t={15} /> Votre prochaine visite</div>
+      <div className="vav-t"><Ico n="calendrier" t={15} /><span>{titre}</span></div>
       <div className="vav-q">
         {dateLongue(v.date)}{v.heure ? ` à ${String(v.heure).slice(0, 5).replace(':', ' h ')}` : ''}
         {bientot && <span className="vav-b">{bientot}</span>}
@@ -5700,5 +5935,303 @@ button.vav-bien:hover{background:rgba(255,255,255,.14); border-color:rgba(255,25
 .gr-cadre.c-net .ge.or{background:var(--or); color:#fff}
 .gr-cadre .entonnoir{background:none; border:none; padding:0; box-shadow:none}
 .gr-cadre .barres{margin-top:12px}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   LE NOUVEL ESPACE (septembre 2026)
+   En-tête bleu Emilio plus clair, « Aujourd'hui pour vous », les nouveaux
+   biens en grand, la barre du bas sur téléphone, le menu dans la bande sur
+   ordinateur. Ces règles viennent en dernier : elles l'emportent sur les
+   anciennes quand elles se recouvrent.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* — l'en-tête — */
+.chapeau{background:linear-gradient(152deg,#4d6c9e 0%,#3a5886 55%,#46659a 100%); padding:16px 20px 22px}
+.chapeau.ch-acc{padding-bottom:70px}
+.chapeau::after{background:radial-gradient(circle,rgba(232,203,122,.3),transparent 64%);
+  animation:ch-flotte 8s ease-in-out infinite}
+@keyframes ch-flotte{0%,100%{transform:translate(0,0)}50%{transform:translate(-12px,10px)}}
+.motmarque{color:#ecd28a}
+.ch-date{position:relative; font-size:12.5px; color:rgba(255,255,255,.82); white-space:nowrap}
+.nav-haut, .ch-agent, .ch-sur{display:none}
+.ch-salut{position:relative; margin-top:12px; display:flex; flex-direction:column; gap:8px}
+.ch-salut h1{margin:0; font-size:28px; font-weight:800; letter-spacing:-.6px; line-height:1.12; color:#fff}
+.ch-rech{display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px}
+.ch-rech-t{font-size:14px; line-height:1.45; color:rgba(255,255,255,.93)}
+.ch-vif{display:inline-flex; align-items:center; gap:7px; padding:4px 10px 4px 8px; border-radius:99px;
+  background:rgba(34,197,94,.24); border:1px solid rgba(134,239,172,.45);
+  font-size:12px; font-weight:700; color:#fff; white-space:nowrap}
+.ch-vif-pt{width:7px; height:7px; border-radius:50%; background:#4ade80; flex:0 0 auto;
+  animation:onde-vif 2.6s ease-out infinite, respire 2.6s ease-in-out infinite}
+.chapeau .selec{margin-top:14px}
+
+/* — Aujourd'hui pour vous — */
+.acc{display:flex; flex-direction:column}
+.auj{position:relative; z-index:2; margin-top:-50px; background:var(--carte); border-radius:22px; padding:15px;
+  box-shadow:0 18px 40px -22px rgba(36,56,92,.5); display:flex; flex-direction:column; gap:12px}
+.auj-h{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.auj-t{font-family:'Plus Jakarta Sans',sans-serif; font-size:11px; font-weight:800; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--plume)}
+.auj-maj{font-size:11.5px; color:var(--plume); white-space:nowrap}
+.auj-g{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px}
+.auj-c{display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px 11px; border-radius:17px;
+  text-align:left; background:#f8fafc; border:1px solid var(--trait); color:var(--encre); font-family:inherit;
+  transition:transform .18s ease, box-shadow .25s ease}
+button.auj-c:active{transform:scale(.96)}
+.auj-ic{width:30px; height:30px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  background:#eef1f6; color:#94a3b8; flex:0 0 auto}
+.auj-tx{display:flex; flex-direction:column; gap:2px; min-width:0}
+.auj-n{font-family:'Plus Jakarta Sans',sans-serif; font-size:25px; font-weight:800; line-height:1; color:#94a3b8}
+.auj-l{font-size:12px; font-weight:600; line-height:1.3; color:#334155}
+.auj-c.c-neuf.on{background:#fdfaf1; border-color:#ecdcb4}
+.auj-c.c-neuf.on .auj-ic{background:#f7ecd0; color:var(--or-fonce)}
+.auj-c.c-neuf.on .auj-n{color:var(--or-fonce)}
+.auj-c.c-avis.on{background:#fff7ed; border-color:#fed7aa}
+.auj-c.c-avis.on .auj-ic{background:#ffedd5; color:#c2410c}
+.auj-c.c-avis.on .auj-n{color:#c2410c}
+.auj-c.c-vis.on{background:#f5f3fa; border-color:#e1dbef}
+.auj-c.c-vis.on .auj-ic{background:#ece8f6; color:#7b6ba8}
+.auj-c.c-vis.on .auj-n{color:#7b6ba8}
+.auj-c.c-lues{display:none}
+.auj-c.c-lues .auj-ic{background:#e6edf8; color:#3a5886}
+.auj-c.c-lues .auj-n{color:#3a5886}
+.auj-n .nv, .auj-pied .nv{position:relative; display:inline-block; padding-right:17px}
+.auj-n .nv .aide-pt, .auj-pied .nv .aide-pt{position:absolute; left:auto; right:0; top:-6px}
+.auj-pied{display:flex; flex-wrap:wrap; gap:4px 16px; padding-top:10px; border-top:1px solid #eef1f6;
+  font-size:12.5px; color:var(--plume)}
+.auj-pied b{color:var(--encre); font-weight:800}
+.acc-liens{margin-top:14px}
+
+/* — les blocs de l'accueil — */
+.acc-cols{display:block}
+.acc-g > section, .acc-d > .vc, .acc-cartes{margin-top:22px}
+.acc-cartes{display:flex; flex-direction:column; gap:12px}
+.acc-d > .sep{margin-top:26px}
+.bloc-h{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:12px}
+.bloc-h h2{margin:0; font-size:18px; font-weight:800; letter-spacing:-.3px}
+.bloc-lien{font-size:13px; font-weight:700; color:var(--or-fonce); padding:4px 0; white-space:nowrap}
+
+.carrou{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; margin:0 -20px;
+  padding:2px 20px 8px; scrollbar-width:none; -webkit-overflow-scrolling:touch}
+.carrou::-webkit-scrollbar{display:none}
+.cn{flex:0 0 272px; scroll-snap-align:start; background:var(--carte); border:1px solid var(--trait);
+  border-radius:20px; overflow:hidden; text-align:left; display:flex; flex-direction:column; padding:0;
+  font-family:inherit; color:var(--encre);
+  animation:cn-entre .7s cubic-bezier(.16,1,.3,1) backwards;
+  transition:transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s ease}
+.cn:nth-child(2){animation-delay:.1s} .cn:nth-child(3){animation-delay:.2s} .cn:nth-child(4){animation-delay:.3s}
+@keyframes cn-entre{from{opacity:0; transform:translateX(36px)}to{opacity:1; transform:none}}
+.cn:active{transform:scale(.985)}
+.cn-ph{position:relative; display:flex; align-items:center; justify-content:center; height:156px;
+  background:#8ea3b8; color:rgba(255,255,255,.65); overflow:hidden}
+.cn-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.cn-new{position:absolute; left:12px; top:12px; font-size:11px; font-weight:800; letter-spacing:.3px;
+  color:#1a2332; background:#e8cb7a; border-radius:99px; padding:4px 10px}
+.cn-nb{position:absolute; right:12px; bottom:12px; font-size:11px; font-weight:700; color:#fff;
+  background:rgba(26,35,50,.55); border-radius:99px; padding:3px 9px}
+.cn-c{display:flex; flex-direction:column; gap:6px; padding:13px 14px 14px}
+.cn-p{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+.cn-p b{font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:800; letter-spacing:-.4px}
+.cn-p i{font-style:normal; font-size:12px; color:var(--plume); white-space:nowrap}
+.cn-t{font-size:14px; font-weight:600; line-height:1.35}
+.cn-m{font-size:12.5px; color:var(--plume)}
+.cn-j{display:flex; align-items:center; gap:8px; margin-top:2px}
+.cn-jb{flex:1; height:6px; border-radius:6px; background:#eef1f6; overflow:hidden}
+.cn-jb i{display:block; height:100%; border-radius:6px; background:var(--or);
+  animation:cn-jauge 1.1s cubic-bezier(.16,1,.3,1) .4s backwards}
+@keyframes cn-jauge{from{width:0}}
+.cn-j b{font-size:11.5px; font-weight:700; color:var(--or-fonce); white-space:nowrap}
+
+.calme{background:var(--carte); border:1px solid var(--trait); border-radius:22px; padding:18px;
+  display:flex; flex-direction:column; gap:13px}
+.calme-h{display:flex; align-items:center; gap:12px}
+.calme-ic{width:46px; height:46px; border-radius:15px; background:#eef3fb; color:#3a5886; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center; animation:calme-flotte 3.2s ease-in-out infinite}
+@keyframes calme-flotte{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.calme-h h2{margin:0; font-size:16.5px; font-weight:800; line-height:1.3}
+.calme-h p{margin:2px 0 0; font-size:12.5px; color:var(--plume)}
+.calme-l{display:flex; flex-direction:column; gap:9px; padding:13px 14px; border-radius:16px; background:#f6f8fc}
+.calme-l > span{display:flex; gap:9px; font-size:13.5px; line-height:1.5}
+.calme-k{color:#3a5886; display:flex; margin-top:2px; flex:0 0 auto}
+.calme-b{display:flex; align-items:center; justify-content:center; gap:8px; height:44px; border-radius:13px;
+  border:1px solid var(--trait-fort); color:#24385c; font-size:13.5px; font-weight:700; background:var(--carte)}
+
+.avis-att{background:var(--carte); border:1px solid #fed7aa; border-radius:22px; padding:16px;
+  box-shadow:0 12px 30px -26px rgba(194,65,12,.6)}
+.aa-h{display:flex; align-items:center; gap:11px; margin-bottom:12px}
+.aa-ic{width:38px; height:38px; border-radius:12px; background:#fff7ed; border:1px solid #fed7aa; color:#c2410c;
+  display:flex; align-items:center; justify-content:center; flex:0 0 auto}
+.aa-h h2{margin:0; font-size:16px; font-weight:800; line-height:1.3}
+.aa-h p{margin:1px 0 0; font-size:12.5px; color:var(--plume); line-height:1.4}
+.aa-l{display:flex; gap:10px; overflow-x:auto; margin:0 -16px; padding:0 16px 2px; scrollbar-width:none}
+.aa-l::-webkit-scrollbar{display:none}
+.aa-c{flex:0 0 200px; display:flex; flex-direction:column; border-radius:16px; overflow:hidden; padding:0;
+  border:1px solid #f1e7da; background:#fffdfa; text-align:left; font-family:inherit; color:var(--encre)}
+.aa-c:active{transform:scale(.98)}
+.aa-ph{position:relative; height:96px; background:#9aae9b; color:rgba(255,255,255,.65);
+  display:flex; align-items:center; justify-content:center; overflow:hidden}
+.aa-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.aa-q{position:absolute; left:8px; top:8px; font-size:10.5px; font-weight:800; color:#c2410c;
+  background:#fff; border-radius:99px; padding:3px 8px}
+.aa-t{padding:10px 11px 0; font-size:13px; font-weight:700; line-height:1.3}
+.aa-m{padding:4px 11px 0; font-size:12px; color:var(--plume)}
+.aa-b{margin:9px 11px 11px; margin-top:auto; display:flex; align-items:center; justify-content:center; height:34px;
+  border-radius:10px; background:#c2410c; color:#fff; font-size:12.5px; font-weight:700}
+.aa-m + .aa-b{margin-top:9px}
+
+.dr-l{display:flex; flex-direction:column; gap:10px}
+.dr-c{display:flex; align-items:center; gap:12px; width:100%; text-align:left; font-family:inherit; color:var(--encre);
+  background:var(--carte); border:1px solid var(--trait); border-radius:16px; padding:10px}
+.dr-ph{width:58px; height:58px; border-radius:12px; overflow:hidden; background:#c3c9d2; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.75)}
+.dr-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.dr-x{display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0}
+.dr-t{font-size:13.5px; font-weight:700; line-height:1.3}
+.dr-m{font-size:12px; color:var(--plume); line-height:1.4}
+
+.vc{display:flex; align-items:center; gap:14px; width:100%; text-align:left; font-family:inherit; color:var(--encre);
+  background:var(--carte); border:1px solid #e1dbef; border-radius:22px; padding:14px}
+.vc:active{transform:scale(.99)}
+.vc-d{width:58px; flex:0 0 auto; border-radius:15px; background:#7b6ba8; color:#fff; padding:8px 0;
+  display:flex; flex-direction:column; align-items:center; animation:halo-vio 2.6s ease-out infinite}
+.vc-d i{font-style:normal; font-size:10.5px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#ece8f6}
+.vc-d b{font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; line-height:1.1}
+.vc-t{display:flex; flex-direction:column; gap:3px; flex:1; min-width:0}
+.vc-s{font-size:11px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase; color:#7b6ba8}
+.vc-b{font-size:14.5px; font-weight:700; line-height:1.3}
+.vc-a{font-size:12.5px; color:var(--plume)}
+.vc-f{color:#7b6ba8; flex:0 0 auto; display:flex}
+
+/* La visite, dans l'onglet Visites : le même violet adouci que partout. */
+.visite-a-venir{background:linear-gradient(152deg,#8475b4 0%,#6f60a2 100%); box-shadow:0 18px 34px -24px rgba(79,64,130,.8)}
+.visite-a-venir::after{background:radial-gradient(circle,rgba(255,255,255,.18),transparent 66%)}
+.vav-t{color:#ece8f6}
+.vav-b{background:#ece8f6; color:#4f4082}
+.vav-voir{color:#fff}
+.vis-faites{margin-top:26px}
+.vis-faites .sep{margin-bottom:12px}
+
+/* — les pastilles vivantes (barre du bas et menu de l'ordinateur) —
+   Tant qu'il y a un chiffre, il respire : un halo qui s'ouvre, et un petit
+   rebond toutes les quatre secondes, décalé d'une pastille à l'autre pour
+   qu'elles ne bougent jamais ensemble. Rien du tout si le téléphone demande
+   moins d'animations. */
+@keyframes halo-or{0%{box-shadow:0 0 0 0 rgba(201,168,76,.7)}70%{box-shadow:0 0 0 7px rgba(201,168,76,0)}100%{box-shadow:0 0 0 0 rgba(201,168,76,0)}}
+@keyframes halo-bleu{0%{box-shadow:0 0 0 0 rgba(58,88,134,.55)}70%{box-shadow:0 0 0 7px rgba(58,88,134,0)}100%{box-shadow:0 0 0 0 rgba(58,88,134,0)}}
+@keyframes halo-vio{0%{box-shadow:0 0 0 0 rgba(123,107,168,.6)}70%{box-shadow:0 0 0 7px rgba(123,107,168,0)}100%{box-shadow:0 0 0 0 rgba(123,107,168,0)}}
+@keyframes halo-blanc{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6)}70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+@keyframes tic{0%,84%,100%{transform:scale(1)}88%{transform:scale(1.25)}92%{transform:scale(.92)}96%{transform:scale(1.07)}}
+@keyframes lueur{0%,100%{filter:drop-shadow(0 0 0 rgba(201,168,76,0))}50%{filter:drop-shadow(0 0 5px rgba(201,168,76,.6))}}
+
+/* — la barre du bas (téléphone) — */
+.barre-bas{position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:45;
+  height:66px; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); align-items:center; padding:0 4px;
+  background:rgba(255,255,255,.97); border:1px solid var(--trait); border-radius:24px;
+  box-shadow:0 14px 34px -14px rgba(36,56,92,.42); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px)}
+.bb{display:flex; flex-direction:column; align-items:center; gap:4px; padding:0; color:var(--plume);
+  font-family:inherit; transition:transform .2s ease; -webkit-tap-highlight-color:transparent}
+.bb:active{transform:scale(.92)}
+.bb-i{position:relative; width:50px; height:30px; border-radius:99px; display:flex; align-items:center; justify-content:center;
+  transition:background .25s ease, color .25s ease}
+.bb-ic{display:flex}
+.bb.on{color:#24385c}
+.bb.on .bb-i{background:#3a5886; color:#fff; animation:bb-pop .45s cubic-bezier(.3,1.4,.5,1)}
+@keyframes bb-pop{from{transform:scale(.6)}to{transform:none}}
+.bb-l{font-size:11px; font-weight:600; white-space:nowrap}
+.bb.on .bb-l{font-weight:800}
+.bb-n{position:absolute; top:-5px; right:1px; min-width:18px; height:18px; padding:0 4px; border-radius:99px;
+  border:2px solid #fff; font-size:10.5px; font-weight:800; line-height:1;
+  display:flex; align-items:center; justify-content:center}
+.bb-n.or{background:#c9a84c; color:#1a2332; animation:halo-or 2.4s ease-out infinite, tic 4s ease-in-out infinite}
+.bb-n.bleu{background:#3a5886; color:#fff; animation:halo-bleu 2.4s ease-out infinite, tic 4s ease-in-out .8s infinite}
+.bb-n.vio{background:#7b6ba8; color:#fff; animation:halo-vio 2.4s ease-out infinite, tic 4s ease-in-out 1.6s infinite}
+.bb.on .bb-n{border-color:#fff}
+.bb-ic.lueur{color:#24385c; animation:lueur 3s ease-in-out infinite}
+@media(max-width:1023px){
+  .page{padding-bottom:112px}
+  /* la bande « installer » passe au-dessus de la barre, jamais dessous */
+  .ecran{bottom:calc(78px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:359px){.bb-l{font-size:10px}}
+/* Hors de l'accueil, sur téléphone : l'en-tête se fait discret (le bonjour
+   en petit, sans la ligne de recherche), et « Retour à l'accueil » s'efface —
+   la barre du bas fait ce travail, et le contenu remonte d'autant. */
+@media(max-width:1023px){
+  .chapeau:not(.ch-acc){padding-bottom:16px}
+  .chapeau:not(.ch-acc) .ch-salut{margin-top:6px}
+  .chapeau:not(.ch-acc) .ch-salut h1{font-size:20px; letter-spacing:-.3px}
+  .chapeau:not(.ch-acc) .ch-rech{display:none}
+  .retour{display:none}
+  .vue > .retour + div{margin-top:22px}
+}
+@media(min-width:1024px){
+  .chapeau:not(.ch-acc) .ch-salut{margin-top:22px}
+  .chapeau:not(.ch-acc) .ch-salut h1{font-size:30px}
+}
+
+/* — sur ordinateur : le menu dans la bande bleue, quatre cases, deux colonnes — */
+@media(min-width:1024px){
+  .barre-bas{display:none}
+  .chapeau{padding:22px 40px 30px}
+  .chapeau.ch-acc{padding-bottom:100px}
+  .marque{justify-content:flex-start; gap:24px}
+  .ch-date{display:none}
+  .nav-haut{position:relative; display:flex; align-items:center; gap:4px; padding:5px; border-radius:99px;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15)}
+  .nh{display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 14px; border-radius:99px;
+    color:rgba(255,255,255,.88); font-size:14px; font-weight:600; transition:background .2s, color .2s}
+  .nh:hover{background:rgba(255,255,255,.1); color:#fff}
+  .nh.on{background:#fff; color:#24385c; font-weight:800; box-shadow:0 8px 18px -10px rgba(0,0,0,.35)}
+  .nh-n{min-width:20px; height:20px; padding:0 5px; border-radius:99px; font-size:11.5px; font-weight:800;
+    display:inline-flex; align-items:center; justify-content:center; line-height:1}
+  .nh-n.or{background:#e8cb7a; color:#1a2332; animation:halo-or 2.4s ease-out infinite, tic 4s ease-in-out infinite}
+  .nh-n.bleu{background:rgba(255,255,255,.24); color:#fff; animation:halo-blanc 2.4s ease-out infinite, tic 4s ease-in-out .8s infinite}
+  .nh.on .nh-n.bleu{background:#3a5886}
+  .nh-n.vio{background:#9a8cc4; color:#fff; animation:halo-vio 2.4s ease-out infinite, tic 4s ease-in-out 1.6s infinite}
+  .ch-agent{position:relative; display:flex; align-items:center; gap:10px; margin-left:auto; padding:5px 5px 5px 6px;
+    border-radius:99px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; text-decoration:none}
+  .ch-av{width:32px; height:32px; border-radius:50%; background:#ecd28a; color:#24385c; display:flex; align-items:center;
+    justify-content:center; font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:800}
+  .ch-an{font-size:13.5px; font-weight:600}
+  .ch-ap{display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; border-radius:99px;
+    background:#ecd28a; color:#24385c; font-size:13px; font-weight:700}
+  .ch-sur{display:block; font-size:14px; color:rgba(255,255,255,.82)}
+  .ch-salut{margin-top:32px; gap:8px}
+  .ch-salut h1{font-size:40px; letter-spacing:-1px}
+  .ch-rech-t{font-size:16px}
+  .chapeau .selec{max-width:520px}
+
+  .auj{margin-top:-64px; padding:0; background:none; box-shadow:none; border-radius:0}
+  .auj-h, .auj-pied{display:none}
+  .auj-g{grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px}
+  .auj-c{flex-direction:row; align-items:center; gap:14px; padding:16px 18px; border-radius:20px;
+    background:var(--carte) !important; box-shadow:0 16px 34px -26px rgba(36,56,92,.55)}
+  button.auj-c:hover{box-shadow:0 20px 38px -24px rgba(36,56,92,.6)}
+  .auj-c.c-lues{display:flex}
+  .auj-ic{width:46px; height:46px; border-radius:14px}
+  .auj-n{font-size:27px}
+  .auj-l{font-size:13.5px}
+
+  .acc-cols{display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:26px; align-items:start}
+  .acc-g, .acc-d{min-width:0}
+  .bloc-h h2{font-size:21px}
+  .carrou{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; overflow:visible; margin:0; padding:0}
+  .cn{flex:none}
+  .cn:hover{transform:translateY(-3px); box-shadow:0 22px 40px -26px rgba(36,56,92,.55)}
+  .cn-ph{height:220px}
+  .cn-p b{font-size:24px}
+  .cn-t{font-size:16.5px}
+  .cn-m{font-size:13.5px}
+  .aa-l{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:visible; margin:0; padding:0}
+  .aa-c{flex:none}
+  .dr-l{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px}
+  .dr-c{flex-direction:column; align-items:stretch; padding:0; overflow:hidden; gap:0}
+  .dr-ph{width:100%; height:112px; border-radius:0}
+  .dr-x{padding:12px 14px 14px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .bb-n, .nh-n, .bb-ic.lueur, .vc-d, .calme-ic, .chapeau::after, .cn, .cn-jb i{animation:none !important}
+}
 
 `;
