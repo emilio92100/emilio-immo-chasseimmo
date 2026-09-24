@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
 import { EVT_MAJ, demanderNouveauClient } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
+import { chargerDemandesVisite } from '@/lib/demandes-visite';
 
 /**
  * La navigation du CRM.
@@ -24,7 +25,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   /* Ordinateur seulement : la barre réduite à ses icônes (l'agenda). */
   reduit?: boolean;
 }) {
-  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0 });
+  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0 });
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
      relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
@@ -60,15 +61,18 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        dans la page Relances, mais elle ne doit pas peser sur le menu.
        Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-    const [{ count: cl }, { count: rel }, { count: vis }] = await Promise.all([
+    const [{ count: cl }, { count: rel }, { count: vis }, demandes] = await Promise.all([
       /* Le total des clients ne dit rien : un dossier clos il y a deux ans pèse
          autant qu'une recherche en cours. On compte ce sur quoi on travaille. */
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
       supabase.from('relances').select('*', { count: 'exact', head: true })
         .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
+      /* Les clients qui ont demandé à visiter depuis leur espace, sans date
+         encore calée : la même liste que la page Visites. */
+      chargerDemandesVisite().catch(() => []),
     ]);
-    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0 });
+    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste
@@ -77,7 +81,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 
   /* Un seul type pour toutes les pastilles : sans lui, TypeScript déduit un
      type différent par entrée et refuse les champs absents des autres. */
-  type Badge = { count: number; type: string; suffixe?: string; pulse?: boolean };
+  type Badge = { count: number; type: string; suffixe?: string; pulse?: boolean; titre?: string };
   const navItems: { section: string; items: { id: string; label: string; icon: string; picto: string; badge: Badge | null }[] }[] = [
     {
       section: 'PRINCIPAL',
@@ -90,7 +94,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       section: 'SUIVI',
       items: [
         { id: 'agenda', label: 'Agenda', icon: '▦', picto: 'calendrier', badge: null },
-        { id: 'visites', label: 'Visites', icon: '◷', picto: 'cle', badge: counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
+        /* Une demande de visite à caler passe avant tout : pastille rouge,
+           comme une relance. Sinon, le nombre de visites à venir, en bleu. */
+        { id: 'visites', label: 'Visites', icon: '◷', picto: 'cle', badge: counts.demandes > 0
+          ? { count: counts.demandes, type: 'red', pulse: true, titre: `${counts.demandes} demande${counts.demandes > 1 ? 's' : ''} de visite à caler` }
+          : counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
         { id: 'relances', label: 'Relances', icon: '◉', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
         { id: 'mail', label: 'Nouveau mail', icon: '◻', picto: 'mail', badge: null },
       ]
@@ -111,7 +119,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     { id: 'dashboard', label: 'Accueil', picto: 'accueil' },
     { id: 'clients', label: 'Clients', picto: 'clients' },
     { id: '+', label: 'Nouveau', picto: 'plus' },
-    { id: 'visites', label: 'Visites', picto: 'cle', pastille: counts.visites },
+    { id: 'visites', label: 'Visites', picto: 'cle', pastille: counts.demandes || counts.visites },
     { id: 'relances', label: 'Relances', picto: 'cloche', pastille: counts.relances },
   ];
 
@@ -149,7 +157,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                   <span className={styles.navLabel}>{item.label}</span>
                   {item.badge && (
                     <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}
-                      title={item.badge.suffixe ? `${item.badge.count} dossiers ${item.badge.suffixe}` : undefined}>
+                      title={item.badge.titre || (item.badge.suffixe ? `${item.badge.count} dossiers ${item.badge.suffixe}` : undefined)}>
                       {item.badge.count}
                       {item.badge.suffixe && <span className={styles.navBadgeMot}>{item.badge.suffixe}</span>}
                     </span>
@@ -192,7 +200,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
               <span className={styles.ongletPicto}>
                 <Icone nom={o.picto} taille={23} epaisseur={actif ? 2.1 : 1.8} />
                 {!!o.pastille && o.pastille > 0 && (
-                  <span className={`${styles.ongletPastille} ${o.id === 'relances' ? styles.ongletPastilleRouge : ''}`}>
+                  <span className={`${styles.ongletPastille} ${o.id === 'relances' || (o.id === 'visites' && counts.demandes > 0) ? styles.ongletPastilleRouge : ''}`}>
                     {o.pastille > 9 ? '9+' : o.pastille}
                   </span>
                 )}
