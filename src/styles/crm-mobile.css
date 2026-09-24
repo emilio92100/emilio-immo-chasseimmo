@@ -257,6 +257,11 @@ html.crm .fc-crit-bascule { display: none; }
   html.crm .emi-ligne-prix { order: 6; margin-right: auto; text-align: left !important; min-width: 0 !important; }
   html.crm .emi-ligne-actions { order: 7; }
   html.crm .emi-ligne-actions > a, html.crm .emi-ligne-actions > button { width: 36px !important; height: 36px !important; }
+  /* Avec la case à cocher, le numéro laisse sa place : le titre garde la sienne. */
+  html.crm .emi-ligne[data-coche] .emi-ligne-num { display: none !important; }
+
+  /* L'envoi groupé : les honoraires d'un bien passent sous son titre. */
+  html.crm .emi-hono-droite { width: 100%; justify-content: space-between; margin-left: 0 !important; }
 
   /* Les fenêtres des onglets (envoi, retour, score) montent du bas. */
   html.crm .emi-voile:not([data-nu]) { align-items: flex-end !important; padding: 0 !important; overflow: hidden !important; }
