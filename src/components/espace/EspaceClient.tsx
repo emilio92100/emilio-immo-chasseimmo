@@ -310,6 +310,9 @@ const ETATS_E: [string, string, string][] = [
   ['a_renover', 'À rénover', '🔨'], ['travaux_legers', 'Travaux légers', '🧰'],
   ['bon_etat', 'Bon état', '✨'], ['refait_neuf', 'Refait à neuf', '💎'],
 ];
+/* L'état souhaité se choisit à plusieurs, enregistré « travaux_legers,bon_etat ».
+   Rien = pas de préférence. Mêmes règles que le CRM (CriteresRecherche.tsx). */
+const etatsListe = (v?: string | null) => { const l = String(v || '').split(',').map(x => x.trim()); return ETATS_E.map(e => e[0]).filter(k => l.includes(k)); };
 const CUISINES_E: [string, string, string][] = [
   ['', 'Indifférent', '🤷'], ['ouverte', 'Ouverte sur le séjour', '🍽️'], ['separee', 'Séparée', '🚪'],
 ];
@@ -2235,7 +2238,7 @@ function Recherche({ crit, aller, onCriteres, onMessage }: any) {
           {types.length ? <div className="pastilles">{types.map((t: string) => <span className="past or" key={t}>{ICONE_TYPE[t] ? ICONE_TYPE[t] + ' ' : ''}{t}</span>)}</div> : null}
           {(crit.etatSouhaite || crit.anneeMin) && (
             <div className="faits">
-              {crit.etatSouhaite && <Fait ico={ETATS_E.find(x => x[0] === crit.etatSouhaite)?.[2] || '✨'} lib="État souhaité" val={(ETATS_E.find(x => x[0] === crit.etatSouhaite)?.[1]) || crit.etatSouhaite} />}
+              {etatsListe(crit.etatSouhaite).length > 0 && <Fait ico={ETATS_E.find(x => x[0] === etatsListe(crit.etatSouhaite)[0])?.[2] || '✨'} lib="État souhaité" val={etatsListe(crit.etatSouhaite).map((k, i) => { const l = ETATS_E.find(x => x[0] === k)?.[1] || k; return i ? l.charAt(0).toLowerCase() + l.slice(1) : l; }).join(' ou ')} />}
               {crit.anneeMin ? <Fait ico="📅" lib="Construit après" val={<span className="tab">{crit.anneeMin}</span>} /> : null}
             </div>
           )}
@@ -3228,9 +3231,17 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         <label className="lab">Type de bien <i>plusieurs choix possibles</i></label>
         <div className="choix">{TYPES_E.map(([x, i]) => (
           <button key={x} className="ch or" aria-pressed={t.typesBien.includes(x)} onClick={() => basculeType(x)}>{i} {x}</button>))}</div>
-        <label className="lab">État souhaité</label>
-        <div className="choix">{ETATS_E.map(([k, l, i]) => (
-          <button key={k} className="ch" aria-pressed={t.etatSouhaite === k} onClick={() => setT(x => ({ ...x, etatSouhaite: x.etatSouhaite === k ? '' : k }))}>{i} {l}</button>))}</div>
+        <label className="lab">État souhaité <i>plusieurs choix possibles</i></label>
+        <div className="choix">
+          <button className="ch" aria-pressed={!etatsListe(t.etatSouhaite).length} onClick={() => setT(x => ({ ...x, etatSouhaite: '' }))}>🤷 Pas de préférence</button>
+          {ETATS_E.map(([k, l, i]) => {
+            const actif = etatsListe(t.etatSouhaite).includes(k);
+            return (
+              <button key={k} className="ch" aria-pressed={actif}
+                onClick={() => setT(x => { const deja = etatsListe(x.etatSouhaite); return { ...x, etatSouhaite: ETATS_E.map(e => e[0]).filter(y => (y === k ? !actif : deja.includes(y))).join(',') }; })}>{i} {l}</button>
+            );
+          })}
+        </div>
         <label className="lab">📅 Construit après</label>
         <ChampNum val={t.anneeMin} onChange={num('anneeMin')} aide="Laissez vide si l’année n’a pas d’importance" />
       </>),
