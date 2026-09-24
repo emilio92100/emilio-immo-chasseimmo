@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
+import { demanderNouveauClient } from '@/lib/intentions';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [clients, setClients] = useState<Client[]>([]);
@@ -88,7 +89,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
         </div>
         <div className={styles.welcomeRight} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
-          <button onClick={() => onNavigate('clients')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: '#1a2332', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ Nouveau client</button>
+          {/* Comme celui de la barre du haut : il ouvre directement le formulaire. */}
+          <button className={styles.nouveauBtn} onClick={() => { demanderNouveauClient(); onNavigate('clients'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: '#1a2332', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ Nouveau client</button>
         </div>
       </div>
 

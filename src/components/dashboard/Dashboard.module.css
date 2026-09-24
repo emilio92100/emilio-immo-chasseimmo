@@ -208,3 +208,43 @@
 .mandatDays   { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px; color: #ef4444; }
 .mandatBtn    { font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 7px; border: 1px solid #fecaca; background: #fef2f2; color: #ef4444; cursor: pointer; }
 .mandatBtn:hover { background: #fecaca; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA VERSION TÉLÉPHONE
+   Le bandeau d'accueil passe en colonne, les quatre chiffres en deux par
+   deux, et les cartes s'empilent dans l'ordre de l'écran d'ordinateur.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  .mainRow { grid-template-columns: 1fr 1fr; }
+  .rightCol { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 760px) {
+  .welcomeBanner {
+    margin: 14px 12px 0; padding: 20px 18px 18px; border-radius: 22px;
+    flex-direction: column; align-items: stretch; gap: 16px;
+  }
+  .welcomeTitle { font-size: 23px; margin-bottom: 6px; }
+  .welcomeSub { font-size: 13.5px; line-height: 1.5; }
+  .welcomeRight { width: 100%; }
+  .welcomeRight > button { flex: 1 1 0; justify-content: center; padding: 12px 10px !important; font-size: 13.5px !important; border-radius: 12px !important; }
+
+  .sectionDivider { padding: 18px 14px 0; }
+  .statsGrid { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 12px 0; }
+  .statCard { padding: 14px; border-radius: 18px; }
+  .statCard:hover { transform: none; }
+  .statVal { font-size: 26px; }
+  .statLabel { font-size: 12px; }
+
+  .mainRow { grid-template-columns: 1fr; gap: 10px; padding: 12px 12px 20px; }
+  .rightCol { grid-template-columns: 1fr; }
+  .card { border-radius: 18px; }
+  .cardHeader { padding: 14px 16px; }
+  .cardTitle { font-size: 14.5px; }
+  .cardLink { font-size: 12.5px; padding: 6px 0 6px 10px; }
+  .listRow { padding: 13px 16px; }
+  .listName { font-size: 14px; }
+  .listDetail { font-size: 12.5px; }
+  .badge { font-size: 11.5px; padding: 3px 9px; }
+}
