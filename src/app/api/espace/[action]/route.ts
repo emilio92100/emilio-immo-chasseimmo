@@ -349,6 +349,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       case 'criteres': {
         const c = body.criteres || {};
         const n = (v: unknown, min: number, max: number) => {
+          /* Un champ vide n'est pas un zéro. Number(null) vaut 0 : un « étage
+             maximum » laissé vide s'enregistrait « rez-de-chaussée », et un
+             apport vide « 0 € ». Vide = null, point. */
+          if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) return null;
           const x = Number(v);
           return Number.isFinite(x) && x >= min && x <= max ? Math.round(x) : null;
         };
