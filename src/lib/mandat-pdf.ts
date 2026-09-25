@@ -900,7 +900,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
 
   /* Assez de place ? Sinon, une page de suite : un certificat ne doit
      jamais déborder sur son pied, quelle que soit la longueur du déroulé. */
-  const BAS = 62;
+  const BAS = 56;
   const besoin = (h: number) => {
     if (y - h >= BAS) return;
     p = doc.addPage([A4.l, A4.h]);
@@ -927,7 +927,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
     const police = o.gras ? k.g : k.r;
     const taille = o.mono ? 7.8 : 8.8;
     const lignes = couper(val, police, taille, LARGEUR - lw2 - 4);
-    const h = Math.max(1, lignes.length) * 11 + 6;
+    const h = Math.max(1, lignes.length) * 11 + 5;
     besoin(h);
     p.drawText(propre(lib), { x: MARGE.g, y: y - 12, size: 8.6, font: o.fort ? k.g : k.r, color: o.fort ? BLEU : GRIS });
     lignes.forEach((m, i) => p.drawText(m.join(' '), { x: MARGE.g + lw2, y: y - 12 - i * 11, size: taille, font: police, color: MARINE }));
@@ -959,7 +959,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   ligne('Appareil', c.appareil || '—');
   ligne(`Empreinte SHA-256 (p. 1 à ${nbMandat})`, c.empreinte, { mono: true });
 
-  const note = `Une copie de ce mandat et de ce certificat a été envoyée au signataire par e-mail le ${dateCourte(c.signeLe)}. Le mandant dispose d’un délai de rétractation de 14 jours à compter du lendemain de la signature ; il peut l’exercer depuis son espace personnel (rubrique « Mon mandat »), par e-mail, ou avec le formulaire joint. L’empreinte ci-dessus est celle du mandat seul (pages 1 à ${nbMandat}), conservé à l’identique par l’agence : recalculer l’empreinte SHA-256 de ce fichier permet de vérifier qu’aucun mot n’a été modifié depuis la signature.`;
+  const note = `Le mandant peut se rétracter pendant 14 jours à compter du lendemain de la signature, depuis son espace personnel (« Mon mandat »), par e-mail ou avec le formulaire joint. L’empreinte ci-dessus est celle du mandat seul (pages 1 à ${nbMandat}), conservé à l’identique par l’agence : la recalculer permet de vérifier qu’aucun mot n’a changé depuis la signature.`;
   const lignesNote = couper(note, k.r, 7.6, LARGEUR);
   besoin(lignesNote.length * 10.2 + 12);
   y -= 10;
