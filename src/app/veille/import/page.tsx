@@ -260,6 +260,10 @@ export default function PageImportVeille() {
               annee_construction: p.annee_construction ?? null,
               nb_lots: p.nb_lots ?? null,
               charges_trimestrielles: p.charges_trimestrielles ?? null,
+              // ce que couvrent les charges, tel que l'annonce le dit
+              // (« chauffage et eau chaude collectifs, gardien ») ; la colonne
+              // n'est écrite que si l'annonce en dit quelque chose
+              ...(p.charges_comprises ? { charges_comprises: String(p.charges_comprises) } : {}),
               taxe_fonciere: p.taxe_fonciere ?? null,
               dpe: p.dpe || null,
               ges: p.ges || null,
