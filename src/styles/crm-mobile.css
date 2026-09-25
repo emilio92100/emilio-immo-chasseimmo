@@ -191,7 +191,8 @@ html.crm .fc-crit-bascule { display: none; }
 
   html.crm .le-barre { gap: 8px !important; padding: 12px !important; }
   html.crm .le-titre { flex: 1 1 100%; }
-  html.crm .le-lien { flex: 1 1 100%; max-width: none !important; padding: 8px 11px !important; font-size: 12px !important; }
+  /* Le lien se lit en entier : sur un petit écran, il passe à la ligne plutôt que d'être coupé. */
+  html.crm .le-lien { flex: 1 1 100%; max-width: none !important; padding: 8px 11px !important; font-size: 12px !important; white-space: normal !important; overflow-wrap: anywhere; }
   html.crm .le-btn { flex: 1 1 0; justify-content: center; padding: 10px 8px !important; font-size: 13px !important; border-radius: 11px !important; }
   html.crm .le-etat { flex: 1 1 100%; justify-content: center; margin-left: 0 !important; padding: 9px 11px !important; border-radius: 11px !important; }
 
