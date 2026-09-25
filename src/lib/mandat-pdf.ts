@@ -382,6 +382,30 @@ class Plume {
     this.y -= 4;
   }
 
+  /* La mission, étape par étape : un numéro dans une pastille d'or, le nom
+     de l'étape en gras, ce qui est fait dessous. Une seule colonne, un
+     filet entre deux étapes. */
+  etapes(items: { titre: string; x: string }[]) {
+    const ind = 36, taille = 9.6, pas = 13.8;
+    items.forEach((e, i) => {
+      const ls = couper(e.x, this.k.r, taille, LARGEUR - ind);
+      const h = 16 + ls.length * pas;
+      this.place(h + 10);
+      const haut = this.y;
+      const num = String(i + 1).padStart(2, '0');
+      rond(this.page, MARGE.g, haut - 22, 25, 22, 6, { color: OR_PALE, borderColor: OR_TRAIT, borderWidth: 0.6 });
+      this.page.drawText(num, { x: MARGE.g + 12.5 - lg(this.k.g, num, 9.5) / 2, y: haut - 14.6, size: 9.5, font: this.k.g, color: OR_FONCE });
+      this.page.drawText(propre(e.titre), { x: MARGE.g + ind, y: haut - 10.5, size: 10.6, font: this.k.g, color: BLEU });
+      ls.forEach((m, k) => this.page.drawText(m.join(' '),
+        { x: MARGE.g + ind, y: haut - 25 - k * pas, size: taille, font: this.k.r, color: MARINE }));
+      if (i < items.length - 1) {
+        this.page.drawLine({ start: { x: MARGE.g + ind, y: haut - h - 3 }, end: { x: MARGE.g + LARGEUR, y: haut - h - 3 }, thickness: 0.5, color: FILET });
+      }
+      this.y = haut - h - 11;
+    });
+    this.y -= 2;
+  }
+
   /* Les fiches : deux par ligne (ou une, `large`), toutes de la même
      hauteur sur une ligne. */
   fiches(items: Fiche[]) {
@@ -413,6 +437,7 @@ class Plume {
     if (b.t === 'p') return Math.min(3, couper(b.x, this.k.r, CORPS, LARGEUR).length) * CORPS * CORPS_PAS;
     if (b.t === 'fiches') return this.hauteurPremierRang(b.items);
     if (b.t === 'coches') return 60;
+    if (b.t === 'etapes') return 60;
     if (b.t === 'sig') return 150;
     return 40;
   }
@@ -688,6 +713,7 @@ function dessinerBloc(pl: Plume, b: Bloc, o: OptionsPdf) {
   }
   else if (b.t === 'l') pl.liste(b.items);
   else if (b.t === 'coches') pl.coches(b.items);
+  else if (b.t === 'etapes') pl.etapes(b.items);
   else if (b.t === 'fiches') pl.fiches(b.items);
   else if (b.t === 'case') pl.caseACocher(b.x, b.coche);
   else if (b.t === 'sig') pl.signatures(o.sig, o.mandantNom);

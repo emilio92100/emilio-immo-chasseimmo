@@ -66,6 +66,8 @@ export interface Recherche {
   mandat_propose_le?: string | null
   /* Le taux des honoraires proposé (2,5 % au plus : le barème). Vide = 2,5 %. */
   mandat_taux?: number | null
+  /* Ou un forfait en euros TTC, qui remplace le taux. Vide = pas de forfait. */
+  mandat_forfait?: number | null
   notes?: string
   created_at: string
   updated_at: string

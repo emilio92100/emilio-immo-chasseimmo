@@ -107,6 +107,50 @@ export const euros = (n: number) =>
 export const tauxCourt = (taux: number = HONORAIRES_TAUX) => String(tauxDe(taux)).replace('.', ',') + ' %';
 export const tauxTexte = (taux: number = HONORAIRES_TAUX) => tauxCourt(taux) + ' TTC';
 
+/* ── Ou un forfait ──────────────────────────────────────────────────────
+   Alexandre peut aussi proposer un montant fixe, en euros TTC. Son barème
+   affiché reste un pourcentage (2,5 %) : un forfait ne peut donc jamais le
+   dépasser. Le mandat le dit — « ramené à 2,5 % du prix si le prix est
+   inférieur à … » — et le prix maximum se calcule en retirant le forfait
+   du budget. Toute valeur absente, nulle ou illisible = pas de forfait. */
+export function forfaitDe(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v.replace(/\s/g, '').replace(',', '.')) : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 5_000_000) return null;
+  return Math.round(n);
+}
+/* Le prix en dessous duquel le forfait dépasserait le barème. */
+export const seuilForfait = (forfait: number) => Math.ceil(forfait / (HONORAIRES_TAUX / 100));
+
+export type Honoraires = { taux?: number | null; forfait?: number | null };
+/* Le prix maximum hors honoraires et les honoraires à ce prix, selon le
+   mode. Un forfait qui dépasserait le barème au prix maximum (le client a
+   baissé son budget) est plafonné, comme le mandat le prévoit. */
+export function prixEtHonoraires(budget: number | null | undefined, h: Honoraires): { prixMax: number | null; honoraires: number | null } {
+  const f = forfaitDe(h.forfait);
+  if (f) {
+    if (!budget || !Number.isFinite(budget) || budget <= 0) return { prixMax: null, honoraires: f };
+    const pm = Math.floor((budget - f) / 1000) * 1000;
+    if (pm > 0 && f <= (pm * HONORAIRES_TAUX) / 100) return { prixMax: pm, honoraires: f };
+    const plafond = prixMaximum(budget, HONORAIRES_TAUX);
+    return { prixMax: plafond, honoraires: honorairesPour(plafond, HONORAIRES_TAUX) };
+  }
+  const pm = prixMaximum(budget, tauxDe(h.taux));
+  return { prixMax: pm, honoraires: honorairesPour(pm, tauxDe(h.taux)) };
+}
+/* « 2,5 % TTC » ou « forfait de 20 000 € TTC » : pour les mails et le CRM. */
+export function honorairesCourt(h: Honoraires): string {
+  const f = forfaitDe(h.forfait);
+  return f ? `forfait de ${euros(f)} TTC` : tauxTexte(tauxDe(h.taux));
+}
+/* « 2,5 % TTC du prix d’achat » ou « forfait de 20 000 € TTC ». */
+export function honorairesDuPrix(h: Honoraires): string {
+  const f = forfaitDe(h.forfait);
+  return f ? `forfait de ${euros(f)} TTC` : `${tauxTexte(tauxDe(h.taux))} du prix d’achat`;
+}
+/* « 2,27 % » : ce que représente un forfait au prix donné. */
+export const pourcentDe = (montant: number, prix: number) =>
+  (Math.round((montant / prix) * 10000) / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/[\u202f\u00a0]/g, ' ') + ' %';
+
 /* ── Les nombres en toutes lettres (orthographe traditionnelle) ──────────
    « huit cent soixante-dix-huit mille », « quatre-vingt mille »,
    « deux cents millions », « vingt et un mille neuf cent cinquante ». */
@@ -188,6 +232,9 @@ export type Recherche = {
      Absent : le barème, 2,5 %. Il voyage avec la recherche parce que c'est
      elle que l'écran et le PDF reçoivent ; on le lit toujours par tauxDe(). */
   taux?: number | null;
+  /* Ou un forfait, en euros TTC (recherches.mandat_forfait). Présent, il
+     remplace le pourcentage ; on le lit toujours par forfaitDe(). */
+  forfait?: number | null;
 };
 
 export type DonneesMandat = {
@@ -205,12 +252,14 @@ export type Contenu = {
   prixMax: number | null;
   honoraires: number | null;
   taux: number;
+  forfait?: number | null;      // absent des mandats signés avant le forfait
   duree: typeof DUREE;
 };
 export function figerContenu(r: Recherche): Contenu {
-  const taux = tauxDe(r.taux);
-  const prixMax = prixMaximum(r.budget, taux);
-  return { recherche: { ...r, taux }, prixMax, honoraires: honorairesPour(prixMax, taux), taux, duree: DUREE };
+  const forfait = forfaitDe(r.forfait);
+  const taux = forfait ? HONORAIRES_TAUX : tauxDe(r.taux);
+  const { prixMax, honoraires } = prixEtHonoraires(r.budget, { taux, forfait });
+  return { recherche: { ...r, taux, forfait }, prixMax, honoraires, taux, forfait, duree: DUREE };
 }
 
 /* L'empreinte de ce que le client a sous les yeux : taux, prix maximum et
@@ -220,7 +269,7 @@ export function figerContenu(r: Recherche): Contenu {
    client relit la nouvelle version avant de signer — jamais l'inverse. */
 export function versionMandat(r: Recherche): string {
   const c = figerContenu(r);
-  return `${c.taux}|${c.prixMax ?? ''}|${decrireRecherche(r)}`;
+  return `${c.taux}|${c.forfait ?? ''}|${c.prixMax ?? ''}|${decrireRecherche(r)}`;
 }
 
 /* ── La recherche du moment dépasse-t-elle le mandat signé ? ──
@@ -232,7 +281,7 @@ export function versionMandat(r: Recherche): string {
 export function horsMandat(signe: Contenu, r: Recherche): string[] {
   const out: string[] = [];
   const n = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const pm = prixMaximum(r.budget, signe.taux);
+  const pm = prixEtHonoraires(r.budget, { taux: signe.taux, forfait: signe.forfait }).prixMax;
   if (pm && signe.prixMax && pm > signe.prixMax) {
     out.push(`Prix maximum : ${euros(signe.prixMax)} sur le mandat, ${euros(pm)} avec son budget de ${euros(r.budget || 0)}`);
   }
@@ -298,7 +347,9 @@ export function resumeMandat(r: Recherche): Resume {
     c.prixMax
       ? { titre: 'Prix maximum', valeur: `${euros(c.prixMax)} hors honoraires`, detail: `soit ${euros(r.budget || 0)} honoraires compris` }
       : { titre: 'Prix maximum', valeur: 'Votre budget', detail: 'tel qu’indiqué dans votre espace' },
-    { titre: 'Honoraires', valeur: `${tauxTexte(c.taux)} du prix`, detail: 'réglés le jour de l’acte, chez le notaire' },
+    c.forfait
+      ? { titre: 'Honoraires', valeur: `${euros(c.forfait)} TTC, au forfait`, detail: 'réglés le jour de l’acte, chez le notaire' }
+      : { titre: 'Honoraires', valeur: `${tauxTexte(c.taux)} du prix`, detail: 'réglés le jour de l’acte, chez le notaire' },
     { titre: 'Durée', valeur: `${DUREE.initiale} jours, renouvelables`, detail: `${DUREE.total} jours au plus · ${RETRACTATION_JOURS} jours pour changer d’avis` },
   ];
 }
@@ -343,7 +394,8 @@ export type Fiche = { ic: Icone; titre: string; lignes: string[]; note?: string;
 export type Bloc =
   | { t: 'p'; x: string; g?: boolean; petit?: boolean }  // un paragraphe (g : il engage → encadré)
   | { t: 'l'; items: string[] }                          // une liste à puces
-  | { t: 'coches'; items: string[] }                     // une liste cochée (nos engagements)
+  | { t: 'coches'; items: string[] }                     // une liste cochée
+  | { t: 'etapes'; items: { titre: string; x: string }[] } // la mission, étape par étape, numérotée
   | { t: 'fiches'; items: Fiche[] }                      // des fiches à icône, deux par ligne
   | { t: 'case'; x: string; coche: boolean }             // une case à cocher
   | { t: 'sig' };                                        // le cartouche des signatures
@@ -363,7 +415,8 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
   const m = d.mandant;
   const prix = c.prixMax;
   const hono = c.honoraires;
-  const remise = c.taux < HONORAIRES_TAUX;
+  const forfait = c.forfait || null;
+  const remise = !forfait && c.taux < HONORAIRES_TAUX;
 
   /* ─── 1. L'information précontractuelle : tout ce que la loi veut qu'il
      sache avant de signer, en fiches courtes. Rien n'est retiré du modèle,
@@ -393,16 +446,22 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
           ], note: 'Pendant le mandat et les 12 mois qui suivent, vous ne pouvez pas acheter sans l’Agence un bien qu’elle vous a présenté.' },
           { ic: 'calendrier', titre: 'Durée', lignes: [
             `${DUREE.initiale} jours, renouvelés automatiquement par périodes de ${DUREE.periode} jours, ${DUREE.total} jours au plus.`,
-            `Vous pouvez y mettre fin à chaque échéance, en prévenant l’Agence ${DUREE.preavisTerme} jours avant.`,
-            `Après trois mois, vous pouvez le résilier à tout moment par lettre recommandée avec avis de réception, avec un préavis de ${DUREE.preavisLibre} jours.`,
+            `Dès le premier mois, vous pouvez y mettre fin à chaque échéance, tous les ${DUREE.periode} jours, en prévenant l’Agence ${DUREE.preavisTerme} jours avant, par lettre recommandée avec avis de réception.`,
+            `Après trois mois, vous pouvez en plus y mettre fin à tout moment, sans attendre l’échéance, avec un préavis de ${DUREE.preavisLibre} jours.`,
           ] },
-          { ic: 'euro', titre: 'Honoraires', lignes: [
-            `${tauxTexte(c.taux)} du prix d’achat, à votre charge, dus seulement si vous achetez grâce à notre intermédiation.`,
-            ...(prix && hono ? [`Par exemple, pour un prix de ${euros(prix)} : ${euros(hono)} TTC.`] : []),
-            remise
-              ? `Taux remisé : notre barème, consultable sur ${A.site}, prévoit ${tauxTexte(HONORAIRES_TAUX)}.`
-              : `Notre barème est consultable sur ${A.site}.`,
-          ] },
+          { ic: 'euro', titre: 'Honoraires', lignes: forfait
+            ? [
+              `Un forfait de ${euros(forfait)} TTC, à votre charge, dû seulement si vous achetez grâce à notre intermédiation.`,
+              ...(prix && hono === forfait ? [`Pour un prix de ${euros(prix)}, cela représente ${pourcentDe(forfait, prix)} du prix.`] : []),
+              `Il ne dépasse jamais notre barème, ${tauxTexte(HONORAIRES_TAUX)} du prix, consultable sur ${A.site} : sous ${euros(seuilForfait(forfait))}, il est ramené à ${tauxCourt(HONORAIRES_TAUX)} du prix.`,
+            ]
+            : [
+              `${tauxTexte(c.taux)} du prix d’achat, à votre charge, dus seulement si vous achetez grâce à notre intermédiation.`,
+              ...(prix && hono ? [`Par exemple, pour un prix de ${euros(prix)} : ${euros(hono)} TTC.`] : []),
+              remise
+                ? `Taux remisé : notre barème, consultable sur ${A.site}, prévoit ${tauxTexte(HONORAIRES_TAUX)}.`
+                : `Notre barème est consultable sur ${A.site}.`,
+            ] },
           { ic: 'banque', titre: 'Paiement', lignes: [
             'Le jour de la signature de l’acte authentique de vente, par virement, par l’intermédiaire du notaire chargé de la vente.',
           ], note: 'Aucune somme ne vous est demandée avant.' },
@@ -467,15 +526,22 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
       ] },
       { titre: 'Prix', ic: 'etiquette', blocs: prixBloc },
       { titre: 'Honoraires du mandataire', ic: 'euro', blocs: [
-        P(`En cas de réalisation de l’opération, les honoraires de l’Agence seront d’un montant de ${tauxTexte(c.taux)} du prix de vente${prix && hono ? `, soit ${euros(hono)} TTC pour un prix de ${euros(prix)}` : ''}, sauf accord ultérieur entre les parties par avenant aux présentes.`),
-        ...(remise ? [P(`Ce taux tient compte d’une remise consentie par l’Agence sur son barème, qui prévoit ${tauxTexte(HONORAIRES_TAUX)} pour une mission de recherche.`)] : []),
+        ...(forfait
+          ? [
+            P(`En cas de réalisation de l’opération, les honoraires de l’Agence seront d’un montant forfaitaire de ${euros(forfait)} TTC (${enLettres(forfait)} euros toutes taxes comprises), sauf accord ultérieur entre les parties par avenant aux présentes.`),
+            P(`Conformément au barème de l’Agence, qui prévoit ${tauxTexte(HONORAIRES_TAUX)} du prix de vente pour une mission de recherche, ces honoraires ne pourront excéder ${tauxCourt(HONORAIRES_TAUX)} TTC du prix d’acquisition : si ce prix est inférieur à ${euros(seuilForfait(forfait))}, ils seront ramenés à ${tauxCourt(HONORAIRES_TAUX)} TTC de ce prix.`),
+          ]
+          : [
+            P(`En cas de réalisation de l’opération, les honoraires de l’Agence seront d’un montant de ${tauxTexte(c.taux)} du prix de vente${prix && hono ? `, soit ${euros(hono)} TTC pour un prix de ${euros(prix)}` : ''}, sauf accord ultérieur entre les parties par avenant aux présentes.`),
+            ...(remise ? [P(`Ce taux tient compte d’une remise consentie par l’Agence sur son barème, qui prévoit ${tauxTexte(HONORAIRES_TAUX)} pour une mission de recherche.`)] : []),
+          ]),
         P('Ces honoraires seront à la charge de l’acquéreur, le MANDANT. Ils ne sont pas compris dans le prix d’acquisition indiqué ci-dessus.', true),
         P('Les honoraires seront payables une fois l’acte authentique de vente effectivement signé, et le taux de TVA appliqué sera le taux en vigueur à la date de leur exigibilité. En cas d’exercice d’un droit de préemption, le titulaire de ce droit sera subrogé dans tous les droits et obligations de l’acquéreur ; il sera notamment tenu de régler les honoraires du MANDATAIRE.'),
       ] },
       { titre: 'Durée du mandat', ic: 'calendrier', blocs: [
         P(`Le présent MANDAT, qui prend effet le jour de sa signature, est consenti pour une durée de ${enLettres(DUREE.initiale)} (${DUREE.initiale}) jours. À l’issue de sa durée initiale, il se renouvellera par tacite reconduction, par périodes de ${enLettres(DUREE.periode)} (${DUREE.periode}) jours, sans que la durée totale du mandat puisse dépasser ${enLettres(DUREE.total)} (${DUREE.total}) jours à compter de la date de sa signature.`, true),
         P(`Il pourra être dénoncé pour le terme de la période initiale ou de chaque période de reconduction par chacune des parties, à charge pour celle qui entend y mettre fin d’en aviser l’autre partie ${enLettres(DUREE.preavisTerme).toUpperCase()} jours au moins à l’avance par lettre recommandée avec demande d’avis de réception.`),
-        P(`Cependant, passé un délai de trois mois à compter de sa signature, le mandat pourra être dénoncé à tout moment par chacune des parties, à charge pour celle qui entend y mettre fin d’en aviser l’autre partie ${enLettres(DUREE.preavisLibre).toUpperCase()} jours au moins à l’avance par lettre recommandée avec demande d’avis de réception, conformément au deuxième alinéa de l’article 78 du décret du 20 juillet 1972.`, true),
+        P(`En outre, passé un délai de trois mois à compter de sa signature, le mandat pourra également être dénoncé à tout moment, sans attendre le terme de la période en cours, par chacune des parties, à charge pour celle qui entend y mettre fin d’en aviser l’autre partie ${enLettres(DUREE.preavisLibre).toUpperCase()} jours au moins à l’avance par lettre recommandée avec demande d’avis de réception, conformément au deuxième alinéa de l’article 78 du décret du 20 juillet 1972.`, true),
         P('En application de l’article L215-4 du Code de la consommation, les dispositions des articles L215-1 à L215-3 et L241-3 dudit code sont intégralement reproduites en annexe du présent mandat, dont elles font partie.'),
       ] },
       { titre: 'Engagements du mandant', ic: 'personne', blocs: [
@@ -495,18 +561,15 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
         P('Pendant la durée d’exécution du présent mandat et durant les douze mois suivant son expiration ou sa résiliation, le MANDANT s’interdit de traiter directement ou indirectement, en son nom ou sous la forme de toute société dans laquelle il aurait une participation, avec un vendeur dont le bien lui aurait été présenté par le MANDATAIRE ou par un mandataire substitué. Il se porte fort du respect de cette interdiction par son conjoint, son partenaire de PACS, son concubin et toute personne avec laquelle il se porterait acquéreur.', true),
       ] },
       { titre: 'Engagements du mandataire', ic: 'etoile', blocs: [
-        P('En conséquence du présent mandat, le MANDATAIRE entreprendra toutes les démarches et toutes les recherches qu’il jugera nécessaires en vue de réaliser la mission confiée. Il s’engage notamment à :'),
-        { t: 'coches', items: [
-          'Suivre chaque jour l’ensemble des annonces immobilières correspondant aux critères du MANDANT, y compris celles publiées par des particuliers.',
-          'Rechercher des biens hors marché auprès de son réseau de confrères.',
-          'Solliciter son carnet d’adresses privé.',
-          'Visiter les biens susceptibles de correspondre aux critères du MANDANT avant de les lui proposer.',
-          'Étudier le dossier de chaque bien avant toute offre : diagnostics, documents de copropriété, charges et travaux votés.',
-          'Accompagner le MANDANT dans la négociation du prix.',
-          'L’accompagner jusqu’à la signature de l’acte authentique chez le notaire.',
-          'Tenir à jour, dans l’espace personnel du MANDANT, le suivi de sa recherche et les biens présentés.',
+        P('En conséquence du présent mandat, le MANDATAIRE entreprendra toutes les démarches et toutes les recherches qu’il jugera nécessaires en vue de réaliser la mission confiée. Ses engagements, étape par étape :'),
+        { t: 'etapes', items: [
+          { titre: 'Rechercher', x: 'Suivre chaque jour l’ensemble des annonces immobilières correspondant aux critères du MANDANT, y compris celles publiées par des particuliers ; rechercher des biens hors marché auprès de son réseau de confrères et solliciter son carnet d’adresses privé.' },
+          { titre: 'Visiter et sélectionner', x: 'Visiter les biens susceptibles de correspondre aux critères du MANDANT avant de les lui proposer, et obtenir des vendeurs tous les renseignements utiles, ainsi que les certificats et documents imposés par la réglementation.' },
+          { titre: 'Vérifier', x: 'Étudier le dossier de chaque bien avant toute offre : diagnostics, documents de copropriété, charges et travaux votés.' },
+          { titre: 'Négocier', x: 'Accompagner le MANDANT dans la négociation du prix.' },
+          { titre: 'Accompagner jusqu’à l’acte', x: 'L’accompagner jusqu’à la signature de l’acte authentique chez le notaire.' },
+          { titre: 'Rendre compte', x: 'Tenir à jour, dans l’espace personnel du MANDANT, le suivi de sa recherche et les biens présentés.' },
         ] },
-        P('Le MANDATAIRE visitera les biens susceptibles de correspondre aux critères des biens recherchés. Il obtiendra des vendeurs tous les renseignements utiles, ainsi que la communication de tous les certificats et documents imposés par la réglementation.'),
       ] },
       { titre: 'Reddition des comptes', ic: 'doc', blocs: [
         P('Le MANDATAIRE s’engage à tenir informé le MANDANT du suivi de ses recherches et à lui communiquer, après chaque visite d’un bien répondant aux caractéristiques des biens recherchés, un compte rendu mentionnant ses observations éventuelles.'),
@@ -663,10 +726,12 @@ export function validerMandant(x: unknown): { ok: true; mandant: Mandant } | { o
   if (m.prenom.length < 1) champs.prenom = 'Votre prénom';
   if (m.nom.length < 1) champs.nom = 'Votre nom';
   const d = m.naissanceDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!d) champs.naissanceDate = 'Votre date de naissance';
+  if (!d) champs.naissanceDate = /^\d{2}\/\d{2}\/\d{4}$/.test(m.naissanceDate) ? 'Cette date ne semble pas juste' : 'Votre date de naissance, en chiffres : JJ/MM/AAAA';
   else {
     const an = Number(d[1]), age = new Date().getFullYear() - an;
-    if (age < 18 || age > 110) champs.naissanceDate = 'Cette date ne semble pas juste';
+    const x = new Date(Date.UTC(an, Number(d[2]) - 1, Number(d[3])));
+    const reelle = x.getUTCMonth() === Number(d[2]) - 1 && x.getUTCDate() === Number(d[3]);
+    if (!reelle || age < 18 || age > 110) champs.naissanceDate = 'Cette date ne semble pas juste';
   }
   if (m.naissanceLieu.length < 2) champs.naissanceLieu = 'Votre ville de naissance';
   if (m.adresse.length < 8) champs.adresse = 'Votre adresse complète';
@@ -686,5 +751,6 @@ export function rechercheDepuis(r: Record<string, unknown>): Recherche {
     secteurs: Array.isArray(r.secteurs) ? (r.secteurs as unknown[]).filter((x): x is string => typeof x === 'string') : [],
     budget: num(r.budget_max),
     taux: tauxDe(r.mandat_taux),
+    forfait: forfaitDe(r.mandat_forfait),
   };
 }
