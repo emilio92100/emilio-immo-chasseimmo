@@ -6,9 +6,9 @@
 
    1. L'ÉTAT de la signature en ligne de cette recherche : signé (avec le PDF),
       en cours (le client a demandé son code), ou rétracté.
-   2. « FAIRE SIGNER LE MANDAT » : Alexandre choisit le type, le taux de ses
-      honoraires (2,5 % par défaut, moins s'il consent une remise — jamais
-      plus, c'est son barème), colle le numéro réservé dans ImmoFacile (ou
+   2. « FAIRE SIGNER LE MANDAT » : Alexandre choisit le type, ses honoraires
+      — un pourcentage (2,5 % par défaut, moins s'il consent une remise) ou
+      un forfait en euros, jamais au-dessus de son barème — colle le numéro réservé dans ImmoFacile (ou
       prend le suivant de sa réserve), et propose. Son clic vaut signature de
       l'offre pour l'agence (la date est gardée). Le client voit aussitôt
       « Votre mandat est prêt » dans son espace ; « Envoyer par e-mail » lui
@@ -28,6 +28,7 @@ import { supabase, addJournal } from '@/lib/supabase';
 import { lienEspace } from '@/lib/jeton';
 import {
   HONORAIRES_TAUX, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
+  forfaitDe, seuilForfait, honorairesCourt, pourcentDe,
   type Contenu,
 } from '@/lib/mandat';
 
@@ -83,6 +84,8 @@ const numeros = (v: string) => v.split(/[\s,;]+/).map(x => x.trim()).filter(Bool
 /* « 2,5 » → 2.5 ; NaN si ce n'est pas un nombre. */
 const lireTaux = (v: string) => { const n = parseFloat(String(v).replace(',', '.').replace('%', '').trim()); return Number.isFinite(n) ? n : NaN; };
 const ecrireTaux = (n: number) => String(n).replace('.', ',');
+/* « 20 000 » pour la saisie d'un forfait. */
+const ecrireEuros = (n: number | null) => (n ? Math.round(n).toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, ' ') : '');
 
 const boite = (fond: string, trait: string, encre: string): React.CSSProperties => ({
   background: fond, border: `1px solid ${trait}`, color: encre, borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.55,
@@ -119,6 +122,9 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   const [copie, setCopie] = useState(false);
   const [voirReserve, setVoirReserve] = useState(false);
   const [taux, setTaux] = useState<string>(ecrireTaux(tauxDe(recherche?.mandat_taux)));
+  /* Pourcentage ou forfait : un forfait enregistré l'emporte. */
+  const [mode, setMode] = useState<'taux' | 'forfait'>(forfaitDe(recherche?.mandat_forfait) ? 'forfait' : 'taux');
+  const [forfait, setForfait] = useState<string>(ecrireEuros(forfaitDe(recherche?.mandat_forfait)));
 
   const charger = useCallback(async () => {
     if (!recherche?.id) return;
@@ -141,15 +147,27 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   useEffect(() => { charger(); }, [charger]);
   useEffect(() => { setNumero(recherche?.mandat_numero || ''); }, [recherche?.mandat_numero]);
   useEffect(() => { setTaux(ecrireTaux(tauxDe(recherche?.mandat_taux))); }, [recherche?.mandat_taux]);
+  useEffect(() => {
+    const f = forfaitDe(recherche?.mandat_forfait);
+    setForfait(ecrireEuros(f)); if (f) setMode('forfait');
+  }, [recherche?.mandat_forfait]);
 
   /* Le lien direct : il ouvre l'espace sur CETTE recherche (r=), et le
      mandat par-dessus. */
   const lien = client?.token_espace ? `${lienEspace(client.token_espace)}?r=${encodeURIComponent(recherche.id)}&mandat=1` : '';
   const tauxN = lireTaux(taux);
   const tauxOk = tauxN > 0 && tauxN <= HONORAIRES_TAUX;
-  const tauxEnregistre = tauxDe(recherche?.mandat_taux);
   const budget = typeof recherche?.budget_max === 'number' ? recherche.budget_max : null;
   const pmax = tauxOk ? prixMaximum(budget, tauxN) : null;
+  /* Le forfait : jamais au-dessus du barème au prix maximum. */
+  const forfaitN = forfaitDe(forfait);
+  const pmaxF = forfaitN && budget ? Math.floor((budget - forfaitN) / 1000) * 1000 : null;
+  const forfaitMax = budget ? Math.floor((budget * HONORAIRES_TAUX) / (100 + HONORAIRES_TAUX) / 100) * 100 : null;
+  const forfaitOk = !!forfaitN && (!pmaxF || (pmaxF > 0 && forfaitN <= (pmaxF * HONORAIRES_TAUX) / 100));
+  const honoOk = mode === 'forfait' ? forfaitOk : tauxOk;
+  /* Ce qui est choisi à l'écran, et ce que le client voit aujourd'hui. */
+  const honoChoisi = mode === 'forfait' ? { forfait: forfaitN } : { taux: tauxN };
+  const honoEnregistre = { taux: tauxDe(recherche?.mandat_taux), forfait: forfaitDe(recherche?.mandat_forfait) };
   const premierDeLaReserve = numeros(reserve)[0] || '';
   const valide = !!recherche?.mandat_date_signature
     && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
@@ -205,17 +223,26 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   async function proposer() {
     const n = numero.trim();
     if (!n) { setMsg({ t: 'Colle d’abord le numéro réservé dans ImmoFacile, ou prends le suivant de ta réserve.', ok: false }); return; }
-    if (!tauxOk) { setMsg({ t: `Le taux doit être compris entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`, ok: false }); return; }
-    /* La colonne du taux vient d'un SQL à lancer une fois. Sans elle, on ne
-       peut proposer que le taux du barème. */
-    const colonne = recherche && Object.prototype.hasOwnProperty.call(recherche, 'mandat_taux');
-    if (!colonne && tauxN !== HONORAIRES_TAUX) {
-      setMsg({ t: 'Pour proposer un autre taux, lance d’abord la ligne SQL « mandat_taux » dans Supabase.', ok: false }); return;
+    if (!honoOk) {
+      setMsg({ t: mode === 'forfait'
+        ? `Le forfait ne peut pas dépasser ton barème (${ecrireTaux(HONORAIRES_TAUX)} % du prix maximum).`
+        : `Le taux doit être compris entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`, ok: false }); return;
+    }
+    /* Les colonnes du taux et du forfait viennent d'un SQL à lancer une
+       fois. Sans elles, on ne peut proposer que le barème. */
+    const a = (c: string) => !!recherche && Object.prototype.hasOwnProperty.call(recherche, c);
+    const colonne = a('mandat_taux'), colonneF = a('mandat_forfait');
+    if ((mode === 'forfait' && !colonneF) || (mode === 'taux' && !colonne && tauxN !== HONORAIRES_TAUX)) {
+      setMsg({ t: 'Pour proposer un autre taux ou un forfait, lance d’abord le fichier SQL « mandat-taux.sql » dans Supabase.', ok: false }); return;
     }
     setTravail('proposer'); setMsg(null);
     const le = new Date().toISOString();
     const { data, error } = await supabase.from('recherches')
-      .update({ mandat_numero: n, mandat_type: 'simple', mandat_propose_le: le, updated_at: le, ...(colonne ? { mandat_taux: tauxN } : {}) })
+      .update({
+        mandat_numero: n, mandat_type: 'simple', mandat_propose_le: le, updated_at: le,
+        ...(colonne ? { mandat_taux: mode === 'taux' ? tauxN : null } : {}),
+        ...(colonneF ? { mandat_forfait: mode === 'forfait' ? forfaitN : null } : {}),
+      })
       .eq('id', recherche.id).select().single();
     if (error) { setTravail(''); setMsg({ t: 'Le mandat n’a pas pu être proposé : ' + error.message, ok: false }); return; }
     /* Un numéro pris dans la réserve en sort : il ne servira jamais deux fois. */
@@ -230,15 +257,15 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
     }
     setTravail('');
     onMaj(data);
-    await addJournal(client.id, 'mandat', `📋 Mandat proposé à la signature (n° ${n})`, `Mandat de recherche simple · honoraires ${tauxTexte(tauxN)} · le client le voit dans son espace`);
-    setMsg({ t: `C’est prêt : ${client.prenom || 'le client'} voit « Votre mandat est prêt » dans son espace, à ${tauxTexte(tauxN)}. Envoie-lui le mail pour qu’il le sache.${avertir}`, ok: !avertir });
+    await addJournal(client.id, 'mandat', `📋 Mandat proposé à la signature (n° ${n})`, `Mandat de recherche simple · honoraires ${honorairesCourt(honoChoisi)} · le client le voit dans son espace`);
+    setMsg({ t: `C’est prêt : ${client.prenom || 'le client'} voit « Votre mandat est prêt » dans son espace (honoraires : ${honorairesCourt(honoChoisi)}). Envoie-lui le mail pour qu’il le sache.${avertir}`, ok: !avertir });
   }
 
   /* Le mail « Votre mandat de recherche est prêt », avec le lien direct. */
   async function envoyerMail() {
     const emails: string[] = Array.isArray(client?.emails) ? client.emails.filter((e: string) => e && e.includes('@')) : [];
     if (!emails.length) { setMsg({ t: 'Ce client n’a pas d’adresse e-mail dans sa fiche.', ok: false }); return; }
-    if (!confirm(`Envoyer le mandat à signer à ${emails.join(', ')} ?\n\nHonoraires : ${tauxTexte(tauxEnregistre)}`)) return;
+    if (!confirm(`Envoyer le mandat à signer à ${emails.join(', ')} ?\n\nHonoraires : ${honorairesCourt(honoEnregistre)}`)) return;
     setTravail('mail'); setMsg(null);
     try {
       const r = await fetch('/api/send-mail', {
@@ -257,12 +284,12 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   /* L'aperçu : le PDF exact que le client signera, au taux saisi, avec le
      filigrane « PROJET · NON SIGNÉ ». Fabriqué ici, dans le navigateur. */
   async function apercu() {
-    if (!tauxOk) { setMsg({ t: 'Corrige d’abord le taux.', ok: false }); return; }
+    if (!honoOk) { setMsg({ t: 'Corrige d’abord les honoraires.', ok: false }); return; }
     const w = window.open('', '_blank');
     setTravail('apercu');
     try {
       const { pdfMandat } = await import('@/lib/mandat-pdf');
-      const r = rechercheDepuis({ ...recherche, mandat_taux: tauxN });
+      const r = rechercheDepuis({ ...recherche, mandat_taux: mode === 'taux' ? tauxN : null, mandat_forfait: mode === 'forfait' ? forfaitN : null });
       const nom = `${client?.prenom || ''} ${client?.nom || ''}`.trim();
       const parties = redigerMandat({ numero: numero.trim() || '…', mandant: null, recherche: r, executionImmediate: null });
       const octets = await pdfMandat(parties, { numero: numero.trim() || '…', mandantNom: nom, resume: resumeMandat(r), sig: null, projet: true });
@@ -398,33 +425,65 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
             <span style={{ ...btn, color: '#94a3b8', cursor: 'not-allowed' }} title="Bientôt : il faut d’abord reprendre ton modèle exclusif">Exclusif · bientôt</span>
           </div>
           <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>Honoraires (TTC, à la charge de l’acquéreur)</label>
-          <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', width: 96 }}>
-              <input style={{ ...champ, boxSizing: 'border-box', paddingRight: 26, border: `1px solid ${tauxOk ? '#e2e8f0' : '#fca5a5'}` }} value={taux} inputMode="decimal"
-                onChange={e => setTaux(e.target.value)} aria-label="Taux des honoraires" />
-              <span style={{ position: 'absolute', right: 10, top: 9, color: '#94a3b8', fontWeight: 700 }}>%</span>
-            </div>
-            {[2.5, 2, 1.5].map(t => (
-              <button key={t} type="button" onClick={() => setTaux(ecrireTaux(t))}
-                style={{ ...btn, padding: '7px 11px', border: `1px solid ${tauxN === t ? '#c9a84c' : '#e2e8f0'}`, background: tauxN === t ? '#fdfaf1' : '#fff' }}>
-                {`${ecrireTaux(t)} %${t === HONORAIRES_TAUX ? ' · barème' : ''}`}
+          <div style={{ display: 'flex', width: 'fit-content', marginTop: 5, border: '1px solid #e2e8f0', borderRadius: 10, padding: 3, gap: 3, background: '#f8fafc' }}>
+            {([['taux', 'Pourcentage'], ['forfait', 'Forfait']] as const).map(([m, l]) => (
+              <button key={m} type="button" onClick={() => setMode(m)}
+                style={{ border: 'none', borderRadius: 8, padding: '6px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  background: mode === m ? '#fff' : 'transparent', color: mode === m ? '#1a2332' : '#64748b', boxShadow: mode === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>
+                {l}
               </button>
             ))}
           </div>
-          <div style={{ fontSize: 12.5, color: tauxOk ? '#475569' : '#b91c1c', marginTop: 6, lineHeight: 1.5 }}>
-            {!tauxOk
-              ? `Entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`
-              : pmax && budget
-                ? `Budget ${euros(budget)} → prix maximum ${euros(pmax)} hors honoraires, soit ${euros(honorairesPour(pmax, tauxN) || 0)} d’honoraires.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`
-                : `${tauxTexte(tauxN)} du prix d’achat.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`}
-          </div>
-          {recherche?.mandat_propose_le && tauxOk && tauxN !== tauxEnregistre && (
-            <div style={{ ...boite('#fffbeb', '#fde68a', '#92400e'), marginTop: 8 }}>{`Le client voit encore ${tauxTexte(tauxEnregistre)} : clique « Mettre à jour », puis renvoie-lui le mail.`}</div>
+          {mode === 'taux' ? (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: 96 }}>
+                  <input style={{ ...champ, boxSizing: 'border-box', paddingRight: 26, border: `1px solid ${tauxOk ? '#e2e8f0' : '#fca5a5'}` }} value={taux} inputMode="decimal"
+                    onChange={e => setTaux(e.target.value)} aria-label="Taux des honoraires" />
+                  <span style={{ position: 'absolute', right: 10, top: 9, color: '#94a3b8', fontWeight: 700 }}>%</span>
+                </div>
+                {[2.5, 2, 1.5].map(t => (
+                  <button key={t} type="button" onClick={() => setTaux(ecrireTaux(t))}
+                    style={{ ...btn, padding: '7px 11px', border: `1px solid ${tauxN === t ? '#c9a84c' : '#e2e8f0'}`, background: tauxN === t ? '#fdfaf1' : '#fff' }}>
+                    {`${ecrireTaux(t)} %${t === HONORAIRES_TAUX ? ' · barème' : ''}`}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 12.5, color: tauxOk ? '#475569' : '#b91c1c', marginTop: 6, lineHeight: 1.5 }}>
+                {!tauxOk
+                  ? `Entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`
+                  : pmax && budget
+                    ? `Budget ${euros(budget)} → prix maximum ${euros(pmax)} hors honoraires, soit ${euros(honorairesPour(pmax, tauxN) || 0)} d’honoraires.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`
+                    : `${tauxTexte(tauxN)} du prix d’achat.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: 150 }}>
+                  <input style={{ ...champ, boxSizing: 'border-box', paddingRight: 52, border: `1px solid ${forfaitOk || !forfait.trim() ? '#e2e8f0' : '#fca5a5'}` }} value={forfait} inputMode="numeric"
+                    placeholder="ex. 20 000" onChange={e => setForfait(e.target.value)} onBlur={() => setForfait(ecrireEuros(forfaitDe(forfait)))} aria-label="Forfait des honoraires" />
+                  <span style={{ position: 'absolute', right: 10, top: 9, color: '#94a3b8', fontWeight: 700 }}>€ TTC</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 12.5, color: forfaitOk || !forfait.trim() ? '#475569' : '#b91c1c', marginTop: 6, lineHeight: 1.5 }}>
+                {!forfaitN
+                  ? `Un montant fixe, en euros TTC.${forfaitMax ? ` Au plus ${euros(forfaitMax)} pour ce budget (ton barème, ${ecrireTaux(HONORAIRES_TAUX)} % du prix maximum).` : ''}`
+                  : !forfaitOk
+                    ? `Au-dessus de ton barème : pour ce budget, le forfait ne peut pas dépasser ${forfaitMax ? euros(forfaitMax) : `${ecrireTaux(HONORAIRES_TAUX)} % du prix`}.`
+                    : pmaxF
+                      ? `Budget ${euros(budget || 0)} → prix maximum ${euros(pmaxF)} hors honoraires ; ${euros(forfaitN)} = ${pourcentDe(forfaitN, pmaxF)} de ce prix. Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(HONORAIRES_TAUX)} %.`
+                      : `Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(HONORAIRES_TAUX)} %.`}
+              </div>
+            </>
+          )}
+          {recherche?.mandat_propose_le && honoOk && honorairesCourt(honoChoisi) !== honorairesCourt(honoEnregistre) && (
+            <div style={{ ...boite('#fffbeb', '#fde68a', '#92400e'), marginTop: 8 }}>{`Le client voit encore : ${honorairesCourt(honoEnregistre)}. Clique « Mettre à jour », puis renvoie-lui le mail.`}</div>
           )}
           <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginTop: 12 }}>N° réservé dans le registre ImmoFacile</label>
           <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
             <input style={{ ...champ, maxWidth: 160 }} value={numero} onChange={e => setNumero(e.target.value)} placeholder="ex. 997" inputMode="numeric" />
-            <button type="button" style={btnOr} disabled={travail === 'proposer' || !tauxOk} onClick={proposer}>
+            <button type="button" style={btnOr} disabled={travail === 'proposer' || !honoOk} onClick={proposer}>
               {travail === 'proposer' ? '…' : recherche?.mandat_propose_le ? 'Mettre à jour' : 'Proposer au client'}
             </button>
           </div>
@@ -435,7 +494,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
             </button>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            <button type="button" style={btn} disabled={travail === 'apercu' || !tauxOk} onClick={apercu}>
+            <button type="button" style={btn} disabled={travail === 'apercu' || !honoOk} onClick={apercu}>
               {travail === 'apercu' ? 'Préparation…' : '👁 Aperçu du mandat (PDF)'}
             </button>
           </div>
