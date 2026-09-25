@@ -398,7 +398,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
         ) : null}
         <span className="mdt-sur">{sur}</span>
       </div>
-      <button type="button" className="mdt-rond" aria-label="Fermer" onClick={onFermer}><Ic n="croix" t={14} /></button>
+      {/* Pendant la lecture du mandat, pas de croix : on la prenait pour un
+          retour, et elle fermait toute la signature. Seule la flèche reste. */}
+      {etape !== 'lecture' && <button type="button" className="mdt-rond" aria-label="Fermer" onClick={onFermer}><Ic n="croix" t={14} /></button>}
     </div>
   );
   const barre = pas > 0 && etape !== 'lecture' ? (
