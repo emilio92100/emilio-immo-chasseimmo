@@ -326,7 +326,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
               ))}
             </div>
             {bien.charges_trimestrielles && bien.charges_comprises ? (
-              <p style={{ margin: '9px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: PLUME_CLAIR }}>
+              <p style={{ margin: '9px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: PLUME }}>
                 <b style={{ fontWeight: 700 }}>Compris dans les charges :</b> {bien.charges_comprises}
               </p>
             ) : null}
