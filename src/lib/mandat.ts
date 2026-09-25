@@ -223,6 +223,35 @@ export function versionMandat(r: Recherche): string {
   return `${c.taux}|${c.prixMax ?? ''}|${decrireRecherche(r)}`;
 }
 
+/* ── La recherche du moment dépasse-t-elle le mandat signé ? ──
+   Le mandat est volontairement large (« environ », « ou à proximité »),
+   mais trois choses le bornent : le prix maximum, les secteurs cités et le
+   type de bien. Si le client monte son budget, ajoute un secteur ou un type
+   de bien, un achat peut sortir du mandat — et les honoraires avec. On le
+   signale à Alexandre ; lui seul juge s'il faut un nouveau mandat. */
+export function horsMandat(signe: Contenu, r: Recherche): string[] {
+  const out: string[] = [];
+  const n = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const pm = prixMaximum(r.budget, signe.taux);
+  if (pm && signe.prixMax && pm > signe.prixMax) {
+    out.push(`Prix maximum : ${euros(signe.prixMax)} sur le mandat, ${euros(pm)} avec son budget de ${euros(r.budget || 0)}`);
+  }
+  const avant = (signe.recherche.secteurs || []).map(n);
+  if (avant.length) {
+    const nouveaux = r.secteurs.filter(x => !avant.includes(n(x)));
+    if (nouveaux.length) out.push(`${nouveaux.length > 1 ? 'Secteurs absents' : 'Secteur absent'} du mandat : ${nouveaux.join(', ')}`);
+    else if (!r.secteurs.length) out.push(`Il ne précise plus de secteur (le mandat cite ${signe.recherche.secteurs.join(', ')})`);
+  }
+  const types = (t: string | null) => String(t || '').split(',').map(x => x.trim()).filter(Boolean);
+  const tAvant = types(signe.recherche.typeBien).map(n);
+  if (tAvant.length) {
+    const nouveaux = types(r.typeBien).filter(x => !tAvant.includes(n(x)));
+    if (nouveaux.length) out.push(`Type de bien absent du mandat : ${nouveaux.join(', ').toLowerCase()}`);
+    else if (!types(r.typeBien).length) out.push(`Il ne précise plus de type de bien (le mandat dit : ${String(signe.recherche.typeBien).toLowerCase()})`);
+  }
+  return out;
+}
+
 /* Le bien recherché, en une phrase. */
 export function decrireRecherche(r: Recherche): string {
   const types = String(r.typeBien || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);

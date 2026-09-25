@@ -23,7 +23,7 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { etatMandat, type EtatMandat } from './mandat';
+import { etatMandat, horsMandat, rechercheDepuis, DUREE, type EtatMandat, type Contenu } from './mandat';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -134,4 +134,57 @@ export function appareilDe(ua: string): string {
     : /CriOS|Chrome\//.test(u) ? 'Chrome' : /FxiOS|Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari' : 'navigateur inconnu';
   const v = u.match(/Version\/(\d+)/)?.[1] || u.match(/(?:Chrome|CriOS|Firefox|FxiOS|Edg)\/(\d+)/)?.[1];
   return `${os} · ${nav}${v ? ' ' + v : ''}`;
+}
+
+/* ══ Le client élargit sa recherche au-delà de son mandat signé ══════════
+   Appelé quand il enregistre ses critères depuis son espace. On compare au
+   mandat signé en ligne (son contenu figé) la recherche d'avant et celle
+   d'après : seul un écart NOUVEAU prévient Alexandre — historique, relance
+   du jour, mail. Un mandat saisi à la main n'a pas de contenu figé : rien à
+   comparer. Ne lève jamais : une alerte ratée ne doit pas bloquer
+   l'enregistrement des critères. */
+export async function alerteHorsMandat(sb: SupabaseClient, o: {
+  rechercheId: string; clientId: string; avant: Record<string, unknown>; apres: Record<string, unknown>;
+}): Promise<void> {
+  const { data: sig, error } = await sb.from('mandats_signatures')
+    .select('numero, signe_le, contenu').eq('recherche_id', o.rechercheId).eq('statut', 'signe')
+    .order('signe_le', { ascending: false }).limit(1).maybeSingle();
+  if (error || !sig?.contenu || !sig.signe_le) return;
+  if (Date.parse(sig.signe_le) + DUREE.total * 86_400_000 < Date.now()) return;
+  const contenu = sig.contenu as Contenu;
+  if (!contenu.recherche) return;
+  const avant = horsMandat(contenu, rechercheDepuis(o.avant));
+  const neufs = horsMandat(contenu, rechercheDepuis(o.apres)).filter(e => !avant.includes(e));
+  if (!neufs.length) return;
+
+  const { data: client } = await sb.from('clients').select('prenom, nom').eq('id', o.clientId).maybeSingle();
+  const nom = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() || 'Un client' : 'Un client';
+  const signeLe = new Date(sig.signe_le).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
+  const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(o.clientId)}`;
+  const quoi = neufs.map(e => `⚠️ ${e}`).join('\n');
+
+  const { error: eJ } = await sb.from('journal').insert({
+    client_id: o.clientId, recherche_id: o.rechercheId, type: 'mandat',
+    titre: '⚠️ Sa recherche dépasse son mandat signé',
+    description: `Mandat n° ${sig.numero} signé le ${signeLe}. Il vient de modifier ses critères :\n${quoi}`,
+    metadata: { numero: sig.numero, ecarts: neufs },
+  });
+  if (eJ) console.error('[mandat] alerte hors mandat, journal', eJ.message);
+  /* Colonnes réelles de la table : date_echeance / note / statut. */
+  const { error: eR } = await sb.from('relances').insert({
+    client_id: o.clientId, recherche_id: o.rechercheId,
+    type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
+    note: `À rappeler : sa recherche dépasse son mandat n° ${sig.numero} (${neufs.join(' · ')}). Voir s'il faut un nouveau mandat.`.slice(0, 600),
+  });
+  if (eR) console.error('[mandat] alerte hors mandat, relance', eR.message);
+  const eM = await envoyerMail({
+    a: ALERTES(), deLaPartDe: 'crm',
+    sujet: `⚠️ ${nom} : sa recherche dépasse son mandat (n° ${sig.numero})`,
+    texte: `${nom} vient de modifier ses critères depuis son espace. Son mandat n° ${sig.numero}, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :\n${quoi}\n\nAppelle-le : s'il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.\n\n${lienCrm}`,
+    html: gabarit(`${nom} : sa recherche dépasse son mandat`, `<p><b>${echappe(nom)}</b> vient de modifier ses critères depuis son espace. Son mandat <b>n° ${echappe(String(sig.numero))}</b>, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :</p>
+      ${neufs.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
+      <p>Appelle-le : s’il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.</p>
+      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+  });
+  if (eM) console.error('[mandat] alerte hors mandat, mail', eM);
 }
