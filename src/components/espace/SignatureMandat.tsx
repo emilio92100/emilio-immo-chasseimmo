@@ -24,7 +24,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, AGENCE, SIGNATAIRE, RETRACTATION_JOURS, ICONES,
+  resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, heureParis, AGENCE, SIGNATAIRE, RETRACTATION_JOURS, ICONES,
   type Mandant, type Recherche, type Partie, type Icone,
 } from '@/lib/mandat';
 
@@ -38,6 +38,9 @@ export type MandatEspace = {
   expiration: string | null;
   recherche: Recherche;
   mandant: Mandant;
+  /** Un code est parti il y a moins d'un quart d'heure et n'a pas servi :
+      le client revient de sa messagerie, on le remet devant la case du code. */
+  code?: { le: string; email: string } | null;
 };
 
 type Envoyer = (route: string, corps: Record<string, unknown>) => Promise<any>;
@@ -97,6 +100,13 @@ function TexteMandat({ parties }: { parties: Partie[] }) {
                     {b.items.map((x, n) => <div key={n}><span className="k"><Ic n="check" t={12} /></span><span>{x}</span></div>)}
                   </div>
                 );
+                if (b.t === 'etapes') return (
+                  <ol key={k} className="mdt-etapes">
+                    {b.items.map((e, n) => (
+                      <li key={n}><span className="n">{String(n + 1).padStart(2, '0')}</span><span><b>{e.titre}</b><span className="x">{e.x}</span></span></li>
+                    ))}
+                  </ol>
+                );
                 if (b.t === 'fiches') return (
                   <div key={k} className="mdt-fiches">
                     {b.items.map((f, n) => (
@@ -151,6 +161,53 @@ function Champ({ lib, val, onChange, err, type = 'text', mode, auto, placeholder
   );
 }
 
+/* ── La date de naissance, tapée au clavier ──
+   Un calendrier est pénible pour une date de 1962 : on tape les chiffres,
+   les barres se posent toutes seules (12031985 → 12/03/1985). La fiche
+   garde le format AAAA-MM-JJ ; tant que la date n'est pas complète et
+   réelle, c'est le texte brut qui remonte, et la vérification le refuse. */
+const isoVersFr = (v: string) => { const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return d ? `${d[3]}/${d[2]}/${d[1]}` : ''; };
+function frVersIso(t: string): string {
+  const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (!d) return '';
+  const j = Number(d[1]), m = Number(d[2]), a = Number(d[3]);
+  const x = new Date(Date.UTC(a, m - 1, j));
+  return x.getUTCFullYear() === a && x.getUTCMonth() === m - 1 && x.getUTCDate() === j ? `${d[3]}-${d[2]}-${d[1]}` : '';
+}
+function ChampDate({ lib, val, onChange, err }: { lib: string; val: string; onChange: (v: string) => void; err?: string }) {
+  const [t, setT] = useState(() => isoVersFr(val) || (/^\d{4}-/.test(val) ? '' : val));
+  useEffect(() => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val) && frVersIso(t) !== val) setT(isoVersFr(val));
+  }, [val]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saisir = (brut: string) => {
+    /* Le remplissage automatique du navigateur arrive parfois en AAAA-MM-JJ. */
+    if (/^\d{4}-\d{2}-\d{2}$/.test(brut.trim())) { setT(isoVersFr(brut.trim())); onChange(brut.trim()); return; }
+    const c = brut.replace(/\D/g, '').slice(0, 8);
+    const f = c.length > 4 ? `${c.slice(0, 2)}/${c.slice(2, 4)}/${c.slice(4)}` : c.length > 2 ? `${c.slice(0, 2)}/${c.slice(2)}` : c;
+    setT(f); onChange(frVersIso(f) || f);
+  };
+  return (
+    <label className={'mdt-ch' + (err ? ' err' : '')}>
+      <span className="l">{lib}</span>
+      <input type="text" inputMode="numeric" autoComplete="bday" placeholder="JJ/MM/AAAA" maxLength={10}
+        value={t} onChange={e => saisir(e.target.value)} />
+      {err && <span className="e">{err}</span>}
+    </label>
+  );
+}
+
+/* ── L'adresse en trois cases ──
+   Rue, code postal, ville : plus simple à remplir, et rien ne manque sur
+   le mandat. Le mandat garde une seule ligne, « 18 avenue Victor Hugo,
+   92100 Boulogne-Billancourt » ; une adresse déjà connue est redécoupée. */
+type Adresse = { rue: string; cp: string; ville: string };
+function couperAdresse(a: string): Adresse {
+  const t = (a || '').trim();
+  const d = /^(.*?)[,\s]+(\d{5})\s+(.+)$/.exec(t);
+  return d ? { rue: d[1].trim(), cp: d[2], ville: d[3].trim() } : { rue: t, cp: '', ville: '' };
+}
+const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+
 const ERREURS: Record<string, string> = {
   code: 'Ce code ne correspond pas.',
   expire: 'Ce code a expiré : demandez-en un nouveau.',
@@ -179,12 +236,23 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   onSigne: (r: { numero: string; signeLe: string; finRetractation: string; execution: boolean }) => Promise<void> | void;
   tel: string;
 }) {
-  const [etape, setEtape] = useState<'accueil' | 'recap' | 'lecture' | 'coord' | 'signer' | 'fini'>('accueil');
+  /* Un code déjà envoyé et encore valable : on reprend là où il en était. */
+  const [etape, setEtape] = useState<'accueil' | 'recap' | 'lecture' | 'coord' | 'signer' | 'fini'>(mandat.code ? 'signer' : 'accueil');
   const [retourLecture, setRetourLecture] = useState<'recap' | 'signer'>('recap');
   const [m, setM] = useState<Mandant>(mandat.mandant);
   const [champs, setChamps] = useState<Record<string, string>>({});
+  const [adr, setAdr] = useState<Adresse>(() => couperAdresse(mandat.mandant.adresse));
+  const majAdr = (k: keyof Adresse) => (v: string) => {
+    const x = { ...adr, [k]: k === 'cp' ? v.replace(/[^0-9A-Za-z -]/g, '').slice(0, 10) : v };
+    setAdr(x); setM(o => ({ ...o, adresse: joindreAdresse(x) }));
+    setChamps(c => ({ ...c, adresse: '', [k]: '' }));
+  };
   const [numero, setNumero] = useState<string | null>(mandat.numero);
-  const [emailMasque, setEmailMasque] = useState('');
+  const [emailMasque, setEmailMasque] = useState(mandat.code?.email || '');
+  /* Vrai dès qu'un code est parti (ou l'était déjà) : « J'ai déjà mon code ». */
+  const [codeParti, setCodeParti] = useState(!!mandat.code);
+  /* L'heure du code repris : « envoyé à 14 h 08 ». Effacée dès qu'un nouveau part. */
+  const [codeDe, setCodeDe] = useState(mandat.code?.le || '');
   const [lu, setLu] = useState(false);
   const [execution, setExecution] = useState<boolean | null>(null);
   const [code, setCode] = useState('');
@@ -206,6 +274,13 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     envoyer('mandat', { etape: 'afficher' }).then(r => { if (vivant && r?.recherche) setRech(r.recherche); });
     return () => { vivant = false; };
   }, [envoyer]);
+  /* Pendant la signature, l'espace ne se recharge pas tout seul au retour
+     (voir EspaceClient) : le client part chercher son code dans sa
+     messagerie, il doit retrouver l'écran tel qu'il l'a laissé. */
+  useEffect(() => {
+    try { document.documentElement.dataset.saisie = 'mandat'; } catch { /* sans effet */ }
+    return () => { try { delete document.documentElement.dataset.saisie; } catch { /* sans effet */ } };
+  }, []);
   /* Chaque étape repart en haut de l'écran. */
   useEffect(() => { haut.current?.closest('.feuille')?.scrollTo({ top: 0 }); }, [etape]);
   /* Le compte à rebours de « Renvoyer le code ». */
@@ -255,12 +330,17 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
 
   const demanderCode = async () => {
     const v = validerMandant(m);
-    if (!v.ok) { setChamps(v.champs); return; }
+    /* Les trois cases de l'adresse, chacune la sienne. */
+    const manque: Record<string, string> = {};
+    if (adr.rue.trim().length < 3) manque.rue = 'Numéro et rue';
+    if (!/^[0-9A-Za-z -]{4,10}$/.test(adr.cp.trim())) manque.cp = 'Code postal';
+    if (adr.ville.trim().length < 2) manque.ville = 'Ville';
+    if (!v.ok || Object.keys(manque).length) { setChamps({ ...(v.ok ? {} : v.champs), ...manque, ...(Object.keys(manque).length ? { adresse: '' } : {}) }); return; }
     setEnvoi(true); setErreur('');
     const r = await envoyer('mandat', { etape: 'code', mandant: v.mandant, version: versionMandat(rech) });
     setEnvoi(false);
     if (r?.ok) {
-      setNumero(r.numero); setEmailMasque(r.email); setCode(''); setAttente(45); setAvis('');
+      setNumero(r.numero); setEmailMasque(r.email); setCode(''); setAttente(45); setAvis(''); setCodeParti(true); setCodeDe('');
       setEtape('signer');
     } else if (r?.error === 'change') {
       relire(r);
@@ -274,7 +354,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const renvoyer = async () => {
     setErreur('');
     const r = await envoyer('mandat', { etape: 'code', mandant: m, version: versionMandat(rech) });
-    if (r?.ok) { setEmailMasque(r.email); setCode(''); setAttente(45); }
+    if (r?.ok) { setEmailMasque(r.email); setCode(''); setAttente(45); setCodeParti(true); setCodeDe(''); }
     else if (r?.error === 'change') relire(r);
     else setErreur(ERREURS[r?.error] || 'Le code n’a pas pu être renvoyé.');
   };
@@ -428,16 +508,23 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             <Champ lib="Nom" val={m.nom} onChange={maj('nom')} err={champs.nom} auto="family-name" />
           </div>
           <div className="mdt-deux">
-            <Champ lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} type="date" auto="bday" />
+            <ChampDate lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />
             <Champ lib="Lieu de naissance" val={m.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu} placeholder="Ville (département)" />
           </div>
-          <Champ lib="Adresse" val={m.adresse} onChange={maj('adresse')} err={champs.adresse} auto="street-address" placeholder="Numéro, rue, code postal, ville" />
+          <Champ lib="Adresse" val={adr.rue} onChange={majAdr('rue')} err={champs.rue || champs.adresse} auto="address-line1" placeholder="Numéro et rue" />
+          <div className="mdt-cpv">
+            <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} err={champs.cp} mode="numeric" auto="postal-code" />
+            <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} err={champs.ville} auto="address-level2" />
+          </div>
           <Champ lib="E-mail — votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" />
           <Champ lib="Téléphone" val={m.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="tel" />
           {erreur && <div className="mdt-erreur">{erreur}</div>}
           <button type="button" className="btn or mdt-plein" disabled={envoi} onClick={demanderCode}>
-            {envoi ? 'Envoi du code…' : 'Recevoir mon code par e-mail'}
+            {envoi ? 'Envoi du code…' : codeParti ? 'Recevoir un nouveau code' : 'Recevoir mon code par e-mail'}
           </button>
+          {codeParti && (
+            <button type="button" className="btn fant mdt-plein" onClick={() => { setErreur(''); setEtape('signer'); }}>J’ai déjà mon code</button>
+          )}
         </div>
       </div>
     );
@@ -473,7 +560,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
           </div>
 
           <div className="mdt-q">Votre code</div>
-          <p className="mdt-p petit">{`Un code à 6 chiffres vient de vous être envoyé à ${emailMasque}. Pensez à regarder dans les indésirables.`}</p>
+          <p className="mdt-p petit">{codeDe
+            ? `Votre code à 6 chiffres vous a été envoyé à ${emailMasque} à ${heureParis(codeDe)} : saisissez-le ici. Il est valable 15 minutes ; passé ce délai, demandez-en un nouveau.`
+            : `Un code à 6 chiffres vient de vous être envoyé à ${emailMasque}. Pensez à regarder dans les indésirables. Vous pouvez quitter cette page pour aller le chercher : elle vous attend.`}</p>
           <input className="mdt-code" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={6}
             placeholder="• • • • • •" aria-label="Code à 6 chiffres"
             onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErreur(''); }} />
@@ -675,12 +764,14 @@ export const CSS_MANDAT = `
 .mdt-civ button[data-on]{border-color:var(--or); background:var(--or-fond); color:var(--encre)}
 .mdt-civ.err button{border-color:var(--brique-trait)}
 .mdt-deux{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.mdt-cpv{display:grid; grid-template-columns:minmax(0,120px) 1fr; gap:10px; align-items:start}
 @media(max-width:420px){ .mdt-deux{grid-template-columns:1fr} }
 .mdt-ch{display:flex; flex-direction:column; gap:5px; min-width:0}
 .mdt-ch .l{font-size:12px; font-weight:700; color:var(--plume)}
 .mdt-ch input{width:100%; min-width:0; border:1.5px solid var(--trait); border-radius:13px; padding:12px 13px;
   font:inherit; font-size:15px; color:var(--encre); background:#fff; outline:none; -webkit-appearance:none; appearance:none}
 .mdt-ch input:focus{border-color:var(--or)}
+.mdt-ch.err{margin-top:0}   /* la classe globale .err de l'espace pousse de 8 px : les colonnes se décalaient */
 .mdt-ch.err input{border-color:var(--brique)}
 .mdt-ch .e, .mdt-err-l{font-size:12px; color:var(--brique); font-weight:600}
 .mdt-erreur{padding:11px 13px; border-radius:12px; background:var(--brique-fond); border:1px solid var(--brique-trait);
@@ -743,6 +834,13 @@ export const CSS_MANDAT = `
 .mdt-coches > div{display:flex; gap:9px; align-items:flex-start; font-size:13.5px; line-height:1.5; color:var(--encre)}
 .mdt-coches .k{flex:0 0 auto; width:20px; height:20px; border-radius:50%; background:var(--or); color:#fff;
   display:flex; align-items:center; justify-content:center; margin-top:1px}
+.mdt-etapes{list-style:none; margin:10px 0 0; padding:0}
+.mdt-etapes > li{display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--trait); margin:0}
+.mdt-etapes > li:first-child{border-top:none; padding-top:2px}
+.mdt-etapes .n{flex:0 0 auto; width:30px; height:26px; border-radius:8px; background:var(--or-fond); border:1px solid var(--or-trait);
+  color:var(--or-fonce, #a07c28); font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; margin-top:1px}
+.mdt-etapes b{display:block; font-size:14px; color:var(--encre)}
+.mdt-etapes .x{display:block; font-size:13.5px; line-height:1.55; color:var(--encre2); margin-top:2px}
 .mdt-fiches{display:grid; grid-template-columns:1fr; gap:10px; margin-top:12px}
 @container (min-width:620px){ .mdt-fiches{grid-template-columns:1fr 1fr} .mdt-fiche.large{grid-column:1 / -1} }
 .mdt-fiche{padding:13px 14px; border-radius:14px; background:var(--carte); border:1px solid var(--trait); min-width:0}

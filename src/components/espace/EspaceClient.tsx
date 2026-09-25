@@ -1073,6 +1073,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   useEffect(() => {
     const recharger = () => {
+      /* Pas pendant une signature : le client revient de sa messagerie avec
+         son code, il doit retrouver l'écran tel qu'il l'a laissé. */
+      try { if (document.documentElement.dataset.saisie) return; } catch { /* sans effet */ }
       if (Date.now() - dernierRefresh.current < 15000) return;
       dernierRefresh.current = Date.now();
       try { window.location.reload(); } catch { router.refresh(); }
@@ -1166,9 +1169,28 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       }} />);
   }
 
+  /* La demande de visite qui attend la signature. Gardée dans le
+     navigateur : si le téléphone a fermé la page pendant que le client
+     cherchait son code, elle repart quand même une fois signé. */
+  const CLE_VISITE = 'emilio_visite_apres_mandat';
+  function garderVisite(b: Bien, commentaire: string) {
+    try { localStorage.setItem(CLE_VISITE, JSON.stringify({ bienId: b.id, commentaire, t: Date.now() })); } catch { /* sans effet */ }
+  }
+  function oublierVisite() { try { localStorage.removeItem(CLE_VISITE); } catch { /* sans effet */ } }
+  function visiteEnAttente(): { bienId: string; commentaire: string } | null {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLE_VISITE) || 'null');
+      return v && typeof v.bienId === 'string' && Date.now() - Number(v.t) < 3_600_000 ? v : null;
+    } catch { return null; }
+  }
+  function ouvrirMandatPourVisite(b: Bien, avis: string, commentaire: string) {
+    garderVisite(b, commentaire);
+    ouvrirMandat('visite', async () => { oublierVisite(); await poserAvis(b, avis, commentaire, true); }, b.id);
+  }
+
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
     if (avis === 'souhaite_visiter' && mandatRef.current.etat === 'a_signer') {
-      ouvrirMandat('visite', () => poserAvis(b, avis, commentaire, true), b.id);
+      ouvrirMandatPourVisite(b, avis, commentaire);
       return;
     }
     await poserAvis(b, avis, commentaire, false);
@@ -1182,7 +1204,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     if (r?.error === 'mandat' && !apresMandat) {
       setMandat(x => ({ ...x, etat: 'a_signer' }));
       mandatRef.current = { ...mandatRef.current, etat: 'a_signer' };
-      ouvrirMandat('visite', () => poserAvis(b, avis, commentaire, true), b.id);
+      ouvrirMandatPourVisite(b, avis, commentaire);
       return;
     }
     setBiens(l => l.map(x => x.id === b.id
@@ -1264,6 +1286,24 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       mandatOuvert.current = true;
       try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
       if (mandatRef.current.etat === 'a_signer') ouvrirMandat('libre');
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* Le client a demandé son code, puis la page a été fermée (le téléphone
+     l'a libérée pendant qu'il était dans sa messagerie) : à son retour, on
+     rouvre la signature directement sur la case du code, et la demande de
+     visite qui attendait repart après la signature. */
+  const repriseFaite = useRef(false);
+  useEffect(() => {
+    if (repriseFaite.current || !mandatRef.current.code || mandatRef.current.etat !== 'a_signer') return;
+    const t = setTimeout(() => {
+      repriseFaite.current = true;
+      const v = visiteEnAttente();
+      const b = v ? biens.find(x => x.id === v.bienId) : undefined;
+      if (b && v) ouvrirMandat('visite', async () => { oublierVisite(); await poserAvis(b, 'souhaite_visiter', v.commentaire, true); }, b.id);
+      else ouvrirMandat('libre');
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
