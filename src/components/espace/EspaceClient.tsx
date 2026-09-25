@@ -27,7 +27,7 @@ type Bien = {
   sejour?: number | null; exterieur?: number | null;
   surfaceTerrasse?: number | null; surfaceBalcon?: number | null;
   nbParking?: number | null;
-  charges?: number | null; taxe?: number | null;
+  charges?: number | null; taxe?: number | null; chargesComprises?: string | null;
   chauffage?: string | null; lots?: number | null;
   pdfUrl: string | null; envoyeLe: string | null; vuLe: string | null;
   avis: string | null; commentaire: string | null; retourLe: string | null;
@@ -3428,6 +3428,9 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
                 </div>
               ))}
             </div>
+            {b.charges && b.chargesComprises ? (
+              <p className="cout-compris"><b>Compris dans les charges :</b> {b.chargesComprises}</p>
+            ) : null}
           </>
         )}
 
@@ -5359,6 +5362,8 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px}
 .cout .c .u{display:block; font-family:'Inter',sans-serif; font-size:11px;
   color:var(--plume-clair); font-weight:700; margin-top:3px; letter-spacing:.3px}
+.cout-compris{margin:9px 2px 0; font-size:12.5px; line-height:1.5; color:var(--plume-clair)}
+.cout-compris b{font-weight:700; color:var(--encre)}
 
 /* Le plan : sur fond blanc, entier, et on l'agrandit d'un geste. */
 .plans-f{display:grid; gap:9px; margin-top:10px}
