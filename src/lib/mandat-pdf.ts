@@ -225,6 +225,9 @@ export type OptionsPdf = {
   /* La signature manuscrite d'Alexandre (PNG, fond transparent), lue dans le
      dossier privé : jamais dans le code, le dépôt est public. */
   signatureAgence?: Uint8Array | null;
+  /* La signature que le client a tracée au doigt sur son écran (PNG), posée
+     dans sa case comme celle d'Alexandre dans la sienne. */
+  signatureMandant?: Uint8Array | null;
 };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
@@ -234,6 +237,7 @@ const CORPS_PAS = 1.5;
 
 class Plume {
   doc: PDFDocument; k: Kit; griffe: PDFImage | null; projet: boolean;
+  griffeMandant: PDFImage | null = null;
   page!: PDFPage; y = 0;
   /* Où écrire « certificat en page N », une fois qu'on sait N. */
   renvoi: { page: PDFPage; y: number } | null = null;
@@ -516,15 +520,19 @@ class Plume {
     /* Le texte de la case d'Alexandre reste dans une colonne étroite quand
        sa signature manuscrite occupe la droite ; sinon, toute la largeur. */
     const etroit = this.griffe && signe ? 118 : w - 28;
+    /* La signature tracée par le client est large et basse : elle prend le
+       bas de sa case, à droite de la pastille, et les deux cases grandissent
+       d'autant. */
+    const bonus = this.griffeMandant && signe ? 46 : 0;
     const cases = [
       { qui: 'LE MANDANT', nom: sig ? sig.mandantNom : (mandantNom || 'Le mandant'), largeur: w - 28, lignes: signe && sig
-        ? [`Signé électroniquement le ${dateCourte(sig.le)} à ${heureParis(sig.le)} (heure de Paris), par code à usage unique reçu par e-mail.`]
+        ? [`Signé électroniquement le ${dateCourte(sig.le)} à ${heureParis(sig.le)} (heure de Paris), par code à usage unique reçu par e-mail${this.griffeMandant ? ' et signature tracée à la main' : ''}.`]
         : ['Signature électronique depuis son espace personnel, par code à usage unique reçu par e-mail.'] },
       { qui: 'LE MANDATAIRE', nom: AGENCE.nom, largeur: etroit, lignes: [
         `Représentée par ${SIGNATAIRE.nom}, ${SIGNATAIRE.qualite}.`,
         signe && sig ? (sig.agenceLe ? `Offre signée le ${dateCourte(sig.agenceLe)}.` : 'Signé électroniquement.') : 'Signature apposée au moment où le mandant signe.'] },
     ].map(c => ({ ...c, noms: couper(c.nom, this.k.g, 11.5, c.largeur), txt: c.lignes.flatMap(l => couper(l, this.k.r, 8.5, c.largeur)) }));
-    const h = Math.max(132, ...cases.map(c => 39 + c.noms.length * 14 + 3 + c.txt.length * 12 + 34));
+    const h = Math.max(132, ...cases.map(c => 39 + c.noms.length * 14 + 3 + c.txt.length * 12 + 34)) + bonus;
     this.place(h + 30);
     const y = this.y - h - 4;
     cases.forEach((c, i) => {
@@ -543,6 +551,14 @@ class Plume {
     if (this.griffe && signe) {
       const gh = 88, gw = (this.griffe.width / this.griffe.height) * gh;
       this.page.drawImage(this.griffe, { x: MARGE.g + LARGEUR - gw - 12, y: y + 10, width: gw, height: gh, opacity: 0.95 });
+    }
+    /* Et celle du client, de la même façon, dans sa propre case. Bornée en
+       largeur comme en hauteur : un trait très allongé ne sort pas du cadre. */
+    if (this.griffeMandant && signe) {
+      const img = this.griffeMandant, maxW = w - 14 - 84, maxH = 58;
+      const k = Math.min(maxW / img.width, maxH / img.height);
+      const gw = img.width * k, gh = img.height * k;
+      this.page.drawImage(img, { x: MARGE.g + w - gw - 14, y: y + 10 + (maxH - gh) / 2, width: gw, height: gh });
     }
     this.renvoi = { page: this.page, y: y - 18 };
     this.y = y - 30;
@@ -662,6 +678,9 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     try { griffe = await doc.embedPng(o.signatureAgence); } catch { griffe = null; /* un fichier illisible ne bloque pas la signature */ }
   }
   const pl = new Plume(doc, k, griffe, !!o.projet);
+  if (!o.projet && o.signatureMandant && o.signatureMandant.length) {
+    try { pl.griffeMandant = await doc.embedPng(o.signatureMandant); } catch { pl.griffeMandant = null; /* illisible : la signature par code suffit */ }
+  }
   const debuts: number[] = [];
   parties.forEach((partie, ip) => {
     /* Les parties s'enchaînent, sans page à moitié vide entre elles. */
