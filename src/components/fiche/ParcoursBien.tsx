@@ -1884,8 +1884,42 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
   const [envoi, setEnvoi] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const choisi = AVIS.find(a => a.id === avis);
+  /* Ce qu'il a déjà répondu, s'il a répondu (« propose » = pas encore). */
+  const actuel = AVIS.find(a => a.id === bien.badge_retour) || null;
 
   useEffect(() => { if (choisi) ref.current?.focus(); }, [choisi]);
+
+  /* ── Remettre en attente de son retour ──
+     Comme si le bien venait de partir : plus de réponse, le client revoit
+     les trois boutons dans son espace, et la relance automatique repart.
+     Sa réponse effacée reste dans l'historique. S'il avait demandé à
+     visiter, la relance « Veut visiter » posée à ce moment-là est close. */
+  async function remettreEnAttente() {
+    if (!actuel || envoi) return;
+    if (!confirm(`Effacer sa réponse (${actuel.label}) et remettre le bien en attente de son retour ?\n\nSa réponse reste dans l’historique.`)) return;
+    setEnvoi(true);
+    const { error } = await supabase.from('biens').update({
+      badge_retour: 'propose', retour_client: null, retour_le: null, retour_par: null,
+    }).eq('id', bien.id);
+    if (error) { setEnvoi(false); alert('Le bien n’a pas pu être remis en attente.\n\n' + error.message); return; }
+    const mot = bien.retour_client && bien.retour_client !== actuel.label ? ` — « ${bien.retour_client} »` : '';
+    await supabase.from('journal').insert({
+      client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id,
+      type: 'retour_client', titre: '⏳ Remis en attente de son retour · par le conseiller',
+      description: `Réponse effacée : ${actuel.icone} ${actuel.label}${mot}`, metadata: { avant: bien.badge_retour },
+    });
+    if (bien.badge_retour === 'souhaite_visiter') {
+      const debut = `Veut visiter — ${bien.titre || 'un bien'}`;
+      let q = supabase.from('relances').select('id, note')
+        .eq('client_id', clientId).eq('type', 'rappel_client').eq('statut', 'en_attente');
+      if (bien.recherche_id) q = q.eq('recherche_id', bien.recherche_id);
+      const { data: rel } = await q;
+      const ids = (rel || []).filter((r: { note?: string | null }) => String(r.note || '').startsWith(debut)).map((r: { id: string }) => r.id);
+      if (ids.length) await supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids);
+    }
+    await programmerRelance(clientId, bien.recherche_id, 1);
+    setEnvoi(false); onEnregistre(); onFerme();
+  }
 
   async function enregistrer() {
     if (!avis || envoi) return;
@@ -1922,6 +1956,15 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
       </div>
 
       <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 17 }}>
+        {actuel && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: '#f7f9fc', border: `1px solid ${BORD}`, borderRadius: 12, padding: '10px 13px' }}>
+            <span style={{ fontSize: 13, color: '#475569' }}>{`Réponse actuelle : ${actuel.icone} ${actuel.label}${bien.retour_par === 'conseiller' ? ', notée par toi' : ', depuis son espace'}`}</span>
+            <button type="button" onClick={remettreEnAttente} disabled={envoi}
+              style={{ background: 'none', border: 'none', padding: 0, color: '#a07c28', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
+              ⏳ Remettre en attente de son retour
+            </button>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10 }}>
           {AVIS.map(a => {
             const actif = avis === a.id;
