@@ -167,7 +167,9 @@ export async function POST(req: NextRequest) {
           const { data: vu } = await sb.from('espace_evenements').select('created_at')
             .eq('recherche_id', recherche.id).eq('type', 'mandat').order('created_at', { ascending: false }).limit(1).maybeSingle();
           if (vu?.created_at) deroule.push({ t: vu.created_at, x: 'Mandat affiché dans son espace personnel, récapitulatif lu' });
-          deroule.push({ t: maintenant, x: 'Coordonnées confirmées par le signataire' });
+          deroule.push({ t: maintenant, x: body.certifie === true
+            ? 'Coordonnées confirmées et certifiées exactes par le signataire (« ce sont les miennes, le mandat est établi à mon nom »)'
+            : 'Coordonnées confirmées par le signataire' });
         }
         deroule.push({ t: maintenant, x: `${reprise ? 'Nouveau code' : 'Code à 6 chiffres'} envoyé à ${mandant.email}` });
 
@@ -230,9 +232,18 @@ export async function POST(req: NextRequest) {
         const m = l.mandant;
         const nom = `${m.prenom} ${m.nom}`.trim();
         const tentative = l.code_essais === 0 ? '1re tentative' : `${l.code_essais + 1}e tentative`;
+        /* La signature tracée au doigt par le client (PNG en data URL). Elle
+           rejoint sa case sur le PDF. Facultative ici : un espace resté ouvert
+           avant la mise à jour signe encore par le seul code. */
+        let griffeMandant: Uint8Array | null = null;
+        if (typeof body.griffe === 'string' && body.griffe.startsWith('data:image/png;base64,') && body.griffe.length < 600_000) {
+          const o = Buffer.from(body.griffe.slice(22), 'base64');
+          if (o.length > 200 && o[0] === 0x89 && o[1] === 0x50 && o[2] === 0x4e && o[3] === 0x47) griffeMandant = new Uint8Array(o);
+        }
         const deroule = [...(l.deroule || []),
+          ...(griffeMandant ? [{ t: le, x: 'Signature tracée à la main sur l’écran par le signataire' }] : []),
           { t: le, x: `Code saisi et validé (${tentative})` },
-          { t: le, x: `Cases cochées : « J’ai lu l’information précontractuelle et mon mandat de recherche, et je les accepte » · « ${execution
+          { t: le, x: `Cases cochées : « J’ai lu mon mandat de recherche et je l’accepte » · « ${execution
             ? 'Je demande que la recherche commence tout de suite, sans attendre la fin de mon délai de rétractation'
             : 'Je préfère que la recherche commence à la fin de mon délai de rétractation'} »` },
         ];
@@ -252,7 +263,7 @@ export async function POST(req: NextRequest) {
         const sig = { mandantNom: nom, le, email: m.email, agenceLe: contenu.agenceLe || null };
         const seul = await pdfMandat(parties, {
           numero: l.numero, mandantNom: nom, resume: resumeMandat(contenu.recherche), sig,
-          pagesEnTout: n => n + 1, signatureAgence: griffe,
+          pagesEnTout: n => n + 1, signatureAgence: griffe, signatureMandant: griffeMandant,
         });
         const empreinte = createHash('sha256').update(seul).digest('hex');
         const signe = await pdfSigne(seul, {
@@ -297,7 +308,7 @@ export async function POST(req: NextRequest) {
         await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'mandat', titre: '✍️ Mandat signé en ligne par le client',
-          description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.initiale} jours renouvelables, 12 mois au plus · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
+          description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.mois} mois au plus, fin possible à tout moment · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
           metadata: { signature_id: l.id, numero: l.numero, empreinte },
         });
         await evt('mandat', `Mandat n° ${l.numero} signé`);
