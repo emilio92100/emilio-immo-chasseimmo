@@ -78,7 +78,9 @@ export type PieceJointe = { nom: string; type: string; base64: string };
 /* Rend null si tout va bien, sinon le message d'erreur. */
 export async function envoyerMail(o: {
   a: string; nomA?: string; sujet: string; texte: string; html: string;
-  pj?: PieceJointe[]; deLaPartDe?: 'alexandre' | 'crm'; repondreA?: string;
+  /* L'expéditeur affiché : Alexandre (par défaut), le CRM (ses alertes), ou
+     l'agence seule (le mail du code : un nom neutre, qu'on reconnaît). */
+  pj?: PieceJointe[]; deLaPartDe?: 'alexandre' | 'crm' | 'agence'; repondreA?: string;
 }): Promise<string | null> {
   const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
   if (!apiKey || !apiSecret) return 'Mailjet non configuré';
@@ -89,7 +91,7 @@ export async function envoyerMail(o: {
       headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
       body: JSON.stringify({
         Messages: [{
-          From: { Email: FROM_EMAIL, Name: o.deLaPartDe === 'crm' ? 'Emilio · CRM' : FROM_NAME },
+          From: { Email: FROM_EMAIL, Name: o.deLaPartDe === 'crm' ? 'Emilio · CRM' : o.deLaPartDe === 'agence' ? 'Emilio Immobilier' : FROM_NAME },
           To: [{ Email: o.a, ...(o.nomA ? { Name: o.nomA } : {}) }],
           ...(o.repondreA ? { ReplyTo: { Email: o.repondreA } } : {}),
           Subject: o.sujet,

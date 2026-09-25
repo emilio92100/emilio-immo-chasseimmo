@@ -55,7 +55,7 @@ export const AGENCE = {
 
 /* Qui signe pour l'agence, et à quel titre — tel qu'Alexandre l'a demandé. */
 export const SIGNATAIRE = {
-  nom: 'Alexandre Rogelet',
+  nom: 'Alexandre ROGELET',   // le nom de famille en capitales, comme sur tout acte
   qualite: 'responsable des transactions immobilières',
 } as const;
 
