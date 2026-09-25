@@ -27,7 +27,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import { lienEspace } from '@/lib/jeton';
 import {
-  HONORAIRES_TAUX, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat,
+  HONORAIRES_TAUX, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
+  type Contenu,
 } from '@/lib/mandat';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
@@ -38,6 +39,7 @@ type Sig = {
   id: string; numero: string; statut: string; signe_le: string | null; retracte_le: string | null;
   pdf_chemin: string | null; execution_immediate: boolean | null; code_envoye_le: string | null;
   mandant: { civilite?: string; prenom?: string; nom?: string; email?: string; telephone?: string; adresse?: string } | null;
+  contenu?: Contenu | null;
 };
 
 /* ── Ce que le client a corrigé en signant ──
@@ -122,7 +124,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
     if (!recherche?.id) return;
     const [s, p, f] = await Promise.all([
       supabase.from('mandats_signatures')
-        .select('id, numero, statut, signe_le, retracte_le, pdf_chemin, execution_immediate, code_envoye_le, mandant')
+        .select('id, numero, statut, signe_le, retracte_le, pdf_chemin, execution_immediate, code_envoye_le, mandant, contenu')
         .eq('recherche_id', recherche.id).order('created_at', { ascending: false }).limit(1),
       supabase.from('parametres').select('cle, valeur').in('cle', [CLE_RESERVE, CLE_APPROBATION]),
       supabase.storage.from('mandats').list('agence'),
@@ -153,6 +155,10 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
     && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
   const signeEnLigne = sig?.statut === 'signe';
   const ecarts = sig && (sig.statut === 'signe' || sig.statut === 'en_cours') ? ecartsDe(sig.mandant, client) : [];
+  /* Sa recherche d'aujourd'hui sort-elle de ce qu'il a signé (budget,
+     secteurs, type de bien) ? Le client peut changer ses critères depuis
+     son espace ; Alexandre reçoit aussi un mail à ce moment-là. */
+  const depasse = signeEnLigne && sig?.contenu?.recherche ? horsMandat(sig.contenu, rechercheDepuis(recherche || {})) : [];
 
   /* ── Reprendre dans la fiche ce que le client a saisi en signant ──
      Deux adresses e-mail et deux téléphones au plus : c'est ce que le
@@ -336,6 +342,13 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
           <div>{`N° ${sig.numero} · le ${sig.signe_le ? quand(sig.signe_le) : '—'}`}</div>
           <div style={{ color: '#15803d' }}>{sig.execution_immediate ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours de rétractation.'}</div>
           <button type="button" style={{ ...btn, marginTop: 10 }} onClick={voirPdf}>📄 Voir le mandat signé</button>
+        </div>
+      )}
+      {depasse.length > 0 && (
+        <div style={boite('#fff7ed', '#fed7aa', '#7c2d12')}>
+          <b>⚠️ Sa recherche dépasse son mandat signé</b>
+          {depasse.map(e => <div key={e} style={{ marginTop: 4 }}>{`· ${e}`}</div>)}
+          <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 6 }}>{'Un achat hors de ces limites sortirait du mandat. Appelle-le : s’il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.'}</div>
         </div>
       )}
       {sig?.statut === 'retracte' && (
