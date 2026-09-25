@@ -77,6 +77,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       nb_lots: p.nb_lots, photos: p.photos || [],
       // les charges et la taxe foncière suivent le bien jusqu'à l'espace du client
       charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
+      // ce que couvrent les charges suit le montant
+      ...(p.charges_comprises ? { charges_comprises: p.charges_comprises } : {}),
       // le plan suit le bien ; la colonne n'est écrite que s'il y en a un
       ...(Array.isArray(p.plans) && p.plans.length ? { plans: p.plans } : {}),
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
