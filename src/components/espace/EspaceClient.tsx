@@ -5362,7 +5362,7 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:18px}
 .cout .c .u{display:block; font-family:'Inter',sans-serif; font-size:11px;
   color:var(--plume-clair); font-weight:700; margin-top:3px; letter-spacing:.3px}
-.cout-compris{margin:9px 2px 0; font-size:12.5px; line-height:1.5; color:var(--plume-clair)}
+.cout-compris{margin:9px 2px 0; font-size:12.5px; line-height:1.5; color:var(--plume)}
 .cout-compris b{font-weight:700; color:var(--encre)}
 
 /* Le plan : sur fond blanc, entier, et on l'agrandit d'un geste. */
