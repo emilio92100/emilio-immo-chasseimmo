@@ -749,8 +749,8 @@ function buildMandatPret(o: { prenom: string; hono: Honoraires; token?: string |
     <tr><td class="bord" style="padding:18px 28px 6px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         ${ligne('Honoraires', escapeHtml(honorairesDuPrix(o.hono)).replace(/^./, c => c.toUpperCase()), 'réglés le jour de l’acte, chez le notaire — rien avant')}
-        ${ligne('Durée', `${DUREE.initiale} jours, renouvelables`, `${DUREE.total} jours au plus · vous pouvez y mettre fin à chaque échéance`)}
-        ${ligne('Votre liberté', 'Mandat non exclusif', `aucune obligation d’acheter · ${RETRACTATION_JOURS} jours pour changer d’avis`)}
+        ${ligne('Durée', `${DUREE.mois} mois au plus`, `vous pouvez y mettre fin à tout moment, avec ${DUREE.preavis} jours de préavis`)}
+        ${ligne('Votre liberté', 'Mandat non exclusif', `vous restez libre de chercher de votre côté · ${RETRACTATION_JOURS} jours de rétractation`)}
       </table>
     </td></tr>
     ${lien ? `<tr><td class="bord" align="center" style="padding:14px 28px 26px;">
@@ -766,8 +766,8 @@ function texteMandatPret(prenom: string, hono: Honoraires, token?: string | null
 Comme convenu, votre mandat de recherche est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.
 
 - Honoraires : ${honorairesDuPrix(hono)}, réglés le jour de l'acte chez le notaire
-- Durée : ${DUREE.initiale} jours renouvelables, ${DUREE.total} jours au plus
-- Mandat non exclusif, aucune obligation d'acheter, ${RETRACTATION_JOURS} jours pour changer d'avis
+- Durée : ${DUREE.mois} mois au plus, fin possible à tout moment avec ${DUREE.preavis} jours de préavis
+- Mandat non exclusif : vous restez libre de chercher de votre côté, ${RETRACTATION_JOURS} jours de rétractation
 ${lien ? `
 Lire et signer mon mandat : ${lien}
 ` : ''}
