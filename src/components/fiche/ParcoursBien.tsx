@@ -2740,9 +2740,14 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
       <span className="le-titre" style={{ fontSize: 10, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: 1 }}>
         Espace client
       </span>
+      {/* Le lien en entier : Alexandre doit pouvoir le lire d'un coup d'œil
+          et le comparer avec ce que le client a reçu. Il était coupé à
+          190 px (« espace.emilio-immo.com/tr… ») ; il prend maintenant sa
+          vraie largeur, et ne se raccourcit que si la fenêtre est vraiment
+          trop étroite. */}
       <code className="le-lien" style={{
         fontSize: 11.5, color: '#64748b', background: '#f7f9fc', border: `1px solid ${BORD}`,
-        borderRadius: 7, padding: '4px 9px', maxWidth: 190, overflow: 'hidden',
+        borderRadius: 7, padding: '4px 9px', minWidth: 0, maxWidth: '100%', overflow: 'hidden',
         textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace',
       }} title={url}>{court ? `espace.emilio-immo.com/${token}` : `/espace/${String(token).slice(0, 12)}…`}</code>
 
