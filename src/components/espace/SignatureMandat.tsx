@@ -22,7 +22,7 @@
    chaîne.
    ════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, heureParis, AGENCE, SIGNATAIRE, RETRACTATION_JOURS, ICONES,
   type Mandant, type Recherche, type Partie, type Icone,
@@ -208,6 +208,117 @@ function couperAdresse(a: string): Adresse {
 }
 const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ');
 
+/* ── La signature à la main ──
+   Le dernier geste : le client a tapé son code, il appuie sur « Signer mon
+   mandat », un cadre blanc s'ouvre et il signe au doigt (ou à la souris).
+   « Valider et signer » envoie le code ET le tracé : le serveur vérifie le
+   code, pose la signature dans la case du mandant du PDF, puis scelle. Le
+   tracé n'ajoute rien à la valeur juridique (c'est le code qui identifie),
+   mais le client sait qu'il signe. Au niveau du module (AGENTS.md §2.4). */
+function PadSignature({ nom, envoi, onAnnuler, onValider }: {
+  nom: string; envoi: boolean; onAnnuler: () => void; onValider: (png: string) => void;
+}) {
+  const toile = useRef<HTMLCanvasElement>(null);
+  const dernier = useRef<{ x: number; y: number } | null>(null);
+  const boite = useRef({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+  const longueur = useRef(0);
+  const [assez, setAssez] = useState(false);
+  const [vide, setVide] = useState(true);
+
+  const preparer = useCallback(() => {
+    const c = toile.current; if (!c) return;
+    const r = c.getBoundingClientRect(), dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr));
+    const x = c.getContext('2d'); if (!x) return;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#1a2332'; x.fillStyle = '#1a2332'; x.lineWidth = 2.6;
+    boite.current = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    longueur.current = 0; dernier.current = null; setAssez(false); setVide(true);
+  }, []);
+  useEffect(() => {
+    preparer();
+    /* Le téléphone qui pivote change la taille du cadre : on repart d'une page blanche. */
+    window.addEventListener('resize', preparer);
+    return () => window.removeEventListener('resize', preparer);
+  }, [preparer]);
+
+  const ou = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const etendre = (p: { x: number; y: number }) => {
+    const b = boite.current;
+    b.x0 = Math.min(b.x0, p.x); b.y0 = Math.min(b.y0, p.y); b.x1 = Math.max(b.x1, p.x); b.y1 = Math.max(b.y1, p.y);
+  };
+  const poser = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (envoi) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sans effet */ }
+    const p = ou(e), x = e.currentTarget.getContext('2d');
+    if (x) { x.beginPath(); x.arc(p.x, p.y, 1.3, 0, Math.PI * 2); x.fill(); }
+    dernier.current = p; etendre(p); setVide(false);
+  };
+  const tracer = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const a = dernier.current, x = e.currentTarget.getContext('2d');
+    if (!a || !x) return;
+    e.preventDefault();
+    /* Tous les points que l'écran a vus depuis le dernier dessin : un trait
+       rapide reste une courbe, pas une ligne brisée. */
+    const evs = typeof e.nativeEvent.getCoalescedEvents === 'function' ? e.nativeEvent.getCoalescedEvents() : [];
+    const r = e.currentTarget.getBoundingClientRect();
+    const pts = (evs.length ? evs : [e.nativeEvent]).map(v => ({ x: v.clientX - r.left, y: v.clientY - r.top }));
+    let prec = a;
+    x.beginPath(); x.moveTo(prec.x, prec.y);
+    for (const p of pts) { x.lineTo(p.x, p.y); longueur.current += Math.hypot(p.x - prec.x, p.y - prec.y); etendre(p); prec = p; }
+    x.stroke();
+    dernier.current = prec;
+    if (longueur.current > 80) setAssez(true);
+  };
+  const lever = () => { dernier.current = null; };
+
+  const valider = () => {
+    const c = toile.current; if (!c) return;
+    const r = c.getBoundingClientRect(), dpr = c.width / (r.width || 1), b = boite.current, m = 8;
+    const x0 = Math.max(0, (b.x0 - m) * dpr), y0 = Math.max(0, (b.y0 - m) * dpr);
+    const x1 = Math.min(c.width, (b.x1 + m) * dpr), y1 = Math.min(c.height, (b.y1 + m) * dpr);
+    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0), k = Math.min(1, 900 / w);
+    const o = document.createElement('canvas');
+    o.width = Math.max(1, Math.round(w * k)); o.height = Math.max(1, Math.round(h * k));
+    o.getContext('2d')?.drawImage(c, x0, y0, w, h, 0, 0, o.width, o.height);
+    onValider(o.toDataURL('image/png'));
+  };
+
+  return (
+    <div className="mdt-pad" role="dialog" aria-modal="true" aria-label="Votre signature">
+      <div className="mdt-pad-in">
+        <div className="mdt-pad-t">
+          <b>Votre signature</b>
+          <button type="button" className="mdt-rond" aria-label="Annuler" disabled={envoi} onClick={onAnnuler}><Ic n="croix" t={14} /></button>
+        </div>
+        <p className="mdt-p">Signez dans le cadre avec votre doigt (ou votre souris), comme sur papier.</p>
+        <div className="mdt-pad-zone">
+          <canvas ref={toile} onPointerDown={poser} onPointerMove={tracer} onPointerUp={lever} onPointerCancel={lever} />
+          <span className="ligne" />
+          <span className="x">×</span>
+          {vide && <span className="aide">Signez ici</span>}
+          <span className="nom">{nom}</span>
+        </div>
+        <div className="mdt-pad-b">
+          <button type="button" className="btn fant" disabled={envoi || vide} onClick={preparer}>Effacer</button>
+          <button type="button" className="btn or" disabled={!assez || envoi} onClick={valider}><Ic n="plume" t={16} /><span>Valider et signer</span></button>
+        </div>
+        {envoi && (
+          <div className="mdt-pad-attente" role="status">
+            <span className="tour" />
+            <b>Signature en cours…</b>
+            <span>Nous scellons votre mandat.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const ERREURS: Record<string, string> = {
   code: 'Ce code ne correspond pas.',
   expire: 'Ce code a expiré : demandez-en un nouveau.',
@@ -254,6 +365,11 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   /* L'heure du code repris : « envoyé à 14 h 08 ». Effacée dès qu'un nouveau part. */
   const [codeDe, setCodeDe] = useState(mandat.code?.le || '');
   const [lu, setLu] = useState(false);
+  /* « Ces informations sont exactes et sont les miennes » : le mandat est
+     établi à son nom, il doit le certifier avant de recevoir son code. */
+  const [certifie, setCertifie] = useState(false);
+  /* Le cadre de la signature à la main, ouvert par « Signer mon mandat ». */
+  const [pad, setPad] = useState(false);
   const [execution, setExecution] = useState<boolean | null>(null);
   const [code, setCode] = useState('');
   const [envoi, setEnvoi] = useState(false);
@@ -335,9 +451,10 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     if (adr.rue.trim().length < 3) manque.rue = 'Numéro et rue';
     if (!/^[0-9A-Za-z -]{4,10}$/.test(adr.cp.trim())) manque.cp = 'Code postal';
     if (adr.ville.trim().length < 2) manque.ville = 'Ville';
+    if (!certifie) manque.certifie = 'Cochez cette case pour recevoir votre code.';
     if (!v.ok || Object.keys(manque).length) { setChamps({ ...(v.ok ? {} : v.champs), ...manque, ...(Object.keys(manque).length ? { adresse: '' } : {}) }); return; }
     setEnvoi(true); setErreur('');
-    const r = await envoyer('mandat', { etape: 'code', mandant: v.mandant, version: versionMandat(rech) });
+    const r = await envoyer('mandat', { etape: 'code', mandant: v.mandant, version: versionMandat(rech), certifie: true });
     setEnvoi(false);
     if (r?.ok) {
       setNumero(r.numero); setEmailMasque(r.email); setCode(''); setAttente(45); setAvis(''); setCodeParti(true); setCodeDe('');
@@ -359,10 +476,16 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     else setErreur(ERREURS[r?.error] || 'Le code n’a pas pu être renvoyé.');
   };
 
-  const signer = async () => {
+  const signer = async (griffe: string) => {
     if (!lu || execution === null || code.length !== 6) return;
     setEnvoi(true); setErreur('');
-    const r = await envoyer('mandat', { etape: 'signer', code, execution, accepte: true });
+    /* Quelques secondes de « Signature en cours… », même si le serveur va
+       plus vite : le client voit que quelque chose de sérieux se passe. */
+    const [r] = await Promise.all([
+      envoyer('mandat', { etape: 'signer', code, execution, accepte: true, griffe }),
+      new Promise(ok => setTimeout(ok, 1600)),
+    ]);
+    setPad(false);
     if (r?.ok) {
       const res = { numero: r.numero, signeLe: r.signeLe || new Date().toISOString(), finRetractation: r.finRetractation, execution: r.execution ?? execution };
       try { await onSigne(res); } catch { /* la signature est faite : la suite ne doit pas la cacher */ }
@@ -421,12 +544,12 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             ? 'Pour organiser cette visite et vous accompagner jusqu’au bout, Alexandre vous propose de confirmer votre recherche avec lui. C’est votre mandat de recherche.'
             : 'Alexandre vous propose de confirmer votre recherche avec lui. C’est votre mandat de recherche : il l’engage à vos côtés, jusqu’au bout.'}</p>
           <div className="mdt-puces">
+            <span><span className="k"><Ic n="check" t={14} /></span><span><b>Une seule signature</b>, valable pour tous les biens qu’il vous présentera&nbsp;: ensuite, plus rien à signer pour visiter.</span></span>
             <span><span className="k"><Ic n="check" t={14} /></span><span>Il travaille pour vous, pas pour le vendeur.</span></span>
             <span><span className="k"><Ic n="check" t={14} /></span><span>Avant toute offre, il vérifie le dossier&nbsp;: copropriété, charges, travaux à venir.</span></span>
             <span><span className="k"><Ic n="check" t={14} /></span><span>Il vous ouvre aussi les biens qui ne sont pas sur les portails.</span></span>
             <span><span className="k"><Ic n="check" t={14} /></span><span>Il reste à vos côtés jusqu’à la signature chez le notaire.</span></span>
           </div>
-          <div className="mdt-rassure">{`Aucune obligation d’acheter · ${RETRACTATION_JOURS} jours pour changer d’avis`}</div>
           <button type="button" className="btn or mdt-plein" onClick={() => setEtape('recap')}>
             {raison === 'visite' ? 'Confirmer ma recherche · 2 min' : 'Commencer · 2 min'}
           </button>
@@ -521,6 +644,12 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
           <Champ lib="E-mail — votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" />
           <Champ lib="Téléphone" val={m.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="tel" />
           {erreur && <div className="mdt-erreur">{erreur}</div>}
+          <button type="button" className={'mdt-coche' + (champs.certifie ? ' err' : '')} data-on={certifie ? '1' : undefined}
+            onClick={() => { setCertifie(x => !x); setChamps(c => ({ ...c, certifie: '' })); }}>
+            <span className="bx">{certifie && <Ic n="check" t={14} />}</span>
+            <span>{'Je certifie que ces informations sont exactes et que ce sont les miennes. Le mandat est établi à mon nom et je le signe moi-même ; une information inexacte engagerait ma responsabilité.'}</span>
+          </button>
+          {champs.certifie && <div className="mdt-err-l">{champs.certifie}</div>}
           <button type="button" className="btn or mdt-plein" disabled={envoi} onClick={demanderCode}>
             {envoi ? 'Envoi du code…' : codeParti ? 'Recevoir un nouveau code' : 'Recevoir mon code par e-mail'}
           </button>
@@ -545,7 +674,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
 
           <button type="button" className="mdt-coche" data-on={lu ? '1' : undefined} onClick={() => setLu(x => !x)}>
             <span className="bx">{lu && <Ic n="check" t={14} />}</span>
-            <span>J’ai lu l’information précontractuelle et mon mandat de recherche, et je les accepte.</span>
+            <span>J’ai lu mon mandat de recherche et je l’accepte.</span>
           </button>
           <button type="button" className="mdt-relire" onClick={() => { setRetourLecture('signer'); setEtape('lecture'); }}>Le relire</button>
 
@@ -573,9 +702,13 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
           </button>
 
           {erreur && <div className="mdt-erreur">{erreur}</div>}
-          <button type="button" className="btn or mdt-plein" disabled={!pret || envoi} onClick={signer}>
+          <button type="button" className="btn or mdt-plein" disabled={!pret || envoi} onClick={() => { setErreur(''); setPad(true); }}>
             <Ic n="plume" t={16} /><span>{envoi ? 'Signature en cours…' : 'Signer mon mandat'}</span>
           </button>
+          {pad && (
+            <PadSignature nom={`${m.prenom} ${m.nom}`.trim()} envoi={envoi}
+              onAnnuler={() => setPad(false)} onValider={png => { void signer(png); }} />
+          )}
           <div className="mdt-confiance">
             <span><Ic n="cadenas" t={15} /><span>Code personnel, à usage unique</span></span>
             <span><Ic n="bouclier" t={15} /><span>Document scellé et horodaté</span></span>
@@ -733,7 +866,7 @@ export const CSS_MANDAT = `
 .mdt-plein svg{flex:0 0 auto}
 .btn:disabled{opacity:.45; cursor:default; box-shadow:none}
 
-.mdt-accueil{text-align:center; align-items:center; padding-top:4px}
+.mdt-accueil{text-align:center; align-items:center; padding-top:4px; flex:1; justify-content:center; padding-bottom:28px}
 .mdt-accueil .mdt-p{max-width:420px}
 .mdt-sceau{width:68px; height:68px; border-radius:50%; margin:8px auto 2px; display:flex; align-items:center;
   justify-content:center; color:var(--or); background:var(--or-fond); border:1px solid var(--or-trait)}
@@ -785,6 +918,7 @@ export const CSS_MANDAT = `
   display:flex; align-items:center; justify-content:center; color:#fff; background:#fff}
 .mdt-coche[data-on]{border-color:var(--or); background:var(--or-fond)}
 .mdt-coche[data-on] .bx{background:var(--or); border-color:var(--or)}
+.mdt-coche.err{border-color:var(--brique); margin-top:0}
 .mdt-relire{align-self:flex-start; margin-top:-4px; font-size:13px; font-weight:700; color:var(--or-fonce);
   text-decoration:underline; text-underline-offset:3px; padding:2px 0}
 .mdt-relire:disabled{color:var(--plume-clair); text-decoration:none}
@@ -808,6 +942,26 @@ export const CSS_MANDAT = `
 .mdt-ok{width:78px; height:78px; border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:var(--vert); color:#fff; box-shadow:0 16px 34px -16px var(--vert); animation:mdtOk .5s cubic-bezier(.16,1,.3,1) both}
 @keyframes mdtOk{from{transform:scale(.5); opacity:0} to{transform:none; opacity:1}}
+.mdt-pad{position:fixed; inset:0; z-index:1000; background:rgba(15,23,42,.55); display:flex; align-items:flex-end; justify-content:center}
+.mdt-pad-in{position:relative; background:#fff; width:100%; max-width:640px; border-radius:22px 22px 0 0;
+  padding:16px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display:flex; flex-direction:column; gap:10px}
+@media(min-width:700px){ .mdt-pad{align-items:center} .mdt-pad-in{border-radius:22px; padding:22px 24px} }
+.mdt-pad-t{display:flex; align-items:center; justify-content:space-between}
+.mdt-pad-t b{font-size:18px; color:var(--encre)}
+.mdt-pad-zone{position:relative; height:clamp(200px, 36vh, 300px); border:1.5px dashed var(--or-trait); border-radius:16px; background:#fff; overflow:hidden}
+.mdt-pad-zone canvas{position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; z-index:2}
+.mdt-pad-zone .ligne{position:absolute; left:20px; right:20px; bottom:46px; border-bottom:1.5px solid var(--trait); pointer-events:none}
+.mdt-pad-zone .x{position:absolute; left:20px; bottom:50px; font-size:20px; color:var(--plume); pointer-events:none}
+.mdt-pad-zone .aide{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--plume); opacity:.55; pointer-events:none}
+.mdt-pad-zone .nom{position:absolute; left:20px; bottom:18px; font-size:12px; color:var(--plume); pointer-events:none}
+.mdt-pad-b{display:grid; grid-template-columns:auto 1fr; gap:10px}
+.mdt-pad-b .btn{display:flex; align-items:center; justify-content:center; gap:8px}
+.mdt-pad-attente{position:absolute; inset:0; z-index:3; background:rgba(255,255,255,.95); border-radius:inherit; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:8px; text-align:center}
+.mdt-pad-attente b{font-size:17px; color:var(--encre)}
+.mdt-pad-attente span:last-child{font-size:13.5px; color:var(--plume)}
+.mdt-pad-attente .tour{width:42px; height:42px; border-radius:50%; border:3px solid var(--or-fond); border-top-color:var(--or); animation:mdtTour .9s linear infinite}
+@keyframes mdtTour{to{transform:rotate(360deg)}}
 .mdt-sur-c{font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; font-weight:800; color:var(--vert)}
 .mdt-fini .btn{max-width:400px}
 
