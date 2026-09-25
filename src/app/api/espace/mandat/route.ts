@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import {
   redigerMandat, resumeMandat, figerContenu, etatMandat, finRetractation, masquerEmail, validerMandant,
-  dateLongue, dateCourte, heureParis, jourParis, titreMandat, tauxTexte, euros, DUREE, RETRACTATION_JOURS,
+  dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS,
   rechercheDepuis, versionMandat, type Mandant, type Contenu,
 } from '@/lib/mandat';
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
         const jour = jourParis(le);
         const fin = new Date(Date.parse(jour + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
         const { error: eFiche } = await sb.from('recherches').update({
-          mandat_date_signature: jour, mandat_duree: 12, mandat_honoraires: tauxTexte(contenu.taux),
+          mandat_date_signature: jour, mandat_duree: 12, mandat_honoraires: honorairesCourt(contenu),
           mandat_date_expiration: fin, sans_mandat: false, mandat_numero: l.numero, mandat_type: 'simple',
           updated_at: new Date().toISOString(),
         }).eq('id', recherche.id);
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
         await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'mandat', titre: '✍️ Mandat signé en ligne par le client',
-          description: `n° ${l.numero} · ${tauxTexte(contenu.taux)} · ${DUREE.initiale} jours renouvelables, 12 mois au plus · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
+          description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.initiale} jours renouvelables, 12 mois au plus · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
           metadata: { signature_id: l.id, numero: l.numero, empreinte },
         });
         await evt('mandat', `Mandat n° ${l.numero} signé`);
@@ -321,9 +321,9 @@ export async function POST(req: NextRequest) {
         await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm', pj,
           sujet: `✍️ ${nom} a signé son mandat (n° ${l.numero})`,
-          texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${tauxTexte(contenu.taux)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${ecarts.map(e => `\n⚠️ ${e}`).join('')}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
+          texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${honorairesCourt(contenu)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${ecarts.map(e => `\n⚠️ ${e}`).join('')}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
           html: gabarit(`${nom} a signé son mandat`, `<p><b>${echappe(nom)}</b> vient de signer son mandat de recherche <b>n° ${echappe(l.numero)}</b> depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.</p>
-            <p>Prix maximum : ${echappe(prix)} · Honoraires : ${tauxTexte(contenu.taux)}</p>
+            <p>Prix maximum : ${echappe(prix)} · Honoraires : ${echappe(honorairesCourt(contenu))}</p>
             <p>${execution ? 'Il a demandé que la recherche commence <b>tout de suite</b>.' : `Il préfère attendre la fin de ses 14 jours : <b>pas de visite avant le ${dateCourte(limite)}</b>.`}</p>
             ${contenu.source === 'reserve' ? '<p>Numéro pris dans ta réserve : <b>reporte-le dans ImmoFacile</b>.</p>' : ''}
             ${ecarts.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
@@ -366,6 +366,7 @@ export async function POST(req: NextRequest) {
           /* Le taux proposé part avec le mandat (la colonne peut manquer si
              le SQL n'a pas été lancé : on ne l'écrit que si elle existe). */
           ...('mandat_taux' in recherche ? { mandat_taux: null } : {}),
+          ...('mandat_forfait' in recherche ? { mandat_forfait: null } : {}),
         }).eq('id', recherche.id);
         await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
@@ -430,7 +431,7 @@ export async function POST(req: NextRequest) {
         const { error: eJ } = await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
           titre: '📞 Une question sur le mandat, avant de signer',
-          description: `Il souhaite être rappelé ${quoi}. Taux proposé : ${tauxTexte(actuelle.taux ?? undefined)}.`,
+          description: `Il souhaite être rappelé ${quoi}. Honoraires proposés : ${honorairesCourt(actuelle)}.`,
           metadata: { bien: bienTitre || null },
         });
         if (eJ) return ko('enregistrement', 500, { detail: eJ.message });
@@ -438,16 +439,16 @@ export async function POST(req: NextRequest) {
         await sb.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
-          note: `Question sur le mandat ${quoi} — à rappeler (honoraires proposés : ${tauxTexte(actuelle.taux ?? undefined)})`.slice(0, 600),
+          note: `Question sur le mandat ${quoi} — à rappeler (honoraires proposés : ${honorairesCourt(actuelle)})`.slice(0, 600),
         });
         await evt('mandat', 'Question sur le mandat : demande de rappel');
         await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `📞 ${nomClient} a une question sur son mandat`,
-          texte: `${nomClient} a ouvert son mandat de recherche et souhaite être rappelé ${quoi}.\nHonoraires proposés : ${tauxTexte(actuelle.taux ?? undefined)}.${tel ? `\nSon téléphone : ${tel}` : ''}\n\nSi vous convenez d'un autre taux, change-le dans sa fiche (« Faire signer le mandat ») puis envoie-lui le mandat par e-mail.\n\n${lienCrm}`,
+          texte: `${nomClient} a ouvert son mandat de recherche et souhaite être rappelé ${quoi}.\nHonoraires proposés : ${honorairesCourt(actuelle)}.${tel ? `\nSon téléphone : ${tel}` : ''}\n\nSi vous convenez d'autres honoraires (un autre taux ou un forfait), change-les dans sa fiche (« Faire signer le mandat ») puis envoie-lui le mandat par e-mail.\n\n${lienCrm}`,
           html: gabarit(`${nomClient} a une question sur son mandat`, `<p><b>${echappe(nomClient)}</b> a ouvert son mandat de recherche et souhaite être rappelé ${echappe(quoi)}.</p>
-            <p>Honoraires proposés : <b>${tauxTexte(actuelle.taux ?? undefined)}</b>${tel ? ` · Son téléphone : <b>${echappe(tel)}</b>` : ''}</p>
-            <p>Si vous convenez d’un autre taux, change-le dans sa fiche (« Faire signer le mandat »), puis envoie-lui le mandat par e-mail.</p>
+            <p>Honoraires proposés : <b>${echappe(honorairesCourt(actuelle))}</b>${tel ? ` · Son téléphone : <b>${echappe(tel)}</b>` : ''}</p>
+            <p>Si vous convenez d’autres honoraires (un autre taux ou un forfait), change-les dans sa fiche (« Faire signer le mandat »), puis envoie-lui le mandat par e-mail.</p>
             <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
         return NextResponse.json({ ok: true });
