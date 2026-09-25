@@ -7,8 +7,8 @@
    1. L'ÉTAT de la signature en ligne de cette recherche : signé (avec le PDF),
       en cours (le client a demandé son code), ou rétracté.
    2. « FAIRE SIGNER LE MANDAT » : Alexandre choisit le type, ses honoraires
-      — un pourcentage (2,5 % par défaut, moins s'il consent une remise) ou
-      un forfait en euros, jamais au-dessus de son barème — colle le numéro réservé dans ImmoFacile (ou
+      — un pourcentage (2,5 % par défaut, jusqu'à 5 %, son barème) ou un
+      forfait en euros, jamais au-dessus de ce barème — colle le numéro réservé dans ImmoFacile (ou
       prend le suivant de sa réserve), et propose. Son clic vaut signature de
       l'offre pour l'agence (la date est gardée). Le client voit aussitôt
       « Votre mandat est prêt » dans son espace ; « Envoyer par e-mail » lui
@@ -27,7 +27,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import { lienEspace } from '@/lib/jeton';
 import {
-  HONORAIRES_TAUX, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
+  HONORAIRES_TAUX, BAREME, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
   forfaitDe, seuilForfait, honorairesCourt, pourcentDe,
   type Contenu,
 } from '@/lib/mandat';
@@ -156,14 +156,14 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
      mandat par-dessus. */
   const lien = client?.token_espace ? `${lienEspace(client.token_espace)}?r=${encodeURIComponent(recherche.id)}&mandat=1` : '';
   const tauxN = lireTaux(taux);
-  const tauxOk = tauxN > 0 && tauxN <= HONORAIRES_TAUX;
+  const tauxOk = tauxN > 0 && tauxN <= BAREME;
   const budget = typeof recherche?.budget_max === 'number' ? recherche.budget_max : null;
   const pmax = tauxOk ? prixMaximum(budget, tauxN) : null;
   /* Le forfait : jamais au-dessus du barème au prix maximum. */
   const forfaitN = forfaitDe(forfait);
   const pmaxF = forfaitN && budget ? Math.floor((budget - forfaitN) / 1000) * 1000 : null;
-  const forfaitMax = budget ? Math.floor((budget * HONORAIRES_TAUX) / (100 + HONORAIRES_TAUX) / 100) * 100 : null;
-  const forfaitOk = !!forfaitN && (!pmaxF || (pmaxF > 0 && forfaitN <= (pmaxF * HONORAIRES_TAUX) / 100));
+  const forfaitMax = budget ? Math.floor((budget * BAREME) / (100 + BAREME) / 100) * 100 : null;
+  const forfaitOk = !!forfaitN && (!pmaxF || (pmaxF > 0 && forfaitN <= (pmaxF * BAREME) / 100));
   const honoOk = mode === 'forfait' ? forfaitOk : tauxOk;
   /* Ce qui est choisi à l'écran, et ce que le client voit aujourd'hui. */
   const honoChoisi = mode === 'forfait' ? { forfait: forfaitN } : { taux: tauxN };
@@ -225,8 +225,8 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
     if (!n) { setMsg({ t: 'Colle d’abord le numéro réservé dans ImmoFacile, ou prends le suivant de ta réserve.', ok: false }); return; }
     if (!honoOk) {
       setMsg({ t: mode === 'forfait'
-        ? `Le forfait ne peut pas dépasser ton barème (${ecrireTaux(HONORAIRES_TAUX)} % du prix maximum).`
-        : `Le taux doit être compris entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`, ok: false }); return;
+        ? `Le forfait ne peut pas dépasser ton barème (${ecrireTaux(BAREME)} % du prix maximum).`
+        : `Le taux doit être compris entre 0 et ${ecrireTaux(BAREME)} % : ton barème est un maximum.`, ok: false }); return;
     }
     /* Les colonnes du taux et du forfait viennent d'un SQL à lancer une
        fois. Sans elles, on ne peut proposer que le barème. */
@@ -442,19 +442,19 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
                     onChange={e => setTaux(e.target.value)} aria-label="Taux des honoraires" />
                   <span style={{ position: 'absolute', right: 10, top: 9, color: '#94a3b8', fontWeight: 700 }}>%</span>
                 </div>
-                {[2.5, 2, 1.5].map(t => (
+                {[5, 2.5, 2, 1.5].map(t => (
                   <button key={t} type="button" onClick={() => setTaux(ecrireTaux(t))}
                     style={{ ...btn, padding: '7px 11px', border: `1px solid ${tauxN === t ? '#c9a84c' : '#e2e8f0'}`, background: tauxN === t ? '#fdfaf1' : '#fff' }}>
-                    {`${ecrireTaux(t)} %${t === HONORAIRES_TAUX ? ' · barème' : ''}`}
+                    {`${ecrireTaux(t)} %${t === BAREME ? ' · barème' : ''}`}
                   </button>
                 ))}
               </div>
               <div style={{ fontSize: 12.5, color: tauxOk ? '#475569' : '#b91c1c', marginTop: 6, lineHeight: 1.5 }}>
                 {!tauxOk
-                  ? `Entre 0 et ${ecrireTaux(HONORAIRES_TAUX)} % : ton barème affiché est un maximum.`
+                  ? `Entre 0 et ${ecrireTaux(BAREME)} % : ton barème est un maximum.`
                   : pmax && budget
-                    ? `Budget ${euros(budget)} → prix maximum ${euros(pmax)} hors honoraires, soit ${euros(honorairesPour(pmax, tauxN) || 0)} d’honoraires.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`
-                    : `${tauxTexte(tauxN)} du prix d’achat.${tauxN < HONORAIRES_TAUX ? ' Le mandat mentionnera la remise sur ton barème.' : ''}`}
+                    ? `Budget ${euros(budget)} → prix maximum ${euros(pmax)} hors honoraires, soit ${euros(honorairesPour(pmax, tauxN) || 0)} d’honoraires.`
+                    : `${tauxTexte(tauxN)} du prix d’achat.`}
               </div>
             </>
           ) : (
@@ -468,12 +468,12 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
               </div>
               <div style={{ fontSize: 12.5, color: forfaitOk || !forfait.trim() ? '#475569' : '#b91c1c', marginTop: 6, lineHeight: 1.5 }}>
                 {!forfaitN
-                  ? `Un montant fixe, en euros TTC.${forfaitMax ? ` Au plus ${euros(forfaitMax)} pour ce budget (ton barème, ${ecrireTaux(HONORAIRES_TAUX)} % du prix maximum).` : ''}`
+                  ? `Un montant fixe, en euros TTC.${forfaitMax ? ` Au plus ${euros(forfaitMax)} pour ce budget (ton barème, ${ecrireTaux(BAREME)} % du prix maximum).` : ''}`
                   : !forfaitOk
-                    ? `Au-dessus de ton barème : pour ce budget, le forfait ne peut pas dépasser ${forfaitMax ? euros(forfaitMax) : `${ecrireTaux(HONORAIRES_TAUX)} % du prix`}.`
+                    ? `Au-dessus de ton barème : pour ce budget, le forfait ne peut pas dépasser ${forfaitMax ? euros(forfaitMax) : `${ecrireTaux(BAREME)} % du prix`}.`
                     : pmaxF
-                      ? `Budget ${euros(budget || 0)} → prix maximum ${euros(pmaxF)} hors honoraires ; ${euros(forfaitN)} = ${pourcentDe(forfaitN, pmaxF)} de ce prix. Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(HONORAIRES_TAUX)} %.`
-                      : `Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(HONORAIRES_TAUX)} %.`}
+                      ? `Budget ${euros(budget || 0)} → prix maximum ${euros(pmaxF)} hors honoraires ; ${euros(forfaitN)} = ${pourcentDe(forfaitN, pmaxF)} de ce prix. Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(BAREME)} %.`
+                      : `Le mandat précise que, sous ${euros(seuilForfait(forfaitN))}, il est ramené à ${ecrireTaux(BAREME)} %.`}
               </div>
             </>
           )}

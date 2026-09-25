@@ -641,6 +641,36 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const changerModeCrit = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
   const [showMandat, setShowMandat] = useState(false);
+  /* La dernière signature en ligne de la recherche affichée. Une
+     rétractation se voit sur le bouton du mandat (en rouge, avec une pastille
+     « 1 » tant qu'Alexandre n'a pas ouvert la fenêtre) : c'est une
+     information qui ne doit pas se perdre dans l'historique. */
+  const [derniereSig, setDerniereSig] = useState<{ id: string; numero: string; statut: string; retracte_le: string | null } | null>(null);
+  const [sigVue, setSigVue] = useState(true);
+  useEffect(() => {
+    let vivant = true;
+    setDerniereSig(null);
+    if (!rechercheId) return;
+    supabase.from('mandats_signatures').select('id, numero, statut, retracte_le')
+      .eq('recherche_id', rechercheId).order('created_at', { ascending: false }).limit(1)
+      .then(({ data, error }) => {
+        if (!vivant || error || !data?.length) return;
+        const s = data[0] as { id: string; numero: string; statut: string; retracte_le: string | null };
+        setDerniereSig(s);
+        let vu = true;
+        try { vu = !!localStorage.getItem('emilio_retractation_vue_' + s.id); } catch { /* sans effet */ }
+        setSigVue(vu);
+      });
+    return () => { vivant = false; };
+  }, [rechercheId, showMandat]);
+  const retracte = derniereSig?.statut === 'retracte' && !cr.mandat_date_signature ? derniereSig : null;
+  function ouvrirMandat() {
+    setShowMandat(true);
+    if (retracte && !sigVue) {
+      try { localStorage.setItem('emilio_retractation_vue_' + retracte.id, '1'); } catch { /* sans effet */ }
+      setSigVue(true);
+    }
+  }
   /* Le menu se posait dans la carte d'en-tête, qui rogne ce qui dépasse : il
      était coupé en deux. Il s'ouvre maintenant par-dessus la page, à l'aplomb
      du bouton — d'où la position retenue ici. */
@@ -2377,7 +2407,7 @@ Emilio Immobilier
   /* « relance_manuelle » n'est plus dans cette liste : les quelques anciennes
      lignes de ce type retombent dans « Système ». Une relance ne mérite plus
      son propre filtre — elle s'affiche maintenant sous l'action qui l'a créée. */
-  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel', ...COMM_EVENT_TYPES];
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel', 'mandat', ...COMM_EVENT_TYPES];
   const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
   const suiviGroupes: Record<string, { label: string; items: any[] }> = {
     appel:          { label: '📞 Appels',         items: evType(['appel']) },
@@ -2385,6 +2415,9 @@ Emilio Immobilier
     note:           { label: '📝 Notes',          items: evType(['note']) },
     message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel']) },
     communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
+    /* Le mandat a son filtre : proposé, signé, rétracté, questions — des
+       informations qui comptent, pas du bruit « Système ». */
+    mandat:         { label: '📋 Mandat',         items: evType(['mandat']) },
     systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
   };
   const suiviItems = (
@@ -2770,9 +2803,18 @@ Emilio Immobilier
 
               {/* Le mandat quitte l'ivoire — qui appartient aux critères — pour
                   l'ardoise : c'est une information de dossier, pas de recherche. */}
-              <button className={styles.critMandat} onClick={() => setShowMandat(true)} title="Modifier le mandat">
-                <b>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : ''}</b>
-                {cr.mandat_date_signature || cr.mandat_date_expiration ? (
+              <button className={styles.critMandat} onClick={ouvrirMandat} title="Modifier le mandat"
+                style={retracte ? { position: 'relative', borderColor: '#fecaca', background: '#fef2f2' } : { position: 'relative' }}>
+                {retracte && !sigVue && (
+                  <span aria-label="Nouveau" style={{ position: 'absolute', top: -7, right: -7, minWidth: 20, height: 20, borderRadius: 10, background: '#dc2626', color: '#fff', fontSize: 11.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff' }}>1</span>
+                )}
+                <b style={retracte ? { color: '#991b1b' } : undefined}>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : ''}</b>
+                {retracte ? (
+                  <>
+                    <span style={{ color: '#991b1b' }}>{`n° ${retracte.numero} rétracté par le client${retracte.retracte_le ? ` le ${new Date(retracte.retracte_le).toLocaleDateString('fr-FR')}` : ''}`}</span>
+                    <i style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>↩️ Rétracté</i>
+                  </>
+                ) : cr.mandat_date_signature || cr.mandat_date_expiration ? (
                   <>
                     <span>
                       {cr.mandat_date_signature ? new Date(cr.mandat_date_signature).toLocaleDateString('fr-FR') : 'Signature non datée'}
@@ -3816,6 +3858,7 @@ Emilio Immobilier
                   { id: 'note', label: suiviGroupes.note.label, count: suiviGroupes.note.items.length },
                   { id: 'message', label: suiviGroupes.message.label, count: suiviGroupes.message.items.length },
                   { id: 'communications', label: suiviGroupes.communications.label, count: suiviGroupes.communications.items.length },
+                  { id: 'mandat', label: suiviGroupes.mandat.label, count: suiviGroupes.mandat.items.length },
                   { id: 'systeme', label: suiviGroupes.systeme.label, count: suiviGroupes.systeme.items.length },
                 ].map(f => (
                   <button
