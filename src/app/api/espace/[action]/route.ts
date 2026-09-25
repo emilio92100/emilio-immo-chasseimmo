@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
-import { etatServeur } from '@/lib/mandat-serveur';
+import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -507,11 +507,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const changements = !errAvant && avant
           ? decrireChangements(avant as unknown as Record<string, unknown>, maj) : null;
 
+        /* Ce que borne un mandat signé : budget (prix maximum), secteurs, type
+           de bien. On garde la version d'avant pour ne prévenir Alexandre que
+           d'un écart nouveau (voir alerteHorsMandat). */
+        const { data: avantMandat } = ['budget_max', 'secteurs', 'type_bien'].some(k => k in maj)
+          ? await supabase.from('recherches').select('type_bien, secteurs, budget_max, nb_pieces_min, chambres_min, surface_min')
+            .eq('id', recherche.id).maybeSingle()
+          : { data: null };
+
         maj.updated_at = new Date().toISOString();
 
         const { error: errMaj } = await supabase.from('recherches').update(maj).eq('id', recherche.id);
         if (errMaj) {
           return NextResponse.json({ ok: false, error: 'enregistrement impossible' }, { status: 500 });
+        }
+        if (avantMandat) {
+          const avantM = avantMandat as unknown as Record<string, unknown>;
+          await alerteHorsMandat(supabase, { rechercheId: recherche.id, clientId: recherche.client_id, avant: avantM, apres: { ...avantM, ...maj } })
+            .catch(e => console.error('[espace/criteres] alerte mandat', e));
         }
 
         /* Il a validé sans rien changer : rien à raconter à Alexandre. */
