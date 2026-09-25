@@ -514,6 +514,10 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
           <input className={styles.inp} type="number" value={bienForm.charges_trimestrielles||''} onChange={e => set('charges_trimestrielles', e.target.value)} placeholder="1050" />
         </div>
         <div>
+          <label className={styles.lbl}>Compris dans les charges</label>
+          <input className={styles.inp} value={bienForm.charges_comprises||''} onChange={e => set('charges_comprises', e.target.value)} placeholder="chauffage et eau chaude collectifs, gardien" />
+        </div>
+        <div>
           <label className={styles.lbl}>Taxe foncière annuelle €</label>
           <input className={styles.inp} type="number" value={bienForm.taxe_fonciere||''} onChange={e => set('taxe_fonciere', e.target.value)} placeholder="1393" />
         </div>
@@ -1636,6 +1640,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       commission_val: parseFloat(bienForm.commission_val)||null,
       prix_acquereur: prixAcq||null,
       charges_trimestrielles: parseInt(bienForm.charges_trimestrielles)||null,
+      charges_comprises: (bienForm.charges_comprises || '').trim() || null,
       taxe_fonciere: parseInt(bienForm.taxe_fonciere)||null,
       // Photos et source
       photos: photosStockees,
@@ -1806,6 +1811,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       commission_val: parseFloat(editBienForm.commission_val)||null,
       prix_acquereur: prixAcqEdit||null,
       charges_trimestrielles: parseInt(editBienForm.charges_trimestrielles)||null,
+      charges_comprises: (editBienForm.charges_comprises || '').trim() || null,
       taxe_fonciere: parseInt(editBienForm.taxe_fonciere)||null,
       source_portail: editBienForm.source_portail,
       agence_nom: editBienForm.agence_nom,
