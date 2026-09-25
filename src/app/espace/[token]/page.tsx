@@ -196,6 +196,7 @@ export default async function PageEspace({ params, searchParams }: {
     nbParking: b.nb_parking, gardien: b.gardien, cuisineEquipee: b.cuisine_equipee,
     clim: b.climatisation, traversant: b.traversant,
     charges: b.charges_trimestrielles, taxe: b.taxe_fonciere,
+    chargesComprises: b.charges_comprises || null,
     chauffage: b.chauffage, lots: b.nb_lots,
     pdfUrl: b.pdf_statut === 'pret' ? b.pdf_url : null,
     envoyeLe: b.envoye_le, vuLe: b.vu_le,
