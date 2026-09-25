@@ -582,7 +582,19 @@ export function Specs({ p, recherche }: { p: any; recherche?: any }) {
   if (p.ges) { const n = lettre(p.ges, 'GES'); if (n) t.push(n); }
 
   if (!t.length) return null;
-  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>;
+  /* Ce que couvrent les charges, sous les tuiles : un montant seul ne dit pas
+     si le chauffage ou le gardien sont dedans. On ne l'écrit qu'à côté d'un
+     montant, et seulement ce que l'annonce dit. */
+  const compris = Number(p.charges_trimestrielles) > 0 ? String(p.charges_comprises || '').trim() : '';
+  if (!compris) return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>;
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{t}</div>
+      <div style={{ marginTop: 7, fontSize: 12.5, lineHeight: 1.45, color: '#64748b' }}>
+        <span style={{ fontWeight: 700, color: '#475569' }}>Compris dans les charges :</span> {compris}
+      </div>
+    </div>
+  );
 }
 
 /* ══ Les équipements : ce que le bien a, rangé au même endroit ══
