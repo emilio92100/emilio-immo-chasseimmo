@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
 
         const joli = `${code.slice(0, 3)} ${code.slice(3)}`;
         const eMail = await envoyerMail({
-          a: mandant.email, nomA: `${mandant.prenom} ${mandant.nom}`,
+          a: mandant.email, nomA: `${mandant.prenom} ${mandant.nom}`, deLaPartDe: 'agence',
           sujet: `Votre code de signature : ${code}`,
           texte: `Bonjour ${mandant.prenom},\n\nVoici votre code pour signer votre mandat de recherche : ${joli}\n\nIl est valable ${CODE_MINUTES} minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message.\n\nAlexandre Rogelet — Emilio Immobilier`,
           html: gabarit('Votre code de signature', `<p>Bonjour ${echappe(mandant.prenom)},</p>
