@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
-import { tauxDe, tauxTexte, DUREE, RETRACTATION_JOURS } from '@/lib/mandat';
+import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATION_JOURS, type Honoraires } from '@/lib/mandat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -736,7 +736,7 @@ function lienMandat(token?: string | null, recherche?: string | null): string {
   if (!token) return '';
   return `${lienEspace(token, SITE_URL)}?${recherche ? `r=${encodeURIComponent(recherche)}&` : ''}mandat=1`;
 }
-function buildMandatPret(o: { prenom: string; taux: number; token?: string | null; recherche?: string | null }): string {
+function buildMandatPret(o: { prenom: string; hono: Honoraires; token?: string | null; recherche?: string | null }): string {
   const corpsHtml = `Bonjour ${escapeHtml(o.prenom)},<br/><br/>Comme convenu, votre <b>mandat de recherche</b> est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.`;
   const ligne = (t: string, v: string, d: string) => `
     <tr><td style="padding:10px 0;border-top:1px solid #eee5d6;">
@@ -748,7 +748,7 @@ function buildMandatPret(o: { prenom: string; taux: number; token?: string | nul
   const contenu = `
     <tr><td class="bord" style="padding:18px 28px 6px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        ${ligne('Honoraires', `${escapeHtml(tauxTexte(o.taux))} du prix d’achat`, 'réglés le jour de l’acte, chez le notaire — rien avant')}
+        ${ligne('Honoraires', escapeHtml(honorairesDuPrix(o.hono)).replace(/^./, c => c.toUpperCase()), 'réglés le jour de l’acte, chez le notaire — rien avant')}
         ${ligne('Durée', `${DUREE.initiale} jours, renouvelables`, `${DUREE.total} jours au plus · vous pouvez y mettre fin à chaque échéance`)}
         ${ligne('Votre liberté', 'Mandat non exclusif', `aucune obligation d’acheter · ${RETRACTATION_JOURS} jours pour changer d’avis`)}
       </table>
@@ -759,13 +759,13 @@ function buildMandatPret(o: { prenom: string; taux: number; token?: string | nul
     </td></tr>` : ''}`;
   return coque({ etiquette: 'VOTRE MANDAT', corpsHtml, contenu, token: o.token });
 }
-function texteMandatPret(prenom: string, taux: number, token?: string | null, recherche?: string | null): string {
+function texteMandatPret(prenom: string, hono: Honoraires, token?: string | null, recherche?: string | null): string {
   const lien = lienMandat(token, recherche);
   return `Bonjour ${prenom},
 
 Comme convenu, votre mandat de recherche est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.
 
-- Honoraires : ${tauxTexte(taux)} du prix d'achat, réglés le jour de l'acte chez le notaire
+- Honoraires : ${honorairesDuPrix(hono)}, réglés le jour de l'acte chez le notaire
 - Durée : ${DUREE.initiale} jours renouvelables, ${DUREE.total} jours au plus
 - Mandat non exclusif, aucune obligation d'acheter, ${RETRACTATION_JOURS} jours pour changer d'avis
 ${lien ? `
@@ -969,7 +969,7 @@ export async function POST(req: NextRequest) {
        enregistré sur la recherche (celui que le client verra en ouvrant). */
     if (mode === 'mandat') {
       if (!recherche) return NextResponse.json({ error: 'Recherche introuvable' }, { status: 404 });
-      const taux = tauxDe(recherche.mandat_taux);
+      const hono: Honoraires = { taux: tauxDe(recherche.mandat_taux), forfait: forfaitDe(recherche.mandat_forfait) };
       const authM = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
       const resultats: { client_id: string; success: boolean; error?: string }[] = [];
       for (const client of clients) {
@@ -989,8 +989,8 @@ export async function POST(req: NextRequest) {
                 From: { Email: FROM_EMAIL, Name: FROM_NAME },
                 To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
                 Subject: sujet,
-                TextPart: texteMandatPret(client.prenom || '', taux, jeton, recherche_id || null),
-                HTMLPart: buildMandatPret({ prenom: client.prenom || '', taux, token: jeton, recherche: recherche_id || null }),
+                TextPart: texteMandatPret(client.prenom || '', hono, jeton, recherche_id || null),
+                HTMLPart: buildMandatPret({ prenom: client.prenom || '', hono, token: jeton, recherche: recherche_id || null }),
                 CustomID: `mandat-pret-${client.id}-${Date.now()}`,
                 TrackOpens: 'disabled',
                 TrackClicks: 'disabled',
@@ -1005,12 +1005,12 @@ export async function POST(req: NextRequest) {
           }
           await supabase.from('envois').insert({
             client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
-            objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${tauxTexte(taux)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
+            objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
           });
           await supabase.from('journal').insert({
             client_id: client.id, type: 'mail_envoye',
             titre: `✉️ Mail envoyé — ${sujet}`,
-            description: `À : ${emails.join(', ')}\nMandat de recherche prêt à signer · honoraires ${tauxTexte(taux)}`,
+            description: `À : ${emails.join(', ')}\nMandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`,
           });
           resultats.push({ client_id: client.id, success: true });
         } catch (e) {
