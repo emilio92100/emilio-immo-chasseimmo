@@ -6,7 +6,7 @@ import EspaceClient from '@/components/espace/EspaceClient';
 import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '@/lib/espace';
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
-import { etatMandat, finRetractation, rechercheDepuis, type Mandant } from '@/lib/mandat';
+import { etatMandat, finRetractation, rechercheDepuis, masquerEmail, type Mandant } from '@/lib/mandat';
 import { lireReserve } from '@/lib/mandat-serveur';
 
 /**
@@ -312,6 +312,13 @@ export default async function PageEspace({ params, searchParams }: {
     expiration: (recherche.mandat_date_expiration as string | null) || null,
     recherche: rechercheDepuis(recherche),
     mandant: prefill,
+    /* Un code envoyé il y a moins d'un quart d'heure, pas encore utilisé : la
+       page a pu être fermée pendant que le client le cherchait. */
+    code: etatM === 'a_signer' && derniereSig?.statut === 'en_cours' && derniereSig.code_envoye_le
+      && Date.now() - Date.parse(derniereSig.code_envoye_le as string) < 15 * 60_000
+      && (derniereSig.mandant as Mandant | null)?.email
+      ? { le: derniereSig.code_envoye_le as string, email: masquerEmail((derniereSig.mandant as Mandant).email) }
+      : null,
   };
 
   const jours = client?.created_at
