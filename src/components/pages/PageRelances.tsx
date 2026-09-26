@@ -37,6 +37,7 @@ const TR: Record<string, string[]> = {
   report: ['M4 12a8 8 0 1 0 2.4-5.7', 'M4 4v4.5h4.5'],
   fermer: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
   oeil: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 'c:12,12,3'],
+  euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
 };
 function Ic({ n, t = 16, ep = 2 }: { n: string; t?: number; ep?: number }) {
   const traits = TR[n];
@@ -60,10 +61,16 @@ const ecart = (k: string, auj: string) => Math.round((new Date(`${k}T12:00:00`).
 const dateCourte = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
 /* ── D'où vient une relance ───────────────────────────────────── */
-type Origine = { lib: string; ico: string };
+/* `fort` : ce qui passe avant tout le reste du jour — un client qui veut
+   faire une offre. L'étiquette est alors pleine, en or. */
+type Origine = { lib: string; ico: string; fort?: boolean };
+const veutOffrir = (r: any) => String(r.note || '').startsWith('Veut faire une offre');
 function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'auto') return { lib: 'Biens présentés', ico: 'envoi' };
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
+  if (veutOffrir(r)) return { lib: 'Veut faire une offre', ico: 'euro', fort: true };
+  if (String(r.note || '').startsWith('Veut revoir')) return { lib: 'Veut revoir', ico: 'oeil' };
+  if (String(r.note || '').startsWith('Il réfléchit')) return { lib: 'Il réfléchit', ico: 'horloge' };
   if (String(r.note || '').startsWith('Veut visiter')) return { lib: 'Veut visiter', ico: 'oeil' };
   if (r.type === 'rappel_client') return { lib: 'Demande de rappel', ico: 'tel' };
   if (typeAction === 'appel') return { lib: 'Après un appel', ico: 'tel' };
@@ -174,8 +181,11 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   }
 
   const auj = cleDe(new Date());
-  const retard = relances.filter(r => jourDe(r.date_echeance) < auj);
-  const duJour = relances.filter(r => jourDe(r.date_echeance) === auj);
+  /* Dans chaque groupe, « Veut faire une offre » passe en tête ; le reste
+     garde l'ordre des échéances. */
+  const enTete = (l: any[]) => [...l.filter(veutOffrir), ...l.filter(r => !veutOffrir(r))];
+  const retard = enTete(relances.filter(r => jourDe(r.date_echeance) < auj));
+  const duJour = enTete(relances.filter(r => jourDe(r.date_echeance) === auj));
   const avenir = relances.filter(r => jourDe(r.date_echeance) > auj);
   const demain = plusJours(1), dansSept = plusJours(7);
 
@@ -312,7 +322,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
                           </span>
                         </span>
                         <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: OR_FONCE, background: '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: o.fort ? 800 : 700, color: o.fort ? NAVY : OR_FONCE, background: o.fort ? OR : '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{r.note && r.note !== o.lib ? r.note : ''}</span>
                         </span>
                         <span style={{ fontSize: 11.5, color: PALE }}>{`prévue le ${dateCourte(k)}`}</span>
