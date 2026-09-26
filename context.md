@@ -243,8 +243,12 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     c'est `IDENTITE_DEFAUT`, mot pour mot l'ancienne identité codée en dur (texte et PDF vérifiés
     identiques octet pour octet). Un champ obligatoire vide retombe sur sa valeur d'origine.
     Deux mois avant la fin de la carte, `RappelCarte` (AppLayout) met un bandeau sur le tableau de
-    bord ; expirée, sur tous les écrans. Le barème et le taux par défaut restent dans
-    `src/lib/mandat.ts` (affichés en lecture seule) : ils entrent dans le calcul du prix maximum.
+    bord ; expirée, sur tous les écrans. Les honoraires restent dans `src/lib/mandat.ts` (affichés
+    en lecture seule) : un mandat de recherche part de **2,5 % TTC** (`HONORAIRES_TAUX`) et peut
+    monter jusqu'à **5 %** (`BAREME`) quand Alexandre le décide — c'est lui qui choisit, le CRM ne
+    plafonne pas plus bas ; un mandat de vente, **5 % TTC** (`BAREME_VENTE`). Les valeurs par
+    défaut suivent : « 2,5% TTC » (et non plus « 3,5% TTC ») pour un mandat saisi à la main, 2,5 %
+    (et non plus 3 %) pour les honoraires d'un bien envoyé sans mandat.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
