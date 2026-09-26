@@ -232,6 +232,8 @@ import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
 import MandatEnLigne from './MandatEnLigne';
 import PointAuto from './PointAuto';
+import OngletVisites from './OngletVisites';
+import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 
 const lienEntete: React.CSSProperties = {
@@ -770,13 +772,13 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
   const [envoiSending, setEnvoiSending] = useState(false);
-  const [showCompteRendu, setShowCompteRendu] = useState(false);
+  /* La visite dont on fait le compte rendu (null = fenêtre fermée). */
+  const [crVisite, setCrVisite] = useState<any>(null);
   /* Une visite se planifie souvent pour plusieurs biens d'affilée : on garde
      une liste, pas un bien unique. La table `visites` n'ayant qu'une colonne
      `bien_id`, on écrit une ligne par bien, toutes sur le même créneau. */
   const [planVisteForm, setPlanVisiteForm] = useState<{ bien_ids: string[]; date: string; heure: string; contact: string; notes: string }>({ bien_ids: [], date: '', heure: '', contact: '', notes: '' });
   const [ajoutVisite, setAjoutVisite] = useState(false);
-  const [crForm, setCrForm] = useState({ visite_id: '', etoiles: 0, commentaire: '', avis_client: '' });
 
   useEffect(() => { loadRecherches(); }, [client.id]);
   useEffect(() => { if (rechercheId) load(); }, [rechercheId]);
@@ -2057,11 +2059,9 @@ Emilio Immobilier
     setShowPlanVisite(false); load();
   }
 
-  async function marquerEffectuee(visiteId: string, bienId: string) {
-    setCrForm({ visite_id: visiteId, etoiles: 0, commentaire: '', avis_client: '' });
-    setShowCompteRendu(true);
-    // pré-sélectionner le bien pour le compte-rendu
-    const _ = bienId;
+  function marquerEffectuee(visiteId: string) {
+    const v = visites.find(x => x.id === visiteId);
+    if (v) setCrVisite(v);
   }
 
   /**
@@ -2086,34 +2086,18 @@ Emilio Immobilier
     load();
   }
 
-  async function saveCompteRendu() {
-    const { visite_id, etoiles, commentaire, avis_client } = crForm;
-    if (!visite_id) { alert('Erreur : visite non identifiée'); return; }
-    const { error } = await supabase.from('visites').update({
-      statut: 'effectuee',
-      note_etoiles: etoiles || 0,
-      commentaire: commentaire || '',
-      avis_client: avis_client || '',
-    }).eq('id', visite_id);
-    if (error) { alert('Erreur : ' + error.message); return; }
-    const v = visites.find(x => x.id === visite_id);
-    const b = biens.find(x => x.id === v?.bien_id);
-    if (v?.bien_id) await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', v.bien_id);
-    const AVIS: Record<string,string> = { tres_interesse:'🔥 Très intéressé', interesse:'👍 Intéressé', a_voir:'🤔 À revoir', pas_interesse:'👎 Pas intéressé', elimine:'❌ Éliminé' };
-    const etoilesStr = etoiles > 0 ? '⭐'.repeat(etoiles) : '';
-    const corpsLines = [avis_client ? `Avis : ${AVIS[avis_client]||avis_client}` : '', etoilesStr ? `Note : ${etoilesStr}` : '', commentaire || ''].filter(Boolean);
-    await supabase.from('envois').insert({
-      client_id: client.id,
-      recherche_id: rechercheId,
-      type: 'compte_rendu_visite',
-      objet: `Visite — ${b?.titre || b?.ville || 'Bien'}`,
-      corps: corpsLines.join(' | '),
-      destinataires: [],
-      sms_envoye: false,
+  async function saveCompteRendu(x: ValeursCR): Promise<string | null> {
+    const v = crVisite;
+    if (!v) return 'visite non identifiée';
+    const b = biens.find(y => y.id === v.bien_id);
+    const err = await enregistrerCompteRendu(v, x, {
+      clientId: client.id, rechercheId: rechercheId || v.recherche_id || null,
+      bienTitre: b?.titre || b?.ville || 'Bien', badgeActuel: b?.badge_retour,
     });
-    await addJournal(client.id, 'visite_effectuee', `✅ Visite effectuée${etoilesStr ? ' · '+etoilesStr : ''} — ${b?.titre || b?.ville || ''}`, commentaire || undefined);
-    setShowCompteRendu(false);
+    if (err) return err;
+    setCrVisite(null);
     await load();
+    return null;
   }
 
   async function saveAction() {
@@ -3340,146 +3324,13 @@ Emilio Immobilier
           </div>
         )}
 
-        {/* TAB VISITES */}
+        {/* TAB VISITES — les mêmes rubriques que « Vos visites » dans son espace */}
         {tab === 'visites' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee').length === 0 && (
-              <div className={styles.emptyTab}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
-                <div style={{ fontWeight: 700, color: '#1a2332' }}>Aucune visite</div>
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>
-                  {visites.length > 0 ? "Les visites annulées ne s'affichent plus ici." : "Planifiez depuis l'onglet Biens"}
-                </div>
-              </div>
-            )}
-
-            {/* Sections « Compte rendu à faire » et « À venir ».
-                Une visite dont l'heure est passée n'est plus « à venir » : elle
-                attend son compte rendu. Avant, elle restait ici sous « 📅 À
-                venir », sans rien qui la signale, alors que l'espace du client
-                la considère déjà comme faite. Sans heure, elle compte jusqu'au
-                soir, comme sur la page Visites et dans l'agenda. */}
-            {(() => {
-              const maintenant = new Date();
-              const passee = (v: any) => {
-                if (!v.date_visite) return false;
-                const d = new Date(`${String(v.date_visite).slice(0, 10)}T${v.heure ? String(v.heure).slice(0, 5) : '23:59'}:00`);
-                return !isNaN(d.getTime()) && d < maintenant;
-              };
-              const aVenir = visites.filter(v => v.statut === 'a_venir');
-              const aFaire = aVenir.filter(passee);
-              const prochaines = aVenir.filter(v => !passee(v));
-              const carte = (v: any, enRetard: boolean) => {
-                const b = biens.find(x => x.id === v.bien_id);
-                const ton = enRetard ? '#d97706' : '#3b82f6';
-                return (
-                  <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: `3px solid ${ton}` }}>
-                    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                      <div style={{ background: enRetard ? '#fffbeb' : '#1a2332', border: enRetard ? '1px solid #fde68a' : 'none', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
-                        {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: enRetard ? '#92400e' : 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: enRetard ? '#d97706' : 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>—</div>}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
-                        {v.heure && <div style={{ fontSize: 14, color: enRetard ? '#64748b' : '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
-                        {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>📞 {v.contact_agence}</div>}
-                        {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8 }}>📝 {v.commentaire}</div>}
-                      </div>
-                      {enRetard
-                        ? <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 700, background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', flexShrink: 0 }}>📝 Compte rendu à faire</span>
-                        : <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', flexShrink: 0 }}>📅 À venir</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
-                      <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
-                      <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
-                      <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
-                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>{enRetard ? '📝 Faire le compte rendu' : '✓ Effectuée'}</button>
-                      <button className={styles.btn} onClick={() => annulerVisite(v)}
-                        style={{ color: '#dc2626', borderColor: '#fecaca' }}
-                        title="La visite ne se fera pas : elle sort de l'agenda et de l'espace du client">
-                        ✕ Annuler
-                      </button>
-                    </div>
-                  </div>
-                );
-              };
-              const titre = (ton: string, texte: string) => (
-                <div style={{ fontSize: 11, fontWeight: 800, color: ton, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: ton, display: 'inline-block' }}></span>
-                  {texte}
-                </div>
-              );
-              return (
-                <>
-                  {aFaire.length > 0 && (
-                    <div>
-                      {titre('#d97706', `Compte rendu à faire — ${aFaire.length}`)}
-                      <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginBottom: 10, lineHeight: 1.45 }}>
-                        {'La date est passée : le client voit déjà ce bien dans « Visités ». Ton compte rendu s’affiche sur sa fiche, et la veille le relit avant chaque recherche. Visite repoussée : change la date. Pas faite : Annuler.'}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {aFaire.map(v => carte(v, true))}
-                      </div>
-                    </div>
-                  )}
-                  {prochaines.length > 0 && (
-                    <div>
-                      {titre('#3b82f6', `À venir — ${prochaines.length}`)}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {prochaines.map(v => carte(v, false))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* Section Effectuées */}
-            {visites.filter(v => v.statut === 'effectuee').length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                  Effectuées — {visites.filter(v => v.statut === 'effectuee').length}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {visites.filter(v => v.statut === 'effectuee').map(v => {
-                    const b = biens.find(x => x.id === v.bien_id);
-                    return (
-                      <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: '3px solid #10b981' }}>
-                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                          <div style={{ background: '#ecfdf5', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
-                            {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: '#065f46', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: '#94a3b8', fontSize: 20 }}>—</div>}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
-                            {v.heure && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>🕐 {v.heure}</div>}
-                            {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>📞 {v.contact_agence}</div>}
-                            {/* Avis client */}
-                            {v.avis_client && (
-                              <div style={{ marginTop: 8 }}>
-                                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 700, background: v.avis_client === 'tres_interesse' ? '#fef9c3' : v.avis_client === 'interesse' ? '#eff6ff' : v.avis_client === 'elimine' ? '#fef2f2' : v.avis_client === 'pas_interesse' ? '#fef2f2' : '#f8fafc', color: v.avis_client === 'tres_interesse' ? '#854d0e' : v.avis_client === 'interesse' ? '#1d4ed8' : (v.avis_client === 'elimine' || v.avis_client === 'pas_interesse') ? '#ef4444' : '#64748b' }}>
-                                  {v.avis_client === 'tres_interesse' ? '🔥 Très intéressé' : v.avis_client === 'interesse' ? '👍 Intéressé' : v.avis_client === 'a_voir' ? '🤔 À revoir' : v.avis_client === 'pas_interesse' ? '👎 Pas intéressé' : '❌ Éliminé'}
-                                </span>
-                              </div>
-                            )}
-                            {/* Note étoiles */}
-                            {v.note_etoiles > 0 && <div style={{ marginTop: 6, fontSize: 16 }}>{'⭐'.repeat(v.note_etoiles)} <span style={{ fontSize: 12, color: '#94a3b8' }}>{v.note_etoiles}/5</span></div>}
-                            {/* Compte-rendu */}
-                            {v.commentaire && (
-                              <div style={{ fontSize: 13, color: '#1a2332', background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', marginTop: 10, borderLeft: '3px solid #10b981' }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Compte-rendu</div>
-                                {v.commentaire}
-                              </div>
-                            )}
-                          </div>
-                          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#ecfdf5', color: '#10b981', border: '1px solid #bbf7d0', flexShrink: 0 }}>✅ Effectuée</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <OngletVisites visites={visites} biens={biens} prenom={client.prenom || ''}
+            masques={((rechercheActive as any)?.appris_masques as string[] | null) || []}
+            rechercheId={rechercheId}
+            onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
+            onRecharger={load} onMasques={loadRecherches} />
         )}
 
         {/* ═══ TAB TRANSACTION ═══ */}
@@ -5109,49 +4960,16 @@ Emilio Immobilier
         </Portail>
       )}
 
-      {/* ═══ MODAL COMPTE-RENDU VISITE ═══ */}
-      {showCompteRendu && (
-        <Portail>
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowCompteRendu(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 520 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>✅ Compte-rendu de visite</h2><button className={styles.modalClose} onClick={() => setShowCompteRendu(false)}>✕</button></div>
-            <div className={styles.modalBody}>
-              <div>
-                <label className={styles.lbl}>Note globale</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {[1,2,3,4,5].map(n => (
-                    <button key={n} onClick={() => setCrForm(f => ({ ...f, etoiles: f.etoiles === n ? 0 : n }))}
-                      style={{ width: 44, height: 44, borderRadius: 12, border: `2px solid ${crForm.etoiles >= n ? '#c9a84c' : '#e2e8f0'}`, background: crForm.etoiles >= n ? '#fef9c3' : 'white', fontSize: 22, cursor: 'pointer', transition: 'all 0.12s' }}>
-                      ⭐
-                    </button>
-                  ))}
-                  {crForm.etoiles > 0 && <span style={{ alignSelf: 'center', fontSize: 13, color: '#64748b', fontWeight: 600 }}>{crForm.etoiles}/5</span>}
-                </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>Avis du client sur ce bien</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {[{v:'tres_interesse', l:'🔥 Très intéressé'}, {v:'interesse', l:'👍 Intéressé'}, {v:'a_voir', l:'🤔 À revoir'}, {v:'pas_interesse', l:'👎 Pas intéressé'}, {v:'elimine', l:'❌ Éliminé'}].map(o => (
-                    <button key={o.v} onClick={() => setCrForm(f => ({ ...f, avis_client: f.avis_client === o.v ? '' : o.v }))}
-                      style={{ padding: '8px 10px', borderRadius: 10, border: `1px solid ${crForm.avis_client === o.v ? '#1a2332' : '#e2e8f0'}`, background: crForm.avis_client === o.v ? '#1a2332' : 'white', color: crForm.avis_client === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className={styles.lbl}>
-                  Compte-rendu <span style={{ fontWeight: 600, color: '#b45309' }}>— lu par le client dans son espace</span>
-                </label>
-                <textarea className={styles.inp} rows={4} value={crForm.commentaire} onChange={e => setCrForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Ce que vous retenez de la visite, écrit pour lui : ce qui vous a plu, ce qui pose question, ce qui reste à vérifier…" />
-              </div>
-            </div>
-            <div className={styles.modalFooter}>
-              <button className={styles.btn} onClick={() => setShowCompteRendu(false)}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveCompteRendu}>✅ Valider le compte-rendu</button>
-            </div>
-          </div>
-        </div>
-        </Portail>
-      )}
+      {/* ═══ COMPTE RENDU DE VISITE ═══ */}
+      {crVisite && (() => {
+        const b = biens.find(y => y.id === crVisite.bien_id);
+        const d = crVisite.date_visite ? new Date(`${String(crVisite.date_visite).slice(0, 10)}T12:00:00`) : null;
+        const sous = [d && !isNaN(d.getTime()) ? d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '', crVisite.heure ? `à ${String(crVisite.heure).slice(0, 5)}` : ''].filter(Boolean).join(' ');
+        return (
+          <CompteRenduVisite visite={crVisite} titre={b?.titre || b?.ville || 'Bien'} sous={sous}
+            prenom={client.prenom || ''} onFermer={() => setCrVisite(null)} onValider={saveCompteRendu} />
+        );
+      })()}
 
       {showAction && (
         <Portail>
