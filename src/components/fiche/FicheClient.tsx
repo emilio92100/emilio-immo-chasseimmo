@@ -713,7 +713,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
 
   const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
   const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
-  const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
+  const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '2,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
   /* Modifier une ligne du suivi : on rouvre le même formulaire, en mémorisant
      laquelle. Vide = on en crée une nouvelle. */
@@ -816,7 +816,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     });
     setMandat({
       date_signature: r.mandat_date_signature || '', duree: r.mandat_duree?.toString() || '3',
-      honoraires: r.mandat_honoraires || '3,5% TTC', date_expiration: r.mandat_date_expiration || '',
+      honoraires: r.mandat_honoraires || '2,5% TTC', date_expiration: r.mandat_date_expiration || '',
     });
   }, [rechercheId, recherches]);
 
@@ -1420,7 +1420,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     }).eq('id', rechercheId).select().single();
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
-      setMandat({ date_signature: '', duree: '3', honoraires: '3,5% TTC', date_expiration: '' });
+      setMandat({ date_signature: '', duree: '3', honoraires: '2,5% TTC', date_expiration: '' });
       await addJournal(client.id, 'mandat', '📋 Mandat supprimé');
       load();
     }
@@ -4170,7 +4170,7 @@ Emilio Immobilier
                 <div><label className={styles.lbl}>Durée</label><select className={styles.inp} value={mandat.duree} onChange={e => setMandat(f => ({ ...f, duree: e.target.value }))}><option value="1">1 mois</option><option value="2">2 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></div>
                 <div><label className={styles.lbl}>Date expiration (auto ou manuelle)</label><input className={styles.inp} type="date" value={mandat.date_expiration} onChange={e => setMandat(f => ({ ...f, date_expiration: e.target.value }))} /></div>
               </div>
-              <div><label className={styles.lbl}>Honoraires convenus</label><input className={styles.inp} value={mandat.honoraires} onChange={e => setMandat(f => ({ ...f, honoraires: e.target.value }))} placeholder="3,5% TTC ou 5 000€ TTC" /></div>
+              <div><label className={styles.lbl}>Honoraires convenus</label><input className={styles.inp} value={mandat.honoraires} onChange={e => setMandat(f => ({ ...f, honoraires: e.target.value }))} placeholder="2,5% TTC ou 5 000€ TTC" /></div>
               {mandat.date_signature && mandat.duree && !mandat.date_expiration && <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>💡 Expiration calculée : {new Date(new Date(mandat.date_signature).setMonth(new Date(mandat.date_signature).getMonth() + parseInt(mandat.duree))).toLocaleDateString('fr-FR')}</div>}
             </div>
             <div className={styles.modalFooter} style={{ justifyContent: 'space-between' }}>
