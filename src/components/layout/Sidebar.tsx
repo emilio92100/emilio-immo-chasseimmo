@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
-import { EVT_MAJ, demanderNouveauClient } from '@/lib/intentions';
+import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
 
@@ -25,6 +25,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   /* Ordinateur seulement : la barre réduite à ses icônes (l'agenda). */
   reduit?: boolean;
 }) {
+  /* Le petit menu du « + » de la barre du bas (téléphone). */
+  const [plusOuvert, setPlusOuvert] = useState(false);
   const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0 });
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
@@ -184,10 +186,13 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       <nav className={styles.barreBas} aria-label="Navigation principale">
         {onglets.map(o => {
           if (o.id === '+') {
+            /* Le « + » ouvre un petit menu : nouveau client, nouveau
+               rendez-vous, nouveau mail. Sur téléphone, c'est le seul endroit
+               toujours à portée de pouce, quel que soit l'écran. */
             return (
-              <button key={o.id} type="button" className={styles.ongletPlus}
-                onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}
-                aria-label="Nouveau client">
+              <button key={o.id} type="button" className={`${styles.ongletPlus} ${plusOuvert ? styles.ongletPlusOuvert : ''}`}
+                onClick={() => setPlusOuvert(v => !v)} aria-expanded={plusOuvert} aria-haspopup="menu"
+                aria-label="Créer : client, rendez-vous ou mail">
                 <span className={styles.plusRond}><Icone nom="plus" taille={24} epaisseur={2.4} /></span>
                 <span className={styles.ongletMot}>{o.label}</span>
               </button>
@@ -210,6 +215,26 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           );
         })}
       </nav>
+
+      {plusOuvert && (
+        <>
+          <div className={styles.plusVoile} onClick={() => setPlusOuvert(false)} aria-hidden="true" />
+          <div className={styles.plusMenu} role="menu" aria-label="Créer">
+            {([
+              { cle: 'client', ico: 'clients', t: 'Nouveau client', s: 'Ouvrir un dossier', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
+              { cle: 'rdv', ico: 'calendrier', t: 'Nouveau rendez-vous', s: 'Visite, appel, signature…', go: () => demanderNouveauRdv() },
+              { cle: 'mail', ico: 'mail', t: 'Nouveau mail', s: 'Écrire à un ou plusieurs clients', go: () => onNavigate('mail') },
+            ]).map(x => (
+              <button key={x.cle} type="button" role="menuitem" className={styles.plusChoix}
+                onClick={() => { setPlusOuvert(false); x.go(); }}>
+                <span className={styles.plusIco}><Icone nom={x.ico} taille={20} epaisseur={1.9} /></span>
+                <span className={styles.plusTexte}><b>{x.t}</b><i>{x.s}</i></span>
+                <span className={styles.plusFleche}><Icone nom="chevron" taille={16} epaisseur={2} /></span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

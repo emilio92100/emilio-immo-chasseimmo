@@ -8,7 +8,7 @@ import Clients from '@/components/clients/Clients';
 import FicheClient from '@/components/fiche/FicheClient';
 import PageRelances from '@/components/pages/PageRelances';
 import PageVisites from '@/components/pages/PageVisites';
-import PageAgenda from '@/components/pages/PageAgenda';
+import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
 import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
@@ -201,6 +201,9 @@ export default function AppLayout() {
           </div>
         </main>
       </div>
+      {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
+          l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}
+      <NouveauRdvPartout />
     </div>
   );
 }
