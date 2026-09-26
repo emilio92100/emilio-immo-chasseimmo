@@ -519,6 +519,9 @@ const T: Record<string, string[]> = {
   croix:['M6.5 6.5l11 11','M17.5 6.5l-11 11'], check:['m5 13 5 5L20 6'], moins:['M6 12h12'],
   tel:['M6.2 3h3.1l1.5 3.9-2 1.3a13.4 13.4 0 0 0 6.9 6.9l1.3-2 3.9 1.5v3.1a1.9 1.9 0 0 1-2.1 1.9A17.6 17.6 0 0 1 3.1 5.1 1.9 1.9 0 0 1 5 3z'],
   lieu:['M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z','c:12,10,2.6'],
+  mobile:['M8.5 2.5h7A1.5 1.5 0 0 1 17 4v16a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 20V4a1.5 1.5 0 0 1 1.5-1.5z','M11 18.5h2'],
+  aide:['c:12,12,9','M9.7 9.4a2.4 2.4 0 0 1 4.6.9c0 1.6-2.3 2.1-2.3 3.5','M12 17.2v.1'],
+  cloche:['M6.5 16v-5a5.5 5.5 0 0 1 11 0v5l1.5 2h-14z','M10 20.5a2 2 0 0 0 4 0'],
   crayon:['M12.5 20H21','M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6 3.4 19.8l1.2-4z'],
   loupe:['c:10.8,10.8,7','m20.5 20.5-4.7-4.7'],
   euro:['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5','M4 10.5h8','M4 13.5h8'],
@@ -1021,9 +1024,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      lit la page dans le navigateur de poche de sa messagerie — chez lui, la
      première chose à faire est d'en sortir. */
   const dansUneAppli = ecran.appareil === 'appli' || ecran.appareil === 'appliandroid';
+  /* Le bouton de l'accueil : un titre court, et en dessous ce qu'il fait. */
   const motEcran = dansUneAppli
-    ? 'Ouvrir dans mon navigateur'
-    : ecran.tactile ? "Installer sur mon écran d'accueil" : "Installer l'application";
+    ? { t: 'Ouvrir dans le navigateur', s: 'pour installer l’appli' }
+    : ecran.tactile
+      ? { t: 'Installer l’appli', s: 'sur votre écran d’accueil' }
+      : { t: 'Installer l’application', s: 'sur votre ordinateur' };
 
   /* ── être prévenu des nouveaux biens ── */
   const notif = useNotifications(token);
@@ -1887,20 +1893,28 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
 
       {mandatPret}
 
-      <div className="sep-liens acc-liens">
+      {/* Une bande à deux boutons, côte à côte : l'installation (ou, une fois
+          installé, les alertes) et le mode d'emploi. Chacun dit en dessous ce
+          qu'il fait. Seul, « Comment ça marche ? » prend toute la largeur. */}
+      <div className="al3-r">
         {/* Toujours là, même après un « plus tard » : celui qui change d'avis
             trois semaines plus tard doit le retrouver sans chercher. */}
         {onEcran && (
-          <button type="button" className="lien-aide lien-ecran" onClick={onEcran}>
-            <Ico n="lieu" t={13} />{motEcran}
+          <button type="button" className="al3" onClick={onEcran}>
+            <span className="al3-i or"><Ico n="mobile" t={17} /></span>
+            <span className="al3-t"><b>{motEcran.t}</b><i>{motEcran.s}</i></span>
           </button>
         )}
         {onNotif && (
-          <button type="button" className="lien-aide lien-ecran" onClick={onNotif}>
-            <Ico n="etincelle" t={13} />M&apos;avertir des nouveaux biens
+          <button type="button" className="al3" onClick={onNotif}>
+            <span className="al3-i or"><Ico n="cloche" t={17} /></span>
+            <span className="al3-t"><b>Être prévenu</b><i>dès qu’un bien arrive</i></span>
           </button>
         )}
-        <button type="button" className="lien-aide" onClick={onBienvenue}>Comment ça marche&nbsp;?</button>
+        <button type="button" className="al3" onClick={onBienvenue}>
+          <span className="al3-i"><Ico n="aide" t={17} /></span>
+          <span className="al3-t"><b className="al3-1">Comment ça marche&nbsp;?</b><i>en une minute</i></span>
+        </button>
       </div>
 
       <div className="acc-cols">
@@ -6494,6 +6508,21 @@ button.auj-c:active{transform:scale(.96)}
 .ap-tot .nv{position:relative; display:inline-block; padding-right:17px}
 .ap-tot .nv .aide-pt{position:absolute; left:auto; right:0; top:-6px}
 .acc-liens{margin-top:14px}
+.al3-r{display:flex; margin:14px 0 16px; background:var(--carte); border:1px solid var(--trait); border-radius:18px;
+  box-shadow:var(--ombre); overflow:hidden}
+/* L'icône au-dessus du texte : à côté, « Comment ça marche ? » ne tenait pas
+   sur une ligne dans une demi-largeur de téléphone (138 px pour 117). */
+.al3{flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px 12px 11px;
+  text-align:left; -webkit-tap-highlight-color:transparent; transition:background .15s}
+.al3:active{background:#f6f8fc}
+.al3 + .al3{border-left:1px solid var(--trait)}
+.al3-i{width:30px; height:30px; border-radius:10px; background:#eef3fb; color:#3a5886; display:flex; align-items:center;
+  justify-content:center; flex:0 0 auto}
+.al3-i.or{background:#f7ecd0; color:var(--or-fonce)}
+.al3-t{display:flex; flex-direction:column; min-width:0}
+.al3-t b{font-size:12.5px; font-weight:800; color:var(--encre); line-height:1.25}
+.al3-t b.al3-1{white-space:nowrap}
+.al3-t i{font-style:normal; font-size:11px; color:var(--plume); line-height:1.3}
 
 /* — les blocs de l'accueil — */
 .acc-cols{display:block}
@@ -6731,6 +6760,10 @@ button.auj-c:active{transform:scale(.96)}
 
   .auj{margin-top:-64px; padding:0; background:none; box-shadow:none; border-radius:0}
   .auj-h, .auj-pied, .auj-pied2{display:none}
+  /* Sur ordinateur, la bande prend la largeur de ses boutons, pas de la page. */
+  .al3-r{width:fit-content; max-width:100%; margin:18px 0 22px}
+  .al3{flex:0 0 auto; min-width:230px; flex-direction:row; align-items:center; gap:11px; padding:12px 18px 12px 14px}
+  .al3:hover{background:#f6f8fc}
   .auj-g{grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px}
   .auj-c{flex-direction:row; align-items:center; gap:14px; padding:16px 18px; border-radius:20px;
     background:var(--carte) !important; box-shadow:0 16px 34px -26px rgba(36,56,92,.55)}
