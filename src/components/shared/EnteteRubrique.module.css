@@ -1,0 +1,134 @@
+/* L'en-tête d'une rubrique — voir EnteteRubrique.tsx.
+   Ordinateur : un fond crème, les tuiles blanches posées dessus.
+   Téléphone : une carte blanche compacte, les chiffres en bandeau dessous. */
+
+.bloc {
+  position: relative; border-radius: 22px; overflow: hidden; isolation: isolate;
+  background: linear-gradient(135deg, #fbf5e6 0%, #fdfaf2 45%, #ffffff 100%);
+  border: 1px solid #efe4c6; box-shadow: 0 14px 30px -26px rgba(169, 130, 47, 0.55);
+}
+/* Une lueur dorée dans le coin, très discrète. */
+.bloc::before {
+  content: ''; position: absolute; z-index: 0; width: 380px; height: 380px; right: -120px; top: -220px;
+  background: radial-gradient(closest-side, rgba(201, 168, 76, 0.2), transparent); pointer-events: none;
+}
+
+/* ── Le haut : pictogramme, titre, phrase, puis recherche et bouton ── */
+.haut {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 22px 24px 18px;
+}
+.titreZone { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.icone {
+  width: 46px; height: 46px; border-radius: 14px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: #a9822f; box-shadow: 0 6px 14px -8px rgba(169, 130, 47, 0.6), inset 0 0 0 1px #efe4c6;
+}
+.titreTextes { min-width: 0; }
+.titre {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 26px; font-weight: 800;
+  letter-spacing: -0.5px; line-height: 1.1; margin: 0; color: #1a2332;
+}
+.phrase { font-size: 13.5px; margin: 5px 0 0; line-height: 1.4; color: #8a7a55; }
+
+.outils { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.recherche {
+  display: flex; align-items: center; gap: 9px; height: 42px; width: 270px; box-sizing: border-box;
+  padding: 0 14px; border-radius: 12px; cursor: text; transition: border-color .15s, background .15s;
+  background: rgba(255, 255, 255, 0.85); border: 1px solid #eadfc2; color: #b3a47f;
+}
+.recherche:focus-within { background: #fff; border-color: #c9a84c; }
+.recherche input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: 14px; height: 100%; color: #1a2332;
+}
+.bouton {
+  display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 18px;
+  border-radius: 12px; border: none; cursor: pointer; font-family: inherit;
+  font-size: 13.5px; font-weight: 700; white-space: nowrap; transition: transform .15s, filter .15s;
+  background: #1a2332; color: #fff;
+}
+.bouton:hover { filter: brightness(1.15); }
+.bouton:active { transform: scale(.97); }
+
+/* ── Les tuiles : le chiffre en grand, le mot dessous. Cliquer filtre. ── */
+.rangee {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px;
+  padding: 0 24px 22px;
+}
+.tuile {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  padding: 14px 16px 13px; border-radius: 15px; text-align: left; cursor: pointer; font-family: inherit;
+  background: #fff; border: 1px solid #efe7d2; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .15s;
+}
+.tuile:hover { border-color: #e2d3a9; box-shadow: 0 8px 18px -12px rgba(169, 130, 47, 0.5); }
+.tuile:active { transform: scale(.97); }
+.n {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 28px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.5px; color: #1a2332;
+}
+.lib { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: #64748b; }
+.point { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+
+/* Le filtre en cours : un bleu clair, lisible sans assombrir le crème. */
+.on { background: #eef5ff; border-color: #a9c8f3; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 10px 22px -16px rgba(37, 99, 235, 0.55); }
+.on:hover { border-color: #a9c8f3; }
+.on .n { color: #1d4ed8; }
+.on .lib { color: #1e3a8a; }
+/* À zéro : on la garde (elle dit « rien ici »), mais sans lui donner de poids. */
+.vide .n { color: #cfc6b0; }
+.vide .lib { color: #a9a18c; }
+/* Une tuile qui demande une action (ex. « Compte rendu à faire »). */
+.alerte { border-color: #fcd9a8; background: #fffaf2; }
+.alerte .n { color: #b45309; }
+
+/* ── Téléphone : la carte blanche, compacte ────────────────────────── */
+@media (max-width: 760px) {
+  .bloc {
+    border-radius: 18px; background: #fff; border-color: #e3e8f0;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 26px -22px rgba(26, 35, 50, 0.35);
+    /* De l'air sous le bloc : les filtres qui suivent ne viennent pas s'y coller. */
+    margin-bottom: 8px;
+  }
+  .bloc::before { display: none; }
+  .haut { flex-wrap: wrap; padding: 14px 14px 12px; gap: 10px; }
+  .titreZone { flex: 1 1 auto; gap: 10px; }
+  .icone { width: 34px; height: 34px; border-radius: 10px; background: #1a2332; color: #e8c96a; box-shadow: none; }
+  .icone svg { width: 18px; height: 18px; }
+  .titre { font-size: 20px; letter-spacing: -0.3px; }
+  .phrase { font-size: 12px; margin-top: 2px; color: #7a889b; }
+  /* Les outils se défont : le bouton reste à droite du titre, la recherche
+     prend toute la largeur en dessous. */
+  .outils { display: contents; }
+  .bouton { order: 2; height: 34px; padding: 0 12px; font-size: 12.5px; border-radius: 10px; }
+  .recherche { order: 3; flex: 1 1 100%; width: auto; height: 38px; border-radius: 10px; background: #f6f8fb; border-color: #e3e8f0; color: #94a3b8; }
+  .recherche input { font-size: 16px; } /* 16 px : iOS ne zoome pas au toucher */
+
+  /* Les chiffres en bandeau, séparés d'un trait ; la rangée défile au doigt. */
+  .rangee {
+    display: flex; overflow-x: auto; gap: 0; padding: 0;
+    border-top: 1px solid #eef1f6; background: #fafbfd;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .rangee::-webkit-scrollbar { display: none; }
+  .tuile {
+    flex: 1 0 auto; min-width: 84px; gap: 5px; padding: 10px 13px 9px;
+    border: none; border-right: 1px solid #eef1f6; border-radius: 0; background: transparent; box-shadow: none;
+  }
+  .tuile:last-child { border-right: none; }
+  .tuile:hover { box-shadow: none; }
+  .n { font-size: 20px; }
+  .lib { font-size: 11px; }
+  /* Le filtre en cours : fond blanc et un trait d'or au-dessus. */
+  .on { background: #fff; box-shadow: none; }
+  .on::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: #c9a84c; border-radius: 0 0 3px 3px; }
+  .on .n { color: #a9822f; }
+  .on .lib { color: #1a2332; }
+  .vide .n { color: #c3cbd7; }
+  .vide .lib { color: #a0aabb; }
+  .alerte { background: #fffaf2; }
+}
