@@ -522,9 +522,9 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
     chargés en accents peut donc produire une ligne de plus de 75 octets — exactement ce
     qu'Outlook refuse, et la raison pour laquelle ce repli a été écrit.
 
-19. **Des envois partent sans `recherche_id`** sur deux chemins vivants : le compte rendu de visite
-    (`PageVisites`) et `PageMail`, qui n'en envoie jamais. Ces lignes n'apparaîtront dans aucun
-    onglet Suivi.
+19. **Des envois partent sans `recherche_id`** depuis `PageMail`, qui n'en envoie jamais. Ces
+    lignes n'apparaîtront dans aucun onglet Suivi. (Le compte rendu de visite de `PageVisites`
+    porte le dossier depuis le 26 septembre.)
 
 20. **Plusieurs recherches peuvent être `active` en même temps.** `creerRecherche()` insère
     `active: true` sans passer les autres à `false` (et sans vérifier son erreur). Les écrans qui
