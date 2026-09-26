@@ -24,9 +24,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, heureParis, AGENCE, SIGNATAIRE, RETRACTATION_JOURS, ICONES,
+  resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, heureParis, RETRACTATION_JOURS, ICONES,
   type Mandant, type Recherche, type Partie, type Icone,
 } from '@/lib/mandat';
+import { IDENTITE_DEFAUT, lireIdentite, type IdentiteAgence } from '@/lib/agence';
 
 export type MandatEspace = {
   etat: 'valide' | 'a_signer' | 'sans_numero';
@@ -73,7 +74,7 @@ function Ic({ n, t = 18 }: { n: string; t?: number }) {
    Tant qu'il n'est pas signé, il le dit : un bandeau en tête, et « Non
    signé » à côté de chacune des deux parties, l'agence comprise. La
    signature d'Alexandre n'apparaît que sur le PDF, une fois le code saisi. */
-function TexteMandat({ parties }: { parties: Partie[] }) {
+function TexteMandat({ parties, identite }: { parties: Partie[]; identite: IdentiteAgence }) {
   return (
     <div className="mdt-texte">
       <div className="mdt-projet"><Ic n="doc" t={15} /><span>Projet de mandat · non signé</span></div>
@@ -130,7 +131,7 @@ function TexteMandat({ parties }: { parties: Partie[] }) {
                     </div>
                     <div className="mdt-sigc">
                       <div className="q">Le mandataire</div>
-                      <div className="n">{`${AGENCE.nom} · ${SIGNATAIRE.nom}`}</div>
+                      <div className="n">{`${identite.nom.toUpperCase()} · ${identite.signataireNom}`}</div>
                       <span className="mdt-ns">Non signé</span>
                       <div className="s">Sa signature est apposée sur le document au moment où vous signez.</div>
                     </div>
@@ -379,6 +380,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   /* La recherche telle que le mandat la décrit, taux compris. Elle part de
      la page, et se remet à jour si Alexandre change le taux entre-temps. */
   const [rech, setRech] = useState<Recherche>(mandat.recherche);
+  /* L'identité de l'agence (Paramètres › Agence), celle que le PDF
+     imprimera : elle arrive avec l'ouverture du parcours. */
+  const [identite, setIdentite] = useState<IdentiteAgence>(IDENTITE_DEFAUT);
   const [avis, setAvis] = useState('');
   const [question, setQuestion] = useState<'' | 'envoi' | 'ok'>('');
   const haut = useRef<HTMLDivElement>(null);
@@ -387,7 +391,11 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
      La réponse porte la version du jour du mandat. */
   useEffect(() => {
     let vivant = true;
-    envoyer('mandat', { etape: 'afficher' }).then(r => { if (vivant && r?.recherche) setRech(r.recherche); });
+    envoyer('mandat', { etape: 'afficher' }).then(r => {
+      if (!vivant) return;
+      if (r?.recherche) setRech(r.recherche);
+      if (r?.identite) setIdentite(lireIdentite(r.identite));
+    });
     return () => { vivant = false; };
   }, [envoyer]);
   /* Pendant la signature, l'espace ne se recharge pas tout seul au retour
@@ -410,7 +418,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const parties = useMemo(() => redigerMandat({
     numero: numero || '…', mandant: etape === 'lecture' && retourLecture === 'signer' ? m : null,
     recherche: rech, executionImmediate: null,
-  }), [numero, m, etape, retourLecture, rech]);
+  }, identite), [numero, m, etape, retourLecture, rech, identite]);
 
   /* Le mandat a changé sous ses yeux (Alexandre a mis à jour le taux) :
      il relit le récapitulatif, et redemande un code. */
@@ -567,7 +575,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
         {tete('Votre mandat, en entier')}
         <div className="mdt-corps">
           <p className="mdt-p petit">{'C’est exactement ce texte que vous signez. Vous recevrez le document signé, en PDF, par e-mail.'}</p>
-          <TexteMandat parties={parties} />
+          <TexteMandat parties={parties} identite={identite} />
           <button type="button" className="btn or mdt-plein" onClick={() => setEtape(retourLecture)}>J’ai lu, je reviens</button>
         </div>
       </div>
@@ -593,8 +601,8 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             ))}
             <div className="mdt-ligne">
               <div className="t">Votre conseiller</div>
-              <div className="v">{`${SIGNATAIRE.nom} · Emilio Immobilier`}</div>
-              <div className="d">{`carte professionnelle ${AGENCE.carte}`}</div>
+              <div className="v">{`${identite.signataireNom} · ${identite.nom}`}</div>
+              <div className="d">{`carte professionnelle ${identite.carte}`}</div>
             </div>
             <div className="mdt-ligne">
               <div className="t">Le mandat</div>
