@@ -63,6 +63,8 @@
   font-size: 12px; font-weight: 600; transition: all 0.15s;
 }
 .mailBtn:hover { background: rgba(255,255,255,0.14); color: white; }
+/* Sur téléphone, les trois boutons tiennent sur une ligne : « Mail · RDV · Client ». */
+.motCourt { display: none; }
 
 /* ── DIVIDER ── */
 .sectionDivider {
@@ -228,6 +230,8 @@
   .welcomeTitle { font-size: 23px; margin-bottom: 6px; }
   .welcomeSub { font-size: 13.5px; line-height: 1.5; }
   .welcomeRight { width: 100%; }
+  .motLong { display: none; }
+  .motCourt { display: inline; }
   .welcomeRight > button { flex: 1 1 0; justify-content: center; padding: 12px 10px !important; font-size: 13.5px !important; border-radius: 12px !important; }
 
   .sectionDivider { padding: 18px 14px 0; }
