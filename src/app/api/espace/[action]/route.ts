@@ -3,12 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
 import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
+import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
  *
  *   POST /api/espace/vue       { token, bien_id }
  *   POST /api/espace/retour    { token, bien_id, avis, commentaire }
+ *   POST /api/espace/visite    { token, visite_id, issue, motifs, mot, prix }   son avis après une visite
  *   POST /api/espace/criteres  { token, criteres }
  *   POST /api/espace/message   { token, texte }
  *   POST /api/espace/rappel    { token, creneau }
@@ -95,6 +97,92 @@ async function prevenirVisite(
       }],
     }),
   });
+}
+
+/* Le mail qui prévient Alexandre de la réponse du client après une visite.
+   « Il veut faire une offre » a son propre réglage (visite_offre) : c'est
+   l'alerte qu'il ne faut pas rater. Les trois autres partagent visite_avis. */
+async function prevenirApresVisite(
+  supabase: ReturnType<typeof base>, clientId: string,
+  bien: { id: string; titre?: string | null; ville?: string | null; quartier?: string | null; photos?: string[] | null; prix_acquereur?: number | null; prix_vendeur?: number | null },
+  issue: Issue, motifs: string[], mot: string | null, prix: number | null, dateVisite: string | null,
+) {
+  const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
+  if (!apiKey || !apiSecret) return;
+  if (!(await alerteMailActive(supabase, issue === 'offre' ? 'visite_offre' : 'visite_avis'))) return;
+  const { data: client } = await supabase.from('clients').select('id, prenom, nom').eq('id', clientId).maybeSingle();
+  const nom = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() : 'Un client';
+  const echappe = (t: string) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const crm = process.env.NEXT_PUBLIC_CRM_URL || 'https://crm.emilio-immo.com';
+  const lien = `${crm}/?page=fiche&client=${encodeURIComponent(clientId)}`;
+  const titre = bien.titre || 'un bien';
+  const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
+  const prixBien = bien.prix_acquereur || bien.prix_vendeur;
+  const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
+  const euros = (n: number) => `${Number(n).toLocaleString('fr-FR')} €`;
+  const quand = dateVisite ? new Date(`${String(dateVisite).slice(0, 10)}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const phrase = {
+    offre: `${nom} veut faire une offre`,
+    revoir: `${nom} veut revoir ce bien`,
+    reflexion: `${nom} réfléchit`,
+    non: `${nom} : pas pour lui`,
+  }[issue];
+  const ensuite = {
+    offre: 'Une relance t’attend en tête de tes Relances, pour l’appeler et préparer l’offre avec lui.',
+    revoir: 'Une relance du jour t’attend dans tes Relances, pour caler la 2e visite.',
+    reflexion: 'Une relance est posée dans 3 jours, pour faire le point avec lui.',
+    non: 'Ses raisons rejoignent « Ce que ses visites ont appris », dans l’onglet Visites de sa fiche.',
+  }[issue];
+  const lignes = [
+    prix ? `<div style="margin-top:6px;font-size:15px;color:#1a2332"><b>Son prix en tête :</b> ${euros(prix)}</div>` : '',
+    motifs.length ? `<div style="margin-top:8px">${motifs.map(m => `<span style="display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border-radius:99px;background:${ISSUES[issue].fond};color:${ISSUES[issue].couleur};font-size:13px;font-weight:700">${echappe(m)}</span>`).join('')}</div>` : '',
+    mot ? `<div style="margin-top:8px;font-size:14px;line-height:1.6;color:#1a2332;background:#f8fafc;border-radius:10px;padding:10px 12px">« ${echappe(mot)} »</div>` : '',
+  ].join('');
+  const html = `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
+  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
+    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO · CRM</div>
+    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">${ISSUES[issue].e} ${echappe(phrase)}</div>
+  </div>
+  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
+    <div style="font-size:13px;color:#64748b">Après sa visite${quand ? ` du ${echappe(quand)}` : ''}, depuis son espace :</div>
+    <div style="border:1px solid #e3e8f0;border-radius:12px;overflow:hidden;background:#f8fafc;margin-top:10px">
+      ${photo ? `<img src="${echappe(photo)}" alt="" width="514" style="width:100%;max-width:514px;height:auto;display:block;border:0" />` : ''}
+      <div style="padding:14px 16px">
+        <div style="font-weight:700;font-size:15px;color:#1a2332">${echappe(titre)}</div>
+        ${lieu ? `<div style="color:#64748b;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
+        ${prixBien ? `<div style="font-weight:800;font-size:17px;color:#1a2332;margin-top:8px">${euros(prixBien)}</div>` : ''}
+      </div>
+    </div>
+    ${lignes}
+    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
+    <div style="margin-top:14px;font-size:12px;color:#94a3b8">${echappe(ensuite)}</div>
+  </div>
+</div>`;
+  const texte = [
+    `${phrase} : ${titre}${lieu ? ` (${lieu})` : ''}${prixBien ? ` — ${euros(prixBien)}` : ''}.`,
+    prix ? `Son prix en tête : ${euros(prix)}.` : '',
+    motifs.length ? `Raisons : ${motifs.join(', ')}.` : '',
+    mot ? `Son mot : « ${mot} »` : '',
+    `Ouvrir sa fiche : ${lien}`,
+    ensuite,
+  ].filter(Boolean).join('\n\n');
+  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+  const r = await fetch('https://api.mailjet.com/v3.1/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({
+      Messages: [{
+        From: { Email: FROM_EMAIL, Name: 'Emilio · CRM' },
+        To: [{ Email: process.env.ALERTES_EMAIL || FROM_EMAIL }],
+        Subject: `${ISSUES[issue].e} ${phrase} · ${titre}`,
+        TextPart: texte,
+        HTMLPart: html,
+        CustomID: `apres-visite-${issue}-${bien.id}-${Date.now()}`,
+        TrackOpens: 'disabled', TrackClicks: 'disabled',
+      }],
+    }),
+  });
+  if (!r.ok) console.error('[espace/visite] mail', r.status, await r.text().catch(() => ''));
 }
 
 /* ── Ce que le client a changé dans ses critères, avant → après ─────────
@@ -302,6 +390,91 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           .eq('type', 'fiche').gte('created_at', ilYA30min).limit(1).maybeSingle();
         if (!dejaVu) await evt('fiche', bien.titre || null, bien.id);
         return NextResponse.json({ ok: true });
+      }
+
+      /* ── son avis après une visite ──────────────────────────── */
+      case 'visite': {
+        const issue: Issue | null = estIssue(body.issue) ? body.issue : null;
+        if (!issue) return NextResponse.json({ ok: false, error: 'issue inconnue' }, { status: 400 });
+        const vid = typeof body.visite_id === 'string' ? body.visite_id : '';
+        if (!vid) return NextResponse.json({ ok: false, error: 'visite inconnue' }, { status: 404 });
+        const { data: v, error: eLu } = await supabase.from('visites').select('*')
+          .eq('id', vid).eq('recherche_id', recherche.id).maybeSingle();
+        if (eLu) {
+          console.error('[espace/visite] lecture', eLu.message);
+          return NextResponse.json({ ok: false, error: 'lecture' }, { status: 500 });
+        }
+        if (!v || v.statut === 'annulee') return NextResponse.json({ ok: false, error: 'visite inconnue' }, { status: 404 });
+        /* Pas d'avis sur une visite qui n'a pas encore eu lieu. */
+        if (v.statut !== 'effectuee' && !visitePasseeParis(v)) {
+          return NextResponse.json({ ok: false, error: 'pas encore' }, { status: 409 });
+        }
+        /* Comme pour les autres avis : une fois donné, il ne se réécrit pas
+           d'ici. Il le dit à son conseiller, qui corrige dans le compte rendu. */
+        if (v.avis_client_le || issueDe(v)) return NextResponse.json({ ok: false, error: 'deja' }, { status: 409 });
+
+        const bien = await bienDeLaRecherche(v.bien_id);
+        if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
+
+        const motifs = raisonsValides(issue, body.motifs);
+        const mot = nettoie(body.mot, 500) || null;
+        const p = Number(body.prix);
+        const prix = issue === 'offre' && Number.isFinite(p) && p >= 10_000 && p <= 50_000_000 ? Math.round(p) : null;
+        const le = new Date().toISOString();
+
+        const { error: eVis } = await supabase.from('visites').update({
+          issue, issue_par: 'client', issue_le: le, motifs, mot_client: mot,
+          avis_client_le: le, prix_envisage: prix,
+        }).eq('id', v.id);
+        if (eVis) {
+          console.error('[espace/visite] écriture', eVis.message);
+          return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
+        }
+
+        /* Le bien suit : « non » le sort des mails et le range dans « Pas
+           pour lui » ; sa réponse devient le retour lu dans Présentés. */
+        const { data: avant } = await supabase.from('biens').select('badge_retour').eq('id', bien.id).maybeSingle();
+        const e = ISSUES[issue];
+        const detail = [prix ? `autour de ${prix.toLocaleString('fr-FR')} €` : '', motifs.join(' · ')].filter(Boolean).join(' · ');
+        const retour = [e.crm, detail].filter(Boolean).join(' · ') + (mot ? ` — ${mot}` : '');
+        const { error: eBien } = await supabase.from('biens').update({
+          badge_retour: badgeApresVisite(issue, avant?.badge_retour), retour_client: retour.slice(0, 600),
+          retour_le: le, retour_par: 'client',
+        }).eq('id', bien.id);
+        if (eBien) console.error('[espace/visite] bien', eBien.message);
+
+        const { error: eJ } = await supabase.from('journal').insert({
+          client_id: recherche.client_id, bien_id: bien.id, recherche_id: recherche.id,
+          type: 'retour_client', titre: `${e.e} ${e.crm} — après la visite, depuis son espace`,
+          description: [detail, mot].filter(Boolean).join(' — ') || null,
+          metadata: { visite_id: v.id, issue, motifs, prix },
+        });
+        if (eJ) console.error('[espace/visite] journal', eJ.message);
+
+        await supabase.from('relances').update({ statut: 'cloturee' })
+          .eq('client_id', recherche.client_id).eq('recherche_id', recherche.id)
+          .eq('type', 'auto').eq('statut', 'en_attente');
+
+        /* La relance : tout de suite pour une offre ou une 2e visite, à J+3
+           quand il réfléchit, aucune quand ce n'est pas pour lui. Les notes
+           commencent par ces mots exacts : la page Relances et l'ouverture de
+           la fiche (src/lib/intentions.ts) s'y reconnaissent. */
+        const tete = { offre: 'Veut faire une offre', revoir: 'Veut revoir', reflexion: 'Il réfléchit', non: '' }[issue];
+        if (tete) {
+          const echeance = new Date();
+          if (issue === 'reflexion') { echeance.setUTCDate(echeance.getUTCDate() + 3); echeance.setUTCHours(8, 0, 0, 0); }
+          const { error: eR } = await supabase.from('relances').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id,
+            type: 'rappel_client', statut: 'en_attente', date_echeance: echeance.toISOString(),
+            note: `${tete} — ${bien.titre || 'un bien'}${detail ? ` · ${detail}` : ''}${mot ? ` · ${mot}` : ''}`.slice(0, 600),
+          });
+          if (eR) console.error('[espace/visite] relance', eR.message);
+        }
+        try { await prevenirApresVisite(supabase, recherche.client_id, bien, issue, motifs, mot, prix, v.date_visite || null); }
+        catch (err) { console.error('[espace/visite] mail', err); }
+
+        await evt('avis_visite', `${e.e} ${e.crm}${detail ? ' · ' + detail : ''}${mot ? ' — ' + mot : ''}`, bien.id);
+        return NextResponse.json({ ok: true, issue, le });
       }
 
       /* ── son avis sur un bien ───────────────────────────────── */
