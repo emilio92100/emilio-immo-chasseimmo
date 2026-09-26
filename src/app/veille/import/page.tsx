@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { apprisDe } from '@/lib/visites';
 
 /**
  * Page d'import de la veille — /veille/import
@@ -84,7 +85,7 @@ export default function PageImportVeille() {
 
       const resultat = [];
       for (const r of recherches || []) {
-        const [biens, props, passages, journal] = await Promise.all([
+        const [biens, props, passages, journal, visitesR] = await Promise.all([
           lire('biens',
             'url, yanport_id, titre, prix_vendeur, surface, ville, etape',
             'url, titre, prix_vendeur, surface', r.id),
@@ -107,6 +108,10 @@ export default function PageImportVeille() {
             .eq('type', 'criteres_modifies')
             .order('created_at', { ascending: false })
             .limit(20),
+          /* Ce que ses visites ont appris : les issues et leurs raisons. Avant
+             le SQL des issues (outils/sql/visites-issue.sql), on se rabat sur
+             l'avis du compte rendu, qui ne porte pas de raisons. */
+          lire('visites', 'statut, issue, avis_client, motifs, aime, retenir', 'statut, avis_client', r.id),
         ]);
 
         const dernier = passages.data?.[0] || null;
@@ -159,6 +164,13 @@ export default function PageImportVeille() {
           criteres_modifies_le: r.updated_at || null,
           criteres_bouges_depuis: !!depuis && !!r.updated_at && r.updated_at > depuis,
           changements_criteres: changements,
+
+          /* ── ce que ses visites ont appris ──
+             « eviter » : les raisons des visites non abouties, avec le nombre
+             de visites où elles reviennent ; « aime » : ce qui lui a plu. Les
+             lignes retirées par Alexandre n'y sont plus. C'est la synthèse du
+             bloc « Ce que ses visites ont appris » de l'onglet Visites. */
+          appris_visites: apprisDe(visitesR as any[], (r as any).appris_masques || []),
         });
       }
       return { ok: true, recherches: resultat };
