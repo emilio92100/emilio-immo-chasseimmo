@@ -12,13 +12,16 @@ import type { NextRequest } from 'next/server';
  *  - /bien/...                     (fiches publiques envoyées aux clients)
  *  - /espace/...                   (l'espace acheteur, protégé par son propre lien)
  *  - /api/espace/...               (ce que cet espace écrit : chaque route vérifie le lien)
+ *  - /api/point-auto/envoi         (l'envoi quotidien, appelé par Vercel : protégé par CRON_SECRET)
  *  - les fichiers statiques
  */
 
 const COOKIE = 'emilio_acces';
 
 // Chemins accessibles sans code
-const PUBLIC_PATHS = ['/login', '/api/login'];
+/* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
+   Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
+const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi'];
 const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/'];
 
 async function sha256(texte: string): Promise<string> {
