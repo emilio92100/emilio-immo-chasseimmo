@@ -73,6 +73,23 @@ export default function PageImportVeille() {
 
       if (error) return { ok: false, error: error.message };
 
+      /* Deux verrous, pas un. La veille ne cherche que pour un client au
+         statut « Actif », ET sur une recherche en marche. Le drapeau
+         `active` de la recherche ne suffisait pas : certains boutons de la
+         fiche le mettaient en marche sans regarder le statut, et des dossiers
+         suspendus avant la synchronisation statut ↔ veille l'avaient gardé
+         allumé. Un Prospect ou un Suspendu était alors cherché sans que rien
+         ne le montre. Ceux qu'on écarte ici sont rendus à part, pour que le
+         compte rendu puisse les nommer. */
+      const aChercher = (recherches || []).filter((r: any) => r.clients?.statut === 'actif');
+      const horsActifs = (recherches || [])
+        .filter((r: any) => r.clients?.statut !== 'actif')
+        .map((r: any) => ({
+          recherche_id: r.id, recherche: r.nom || null,
+          client: [r.clients?.prenom, r.clients?.nom].filter(Boolean).join(' ') || null,
+          statut: r.clients?.statut || null,
+        }));
+
       /* `yanport_id` est récent : si la colonne manque encore sur une table, on
          se rabat sur l'ancien jeu de colonnes plutôt que de casser la lecture
          — sans elle, aucune veille ne peut démarrer. */
@@ -84,7 +101,7 @@ export default function PageImportVeille() {
       };
 
       const resultat = [];
-      for (const r of recherches || []) {
+      for (const r of aChercher) {
         const [biens, props, passages, journal, visitesR] = await Promise.all([
           lire('biens',
             'url, yanport_id, titre, prix_vendeur, surface, ville, etape',
@@ -173,7 +190,7 @@ export default function PageImportVeille() {
           appris_visites: apprisDe(visitesR as any[], (r as any).appris_masques || []),
         });
       }
-      return { ok: true, recherches: resultat };
+      return { ok: true, recherches: resultat, hors_actifs: horsActifs };
     }
 
     // ─── Écriture : dépôt des propositions ───
@@ -476,10 +493,12 @@ export default function PageImportVeille() {
     setPret(true);
 
     // Petit état des lieux à l'ouverture
+    /* Le même compte que la veille : recherche en marche ET client Actif. */
     supabase
       .from('recherches')
-      .select('id', { count: 'exact', head: true })
+      .select('id, clients!inner(statut)', { count: 'exact', head: true })
       .eq('active', true)
+      .eq('clients.statut', 'actif')
       .then(({ count }) => setRecherchesActives(count ?? 0));
 
     return () => {
