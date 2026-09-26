@@ -3353,47 +3353,85 @@ Emilio Immobilier
               </div>
             )}
 
-            {/* Section À venir */}
-            {visites.filter(v => v.statut === 'a_venir').length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }}></span>
-                  À venir — {visites.filter(v => v.statut === 'a_venir').length}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {visites.filter(v => v.statut === 'a_venir').map(v => {
-                    const b = biens.find(x => x.id === v.bien_id);
-                    return (
-                      <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: '3px solid #3b82f6' }}>
-                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                          <div style={{ background: '#1a2332', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
-                            {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>—</div>}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
-                            {v.heure && <div style={{ fontSize: 14, color: '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
-                            {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>📞 {v.contact_agence}</div>}
-                            {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8 }}>📝 {v.commentaire}</div>}
-                          </div>
-                          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', flexShrink: 0 }}>📅 À venir</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
-                          <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
-                          <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
-                          <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
-                          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>✓ Effectuée</button>
-                          <button className={styles.btn} onClick={() => annulerVisite(v)}
-                            style={{ color: '#dc2626', borderColor: '#fecaca' }}
-                            title="La visite ne se fera pas : elle sort de l'agenda et de l'espace du client">
-                            ✕ Annuler
-                          </button>
-                        </div>
+            {/* Sections « Compte rendu à faire » et « À venir ».
+                Une visite dont l'heure est passée n'est plus « à venir » : elle
+                attend son compte rendu. Avant, elle restait ici sous « 📅 À
+                venir », sans rien qui la signale, alors que l'espace du client
+                la considère déjà comme faite. Sans heure, elle compte jusqu'au
+                soir, comme sur la page Visites et dans l'agenda. */}
+            {(() => {
+              const maintenant = new Date();
+              const passee = (v: any) => {
+                if (!v.date_visite) return false;
+                const d = new Date(`${String(v.date_visite).slice(0, 10)}T${v.heure ? String(v.heure).slice(0, 5) : '23:59'}:00`);
+                return !isNaN(d.getTime()) && d < maintenant;
+              };
+              const aVenir = visites.filter(v => v.statut === 'a_venir');
+              const aFaire = aVenir.filter(passee);
+              const prochaines = aVenir.filter(v => !passee(v));
+              const carte = (v: any, enRetard: boolean) => {
+                const b = biens.find(x => x.id === v.bien_id);
+                const ton = enRetard ? '#d97706' : '#3b82f6';
+                return (
+                  <div key={v.id} className={`${styles.card} fc-visite`} style={{ padding: 18, borderLeft: `3px solid ${ton}` }}>
+                    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                      <div style={{ background: enRetard ? '#fffbeb' : '#1a2332', border: enRetard ? '1px solid #fde68a' : 'none', borderRadius: 12, padding: '7px 11px', textAlign: 'center', minWidth: 50, flexShrink: 0 }}>
+                        {v.date_visite ? <><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 20, color: enRetard ? '#92400e' : 'white', lineHeight: 1 }}>{new Date(v.date_visite).getDate()}</div><div style={{ fontSize: 9, color: enRetard ? '#d97706' : 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>{new Date(v.date_visite).toLocaleDateString('fr-FR', { month: 'short' })}</div></> : <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>—</div>}
                       </div>
-                    );
-                  })}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b?.titre || b?.ville || 'Bien non renseigné'}</div>
+                        {v.heure && <div style={{ fontSize: 14, color: enRetard ? '#64748b' : '#c9a84c', fontWeight: 600, marginTop: 3 }}>{v.heure}</div>}
+                        {v.contact_agence && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>📞 {v.contact_agence}</div>}
+                        {v.commentaire && <div style={{ fontSize: 13, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '7px 11px', marginTop: 8 }}>📝 {v.commentaire}</div>}
+                      </div>
+                      {enRetard
+                        ? <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 700, background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', flexShrink: 0 }}>📝 Compte rendu à faire</span>
+                        : <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', flexShrink: 0 }}>📅 À venir</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
+                      <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); load(); }} />
+                      <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); }} />
+                      <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); }} />
+                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => marquerEffectuee(v.id, v.bien_id)}>{enRetard ? '📝 Faire le compte rendu' : '✓ Effectuée'}</button>
+                      <button className={styles.btn} onClick={() => annulerVisite(v)}
+                        style={{ color: '#dc2626', borderColor: '#fecaca' }}
+                        title="La visite ne se fera pas : elle sort de l'agenda et de l'espace du client">
+                        ✕ Annuler
+                      </button>
+                    </div>
+                  </div>
+                );
+              };
+              const titre = (ton: string, texte: string) => (
+                <div style={{ fontSize: 11, fontWeight: 800, color: ton, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: ton, display: 'inline-block' }}></span>
+                  {texte}
                 </div>
-              </div>
-            )}
+              );
+              return (
+                <>
+                  {aFaire.length > 0 && (
+                    <div>
+                      {titre('#d97706', `Compte rendu à faire — ${aFaire.length}`)}
+                      <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginBottom: 10, lineHeight: 1.45 }}>
+                        {'La date est passée : le client voit déjà ce bien dans « Visités ». Ton compte rendu s’affiche sur sa fiche, et la veille le relit avant chaque recherche. Visite repoussée : change la date. Pas faite : Annuler.'}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {aFaire.map(v => carte(v, true))}
+                      </div>
+                    </div>
+                  )}
+                  {prochaines.length > 0 && (
+                    <div>
+                      {titre('#3b82f6', `À venir — ${prochaines.length}`)}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {prochaines.map(v => carte(v, false))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Section Effectuées */}
             {visites.filter(v => v.statut === 'effectuee').length > 0 && (
