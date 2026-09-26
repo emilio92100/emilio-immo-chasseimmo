@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Page.module.css';
+import ParamPointAuto from './ParamPointAuto';
 
 export default function PageParametres() {
   const [params, setParams] = useState<Record<string, string>>({});
@@ -22,6 +23,9 @@ export default function PageParametres() {
   async function save() {
     setSaving(true);
     for (const [cle, valeur] of Object.entries(params)) {
+      /* Le point automatique s'enregistre tout seul, à chaque clic : on ne le
+         réécrit pas ici avec les valeurs lues à l'ouverture de la page. */
+      if (cle.startsWith('point_auto_')) continue;
       await supabase.from('parametres').upsert({ cle, valeur, updated_at: new Date().toISOString() }, { onConflict: 'cle' });
     }
     setSaving(false); setSaved(true);
@@ -32,6 +36,7 @@ export default function PageParametres() {
     { id: 'agence', label: '🏢 Agence', icon: '🏢' },
     { id: 'emails', label: '✉️ Templates email', icon: '✉️' },
     { id: 'sms', label: '📱 SMS & Relances', icon: '📱' },
+    { id: 'point', label: '📨 Point automatique', icon: '📨' },
     { id: 'securite', label: '🔒 Sécurité', icon: '🔒' },
   ];
 
@@ -142,6 +147,9 @@ export default function PageParametres() {
               </div>
             </div>
           )}
+
+          {/* POINT AUTOMATIQUE — « Où en est votre recherche ? » */}
+          {activeSection === 'point' && <ParamPointAuto />}
 
           {/* SÉCURITÉ */}
           {activeSection === 'securite' && (
