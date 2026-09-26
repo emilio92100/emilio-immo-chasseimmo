@@ -7,7 +7,7 @@ import {
   aRevoir, ecarts, etatCarte, formeCourte, lignesMandataire, lireHistorique, lireIdentite, phraseFonds,
   type Bloc, type Champ, type Fonds, type IdentiteAgence, type Modif,
 } from '@/lib/agence';
-import { BAREME, HONORAIRES_TAUX, tauxTexte } from '@/lib/mandat';
+import { BAREME, BAREME_VENTE, HONORAIRES_TAUX, tauxTexte } from '@/lib/mandat';
 
 /* ═══ Paramètres · Agence ═════════════════════════════════════════════════
    L'identité de l'agence que les documents impriment (src/lib/agence.ts).
@@ -286,20 +286,21 @@ export default function ParamAgence() {
 
       {/* Les honoraires : lus ici, réglés client par client */}
       <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 22 }}>
-        <TeteBloc e="💶" titre="Honoraires" sert="Ton barème et le taux que le mandat de recherche propose quand tu ne choisis rien." />
+        <TeteBloc e="💶" titre="Honoraires" sert="Ce que chaque type de mandat propose, et jusqu’où tu peux aller." />
         <div className={styles.param2} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
-            ['Barème, donc le maximum', `${tauxTexte(BAREME)} du prix`],
-            ['Proposé par défaut', `${tauxTexte(HONORAIRES_TAUX)} du prix`],
-          ].map(([t, v]) => (
+            ['Mandat de recherche', `${tauxTexte(HONORAIRES_TAUX)} du prix`, `Proposé par défaut · tu peux aller jusqu’à ${tauxTexte(BAREME)}`],
+            ['Mandat de vente', `${tauxTexte(BAREME_VENTE)} du prix`, 'Pour les mandats de vente, à venir'],
+          ].map(([t, v, d]) => (
             <div key={t} style={{ background: '#f8fafc', border: `1px solid ${TRAIT}`, borderRadius: 11, padding: '10px 12px' }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: GRIS_CLAIR, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t}</div>
               <div style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginTop: 3 }}>{v}</div>
+              <div style={{ fontSize: 12, color: GRIS, marginTop: 2 }}>{d}</div>
             </div>
           ))}
         </div>
         <div style={{ fontSize: 12.5, color: GRIS, lineHeight: 1.55, marginTop: 10 }}>
-          {'Pour un client, tu proposes un autre taux ou un forfait depuis sa fiche (bloc Mandat), jamais au-dessus du barème. Le barème lui-même se réglera ici avec les mandats de vente : il change le calcul du prix maximum de chaque mandat.'}
+          {'Pour un acheteur, tu choisis le taux ou un forfait depuis sa fiche (bouton Mandat). Ces valeurs deviendront modifiables ici avec les mandats de vente : elles entrent dans le calcul du prix maximum de chaque mandat.'}
         </div>
       </div>
 
