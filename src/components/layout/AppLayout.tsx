@@ -12,6 +12,7 @@ import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
 import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
+import RappelCarte from '@/components/layout/RappelCarte';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
@@ -196,6 +197,8 @@ export default function AppLayout() {
       <div className={styles.mainArea} ref={zoneBarre}>
         <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={() => setMenuReduit(r => !r)} />
         <main className={styles.content} ref={contenu}>
+          {/* La carte professionnelle à renouveler (Paramètres › Agence). */}
+          <RappelCarte page={activePage} onNavigate={handleNavigate} />
           <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
             {renderPage()}
           </div>
