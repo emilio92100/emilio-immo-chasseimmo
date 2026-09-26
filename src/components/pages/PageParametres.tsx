@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Page.module.css';
 import ParamPointAuto from './ParamPointAuto';
+import ParamAlertes from './ParamAlertes';
 
 export default function PageParametres() {
   const [params, setParams] = useState<Record<string, string>>({});
@@ -23,9 +24,10 @@ export default function PageParametres() {
   async function save() {
     setSaving(true);
     for (const [cle, valeur] of Object.entries(params)) {
-      /* Le point automatique s'enregistre tout seul, à chaque clic : on ne le
-         réécrit pas ici avec les valeurs lues à l'ouverture de la page. */
-      if (cle.startsWith('point_auto_')) continue;
+      /* Le point automatique et les alertes mail s'enregistrent tout seuls, à
+         chaque clic : on ne les réécrit pas ici avec les valeurs lues à
+         l'ouverture de la page. */
+      if (cle.startsWith('point_auto_') || cle === 'alertes_mail') continue;
       await supabase.from('parametres').upsert({ cle, valeur, updated_at: new Date().toISOString() }, { onConflict: 'cle' });
     }
     setSaving(false); setSaved(true);
@@ -37,6 +39,7 @@ export default function PageParametres() {
     { id: 'emails', label: '✉️ Templates email', icon: '✉️' },
     { id: 'sms', label: '📱 SMS & Relances', icon: '📱' },
     { id: 'point', label: '📨 Point automatique', icon: '📨' },
+    { id: 'alertes', label: '🔔 Alertes mail', icon: '🔔' },
     { id: 'securite', label: '🔒 Sécurité', icon: '🔒' },
   ];
 
@@ -150,6 +153,9 @@ export default function PageParametres() {
 
           {/* POINT AUTOMATIQUE — « Où en est votre recherche ? » */}
           {activeSection === 'point' && <ParamPointAuto />}
+
+          {/* ALERTES MAIL — les mails « Emilio · CRM » qu'Alexandre reçoit */}
+          {activeSection === 'alertes' && <ParamAlertes />}
 
           {/* SÉCURITÉ */}
           {activeSection === 'securite' && (
