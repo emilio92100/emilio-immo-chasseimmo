@@ -4,9 +4,18 @@ import { supabase } from '@/lib/supabase';
 import styles from './Page.module.css';
 import ParamPointAuto from './ParamPointAuto';
 import ParamAlertes from './ParamAlertes';
+import ParamAgence from './ParamAgence';
+
+/* Les rubriques qui s'enregistrent seules, avec leur propre bouton ou à
+   chaque clic : le « Sauvegarder tout » n'y est pas affiché. */
+const AUTONOMES = ['agence', 'point', 'alertes'];
 
 export default function PageParametres() {
   const [params, setParams] = useState<Record<string, string>>({});
+  /* Seules les clés modifiées sur cette page repartent : réécrire toutes les
+     valeurs lues à l'ouverture écrasait ce qui avait changé entre-temps
+     (l'identité de l'agence, la réserve de numéros de mandat…). */
+  const [modifiees, setModifiees] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeSection, setActiveSection] = useState('agence');
@@ -19,18 +28,21 @@ export default function PageParametres() {
     });
   }, []);
 
-  const set = (k: string, v: string) => setParams(prev => ({ ...prev, [k]: v }));
+  const set = (k: string, v: string) => {
+    setParams(prev => ({ ...prev, [k]: v }));
+    setModifiees(prev => new Set(prev).add(k));
+  };
 
   async function save() {
+    const cles = Array.from(modifiees);
+    if (!cles.length) { setSaved(true); setTimeout(() => setSaved(false), 2500); return; }
     setSaving(true);
-    for (const [cle, valeur] of Object.entries(params)) {
-      /* Le point automatique et les alertes mail s'enregistrent tout seuls, à
-         chaque clic : on ne les réécrit pas ici avec les valeurs lues à
-         l'ouverture de la page. */
-      if (cle.startsWith('point_auto_') || cle === 'alertes_mail') continue;
-      await supabase.from('parametres').upsert({ cle, valeur, updated_at: new Date().toISOString() }, { onConflict: 'cle' });
-    }
-    setSaving(false); setSaved(true);
+    const le = new Date().toISOString();
+    const { error } = await supabase.from('parametres')
+      .upsert(cles.map(cle => ({ cle, valeur: params[cle] ?? '', updated_at: le })), { onConflict: 'cle' });
+    setSaving(false);
+    if (error) { alert("Les paramètres n'ont pas pu être enregistrés.\n\n" + error.message); return; }
+    setModifiees(new Set()); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
 
@@ -50,12 +62,14 @@ export default function PageParametres() {
           <h1 className={styles.title}>Paramètres</h1>
           <p className={styles.sub}>Configuration de votre outil Emilio Immobilier</p>
         </div>
-        <button
-          className={`${styles.btn} ${styles.btnDark}`}
-          onClick={save} disabled={saving}
-          style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {saving ? '⏳ Sauvegarde...' : saved ? '✅ Sauvegardé !' : '💾 Sauvegarder tout'}
-        </button>
+        {!AUTONOMES.includes(activeSection) && (
+          <button
+            className={`${styles.btn} ${styles.btnDark}`}
+            onClick={save} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? '⏳ Sauvegarde...' : saved ? '✅ Sauvegardé !' : '💾 Sauvegarder tout'}
+          </button>
+        )}
       </div>
 
       <div className={styles.paramGrille} style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 20 }}>
@@ -71,44 +85,46 @@ export default function PageParametres() {
 
         {/* CONTENT */}
         <div>
-          {/* AGENCE */}
-          {activeSection === 'agence' && (
-            <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
-              <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 20 }}>🏢 Informations agence</div>
-              <div className={styles.param2} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div><label className={styles.label}>Nom de l'agence</label><input className={styles.input} value={params.agence_nom||''} onChange={e=>set('agence_nom',e.target.value)} /></div>
-                <div><label className={styles.label}>Email professionnel</label><input className={styles.input} type="email" value={params.conseiller_email||''} onChange={e=>set('conseiller_email',e.target.value)} /></div>
-                <div><label className={styles.label}>Prénom conseiller</label><input className={styles.input} value={params.conseiller_prenom||''} onChange={e=>set('conseiller_prenom',e.target.value)} /></div>
-                <div><label className={styles.label}>Nom conseiller</label><input className={styles.input} value={params.conseiller_nom||''} onChange={e=>set('conseiller_nom',e.target.value)} /></div>
-                <div><label className={styles.label}>Téléphone</label><input className={styles.input} value={params.conseiller_telephone||''} onChange={e=>set('conseiller_telephone',e.target.value)} /></div>
-                <div><label className={styles.label}>Site web (optionnel)</label><input className={styles.input} value={params.site_web||''} onChange={e=>set('site_web',e.target.value)} placeholder="https://..." /></div>
-              </div>
-              <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', borderRadius: 12, border: '1px solid #e3e8f0' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: '#1a2332', marginBottom: 4 }}>📋 Signature automatique</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Ajoutée automatiquement à la fin de chaque email envoyé</div>
-                <textarea className={styles.input} rows={4} value={params.signature_email||`Cordialement,\n${params.conseiller_prenom||'Alexandre'} ${params.conseiller_nom||'ROGELET'}\n${params.agence_nom||'Emilio Immobilier'}\n${params.conseiller_telephone||'06 58 95 76 32'}`}
-                  onChange={e=>set('signature_email',e.target.value)} />
-              </div>
-            </div>
-          )}
+          {/* AGENCE — l'identité que les documents impriment */}
+          {activeSection === 'agence' && <ParamAgence />}
 
           {/* TEMPLATES EMAIL */}
           {activeSection === 'emails' && (
-            <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
-              <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 6 }}>✉️ Templates email</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Variables disponibles : <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{prenom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{nom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{reference}}'}</code></div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>📄 Sélection de biens</div>
-                  <div><label className={styles.label}>Objet</label><input className={styles.input} value={params.template_email_objet||''} onChange={e=>set('template_email_objet',e.target.value)} /></div>
-                  <div style={{marginTop:10}}><label className={styles.label}>Corps</label><textarea className={styles.input} rows={6} value={params.template_email_corps||''} onChange={e=>set('template_email_corps',e.target.value)} /></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
+                <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 6 }}>✉️ Tes coordonnées dans les mails</div>
+                <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 18, lineHeight: 1.5 }}>{'Ce qui signe tes mails. L’identité de l’agence imprimée sur les documents est dans la rubrique Agence.'}</div>
+                <div className={styles.param2} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div><label className={styles.label}>Nom de l'agence</label><input className={styles.input} value={params.agence_nom||''} onChange={e=>set('agence_nom',e.target.value)} /></div>
+                  <div><label className={styles.label}>Email professionnel</label><input className={styles.input} type="email" value={params.conseiller_email||''} onChange={e=>set('conseiller_email',e.target.value)} /></div>
+                  <div><label className={styles.label}>Prénom conseiller</label><input className={styles.input} value={params.conseiller_prenom||''} onChange={e=>set('conseiller_prenom',e.target.value)} /></div>
+                  <div><label className={styles.label}>Nom conseiller</label><input className={styles.input} value={params.conseiller_nom||''} onChange={e=>set('conseiller_nom',e.target.value)} /></div>
+                  <div><label className={styles.label}>Téléphone</label><input className={styles.input} value={params.conseiller_telephone||''} onChange={e=>set('conseiller_telephone',e.target.value)} /></div>
+                  <div><label className={styles.label}>Site web (optionnel)</label><input className={styles.input} value={params.site_web||''} onChange={e=>set('site_web',e.target.value)} placeholder="https://..." /></div>
                 </div>
+                <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', borderRadius: 12, border: '1px solid #e3e8f0' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1a2332', marginBottom: 4 }}>📋 Signature automatique</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Ajoutée automatiquement à la fin de chaque email envoyé</div>
+                  <textarea className={styles.input} rows={4} value={params.signature_email||`Cordialement,\n${params.conseiller_prenom||'Alexandre'} ${params.conseiller_nom||'ROGELET'}\n${params.agence_nom||'Emilio Immobilier'}\n${params.conseiller_telephone||'06 58 95 76 32'}`}
+                    onChange={e=>set('signature_email',e.target.value)} />
+                </div>
+              </div>
+              <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
+                <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: '#1a2332', marginBottom: 6 }}>✉️ Templates email</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Variables disponibles : <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{prenom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{nom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{reference}}'}</code></div>
 
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>🔔 Email de relance J+5</div>
-                  <div><label className={styles.label}>Objet relance</label><input className={styles.input} value={params.template_relance_objet||`Avez-vous eu le temps de consulter ma sélection ?`} onChange={e=>set('template_relance_objet',e.target.value)} /></div>
-                  <div style={{marginTop:10}}><label className={styles.label}>Corps relance</label><textarea className={styles.input} rows={5} value={params.template_relance_corps||`Bonjour {{prenom}},\n\nJe me permets de revenir vers vous suite à ma sélection de biens.\nAvez-vous eu le temps de la consulter ?\n\nJe suis disponible pour en discuter ou organiser des visites.\n\nCordialement,\n{{conseiller}}`} onChange={e=>set('template_relance_corps',e.target.value)} /></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>📄 Sélection de biens</div>
+                    <div><label className={styles.label}>Objet</label><input className={styles.input} value={params.template_email_objet||''} onChange={e=>set('template_email_objet',e.target.value)} /></div>
+                    <div style={{marginTop:10}}><label className={styles.label}>Corps</label><textarea className={styles.input} rows={6} value={params.template_email_corps||''} onChange={e=>set('template_email_corps',e.target.value)} /></div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>🔔 Email de relance J+5</div>
+                    <div><label className={styles.label}>Objet relance</label><input className={styles.input} value={params.template_relance_objet||`Avez-vous eu le temps de consulter ma sélection ?`} onChange={e=>set('template_relance_objet',e.target.value)} /></div>
+                    <div style={{marginTop:10}}><label className={styles.label}>Corps relance</label><textarea className={styles.input} rows={5} value={params.template_relance_corps||`Bonjour {{prenom}},\n\nJe me permets de revenir vers vous suite à ma sélection de biens.\nAvez-vous eu le temps de la consulter ?\n\nJe suis disponible pour en discuter ou organiser des visites.\n\nCordialement,\n{{conseiller}}`} onChange={e=>set('template_relance_corps',e.target.value)} /></div>
+                  </div>
                 </div>
               </div>
             </div>
