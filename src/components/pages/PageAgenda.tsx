@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
-import { prendreDemandeRendezVous } from '@/lib/intentions';
+import { prendreDemandeRendezVous, signalerMaj, EVT_NOUVEAU_RDV, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
 
@@ -330,6 +330,12 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     setChargement(false);
   }, []);
   useEffect(() => { charger(); }, [charger]);
+  /* Un rendez-vous créé d'ailleurs (barre du haut, « + » du téléphone) : si
+     l'agenda est à l'écran, il se remet à jour tout seul. */
+  useEffect(() => {
+    window.addEventListener(EVT_RDV_ENREGISTRE, charger);
+    return () => window.removeEventListener(EVT_RDV_ENREGISTRE, charger);
+  }, [charger]);
   useEffect(() => {
     if (chargement) return;
     /* Venu de la fiche d'un client (« Créer un rendez-vous ») : la fenêtre
@@ -346,20 +352,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     () => construire(brut.visites, brut.rdvs, brut.relances, brut.transactions, brut.recherches, clientsParId, maintenant),
     [brut, clientsParId, maintenant],
   );
-  const dossiers: Dossier[] = useMemo(() => {
-    const parClient: Record<string, number> = {};
-    brut.recherches.forEach(r => { parClient[r.client_id] = (parClient[r.client_id] || 0) + 1; });
-    return brut.recherches
-      .map(r => ({ r, c: clientsParId[r.client_id] }))
-      .filter(x => x.c && x.c.statut !== 'perdu')
-      .map(({ r, c }) => ({
-        rechercheId: r.id, clientId: c.id, nom: nomDe(c), prenom: c.prenom || nomDe(c),
-        emails: (c.emails || []).filter(Boolean),
-        libelle: parClient[c.id] > 1 ? `${nomDe(c)} — ${r.nom || 'Recherche'}` : nomDe(c),
-        recherche: nommerRecherche(r, 1), resume: resumerRecherche(r), plusieurs: parClient[c.id] > 1, cree: String(r.created_at || ''),
-      }))
-      .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
-  }, [brut.recherches, clientsParId]);
+  const dossiers: Dossier[] = useMemo(() => dossiersDe(brut.recherches, clientsParId), [brut.recherches, clientsParId]);
 
   const visibles = evs.filter(e => !masques[e.type]);
   const auj = cleDe(maintenant);
@@ -502,6 +495,77 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 }
 
 /* ══ Les styles partagés (animations, survols, téléphone) ══════ */
+/* Les dossiers qu'on peut choisir dans la fenêtre « Nouveau rendez-vous » :
+   une ligne par recherche, les clients perdus en moins. Partagé par l'agenda
+   et par la fenêtre qu'on ouvre de n'importe où (NouveauRdvPartout). */
+function dossiersDe(recherches: any[], clientsParId: Record<string, any>): Dossier[] {
+  const parClient: Record<string, number> = {};
+  recherches.forEach(r => { parClient[r.client_id] = (parClient[r.client_id] || 0) + 1; });
+  return recherches
+    .map(r => ({ r, c: clientsParId[r.client_id] }))
+    .filter(x => x.c && x.c.statut !== 'perdu')
+    .map(({ r, c }) => ({
+      rechercheId: r.id, clientId: c.id, nom: nomDe(c), prenom: c.prenom || nomDe(c),
+      emails: (c.emails || []).filter(Boolean),
+      libelle: parClient[c.id] > 1 ? `${nomDe(c)} — ${r.nom || 'Recherche'}` : nomDe(c),
+      recherche: nommerRecherche(r, 1), resume: resumerRecherche(r), plusieurs: parClient[c.id] > 1, cree: String(r.created_at || ''),
+    }))
+    .sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
+}
+
+/* ── « Nouveau rendez-vous », de n'importe quel écran ──
+   La même fenêtre que dans l'agenda (ModaleRdv), posée par-dessus l'écran en
+   cours : pas besoin d'aller dans l'agenda pour noter un rendez-vous. Elle
+   est montée une seule fois, dans AppLayout, et s'ouvre sur l'événement
+   EVT_NOUVEAU_RDV (voir lib/intentions). À l'ouverture, elle charge ce que
+   la fenêtre de l'agenda reçoit : les dossiers, les relances, et l'agenda
+   lui-même pour signaler un chevauchement. */
+export function NouveauRdvPartout() {
+  const [creneau, setCreneau] = useState<{ jour: string; heure: string } | null>(null);
+  const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[] } | null>(null);
+  const [tableAbsente, setTableAbsente] = useState(false);
+
+  useEffect(() => {
+    let vivant = true;
+    const ouvrir = async () => {
+      const [v, r, rel, tx, rech, cl] = await Promise.all([
+        supabase.from('visites').select('*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
+        supabase.from('rendez_vous').select('*'),
+        supabase.from('relances').select('*').eq('statut', 'en_attente'),
+        supabase.from('transactions').select('*'),
+        supabase.from('recherches').select('*'),
+        supabase.from('clients').select('id, prenom, nom, statut, emails'),
+      ]);
+      if (!vivant) return;
+      setTableAbsente(!!r.error);
+      setBrut({ visites: v.data || [], rdvs: r.data || [], relances: rel.data || [], transactions: tx.data || [], recherches: rech.data || [], clients: cl.data || [] });
+      /* Comme le bouton de l'agenda : aujourd'hui, à l'heure pleine suivante. */
+      const n = new Date(); const suiv = Math.min(20, Math.max(8, n.getHours() + 1));
+      setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00` });
+    };
+    window.addEventListener(EVT_NOUVEAU_RDV, ouvrir);
+    return () => { vivant = false; window.removeEventListener(EVT_NOUVEAU_RDV, ouvrir); };
+  }, []);
+
+  const clientsParId = useMemo(() => Object.fromEntries((brut?.clients || []).map(c => [c.id, c])), [brut]);
+  const evs = useMemo(() => (brut
+    ? construire(brut.visites, brut.rdvs, brut.relances, brut.transactions, brut.recherches, clientsParId, new Date()).evs
+    : []), [brut, clientsParId]);
+  const dossiers = useMemo(() => dossiersDe(brut?.recherches || [], clientsParId), [brut, clientsParId]);
+  const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure } : null), [creneau]);
+
+  if (!modale || !brut) return null;
+  return (
+    <>
+      <StylesAgenda />
+      <ModaleRdv key={`${modale.jour}-${modale.heure}-${brut.rdvs.length}`} modale={modale} dossiers={dossiers} relances={brut.relances}
+        tableAbsente={tableAbsente} evs={evs}
+        onFerme={() => setCreneau(null)}
+        onEnregistre={() => { setCreneau(null); signalerMaj(); window.dispatchEvent(new Event(EVT_RDV_ENREGISTRE)); }} />
+    </>
+  );
+}
+
 function StylesAgenda() {
   return (
     <style>{`

@@ -5,6 +5,7 @@ import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVis
 import { chargerDemandesVisite, type DemandeVisite } from '@/lib/demandes-visite';
 import { demanderOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import styles from './Page.module.css';
+import EnteteRubrique, { PictoVisites } from '@/components/shared/EnteteRubrique';
 
 /* Petite enveloppe dessinée pour le bouton de rappel. */
 function Enveloppe() {
@@ -158,6 +159,24 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   };
   const euros = (n: number) => n.toLocaleString('fr-FR').replace(/\u202f/g, '\u00a0') + '\u00a0€';
 
+  /* La phrase sous le titre : la prochaine visite, avec qui et quand. Elle ne
+     répète aucun chiffre des tuiles. Calculée sur toutes les visites, pas
+     seulement celles que la recherche laisse passer. */
+  const prochaineVisite = visites
+    .filter(v => v.statut === 'a_venir' && v.date_visite && !passee(v))
+    .sort((a, b) => quand(a).localeCompare(quand(b)))[0];
+  const phraseProchaine = (() => {
+    if (!prochaineVisite) return 'Aucune visite prévue pour l’instant';
+    const [a, m, j] = String(prochaineVisite.date_visite).slice(0, 10).split('-').map(Number);
+    const jourV = new Date(a, m - 1, j);
+    const auj = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
+    const ecart = Math.round((jourV.getTime() - auj.getTime()) / 86400000);
+    const date = ecart === 0 ? 'aujourd’hui' : ecart === 1 ? 'demain' : jourV.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const heure = prochaineVisite.heure ? ` à ${String(prochaineVisite.heure).slice(0, 5)}` : '';
+    const qui = [prochaineVisite.clients?.prenom, prochaineVisite.clients?.nom].filter(Boolean).join(' ');
+    return `Prochaine visite ${date}${heure}${qui ? ` avec ${qui}` : ''}`;
+  })();
+
   const formatDate = (d: string) => {
     const date = new Date(d);
     return {
@@ -170,44 +189,21 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Visites</h1>
-          <p className={styles.sub}>{`${demandes.length ? `${demandes.length} demande${demandes.length > 1 ? 's' : ''} de visite · ` : ''}${aVenir.length} à venir · ${effectuees.length} effectuée${effectuees.length > 1 ? 's' : ''}${aFaire.length ? ` · ${aFaire.length} compte${aFaire.length > 1 ? 's' : ''} rendu${aFaire.length > 1 ? 's' : ''} à faire` : ''}`}</p>
-        </div>
-      </div>
-
-      {(visites.length > 0 || demandes.length > 0) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ position: 'relative' }}>
-            <span style={{ position: 'absolute', left: 14, top: 12, color: '#94a3b8', pointerEvents: 'none' }}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7" /><path d="m20.5 20.5-4.7-4.7" /></svg>
-            </span>
-            <input value={cherche} onChange={e => setCherche(e.target.value)} placeholder="Chercher un bien ou un client…" aria-label="Chercher une visite"
-              style={{ width: '100%', boxSizing: 'border-box', height: 42, padding: '0 14px 0 40px', borderRadius: 12, border: '1.5px solid #e3e8f0', background: 'white', fontSize: 14, fontFamily: 'inherit', color: '#1a2332', outline: 'none' }} />
-          </div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {([
-              { id: 'tout', lib: 'Toutes', n: trouvees.length, c: '#1a2332' },
-              { id: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, c: '#ef4444' },
-              { id: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, c: '#b45309' },
-              { id: 'a_venir', lib: 'À venir', n: aVenir.length, c: '#3b82f6' },
-              { id: 'effectuees', lib: 'Effectuées', n: effectuees.length, c: '#10b981' },
-              { id: 'annulees', lib: 'Annulées', n: annulees.length, c: '#94a3b8' },
-            ] as const).filter(x => x.id !== 'demandes' || demandes.length > 0).map(x => {
-              const actif = filtre === x.id;
-              return (
-                <button key={x.id} type="button" onClick={() => setFiltre(x.id)} aria-pressed={actif}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 20, padding: '7px 13px', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${actif ? '#1a2332' : '#e3e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b' }}>
-                  {x.id !== 'tout' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: x.c }} />}
-                  {x.lib}
-                  <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '1px 7px', background: actif ? 'rgba(255,255,255,.18)' : '#f1f5f9', color: actif ? 'white' : '#94a3b8' }}>{x.n}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Le titre et ses chiffres dans un seul bloc : les chiffres sont les
+          filtres. La ligne grise « 0 à venir · 0 effectuée » a disparu, elle
+          disait en petit ce que les tuiles disent en grand. */}
+      <EnteteRubrique titre="Visites" icone={PictoVisites}
+        phrase={visites.length === 0 && demandes.length === 0 ? (loading ? undefined : 'Aucune visite pour l’instant') : phraseProchaine}
+        recherche={visites.length > 0 || demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un bien ou un client…', label: 'Chercher une visite' } : undefined}
+        label="Filtrer les visites" actif={filtre} onChoisir={(c: string) => setFiltre(c as typeof filtre)}
+        tuiles={visites.length === 0 && demandes.length === 0 ? [] : ([
+          { cle: 'tout', lib: 'Toutes', n: trouvees.length },
+          { cle: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, couleur: '#ef4444', alerte: true },
+          { cle: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, couleur: '#f59e0b', alerte: true },
+          { cle: 'a_venir', lib: 'À venir', n: aVenir.length, couleur: '#3b82f6' },
+          { cle: 'effectuees', lib: 'Effectuées', n: effectuees.length, couleur: '#10b981' },
+          { cle: 'annulees', lib: 'Annulées', n: annulees.length, couleur: '#94a3b8' },
+        ]).filter(x => x.cle !== 'demandes' || demandes.length > 0)} />
 
       {loading ? (
         <div className={styles.empty}><div className={styles.emptySub}>Chargement...</div></div>
