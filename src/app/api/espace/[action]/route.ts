@@ -873,14 +873,53 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           return NextResponse.json({ ok: false, error: 'déjà signalé' }, { status: 429 });
         }
 
-        /* On ne clôture rien ici. Un dossier se ferme après un appel, pas sur
-           un clic : c'est au chasseur de confirmer depuis sa fiche. */
         await supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'fin_recherche',
           titre: `🏁 Le client ${quoi}, depuis son espace`,
           description: mot || null, metadata: { motif },
         });
+
+        /* Il a dit lui-même qu'il ne cherche plus : la veille s'arrête tout de
+           suite et le dossier change de rubrique, sans attendre l'appel. Règle
+           d'Alexandre (27 septembre 2026) : ce n'est pas la peine de continuer
+           à lui chercher des biens. La relance, elle, reste : on l'appelle
+           quand même pour confirmer, et un clic dans la fiche le remet en
+           « Actif » si besoin (ce qui relance la veille).
+           Un dossier déjà clos (bien trouvé, perdu) ne change pas de rubrique.
+           `updated_at` n'est pas touché : c'est lui qui dit à l'espace si la
+           déclaration du client est toujours la dernière parole. */
+        const BASCULE: Record<string, { statut: string; nom: string; raison: string | null }> = {
+          trouve_avec_vous: { statut: 'bien_trouve', nom: 'Bien trouvé', raison: 'Trouvé avec moi' },
+          trouve_ailleurs: { statut: 'perdu', nom: 'Perdu', raison: 'Trouvé ailleurs' },
+          abandon: { statut: 'perdu', nom: 'Perdu', raison: 'A renoncé' },
+          pause: { statut: 'suspendu', nom: 'Suspendu', raison: null },
+        };
+        const cible = BASCULE[motif];
+        let bascule = '';
+        const { data: avant } = await supabase.from('clients')
+          .select('statut').eq('id', recherche.client_id).maybeSingle();
+        if (avant && avant.statut !== 'bien_trouve' && avant.statut !== 'perdu') {
+          const { error: eClient } = await supabase.from('clients')
+            .update(cible.raison
+              ? { statut: cible.statut, raison_perte: `${cible.raison} — déclaré par le client depuis son espace` }
+              : { statut: cible.statut })
+            .eq('id', recherche.client_id);
+          const { error: eVeille } = eClient ? { error: null } : await supabase.from('recherches')
+            .update({ active: false }).eq('client_id', recherche.client_id);
+          const echec = eClient || eVeille;
+          if (echec) {
+            bascule = ` ⚠️ Le dossier n'a pas pu changer de rubrique tout seul (${echec.message}) : à faire depuis la fiche.`;
+          } else {
+            bascule = ` Le dossier est passé en « ${cible.nom} » et la veille est arrêtée.`;
+            await supabase.from('journal').insert({
+              client_id: recherche.client_id, recherche_id: recherche.id,
+              type: 'statut_change',
+              titre: `Statut → ${cible.nom} (automatique)`,
+              description: `Le client ${quoi}, depuis son espace. La veille est arrêtée sur ce dossier.`,
+            });
+          }
+        }
 
         /* Il a trouvé et il est propriétaire avec une revente possible : c'est
            le moment de lui parler de son logement actuel. La relance le dit. */
@@ -895,7 +934,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente',
           date_echeance: new Date().toISOString(),
-          note: `Le client ${quoi} — à rappeler avant de clôturer.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
+          note: `Le client ${quoi}, depuis son espace.${bascule} À rappeler pour confirmer${motif === 'pause' ? ' et savoir quand reprendre' : ''}.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
         });
 
         /* Liste de types fermée côté espace_evenements : c'est un message. */
