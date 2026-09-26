@@ -148,27 +148,49 @@ export default async function PageEspace({ params, searchParams }: {
      l'écran ne se devine plus du badge : il vient d'ici, donc il est toujours
      d'accord avec l'agenda d'Alexandre.
        une visite calée et pas encore passée → « Visite à venir »
-       une visite faite                      → « Visite effectuée » + son compte rendu */
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+       une visite faite, ou dont l'heure est passée
+                                             → « Visite effectuée » + son compte rendu,
+                                               dès qu'Alexandre l'a écrit */
   const toutesVisites = visitesRes.data || [];
+
+  /* Une visite dont l'heure est passée a eu lieu, même si Alexandre n'a pas
+     encore écrit son compte rendu. Avant, elle sortait de « Visite à venir »
+     sans entrer dans « Visités » : le bien retombait dans « Je veux visiter »,
+     comme si personne ne l'avait vu, et la visite disparaissait de l'espace.
+     L'heure de référence est celle de Paris : le serveur, lui, tourne en UTC.
+     Sans heure, la visite compte jusqu'au soir (23 h 59), comme dans le CRM. */
+  const morceaux = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const maintenantParis = `${morceaux.year}-${morceaux.month}-${morceaux.day} ${morceaux.hour}:${morceaux.minute}`;
+  const estPassee = (v: { date_visite?: string | null; heure?: string | null }) => {
+    if (!v.date_visite) return false;
+    const h = /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '23:59';
+    return `${String(v.date_visite).slice(0, 10)} ${h}` < maintenantParis;
+  };
 
   const prevueParBien = new Map<string, { date: string; heure: string | null }>();
   toutesVisites
-    .filter((v) => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= aujourdhui)
+    .filter((v) => v.statut === 'a_venir' && v.date_visite && !estPassee(v))
     .forEach((v) => {
       if (!v.bien_id || prevueParBien.has(v.bien_id)) return;   // la plus proche d'abord
       prevueParBien.set(v.bien_id, { date: v.date_visite, heure: v.heure || null });
     });
 
+  /* Faite = marquée « effectuée » dans le CRM, ou calée à une heure déjà
+     passée. Dans le second cas, le compte rendu n'est pas encore écrit : la
+     fiche du client dit simplement que son conseiller lui fait un retour. */
   const faiteParBien = new Map<string, { date: string | null; commentaire: string | null; etoiles: number | null }>();
   toutesVisites
-    .filter((v) => v.statut === 'effectuee')
+    .filter((v) => v.statut === 'effectuee' || (v.statut === 'a_venir' && estPassee(v)))
     .forEach((v) => {
       if (!v.bien_id) return;                                    // la dernière l'emporte
+      const faite = v.statut === 'effectuee';
       faiteParBien.set(v.bien_id, {
         date: v.date_visite || null,
-        commentaire: v.commentaire || null,
-        etoiles: v.note_etoiles || null,
+        commentaire: faite ? v.commentaire || null : null,
+        etoiles: faite ? v.note_etoiles || null : null,
       });
     });
 
@@ -210,11 +232,11 @@ export default async function PageEspace({ params, searchParams }: {
     etat: ETAT(b),
   }));
 
-  /* Une visite sans date ne sert à rien à l'écran, et une visite passée depuis
-     plus d'un jour non plus : le compte rendu prend le relais côté CRM. */
-  const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre
+     prochaine visite » : son bien est rangé dans « Visités » (voir faiteParBien),
+     et la section « Déjà visités » de l'onglet Visites le montre. */
   const visites = toutesVisites
-    .filter((v) => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= hier)
+    .filter((v) => v.statut === 'a_venir' && v.date_visite && !estPassee(v))
     .map((v) => {
       const b = (biensRes.data || []).find((x) => x.id === v.bien_id);
       return {
