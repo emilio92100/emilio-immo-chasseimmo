@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 import { lienEspace, lienBienPublic } from '@/lib/jeton';
+import { HONORAIRES_TAUX } from '@/lib/mandat';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
@@ -833,10 +834,11 @@ export function CaseACocher({ actif, partiel, onClick, titre, taille = 20 }: {
 
 /* ══ Honoraires : ce qu'on propose d'office ════════════════════
    Le mandat de recherche en cours fixe les honoraires convenus avec le
-   client (« 3,5 % TTC », « 5 000 € TTC ») : c'est eux qu'on propose.
+   client (« 2,5 % TTC », « 5 000 € TTC ») : c'est eux qu'on propose.
    Un bien dont tu as déjà fixé les honoraires garde les siens — un
    geste négocié bien par bien ne doit pas s'effacer. Sans l'un ni
-   l'autre : 3 %. */
+   l'autre : 2,5 %, le taux par défaut d'un mandat de recherche
+   (src/lib/mandat.ts). */
 
 export type TypeHono = 'pourcentage' | 'fixe';
 export type HonoMandat = { type: TypeHono; val: number; texte: string };
@@ -873,12 +875,12 @@ export function honorairesDuMandat(r: any): HonoMandat | null {
   return null;
 }
 
-/** D'où partent les honoraires d'un bien : les siens, sinon le mandat, sinon 3 %. */
+/** D'où partent les honoraires d'un bien : les siens, sinon le mandat, sinon 2,5 %. */
 export function honorairesDepart(bien: any, mandat: HonoMandat | null): { type: TypeHono; valeur: string } {
   const v = Number(bien?.commission_val);
   if (isFinite(v) && v > 0) return { type: bien.commission_type === 'fixe' ? 'fixe' : 'pourcentage', valeur: String(v) };
   if (mandat) return { type: mandat.type, valeur: String(mandat.val) };
-  return { type: 'pourcentage', valeur: '3' };
+  return { type: 'pourcentage', valeur: String(HONORAIRES_TAUX) };
 }
 
 export function montantHonoraires(base: number, type: TypeHono, valeur: string | number): number {
@@ -900,7 +902,7 @@ export function libelleHonoraires(b: any): string | null {
   return `${montant} · ${pctFr((h / vendeur) * 100)}`;
 }
 
-/** La ligne « Mandat en cours : 3,5 % TTC » des fenêtres d'envoi, avec de quoi
+/** La ligne « Mandat en cours : 2,5 % TTC » des fenêtres d'envoi, avec de quoi
  *  revenir aux honoraires du mandat si le bien en porte d'autres. */
 function RappelMandat({ mandat, applique, onAppliquer, pour }: {
   mandat: HonoMandat | null; applique: boolean; onAppliquer: () => void; pour?: string;
@@ -2136,7 +2138,7 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
   const bascule = (id: 'pourcentage' | 'fixe', label: string) => {
     const actif = type === id;
     return (
-      <button type="button" onClick={() => { setType(id); setValeur(mandat && mandat.type === id ? String(mandat.val) : id === 'pourcentage' ? '3' : '25000'); }}
+      <button type="button" onClick={() => { setType(id); setValeur(mandat && mandat.type === id ? String(mandat.val) : id === 'pourcentage' ? String(HONORAIRES_TAUX) : '25000'); }}
         style={{
           flex: 1, background: actif ? 'white' : 'transparent', color: actif ? NAVY : '#94a3b8',
           border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 13, fontWeight: actif ? 800 : 600,
@@ -2345,7 +2347,7 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
         boxShadow: actif ? '0 2px 6px rgba(16,24,40,.14)' : 'none', transition: 'all .2s cubic-bezier(.16,1,.3,1)',
       }}>{label}</button>
   );
-  const defautPour = (t: TypeHono) => (mandat && mandat.type === t ? String(mandat.val) : t === 'pourcentage' ? '3' : '25000');
+  const defautPour = (t: TypeHono) => (mandat && mandat.type === t ? String(mandat.val) : t === 'pourcentage' ? String(HONORAIRES_TAUX) : '25000');
 
   const canal = (icone: string, titre: string, sous: string, action: () => void, teinte: string, principal?: boolean) => (
     <button type="button" onClick={action} disabled={envoi}
