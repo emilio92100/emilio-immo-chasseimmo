@@ -3262,6 +3262,316 @@ function TroisAvis({ avis, onChoisir, fige }:
   );
 }
 
+/* ══ Après la visite ═════════════════════════════
+   Chaque visite passée attend une issue : il veut faire une offre, il
+   aimerait revoir le bien, il hésite, ou ce n'est pas pour lui. Il la donne
+   ici en deux gestes ; son conseiller peut aussi la poser dans son compte
+   rendu. « Vos visites » range ensuite chaque bien dans sa rubrique. */
+const ICO_ISSUE: Record<Issue, string> = { offre: 'euro', revoir: 'oeil', reflexion: 'horloge', non: 'croix' };
+/* La couleur de chaque issue, avec les tons déjà en place (.etiq, .rep). */
+const ETIQ_ISSUE: Record<Issue, string> = { offre: 'fait', revoir: 'visite', reflexion: 'vu', non: 'non' };
+const TON_ISSUE: Record<Issue, string> = { offre: 'or', revoir: 'visite', reflexion: 'bleu', non: 'non' };
+const QUESTION_VISITE: Record<Issue, { t: string; p: string; ph: string; btn: string; ok: string }> = {
+  offre: {
+    t: 'Vous avez un prix en tête ?',
+    p: 'Facultatif. Votre conseiller vous appelle pour préparer l’offre avec vous : le prix, le financement, les conditions.',
+    ph: 'Un mot pour votre conseiller, si vous voulez…',
+    btn: 'Prévenir mon conseiller',
+    ok: 'Votre conseiller est prévenu. Il vous appelle pour préparer l’offre avec vous.',
+  },
+  revoir: {
+    t: 'Pourquoi le revoir ?',
+    p: 'Une ou plusieurs raisons, et vos disponibilités si vous voulez. Votre conseiller cale la 2e visite.',
+    ph: 'Ex : un soir de semaine, avec mon père…',
+    btn: 'Envoyer ma demande',
+    ok: 'Votre conseiller cale une 2e visite et revient vers vous avec le rendez-vous.',
+  },
+  reflexion: {
+    t: 'Qu’est-ce qui vous fait hésiter ?',
+    p: 'Une ou plusieurs raisons. Votre conseiller fait le point avec vous dans les prochains jours.',
+    ph: 'Ex : j’aimerais savoir si le vendeur accepterait une négociation…',
+    btn: 'Envoyer',
+    ok: 'Votre conseiller fait le point avec vous dans les prochains jours.',
+  },
+  non: {
+    t: 'Qu’est-ce qui n’a pas convenu sur place ?',
+    p: 'Une ou plusieurs raisons : les prochains biens en tiendront compte.',
+    ph: 'Ex : le séjour donne sur un mur…',
+    btn: 'Envoyer mon retour',
+    ok: 'Merci. Les prochains biens en tiendront compte, et celui-ci reste dans vos visites.',
+  },
+};
+
+/* La visite la plus récente, passée depuis moins de 7 jours, où personne n'a
+   encore rien dit : c'est elle que l'accueil propose. */
+function visiteSansAvis(mesV: VisiteE[], biens: Bien[]): { v: VisiteE; b: Bien } | null {
+  const limite = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const l = mesV
+    .filter(v => v.passee && !v.issue && v.date && v.date.slice(0, 10) >= limite)
+    .sort((a, c) => `${c.date}${c.heure || ''}`.localeCompare(`${a.date}${a.heure || ''}`));
+  for (const v of l) {
+    const b = biens.find(x => x.id === v.bienId);
+    /* Une visite plus récente du même bien, ou une offre déjà en cours : pas de question. */
+    if (!b || b.avis === 'offre_faite') continue;
+    if (mesV.some(x => x.bienId === v.bienId && x.id !== v.id && `${x.date}${x.heure || ''}` > `${v.date}${v.heure || ''}`)) continue;
+    return { v, b };
+  }
+  return null;
+}
+
+/* Les quatre choix, puis la question qui va avec. */
+function AvisVisite({ v, onRepondre, sansNote }: { v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; sansNote?: boolean }) {
+  const [choix, setChoix] = useState<Issue | null>(null);
+  const [motifs, setMotifs] = useState<string[]>([]);
+  const [ecrire, setEcrire] = useState(false);
+  const [mot, setMot] = useState('');
+  const [prix, setPrix] = useState('');
+  const [enCours, setEnCours] = useState(false);
+  const [envoye, setEnvoye] = useState<Issue | null>(null);
+  const [rate, setRate] = useState(false);
+
+  if (envoye) {
+    return (
+      <div className="vv-q vv-fait">
+        <span className={'etiq ' + ETIQ_ISSUE[envoye]}><Ico n={ICO_ISSUE[envoye]} t={13} />{ISSUES[envoye].client}</span>
+        <p className="aa-p" style={{ margin: '8px 0 0' }}>{QUESTION_VISITE[envoye].ok}</p>
+      </div>
+    );
+  }
+  if (!choix) {
+    return (
+      <div className="vv-q">
+        <div className="vv-q-t">{'Alors, qu’en avez-vous pensé ?'}</div>
+        <div className="vv-choix">
+          {ISSUES_OK.map(i => (
+            <button key={i} type="button" className="vv-c" data-a={i}
+              onClick={() => { setChoix(i); setMotifs([]); setEcrire(false); }}>
+              <i><Ico n={ICO_ISSUE[i]} t={17} /></i><span>{ISSUES[i].choix}</span>
+            </button>
+          ))}
+        </div>
+        {!sansNote && <div className="vv-libre">{'Rien ne vous oblige à répondre tout de suite.'}</div>}
+      </div>
+    );
+  }
+  const q = QUESTION_VISITE[choix];
+  const raisons = RAISONS[choix];
+  const bascule = (n: string) => setMotifs(l => l.includes(n) ? l.filter(x => x !== n) : [...l, n]);
+  async function envoyer() {
+    if (!choix) return;
+    setEnCours(true); setRate(false);
+    const p = Number(String(prix).replace(/[^\d]/g, ''));
+    const ok = await onRepondre(v, choix, motifs, mot.trim(), choix === 'offre' && p >= 10000 ? p : null);
+    setEnCours(false);
+    if (ok) { setEnvoye(choix); vibrer(); } else setRate(true);
+  }
+  return (
+    <div className="vv-q">
+      <span className={'etiq ' + ETIQ_ISSUE[choix]}><Ico n={ICO_ISSUE[choix]} t={13} />{ISSUES[choix].choix}</span>
+      <div className="apres-avis vv-suite">
+        <div className="aa-t">{q.t}</div>
+        <p className="aa-p">{q.p}</p>
+        {choix === 'offre' && (
+          <label className="vv-offre-prix">
+            <input inputMode="numeric" value={prix} placeholder="Ex : 660 000"
+              onChange={e => { const d = e.target.value.replace(/[^\d]/g, '').slice(0, 9); setPrix(d ? Number(d).toLocaleString('fr-FR') : ''); }} />
+            <span>€</span>
+          </label>
+        )}
+        {raisons.length > 0 && (
+          <div className="reponses">
+            {raisons.map(r => (
+              <button key={r.n} type="button" className="rep" data-a={TON_ISSUE[choix]}
+                aria-pressed={motifs.includes(r.n)} onClick={() => bascule(r.n)}>
+                <Ico n={r.i} t={15} /><span>{r.n}</span>
+              </button>
+            ))}
+            {!ecrire && <button type="button" className="rep plus" onClick={() => setEcrire(true)}>+ Ajouter un mot</button>}
+          </div>
+        )}
+        {(ecrire || choix === 'offre') && (
+          <textarea rows={3} value={mot} onChange={e => setMot(e.target.value)} placeholder={q.ph} style={{ marginTop: 10 }} />
+        )}
+        {rate && <p className="vv-rate">{'Votre réponse n’est pas partie. Vérifiez votre connexion et réessayez.'}</p>}
+        <BtnEnvoi enCours={enCours} libelle={q.btn} style={{ marginTop: 12 }} onClick={envoyer} />
+        <button type="button" className="vv-retour" onClick={() => setChoix(null)}>Changer de réponse</button>
+      </div>
+    </div>
+  );
+}
+
+/* Où en est un bien visité : l'étiquette, la phrase qui dit la suite, ses
+   raisons, et qui a donné l'avis. */
+function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
+  const offreFaite = b.avis === 'offre_faite';
+  const i = v.issue;
+  const ligne = offreFaite ? 'Votre offre est chez le vendeur. Votre conseiller vous prévient dès sa réponse.'
+    : i === 'offre' ? `Votre conseiller vous appelle pour préparer l’offre avec vous.${v.prix ? ` Votre prix en tête : ${EUR(v.prix)}.` : ''}`
+    : i === 'revoir' ? 'Votre conseiller cale une 2e visite : le rendez-vous s’affichera dans « À venir ».'
+    : i === 'reflexion' ? 'Votre conseiller fait le point avec vous dans les prochains jours.'
+    : '';
+  const source = offreFaite ? null
+    : v.issuePar === 'client' ? `Votre avis${v.issueLe ? `, le ${dateCourte(v.issueLe)}` : ''}`
+    : 'Noté par votre conseiller';
+  return (
+    <>
+      {ligne && <div className="vv-ligne">{ligne}</div>}
+      {v.motifs.length > 0 && i && (
+        <div className="reponses lu vv-lu">
+          {v.motifs.map(m => {
+            const r = RAISONS[i].find(x => x.n === m);
+            return <span key={m} className="rep" data-a={TON_ISSUE[i]} aria-pressed="true">{r ? <Ico n={r.i} t={14} /> : null}<span>{m}</span></span>;
+          })}
+        </div>
+      )}
+      {v.mot && <div className="vv-mot">{`« ${v.mot} »`}</div>}
+      {source && <div className="vv-src">{source}</div>}
+    </>
+  );
+}
+function EtiqVisite({ b, v }: { b: Bien; v: VisiteE }) {
+  if (b.avis === 'offre_faite') return <span className="etiq fait"><Ico n="euro" t={13} />Offre envoyée</span>;
+  if (!v.issue) return <span className="etiq neuf"><Ico n="note" t={13} />Votre avis ?</span>;
+  return <span className={'etiq ' + ETIQ_ISSUE[v.issue]}><Ico n={ICO_ISSUE[v.issue]} t={13} />{ISSUES[v.issue].client}</span>;
+}
+
+function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOuvrir: () => void; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean> }) {
+  const ph = (b.photos || [])[0];
+  const quand = v.date ? `visité le ${dateCourte(v.date)}` : 'visité';
+  return (
+    <div className={'vv-carte' + (v.issue === 'non' ? ' gris' : '')}>
+      <button type="button" className="vv-haut" onClick={onOuvrir}>
+        <span className="vv-ph">{ph ? <img src={ph} alt="" /> : <Ico n="maison" t={20} />}</span>
+        <span className="vv-t">
+          <span className="vv-l1"><b className="vv-prix tab">{EUR(b.prix)}</b><EtiqVisite b={b} v={v} /></span>
+          <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur, quand].filter(Boolean).join(' · ')}</span>
+        </span>
+      </button>
+      {v.issue || b.avis === 'offre_faite' ? <EtatVisite b={b} v={v} /> : <AvisVisite v={v} onRepondre={onRepondre} sansNote />}
+      {v.compteRendu && (
+        <button type="button" className="vv-cr" onClick={onOuvrir}>
+          <Ico n="note" t={14} /><span>{'Le compte rendu de votre conseiller'}</span><Ico n="fleche" t={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* La carte de l'accueil : sa dernière visite, et la question. */
+function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir }: { b: Bien; v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; onOuvrir: () => void; onVoir: () => void }) {
+  const auj = new Date().toISOString().slice(0, 10);
+  const hier = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const j = (v.date || '').slice(0, 10);
+  const quand = j === auj ? 'd’aujourd’hui' : j === hier ? 'd’hier' : `du ${dateCourte(j)}`;
+  const ph = (b.photos || [])[0];
+  return (
+    <section className="vv-acc">
+      <div className="vv-acc-t"><Ico n="calendrier" t={14} /><span>{`Votre visite ${quand}`}</span></div>
+      <div className="vv-acc-c">
+        <button type="button" className="vv-haut" onClick={onOuvrir}>
+          <span className="vv-ph">{ph ? <img src={ph} alt="" /> : <Ico n="maison" t={20} />}</span>
+          <span className="vv-t">
+            <b className="vv-prix tab">{EUR(b.prix)}</b>
+            <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur].filter(Boolean).join(' · ')}</span>
+          </span>
+        </button>
+        <AvisVisite v={v} onRepondre={onRepondre} />
+        <button type="button" className="vv-retour" onClick={onVoir}>Voir toutes mes visites</button>
+      </div>
+    </section>
+  );
+}
+
+/* « Vos visites » : quatre rubriques, un bien par ligne, rangé d'après sa
+   dernière visite. Les quatre chiffres du haut s'additionnent. Jamais
+   « retenu » ici : dans l'espace, ce mot désigne les biens que la recherche
+   a retenus pour lui. */
+function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir, onRepondre }: {
+  biens: Bien[]; mesV: VisiteE[]; visites: any[]; token: string; apprisClient: string[];
+  aller: (v: string) => void; onOuvrir: (b: Bien) => void;
+  onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
+}) {
+  const cle = (v: VisiteE) => `${v.date || ''}${v.heure || ''}`;
+  const parBien = new Map<string, VisiteE[]>();
+  mesV.forEach(v => parBien.set(v.bienId, [...(parBien.get(v.bienId) || []), v]));
+  const aVenir: { b: Bien; v: VisiteE }[] = [], avis: { b: Bien; v: VisiteE }[] = [], retenus: { b: Bien; v: VisiteE }[] = [], non: { b: Bien; v: VisiteE }[] = [];
+  parBien.forEach((l, bid) => {
+    const b = biens.find(x => x.id === bid);
+    if (!b) return;
+    const tri = l.slice().sort((a, c) => cle(a).localeCompare(cle(c)));
+    const future = tri.find(v => !v.passee);
+    if (future) { aVenir.push({ b, v: future }); return; }
+    const v = tri[tri.length - 1];
+    if (b.avis === 'offre_faite') retenus.push({ b, v });
+    else if (!v.issue) avis.push({ b, v });
+    else if (v.issue === 'non') non.push({ b, v });
+    else retenus.push({ b, v });
+  });
+  aVenir.sort((a, c) => cle(a.v).localeCompare(cle(c.v)));
+  [avis, retenus, non].forEach(l => l.sort((a, c) => cle(c.v).localeCompare(cle(a.v))));
+  const total = aVenir.length + avis.length + retenus.length + non.length;
+  const minus = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
+  return (
+    <Vue icone="calendrier" aller={aller} titre="Vos visites"
+      sous={total
+        ? `${total} bien${total > 1 ? 's' : ''} visité${total > 1 ? 's' : ''} ou à visiter avec votre conseiller.`
+        : 'Aucune visite pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
+      {total > 0 && (
+        <div className="vv-comptes">
+          {([['À venir', aVenir.length, 'c-prune'], ['Votre avis', avis.length, 'c-or'], ['En cours', retenus.length, 'c-bleu'], ['Pas pour moi', non.length, 'c-brique']] as [string, number, string][]).map(([t, n, c]) => (
+            <div key={t} className={'vv-compte ' + c}><b className="tab">{n}</b><span>{t}</span></div>
+          ))}
+        </div>
+      )}
+      {aVenir.length > 0 && (
+        <div className="vv-groupe">
+          <div className="sep"><span>{`À venir · ${aVenir.length}`}</span><i /></div>
+          <p className="vv-note">{'Calées par votre conseiller, qui vous accompagne sur place.'}</p>
+          <div className="vv-liste">
+            {aVenir.map(({ b, v }, i) => {
+              const r = visites.find((x: any) => x.id === v.id);
+              const titre = `${i === 0 ? 'Votre prochaine visite' : 'Visite suivante'}${v.revisite ? ' · 2e visite' : ''}`;
+              return r
+                ? <ProchaineVisite key={v.id} v={r} autres={0} token={token} titre={titre} onBien={() => onOuvrir(b)} />
+                : <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />;
+            })}
+          </div>
+        </div>
+      )}
+      {avis.length > 0 && (
+        <div className="vv-groupe">
+          <div className="sep"><span>{`Votre avis ? · ${avis.length}`}</span><i /></div>
+          <p className="vv-note">{'Un geste suffit : c’est ce qui décide de la suite.'}</p>
+          <div className="vv-liste deux">
+            {avis.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
+          </div>
+        </div>
+      )}
+      {retenus.length > 0 && (
+        <div className="vv-groupe">
+          <div className="sep"><span>{`En cours · ${retenus.length}`}</span><i /></div>
+          <p className="vv-note">{'Ceux que vous gardez en tête, et où on en est.'}</p>
+          <div className="vv-liste deux">
+            {retenus.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
+          </div>
+        </div>
+      )}
+      {non.length > 0 && (
+        <div className="vv-groupe">
+          <div className="sep"><span>{`Pas pour moi · ${non.length}`}</span><i /></div>
+          <p className="vv-note">{apprisClient.length
+            ? `Ce qui ne vous a pas plu sur place oriente la suite de la recherche : ${apprisClient.map(minus).join(', ')}.`
+            : 'Ce qui ne vous a pas plu sur place oriente la suite de la recherche.'}</p>
+          <div className="vv-liste deux">
+            {non.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
+          </div>
+        </div>
+      )}
+    </Vue>
+  );
+}
+
 /* Ce qui suit le choix : la question, les pastilles, et le texte libre
    seulement s'il le demande. L'ordre compte — les pastilles avant le clavier,
    sinon on retombe sur le cadre vide qu'on cherchait à supprimer. */
@@ -3331,12 +3641,15 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
   );
 }
 
-function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, visitesB = [], onRepondreVisite }: any) {
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
      de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
      Tester `!!b.avis` figeait la fiche dès la première ouverture. */
-  const repondu = !!b.avis && !!ETIQ[b.avis];
+  /* Visité, le bien a sa propre question (l'issue de la visite) : la barre
+     « Qu'en pensez-vous ? » d'avant la visite ne revient pas, même quand le
+     badge n'est pas un avis connu (une offre en cours, par exemple). */
+  const repondu = (!!b.avis && !!ETIQ[b.avis]) || !!b.visiteFaite;
   const [avis, setAvis] = useState<string | null>(b.avis && AVIS[b.avis] ? b.avis : null);
   const [com, setCom] = useState(b.commentaire || '');
   /* Un avis déjà parti a été lu, et il a peut-être déjà orienté une
@@ -3591,7 +3904,10 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
         {/* Tant que le client n'a pas répondu, la question ne vit qu'à un seul
             endroit : la barre du bas, qu'il a sous les yeux en permanence. La
             poser deux fois sur la même fiche brouille plus qu'elle n'incite. */}
-        {envoye && (
+        {/* Une fois le bien visité, son retour, c'est l'issue de la visite
+            (le bloc « Visite effectuée » plus bas) : les trois boutons d'avant
+            la visite, figés et vides, ne diraient plus rien. */}
+        {envoye && !b.visiteFaite && (
           <>
             <label className="lab">Votre retour</label>
             <TroisAvis avis={avis} onChoisir={choisir} fige />
@@ -3610,28 +3926,37 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager }: any) {
             <p className="aa-p">
               Votre conseiller a calé le rendez-vous&nbsp;: <b>{dateLongue(b.visitePrevue.date)}</b>
               {b.visitePrevue.heure ? <> à <b>{String(b.visitePrevue.heure).slice(0, 5).replace(':', ' h ')}</b></> : null}.
-              Vous le retrouvez en haut de votre accueil, avec le lien pour l’ajouter à votre agenda.
+              Vous le retrouvez dans « Vos visites », avec le lien pour l’ajouter à votre agenda.
             </p>
           </div>
         )}
 
-        {/* Après la visite, ce qu'il en a retenu. */}
-        {b.visiteFaite && (
-          <div className="apres-avis fini">
-            <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
-            {b.visiteFaite.etoiles ? (
-              <p className="aa-p">{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
-            ) : null}
-            {b.visiteFaite.commentaire ? (
-              <>
-                <div className="fige-t">Compte rendu de votre conseiller</div>
-                <div className="fige">{b.visiteFaite.commentaire}</div>
-              </>
-            ) : (
-              <p className="aa-p">Votre conseiller vous fait un retour détaillé de sa visite.</p>
-            )}
-          </div>
-        )}
+        {/* Après la visite : son issue (ou la question, s'il n'a rien dit),
+            puis le compte rendu de son conseiller. */}
+        {b.visiteFaite && (() => {
+          const cle = (v: VisiteE) => `${v.date || ''}${v.heure || ''}`;
+          const faites = (visitesB as VisiteE[]).filter(v => v.passee).sort((a, c) => cle(c).localeCompare(cle(a)));
+          const v = faites[0];
+          return (
+            <div className="apres-avis fini">
+              <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
+              {v && (v.issue || b.avis === 'offre_faite')
+                ? <div style={{ marginTop: 8 }}><EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} /></div>
+                : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} /> : null}
+              {b.visiteFaite.etoiles ? (
+                <p className="aa-p" style={{ marginTop: 10 }}>{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
+              ) : null}
+              {b.visiteFaite.commentaire ? (
+                <>
+                  <div className="fige-t" style={{ marginTop: 10 }}>Compte rendu de votre conseiller</div>
+                  <div className="fige">{b.visiteFaite.commentaire}</div>
+                </>
+              ) : (
+                <p className="aa-p" style={{ marginTop: 10 }}>Votre conseiller vous fait un retour détaillé de sa visite.</p>
+              )}
+            </div>
+          );
+        })()}
 
         {envoye && !b.visiteFaite && (
           <div className="apres-avis fini">
@@ -6200,6 +6525,76 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .rep.bascule svg{color:var(--prune)}
 /* relecture d'un retour déjà parti : plus rien ne se clique */
 .reponses.lu{margin-top:0}
+.rep[aria-pressed="true"][data-a="or"]{background:var(--or-fond); border-color:var(--or); color:var(--or-fonce)}
+.rep[aria-pressed="true"][data-a="bleu"]{background:var(--bleu-fond); border-color:var(--bleu); color:var(--bleu)}
+
+/* ─── Vos visites : les rubriques, les cartes, l'avis après la visite ─── */
+.vv-comptes{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:4px 0 2px}
+.vv-compte{background:var(--carte); border:1px solid var(--trait); border-top:3px solid var(--trait-fort);
+  border-radius:14px; padding:10px 4px 9px; text-align:center; box-shadow:var(--ombre)}
+.vv-compte b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:21px; font-weight:800; line-height:1}
+.vv-compte span{display:block; margin-top:5px; font-size:11.5px; font-weight:700; color:var(--plume); line-height:1.2}
+.vv-compte.c-prune{border-top-color:var(--prune)} .vv-compte.c-prune b{color:var(--prune)}
+.vv-compte.c-or{border-top-color:var(--or)} .vv-compte.c-or b{color:var(--or-fonce)}
+.vv-compte.c-bleu{border-top-color:var(--bleu)} .vv-compte.c-bleu b{color:var(--bleu)}
+.vv-compte.c-brique{border-top-color:var(--brique)} .vv-compte.c-brique b{color:var(--brique)}
+.vv-groupe .sep{margin-top:22px}
+.vv-note{margin:-6px 2px 12px; font-size:12.5px; line-height:1.55; color:var(--plume)}
+.vv-liste{display:grid; gap:10px}
+.vv-liste .visite-a-venir{margin:0}
+@media(min-width:760px){.vv-liste.deux{grid-template-columns:1fr 1fr; align-items:start}}
+.vv-carte{background:var(--carte); border:1px solid var(--trait); border-radius:16px; padding:11px 12px 12px; box-shadow:var(--ombre)}
+.vv-haut{display:flex; gap:11px; align-items:flex-start; width:100%; background:none; border:0; padding:0;
+  text-align:left; font:inherit; color:inherit; cursor:pointer}
+.vv-ph{width:76px; height:62px; border-radius:10px; overflow:hidden; flex:0 0 auto; background:var(--fond);
+  display:flex; align-items:center; justify-content:center; color:var(--plume-clair)}
+.vv-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.vv-carte.gris .vv-ph img{filter:grayscale(.55)}
+.vv-t{flex:1; min-width:0; display:flex; flex-direction:column}
+.vv-l1{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.vv-prix{flex:1; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:15.5px; color:var(--encre)}
+.vv-meta{font-size:12.5px; color:var(--plume); margin-top:2px; line-height:1.4}
+.vv-ligne{font-size:13px; line-height:1.55; color:var(--encre2); margin-top:9px}
+.vv-lu{margin-top:8px !important}
+.vv-mot{font-size:13px; line-height:1.55; color:var(--encre2); margin-top:8px; background:var(--fond);
+  border-radius:10px; padding:8px 10px}
+.vv-src{font-size:11.5px; color:var(--plume-clair); font-weight:700; margin-top:7px}
+.vv-cr{display:flex; align-items:center; gap:7px; width:100%; margin-top:10px; padding:9px 0 0;
+  border:0; border-top:1px solid var(--trait); background:none; font:inherit; font-size:13px; font-weight:800;
+  color:var(--bleu); cursor:pointer; text-align:left}
+.vv-cr span{flex:1}
+.vv-q{margin-top:11px; padding-top:11px; border-top:1px solid var(--trait)}
+.apres-avis .vv-q{border-top:0; padding-top:0}
+.vv-q-t{font-family:'Plus Jakarta Sans',sans-serif; font-size:15.5px; font-weight:800; color:var(--encre)}
+.vv-choix{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px}
+.vv-c{display:flex; align-items:center; gap:9px; background:var(--carte); border:1px solid var(--trait);
+  border-radius:13px; padding:10px; font:inherit; font-size:13px; font-weight:800; color:var(--encre);
+  text-align:left; cursor:pointer; line-height:1.25; min-height:52px}
+.vv-c:active{transform:scale(.97)}
+.vv-c i{width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  flex:0 0 auto; font-style:normal}
+.vv-c[data-a="offre"] i{background:var(--or-fond); color:var(--or-fonce)}
+.vv-c[data-a="revoir"] i{background:var(--prune-fond); color:var(--prune)}
+.vv-c[data-a="reflexion"] i{background:var(--bleu-fond); color:var(--bleu)}
+.vv-c[data-a="non"] i{background:var(--brique-fond); color:var(--brique)}
+.vv-libre{font-size:12px; color:var(--plume-clair); margin-top:9px}
+.vv-suite{margin-top:10px}
+label.vv-offre-prix{display:flex; align-items:center; gap:8px; background:var(--carte); border:1.5px solid var(--trait);
+  border-radius:12px; padding:0 14px; margin-top:4px}
+label.vv-offre-prix input{flex:1; min-width:0; border:0; outline:0; background:none; font:inherit; font-size:17px;
+  font-weight:800; color:var(--encre); padding:12px 0}
+label.vv-offre-prix span{font-weight:800; color:var(--plume)}
+label.vv-offre-prix:focus-within{border-color:var(--or)}
+.vv-rate{margin:10px 0 0; font-size:12.5px; color:var(--brique)}
+.vv-retour{display:block; margin:10px auto 0; background:none; border:0; padding:4px; font:inherit;
+  font-size:12.5px; font-weight:700; color:var(--plume); text-decoration:underline; cursor:pointer}
+.vv-fait .aa-p{color:var(--encre2)}
+.vv-acc{margin-top:16px; background:var(--carte); border:1px solid var(--or-trait); border-radius:18px;
+  overflow:hidden; box-shadow:var(--ombre)}
+.vv-acc-t{display:flex; align-items:center; gap:7px; padding:9px 14px; background:var(--or-fond);
+  font-size:11.5px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:var(--or-fonce)}
+.vv-acc-c{padding:12px 13px 10px}
+@media(max-width:359px){.vv-choix{grid-template-columns:1fr} .vv-comptes{grid-template-columns:1fr 1fr}}
 .reponses.lu .rep{cursor:default}
 .reponses.lu .rep:active{transform:none}
 
