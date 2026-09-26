@@ -106,14 +106,40 @@ const EVT_CLIENT = new Set(['retour_client', 'message_client', 'demande_rappel',
 function venantDuClient(type: string, titre: string) {
   return EVT_CLIENT.has(type) || /depuis son espace|par le client/i.test(titre || '');
 }
-type TriCle = 'nom' | 'modif' | 'creation' | 'budget';
+type TriCle = 'nom' | 'modif' | 'creation' | 'budget' | 'situation';
 type Tri = { cle: TriCle; sens: 'asc' | 'desc' };
 const TRIS: { cle: TriCle; nom: string; court: string; note: string; sensDefaut: 'asc' | 'desc' }[] = [
   { cle: 'nom',      nom: 'Nom du client',         court: 'Nom',            note: 'de A à Z',                  sensDefaut: 'asc' },
   { cle: 'modif',    nom: 'Dernière modification', court: 'Dernière modif.', note: 'le plus récent en haut',   sensDefaut: 'desc' },
   { cle: 'creation', nom: 'Date de création',      court: 'Création',       note: 'le dernier arrivé en haut', sensDefaut: 'desc' },
   { cle: 'budget',   nom: 'Budget',                court: 'Budget',         note: 'du plus élevé au plus bas', sensDefaut: 'desc' },
+  { cle: 'situation', nom: 'Propriétaires d’abord', court: 'Propriétaires', note: 'revente possible, puis propriétaires', sensDefaut: 'desc' },
 ];
+
+/* ── La situation du client aujourd'hui ──
+   Un acheteur propriétaire est un mandat vendeur en puissance : c'est lui
+   qu'on veut repérer d'un coup d'œil, et pouvoir faire remonter. */
+type Situation = 'vendeur' | 'proprietaire' | 'locataire' | 'inconnue';
+function situationDe(c: any): Situation {
+  const s = c.statut_occupation;
+  /* La case « revente possible » vaut propriétaire, même si le statut n'a
+     pas été choisi dans la liste : elle se coche indépendamment. */
+  if (c.bien_actuel_a_vendre) return 'vendeur';
+  if (s === 'proprietaire') return 'proprietaire';
+  if (s === 'locataire' || s === 'heberge' || s === 'autre') return 'locataire';
+  return 'inconnue';
+}
+const RANG_SITUATION: Record<Situation, number> = { vendeur: 3, proprietaire: 2, inconnue: 1, locataire: 0 };
+const OCCUPATION: Record<string, string> = { locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre situation' };
+const SITUATIONS: { key: string; label: string }[] = [
+  { key: 'toutes',       label: 'Toutes situations' },
+  { key: 'proprietaire', label: 'Propriétaires' },
+  { key: 'vendeur',      label: 'Revente possible' },
+  { key: 'locataire',    label: 'Non propriétaires' },
+  { key: 'inconnue',     label: 'À renseigner' },
+];
+const D_CLE = <><circle cx="8" cy="15" r="4" /><path d="M10.8 12.2 20 3.5" /><path d="M16.5 7l3 3" /><path d="M14.5 9l2 2" /></>;
+const normer = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 type DetailDossier = {
   journal: { titre: string; type: string; date: string } | null;
@@ -321,6 +347,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   /* On arrive sur les dossiers en cours, pas sur la liste entière : c'est
      eux qu'on vient voir. Les autres onglets restent à un clic. */
   const [filtre, setFiltre] = useState('actif');
+  /* Le second filtre, croisé avec le premier : « Actifs » + « Propriétaires ». */
+  const [filtreSit, setFiltreSit] = useState('toutes');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(initForm);
@@ -506,15 +534,27 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   const filtered = clients.filter(c => {
     const matchStatut = filtre === 'tous' || c.statut === filtre;
+    const sit = situationDe(c);
+    const matchSit = filtreSit === 'toutes'
+      || (filtreSit === 'proprietaire' ? (sit === 'proprietaire' || sit === 'vendeur') : sit === filtreSit);
     const q = search.toLowerCase();
+    /* Taper « propriétaire » ou « locataire » dans la recherche marche aussi. */
+    const motSituation = sit === 'vendeur' ? 'proprietaire revente possible' : sit === 'proprietaire' ? 'proprietaire' : sit === 'locataire' ? normer(OCCUPATION[(c as any).statut_occupation] || '') : '';
     const matchSearch = !search ||
       c.prenom.toLowerCase().includes(q) ||
       c.nom.toLowerCase().includes(q) ||
       c.reference.toLowerCase().includes(q) ||
       (c.emails || []).some(e => e.toLowerCase().includes(q)) ||
-      (c.secteurs || []).some(s => s.toLowerCase().includes(q));
-    return matchStatut && matchSearch;
+      (c.secteurs || []).some(s => s.toLowerCase().includes(q)) ||
+      (!!motSituation && motSituation.includes(normer(search.trim())));
+    return matchStatut && matchSit && matchSearch;
   });
+  /* Les compteurs du second filtre suivent le premier : « 3 propriétaires »
+     parmi les actifs, pas dans toute la base. */
+  const nbParSituation = (k: string) => clients
+    .filter(c => filtre === 'tous' || c.statut === filtre)
+    .filter(c => { const s = situationDe(c); return k === 'toutes' || (k === 'proprietaire' ? (s === 'proprietaire' || s === 'vendeur') : s === k); })
+    .length;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -621,6 +661,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         const d = sous(a) - sous(b);
         return d !== 0 ? sens * d : `${a.nom}`.localeCompare(`${b.nom}`, 'fr');
       }
+      case 'situation': {
+        /* À situation égale, le dossier qui a bougé le plus récemment d'abord. */
+        const d = RANG_SITUATION[situationDe(a)] - RANG_SITUATION[situationDe(b)];
+        return d !== 0 ? sens * d : ts(b) - ts(a);
+      }
       default:
         return sens * (ts(a) - ts(b));
     }
@@ -665,13 +710,30 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         </div>
       </div>
 
+      {/* SITUATION — croisé avec le statut au-dessus */}
+      <div className={styles.situations}>
+        <span className={styles.situationsTitre}>Situation</span>
+        {SITUATIONS.map(s => {
+          const actif = filtreSit === s.key;
+          return (
+            <button key={s.key} type="button"
+              className={`${styles.sitBtn} ${actif ? styles.sitBtnActif : ''} ${s.key === 'proprietaire' || s.key === 'vendeur' ? styles.sitBtnOr : ''}`}
+              onClick={() => setFiltreSit(actif && s.key !== 'toutes' ? 'toutes' : s.key)}>
+              {(s.key === 'proprietaire' || s.key === 'vendeur') && <Ico t={12} d={D_CLE} c={actif ? '#1a2332' : '#9a7d2e'} />}
+              <span>{s.label}</span>
+              <span className={styles.sitBadge}>{nbParSituation(s.key)}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* LISTE */}
       {loading ? (
         <div className={styles.loading}>Chargement...</div>
       ) : filtered.length === 0 ? (
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>👥</div>
-          <div className={styles.emptyTitle}>{search || filtre !== 'tous' ? 'Aucun client trouvé' : 'Aucun client pour l\'instant'}</div>
+          <div className={styles.emptyTitle}>{search || filtre !== 'tous' || filtreSit !== 'toutes' ? 'Aucun client trouvé' : 'Aucun client pour l\'instant'}</div>
           <div className={styles.emptySub}>{!search && filtre === 'tous' && 'Cliquez sur "+ Nouveau client" pour commencer'}</div>
         </div>
       ) : (
@@ -726,7 +788,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             <span className={styles.colSig}>Signal</span>
           </div>
 
-          <div className={styles.list} key={`${filtre}:${search}`}>
+          <div className={styles.list} key={`${filtre}:${filtreSit}:${search}`}>
             {ordonne.map((client, rang) => {
               const st = stats[client.id];
               const sig = signalDe(client, st);
@@ -759,6 +821,18 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                             {ETIQUETTE[client.statut] || client.statut}
                           </span>
                         )}
+                        {(() => {
+                          const sit = situationDe(client);
+                          if (sit === 'vendeur' || sit === 'proprietaire') return (
+                            <span className={`${styles.proprio} ${sit === 'vendeur' ? styles.proprioVend : ''}`}
+                              title={sit === 'vendeur' ? 'Propriétaire, il revendra sans doute son bien après l\u2019achat : mandat vendeur possible' : 'Propriétaire de son logement actuel'}>
+                              <Ico t={10} d={D_CLE} c={sit === 'vendeur' ? '#1a2332' : '#9a7d2e'} />
+                              {sit === 'vendeur' ? 'Revente possible' : 'Propriétaire'}
+                            </span>
+                          );
+                          if (sit === 'locataire') return <span className={styles.occupe}>{OCCUPATION[(client as any).statut_occupation] || 'Locataire'}</span>;
+                          return <span className={styles.aRenseigner} title="Situation actuelle non renseignée : à compléter dans la fiche">situation ?</span>;
+                        })()}
                       </span>
                     </span>
                   </span>
@@ -1088,7 +1162,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                           </select>
                         </div>
                         <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
-                          {form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Un bien à vendre en parallèle (mandat potentiel)
+                          {form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Revente possible après l&apos;achat (mandat vendeur potentiel)
                         </button>
                         {form.bien_actuel_a_vendre && (
                           <>
@@ -1101,7 +1175,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                               {form.bien_actuel_meme_adresse ? '✓ ' : ''}📍 À la même adresse que le contact
                             </button>
                             {!form.bien_actuel_meme_adresse && (
-                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à vendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à revendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
                             )}
                             <div className={styles.formGroup}><label className={styles.label}>Précisions</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, contexte de vente…" rows={2} /></div>
                           </>
