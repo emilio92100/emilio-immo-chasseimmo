@@ -1527,7 +1527,7 @@ function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[
 
 function Section({ n, ico, titre, aide, rang, children }: { n: number; ico: string; titre: string; aide?: string; rang: number; children: React.ReactNode }) {
   return (
-    <section className="ag-section" style={{ animationDelay: `${60 + rang * 70}ms`, background: 'white', border: `1px solid ${BORD}`, borderRadius: 18, padding: '16px 18px 18px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 1px 2px rgba(16,24,40,.04), 0 12px 28px -24px rgba(16,24,40,.35)' }}>
+    <section className="ag-section" style={{ animationDelay: `${60 + rang * 70}ms`, background: 'white', border: `1px solid ${BORD}`, borderRadius: 16, padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 1px 2px rgba(16,24,40,.04), 0 12px 28px -24px rgba(16,24,40,.35)' }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
         <span style={{ position: 'relative', width: 34, height: 34, borderRadius: 11, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Ic n={ico} t={16} ep={2.1} />
@@ -1991,7 +1991,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const typesDispo = ev ? (ev.source === 'visite' ? ['visite'] as TypeRdv[] : ORDRE.filter(t => t !== 'visite')) : ORDRE;
 
   return createPortal(
-    <div className="ag-voile ag-modale-fond" data-sortie={sortie || undefined} style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
+    <div className="ag-voile ag-modale-fond" data-sortie={sortie || undefined} style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
       onClick={e => { if (e.target === e.currentTarget) setRetenue(Date.now()); }}>
       <StylesAgenda />
       <style>{`
@@ -2012,18 +2012,18 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         }
       `}</style>
       <section ref={feuille} className="ag-modale ag-feuille" role="dialog" aria-modal="true" aria-label={ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}
-        style={{ width: '100%', maxWidth: 1320, height: 'min(900px, 95dvh)', background: 'white', borderRadius: 24, boxShadow: '0 40px 100px -30px rgba(10,15,24,.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', background: NAVY, color: 'white', flexShrink: 0 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="calendrier" t={19} ep={1.9} /></span>
+        style={{ width: '100%', maxWidth: 1180, height: 'min(800px, 90dvh)', background: 'white', borderRadius: 22, boxShadow: '0 40px 100px -30px rgba(10,15,24,.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <header style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '14px 22px', background: NAVY, color: 'white', flexShrink: 0 }}>
+          <span style={{ width: 36, height: 36, borderRadius: 11, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="calendrier" t={19} ep={1.9} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1.6, textTransform: 'uppercase', color: OR }}>Agenda</div>
-            <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>{ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}</b>
+            <b style={{ fontFamily: JAK, fontSize: 17.5, fontWeight: 800 }}>{ev ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'}</b>
           </div>
-          <button type="button" aria-label="Fermer" onClick={fermer} style={{ width: 38, height: 38, borderRadius: 11, border: 'none', background: 'rgba(255,255,255,.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Ic n="fermer" t={15} /></button>
+          <button type="button" aria-label="Fermer" onClick={fermer} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Ic n="fermer" t={15} /></button>
         </header>
 
         <div className="ag-modale-corps" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div className="ag-modale-form" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '22px 28px 30px', display: 'flex', flexDirection: 'column', gap: 14, background: '#f5f7fa' }}>
+          <div className="ag-modale-form" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 22px 24px', display: 'flex', flexDirection: 'column', gap: 12, background: '#f5f7fa' }}>
             <Section n={1} ico="calendrier" titre="Quel rendez-vous" rang={0}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
@@ -2032,8 +2032,8 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
                     return (
                       <button key={k} type="button" className="ag-appui" aria-pressed={actif}
                         onClick={() => maj_({ type: k, titre: null, lieu: null, duree: k === 'appel' ? 30 : k === 'visite' || k === 'signature' ? 60 : f.duree })}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 12px', borderRadius: 14, border: `1.5px solid ${actif ? t.point : BORD}`, background: actif ? t.fond : 'white', color: actif ? t.encre : NAVY, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', boxShadow: actif ? `0 10px 22px -16px ${t.point}` : 'none' }}>
-                        <span style={{ width: 30, height: 30, borderRadius: 9, background: actif ? t.point : '#f1f4f8', color: actif ? 'white' : DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={t.ico} t={16} /></span>
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, height: 46, padding: '0 10px', borderRadius: 13, border: `1.5px solid ${actif ? t.point : BORD}`, background: actif ? t.fond : 'white', color: actif ? t.encre : NAVY, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', boxShadow: actif ? `0 10px 22px -16px ${t.point}` : 'none' }}>
+                        <span style={{ width: 28, height: 28, borderRadius: 8, background: actif ? t.point : '#f1f4f8', color: actif ? 'white' : DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={t.ico} t={16} /></span>
                         {t.nom}
                       </button>
                     );
@@ -2180,7 +2180,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
             )}
           </div>
 
-          <aside className="ag-modale-apercu" style={{ width: 380, flexShrink: 0, boxSizing: 'border-box', background: 'white', borderLeft: `1px solid ${BORD}`, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+          <aside className="ag-modale-apercu" style={{ width: 340, flexShrink: 0, boxSizing: 'border-box', background: 'white', borderLeft: `1px solid ${BORD}`, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Etiquette>Aperçu</Etiquette>
               <b style={{ fontFamily: JAK, fontSize: 15 }}>{maj(jourLong(debut))}</b>
@@ -2224,7 +2224,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
           </aside>
         </div>
 
-        <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '14px 24px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
+        <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 22px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
           <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
           <button type="button" className="ag-appui" onClick={fermer} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
