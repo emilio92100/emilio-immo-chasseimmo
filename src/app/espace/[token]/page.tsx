@@ -8,6 +8,7 @@ import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 import { etatMandat, finRetractation, rechercheDepuis, masquerEmail, type Mandant } from '@/lib/mandat';
 import { lireReserve } from '@/lib/mandat-serveur';
+import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -159,16 +160,8 @@ export default async function PageEspace({ params, searchParams }: {
      comme si personne ne l'avait vu, et la visite disparaissait de l'espace.
      L'heure de référence est celle de Paris : le serveur, lui, tourne en UTC.
      Sans heure, la visite compte jusqu'au soir (23 h 59), comme dans le CRM. */
-  const morceaux = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date()).map((p) => [p.type, p.value]));
-  const maintenantParis = `${morceaux.year}-${morceaux.month}-${morceaux.day} ${morceaux.hour}:${morceaux.minute}`;
-  const estPassee = (v: { date_visite?: string | null; heure?: string | null }) => {
-    if (!v.date_visite) return false;
-    const h = /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '23:59';
-    return `${String(v.date_visite).slice(0, 10)} ${h}` < maintenantParis;
-  };
+  const maintenant = maintenantParis();
+  const estPassee = (v: { date_visite?: string | null; heure?: string | null }) => visitePasseeParis(v, maintenant);
 
   const prevueParBien = new Map<string, { date: string; heure: string | null }>();
   toutesVisites
@@ -250,6 +243,33 @@ export default async function PageEspace({ params, searchParams }: {
         bienId: v.bien_id as string | null,
       };
     });
+
+  /* ─── « Vos visites » : chaque visite, où elle en est, et son issue ───
+     Une visite passée (faite, ou calée à une heure déjà passée) attend
+     l'avis du client tant que personne n'a posé d'issue. Le compte rendu
+     d'Alexandre n'arrive qu'une fois la visite marquée « effectuée ». */
+  const idsBiens = new Set((biensRes.data || []).map((b) => b.id));
+  const vivantes = toutesVisites.filter((v) => v.bien_id && idsBiens.has(v.bien_id));
+  const mesVisites = vivantes.map((v) => {
+    const issue = issueDe(v);
+    return {
+      id: v.id as string, bienId: v.bien_id as string,
+      date: (v.date_visite as string) || null, heure: (v.heure as string) || null,
+      passee: v.statut === 'effectuee' || estPassee(v),
+      issue,
+      issuePar: issue ? (v.issue_par === 'client' && v.avis_client_le ? 'client' as const : 'conseiller' as const) : null,
+      motifs: Array.isArray(v.motifs) ? (v.motifs as string[]) : [],
+      mot: (v.mot_client as string) || null,
+      prix: (v.prix_envisage as number) || null,
+      compteRendu: v.statut === 'effectuee' ? ((v.commentaire as string) || null) : null,
+      etoiles: v.statut === 'effectuee' ? ((v.note_etoiles as number) || null) : null,
+      issueLe: (v.avis_client_le as string) || (v.issue_le as string) || null,
+      revisite: vivantes.some((x) => x.id !== v.id && x.bien_id === v.bien_id && String(x.date_visite || '') < String(v.date_visite || '')),
+    };
+  });
+  /* Les trois raisons qui reviennent le plus dans ses visites non abouties,
+     sans celles qu'Alexandre a retirées : la phrase de « Pas retenus ». */
+  const apprisClient = apprisDe(toutesVisites, recherche.appris_masques || []).eviter.slice(0, 3).map((x) => x.t);
 
   const passages = passagesRes.data || [];
   const dernier = passages[0] || null;
@@ -430,6 +450,8 @@ export default async function PageEspace({ params, searchParams }: {
       semaine={semaine}
       visites={visites}
       mandat={mandat}
+      mesVisites={mesVisites}
+      apprisClient={apprisClient}
     />
   );
 }
