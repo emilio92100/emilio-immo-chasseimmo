@@ -40,8 +40,12 @@
    avoir ADHÉRÉ avant la première signature. */
 import { IDENTITE_DEFAUT, lignesMandataire, phraseFonds, type IdentiteAgence } from './agence';
 
+/* Les honoraires, tels qu'Alexandre les fixe : un mandat de recherche part
+   de 2,5 % TTC, et il peut monter jusqu'à 5 % quand il le décide avec son
+   client (c'est lui qui choisit, pas le CRM). Un mandat de vente : 5 % TTC. */
 export const HONORAIRES_TAUX = 2.5;          // % TTC du prix : le taux proposé quand Alexandre ne choisit rien
-export const BAREME = 5;                     // % TTC du prix : le barème de l'agence, donc le maximum
+export const BAREME = 5;                     // % TTC du prix : le maximum d'un mandat de recherche
+export const BAREME_VENTE = 5;               // % TTC du prix : le barème du mandat de vente (documents à venir)
 /* 12 mois au plus, fin à tout moment avec 15 jours de préavis. `total` sert
    aux dates (fin du mandat), en jours. */
 export const DUREE = { mois: 12, total: 365, preavis: 15 } as const;
