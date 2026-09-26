@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
 import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
+import { alerteMailActive } from '@/lib/alertes';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -46,6 +47,8 @@ async function prevenirVisite(
 ) {
   const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
   if (!apiKey || !apiSecret) return;
+  /* Coupé dans Paramètres → Alertes mail : la relance du jour suffit. */
+  if (!(await alerteMailActive(supabase, 'visite'))) return;
   const { data: client } = await supabase.from('clients').select('id, prenom, nom').eq('id', clientId).maybeSingle();
   const nom = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() : 'Un client';
   const echappe = (t: string) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
