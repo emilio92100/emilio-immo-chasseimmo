@@ -324,5 +324,4 @@ Quatre l'ont été le 23 septembre, tous corrigés le jour même.
 
 `context.md` §6 tient la liste des **anomalies connues et non corrigées**, classées par gravité.
 Avant de conclure qu'un écran est cassé « sans raison », la regarder : le Dashboard affiche des
-zéros codés en dur, la page Paramètres dit « Sauvegardé » sans rien vérifier, et la recherche
-globale lit des colonnes mortes depuis la V3.0.
+zéros codés en dur, et la recherche globale lit des colonnes mortes depuis la V3.0.
