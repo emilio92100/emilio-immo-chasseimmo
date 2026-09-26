@@ -32,41 +32,13 @@
    la signature : sans lui, l'espace ne propose pas de signer.
    ════════════════════════════════════════════════════════════════════════ */
 
-export const AGENCE = {
-  nom: 'EMILIO IMMOBILIER',
-  adresse: '10 avenue Kléber',
-  cp: '75016',
-  ville: 'Paris',
-  tel: '01 84 80 14 00',
-  mail: 'agence@emilio-immo.com',
-  site: 'www.emilio-immo.com',
-  societe: 'RT CONSEILS',
-  forme: 'SAS au capital de 1 000 €',
-  siege: '10 avenue Kléber, 75016 Paris',
-  rcs: 'RCS de Nanterre n° 884 141 201',
-  carte: 'CPI 9201 2020 000 045 344',
-  carteMention: '« Transactions sur immeubles et fonds de commerce »',
-  carteDelivree: 'la CCI Paris Île-de-France',
-  tva: 'FR34884141201',
-  assureur: 'MMA Entreprise',
-  assureurAdresse: '85 route de la Reine, 92100 Boulogne-Billancourt',
-  police: '146511983',
-} as const;
-
-/* Qui signe pour l'agence, et à quel titre — tel qu'Alexandre l'a demandé. */
-export const SIGNATAIRE = {
-  nom: 'Alexandre ROGELET',   // le nom de famille en capitales, comme sur tout acte
-  qualite: 'responsable des transactions immobilières',
-} as const;
-
-/* Le médiateur de la consommation. Obligatoire (art. L612-1 du Code de la
-   consommation) : Alexandre doit y avoir ADHÉRÉ avant la première signature.
-   S'il en choisit un autre, c'est ici, et nulle part ailleurs, qu'on le change. */
-export const MEDIATEUR = {
-  nom: 'Association MEDIMMOCONSO',
-  adresse: '1 allée du Parc de Mesemena, Bât. A, CS 25222, 44505 La Baule Cedex',
-  site: 'www.medimmoconso.fr',
-} as const;
+/* L'identité de l'agence (société, carte, assurance, médiateur, signataire,
+   coordonnées) n'est plus écrite ici : elle vient de Paramètres › Agence
+   (src/lib/agence.ts). redigerMandat() la reçoit ; sans elle, c'est
+   l'identité d'origine, mot pour mot celle d'avant. Le médiateur reste
+   obligatoire (art. L612-1 du Code de la consommation) : Alexandre doit y
+   avoir ADHÉRÉ avant la première signature. */
+import { IDENTITE_DEFAUT, lignesMandataire, phraseFonds, type IdentiteAgence } from './agence';
 
 export const HONORAIRES_TAUX = 2.5;          // % TTC du prix : le taux proposé quand Alexandre ne choisit rien
 export const BAREME = 5;                     // % TTC du prix : le barème de l'agence, donc le maximum
@@ -411,9 +383,8 @@ export function titreMandat(numero: string) {
   return `Mandat de recherche non exclusif d’un bien à acquérir n° ${numero || '…'}`;
 }
 
-export function redigerMandat(d: DonneesMandat): Partie[] {
+export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEFAUT): Partie[] {
   const c = figerContenu(d.recherche);
-  const A = AGENCE;
   const m = d.mandant;
   const prix = c.prixMax;
   const hono = c.honoraires;
@@ -434,13 +405,8 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
         `${m.telephone ? m.telephone + ' · ' : ''}${m.email}`,
       ], pied: 'Ci-après « le MANDANT »' }
     : { ic: 'personne', titre: 'Vous', lignes: ['Vos nom, date et lieu de naissance, adresse et coordonnées : à l’étape suivante.'], pied: 'Ci-après « le MANDANT »' };
-  const mandataire: Fiche = { ic: 'agence', titre: A.nom, lignes: [
-    `${A.adresse}, ${A.cp} ${A.ville} · ${A.tel} · ${A.mail}`,
-    `${A.societe}, ${A.forme}, ${A.rcs}. Carte professionnelle ${A.carteMention} n° ${A.carte}, délivrée par ${A.carteDelivree}.`,
-    `Responsabilité civile professionnelle : ${A.assureur}, police n° ${A.police}.`,
-    `Représentée par ${SIGNATAIRE.nom}, ${SIGNATAIRE.qualite}.`,
-  ], note: 'Ne reçoit ni ne détient aucuns fonds autres que sa rémunération.',
-  pied: 'Ci-après « l’Agence » ou « le MANDATAIRE »' };
+  const mandataire: Fiche = { ic: 'agence', titre: A.nom.toUpperCase(), lignes: lignesMandataire(A),
+    note: phraseFonds(A), pied: 'Ci-après « l’Agence » ou « le MANDATAIRE »' };
 
   const honoraires: Bloc[] = forfait
     ? [
@@ -500,13 +466,13 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
         { t: 'case', coche: d.executionImmediate === false, x: 'Le MANDANT préfère que la mission commence à la fin du délai de rétractation.' },
       ] },
       { titre: 'Informations', ic: 'info', blocs: [
-        P(`Réclamations : par écrit à l’Agence. Sans réponse satisfaisante sous 30 jours, le MANDANT peut saisir gratuitement le médiateur de la consommation : ${MEDIATEUR.nom}, ${MEDIATEUR.adresse}, ${MEDIATEUR.site}.`),
+        P(`Réclamations : par écrit à l’Agence. Sans réponse satisfaisante sous 30 jours, le MANDANT peut saisir gratuitement le médiateur de la consommation : ${A.mediateurNom}, ${A.mediateurAdresse}, ${A.mediateurSite}.`),
         P(`Données personnelles : l’Agence les traite pour exécuter le mandat et respecter ses obligations légales, et ne les communique qu’aux intervenants de l’opération. Le MANDANT peut y accéder, les rectifier ou les faire effacer en écrivant à ${A.mail}, et saisir la CNIL (www.cnil.fr).`),
         P('Démarchage téléphonique : le MANDANT peut s’inscrire gratuitement sur la liste d’opposition Bloctel (www.bloctel.gouv.fr).'),
         P('L’Agence exerce sous la loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet), son décret d’application du 20 juillet 1972 et le code de déontologie des professionnels de l’immobilier. Le mandat est soumis à la loi française.'),
       ] },
       { titre: 'Date et signatures', ic: 'plume', blocs: [
-        P(`Fait à Paris${d.signature ? `, le ${dateLongue(d.signature.le)}` : ''}. Le MANDANT a lu le mandat en entier avant de le signer, depuis son espace personnel, avec un code à usage unique reçu par e-mail ; le certificat de signature figure en dernière page. Chaque partie en conserve un exemplaire.`),
+        P(`Fait à ${A.ville}${d.signature ? `, le ${dateLongue(d.signature.le)}` : ''}. Le MANDANT a lu le mandat en entier avant de le signer, depuis son espace personnel, avec un code à usage unique reçu par e-mail ; le certificat de signature figure en dernière page. Chaque partie en conserve un exemplaire.`),
         { t: 'sig' },
       ] },
     ],
@@ -520,7 +486,7 @@ export function redigerMandat(d: DonneesMandat): Partie[] {
     sous: 'À renvoyer uniquement si vous souhaitez vous rétracter',
     ic: 'retour',
     sections: [{ blocs: [
-      P(`À l’attention de : ${A.nom}, ${A.adresse}, ${A.cp} ${A.ville} — ${A.mail}`, true),
+      P(`À l’attention de : ${A.nom.toUpperCase()}, ${A.adresse}, ${A.cp} ${A.ville} — ${A.mail}`, true),
       { t: 'l', items: [
         `Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de service ci-dessous : ${titreMandat(d.numero)}.`,
         `Conclu le : ${d.signature ? dateCourte(d.signature.le) : '………………'}`,
