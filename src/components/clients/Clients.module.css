@@ -478,3 +478,50 @@
 }
 
 @keyframes feuilleMonte { from { transform: translateY(60px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+/* ─── La situation du client : propriétaire ou non ───
+   Un propriétaire qui achète est un mandat vendeur en puissance.
+   L'or ne sert qu'à lui, pour qu'il se voie d'un coup d'œil. */
+.situations { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -6px; }
+.situationsTitre { font-size: 10.5px; font-weight: 800; color: #a3b0c2; text-transform: uppercase; letter-spacing: 0.9px; margin-right: 4px; }
+.sitBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 99px; border: 1px solid #e3e8f0;
+  background: #fff; color: #64748b; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; white-space: nowrap;
+}
+.sitBtn:hover { border-color: #cfd8e4; color: #1a2332; }
+.sitBtnOr { color: #8a6d1f; border-color: #eadcb0; background: #fffdf6; }
+.sitBtnOr:hover { border-color: #d9c27e; color: #6f5714; }
+/* Le bouton choisi garde ses couleurs au survol : sinon le texte marine
+   disparaissait sur le fond marine. */
+.sitBtnActif, .sitBtnActif:hover { background: #1a2332; border-color: #1a2332; color: #fff; }
+.sitBtnOr.sitBtnActif, .sitBtnOr.sitBtnActif:hover { background: #c9a84c; border-color: #c9a84c; color: #1a2332; }
+.sitBadge { font-size: 10px; font-weight: 800; padding: 0 6px; border-radius: 99px; background: #f1f5f9; color: #64748b; }
+.sitBtnActif .sitBadge { background: rgba(255,255,255,0.22); color: inherit; }
+
+.proprio {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 7px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase;
+  border-radius: 99px; padding: 1px 7px 1px 6px; vertical-align: 1px; white-space: nowrap;
+  color: #8a6d1f; background: #fdf8ea; border: 1px solid #ecdcae;
+}
+.proprioVend { color: #1a2332; background: #e9d49a; border-color: #c9a84c; }
+.occupe {
+  display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; color: #94a3b8; border: 1px solid #e6ebf2; border-radius: 99px; padding: 1px 7px; vertical-align: 1px; white-space: nowrap;
+}
+.aRenseigner {
+  display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px;
+  color: #b6c1cf; border: 1px dashed #d5dde8; border-radius: 99px; padding: 0 7px; vertical-align: 1px; white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .situations {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    margin: -4px -12px 0; padding: 2px 12px;
+  }
+  .situations::-webkit-scrollbar { display: none; }
+  .situationsTitre { display: none; }
+  .sitBtn { flex-shrink: 0; padding: 6px 11px; font-size: 12.5px; }
+}
