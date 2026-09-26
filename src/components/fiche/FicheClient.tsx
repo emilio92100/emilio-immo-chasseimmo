@@ -837,7 +837,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const { data, error } = await supabase.from('recherches').insert({
       client_id: client.id,
       nom: nom.trim() || `Recherche ${recherches.length + 1}`,
-      active: true,
+      /* La veille ne tourne que pour un client Actif : un Prospect peut
+         avoir une recherche ouverte, elle attend qu'il passe en Actif. */
+      active: client.statut === 'actif',
       secteurs: [],
       token_espace: jetonEspace(client.prenom, client.nom),
     }).select().single();
@@ -1303,7 +1305,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       const { data: neuve, error: eNeuve } = await supabase.from('recherches').insert({
         client_id: client.id,
         nom: 'Recherche principale',
-        active: true,
+        active: client.statut === 'actif',
         secteurs: [],
         /* L'adresse interne de la recherche. Le lien envoyé au client, lui,
            est rangé sur le client et n'a pas bougé (voir src/lib/espace.ts). */
