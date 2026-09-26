@@ -8,6 +8,7 @@ import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
 import SignatureMandat, { CarteMonMandat, CartePret, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
 import { jourParis, DUREE } from '@/lib/mandat';
+import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -44,6 +45,15 @@ type Bien = {
   visitePrevue?: { date: string; heure: string | null } | null;
   visiteFaite?: { date: string | null; commentaire: string | null; etoiles: number | null } | null;
   etat: string;
+};
+/* Une visite, telle que « Vos visites » la lit (voir page.tsx). `passee` :
+   faite, ou calée à une heure déjà passée. `issue` : sa réponse ou celle de
+   son conseiller, null tant que personne n'a rien dit. */
+type VisiteE = {
+  id: string; bienId: string; date: string | null; heure: string | null; passee: boolean;
+  issue: Issue | null; issuePar: 'client' | 'conseiller' | null;
+  motifs: string[]; mot: string | null; prix: number | null;
+  compteRendu: string | null; etoiles: number | null; issueLe: string | null; revisite: boolean;
 };
 type Criteres = {
   budgetMin: number | null; budgetMax: number | null;
@@ -87,6 +97,10 @@ type Props = {
   enCours: boolean;
   /** Le mandat de recherche : à signer, signé, ou rien de préparé. Voir SignatureMandat.tsx. */
   mandat: MandatEspace;
+  /** Toutes ses visites, passées et à venir, avec leur issue. */
+  mesVisites?: VisiteE[];
+  /** Ce que ses visites non abouties ont appris (les 3 raisons qui reviennent le plus). */
+  apprisClient?: string[];
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -865,9 +879,15 @@ function useNotifications(token: string) {
 }
 
 /* ══ composant ════════════════════════════════════ */
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit }: Props) {
+const SANS_APPRIS: string[] = [];
+
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
+  /* Pas de valeur par défaut dans la signature : un [] neuf à chaque rendu
+     relancerait cet effet sans fin. */
+  const [mesV, setMesV] = useState<VisiteE[]>(mesVisites || []);
+  useEffect(() => { setMesV(mesVisites || []); }, [mesVisites]);
   const [crit, setCrit] = useState(criteres);
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
@@ -1172,7 +1192,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
        garder l'espace sous la main, et pas avant. */
     ecran.eveiller();
     montrer(<FicheBien b={b} client={client} crit={crit} onFermer={fermer}
-      onAvis={enregistrerAvis} onPartager={partagerBien} />, 'fiche');
+      onAvis={enregistrerAvis} onPartager={partagerBien}
+      visitesB={mesV.filter(x => x.bienId === b.id)} onRepondreVisite={repondreVisite} />, 'fiche');
   }
 
   /* ── Le mandat de recherche ──
@@ -1260,6 +1281,33 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           : "Alexandre est prévenu. Il va vous en chercher d'autres dans le même esprit."}
       rappel="Chacun de vos retours est relu, et oriente les propositions suivantes."
       onFermer={fermer} />, 'pleine');
+  }
+
+  /* Son avis après une visite. La visite change de rubrique dans « Vos
+     visites » ; le bien suit (« Pas pour moi » le range avec les biens
+     écartés). Renvoie false si rien n'est parti : le bouton le dit. */
+  async function repondreVisite(v: VisiteE, issue: Issue, motifs: string[], mot: string, prix: number | null): Promise<boolean> {
+    const r = await envoyer('visite', { visite_id: v.id, issue, motifs, mot, prix });
+    if (!r?.ok) return false;
+    const le = r.le || new Date().toISOString();
+    setMesV(l => l.map(x => x.id === v.id
+      ? { ...x, issue, issuePar: 'client', motifs, mot: mot || null, prix: issue === 'offre' ? prix : null, issueLe: le } : x));
+    setBiens(l => l.map(x => x.id === v.bienId
+      ? { ...x, avis: x.avis === 'offre_faite' ? x.avis : issue === 'non' ? 'refuse' : 'visite', retourLe: le } : x));
+    return true;
+  }
+  /* Depuis « Vos visites » ou l'accueil, la carte change de rubrique (ou
+     disparaît) dès la réponse : on dit donc « c'est noté » dans une feuille,
+     avec l'endroit où il retrouvera le bien. Dans la fiche, la carte le dit
+     elle-même. */
+  async function repondreEtDire(v: VisiteE, issue: Issue, motifs: string[], mot: string, prix: number | null): Promise<boolean> {
+    const ok = await repondreVisite(v, issue, motifs, mot, prix);
+    if (ok) {
+      montrer(<GrandOk titre="C'est noté, merci" texte={QUESTION_VISITE[issue].ok}
+        rappel={`Vous retrouvez ce bien dans « Vos visites », rangé dans « ${issue === 'non' ? 'Pas pour moi' : 'En cours'} ».`}
+        onFermer={fermer} />, 'pleine');
+    }
+    return ok;
   }
 
   /* Le partage s'ouvre par-dessus la fiche, en pop-up : on ne perd pas le bien
@@ -1624,6 +1672,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                  attendre la première demande de visite. */
               mandatPret={mandat.propose && mandat.etat === 'a_signer'
                 ? <CartePret onSigner={() => ouvrirMandat('libre')} /> : null}
+              /* Sa dernière visite, sans réponse encore : la question l'attend
+                 en haut de l'accueil pendant 7 jours. */
+              avisVisite={(() => {
+                const x = visiteSansAvis(mesV, biens);
+                return x ? <CarteAvisAccueil b={x.b} v={x.v} onRepondre={repondreEtDire}
+                  onOuvrir={() => ouvrirBien(x.b)} onVoir={() => aller('visites')} /> : null;
+              })()}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
           )}
           {vue === 'neufs' && (
@@ -1703,28 +1758,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               mandatCarte={<CarteMonMandat mandat={mandat} envoyer={envoyer}
                 onSigner={() => ouvrirMandat('libre')} onRenoncer={ouvrirRenonciation} />} />
           )}
-          {vue === 'visites' && (() => {
-            const faites = biens.filter(b => b.visiteFaite);
-            return (
-              <Vue icone="calendrier" aller={aller}
-                titre={visites.length > 1 ? `${visites.length} visites à venir` : visites.length ? '1 visite à venir' : 'Vos visites'}
-                sous={visites.length
-                  ? 'Calées par votre conseiller, qui vous accompagne sur place.'
-                  : 'Aucune visite prévue pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
-                {visites.map((v, i) => (
-                  <ProchaineVisite key={v.id} v={v} autres={0} token={token}
-                    titre={i === 0 ? 'Votre prochaine visite' : 'Visite suivante'}
-                    onBien={v.bienId ? () => { const b = biens.find(x => x.id === v.bienId); if (b) ouvrirBien(b); } : undefined} />
-                ))}
-                {faites.length > 0 && (
-                  <div className="vis-faites">
-                    <div className="sep"><span>Déjà visités</span><i /></div>
-                    <Liste biens={faites} onOuvrir={ouvrirBien} vide="" crit={crit} />
-                  </div>
-                )}
-              </Vue>
-            );
-          })()}
+          {vue === 'visites' && (
+            <VueVisites biens={biens} mesV={mesV} visites={visites} token={token} apprisClient={apprisClient}
+              aller={aller} onOuvrir={ouvrirBien} onRepondre={repondreEtDire} />
+          )}
         </div>
 
         {/* La signature, puis les mentions. Le cœur reste collé à « rien que
@@ -1804,7 +1841,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   /* La dernière recherche : son chiffre à elle, et son moment (« aujourd'hui
      à 14 h 34 »). C'est ce que « Aujourd'hui pour vous » doit montrer. */
@@ -1894,6 +1931,8 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
           </div>
         )}
       </section>
+
+      {avisVisite}
 
       {mandatPret}
 
