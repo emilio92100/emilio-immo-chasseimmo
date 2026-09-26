@@ -19,7 +19,7 @@ const GROUPES: { id: Alerte['groupe']; titre: string }[] = [
 
 /* Ce qui n'arrive jamais par mail : Alexandre croyait recevoir les avis. */
 const JAMAIS = [
-  'Les avis « Ça me plaît » et « Pas pour moi »',
+  'Les avis « Ça me plaît » et « Pas pour moi » sur un bien pas encore visité',
   'Les messages du client',
   'Les demandes de rappel',
   'Les changements de critères',
