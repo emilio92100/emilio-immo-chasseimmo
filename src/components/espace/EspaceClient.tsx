@@ -1339,6 +1339,48 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     setVue('neufs');
   }, []);
 
+  /* Le mail « Où en est votre recherche ? » (point automatique) : chaque
+     bouton ouvre l'espace sur ?point=… et on ouvre la fenêtre qui répond à
+     la question. Rien ne s'enregistre ici : c'est le client qui répond, dans
+     la fenêtre. Même nettoyage de l'adresse que pour `fin`. */
+  const pointOuvert = useRef(false);
+  useEffect(() => {
+    if (pointOuvert.current) return;
+    let voulu = '';
+    try { voulu = new URLSearchParams(window.location.search).get('point') || ''; } catch { return; }
+    if (!['toujours', 'criteres', 'trouve', 'pause'].includes(voulu)) return;
+    const t = setTimeout(() => {
+      pointOuvert.current = true;
+      try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
+      if (voulu === 'toujours') ouvrirToujours();
+      else if (voulu === 'criteres') ouvrirCriteres();
+      else if (voulu === 'trouve') montrer(<FinRecherche onFermer={fermer} onChoisir={declarerFin}
+        seulement={['trouve_avec_vous', 'trouve_ailleurs']} titre={'Bonne nouvelle\u00a0!'}
+        intro={'Dites-nous comment, en un clic. Votre conseiller vous rappelle\u00a0: rien ne se ferme sans vous.'} />);
+      else montrer(<FinRecherche onFermer={fermer} onChoisir={declarerFin}
+        seulement={['pause', 'abandon']} titre={'Où en est votre projet\u00a0?'} />);
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function ouvrirToujours() {
+    montrer(<Toujours onFermer={fermer} onCriteres={ouvrirCriteres} onConfirmer={async () => {
+      const r = await envoyer('toujours', {});
+      if (r && r.ok === false) {
+        montrer(<GrandOk titre="Le message n'est pas parti"
+          texte="Un souci de connexion, sans doute. Réessayez dans un instant, ou appelez directement votre conseiller."
+          rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
+          onFermer={fermer} />, 'pleine');
+        return;
+      }
+      montrer(<GrandOk titre="Merci, c'est noté"
+        texte="Nous continuons à chercher pour vous, sur les mêmes critères. Les prochains biens arriveront ici, comme d'habitude."
+        rappel="Un critère a bougé entre-temps ? Vous pouvez le changer à tout moment, depuis « Mes critères ont évolué »."
+        onFermer={fermer} />, 'pleine');
+    }} />);
+  }
+
   /* « Mes critères ont évolué » ne mène plus directement à l'assistant : on
      demande d'abord au client ce qu'il préfère. Certains veulent corriger un
      chiffre eux-mêmes, d'autres veulent en parler — les deux sont légitimes,
@@ -1396,8 +1438,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const TITRES: Record<string, string> = {
       pause: "C'est noté, on met en pause",
       abandon: 'Merci de nous avoir prévenus',
+      trouve_avec_vous: 'Félicitations\u00a0!',
+      trouve_ailleurs: 'Félicitations, et merci de nous le dire',
     };
     const SUITES: Record<string, string> = {
+      trouve_avec_vous: "Votre conseiller vous rappelle pour organiser la suite avec vous. Votre espace reste accessible en attendant.",
+      trouve_ailleurs: "Nous arrêtons de vous envoyer des biens. Votre conseiller vous rappelle pour en parler et clôturer votre dossier proprement.",
       pause: "Votre recherche est mise de côté le temps qu'il vous faut. Votre conseiller vous rappelle pour en convenir avec vous, et votre espace reste accessible.",
       abandon: "C'est noté, et merci de l'avoir dit : ça nous évite de vous solliciter pour rien. Votre conseiller vous rappelle une dernière fois pour clôturer votre dossier proprement. Et si le projet repart un jour, vous savez où nous trouver.",
     };
@@ -4001,16 +4047,45 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
     </>
   );
 }
+/* « Je cherche toujours », depuis le mail « Où en est votre recherche ? ».
+   Le lien du mail n'enregistre rien en arrivant : les messageries ouvrent les
+   liens pour les vérifier, et répondraient à la place du client. C'est ce
+   bouton-ci, pressé par lui, qui prévient son conseiller. */
+function Toujours({ onFermer, onConfirmer, onCriteres }: any) {
+  const [envoi, setEnvoi] = useState(false);
+  return (
+    <>
+      <div className="tete-f">
+        <div><div className="sur">Votre recherche</div><h3>Vous cherchez toujours&nbsp;?</h3></div>
+        <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
+      </div>
+      <div className="corps-f">
+        <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
+          {'Un clic pour le confirmer à votre conseiller\u00a0: la recherche continue, sur les mêmes critères.'}
+        </p>
+        <BtnEnvoi enCours={envoi} classe="btn or" libelle="Oui, je cherche toujours"
+          enCoursTexte="Envoi en cours…"
+          onClick={async () => { setEnvoi(true); await onConfirmer(); }} />
+        <button className="cta-prec" style={{ marginTop: 12 }} onClick={onCriteres}>
+          <span><b>Mes critères ont évolué</b>
+            <span className="s">{'Vous les modifiez vous-même, ou votre conseiller vous rappelle pour en parler.'}</span></span>
+          <span className="chev"><Ico n="fleche" t={18} /></span>
+        </button>
+      </div>
+    </>
+  );
+}
+
 /* Le carrefour de « Mes critères ont évolué » : modifier soi-même, ou être
    rappelé. Le créneau se choisit ici même — ouvrir une deuxième pop-up pour
    trois boutons, c'est une étape de trop. */
 /* Trois réponses, jamais une de plus : on ne fait pas remplir un formulaire
    à quelqu'un qui vient nous dire qu'il s'en va. */
-function FinRecherche({ onFermer, onChoisir }: any) {
+function FinRecherche({ onFermer, onChoisir, seulement, titre, intro }: any) {
   const [motif, setMotif] = useState('');
   const [mot, setMot] = useState('');
   const [envoi, setEnvoi] = useState(false);
-  const CHOIX: [string, string, string][] = [
+  const TOUS: [string, string, string][] = [
     ['trouve_avec_vous', "J'ai trouvé, grâce à vous", 'Le bien vient de votre sélection.'],
     ['trouve_ailleurs', "J'ai trouvé par un autre biais", 'Une autre agence, un particulier, une relation.'],
     ['pause', 'Je mets ma recherche en pause', 'Le projet est reporté, sans être abandonné.'],
@@ -4019,16 +4094,20 @@ function FinRecherche({ onFermer, onChoisir }: any) {
        « pause » répondra « pause » — et continuera de recevoir des biens. */
     ['abandon', "J'arrête ma recherche", 'Le projet ne se fera pas, au moins pour le moment.'],
   ];
+  /* Depuis le mail « Où en est votre recherche ? », le bouton « J'ai trouvé »
+     ne montre que les deux réponses « trouvé », et « Pause ou arrêt » les
+     deux autres : le client a déjà dit laquelle, on ne lui repose pas la
+     question entière. */
+  const CHOIX = Array.isArray(seulement) ? TOUS.filter(c => seulement.includes(c[0])) : TOUS;
   return (
     <>
       <div className="tete-f">
-        <div><div className="sur">Votre recherche</div><h3>Votre recherche est terminée&nbsp;?</h3></div>
+        <div><div className="sur">Votre recherche</div><h3>{titre || 'Votre recherche est terminée\u00a0?'}</h3></div>
         <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ico n="croix" t={14} /></button>
       </div>
       <div className="corps-f">
         <p className="txt" style={{ marginTop: 0, color: 'var(--plume)' }}>
-          Dites-le-nous en un clic. Votre conseiller vous rappelle pour en parler&nbsp;:
-          rien ne se ferme sans vous.
+          {intro || 'Dites-le-nous en un clic. Votre conseiller vous rappelle pour en parler\u00a0: rien ne se ferme sans vous.'}
         </p>
 
         {CHOIX.map(([cle, titre, sous]) => (
