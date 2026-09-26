@@ -5,6 +5,7 @@ import {
   lireReglages, calculerCandidats, mailPoint, envoyerMailjet,
   TYPE_ENVOI, PLAFOND_PAR_JOUR,
 } from '@/lib/point-auto';
+import { alerteMailActive } from '@/lib/alertes';
 
 /**
  * L'envoi quotidien du point automatique — « Où en est votre recherche ? ».
@@ -77,7 +78,9 @@ export async function GET(req: NextRequest) {
     }
 
     /* Un mot à Alexandre, seulement s'il s'est passé quelque chose. */
-    if (partis.length || rates.length) {
+    /* Le récapitulatif peut être coupé (Paramètres → Alertes mail), sauf
+       quand un mail n'a pas pu partir : ça, Alexandre doit le savoir. */
+    if (rates.length || (partis.length && await alerteMailActive(sb, 'point_auto_recap'))) {
       const lignes = partis.map((p) =>
         `<li style="margin:0 0 6px;"><a href="${CRM}/?page=fiche&client=${encodeURIComponent(p.id)}" style="color:#1a2332;font-weight:700;">${echappe(p.nom)}</a>${p.revente ? ' <span style="color:#9a7d2e;font-weight:700;">· revente possible</span>' : ''}</li>`).join('');
       const html = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
