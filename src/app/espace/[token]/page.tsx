@@ -305,9 +305,11 @@ export default async function PageEspace({ params, searchParams }: {
        · Alexandre met la veille en pause depuis le CRM → `active` passe à
          false. C'est la vérité du dossier, elle prime sur tout.
        · Le client déclare lui-même que c'est terminé → une ligne
-         « fin_recherche » au journal. Rien ne se clôture pour autant (c'est
-         volontaire, voir /api/espace/[action]) : on arrête simplement de lui
-         afficher « en cours » alors qu'il vient de dire le contraire.
+         « fin_recherche » au journal. Depuis le 27 septembre 2026, le dossier
+         change aussi de rubrique et la veille s'arrête (`active` à false,
+         voir /api/espace/[action]) ; la relance reste, Alexandre l'appelle
+         pour confirmer. La ligne du journal suffit de toute façon à ne plus
+         lui afficher « en cours » alors qu'il vient de dire le contraire.
 
      La déclaration du client tient jusqu'à ce qu'Alexandre reprenne la main
      sur la recherche — rouvrir le dossier, relancer la veille, modifier les
