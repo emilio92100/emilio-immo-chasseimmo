@@ -478,7 +478,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       (re.data || []).forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
       (jo.data || []).forEach((j: any) => {
         const e = s[j.client_id];
-        if (!e || e.dernierContact) return;
+        /* Le mail « Où en est votre recherche ? » part tout seul : ce n'est pas
+           un geste sur le dossier, il ne doit pas masquer « Rien depuis… ». */
+        if (!e || e.dernierContact || j.type === 'point_auto') return;
         e.dernierContact = j.created_at;
         e.dernierTitre = j.titre || '';
         e.dernierCote = venantDuClient(j.type, j.titre) ? 'client' : 'moi';
