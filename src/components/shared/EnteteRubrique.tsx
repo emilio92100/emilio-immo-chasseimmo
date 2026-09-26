@@ -10,9 +10,9 @@ import styles from './EnteteRubrique.module.css';
    grise « 8 clients · 5 actifs · 2 prospects », et les pastilles de filtre
    avec leur petit compteur. Un chiffre, un seul endroit.
 
-   Sur ordinateur : un bandeau marine compact, les chiffres en pastilles sur
-   une ligne, le filtre en cours en blanc — il se détache de la liste claire
-   sans prendre de place. Sur téléphone : une carte blanche compacte, la
+   Sur ordinateur : un bandeau bleu compact, aux couleurs de la fiche client,
+   les chiffres en pastilles sur une ligne, le filtre en cours en blanc — il
+   se détache de la liste claire sans prendre de place. Sur téléphone : une carte blanche compacte, la
    recherche sous le titre, les chiffres en bandeau qui défile au doigt.
    Tout se joue dans EnteteRubrique.module.css. */
 export type Tuile = {

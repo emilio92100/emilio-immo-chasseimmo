@@ -1,6 +1,8 @@
 /* L'en-tête d'une rubrique — voir EnteteRubrique.tsx.
-   Ordinateur : un bandeau marine compact, les chiffres en pastilles sur une
-   ligne. Il tranche sur la liste claire en dessous sans prendre de place.
+   Ordinateur : un bandeau bleu compact, aux couleurs du bloc d'identité de
+   la fiche client (même dégradé, même liseré or, mêmes lueurs), les chiffres
+   en pastilles sur une ligne. Il tranche sur la liste claire en dessous sans
+   prendre de place.
    Téléphone : une carte blanche compacte, les chiffres en bandeau dessous. */
 
 /* ── La structure, commune aux deux ─────────────────────────────────── */
@@ -43,33 +45,36 @@
 .lib { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
 .point { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
-/* ── Ordinateur : le bandeau marine compact ─────────────────────────── */
+/* ── Ordinateur : le bandeau bleu compact, celui de la fiche client ──── */
 @media (min-width: 761px) {
   .bloc {
     border-radius: 18px;
-    background: linear-gradient(135deg, #1f2a3d 0%, #1a2332 60%, #18202e 100%);
-    box-shadow: 0 12px 28px -20px rgba(26, 35, 50, 0.7);
+    background: linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%);
+    border: 1px solid rgba(201, 168, 76, 0.2);
+    box-shadow: 0 24px 50px -30px rgba(30, 45, 75, 0.75);
   }
-  /* Une lueur dorée dans le coin, très discrète. */
-  .bloc::before {
-    content: ''; position: absolute; z-index: 0; width: 300px; height: 300px; right: -110px; top: -190px;
-    background: radial-gradient(closest-side, rgba(201, 168, 76, 0.18), transparent); pointer-events: none;
+  /* Les deux lueurs de la fiche : or en haut à droite, bleu en bas à gauche. */
+  .bloc::before, .bloc::after {
+    content: ''; position: absolute; z-index: 0; border-radius: 50%; pointer-events: none;
   }
+  .bloc::before { width: 360px; height: 360px; right: -90px; top: -210px; background: radial-gradient(circle, rgba(201, 168, 76, 0.22), transparent 64%); }
+  .bloc::after { width: 320px; height: 320px; left: -60px; bottom: -230px; background: radial-gradient(circle, rgba(125, 185, 255, 0.12), transparent 66%); }
   .haut { gap: 12px; padding: 14px 18px 12px; }
   .titreZone { gap: 11px; }
   .icone {
-    width: 34px; height: 34px; border-radius: 10px;
-    background: rgba(201, 168, 76, 0.16); color: #e8c96a; box-shadow: inset 0 0 0 1px rgba(232, 201, 106, 0.22);
+    width: 34px; height: 34px; border-radius: 10px; color: #c9a84c;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+    box-shadow: inset 0 0 0 1px rgba(201, 168, 76, 0.45);
   }
   .icone svg { width: 18px; height: 18px; }
   .titre { font-size: 20px; letter-spacing: -0.3px; color: #fff; }
-  .phrase { font-size: 12.5px; margin-top: 2px; color: rgba(255, 255, 255, 0.6); }
+  .phrase { font-size: 12.5px; margin-top: 2px; color: rgba(255, 255, 255, 0.62); }
 
   .recherche {
     height: 36px; width: 240px; border-radius: 10px;
-    background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.14); color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.55);
   }
-  .recherche:focus-within { background: rgba(255, 255, 255, 0.11); border-color: rgba(232, 201, 106, 0.55); }
+  .recherche:focus-within { background: rgba(255, 255, 255, 0.12); border-color: rgba(201, 168, 76, 0.6); }
   .recherche input { font-size: 13.5px; color: #fff; }
   .recherche input::placeholder { color: rgba(255, 255, 255, 0.45); }
   .bouton { height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; background: #c9a84c; color: #1a2332; }
@@ -78,13 +83,13 @@
   .rangee { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
   .tuile {
     flex-direction: row; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.1);
   }
   .tuile:hover { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.18); }
   .n { font-size: 16px; color: #fff; }
-  .lib { font-size: 12.5px; color: rgba(255, 255, 255, 0.68); }
+  .lib { font-size: 12.5px; color: rgba(255, 255, 255, 0.7); }
   /* Le filtre en cours : la pastille passe en blanc, le chiffre en or. */
-  .on, .on:hover { background: #fff; border-color: #fff; box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.6); }
+  .on, .on:hover { background: #fff; border-color: #fff; box-shadow: 0 8px 18px -12px rgba(16, 24, 40, 0.7); }
   .on .n { color: #a9822f; }
   .on .lib { color: #1a2332; }
   /* À zéro : on la garde (elle dit « rien ici »), mais sans lui donner de poids. */
