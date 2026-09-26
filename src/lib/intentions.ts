@@ -37,6 +37,17 @@ export function demanderRendezVous(rechercheId: string) {
   try { window.sessionStorage.setItem(CLE_RDV, rechercheId); } catch { /* l'agenda s'ouvrira sans dossier choisi */ }
 }
 
+/* « Nouveau rendez-vous » depuis n'importe quel écran : la barre du haut, le
+   tableau de bord, le « + » du téléphone. La fenêtre (celle de l'agenda) est
+   posée une fois pour toutes dans AppLayout et s'ouvre sur cet événement ;
+   une fois le rendez-vous enregistré, l'agenda s'il est affiché se recharge. */
+export const EVT_NOUVEAU_RDV = 'emilio:nouveau-rdv';
+export const EVT_RDV_ENREGISTRE = 'emilio:rdv-enregistre';
+
+export function demanderNouveauRdv() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_NOUVEAU_RDV));
+}
+
 export function prendreDemandeRendezVous(): string | null {
   try {
     const id = window.sessionStorage.getItem(CLE_RDV);
