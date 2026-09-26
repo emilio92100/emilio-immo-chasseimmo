@@ -24,6 +24,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { etatMandat, horsMandat, rechercheDepuis, DUREE, type EtatMandat, type Contenu } from './mandat';
+import { alerteMailActive } from './alertes';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -179,6 +180,8 @@ export async function alerteHorsMandat(sb: SupabaseClient, o: {
     note: `À rappeler : sa recherche dépasse son mandat n° ${sig.numero} (${neufs.join(' · ')}). Voir s'il faut un nouveau mandat.`.slice(0, 600),
   });
   if (eR) console.error('[mandat] alerte hors mandat, relance', eR.message);
+  /* Coupé dans Paramètres → Alertes mail : la relance du jour suffit. */
+  if (!(await alerteMailActive(sb, 'mandat_depasse'))) return;
   const eM = await envoyerMail({
     a: ALERTES(), deLaPartDe: 'crm',
     sujet: `⚠️ ${nom} : sa recherche dépasse son mandat (n° ${sig.numero})`,
