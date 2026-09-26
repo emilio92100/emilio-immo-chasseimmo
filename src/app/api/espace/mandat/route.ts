@@ -8,6 +8,7 @@ import {
 } from '@/lib/mandat';
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
 import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE } from '@/lib/mandat-serveur';
+import { alerteMailActive } from '@/lib/alertes';
 
 /**
  * La signature du mandat de recherche, depuis l'espace client.
@@ -143,7 +144,18 @@ export async function POST(req: NextRequest) {
              ImmoFacile, avec la date d'aujourd'hui. */
           const reste = pris.restants <= RESERVE_ALERTE
             ? `<p style="color:#b45309"><b>Il ne te reste que ${pris.restants} numéro${pris.restants > 1 ? 's' : ''} d'avance.</b> Pense à en réserver d'autres dans ImmoFacile et à les ajouter dans le CRM.</p>` : '';
-          await envoyerMail({
+          /* Une trace dans son suivi : si l'alerte mail est coupée (Paramètres
+             → Alertes mail), c'est là qu'Alexandre voit qu'un numéro de sa
+             réserve est parti. Le mail, lui, part quand même s'il y a un
+             problème à régler : fiche pas à jour, réserve presque vide. */
+          const { error: eJN } = await sb.from('journal').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
+            titre: `🔢 N° ${numero} attribué, signature en cours`,
+            description: `Pris dans ta réserve. À reporter dans le registre ImmoFacile ; s'il ne va pas au bout, le marquer « clos sans suite ».`,
+            metadata: { numero },
+          });
+          if (eJN) console.error('[mandat] numéro attribué, journal', eJN.message);
+          if (eNum || pris.restants <= RESERVE_ALERTE || await alerteMailActive(sb, 'mandat_numero')) await envoyerMail({
             a: ALERTES(), deLaPartDe: 'crm',
             sujet: `N° ${numero} attribué à ${nomClient} (signature en cours)`,
             texte: `Le numéro ${numero} de ta réserve vient d'être attribué au mandat de recherche de ${nomClient}, qui est en train de le signer depuis son espace. Reporte-le dans le registre ImmoFacile. S'il ne signe pas, marque-le « clos sans suite ».${eNum ? `\n\n⚠️ La fiche n'a pas pu garder le numéro : ${eNum.message}` : ''}\n\n${lienCrm}`,
@@ -329,7 +341,9 @@ export async function POST(req: NextRequest) {
             `Le mandat joint rappelle votre délai de rétractation de ${RETRACTATION_JOURS} jours (jusqu’au ${dateLongue(limite)} inclus) et la façon de l’exercer.`),
         });
         const prix = contenu.prixMax ? `${euros(contenu.prixMax)} hors honoraires` : 'selon son budget';
-        await envoyerMail({
+        /* Coupé dans les Paramètres, il part quand même s'il y a quelque
+           chose à rattraper : copie du client, fiche, recherche hors mandat. */
+        if (eClient || eFiche || ecarts.length || await alerteMailActive(sb, 'mandat_signe')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm', pj,
           sujet: `✍️ ${nom} a signé son mandat (n° ${l.numero})`,
           texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${honorairesCourt(contenu)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${ecarts.map(e => `\n⚠️ ${e}`).join('')}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
@@ -407,7 +421,7 @@ export async function POST(req: NextRequest) {
             <p>Alexandre Rogelet — Emilio Immobilier</p>`,
             'Ce message vaut accusé de réception de votre rétractation.'),
         });
-        await envoyerMail({
+        if (eFiche || await alerteMailActive(sb, 'mandat_renonce')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `↩️ ${nomClient} a renoncé à son mandat (n° ${l.numero})`,
           texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat n° ${l.numero} prend fin. Note-le dans le registre ImmoFacile.${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}).` : ''}\n\n${lienCrm}`,
@@ -453,7 +467,7 @@ export async function POST(req: NextRequest) {
           note: `Question sur le mandat ${quoi} — à rappeler (honoraires proposés : ${honorairesCourt(actuelle)})`.slice(0, 600),
         });
         await evt('mandat', 'Question sur le mandat : demande de rappel');
-        await envoyerMail({
+        if (await alerteMailActive(sb, 'mandat_question')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `📞 ${nomClient} a une question sur son mandat`,
           texte: `${nomClient} a ouvert son mandat de recherche et souhaite être rappelé ${quoi}.\nHonoraires proposés : ${honorairesCourt(actuelle)}.${tel ? `\nSon téléphone : ${tel}` : ''}\n\nSi vous convenez d'autres honoraires (un autre taux ou un forfait), change-les dans sa fiche (« Faire signer le mandat ») puis envoie-lui le mandat par e-mail.\n\n${lienCrm}`,
