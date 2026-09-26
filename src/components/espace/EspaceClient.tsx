@@ -1727,9 +1727,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           })()}
         </div>
 
+        {/* La signature, puis les mentions. Le cœur reste collé à « rien que
+            pour vous » : sur téléphone, la phrase passe à la ligne avant lui. */}
         <div className="pied">
+          <div className="pied-sig">{'Imaginé et créé par '}<b>Emilio Immobilier</b>{', '}<span className="insecable">{'rien que pour vous '}<svg className="pied-coeur" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 20.6s-7.6-4.6-9.4-9.3C1.3 7.9 3.4 4.4 6.9 4.4c2 0 3.6 1.1 5.1 3 1.5-1.9 3.1-3 5.1-3 3.5 0 5.6 3.5 4.3 6.9-1.8 4.7-9.4 9.3-9.4 9.3z" fill="currentColor" /></svg></span></div>
+          <div className="pied-trait" />
           <b>Emilio Immobilier</b><br />
-          Numéro de carte professionnelle&nbsp;: CPI 9201 2020 000 045 344<br />
+          Numéro de carte professionnelle&nbsp;: <span className="insecable">CPI 9201 2020 000 045 344</span><br />
           Chasse immobilière sur mesure · Paris &amp; Hauts-de-Seine
         </div>
       </div>
@@ -5763,6 +5767,11 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 .grandok .rappel b{color:var(--encre)}
 .pied{text-align:center; padding:34px 20px 10px; color:var(--plume-clair); font-size:12px; line-height:1.8}
 .pied b{color:var(--plume); font-weight:700}
+.pied .insecable{white-space:nowrap}
+.pied-sig{font-size:13.5px; color:var(--plume); line-height:1.5}
+.pied-sig b{color:var(--encre)}
+.pied-coeur{display:inline-block; vertical-align:-2px; color:#d9534f}
+.pied-trait{width:36px; height:2px; border-radius:2px; background:var(--or-trait); margin:14px auto 12px}
 /* À partir de la tablette, la page s'élargit et le client et son chasseur
    tiennent sur une ligne. Le sous-titre du chasseur saute pour rester compact. */
 @media(min-width:760px){
