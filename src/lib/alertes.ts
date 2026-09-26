@@ -17,7 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const CLE_ALERTES = 'alertes_mail';
 
 export type CleAlerte =
-  | 'visite'
+  | 'visite' | 'visite_offre' | 'visite_avis'
   | 'mandat_question' | 'mandat_numero' | 'mandat_signe' | 'mandat_renonce' | 'mandat_depasse'
   | 'point_auto_recap';
 
@@ -40,6 +40,18 @@ export const ALERTES_MAIL: Alerte[] = [
     objet: '👀 Paul Martin veut visiter · 4 pièces 106 m²…',
     quand: 'Il clique sur « Je veux visiter » depuis son espace. Une seule fois par bien.',
     crm: 'Une relance du jour dans Relances et sur le tableau de bord, et une ligne dans son suivi.',
+  },
+  {
+    cle: 'visite_offre', groupe: 'clients', titre: 'Un client veut faire une offre',
+    objet: '💶 Paul Martin veut faire une offre · 4 pièces 106 m²…',
+    quand: 'Après une visite, il répond « Je veux faire une offre » depuis son espace, avec son prix s’il en a un en tête.',
+    crm: 'Une relance à l’heure même, en tête de Relances, et l’issue sur la visite (onglet Visites de sa fiche).',
+  },
+  {
+    cle: 'visite_avis', groupe: 'clients', titre: 'Son avis après une visite',
+    objet: '🤔 Paul Martin réfléchit · 4 pièces 106 m²…',
+    quand: 'Après une visite, il répond depuis son espace : il veut revoir le bien, il hésite, ou ce n’est pas pour lui.',
+    crm: 'L’issue et ses raisons sur la visite (onglet Visites de sa fiche). Revoir : une relance du jour. Il hésite : une relance à J+3.',
   },
   {
     cle: 'mandat_question', groupe: 'mandats', titre: 'Une question sur le mandat',
