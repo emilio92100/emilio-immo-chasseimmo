@@ -161,6 +161,39 @@ function actualiseLe(d?: string | null) {
   if (x.toDateString() === new Date().toDateString()) return h;
   return `le ${x.getDate()} ${MOIS[x.getMonth()]} ${h}`;
 }
+/* Le moment de la dernière recherche, dit dans la phrase qui la raconte :
+   « aujourd'hui à 14 h 34 », « hier à 9 h 12 », « le 24 sept. à 14 h 34 ».
+   Le « mis à jour » de l'en-tête est petit et loin : sans l'heure dans la
+   phrase, « la dernière recherche » pouvait dater d'hier comme de la semaine
+   dernière.
+   Tout en heure de Paris, jours de calendrier : le serveur (en heure
+   universelle) et le téléphone écrivent ainsi la même phrase — sinon le
+   serveur disait « à 12 h 34 » et la page se corrigeait sous les yeux du
+   client (voir momentParis). */
+function momentRecherche(d?: string | null) {
+  if (!d) return '';
+  const x = new Date(d); if (isNaN(x.getTime())) return '';
+  const jour = (v: Date) => new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(v);
+  const hm: Record<string, string> = {};
+  for (const q of new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).formatToParts(x)) hm[q.type] = q.value;
+  /* Espaces insécables : « 14 h » et « 34 » ne se séparent pas en fin de ligne. */
+  const h = `à\u00a0${hm.hour}\u00a0h\u00a0${hm.minute}`;
+  const k = jour(x);
+  const j = Math.round((Date.parse(jour(new Date()) + 'T12:00:00Z') - Date.parse(k + 'T12:00:00Z')) / 86400000);
+  if (j <= 0) return `aujourd’hui ${h}`;
+  if (j === 1) return `hier ${h}`;
+  return `le ${Number(k.slice(8, 10))} ${MOIS[Number(k.slice(5, 7)) - 1]} ${h}`;
+}
+/* « Lors de la dernière recherche (aujourd'hui à 14 h 34), 21 annonces ont
+   été lues sur vos critères » — le début commun à toutes les phrases qui
+   racontent la dernière recherche. Une seule chaîne : rien ne peut se coller
+   à la compilation (AGENTS.md §2.1). */
+function debutRecherche(quand: string | null | undefined, lues: number) {
+  const q = momentRecherche(quand);
+  return `Lors de la dernière recherche${q ? ` (${q})` : ''}, ${nombre(lues)} annonce${lues > 1 ? 's ont été lues' : ' a été lue'} sur vos critères`;
+}
 
 /* ── L'en-tête : le bonjour, la date du jour, la recherche en une ligne ──
    L'heure est celle de Paris, calculée pareil sur le serveur et dans le
@@ -1598,7 +1631,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                   quelque chose. Sinon on dit l'inverse, mais on le dit. */}
               {neufs.length > 0 && !!passage?.lues && (
                 <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
-                  <span>Ces biens sont ceux qui ont passé tous vos critères, sur {passage.lues} annonces lues lors du dernier passage.</span>
+                  <span suppressHydrationWarning>{`Ces biens sont ceux qui ont passé tous vos critères. ${debutRecherche(passage.quand, passage.lues)}.`}</span>
                 </div>
               )}
               {/* « Aucun nouveau bien » ne veut pas dire « aucun bien retenu » :
@@ -1606,15 +1639,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                   Dire le contraire serait faux, et le client le verrait tout de suite. */}
               {neufs.length === 0 && !!passage?.lues && (
                 <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
+                  {/* « passage » est un mot du CRM : jamais devant le client (AGENTS.md §5). */}
                   {passage.proposees ? (
-                    <span>Lors du dernier passage, {passage.lues}{' '}annonces ont été passées en revue
-                      sur vos critères et {passage.proposees} bien{passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'}{' '}pour vous.
-                      Vous {passage.proposees > 1 ? 'les ' : "l'"}avez déjà ouvert{passage.proposees > 1 ? 's' : ''}&nbsp;:
-                      {passage.proposees > 1 ? ' ils vous attendent' : ' il vous attend'} dans «&nbsp;Mes derniers biens consultés&nbsp;».</span>
+                    <span suppressHydrationWarning>{`${debutRecherche(passage.quand, passage.lues)} et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} pour vous. Vous ${passage.proposees > 1 ? 'les avez déjà ouverts\u00a0: ils vous attendent' : 'l\u2019avez déjà ouvert\u00a0: il vous attend'} dans «\u00a0Mes derniers biens consultés\u00a0».`}</span>
                   ) : (
-                    <span>Lors du dernier passage, {passage.lues}{' '}annonces ont été passées en revue sur vos critères.
-                      Aucune n&apos;a passé tous vos critères cette fois-ci&nbsp;— mieux vaut ne rien vous envoyer
-                      que de vous faire perdre du temps.</span>
+                    <span suppressHydrationWarning>{`${debutRecherche(passage.quand, passage.lues)} : aucune ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.`}</span>
                   )}
                 </div>
               )}
@@ -1853,7 +1882,12 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       <div className="acc-cols">
         <div className="acc-g">
           {neufs.length > 0
-            ? <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} />
+            ? <>
+              <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} />
+              {/* Le même récapitulatif que dans « Rien de nouveau », en une
+                  ligne : il y en a toujours un, et un seul, sur l'accueil. */}
+              {!!passage?.lues && <RecapRecherche passage={passage} aller={aller} />}
+            </>
             : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} />}
           {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
           {retours.length > 0 && <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} />}
@@ -1968,6 +2002,22 @@ function CarrouselNeufs({ biens, crit, onOuvrir, aller }: { biens: Bien[]; crit:
   );
 }
 
+/* Sous les nouveaux biens : la dernière recherche en une phrase, et le chemin
+   vers son détail. On ne redit pas combien de biens elle a retenus : le
+   compteur de la recherche n'est pas le nombre de biens posés dans l'espace
+   (AGENTS.md §5), et les nouveaux biens sont juste au-dessus. */
+function RecapRecherche({ passage, aller }: { passage: NonNullable<Props['passage']>; aller: (v: string) => void }) {
+  return (
+    <section className="recap-r">
+      <span className="rr-t"><span className="calme-k"><Ico n="loupe" t={15} /></span>
+        <span suppressHydrationWarning>{`${debutRecherche(passage.quand, passage.lues || 0)}.`}</span></span>
+      <button type="button" className="calme-b calme-m" onClick={() => aller('marche')}>
+        <Ico n="graph" t={16} /><span>Voir le marché sur vos critères</span><Ico n="fleche" t={16} />
+      </button>
+    </section>
+  );
+}
+
 /* Rien de nouveau : on le dit, et on dit pourquoi — jamais un bloc vide. */
 function RienDeNeuf({ passage, aVoir, aller }: { passage: Props['passage']; aVoir: boolean; aller: (v: string) => void }) {
   return (
@@ -1982,15 +2032,23 @@ function RienDeNeuf({ passage, aVoir, aller }: { passage: Props['passage']; aVoi
       <div className="calme-l">
         {!!passage?.lues && (
           <span><span className="calme-k"><Ico n="check" t={15} /></span>
-            <span>{passage.proposees
-              ? `Lors de la dernière recherche, ${passage.lues} annonces ont été lues sur vos critères et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} : vous les avez déjà ouverts.`
-              : `Lors de la dernière recherche, ${passage.lues} annonces ont été lues sur vos critères : aucune ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.`}</span>
+            <span suppressHydrationWarning>{passage.proposees
+              ? `${debutRecherche(passage.quand, passage.lues)} et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} : vous les avez déjà ouverts.`
+              : `${debutRecherche(passage.quand, passage.lues)} : aucune ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.`}</span>
           </span>
         )}
         <span><span className="calme-k"><Ico n="etincelle" t={15} /></span>
           <span>Dès qu’un bien correspond à ce que vous voulez, il arrive ici.</span>
         </span>
       </div>
+      {/* Le détail de ce travail est dans « Le marché sur vos critères ». La
+          carte du même nom est tout en bas de l'accueil : on y mène d'ici,
+          juste sous la phrase qui raconte la dernière recherche. */}
+      {!!passage?.lues && (
+        <button type="button" className="calme-b calme-m" onClick={() => aller('marche')}>
+          <Ico n="graph" t={16} /><span>Voir le marché sur vos critères</span><Ico n="fleche" t={16} />
+        </button>
+      )}
       {aVoir && (
         <button type="button" className="calme-b" onClick={() => aller('consultes')}>
           <span>Revoir les biens déjà consultés</span><Ico n="fleche" t={16} />
@@ -2488,12 +2546,12 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
           portails immobiliers, confrères et partenaires, base off-market. Voici ce que ça donne.</span>
       </div>
 
-      {/* ── Le travail depuis l'ouverture ── */}
+      {/* ── Le bilan depuis l'ouverture du dossier ── */}
       {lues > 0 && (
         <div className="gr-cadre c-net">
           <div className="gr-tete">
             <span className="ge or"><Ico n="loupe" t={16} /></span>
-            <h3>Le travail depuis l&apos;ouverture</h3>
+            <h3>Bilan depuis l&apos;ouverture de votre dossier</h3>
           </div>
           <div className="tuiles">
             <div className="tu">
@@ -2530,7 +2588,7 @@ function Marche({ passage, semaine, maxLues, aller, biens, crit, onAide }: any) 
         <div className="gr-tete">
           <span className="ge"><Ico n="cible" t={16} /></span>
           <h3>La dernière recherche</h3>
-          {passage?.quand && <span className="gn">{depuis(passage.quand)}</span>}
+          {passage?.quand && depuis(passage.quand) && <span className="gn" suppressHydrationWarning>{`actualisé ${depuis(passage.quand)}`}</span>}
         </div>
         <div className="entonnoir">
           {(() => {
@@ -6455,6 +6513,14 @@ button.auj-c:active{transform:scale(.96)}
 .calme-k{color:#3a5886; display:flex; margin-top:2px; flex:0 0 auto}
 .calme-b{display:flex; align-items:center; justify-content:center; gap:8px; height:44px; border-radius:13px;
   border:1px solid var(--trait-fort); color:#24385c; font-size:13.5px; font-weight:700; background:var(--carte)}
+/* « Voir le marché sur vos critères » : le même bouton, un cran plus marqué —
+   c'est la suite naturelle de la phrase juste au-dessus. */
+.calme-m{background:#eef3fb; border-color:#d6e1f1; color:#24385c}
+.calme-m > span{flex:1; text-align:left}
+.calme-m > svg:first-child{color:#3a5886}
+.recap-r{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:14px;
+  display:flex; flex-direction:column; gap:11px}
+.rr-t{display:flex; gap:9px; font-size:13.5px; line-height:1.5}
 
 .avis-att{background:var(--carte); border:1px solid #fed7aa; border-radius:22px; padding:16px;
   box-shadow:0 12px 30px -26px rgba(194,65,12,.6)}
