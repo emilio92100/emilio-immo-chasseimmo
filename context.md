@@ -233,6 +233,18 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
   n'est simplement jamais créée.
 - **`transactions`** : 5 étapes, offre, contre-offres, compromis, SRU, prêt, acte, honoraires
 - **`parametres`** : couples `cle` / `valeur`
+  - **L'identité de l'agence** (Paramètres › Agence, `src/lib/agence.ts`) : `agence_identite` (JSON :
+    société, carte pro et sa date de fin, argent des clients, assurance, médiateur, signataire,
+    coordonnées, autres mentions) et `agence_identite_historique` (chaque modification, datée, avec
+    l'ancienne et la nouvelle valeur). Tous les documents la lisent : `redigerMandat(d, identite)`,
+    `pdfMandat` / `pdfSigne` (`identite` dans les options). Le mandat de recherche prend celle du
+    jour de la signature (`/api/espace/mandat`, étape `signer`) et la garde dans
+    `mandats_signatures.contenu.identite` ; un PDF signé ne change plus. Sans ligne enregistrée,
+    c'est `IDENTITE_DEFAUT`, mot pour mot l'ancienne identité codée en dur (texte et PDF vérifiés
+    identiques octet pour octet). Un champ obligatoire vide retombe sur sa valeur d'origine.
+    Deux mois avant la fin de la carte, `RappelCarte` (AppLayout) met un bandeau sur le tableau de
+    bord ; expirée, sur tous les écrans. Le barème et le taux par défaut restent dans
+    `src/lib/mandat.ts` (affichés en lecture seule) : ils entrent dans le calcul du prix maximum.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
@@ -463,9 +475,11 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
    « enregistré », il n'y a pas d'erreur, et rien ne se passe.
 3. **`Clients.tsx` — l'insert de la recherche n'est pas vérifié** alors que celui du client l'est.
    En cas d'échec, le client existe **sans aucune recherche** : sa fiche ne peut rien afficher.
-4. **`PageParametres` — `save()` ne vérifie rien** et affiche « ✅ Sauvegardé ! » quoi qu'il arrive.
-   Pire : les valeurs par défaut affichées à l'écran ne sont jamais persistées si le champ n'est pas
-   touché — le bouton n'enregistre donc pas ce qu'on voit.
+4. **`PageParametres` — les valeurs par défaut affichées ne sont jamais persistées** si le champ
+   n'est pas touché : le bouton n'enregistre donc pas tout ce qu'on voit. ✅ Réglé le 27 septembre :
+   `save()` vérifie l'erreur et n'écrit plus que les clés modifiées (il réécrivait toutes les
+   valeurs lues à l'ouverture, écrasant ce qui avait changé entre-temps), et il n'apparaît plus sur
+   les rubriques qui s'enregistrent seules (Agence, Point automatique, Alertes mail).
 
 ### Sécurité
 
