@@ -5,6 +5,7 @@ import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
 import styles from './Clients.module.css';
+import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
 import {
   BasculeCriteres, classesCrit, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
   etapesCriteres, FriseCriteres, lireModeCrit,
@@ -677,40 +678,14 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   return (
     <div className={styles.page}>
-      {/* HEADER */}
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Mes Clients</h1>
-          <p className={styles.sub}>{clients.length} clients · {clients.filter(c => c.statut === 'actif').length} actifs · {clients.filter(c => c.statut === 'prospect').length} prospects</p>
-        </div>
-        <button className={`${styles.btnPrimary} ${styles.btnNouveau}`} onClick={openModal}>+ Nouveau client</button>
-      </div>
-
-      {/* FILTRES */}
-      <div className={styles.filtres}>
-        <div className={styles.filtreGroup}>
-          {STATUTS.map(s => (
-            <button
-              key={s.key}
-              className={`${styles.filtreBtn} ${filtre === s.key ? styles.filtreBtnActive : ''}`}
-              onClick={() => setFiltre(s.key)}
-            >
-              {s.label}
-              <span className={styles.filtreBadge}>{nbParStatut(s.key)}</span>
-            </button>
-          ))}
-        </div>
-        <div className={styles.searchBox}>
-          <span className={styles.searchLoupe}>🔍</span>
-          <input
-            type="text"
-            placeholder="Nom, email, secteur, référence..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className={styles.searchInput}
-          />
-        </div>
-      </div>
+      {/* L'EN-TÊTE — le titre et les statuts dans un seul bloc. La ligne grise
+          « 8 clients · 5 actifs · 2 prospects » a disparu : les mêmes chiffres
+          sont dans les tuiles, en grand, et cliquer dessus filtre la liste. */}
+      <EnteteRubrique titre="Mes clients" icone={PictoClients}
+        recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, email, secteur, référence…', label: 'Chercher un client' }}
+        bouton={{ lib: 'Nouveau client', onClick: openModal }}
+        label="Filtrer par statut" actif={filtre} onChoisir={setFiltre}
+        tuiles={STATUTS.map(s => ({ cle: s.key, lib: s.label, n: nbParStatut(s.key), couleur: s.color || undefined }))} />
 
       {/* SITUATION — croisé avec le statut au-dessus */}
       <div className={styles.situations}>
