@@ -94,8 +94,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     if (clientId) {
       const avisLabel = AVIS_LABELS[avis_client] || '';
       const etoilesStr = etoiles > 0 ? '⭐'.repeat(etoiles) : '';
+      /* Le dossier de la visite, comme depuis la fiche client : sans lui,
+         le compte rendu n'apparaît pas dans l'historique de la recherche. */
       await supabase.from('envois').insert({
         client_id: clientId,
+        ...(v?.recherche_id ? { recherche_id: v.recherche_id } : {}),
         type: 'compte_rendu_visite',
         objet: `Visite — ${v?.biens?.titre || v?.biens?.ville || 'Bien'}`,
         corps: [avis_client ? `Avis : ${avisLabel}` : '', etoilesStr ? `Note : ${etoilesStr}` : '', commentaire ? `\n${commentaire}` : ''].filter(Boolean).join(' · '),
