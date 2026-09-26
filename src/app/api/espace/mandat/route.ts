@@ -9,6 +9,7 @@ import {
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
 import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
+import { lireIdentiteAgence } from '@/lib/agence';
 
 /**
  * La signature du mandat de recherche, depuis l'espace client.
@@ -107,8 +108,10 @@ export async function POST(req: NextRequest) {
           .eq('recherche_id', recherche.id).eq('type', 'mandat').gte('created_at', ilYA30).limit(1).maybeSingle();
         if (!deja) await evt('mandat', 'Mandat de recherche affiché');
         /* La version du jour : si Alexandre a changé le taux depuis que la
-           page est ouverte, l'écran se met à jour avant que le client lise. */
-        return NextResponse.json({ ok: true, recherche: rechercheDepuis(recherche) });
+           page est ouverte, l'écran se met à jour avant que le client lise.
+           L'identité de l'agence aussi (Paramètres › Agence) : le client lit
+           celle qui sera imprimée. */
+        return NextResponse.json({ ok: true, recherche: rechercheDepuis(recherche), identite: await lireIdentiteAgence(sb) });
       }
 
       /* ── ses coordonnées, puis le code ─────────────────────── */
@@ -268,19 +271,23 @@ export async function POST(req: NextRequest) {
         } catch { griffe = null; }
 
         const contenu = l.contenu;
+        /* L'identité de l'agence du jour de la signature. Elle est gardée
+           avec le mandat : ce qui est signé ne bouge plus. */
+        const identite = await lireIdentiteAgence(sb);
         const parties = redigerMandat({
           numero: l.numero, mandant: m, recherche: contenu.recherche, executionImmediate: execution,
           signature: { le, email: m.email },
-        });
+        }, identite);
         const sig = { mandantNom: nom, le, email: m.email, agenceLe: contenu.agenceLe || null };
         const seul = await pdfMandat(parties, {
           numero: l.numero, mandantNom: nom, resume: resumeMandat(contenu.recherche), sig,
-          pagesEnTout: n => n + 1, signatureAgence: griffe, signatureMandant: griffeMandant,
+          pagesEnTout: n => n + 1, signatureAgence: griffe, signatureMandant: griffeMandant, identite,
         });
         const empreinte = createHash('sha256').update(seul).digest('hex');
         const signe = await pdfSigne(seul, {
           numero: l.numero, mandant: { nom, adresse: m.adresse, email: m.email, telephone: m.telephone },
           signeLe: le, ip, appareil, empreinte, deroule, executionImmediate: execution, agenceLe: contenu.agenceLe || null,
+          identite,
         });
 
         const racine = `${recherche.id}/${l.numero}-${Date.now()}`;
@@ -294,6 +301,7 @@ export async function POST(req: NextRequest) {
           statut: 'signe', signe_le: le, ip, appareil, empreinte, execution_immediate: execution,
           email_verifie: m.email, pdf_chemin: cheminSigne, pdf_mandat_chemin: cheminSeul,
           code_hash: null, code_essais: l.code_essais + 1, deroule,
+          contenu: { ...contenu, identite },
         }).eq('id', l.id);
         if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
 
