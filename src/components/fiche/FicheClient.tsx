@@ -231,6 +231,7 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
 import MandatEnLigne from './MandatEnLigne';
+import PointAuto from './PointAuto';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 
 const lienEntete: React.CSSProperties = {
@@ -2413,13 +2414,13 @@ Emilio Immobilier
   /* « relance_manuelle » n'est plus dans cette liste : les quelques anciennes
      lignes de ce type retombent dans « Système ». Une relance ne mérite plus
      son propre filtre — elle s'affiche maintenant sous l'action qui l'a créée. */
-  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel', 'mandat', ...COMM_EVENT_TYPES];
+  const MANUEL_OU_COMM = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel', 'point_auto_reponse', 'mandat', ...COMM_EVENT_TYPES];
   const evType = (types: string[]) => suiviEvents.filter(it => types.includes(it.data.type));
   const suiviGroupes: Record<string, { label: string; items: any[] }> = {
     appel:          { label: '📞 Appels',         items: evType(['appel']) },
     rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
     note:           { label: '📝 Notes',          items: evType(['note']) },
-    message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel']) },
+    message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel', 'point_auto_reponse']) },
     communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
     /* Le mandat a son filtre : proposé, signé, rétracté, questions — des
        informations qui comptent, pas du bruit « Système ». */
@@ -2772,6 +2773,14 @@ Emilio Immobilier
         {rechercheActive && (
           <div style={{ marginBottom: 16 }}>
             <LienEspace recherche={rechercheActive} client={client} />
+          </div>
+        )}
+
+        {/* Le mail « Où en est votre recherche ? » : quand il partira, ce que
+            le client a répondu, et l'interrupteur pour l'exclure. */}
+        {client.id && (
+          <div style={{ marginBottom: 16 }}>
+            <PointAuto clientId={client.id} />
           </div>
         )}
 
