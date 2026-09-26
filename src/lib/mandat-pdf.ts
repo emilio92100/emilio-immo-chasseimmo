@@ -25,9 +25,15 @@ import {
   type PDFFont, type PDFPage, type PDFImage, type RGB,
 } from 'pdf-lib';
 import {
-  AGENCE, SIGNATAIRE, ICONES, type Partie, type Bloc, type Fiche, type Icone, type Resume, dateLongue, heureParis, dateCourte,
+  ICONES, type Partie, type Bloc, type Fiche, type Icone, type Resume, dateLongue, heureParis, dateCourte,
 } from './mandat';
 import { LOGO_MARINE, LOGO_BLANC } from './mandat-logo';
+import { IDENTITE_DEFAUT, formeCourte, type IdentiteAgence } from './agence';
+
+/* Le pied des pages : « Emilio Immobilier · RT CONSEILS, SAS · carte
+   professionnelle CPI … », tiré de Paramètres › Agence. */
+const piedAgence = (id: IdentiteAgence) =>
+  `${id.nom} · ${id.societe}, ${formeCourte(id)} · carte professionnelle ${id.carte}`;
 
 const A4 = { l: 595.28, h: 841.89 };
 const MARGE = { g: 58, d: 58, h: 92, b: 66 };
@@ -228,6 +234,9 @@ export type OptionsPdf = {
   /* La signature que le client a tracée au doigt sur son écran (PNG), posée
      dans sa case comme celle d'Alexandre dans la sienne. */
   signatureMandant?: Uint8Array | null;
+  /* L'identité de l'agence le jour de la signature (Paramètres › Agence).
+     Absente : l'identité d'origine. */
+  identite?: IdentiteAgence;
 };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
@@ -238,6 +247,7 @@ const CORPS_PAS = 1.5;
 class Plume {
   doc: PDFDocument; k: Kit; griffe: PDFImage | null; projet: boolean;
   griffeMandant: PDFImage | null = null;
+  id: IdentiteAgence = IDENTITE_DEFAUT;
   page!: PDFPage; y = 0;
   /* Où écrire « certificat en page N », une fois qu'on sait N. */
   renvoi: { page: PDFPage; y: number } | null = null;
@@ -528,8 +538,8 @@ class Plume {
       { qui: 'LE MANDANT', nom: sig ? sig.mandantNom : (mandantNom || 'Le mandant'), largeur: w - 28, lignes: signe && sig
         ? [`Signé électroniquement le ${dateCourte(sig.le)} à ${heureParis(sig.le)} (heure de Paris), par code à usage unique reçu par e-mail${this.griffeMandant ? ' et signature tracée à la main' : ''}.`]
         : ['Signature électronique depuis son espace personnel, par code à usage unique reçu par e-mail.'] },
-      { qui: 'LE MANDATAIRE', nom: AGENCE.nom, largeur: etroit, lignes: [
-        `Représentée par ${SIGNATAIRE.nom}, ${SIGNATAIRE.qualite}.`,
+      { qui: 'LE MANDATAIRE', nom: this.id.nom.toUpperCase(), largeur: etroit, lignes: [
+        `Représentée par ${this.id.signataireNom}, ${this.id.signataireQualite}.`,
         signe && sig ? (sig.agenceLe ? `Offre signée le ${dateCourte(sig.agenceLe)}.` : 'Signé électroniquement.') : 'Signature apposée au moment où le mandant signe.'] },
     ].map(c => ({ ...c, noms: couper(c.nom, this.k.g, 11.5, c.largeur), txt: c.lignes.flatMap(l => couper(l, this.k.r, 8.5, c.largeur)) }));
     const h = Math.max(132, ...cases.map(c => 39 + c.noms.length * 14 + 3 + c.txt.length * 12 + 34)) + bonus;
@@ -575,7 +585,7 @@ function filigrane(p: PDFPage, k: Kit) {
 }
 
 /* L'en-tête et le pied des pages intérieures (pas de la page de garde). */
-function habiller(doc: PDFDocument, k: Kit, numero: string, total: number, projet: boolean) {
+function habiller(doc: PDFDocument, k: Kit, numero: string, total: number, projet: boolean, id: IdentiteAgence) {
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     if (projet) filigrane(p, k);
@@ -589,7 +599,7 @@ function habiller(doc: PDFDocument, k: Kit, numero: string, total: number, proje
     p.drawRectangle({ x: MARGE.g, y: A4.h - 60.9, width: 34, height: 1.8, color: OR });
     /* Pied : l'agence à gauche, la page à droite. */
     p.drawLine({ start: { x: MARGE.g, y: 44 }, end: { x: A4.l - MARGE.d, y: 44 }, thickness: 0.6, color: FILET });
-    p.drawText(propre(`Emilio Immobilier · ${AGENCE.societe}, SAS · carte professionnelle ${AGENCE.carte}`), { x: MARGE.g, y: 30, size: 7.3, font: k.r, color: GRIS_CLAIR });
+    p.drawText(propre(piedAgence(id)), { x: MARGE.g, y: 30, size: 7.3, font: k.r, color: GRIS_CLAIR });
     const pg = `${i + 1} / ${total}`;
     p.drawText(pg, { x: A4.l - MARGE.d - lg(k.g, pg, 8), y: 30, size: 8, font: k.g, color: OR_FONCE });
   });
@@ -657,8 +667,9 @@ function pageDeGarde(doc: PDFDocument, k: Kit, o: OptionsPdf, sommaire: { t: str
 
   /* L'agence, en bas. */
   p.drawLine({ start: { x: MARGE.g, y: 72 }, end: { x: A4.l - MARGE.d, y: 72 }, thickness: 0.6, color: FILET });
-  p.drawText('EMILIO IMMOBILIER', { x: MARGE.g, y: 54, size: 8.5, font: k.g, color: BLEU });
-  p.drawText(propre(`${AGENCE.adresse}, ${AGENCE.cp} ${AGENCE.ville} · ${AGENCE.tel} · ${AGENCE.mail} · ${AGENCE.site}`),
+  const id = o.identite || IDENTITE_DEFAUT;
+  p.drawText(propre(id.nom.toUpperCase()), { x: MARGE.g, y: 54, size: 8.5, font: k.g, color: BLEU });
+  p.drawText(propre([`${id.adresse}, ${id.cp} ${id.ville}`, id.tel, id.mail, id.site].filter(Boolean).join(' · ')),
     { x: MARGE.g, y: 41, size: 8, font: k.r, color: GRIS });
 }
 
@@ -678,6 +689,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     try { griffe = await doc.embedPng(o.signatureAgence); } catch { griffe = null; /* un fichier illisible ne bloque pas la signature */ }
   }
   const pl = new Plume(doc, k, griffe, !!o.projet);
+  pl.id = o.identite || IDENTITE_DEFAUT;
   if (!o.projet && o.signatureMandant && o.signatureMandant.length) {
     try { pl.griffeMandant = await doc.embedPng(o.signatureMandant); } catch { pl.griffeMandant = null; /* illisible : la signature par code suffit */ }
   }
@@ -720,7 +732,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     pl.renvoi.page.drawText(t, { x: MARGE.g + (LARGEUR - lg(k.i, t, 8.6)) / 2, y: pl.renvoi.y, size: 8.6, font: k.i, color: VERT });
   }
 
-  habiller(doc, k, o.numero, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet);
+  habiller(doc, k, o.numero, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet, pl.id);
   return doc.save({ useObjectStreams: false });
 }
 
@@ -848,9 +860,12 @@ export type Certificat = {
   deroule: { t: string; x: string }[];
   executionImmediate: boolean;
   agenceLe: string | null;
+  /* La même identité que celle du mandat qu'il scelle. */
+  identite?: IdentiteAgence;
 };
 
 export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8Array> {
+  const id = c.identite || IDENTITE_DEFAUT;
   const doc = await PDFDocument.load(mandat);
   doc.setModificationDate(new Date(c.signeLe));
   const k = await kit(doc);
@@ -888,7 +903,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   yb -= 4;
   const preuves = [
     'Identité vérifiée par un code à usage unique envoyé par e-mail',
-    c.agenceLe ? `Offre de l’agence signée le ${dateCourte(c.agenceLe)} par ${SIGNATAIRE.nom}` : `Mandat signé pour l’agence par ${SIGNATAIRE.nom}`,
+    c.agenceLe ? `Offre de l’agence signée le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Mandat signé pour l’agence par ${id.signataireNom}`,
     'Document scellé : toute modification serait détectable',
     'Exemplaire complet envoyé au client par e-mail',
   ];
@@ -938,8 +953,8 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   titre('Le document');
   ligne('Document', `Mandat de recherche non exclusif n° ${c.numero} — pages 1 à ${nbMandat}`, { gras: true });
   ligne('Mandant', `${c.mandant.nom} · ${c.mandant.adresse}`);
-  ligne('Mandataire', `Emilio Immobilier (${AGENCE.societe}, SAS) · carte professionnelle ${AGENCE.carte}`);
-  ligne('Signé pour l’agence', `${SIGNATAIRE.nom}, ${SIGNATAIRE.qualite}${c.agenceLe
+  ligne('Mandataire', `${id.nom} (${id.societe}, ${formeCourte(id)}) · carte professionnelle ${id.carte}`);
+  ligne('Signé pour l’agence', `${id.signataireNom}, ${id.signataireQualite}${c.agenceLe
     ? ` — offre de mandat signée le ${dateCourte(c.agenceLe)} à ${heureParis(c.agenceLe)}, avant l’acceptation du mandant` : ''}`);
   ligne('Exécution', c.executionImmediate
     ? 'Le mandant a demandé que la mission commence dès la signature, sans attendre la fin du délai de rétractation.'
@@ -969,7 +984,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   const total = doc.getPageCount();
   pagesCertif.forEach((pp, i) => {
     pp.drawLine({ start: { x: MARGE.g, y: 44 }, end: { x: A4.l - MARGE.d, y: 44 }, thickness: 0.6, color: FILET });
-    pp.drawText(propre(`Emilio Immobilier · ${AGENCE.societe}, SAS · carte professionnelle ${AGENCE.carte}`), { x: MARGE.g, y: 30, size: 7.3, font: k.r, color: GRIS_CLAIR });
+    pp.drawText(propre(piedAgence(id)), { x: MARGE.g, y: 30, size: 7.3, font: k.r, color: GRIS_CLAIR });
     const pg = `${nbMandat + i + 1} / ${total}`;
     pp.drawText(pg, { x: A4.l - MARGE.d - lg(k.g, pg, 8), y: 30, size: 8, font: k.g, color: OR_FONCE });
   });
