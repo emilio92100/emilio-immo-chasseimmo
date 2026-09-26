@@ -212,6 +212,14 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
 
 - **`visites`** : `recherche_id`, `bien_id`, `statut` (`a_venir` / `effectuee` / `annulee`),
   `date_visite`, `heure`, `contact_agence`, `commentaire`, `note_etoiles`, `avis_client`
+  - **L'issue** (`outils/sql/visites-issue.sql`, voir `src/lib/visites.ts`) : `issue`
+    (`offre` · `revoir` · `reflexion` · `non`), `issue_par` (`client` · `conseiller`), `issue_le`,
+    `motifs[]`, `aime[]`, `mot_client`, `avis_client_le`, `prix_envisage`, `retenir`.
+    Le client la donne depuis son espace (`POST /api/espace/visite`, une seule fois),
+    Alexandre dans le compte rendu (`CompteRenduVisite`, commun à la fiche et à la page Visites).
+    `avis_client` reste rempli (`AVIS_HERITE`) ; les anciennes visites en déduisent leur issue (`issueDe`).
+  - `recherches.appris_masques[]` : les lignes de « Ce que ses visites ont appris » retirées par
+    Alexandre. La synthèse part aussi à la veille (`veilleLire` → `appris_visites`).
 - **`journal`** : le fil de suivi — `client_id`, `recherche_id`, `bien_id`, `type`, `titre`,
   `description`, `metadata`
 - **`envois`** : `type` (`mail_libre` · `envoi_bien` · `selection_biens` · `compte_rendu_visite`),
