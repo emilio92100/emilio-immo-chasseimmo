@@ -12,6 +12,7 @@ import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
  *   POST /api/espace/message   { token, texte }
  *   POST /api/espace/rappel    { token, creneau }
  *   POST /api/espace/partage   { token, bien_id, destinataire }
+ *   POST /api/espace/toujours  { token }   « je cherche toujours » (point automatique)
  *
  * Chaque appel revérifie le lien : sans lui, rien ne s'écrit.
  * La route est publique (voir src/proxy.ts) mais le lien fait la serrure.
@@ -645,6 +646,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         return NextResponse.json({ ok: true });
       }
 
+      /* ── « Je cherche toujours », en réponse au point automatique ──
+         Une réaction du client comme une autre : elle remet à zéro le
+         compteur du point automatique (src/lib/point-auto.ts). Pas de
+         relance : il n'y a rien à rappeler, la recherche continue. */
+      case 'toujours': {
+        const depuis24h = new Date(Date.now() - 86_400_000).toISOString();
+        const { count } = await supabase.from('journal')
+          .select('id', { count: 'exact', head: true })
+          .eq('client_id', recherche.client_id).eq('type', 'point_auto_reponse')
+          .gte('created_at', depuis24h);
+        if ((count || 0) >= 1) return NextResponse.json({ ok: true, deja: true });
+
+        const { error } = await supabase.from('journal').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id,
+          type: 'point_auto_reponse',
+          titre: '✅ Le client cherche toujours, depuis son espace',
+          description: 'Réponse au mail « Où en est votre recherche ? ».',
+          metadata: { reponse: 'toujours' },
+        });
+        if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        await evt('message', 'Je cherche toujours — réponse au mail « Où en est votre recherche ? »');
+        return NextResponse.json({ ok: true });
+      }
+
       /* ── il dit que sa recherche est terminée ───────────────── */
       case 'fin': {
         const MOTIFS: Record<string, string> = {
@@ -681,11 +706,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           description: mot || null, metadata: { motif },
         });
 
+        /* Il a trouvé et il est propriétaire avec une revente possible : c'est
+           le moment de lui parler de son logement actuel. La relance le dit. */
+        let revente = false;
+        if (motif === 'trouve_avec_vous' || motif === 'trouve_ailleurs') {
+          const { data: cl } = await supabase.from('clients')
+            .select('bien_actuel_a_vendre').eq('id', recherche.client_id).maybeSingle();
+          revente = !!cl?.bien_actuel_a_vendre;
+        }
+
         await supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente',
           date_echeance: new Date().toISOString(),
-          note: `Le client ${quoi} — à rappeler avant de clôturer.`,
+          note: `Le client ${quoi} — à rappeler avant de clôturer.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
         });
 
         /* Liste de types fermée côté espace_evenements : c'est un message. */
