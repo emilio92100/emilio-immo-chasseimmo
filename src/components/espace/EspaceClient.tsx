@@ -2150,9 +2150,12 @@ function correspondance(b: Bien, c: Criteres | null | undefined): Correspondance
     const villes = grouperSecteurs(c.secteurs);
     const v = villes.find(x => normVille(x.ville) === normVille(b.ville as string));
     const q = v && b.quartier ? v.quartiers.find(x => normVille(x).includes(normVille(b.quartier as string)) || normVille(b.quartier as string).includes(normVille(x))) : null;
+    /* « Parchamp-Albert Kahn, Jean-Jaurès-Reine et 3 autres » : le client
+       sait combien il en a choisi, au lieu d'un « … » qui ne dit rien. */
+    const deuxEtLeReste = (l: string[], mot: string) => `${l.slice(0, 2).join(', ')}${l.length > 2 ? ` et ${l.length - 2} autre${l.length > 3 ? 's' : ''}${mot}` : ''}`;
     const demande = villes.length === 1
-      ? (villes[0].quartiers.length ? `${villes[0].quartiers.slice(0, 2).join(', ')}${villes[0].quartiers.length > 2 ? '…' : ''}` : villes[0].ville)
-      : `${villes.slice(0, 2).map(x => x.ville).join(', ')}${villes.length > 2 ? '…' : ''}`;
+      ? (villes[0].quartiers.length ? deuxEtLeReste(villes[0].quartiers, '') : villes[0].ville)
+      : deuxEtLeReste(villes.map(x => x.ville), villes.length > 3 ? ' villes' : ' ville');
     L.push({ ico: 'lieu', lib: 'Secteur', demande, valeur: q || b.quartier || b.ville, etat: v ? 'oui' : 'non', poids: 2 });
   }
 
@@ -2287,12 +2290,17 @@ function AnneauNote({ note, t = 48 }: { note: number; t?: number }) {
   );
 }
 
+/* Une valeur longue — un quartier « selon l'annonce », une ville à rallonge —
+   ne tient pas à droite sur un téléphone : elle écrasait le libellé en une
+   colonne de trois lettres et débordait de la carte. Elle passe alors sous le
+   libellé, sur toute la largeur, précédée de « Ce bien : ». */
 function LigneCritere({ x }: { x: LigneCorr }) {
+  const long = x.valeur.length > 18;
   return (
-    <div className={'an-l ' + x.etat}>
+    <div className={'an-l ' + x.etat + (long ? ' long' : '')}>
       <span className="an-case">{x.etat === 'oui' ? <Ico n="check" t={12} /> : x.etat === 'presque' ? '≈' : <Ico n="moins" t={12} />}</span>
       <span className="an-lib"><b>{x.lib}</b><i>{x.demande}</i></span>
-      <span className="an-val tab">{x.valeur}</span>
+      <span className="an-val tab">{long ? <><em>{'Ce bien :'}</em>{' '}{x.valeur}</> : x.valeur}</span>
     </div>
   );
 }
@@ -5397,6 +5405,10 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .an-lib i{font-style:normal; font-size:12px; color:var(--plume); line-height:1.35}
 .an-val{font-size:14px; font-weight:800; text-align:right; white-space:nowrap}
 .an-l.non .an-val, .an-l.presque .an-val{color:var(--plume)}
+.an-l.long{grid-template-columns:22px minmax(0,1fr); align-items:start; row-gap:5px}
+.an-l.long .an-case{margin-top:1px}
+.an-l.long .an-val{grid-column:2; text-align:left; white-space:normal; overflow-wrap:anywhere; font-size:13.5px; line-height:1.4}
+.an-l.long .an-val em{font-style:normal; font-weight:600; color:var(--plume)}
 .an-plus{display:flex; flex-direction:column; gap:2px; margin-bottom:16px}
 .an-plus > span{display:flex; align-items:center; gap:10px; padding:5px 0; font-size:14px; font-weight:700}
 .an-plus-i{width:32px; height:32px; border-radius:10px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
