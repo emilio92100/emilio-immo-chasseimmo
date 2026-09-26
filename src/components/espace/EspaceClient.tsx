@@ -1796,6 +1796,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    et son conseiller. */
 function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
+  /* La dernière recherche : son chiffre à elle, et son moment (« aujourd'hui
+     à 14 h 34 »). C'est ce que « Aujourd'hui pour vous » doit montrer. */
+  const duJour = passage?.lues ?? null;
+  const quandJour = momentRecherche(passage?.quand);
   const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
   /* « Aujourd'hui pour vous » ne doit pas afficher 0 · 0 · 0. Une case à zéro
      (plus d'avis à donner, pas de visite prévue) cède sa place à ce que le
@@ -1821,7 +1825,6 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
       <section className="auj" aria-label="Aujourd’hui pour vous">
         <div className="auj-h">
           <span className="auj-t">Aujourd’hui pour vous</span>
-          {passage?.quand && <span className="auj-maj">{`mis à jour ${actualiseLe(passage.quand)}`}</span>}
         </div>
         <div className="auj-g">
           {/* Rien de neuf : pas de « 0 », on dit qu'il est à jour. */}
@@ -1844,19 +1847,40 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             </button>
           ))}
           {/* Sur ordinateur seulement : la quatrième case. Sur téléphone, le
-              même chiffre est dans la ligne du pied. */}
-          <div className="auj-c c-lues on">
-            <span className="auj-ic"><Ico n="loupe" t={17} /></span>
-            <span className="auj-tx">
-              <span className="auj-n tab"><span className="nv">{lues != null ? nombre(lues) : '—'}<BtnAide cle="lues" onAide={onAide} /></span></span>
-              <span className="auj-l">{client.jours ? `annonces lues en ${client.jours} jours` : 'annonces lues'}</span>
-            </span>
-          </div>
+              même chiffre est dans la ligne du pied. Elle dit la dernière
+              recherche, pas le total : sous « Aujourd'hui pour vous », un total
+              de plusieurs centaines se lisait comme le travail du jour. Le
+              total est dans « Le marché sur vos critères ». */}
+          {duJour != null && (
+            <div className="auj-c c-lues on">
+              <span className="auj-ic"><Ico n="loupe" t={17} /></span>
+              <span className="auj-tx">
+                <span className="auj-n tab">{nombre(duJour)}</span>
+                <span className="auj-l" suppressHydrationWarning>{`annonce${duJour > 1 ? 's lues' : ' lue'} ${quandJour || 'lors de la dernière recherche'}`}</span>
+              </span>
+            </div>
+          )}
         </div>
-        {lues != null && (
-          <div className="auj-pied">
-            <span><span className="nv"><b className="tab">{nombre(lues)}</b><BtnAide cle="lues" onAide={onAide} /></span>{' '}annonces lues pour vous</span>
-            {client.jours ? <span><span className="nv"><b className="tab">{client.jours}</b><BtnAide cle="jours" onAide={onAide} /></span>{' '}jours de suivi</span> : null}
+        {/* Le pied dit d'abord la dernière recherche, avec son moment, puis le
+            total, nommé « depuis l'ouverture » : sans ces mots, les 455 se
+            lisaient comme le travail d'aujourd'hui. */}
+        {(duJour != null || lues != null) && (
+          <div className="auj-pied2">
+            {duJour != null && (
+              <span className="ap-jour"><span className="ap-i"><Ico n="loupe" t={15} /></span>
+                <span suppressHydrationWarning>{quandJour
+                  ? <>{`${quandJour.charAt(0).toUpperCase() + quandJour.slice(1)} : `}<b className="tab">{`${nombre(duJour)} annonce${duJour > 1 ? 's lues' : ' lue'}`}</b>{' sur vos\u00a0critères'}</>
+                  : <><b className="tab">{`${nombre(duJour)} annonce${duJour > 1 ? 's lues' : ' lue'}`}</b>{' lors de la dernière recherche'}</>}</span>
+              </span>
+            )}
+            {lues != null && (
+              <span className="ap-tot"><span className="ap-i"><Ico n="horloge" t={15} /></span>
+                {/* Pas de « en 3 jours » : ce nombre compte les jours depuis la
+                    création de la fiche, jours sans recherche compris, et se
+                    lisait comme trois journées de recherche. */}
+                <span>{'Depuis l’ouverture de votre dossier : '}<span className="nv"><b className="tab">{nombre(lues)}</b><BtnAide cle="lues" onAide={onAide} /></span>{` annonce${lues > 1 ? 's\u00a0lues' : '\u00a0lue'}`}</span>
+              </span>
+            )}
           </div>
         )}
       </section>
@@ -1886,7 +1910,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
               <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} />
               {/* Le même récapitulatif que dans « Rien de nouveau », en une
                   ligne : il y en a toujours un, et un seul, sur l'accueil. */}
-              {!!passage?.lues && <RecapRecherche passage={passage} aller={aller} />}
+              {!!passage?.lues && <RecapRecherche aller={aller} />}
             </>
             : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} />}
           {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
@@ -2006,11 +2030,9 @@ function CarrouselNeufs({ biens, crit, onOuvrir, aller }: { biens: Bien[]; crit:
    vers son détail. On ne redit pas combien de biens elle a retenus : le
    compteur de la recherche n'est pas le nombre de biens posés dans l'espace
    (AGENTS.md §5), et les nouveaux biens sont juste au-dessus. */
-function RecapRecherche({ passage, aller }: { passage: NonNullable<Props['passage']>; aller: (v: string) => void }) {
+function RecapRecherche({ aller }: { aller: (v: string) => void }) {
   return (
     <section className="recap-r">
-      <span className="rr-t"><span className="calme-k"><Ico n="loupe" t={15} /></span>
-        <span suppressHydrationWarning>{`${debutRecherche(passage.quand, passage.lues || 0)}.`}</span></span>
       <button type="button" className="calme-b calme-m" onClick={() => aller('marche')}>
         <Ico n="graph" t={16} /><span>Voir le marché sur vos critères</span><Ico n="fleche" t={16} />
       </button>
@@ -2032,9 +2054,11 @@ function RienDeNeuf({ passage, aVoir, aller }: { passage: Props['passage']; aVoi
       <div className="calme-l">
         {!!passage?.lues && (
           <span><span className="calme-k"><Ico n="check" t={15} /></span>
-            <span suppressHydrationWarning>{passage.proposees
-              ? `${debutRecherche(passage.quand, passage.lues)} et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} : vous les avez déjà ouverts.`
-              : `${debutRecherche(passage.quand, passage.lues)} : aucune ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.`}</span>
+            {/* Le chiffre et l'heure sont juste au-dessus, dans « Aujourd'hui
+                pour vous » : on ne les redit pas, on dit ce qu'ils ont donné. */}
+            <span>{passage.proposees
+              ? `La dernière recherche a retenu ${passage.proposees} bien${passage.proposees > 1 ? 's' : ''} : vous ${passage.proposees > 1 ? 'les avez' : 'l’avez'} déjà ouvert${passage.proposees > 1 ? 's' : ''}.`
+              : 'Aucune des annonces lues lors de la dernière recherche ne cochait toutes vos cases. Mieux vaut ne rien vous envoyer que vous faire perdre du temps.'}</span>
           </span>
         )}
         <span><span className="calme-k"><Ico n="etincelle" t={15} /></span>
@@ -6458,6 +6482,17 @@ button.auj-c:active{transform:scale(.96)}
 .auj-pied{display:flex; flex-wrap:wrap; gap:4px 16px; padding-top:10px; border-top:1px solid #eef1f6;
   font-size:12.5px; color:var(--plume)}
 .auj-pied b{color:var(--encre); font-weight:800}
+.auj-pied2{display:flex; flex-direction:column; gap:7px; padding-top:11px; border-top:1px solid #eef1f6; margin-top:1px}
+.auj-pied2 > span{display:flex; align-items:flex-start; gap:8px; line-height:1.45}
+.ap-i{display:flex; flex:0 0 auto; margin-top:1px}
+.ap-jour{font-size:13px; color:#334155}
+.ap-jour .ap-i{color:#3a5886}
+.ap-jour b{color:var(--encre); font-weight:800}
+.ap-tot{font-size:12px; color:var(--plume)}
+.ap-tot .ap-i{color:var(--plume-clair)}
+.ap-tot b{color:#475569; font-weight:800}
+.ap-tot .nv{position:relative; display:inline-block; padding-right:17px}
+.ap-tot .nv .aide-pt{position:absolute; left:auto; right:0; top:-6px}
 .acc-liens{margin-top:14px}
 
 /* — les blocs de l'accueil — */
@@ -6518,8 +6553,7 @@ button.auj-c:active{transform:scale(.96)}
 .calme-m{background:#eef3fb; border-color:#d6e1f1; color:#24385c}
 .calme-m > span{flex:1; text-align:left}
 .calme-m > svg:first-child{color:#3a5886}
-.recap-r{background:var(--carte); border:1px solid var(--trait); border-radius:18px; padding:14px;
-  display:flex; flex-direction:column; gap:11px}
+.recap-r{display:flex; flex-direction:column}
 .rr-t{display:flex; gap:9px; font-size:13.5px; line-height:1.5}
 
 .avis-att{background:var(--carte); border:1px solid #fed7aa; border-radius:22px; padding:16px;
@@ -6696,7 +6730,7 @@ button.auj-c:active{transform:scale(.96)}
   .chapeau .selec{max-width:520px}
 
   .auj{margin-top:-64px; padding:0; background:none; box-shadow:none; border-radius:0}
-  .auj-h, .auj-pied{display:none}
+  .auj-h, .auj-pied, .auj-pied2{display:none}
   .auj-g{grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px}
   .auj-c{flex-direction:row; align-items:center; gap:14px; padding:16px 18px; border-radius:20px;
     background:var(--carte) !important; box-shadow:0 16px 34px -26px rgba(36,56,92,.55)}
