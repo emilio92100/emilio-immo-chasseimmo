@@ -55,7 +55,7 @@ const initForm = {
   bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
   bien_actuel_adresse: '', bien_actuel_meme_adresse: true,
   sans_mandat: false,
-  mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '3,5% TTC',
+  mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '2,5% TTC',
   notes: '',
 };
 
@@ -1182,7 +1182,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                               <div className={styles.formGroup}><label className={styles.label}>📅 Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
                               <div className={styles.formGroup}><label className={styles.label}>⏳ Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} placeholder="3" /></div>
                             </div>
-                            <div className={styles.formGroup}><label className={styles.label}>💶 Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} placeholder="3,5% TTC" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>💶 Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} placeholder="2,5% TTC" /></div>
                           </>
                         )}
                       </Bloc>
