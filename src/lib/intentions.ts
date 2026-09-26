@@ -102,6 +102,9 @@ export function ouvertureDepuisRelance(r: { id: string; type?: string | null; cl
   /* « Veut visiter », posé depuis son espace : le bien est dans Présentés,
      dans le groupe « Il veut visiter ». */
   if (String(r.note || '').startsWith('Veut visiter')) return { ...base, onglet: 'presentes' };
+  /* Sa réponse après une visite (offre, revoir, il réfléchit) : la visite
+     est dans l'onglet Visites, avec ses raisons. */
+  if (/^(Veut faire une offre|Veut revoir|Il réfléchit)/.test(String(r.note || ''))) return { ...base, onglet: 'visites' };
   if (r.type === 'message_client' || r.type === 'rappel_client') return { ...base, onglet: 'suivi', filtre: 'message' };
   return { ...base, onglet: 'suivi', filtre: filtreDuSuivi(typeAction) };
 }
