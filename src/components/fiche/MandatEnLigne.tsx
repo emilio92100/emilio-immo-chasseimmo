@@ -31,6 +31,7 @@ import {
   forfaitDe, seuilForfait, honorairesCourt, pourcentDe,
   type Contenu,
 } from '@/lib/mandat';
+import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -289,10 +290,15 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
     setTravail('apercu');
     try {
       const { pdfMandat } = await import('@/lib/mandat-pdf');
+      /* L'identité de l'agence du jour (Paramètres › Agence) : celle que le
+         client lira et signera. */
+      const { data: pa, error: ePa } = await supabase.from('parametres').select('valeur').eq('cle', CLE_IDENTITE).maybeSingle();
+      if (ePa) throw new Error(ePa.message);
+      const identite = lireIdentite(pa?.valeur ?? null);
       const r = rechercheDepuis({ ...recherche, mandat_taux: mode === 'taux' ? tauxN : null, mandat_forfait: mode === 'forfait' ? forfaitN : null });
       const nom = `${client?.prenom || ''} ${client?.nom || ''}`.trim();
-      const parties = redigerMandat({ numero: numero.trim() || '…', mandant: null, recherche: r, executionImmediate: null });
-      const octets = await pdfMandat(parties, { numero: numero.trim() || '…', mandantNom: nom, resume: resumeMandat(r), sig: null, projet: true });
+      const parties = redigerMandat({ numero: numero.trim() || '…', mandant: null, recherche: r, executionImmediate: null }, identite);
+      const octets = await pdfMandat(parties, { numero: numero.trim() || '…', mandantNom: nom, resume: resumeMandat(r), sig: null, projet: true, identite });
       const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: 'application/pdf' }));
       if (w) w.location.href = url; else window.location.href = url;
     } catch (e) {
