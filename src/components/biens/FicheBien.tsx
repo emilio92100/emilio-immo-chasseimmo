@@ -5,15 +5,17 @@ import { num, txt, liste, STATUTS, modele } from '@/lib/actes';
 import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
-  ETAPES_BIEN, PARCOURS, argentBien, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
-  lireDossier, lignesDossier, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pictoPiece, pourcent, titreBien,
+  ETAPES_BIEN, ETATS_PIECE, PARCOURS, argentBien, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
+  lireDossier, lignesDossier, lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pictoPiece, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import { Anneau, NOM_MANDAT, prixCarte } from './CarteBien';
 import { COULEURS, ChampDossier, ChampPhotos, habitable } from './ChampsBien';
+import VisiteSurPlace from './VisiteSurPlace';
 import {
-  FenCompromis, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, type OptionAcheteur,
+  FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
+  type OptionAcheteur,
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerDocument, enregistrerBien,
@@ -37,7 +39,7 @@ import b from './Biens.module.css';
 
 type Onglet = 'apercu' | 'bien' | 'photos' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'offre' } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre' } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -132,7 +134,8 @@ function Bandeau({ bien, detail }: { bien: BienVente; detail: DetailBien | null 
         {(adresse || txt(d, 'quartier')) && <div className={b.heroAdr}>{[adresse, txt(d, 'quartier')].filter(Boolean).join(' · ')}</div>}
         <div className={b.heroPrix}>
           <b>{prix.t}</b>
-          {a.prix && a.hono !== null && a.net ? <span>{a.acq ? `honoraires ${euros(a.hono)} inclus · net vendeur ${euros(a.net)}` : `honoraires ${euros(a.hono)} à la charge du vendeur`}</span> : null}
+          {avantMandat(bien.etape) && a.prix && (num(d, 'estimBasse') || num(d, 'estimHaute')) ? <span>{`prix conseillé ${euros(a.prix)}`}</span>
+            : a.prix && a.hono !== null && a.net ? <span>{a.acq ? `honoraires ${euros(a.hono)} inclus · net vendeur ${euros(a.net)}` : `honoraires ${euros(a.hono)} à la charge du vendeur`}</span> : null}
         </div>
         {i >= 0 && (
           <div className={b.stepMobile} aria-hidden="true">
@@ -379,23 +382,71 @@ function BlocVisite({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
   const code = txt(d, 'digicode');
   const tel = txt(d, 'contactTel');
   const cles = [lib(d, 'cles'), d.cles === 'agence' && txt(d, 'trousseau') ? `trousseau ${txt(d, 'trousseau')}` : ''].filter(Boolean).join(', ');
-  const vide = !['occupation', 'creneaux', 'contactNom', 'digicode', 'porte', 'cles', 'annexesNum', 'consignes', 'interphone'].some(k => d[k]);
+  const vide = !['occupation', 'creneaux', 'contactNom', 'digicode', 'porte', 'cles', 'annexesNum', 'consignes', 'interphone', 'itineraire', 'accesAscenseur'].some(k => d[k]) && !liste(d, 'accesBas').length;
   return (
-    <Bloc ic="cle" titre="Pour la visite" action={<Modifier onClick={onModifier} />}>
-      {vide ? <div className={b.vide}>Occupation, clés, codes, contact sur place : à remplir pour que chaque visite se passe sans appel.</div> : (
+    <Bloc ic="cle" titre="Les indications de visite" action={<Modifier onClick={onModifier} />}>
+      {vide ? <div className={b.vide}>Occupé ou libre, clés, codes, contact sur place : à noter dès maintenant, pour ta visite puis celles des acheteurs.</div> : (
         <div className={b.lignes}>
-          <Li l="Le bien est" v={[lib(d, 'occupation'), txt(d, 'disponible') ? `disponible ${txt(d, 'disponible')}` : ''].filter(Boolean).join(' · ')} />
-          <Li l="Heures de visite" v={txt(d, 'creneaux')} />
-          <Li l="Contact sur place" v={[txt(d, 'contactNom'), tel].filter(Boolean).join(' · ') ? <>{[txt(d, 'contactNom'), tel].filter(Boolean).join(' · ')}{tel && <a className={b.lien} style={{ marginLeft: 8 }} href={`tel:${tel.replace(/\s+/g, '')}`}>Appeler</a>}</> : ''} />
-          <Li l="Digicode" v={code ? <>{code}<button type="button" className={b.lien} style={{ marginLeft: 8 }} onClick={() => { navigator.clipboard?.writeText(code).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1400); }).catch(() => {}); }}>{copie ? 'Copié' : 'Copier'}</button></> : ''} />
-          <Li l="Interphone" v={txt(d, 'interphone')} />
-          <Li l="Porte" v={txt(d, 'porte')} />
-          <Li l="Clés" v={cles} />
-          <Li l="Cave · box" v={txt(d, 'annexesNum')} />
+          <Li ic="porte" l="Le bien est" v={[lib(d, 'occupation'), txt(d, 'disponible') ? `disponible ${txt(d, 'disponible')}` : ''].filter(Boolean).join(' · ')} />
+          <Li ic="horloge" l="Heures de visite" v={txt(d, 'creneaux')} />
+          <Li ic="telephone" l="Contact sur place" v={[txt(d, 'contactNom'), tel].filter(Boolean).join(' · ') ? <>{[txt(d, 'contactNom'), tel].filter(Boolean).join(' · ')}{tel && <a className={b.lien} style={{ marginLeft: 8 }} href={`tel:${tel.replace(/\s+/g, '')}`}>Appeler</a>}</> : ''} />
+          <Li ic="clavier" l="Digicode" v={code ? <>{code}<button type="button" className={b.lien} style={{ marginLeft: 8 }} onClick={() => { navigator.clipboard?.writeText(code).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1400); }).catch(() => {}); }}>{copie ? 'Copié' : 'Copier'}</button></> : ''} />
+          <Li ic="immeuble" l="En bas" v={libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase())} />
+          <Li ic="interphone" l="Interphone" v={txt(d, 'interphone')} />
+          <Li ic="porte" l="Porte" v={txt(d, 'porte')} />
+          <Li ic="ascenseur" l="En sortant de l’ascenseur" v={d.accesAscenseur === 'aucun' ? '' : lib(d, 'accesAscenseur')} />
+          <Li ic="cle" l="Clés" v={cles} />
+          <Li ic="cave" l="Cave · box" v={txt(d, 'annexesNum')} />
         </div>
       )}
-      {txt(d, 'consignes') && <div className={`${b.encart} ${b.encartBleu}`}>{txt(d, 'consignes')}</div>}
+      {txt(d, 'itineraire') && <div className={`${b.encart} ${b.encartBleu}`}><b>Le chemin : </b>{txt(d, 'itineraire')}</div>}
+      {txt(d, 'consignes') && <div className={`${b.encart} ${b.encartBleu}`}><b>Consignes : </b>{txt(d, 'consignes')}</div>}
       <div className={b.pied}>Visible par toi seul. Reprise dans le rendez-vous de l’agenda pour une visite hors CRM.</div>
+    </Bloc>
+  );
+}
+
+/* Les observations (V3.16) : les travaux, les sinistres, les PV d'AG, les
+   notes. Pour Alexandre seul ; un sinistre en cours passe en rouge, en haut. */
+function BlocObservations({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
+  const copro = d.copro === 'oui';
+  const sinistres = lireObservations(d.sinistres);
+  const enCours = sinistres.filter(x => x.enCours);
+  const groupes = [
+    { t: 'Travaux réalisés', ic: 'outil', l: lireObservations(d.travauxFaits) },
+    { t: 'Sinistres', ic: 'eau', l: d.sinistre === 'oui' ? sinistres : [] },
+    { t: 'Copropriété · travaux votés', ic: 'accord', l: copro ? lireObservations(d.coproVotes) : [] },
+    { t: 'Copropriété · travaux réalisés', ic: 'check', l: copro ? lireObservations(d.coproFaits) : [] },
+    { t: 'Copropriété · travaux à venir', ic: 'horloge', l: copro ? lireObservations(d.coproAVenir) : [] },
+  ].filter(g => g.l.length);
+  const notes = txt(d, 'notes');
+  const vide = !groupes.length && !notes && !txt(d, 'travaux') && !(copro && txt(d, 'travauxVotes')) && d.sinistre !== 'non';
+  return (
+    <Bloc ic="loupe" titre="Observations et notes" action={<Modifier onClick={onModifier} />}>
+      {d.sinistre === 'oui' && enCours.length > 0 && (
+        <div className={b.obsAlerte}><Ic n="info" t={16} /><span>{`Sinistre en cours : ${enCours.map(x => [x.nature || 'à préciser', x.quand].filter(Boolean).join(', ')).join(' ; ')}`}</span></div>
+      )}
+      {d.sinistre === 'non' && <span className={b.obsOk}><Ic n="check" t={15} e={2.6} />Aucun sinistre, à sa connaissance</span>}
+      {groupes.map(g => (
+        <div key={g.t} className={b.obsG}>
+          <div className={b.obsT}><Ic n={g.ic} t={14} />{g.t}</div>
+          <ul className={b.obsL}>
+            {g.l.map(o => (
+              <li key={o.id}>
+                <b>{o.nature || 'À préciser'}</b>
+                {o.quand && <span>{o.quand}</span>}
+                {o.enCours !== undefined && <em className={`${b.obsTag} ${o.enCours ? b.obsTagRouge : ''}`}>{o.enCours ? 'en cours' : 'réglé'}</em>}
+                {o.note && <small>{o.note}</small>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {txt(d, 'travaux') && <div className={b.texte}><b>Travaux : </b>{txt(d, 'travaux')}</div>}
+      {copro && txt(d, 'travauxVotes') && <div className={b.texte}><b>Copropriété : </b>{txt(d, 'travauxVotes')}</div>}
+      {notes && <div className={b.texte}><b>Notes : </b>{notes}</div>}
+      {vide && <div className={b.vide}>Les travaux, un sinistre, ce que disent les PV d’AG, tes notes : « Modifier » pour les noter.</div>}
+      <div className={b.pied}>Visibles par toi seul, jamais dans un espace client ni une annonce.</div>
     </Bloc>
   );
 }
@@ -429,23 +480,86 @@ function BlocDossierResume({ d, onVoir }: { d: Donnees; onVoir: () => void }) {
 }
 
 /* Avant le mandat : le rendez-vous, la fourchette, l'avis de valeur. */
-function BlocEstimation({ bien, onModifier, onEstimation, onMandat }: { bien: BienVente; onModifier: () => void; onEstimation: () => void; onMandat: () => void }) {
+/* ── La visite sur place : l'entrée (chez le propriétaire, tablette en main)
+   et ce qu'on en a retenu. ── */
+function BlocVisiteSurPlace({ d, onOuvrir }: { d: Donnees; onOuvrir: () => void }) {
+  const le = txt(d, 'visiteLe');
+  const atouts = liste(d, 'visiteAtouts'), defauts = liste(d, 'visiteDefauts');
+  const note = txt(d, 'visiteNote');
+  return (
+    <div className={b.vEntree}>
+      <div className={b.vEntreeTete}>
+        <span className={b.vEntreeIc}><Ic n="tablette" t={24} /></span>
+        <div>
+          <b>{le ? 'La visite sur place' : 'Chez le propriétaire ?'}</b>
+          <span>{le ? `Faite le ${dateLongueCourt(le)} · tu peux la reprendre` : 'Plein écran, pièce par pièce, les photos prises sur place : tout s’enregistre, même sans réseau.'}</span>
+        </div>
+        <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={onOuvrir}><Ic n="tablette" t={16} />{le ? 'Reprendre' : 'Commencer la visite'}</button>
+      </div>
+      {(atouts.length > 0 || defauts.length > 0 || note) && (
+        <div className={b.vEntreeCorps}>
+          {atouts.length > 0 && <div className={b.tags}>{atouts.map(x => <span key={x} className={`${b.tag} ${b.tagIc}`}><Ic n="etoile" t={12} />{x}</span>)}</div>}
+          {defauts.length > 0 && <div className={b.tags}>{defauts.map(x => <span key={x} className={`${b.tag} ${b.tagRouge}`}>{x}</span>)}</div>}
+          {note && <p className={b.vEntreeNote}>{note}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Le projet (à suivre) puis l'estimation : où on en est, le montant, et
+   le chemin jusqu'au mandat — rendez-vous, visite, montant, avis de
+   valeur — qui se coche tout seul (V3.16). */
+function BlocEstimation({ bien, onDefinir, onEstimation, onMandat }: { bien: BienVente; onDefinir: () => void; onEstimation: () => void; onMandat: () => void }) {
   const d = bien.donnees || {};
   const rdv = txt(d, 'rdvEstimation');
   const j = joursAvant(rdv);
-  const a = num(d, 'estimBasse'), h = num(d, 'estimHaute');
+  const e = lireEstim(d);
   const suivre = bien.etape === 'a_suivre';
+  const fait = !!(e.basse || e.haute || e.prix);
+  const avis = txt(d, 'avisEnvoye');
+  const surf = num(d, 'carrez') || num(d, 'surface');
+  const jalons = [
+    { l: 'Rendez-vous', ic: 'calendrier', ok: !!rdv, v: rdv ? (j === 0 ? 'aujourd’hui' : dateCourte(rdv)) : 'à prendre' },
+    { l: 'Visite', ic: 'tablette', ok: !!txt(d, 'visiteLe'), v: txt(d, 'visiteLe') ? dateCourte(txt(d, 'visiteLe')) : 'à faire' },
+    { l: 'Montant', ic: 'etiquette', ok: fait, v: fait ? 'défini' : suivre ? 'à l’estimation' : 'à définir' },
+    { l: 'Avis de valeur', ic: 'envoyer', ok: !!avis, v: avis ? dateCourte(avis) : 'à envoyer' },
+  ];
+  const fourchette = e.basse && e.haute ? `${euros(e.basse).replace(/\s€$/, '')} – ${euros(e.haute)}` : e.basse || e.haute ? euros((e.basse || e.haute) as number) : '';
   return (
-    <Bloc ic="regle" titre={suivre ? 'Le projet' : 'L’estimation'} action={suivre ? undefined : <Modifier onClick={onModifier} />}>
-      <div className={b.lignes}>
-        <Li ic="calendrier" l="Rendez-vous d’estimation" v={rdv ? `${dateLongueCourt(rdv)}${j !== null && j >= 0 ? (j === 0 ? ' (aujourd’hui)' : ` (dans ${j} j)`) : ''}` : ''} />
-        <Li ic="courbe" l="Fourchette" v={a || h ? [eur(a), eur(h)].filter(Boolean).join(' – ') : ''} />
-        <Li ic="etiquette" l="Prix conseillé" v={eur(num(d, 'prix'))} />
-        <Li ic="envoyer" l="Avis de valeur envoyé le" v={txt(d, 'avisEnvoye') ? dateLongueCourt(txt(d, 'avisEnvoye')) : ''} cls={b.liVert} />
-      </div>
-      {suivre && !rdv && <div className={b.vide}>Pas encore de rendez-vous. Quand il est pris, passe le bien à l’estimation : sa fiche s’ouvre au détail des pièces, de l’énergie et de la copropriété.</div>}
+    <Bloc ic="regle" titre={suivre ? 'Le projet' : 'L’estimation'} action={!suivre && fait ? <Modifier onClick={onDefinir} /> : undefined}>
+      <ol className={b.jalons}>
+        {jalons.map(x => (
+          <li key={x.l} className={x.ok ? b.jalonOk : undefined}>
+            <span className={b.jalonIc}><Ic n={x.ok ? 'check' : x.ic} t={15} e={x.ok ? 2.8 : 1.9} /></span>
+            <b>{x.l}</b><small>{x.v}</small>
+          </li>
+        ))}
+      </ol>
+      {!suivre && fait && (
+        <div className={b.estimVue}>
+          {fourchette && <div className={b.estimVueF}><small>Fourchette</small><b>{fourchette}</b></div>}
+          {e.prix ? <div className={b.estimVueP}><small>Prix conseillé</small><b>{euros(e.prix)}</b>{surf ? <i>{`${euros(Math.round(e.prix / surf))} / m²`}</i> : null}</div> : null}
+          <JaugeEstimation e={e} />
+          {e.souhaite ? <div className={b.estimVueS}><Ic n="personne" t={14} /><span>{`Le propriétaire espère ${euros(e.souhaite)}`}{e.prix ? <b>{` · ${e.souhaite >= e.prix ? '+' : '−'}${pourcent(Math.abs(Math.round(((e.souhaite - e.prix) / e.prix) * 1000) / 10))}`}</b> : null}</span></div> : null}
+        </div>
+      )}
+      {!suivre && !fait && (
+        <div className={b.estimAppel}>
+          <span className={b.estimAppelIc}><Ic n="etiquette" t={20} /></span>
+          <div><b>{rdv && (j ?? 1) <= 0 ? 'Le rendez-vous est passé : quel montant ?' : 'Le montant viendra après le rendez-vous'}</b><small>La fourchette et le prix conseillé. Ils s’afficheront sur la carte du bien, à la place de « Estimation à définir ».</small></div>
+          <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={onDefinir}><Ic n="plus" t={15} e={2.4} />Définir l’estimation</button>
+        </div>
+      )}
+      {suivre && (
+        <div className={b.lignes}>
+          <Li ic="personne" l="Prix espéré par le propriétaire" v={eur(e.souhaite)} />
+        </div>
+      )}
+      {suivre && !rdv && <div className={b.vide}>Pas encore de rendez-vous. Tu peux déjà tout décrire (« Modifier », ou la visite sur place) ; le montant se donne en passant à l’estimation.</div>}
       <div className={b.carteVActions}>
         {suivre && <button type="button" className={`${b.mini} ${b.miniOr}`} onClick={onEstimation}><Ic n="regle" t={13} />Passer à l’estimation</button>}
+        {!suivre && fait && !avis && <button type="button" className={b.mini} onClick={onDefinir}><Ic n="envoyer" t={13} />Avis de valeur envoyé</button>}
         <button type="button" className={b.mini} onClick={onMandat}><Ic n="plume" t={13} />Le mandat est signé</button>
       </div>
     </Bloc>
@@ -558,6 +672,9 @@ function PiecesLecture({ d }: { d: Donnees }) {
                     <div className={b.pieceTete}><b>{p.nom || 'Pièce'}</b><span className={b.pieceSurf}>{p.surface ? m2(p.surface) : '—'}</span></div>
                     {p.note && <em>{p.note}</em>}
                     {p.expo && <i className={b.pieceExpo}><Ic n="boussole" t={12} />{nomExpo(p.expo)}</i>}
+                    {(p.etat || p.sol || p.atouts?.length) && (
+                      <i className={b.pieceExpo}>{[ETATS_PIECE.find(e => e.v === p.etat)?.l, p.sol, ...(p.atouts || [])].filter(Boolean).join(' · ')}</i>
+                    )}
                     <div className={b.pieceBarre}><span style={{ width: `${Math.max(6, ((p.surface || 0) / plusGrande) * 100)}%`, opacity: p.surface ? 1 : 0 }} /></div>
                   </div>
                 </div>
@@ -641,7 +758,7 @@ function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifie
                 </div>
                 <div className={b.lignes}>
                   <Li ic="calendrier" l="Diagnostic fait le" v={txt(d, 'dpeDate') ? dateLongueCourt(txt(d, 'dpeDate')) : d.dpeStatut === 'encours' ? 'Commandé' : ''} />
-                  <Li ic="euro" l="Dépenses d’énergie estimées" v={num(d, 'coutMin') && num(d, 'coutMax') ? `${euros(num(d, 'coutMin') as number).replace(' €', '')} – ${euros(num(d, 'coutMax') as number)} par an` : ''} />
+                  <Li ic="euro" l="Dépenses d’énergie estimées" v={num(d, 'coutMin') && num(d, 'coutMax') ? `${euros(num(d, 'coutMin') as number).replace(/\s€$/, '')} – ${euros(num(d, 'coutMax') as number)} par an` : ''} />
                 </div>
                 {passoire(d) && <div className={b.encart}>Classe F ou G : logement à consommation énergétique excessive. L’annonce doit le dire.</div>}
               </>
@@ -883,6 +1000,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const [fen, setFen] = useState<Fen | null>(null);
   const [cr, setCr] = useState<VisiteU | null>(null);
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
+  const [visite, setVisite] = useState(false);
   const d = bien.donnees || {};
 
   const charger = useCallback(async () => {
@@ -1042,12 +1160,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
   ];
 
-  const blocNotes = (
-    <Bloc ic="cadenas" titre="Notes internes" action={<Modifier onClick={() => onModifier('annonce')} />}>
-      {txt(d, 'notes') ? <div className={b.texte}>{txt(d, 'notes')}</div> : <div className={b.vide}>Rien pour l’instant.</div>}
-      <div className={b.pied}>Visibles par toi seul, jamais dans un espace client.</div>
-    </Bloc>
-  );
+  const blocNotes = <BlocObservations d={d} onModifier={() => onModifier('observations')} />;
   const blocVisitesResume = (
     <Bloc ic="cle" titre="Visites et offres" action={<Modifier onClick={() => setFen({ k: 'visite' })} lib="+ Visite" />}>
       {offresOuvertes.map(o => (
@@ -1066,6 +1179,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       <div className={b.ficheBarre}>
         <button type="button" className={b.retour} onClick={onRetour}><Ic n="retour" t={16} />Biens</button>
         <div className={b.barreActions}>
+          {avant && <button type="button" className={`${s.btn} ${b.btnVisite}`} onClick={() => setVisite(true)}><Ic n="tablette" t={16} /><span className={b.etLong}>Visite sur place</span><span className={b.etCourt}>Visite</span></button>}
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => onModifier()}><Ic n="crayon" t={15} />Modifier</button>
           {!avant && <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'visite' })}><Ic n="plus" t={15} e={2.4} />Visite</button>}
           <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}>
@@ -1118,7 +1232,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           </Bloc>
           <div className={b.deuxEgal}>
             <div className={b.col}>
-              {avant && <BlocEstimation bien={bien} onModifier={() => onModifier('prix')} onEstimation={() => setFen({ k: 'estimation' })} onMandat={() => setFen({ k: 'mandat' })} />}
+              {avant && <BlocVisiteSurPlace d={d} onOuvrir={() => setVisite(true)} />}
+              {avant && <BlocEstimation bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} onMandat={() => setFen({ k: 'mandat' })} />}
               {bien.etape !== 'vendu' && bien.etape !== 'retire' && (
                 <BlocAcheteurs acheteurs={acheteurs} max={4} onTout={() => setOnglet('acheteurs')} onEnvoyer={envoyer} onFiche={ouvrirClient} nbRecherches={liste.recherches.length} />
               )}
@@ -1129,7 +1244,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             <div className={b.col}>
               <BlocProprio bien={bien} proprio={proprio} recherchesProprio={recherchesProprio} onFiche={ouvrirClient} onModifier={() => onModifier('proprio')} />
               {e !== 'a_suivre' && <BlocMandat bien={bien} docs={docsLies} onDoc={faireDocument} onOuvrirDoc={ouvrirDoc} onMandat={() => setFen({ k: 'mandat' })} />}
-              {!avant && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
+              {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
               {e === 'a_suivre' && blocNotes}
               {e === 'estimation' && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
             </div>
@@ -1252,6 +1367,17 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {/* ── Les fenêtres ── */}
       {fen?.k === 'mandat' && <FenMandat bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estimation' && <FenEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'estim' && <FenDefinirEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {/* La visite sur place : à sa sortie, la fiche se recharge, et la suite
+          choisie s'ouvre (l'estimation, le mandat signé, le mandat à signer). */}
+      {visite && <VisiteSurPlace bien={bien} onFermer={(r, suite) => {
+        setVisite(false);
+        void apres(r).then(() => {
+          if (suite === 'estimation') setFen({ k: 'estimation' });
+          else if (suite === 'mandat') setFen({ k: 'mandat' });
+          else if (suite === 'document') void faireDocument({ modele: 'mandat_vente' });
+        });
+      }} />}
       {fen?.k === 'offre' && <FenOffre bien={bien} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={(detail?.suivi || []).find(x => x.type === 'etape' && x.statut === 'compromis') || null} onFermer={() => setFen(null)} onFait={r => apres(r)} />}

@@ -12,15 +12,19 @@ import b from './Biens.module.css';
 export const NOM_MANDAT: Record<string, string> = { simple: 'Simple', semi: 'Semi-exclusif', exclusif: 'Exclusif' };
 const SOUS_MANDAT = ['mandat', 'offre', 'compromis', 'suspendu'];
 
-/* Le prix d'une carte : affiché, sinon la fourchette d'estimation. */
+/* Le prix d'une carte : affiché, sinon la fourchette d'estimation. Avant
+   le mandat, la fourchette passe d'abord : le prix conseillé n'est pas
+   encore un prix affiché (V3.16). Le montant reste quel que soit l'étape
+   (en pause, retiré) : rien ne l'efface. */
 export function prixCarte(bien: BienVente): { t: string; vide: boolean } {
   const d = bien.donnees || {};
   const p = bien.prix ?? num(d, 'prix');
-  if (p) return { t: euros(p), vide: false };
   const a = num(d, 'estimBasse'), h = num(d, 'estimHaute');
-  if (a && h) return { t: `${euros(a).replace(' €', '')} – ${euros(h)}`, vide: false };
-  if (a || h) return { t: euros((a || h) as number), vide: false };
-  return { t: bien.etape === 'a_suivre' ? 'Projet de vente' : bien.etape === 'estimation' ? 'À estimer' : 'Prix à fixer', vide: true };
+  const fourchette = a && h ? `${euros(a).replace(/\s€$/, '')} – ${euros(h)}` : a || h ? euros((a || h) as number) : '';
+  if (avantMandat(bien.etape) && fourchette) return { t: fourchette, vide: false };
+  if (p) return { t: euros(p), vide: false };
+  if (fourchette) return { t: fourchette, vide: false };
+  return { t: bien.etape === 'a_suivre' ? 'Projet de vente' : bien.etape === 'estimation' ? 'Estimation à définir' : 'Prix à fixer', vide: true };
 }
 
 /* Les honoraires d'une vente conclue : ceux saisis au compromis ou à la

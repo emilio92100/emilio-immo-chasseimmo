@@ -6,8 +6,8 @@ import { conjointDe } from '@/lib/foyer';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import {
   EXPOSITIONS, NIVEAUX, PIECES_GROUPES, PIECES_TUILES, lirePieces, lirePhotos, lireDossier, lignesDossier, pictoPiece,
-  brouillonAnnonce, controleAnnonce, passoire, estChampActe, personneDepuisClient, m2,
-  type ChampBien, type Donnees, type Piece, type Photo, type PieceDossier,
+  brouillonAnnonce, controleAnnonce, passoire, estChampActe, personneDepuisClient, m2, lireObservations,
+  type ChampBien, type Donnees, type Observation, type Piece, type Photo, type PieceDossier,
 } from '@/lib/biens-vente';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
@@ -86,10 +86,10 @@ function ChampLettres({ genre, v, onChange, off, lib }: { genre: 'dpe' | 'ges'; 
 /* ══ Les pièces : niveau · pièce · surface · exposition · commentaire ════ */
 const HORS_HABITABLE = new Set(PIECES_GROUPES.filter(g => g.g === 'Annexes' || g.g === 'Extérieur').flatMap(g => g.l));
 export const habitable = (p: Piece) => p.niveau !== 'Extérieur' && !HORS_HABITABLE.has(p.nom.replace(/\s+\d+$/, ''));
-const nouvelId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+export const nouvelId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /* « Chambre », puis « Chambre 2 », « Chambre 3 »… */
-function nomLibre(l: Piece[], nom: string, sauf?: string): string {
+export function nomLibre(l: Piece[], nom: string, sauf?: string): string {
   const base = nom.replace(/\s+\d+$/, '');
   const memes = l.filter(p => p.id !== sauf && p.nom.replace(/\s+\d+$/, '') === base);
   return memes.length ? `${base} ${memes.length + 1}` : base;
@@ -541,8 +541,8 @@ function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
 /* ── Un nombre entier au – / + (V3.15) ──
    Pièces, chambres, salles d'eau, étage… : un toucher plutôt qu'une frappe,
    et le chiffre reste modifiable au clavier. */
-type Compteur = Extract<ChampBien, { t: 'compteur' }>;
-function ChampCompteur({ c, v, onChange, off }: { c: Compteur; v: unknown; onChange: (n: number | null) => void; off: boolean }) {
+export type Compteur = Extract<ChampBien, { t: 'compteur' }>;
+export function ChampCompteur({ c, v, onChange, off }: { c: Compteur; v: unknown; onChange: (n: number | null) => void; off: boolean }) {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
   const min = c.min ?? 0, max = c.max ?? 99;
   const [saisie, setSaisie] = useState<string | null>(null);
@@ -622,6 +622,52 @@ function ChampAdresse({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
 }
 
 /* ── Un champ de la fiche, quel qu'il soit ── */
+/* ── Une liste d'observations (V3.16) : des travaux, un sinistre, ce que
+   dit un PV d'AG. Une ligne par fait : sa nature (un clic sur une idée la
+   remplit), sa date en clair (« 2022 », « AG de juin 2025 »), un
+   commentaire ; pour un sinistre, « réglé » ou « en cours ». ── */
+function ChampJournal({ c, v, onChange, off }: { c: Extract<ChampBien, { t: 'journal' }>; v: unknown; onChange: (x: Observation[]) => void; off: boolean }) {
+  const l = lireObservations(v);
+  const [neuve, setNeuve] = useState<string | null>(null);
+  const majL = (id: string, x: Partial<Observation>) => onChange(l.map(o => (o.id === id ? { ...o, ...x } : o)));
+  const ajouter = (nature = '') => {
+    const id = nouvelId();
+    onChange([...l, { id, nature, quand: '', note: '', ...(c.enCours ? { enCours: false } : {}) }]);
+    setNeuve(id);
+  };
+  return (
+    <div className={b.jour}>
+      {l.map(o => (
+        <div key={o.id} className={`${b.jourL} ${o.enCours ? b.jourRouge : ''}`}>
+          <span className={b.jourIc}><Ic n={c.ic || 'outil'} t={17} /></span>
+          <div className={b.jourCh}>
+            <input className={s.input} value={o.nature} disabled={off} placeholder="Nature" aria-label="Nature"
+              autoFocus={neuve === o.id && !o.nature} onChange={e => majL(o.id, { nature: e.target.value })} />
+            <input className={s.input} value={o.quand} disabled={off} placeholder="Quand : 2022, AG de juin 2025…" aria-label="Quand"
+              autoFocus={neuve === o.id && !!o.nature} onChange={e => majL(o.id, { quand: e.target.value })} />
+            {c.enCours && (
+              <div className={`${s.pills} ${b.jourEtat}`} role="radiogroup" aria-label="Où en est-il ?">
+                <button type="button" role="radio" aria-checked={o.enCours === false} disabled={off} className={`${s.pill} ${o.enCours === false ? s.pillOn : ''}`} onClick={() => majL(o.id, { enCours: false })}><Ic n="check" t={15} />Réglé</button>
+                <button type="button" role="radio" aria-checked={o.enCours === true} disabled={off} className={`${s.pill} ${o.enCours ? `${s.pillOn} ${b.pillRouge}` : ''}`} onClick={() => majL(o.id, { enCours: true })}><Ic n="info" t={15} />En cours</button>
+              </div>
+            )}
+            <input className={`${s.input} ${b.jourNote}`} value={o.note} disabled={off} placeholder="Commentaire (facultatif)" aria-label="Commentaire"
+              onChange={e => majL(o.id, { note: e.target.value })} />
+          </div>
+          {!off && <button type="button" className={b.jourX} aria-label={`Retirer ${o.nature || 'cette ligne'}`} onClick={() => onChange(l.filter(x => x.id !== o.id))}><Croix t={14} /></button>}
+        </div>
+      ))}
+      {!off && (
+        <div className={b.jourAjout}>
+          <span>{l.length ? 'Ajouter :' : `Ajouter ${c.un} :`}</span>
+          {c.idees.map(i => <button key={i} type="button" className={b.jourIdee} onClick={() => ajouter(i)}><Ic n="plus" t={12} e={2.6} />{i}</button>)}
+          <button type="button" className={`${b.jourIdee} ${b.jourAutre}`} onClick={() => ajouter()}><Ic n="plus" t={12} e={2.6} />Autre</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees; maj: Maj; off: boolean; bienId: string }) {
   if (estChampActe(c)) return <ChampActe c={c} d={d} maj={maj} off={off} />;
   if (c.si && !c.si(d)) return null;
@@ -635,11 +681,14 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
   else if (c.t === 'eurosAn') controle = <ChampEurosAn cle={c.cle} d={d} maj={maj} off={off} />;
   else if (c.t === 'compteur') controle = <ChampCompteur c={c} v={d[c.cle]} off={off} onChange={x => maj(c.cle, x)} />;
   else if (c.t === 'adresse') controle = <ChampAdresse d={d} maj={maj} off={off} />;
+  else if (c.t === 'journal') controle = <ChampJournal c={c} v={d[c.cle]} off={off} onChange={x => maj(c.cle, x)} />;
   const sansTitre = c.t === 'pieces';
   /* Deux compteurs côte à côte ; le reste sur toute la largeur. */
   const large = c.t !== 'compteur';
+  /* Les questions à choisir en petites cartes, comme les choix (V3.16). */
+  const carte = c.t === 'journal' || c.t === 'lettres';
   return (
-    <div className={`${s.ch} ${large ? s.large : b.chCpt}`}>
+    <div className={`${s.ch} ${large ? s.large : b.chCpt} ${carte ? s.chQ : ''}`}>
       {!sansTitre && <div className={s.chLib}>{c.ic && <span className={s.chIc}><Ic n={c.ic} t={14} /></span>}<span>{c.lib}</span></div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}

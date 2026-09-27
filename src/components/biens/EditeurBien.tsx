@@ -20,8 +20,9 @@ import b from './Biens.module.css';
    à l'annonce. Au téléphone, deux onglets : Questions / Aperçu.
 
    Les étapes suivent l'étape de vente : tout ce qui décrit le bien se
-   remplit dès « à suivre » (V3.15) ; l'estimation et le prix attendent
-   l'étape « estimation », la visite (clés, codes) le mandat. Ouvert sur une
+   remplit dès « à suivre » (V3.15), les indications de visite (clés,
+   codes) aussi depuis la V3.16 ; seuls l'estimation et le prix attendent
+   l'étape « estimation ». Ouvert sur une
    étape qui n'existe pas encore, l'éditeur dit pourquoi.
 
    Tout s'enregistre seul, 0,8 s après la dernière frappe. */
@@ -45,15 +46,18 @@ function groupes(champs: TChamp[], d: Donnees): Groupe[] {
   return out.filter(g => (!g.titre || vu(g.titre)) && g.champs.some(vu));
 }
 
-function BlocEtape({ e, i, n, d, maj, bienId }: { e: EtapeBien; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; bienId: string }) {
+/* `anime` : en « étape par étape », l'étape qui arrive glisse en place,
+   ses blocs l'un après l'autre (V3.16). */
+function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; bienId: string; anime?: boolean }) {
   return (
-    <section className={`${s.etape} ${b.etape}`} data-etape={e.id}>
+    <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
       <div className={s.etapeTete}>
-        <span className={s.etapeIc}><Ic n={e.ic} t={20} /></span>
-        <div>
+        <span className={`${s.etapeIc} ${b.etapeIcVif}`}><Ic n={e.ic} t={22} /></span>
+        <div className={b.etapeTeteTxt}>
           <div className={s.etapeN}>{`Étape ${i + 1} sur ${n}`}</div>
           <h2 className={s.etapeT}>{e.titre}</h2>
           <p className={s.etapeS}>{e.sous}</p>
+          {anime && <span className={b.etapeJauge} aria-hidden="true"><i style={{ width: `${Math.round(((i + 1) / n) * 100)}%` }} /></span>}
         </div>
       </div>
       {groupes(e.champs, d).map((g, k) => (
@@ -160,7 +164,6 @@ function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbOffres }: { bien: Bi
 
 const NOTICES: Record<string, { t: string; x: string }> = {
   prix: { t: 'Le prix se donne à l’estimation', x: 'Ce bien est « à suivre » : décris-le autant que tu veux, tout est ouvert. La fourchette et le prix conseillé viendront quand tu le passeras en estimation, avec le bouton d’étape de sa fiche.' },
-  pratique: { t: 'Les clés et la visite viennent avec le mandat', x: 'Occupation, clés, codes, contact sur place : ces questions s’ouvrent quand le mandat est signé.' },
 };
 function Notice({ id, onFermer }: { id: string; onFermer: () => void }) {
   const n = NOTICES[id] || { t: 'Cette partie s’ouvrira plus tard', x: 'Elle dépend de l’étape de vente du bien.' };
@@ -369,7 +372,8 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
           return (
             <button key={e.id} type="button" className={`${s.pas} ${b.pas} ${i === cur ? s.pasOn : ''} ${ok ? s.pasOk : ''}`}
               aria-current={i === cur ? 'step' : undefined} title={e.titre} onClick={() => aller(i)}>
-              <span className={s.pasN}>{ok && i !== cur ? <Ic n="check" t={12} e={3} /> : i + 1}</span>
+              {/* Le dessin de l'étape ; faite, une petite coche verte (V3.16). */}
+              <span className={`${s.pasN} ${b.pasIc}`}><Ic n={e.ic} t={15} />{ok && i !== cur && <i className={b.pasCoche}><Ic n="check" t={8} e={3.6} /></i>}</span>
               <span>{e.court}</span>
               {n > 0 && <span className={s.pasManque} title={`${n} information${n > 1 ? 's' : ''} à compléter`}>{n}</span>}
             </button>
@@ -384,11 +388,11 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
 
       <div className={`${s.edCorps} ${b.edCorps}`} data-vue={vue}>
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
-          <div className={`${s.edFormIn} ${b.edFormIn}`}>
+          <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive}`}>
             {notice && <Notice id={notice} onFermer={() => setNotice(null)} />}
             {mode === 'tout'
               ? ETAPES.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />)
-              : <BlocEtape e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />}
+              : <BlocEtape key={ETAPES[cur].id} e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} anime />}
             <div className={s.suite}>
               {mode === 'etapes' && cur > 0 ? <button type="button" className={s.btn} onClick={() => aller(cur - 1)}><Ic n="retour" t={15} />{ETAPES[cur - 1].court}</button> : <span />}
               {mode === 'etapes' && cur < ETAPES.length - 1

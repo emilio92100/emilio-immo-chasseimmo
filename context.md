@@ -1300,6 +1300,83 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.16 — 28 septembre 2026 · la visite sur place, sur tablette
+
+Rien à passer dans Supabase : tout vit dans `biens_vente.donnees`.
+
+**« Visite sur place »** (`components/biens/VisiteSurPlace.tsx`), sur la fiche d'un bien à suivre
+ou en estimation (bouton en haut, et le bloc « Chez le propriétaire ? » de la vue d'ensemble) :
+plein écran, gros boutons, sept écrans — le bien et son propriétaire, les chiffres, pièce par
+pièce, l'intérieur et l'extérieur, l'accès, ce qu'on retient, la fin de visite. Les questions sont celles
+de la fiche (`ETAPES_BIEN`, rendues en grand par `.grandeSaisie` de Documents.module.css) ;
+seules les pièces et « ce qu'on retient » ont leur écran propre.
+
+**Une pièce** : nom, surface, exposition (boussole), niveau (duplex, maison), état, sol, ce
+qu'elle a, un mot, et ses photos prises à la tablette (rangées sous le nom de la pièce, dans
+`photos[].legende`). Nouveaux champs d'une pièce : `etat`, `sol`, `atouts` (`lirePieces` les
+garde). **Ce qu'on retient** : `visiteAtouts`, `visiteDefauts`, `visiteNote`, `prixSouhaite`
+(affiché dans « L'estimation » de la fiche) ; `visiteLe` et, s'il manque, `rdvEstimation` se
+posent à l'ouverture. **Fin de visite** : les pièces du dossier à demander au propriétaire
+(passent « demandé »), puis « Passer en estimation », « Le mandat est signé », « Préparer le
+mandat à signer » ou « Terminer ».
+
+**Rien ne se perd** : enregistrement 0,7 s après chaque touche, et un brouillon dans la tablette
+(`localStorage`, `emi-visite-<id>`) repris s'il est plus récent que la fiche ; sans réseau, la
+visite continue, l'envoi et les photos repartent au retour du réseau (`online`, et toutes les 20 s).
+L'écran reste allumé pendant la visite quand l'appareil le permet (`wakeLock`).
+
+**L'écran « Accès »** (occupé ou libre, les clés, le chemin jusqu'à la
+porte, qui appeler) se place entre « Intérieur, extérieur » et « À retenir » ; « À retenir » pose aussi les
+travaux, les sinistres et la copropriété (voir « Les observations » plus bas).
+
+**Une saisie plus vivante** (demandé par Alexandre : « pas assez d'icônes, pas assez jolies ») :
+chaque question et chaque réponse de la fiche d'un bien a son dessin (`ic` sur les champs et les
+options de `ETAPES_BIEN` ; une quarantaine de pictos ajoutés dans `documents/pictos.ts`, dont les
+huit flèches de l'exposition `dirN`…`dirNO`). Les questions à choix deviennent de petites cartes,
+un choix « saute » quand on le prend : tout est porté par `.saisieVive` + `.chQ`
+(Documents.module.css), posés seulement par l'éditeur des biens, la visite et les fenêtres
+d'estimation — **l'éditeur des documents n'en voit rien**. Le fil des étapes montre le dessin de
+chacune (coche verte en coin quand elle est remplie) ; l'étape qui arrive glisse en place, avec
+une jauge. **La partie « Pièces » n'a pas bougé** (demandé : « il ne faut pas toucher »).
+
+**Les indications de visite dès l'ajout du bien** : l'étape `pratique` (« Les indications de
+visite ») n'attend plus le mandat. Nouvelles clés : `accesBas` (gardien, vigile, interphone,
+digicode, badge, porte ouverte), `accesAscenseur` (gauche, droite, en face, pas d'ascenseur),
+`itineraire` (le chemin jusqu'à la porte, en clair). Le bloc de la fiche se montre à toutes les
+étapes (sauf vendu).
+
+**Les observations** (nouvelle étape `observations`, pour Alexandre seul, jamais dans une annonce
+ni un espace client) : les travaux réalisés (`travauxFaits`), un sinistre (`sinistre` oui/non, puis
+`sinistres`, chacun « réglé » ou « en cours »), et en copropriété ce que disent les PV d'AG
+(`coproVotes`, `coproFaits`, `coproAVenir`). Chaque liste est un nouveau type de champ, `journal`
+(`ChampJournal` dans ChampsBien.tsx) : `[{ id, nature, quand, note, enCours? }]`, `quand` en
+clair (« 2022 », « AG de juin 2025 »), des idées à cliquer. Y ont déménagé : `notes` (quitte
+l'étape « Annonce », qui n'existe plus avant le mandat), `travaux` (quitte l'intérieur) et
+`travauxVotes` (quitte la copro) — mêmes clés, rien de perdu. Sur la fiche, « Observations et
+notes » résume tout, un sinistre en cours en rouge en tête.
+
+**L'estimation change vraiment quelque chose** (Alexandre : « quand je le passe en estimation, il
+n'y a rien qui change ») :
+- en passant en estimation, la fenêtre demande le montant (« Je le donne maintenant » / « Plus
+  tard ») : fourchette, prix conseillé (le milieu proposé d'un clic), prix espéré par le
+  propriétaire avec l'écart en %, le prix au m², une jauge ; et « Pour bien estimer » (ce que la
+  fiche dit déjà, ce qui manque : `pretPourEstimer`) ;
+- sur la fiche, « L'estimation » montre le chemin jusqu'au mandat (rendez-vous, visite, montant,
+  avis de valeur, qui se cochent seuls) et, sans montant, un bouton « Définir l'estimation »
+  (`FenDefinirEstimation`) — un changement de montant laisse une note dans l'historique ;
+- la carte ne dit plus « À estimer » : « Estimation à définir », puis la fourchette ; avant le
+  mandat, la fourchette passe devant le prix conseillé (`prixCarte`). Le montant ne s'efface
+  jamais, retiré ou en pause compris.
+- l'atelier d'estimation (comparables, prix au m², plus et moins) est **pour plus tard** :
+  Alexandre l'a gardé de côté ; l'avis de valeur en PDF aussi.
+
+**Affiner la liste des biens** (`components/biens/FiltresBiens.tsx`) : une ligne sous les
+catégories — type, surface, pièces, budget, DPE au plus — et le tri (par étape, prix croissant
+ou décroissant, surface, les plus récents). Le budget lit le prix affiché, sinon le milieu de la
+fourchette (`prixDe`). Les filtres comptent comme la recherche : les nombres des catégories les
+suivent ; « 3 biens sur 8 · Effacer ». Classes `.aff*` (`.filtres` était déjà pris par
+l'historique de la fiche).
+
 ### V3.15 — 28 septembre 2026 · saisir un bien plus simplement
 
 Rien à passer dans Supabase.

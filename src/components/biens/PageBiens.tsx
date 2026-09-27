@@ -10,6 +10,7 @@ import CarteBien, { honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenNouveau } from './FenetresBien';
+import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
 import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, donneesProprio, marquerVendeur, nomClient, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -43,6 +44,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [erreur, setErreur] = useState('');
   const [filtre, setFiltre] = useState<Filtre>('tout');
   const [cherche, setCherche] = useState('');
+  /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
+  const [fins, setFins] = useState<Filtres>(FILTRES_VIDES);
+  const [tri, setTri] = useState<Tri>('etape');
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean } | null>(null);
   const [cree, setCree] = useState(false);
@@ -132,12 +136,16 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const archives = biens.filter(x => x.archive);
   const q = sansAccent(cherche.trim());
   const proprioDe = (x: BienVente) => (x.client_id && liste?.clients[x.client_id] ? nomClient(liste.clients[x.client_id]) : '');
-  const cherches = (filtre === 'archives' ? archives : actifs).filter(x => !q || sansAccent([
+  const trouves = (filtre === 'archives' ? archives : actifs).filter(x => !q || sansAccent([
     x.titre, x.adresse, x.ville, x.quartier, x.code_postal, x.reference, x.mandat_numero, nomProprio(x.donnees || {}), proprioDe(x),
   ].filter(Boolean).join(' ')).includes(q));
-  const visibles = cherches
-    .filter(x => filtre === 'tout' || filtre === 'archives' || x.etape === filtre)
-    .sort((p, r) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at));
+  /* Les filtres fins comptent comme la recherche : les nombres des
+     catégories les suivent. */
+  const cherches = filtrer(trouves, fins);
+  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || x.etape === filtre;
+  const parEtape = (p: BienVente, r: BienVente) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at);
+  const visibles = trier(cherches.filter(dansCategorie), tri, parEtape);
+  const avantFiltres = trouves.filter(dansCategorie).length;
   const n = (e: EtapeVente) => cherches.filter(x => x.etape === e).length;
 
   const exclus = actifs.filter(x => EN_COURS.includes(x.etape) && x.mandat_type === 'exclusif').length;
@@ -195,13 +203,17 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       )}
       {erreur && !installer && <div className={s.erreur}>{erreur}</div>}
 
+      {liste && !installer && biens.length > 0 && (
+        <FiltresBiens biens={filtre === 'archives' ? archives : actifs} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres} />
+      )}
+
       {!liste ? (
         <div className={s.liste}><div className={s.vide}>Chargement…</div></div>
       ) : !installer && (visibles.length === 0 ? (
         <div className={s.liste}>
           <div className={s.vide}>
             <b>{biens.length === 0 ? 'Aucun bien pour l’instant' : 'Rien ici'}</b>
-            {biens.length === 0 ? 'Crée ton premier bien : un projet à suivre, une estimation ou un mandat signé. Il s’enregistre au fil de la saisie.' : 'Aucun bien dans cette catégorie.'}
+            {biens.length === 0 ? 'Crée ton premier bien : un projet à suivre, une estimation ou un mandat signé. Il s’enregistre au fil de la saisie.' : avantFiltres > 0 ? 'Aucun bien ne correspond à ces filtres : « Effacer » les retire tous.' : 'Aucun bien dans cette catégorie.'}
           </div>
         </div>
       ) : (

@@ -261,7 +261,7 @@ export function ChampActe({ c, d, maj, off }: { c: Champ; d: Donnees; maj: Maj; 
   }
 
   return (
-    <div className={`${s.ch} ${large ? s.large : ''}`}>
+    <div className={`${s.ch} ${large ? s.large : ''} ${c.t === 'choix' || c.t === 'cases' ? s.chQ : ''}`}>
       {saisie ? <label className={s.chLib} htmlFor={id}>{libelle}</label> : <div className={s.chLib}>{libelle}</div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}

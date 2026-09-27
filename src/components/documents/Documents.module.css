@@ -468,3 +468,65 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .sigMail { display: flex; gap: 6px; margin-top: 6px; }
 .sigMail .input { padding: 7px 10px; font-size: 13px; }
 .sigMail .btn { padding: 7px 12px; }
+
+/* ═══ La visite sur place, sur tablette (biens/VisiteSurPlace.tsx) ═══════
+   Les mêmes questions que la fiche, faites pour le doigt : plus hautes,
+   plus larges, plus lisibles. */
+.grandeSaisie .grille { gap: 18px 20px; }
+.grandeSaisie .chLib { font-size: 14.5px; }
+.grandeSaisie .input { padding: 13px 15px; font-size: 17px; border-radius: 13px; }
+.grandeSaisie .pills { gap: 8px; }
+.grandeSaisie .pill { min-height: 46px; padding: 11px 18px; font-size: 15px; }
+.grandeSaisie .cases { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 9px; }
+.grandeSaisie .caseB { min-height: 52px; padding: 12px 14px; font-size: 15px; border-radius: 14px; }
+.grandeSaisie .caseB .bx { width: 22px; height: 22px; border-radius: 6px; }
+.grandeSaisie .tuile { min-height: 64px; padding: 14px 15px; border-radius: 15px; }
+.grandeSaisie .tuile b { font-size: 15.5px; }
+.grandeSaisie .tuilePicto { width: 44px; height: 44px; border-radius: 13px; }
+@media (max-width: 760px) {
+  .grandeSaisie .grille { grid-template-columns: 1fr; }
+}
+
+/* ── V3.16 · la saisie des biens, plus vivante (éditeur et visite) ──
+   Portée par `.saisieVive` : l'éditeur des documents n'en voit rien. Chaque
+   question à choix devient une petite carte (son pictogramme en pastille
+   bleue, son titre, puis les réponses, chacune avec son dessin) ; un choix
+   « saute » quand on le prend, les cartes se soulèvent au survol. */
+.saisieVive .chQ { padding: 12px 14px 14px; border-radius: 15px; background: linear-gradient(180deg, #fafbfd 0%, #f4f7fb 100%); border: 1px solid #e7ecf3; gap: 10px; transition: border-color .18s, box-shadow .18s; }
+.saisieVive .chQ:hover { border-color: #d8e0eb; box-shadow: 0 3px 12px rgba(46,65,102,.06); }
+.saisieVive .chQ > .chLib { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14.5px; font-weight: 800; gap: 10px; }
+.saisieVive .chQ > .chLib .chIc { width: 32px; height: 32px; border-radius: 10px; background: var(--emilio-fond); border: none; color: #e3c872; box-shadow: 0 4px 10px rgba(46,65,102,.20); }
+.saisieVive .chQ > .chAide { margin-top: -2px; }
+.saisieVive .chQ > .chLib .chIc svg { width: 17px; height: 17px; }
+.saisieVive .pill svg { width: 16px; height: 16px; }
+.grandeSaisie.saisieVive .pill svg { width: 18px; height: 18px; }
+.grandeSaisie.saisieVive .casePicto svg { width: 20px; height: 20px; }
+.saisieVive .chIc { transition: transform .2s ease; }
+.saisieVive .ch:focus-within .chIc { transform: scale(1.08) rotate(-4deg); }
+
+.saisieVive .pill { gap: 7px; border-color: #dfe6ef; transition: transform .16s ease, box-shadow .16s ease, background .16s, border-color .16s, color .16s; }
+.saisieVive .pill svg { color: #52668a; transition: transform .22s ease, color .16s; }
+.saisieVive .pill:hover:not(:disabled) { border-color: #c2cedf; transform: translateY(-1px); box-shadow: 0 5px 12px rgba(46,65,102,.10); }
+.saisieVive .pill:hover:not(:disabled) svg { transform: scale(1.14); }
+.saisieVive .pillOn, .saisieVive .pillOn:hover:not(:disabled) { background: var(--emilio-fond); border-color: transparent; color: white; box-shadow: 0 5px 14px rgba(46,65,102,.28); }
+.saisieVive .pillOn { animation: saisiePop .34s ease; }
+.saisieVive .pillOn svg { color: #e3c872; }
+
+.saisieVive .caseB { border-color: #dfe6ef; transition: transform .16s ease, box-shadow .16s ease, border-color .16s, background .16s; }
+.saisieVive .caseB:hover:not(:disabled) { transform: translateY(-1px); border-color: #c2cedf; box-shadow: 0 5px 12px rgba(46,65,102,.10); }
+.saisieVive .casePicto { background: #edf1f7; color: #45597d; }
+.saisieVive .caseB:hover:not(:disabled) .casePicto { transform: scale(1.06); }
+.saisieVive .casePicto { transition: transform .2s ease, background .16s, color .16s; }
+.saisieVive .caseOn, .saisieVive .caseOn:hover:not(:disabled) { border-color: #c9a84c; background: #fdf9ee; box-shadow: 0 5px 14px rgba(201,168,76,.20); }
+.saisieVive .caseOn .casePicto, .saisieVive .caseOn .bx { animation: saisiePop .34s ease; }
+
+.saisieVive .tuile { transition: transform .16s ease, box-shadow .16s ease, border-color .16s, background .16s; }
+.saisieVive .tuile:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(46,65,102,.10); }
+.saisieVive .tuilePicto { background: #edf1f7; color: #45597d; }
+.saisieVive .tuileOn { animation: saisiePop .34s ease; }
+.saisieVive .tuileOn .tuilePicto { background: var(--emilio-fond); color: #e3c872; }
+
+@keyframes saisiePop { 0% { transform: scale(.93); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .saisieVive *, .saisieVive *::before, .saisieVive *::after { animation: none !important; transition: none !important; }
+}

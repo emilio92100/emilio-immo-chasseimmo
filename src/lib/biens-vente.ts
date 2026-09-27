@@ -116,7 +116,8 @@ export function pictoPiece(nom: string): string {
   const n = nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, "'").toLowerCase().trim();
   return PICTO_PIECE.find(([r]) => r.test(n))?.[1] || 'plan';
 }
-export type Piece = { id: string; niveau: string; nom: string; surface: number | null; expo: string; note: string };
+/* `etat`, `sol`, `atouts` : notés pendant la visite sur place (V3.16). */
+export type Piece = { id: string; niveau: string; nom: string; surface: number | null; expo: string; note: string; etat?: string; sol?: string; atouts?: string[] };
 export const lirePieces = (x: unknown): Piece[] => (Array.isArray(x) ? x : []).map((p, i) => {
   const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
   const s = typeof o.surface === 'number' ? o.surface : typeof o.surface === 'string' ? parseFloat(String(o.surface).replace(',', '.')) : NaN;
@@ -124,8 +125,22 @@ export const lirePieces = (x: unknown): Piece[] => (Array.isArray(x) ? x : []).m
     id: typeof o.id === 'string' && o.id ? o.id : `p${i}`, niveau: typeof o.niveau === 'string' ? o.niveau : '',
     nom: typeof o.nom === 'string' ? o.nom : '', surface: Number.isFinite(s) ? s : null,
     expo: typeof o.expo === 'string' ? o.expo : '', note: typeof o.note === 'string' ? o.note : '',
+    ...(typeof o.etat === 'string' && o.etat ? { etat: o.etat } : {}),
+    ...(typeof o.sol === 'string' && o.sol ? { sol: o.sol } : {}),
+    ...(Array.isArray(o.atouts) && o.atouts.length ? { atouts: o.atouts.filter((a): a is string => typeof a === 'string') } : {}),
   };
 });
+
+/* ── La visite sur place (V3.16) : ce qu'on note d'une pièce, d'un coup
+   d'œil, et ce qu'on retient du bien. ── */
+export const ETATS_PIECE: { v: string; l: string; c: string }[] = [
+  { v: 'a_renover', l: 'À rénover', c: '#dc2626' }, { v: 'rafraichir', l: 'À rafraîchir', c: '#f59e0b' },
+  { v: 'bon', l: 'Bon état', c: '#10b981' }, { v: 'neuf', l: 'Refait à neuf', c: '#0ea5a4' },
+];
+export const SOLS = ['Parquet', 'Carrelage', 'Stratifié', 'Moquette', 'Béton ciré', 'Tomettes', 'Vinyle'];
+export const ATOUTS_PIECE = ['Lumineuse', 'Calme', 'Vue dégagée', 'Placards', 'Moulures', 'Cheminée', 'Parquet d’origine', 'Belle hauteur', 'Double vitrage', 'Sur jardin', 'Sur cour'];
+export const ATOUTS_BIEN = ['Lumineux', 'Calme', 'Traversant', 'Vue dégagée', 'Sans vis-à-vis', 'Beaux volumes', 'Cachet de l’ancien', 'Rénové récemment', 'Extérieur', 'Étage élevé', 'Ascenseur', 'Gardien', 'Parking', 'Cave', 'Proche transports', 'Proche écoles', 'Commerces à pied'];
+export const DEFAUTS_BIEN = ['Travaux à prévoir', 'Rez-de-chaussée', 'Sans ascenseur', 'Vis-à-vis', 'Bruit de la rue', 'Pièces sombres', 'Petite cuisine', 'Salle d’eau à refaire', 'Électricité à revoir', 'Pas d’extérieur', 'Charges élevées', 'DPE F ou G'];
 
 export type Photo = { url: string; chemin: string; legende: string };
 export const lirePhotos = (x: unknown): Photo[] => (Array.isArray(x) ? x : [])
@@ -189,23 +204,42 @@ export type ChampBien = Champ
   | (BaseB & { t: 'compteur'; min?: number; max?: number; mots?: (n: number) => string })
   /* L'adresse, proposée pendant la frappe (base adresse nationale) : un
      choix remplit aussi le code postal et la ville. */
-  | (BaseB & { t: 'adresse' });
+  | (BaseB & { t: 'adresse' })
+  /* Une liste d'observations (V3.16) : des travaux, un sinistre, ce que dit
+     un PV d'AG. Chaque ligne : sa nature, sa date, un commentaire ; `idees` :
+     les natures proposées d'un clic ; `enCours` : « réglé » ou « en cours ». */
+  | (BaseB & { t: 'journal'; un: string; idees: string[]; enCours?: boolean });
+export type Observation = { id: string; nature: string; quand: string; note: string; enCours?: boolean };
+export const lireObservations = (x: unknown): Observation[] => (Array.isArray(x) ? x : [])
+  .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
+  .map((o, i) => ({
+    id: typeof o.id === 'string' && o.id ? o.id : `o${i}`, nature: typeof o.nature === 'string' ? o.nature : '',
+    quand: typeof o.quand === 'string' ? o.quand : '', note: typeof o.note === 'string' ? o.note : '',
+    ...(typeof o.enCours === 'boolean' ? { enCours: o.enCours } : {}),
+  }));
 /* Une étape du formulaire. `pour` : les étapes de vente où elle se montre.
-   Tout ce qui décrit le bien se remplit dès « à suivre » (V3.15) : seules
-   l'estimation (fourchette, prix) attend l'étape « estimation », et la
-   visite (clés, codes) le mandat. `avant` : son titre tant que le mandat
+   Tout ce qui décrit le bien se remplit dès « à suivre » (V3.15), et les
+   indications de visite (clés, codes) aussi depuis la V3.16 : seule
+   l'estimation (fourchette, prix) attend l'étape « estimation ». `avant` :
+   son titre tant que le mandat
    n'est pas signé. */
 export type EtapeBien = {
   id: string; titre: string; court: string; sous: string; ic: string; champs: ChampBien[];
   pour?: (e: EtapeVente) => boolean;
   avant?: { titre: string; court: string; sous: string };
 };
-export const estChampActe = (c: ChampBien): c is Champ => !['lettres', 'pieces', 'photos', 'dossier', 'proprio', 'annonce', 'eurosAn', 'compteur', 'adresse'].includes(c.t);
+export const estChampActe = (c: ChampBien): c is Champ => !['lettres', 'pieces', 'photos', 'dossier', 'proprio', 'annonce', 'eurosAn', 'compteur', 'adresse', 'journal'].includes(c.t);
 /* Dans l'éditeur, les données portent l'étape de vente sous `_stade` (jamais
    enregistrée) : un champ réservé au mandat s'efface avant. Sans `_stade`
    (la fiche, l'annonce), tout se montre. */
 const sousMandat = (d: Donnees) => !avantMandat(String(d._stade || ''));
 const pasASuivre = (e: EtapeVente) => e !== 'a_suivre';
+/* Des réponses qui reviennent : chacune avec son dessin (V3.16). */
+const OUI_NON: Option[] = [{ v: 'oui', l: 'Oui', ic: 'check' }, { v: 'non', l: 'Non', ic: 'croix' }];
+export const DELAIS: Option[] = [
+  { v: 'vite', l: 'Dès que possible', ic: 'eclair' }, { v: '3mois', l: 'Sous 3 mois', ic: 'chrono' },
+  { v: '6mois', l: 'Sous 6 mois', ic: 'calendrier' }, { v: 'libre', l: 'Il n’est pas pressé', ic: 'horloge' },
+];
 
 /* ══ Le formulaire : étape par étape, ou tout sur une page ═══════════════ */
 export const ETAPES_BIEN: EtapeBien[] = [
@@ -224,16 +258,14 @@ export const ETAPES_BIEN: EtapeBien[] = [
         nomCarte: (d, i) => (d.qui === 'sci' ? 'Le gérant' : d.qui === 'couple' ? `Propriétaire ${i + 1}` : d.qui === 'indivision' ? `Propriétaire ${i + 1}` : 'Le propriétaire'),
         ajouter: () => 'Ajouter un propriétaire' },
       { t: 'titre', cle: 't-projet', lib: 'Son projet', ic: 'drapeau' },
-      { t: 'choix', cle: 'motif', lib: 'Pourquoi il vend', options: [
-        { v: 'achat', l: 'Il achète ailleurs' }, { v: 'succession', l: 'Succession' }, { v: 'separation', l: 'Séparation' },
-        { v: 'mutation', l: 'Mutation' }, { v: 'investissement', l: 'Investissement' }, { v: 'autre', l: 'Autre' },
+      { t: 'choix', cle: 'motif', lib: 'Pourquoi il vend', ic: 'drapeau', options: [
+        { v: 'achat', l: 'Il achète ailleurs', ic: 'cle' }, { v: 'succession', l: 'Succession', ic: 'bail' }, { v: 'separation', l: 'Séparation', ic: 'separation' },
+        { v: 'mutation', l: 'Mutation', ic: 'valise' }, { v: 'investissement', l: 'Investissement', ic: 'courbe' }, { v: 'autre', l: 'Autre', ic: 'points' },
       ] },
-      { t: 'choix', cle: 'delai', lib: 'Son délai', options: [
-        { v: 'vite', l: 'Dès que possible' }, { v: '3mois', l: 'Sous 3 mois' }, { v: '6mois', l: 'Sous 6 mois' }, { v: 'libre', l: 'Il n’est pas pressé' },
-      ] },
-      { t: 'choix', cle: 'origine', lib: 'Comment il est venu', options: [
-        { v: 'recommandation', l: 'Recommandation' }, { v: 'client', l: 'Ancien client' }, { v: 'estimation', l: 'Estimation en ligne' },
-        { v: 'boitage', l: 'Boîtage, affiche' }, { v: 'portail', l: 'Portail, réseaux' }, { v: 'autre', l: 'Autre' },
+      { t: 'choix', cle: 'delai', lib: 'Son délai', ic: 'chrono', options: DELAIS },
+      { t: 'choix', cle: 'origine', lib: 'Comment il est venu', ic: 'boussole', options: [
+        { v: 'recommandation', l: 'Recommandation', ic: 'bulle' }, { v: 'client', l: 'Ancien client', ic: 'etoile' }, { v: 'estimation', l: 'Estimation en ligne', ic: 'ecran' },
+        { v: 'boitage', l: 'Boîtage, affiche', ic: 'mail' }, { v: 'portail', l: 'Portail, réseaux', ic: 'globe' }, { v: 'autre', l: 'Autre', ic: 'points' },
       ] },
       { t: 'texte', cle: 'notaire', lib: 'Son notaire', ic: 'balance', exemple: 'Maître Durand, Boulogne' },
     ],
@@ -264,16 +296,16 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'compteur', cle: 'niveaux', lib: 'Niveaux', ic: 'escalier', min: 1, max: 4, si: surNiveaux, aide: '2 : duplex · 3 : triplex', mots: n => (n === 2 ? 'Duplex' : n === 3 ? 'Triplex' : '') },
       { t: 'compteur', cle: 'etages', lib: 'Niveaux', ic: 'escalier', min: 1, si: estMaison, aide: '1 : de plain-pied', mots: n => (n === 1 ? 'Plain-pied' : '') },
       { t: 'titre', cle: 't-terrain', lib: 'Le terrain', ic: 'terrain', si: estTerrain },
-      { t: 'choix', cle: 'constructible', lib: 'Constructible', si: estTerrain, options: [{ v: 'oui', l: 'Oui' }, { v: 'partiel', l: 'En partie' }, { v: 'non', l: 'Non' }] },
-      { t: 'choix', cle: 'viabilise', lib: 'Viabilisé', si: estTerrain, aide: 'Eau, électricité, assainissement en bordure', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
+      { t: 'choix', cle: 'constructible', lib: 'Constructible', ic: 'maison', si: estTerrain, options: [{ v: 'oui', l: 'Oui', ic: 'check' }, { v: 'partiel', l: 'En partie', ic: 'plan' }, { v: 'non', l: 'Non', ic: 'croix' }] },
+      { t: 'choix', cle: 'viabilise', lib: 'Viabilisé', ic: 'eclair', si: estTerrain, aide: 'Eau, électricité, assainissement en bordure', options: OUI_NON },
       { t: 'titre', cle: 't-imm', lib: 'L’immeuble', ic: 'immeuble', si: enImmeuble },
       { t: 'titre', cle: 't-constr', lib: 'La construction', ic: 'maison', si: estMaison },
       { t: 'compteur', cle: 'etage', lib: 'Étage', ic: 'ascenseur', min: 0, si: enImmeuble, mots: n => (n === 0 ? 'RDC' : '') },
       { t: 'compteur', cle: 'etages', lib: 'Étages en tout', ic: 'immeuble', min: 0, si: enImmeuble },
       { t: 'nombre', cle: 'annee', lib: 'Année de construction', ic: 'calendrier', si: d => !estTerrain(d), exemple: '1968' },
-      { t: 'cases', cle: 'immeuble', lib: 'Dans l’immeuble', si: enImmeuble, options: [
-        { v: 'ascenseur', l: 'Ascenseur' }, { v: 'gardien', l: 'Gardien' }, { v: 'digicode', l: 'Digicode' },
-        { v: 'interphone', l: 'Interphone' }, { v: 'velos', l: 'Local vélos' }, { v: 'fibre', l: 'Fibre' },
+      { t: 'cases', cle: 'immeuble', lib: 'Dans l’immeuble', ic: 'immeuble', si: enImmeuble, options: [
+        { v: 'ascenseur', l: 'Ascenseur', ic: 'ascenseur' }, { v: 'gardien', l: 'Gardien', ic: 'personne' }, { v: 'digicode', l: 'Digicode', ic: 'clavier' },
+        { v: 'interphone', l: 'Interphone', ic: 'interphone' }, { v: 'velos', l: 'Local vélos', ic: 'velo' }, { v: 'fibre', l: 'Fibre', ic: 'wifi' },
       ] },
     ],
   },
@@ -281,57 +313,57 @@ export const ETAPES_BIEN: EtapeBien[] = [
     id: 'interieur', titre: 'L’intérieur', court: 'Intérieur', sous: 'État, cuisine, chauffage, équipements.', ic: 'canape',
     champs: [
       { t: 'titre', cle: 't-etat', lib: 'L’état général', ic: 'pinceau' },
-      { t: 'choix', cle: 'etat', lib: 'État général', options: [
-        { v: 'a_renover', l: 'À rénover' }, { v: 'travaux_legers', l: 'À rafraîchir' }, { v: 'bon_etat', l: 'Bon état' }, { v: 'refait_neuf', l: 'Refait à neuf' },
+      { t: 'choix', cle: 'etat', lib: 'Dans quel état ?', ic: 'pinceau', tuiles: true, options: [
+        { v: 'a_renover', l: 'À rénover', aide: 'Gros travaux', ic: 'outil' }, { v: 'travaux_legers', l: 'À rafraîchir', aide: 'Peintures, sols', ic: 'pinceau' },
+        { v: 'bon_etat', l: 'Bon état', aide: 'Rien d’urgent', ic: 'check' }, { v: 'refait_neuf', l: 'Refait à neuf', aide: 'Travaux récents', ic: 'etincelle' },
       ] },
-      { t: 'zone', cle: 'travaux', lib: 'Travaux récents ou à prévoir', exemple: 'Cuisine refaite en 2022 ; fenêtres double vitrage en 2019' },
-      { t: 'titre', cle: 't-cuis', lib: 'La cuisine', ic: 'canape', si: aDesPieces },
-      { t: 'choix', cle: 'cuisine', lib: 'Cuisine', si: aDesPieces, options: [
-        { v: 'independante', l: 'Indépendante' }, { v: 'ouverte', l: 'Ouverte' }, { v: 'kitchenette', l: 'Kitchenette' }, { v: 'aucune', l: 'Sans cuisine' },
+      { t: 'titre', cle: 't-cuis', lib: 'La cuisine', ic: 'cuisine', si: aDesPieces },
+      { t: 'choix', cle: 'cuisine', lib: 'Cuisine', ic: 'cuisine', si: aDesPieces, options: [
+        { v: 'independante', l: 'Indépendante', ic: 'porte' }, { v: 'ouverte', l: 'Ouverte', ic: 'canape' }, { v: 'kitchenette', l: 'Kitchenette', ic: 'cuisine' }, { v: 'aucune', l: 'Sans cuisine', ic: 'croix' },
       ] },
-      { t: 'choix', cle: 'cuisineEquip', lib: 'Équipement', si: aDesPieces, options: [
-        { v: 'equipee', l: 'Équipée' }, { v: 'amenagee', l: 'Aménagée' }, { v: 'non', l: 'Non équipée' },
+      { t: 'choix', cle: 'cuisineEquip', lib: 'Équipement', ic: 'four', si: aDesPieces, options: [
+        { v: 'equipee', l: 'Équipée', ic: 'four' }, { v: 'amenagee', l: 'Aménagée', ic: 'placard' }, { v: 'non', l: 'Non équipée', ic: 'croix' },
       ] },
-      { t: 'titre', cle: 't-chauf', lib: 'Chauffage et eau chaude', ic: 'eclair', si: aDesPieces },
-      { t: 'choix', cle: 'chauffageMode', lib: 'Chauffage', si: aDesPieces, options: [{ v: 'individuel', l: 'Individuel' }, { v: 'collectif', l: 'Collectif' }] },
-      { t: 'choix', cle: 'chauffageEnergie', lib: 'Énergie', si: aDesPieces, options: [
-        { v: 'gaz', l: 'Gaz' }, { v: 'electrique', l: 'Électrique' }, { v: 'pac', l: 'Pompe à chaleur' },
-        { v: 'fioul', l: 'Fioul' }, { v: 'bois', l: 'Bois' }, { v: 'urbain', l: 'Réseau urbain' },
+      { t: 'titre', cle: 't-chauf', lib: 'Chauffage et eau chaude', ic: 'flamme', si: aDesPieces },
+      { t: 'choix', cle: 'chauffageMode', lib: 'Chauffage', ic: 'radiateur', si: aDesPieces, options: [{ v: 'individuel', l: 'Individuel', ic: 'personne' }, { v: 'collectif', l: 'Collectif', ic: 'immeuble' }] },
+      { t: 'choix', cle: 'chauffageEnergie', lib: 'Énergie', ic: 'eclair', si: aDesPieces, options: [
+        { v: 'gaz', l: 'Gaz', ic: 'flamme' }, { v: 'electrique', l: 'Électrique', ic: 'eclair' }, { v: 'pac', l: 'Pompe à chaleur', ic: 'pac' },
+        { v: 'fioul', l: 'Fioul', ic: 'fioul' }, { v: 'bois', l: 'Bois', ic: 'bois' }, { v: 'urbain', l: 'Réseau urbain', ic: 'usine' },
       ] },
-      { t: 'choix', cle: 'chauffageEmetteurs', lib: 'Par', si: aDesPieces, options: [
-        { v: 'radiateurs', l: 'Radiateurs' }, { v: 'sol', l: 'Plancher chauffant' }, { v: 'convecteurs', l: 'Convecteurs' }, { v: 'poele', l: 'Poêle' },
+      { t: 'choix', cle: 'chauffageEmetteurs', lib: 'Par', ic: 'radiateur', si: aDesPieces, options: [
+        { v: 'radiateurs', l: 'Radiateurs', ic: 'radiateur' }, { v: 'sol', l: 'Plancher chauffant', ic: 'sol' }, { v: 'convecteurs', l: 'Convecteurs', ic: 'convecteur' }, { v: 'poele', l: 'Poêle', ic: 'poele' },
       ] },
-      { t: 'choix', cle: 'eauChaude', lib: 'Eau chaude', si: aDesPieces, options: [{ v: 'individuelle', l: 'Individuelle' }, { v: 'collective', l: 'Collective' }] },
-      { t: 'titre', cle: 't-equip', lib: 'Ce qu’il a', ic: 'check', si: aDesPieces },
-      { t: 'cases', cle: 'equipements', lib: 'Équipements et qualités', si: aDesPieces, options: [
-        { v: 'traversant', l: 'Traversant' }, { v: 'lumineux', l: 'Lumineux' }, { v: 'calme', l: 'Calme' }, { v: 'dernierEtage', l: 'Dernier étage' },
-        { v: 'parquet', l: 'Parquet' }, { v: 'moulures', l: 'Moulures, cachet' }, { v: 'cheminee', l: 'Cheminée' }, { v: 'placards', l: 'Placards, rangements' },
-        { v: 'doubleVitrage', l: 'Double vitrage' }, { v: 'voletsElec', l: 'Volets électriques' }, { v: 'clim', l: 'Climatisation' }, { v: 'alarme', l: 'Alarme' },
-        { v: 'pmr', l: 'Accessible PMR' }, { v: 'meuble', l: 'Vendu meublé' },
+      { t: 'choix', cle: 'eauChaude', lib: 'Eau chaude', ic: 'eau', si: aDesPieces, options: [{ v: 'individuelle', l: 'Individuelle', ic: 'ballon' }, { v: 'collective', l: 'Collective', ic: 'immeuble' }] },
+      { t: 'titre', cle: 't-equip', lib: 'Ce qu’il a', ic: 'etoile', si: aDesPieces },
+      { t: 'cases', cle: 'equipements', lib: 'Équipements et qualités', ic: 'etoile', si: aDesPieces, options: [
+        { v: 'traversant', l: 'Traversant', ic: 'traversant' }, { v: 'lumineux', l: 'Lumineux', ic: 'soleil' }, { v: 'calme', l: 'Calme', ic: 'lune' }, { v: 'dernierEtage', l: 'Dernier étage', ic: 'toit' },
+        { v: 'parquet', l: 'Parquet', ic: 'parquet' }, { v: 'moulures', l: 'Moulures, cachet', ic: 'colonne' }, { v: 'cheminee', l: 'Cheminée', ic: 'cheminee' }, { v: 'placards', l: 'Placards, rangements', ic: 'placard' },
+        { v: 'doubleVitrage', l: 'Double vitrage', ic: 'fenetre' }, { v: 'voletsElec', l: 'Volets électriques', ic: 'volet' }, { v: 'clim', l: 'Climatisation', ic: 'flocon' }, { v: 'alarme', l: 'Alarme', ic: 'alarme' },
+        { v: 'pmr', l: 'Accessible PMR', ic: 'pmr' }, { v: 'meuble', l: 'Vendu meublé', ic: 'canape' },
       ] },
-      { t: 'zone', cle: 'interieurNote', lib: 'Ce qu’il faut savoir de l’intérieur', exemple: 'Belle hauteur sous plafond, parquet d’origine, séjour en angle' },
+      { t: 'zone', cle: 'interieurNote', lib: 'Ce qu’il faut savoir de l’intérieur', ic: 'bulle', exemple: 'Belle hauteur sous plafond, parquet d’origine, séjour en angle' },
     ],
   },
   {
     id: 'exterieur', titre: 'Extérieur et annexes', court: 'Extérieur', sous: 'Balcon, jardin, cave, parking, vue.', ic: 'terrain',
     champs: [
-      { t: 'cases', cle: 'annexes', lib: 'Ce qu’il y a', options: [
-        { v: 'balcon', l: 'Balcon' }, { v: 'terrasse', l: 'Terrasse' }, { v: 'loggia', l: 'Loggia' }, { v: 'jardin', l: 'Jardin' },
-        { v: 'cave', l: 'Cave' }, { v: 'parking', l: 'Parking' }, { v: 'box', l: 'Box' }, { v: 'garage', l: 'Garage' }, { v: 'piscine', l: 'Piscine' },
+      { t: 'cases', cle: 'annexes', lib: 'Ce qu’il y a', ic: 'parasol', options: [
+        { v: 'balcon', l: 'Balcon', ic: 'balcon' }, { v: 'terrasse', l: 'Terrasse', ic: 'parasol' }, { v: 'loggia', l: 'Loggia', ic: 'loggia' }, { v: 'jardin', l: 'Jardin', ic: 'terrain' },
+        { v: 'cave', l: 'Cave', ic: 'cave' }, { v: 'parking', l: 'Parking', ic: 'parking' }, { v: 'box', l: 'Box', ic: 'box' }, { v: 'garage', l: 'Garage', ic: 'voiture' }, { v: 'piscine', l: 'Piscine', ic: 'piscine' },
       ] },
-      { t: 'nombre', cle: 'surfBalcon', lib: 'Balcon', unite: 'm²', si: d => liste(d, 'annexes').includes('balcon') },
-      { t: 'nombre', cle: 'surfTerrasse', lib: 'Terrasse', unite: 'm²', si: d => liste(d, 'annexes').includes('terrasse') },
-      { t: 'nombre', cle: 'surfLoggia', lib: 'Loggia', unite: 'm²', si: d => liste(d, 'annexes').includes('loggia') },
-      { t: 'nombre', cle: 'surfJardin', lib: 'Jardin', unite: 'm²', si: d => liste(d, 'annexes').includes('jardin') },
-      { t: 'nombre', cle: 'surfCave', lib: 'Cave', unite: 'm²', si: d => liste(d, 'annexes').includes('cave') },
+      { t: 'nombre', cle: 'surfBalcon', lib: 'Balcon', ic: 'balcon', unite: 'm²', si: d => liste(d, 'annexes').includes('balcon') },
+      { t: 'nombre', cle: 'surfTerrasse', lib: 'Terrasse', ic: 'parasol', unite: 'm²', si: d => liste(d, 'annexes').includes('terrasse') },
+      { t: 'nombre', cle: 'surfLoggia', lib: 'Loggia', ic: 'loggia', unite: 'm²', si: d => liste(d, 'annexes').includes('loggia') },
+      { t: 'nombre', cle: 'surfJardin', lib: 'Jardin', ic: 'terrain', unite: 'm²', si: d => liste(d, 'annexes').includes('jardin') },
+      { t: 'nombre', cle: 'surfCave', lib: 'Cave', ic: 'cave', unite: 'm²', si: d => liste(d, 'annexes').includes('cave') },
       { t: 'compteur', cle: 'nbParking', lib: 'Places de parking', ic: 'parking', si: d => liste(d, 'annexes').some(x => ['parking', 'box', 'garage'].includes(x)) },
       { t: 'titre', cle: 't-vue', lib: 'Exposition et vue', ic: 'soleil' },
-      { t: 'choix', cle: 'expo', lib: 'Exposition principale', options: [...EXPOSITIONS, { v: 'traversant', l: 'Traversant' }] },
-      { t: 'choix', cle: 'vue', lib: 'Vue', options: [
-        { v: 'degagee', l: 'Dégagée' }, { v: 'jardin', l: 'Sur jardin' }, { v: 'cour', l: 'Sur cour' }, { v: 'rue', l: 'Sur rue' }, { v: 'monument', l: 'Monument, Seine' },
+      { t: 'choix', cle: 'expo', lib: 'Exposition principale', ic: 'boussole', options: [...EXPOSITIONS.map(e => ({ ...e, ic: `dir${e.v}` })), { v: 'traversant', l: 'Traversant', ic: 'traversant' }] },
+      { t: 'choix', cle: 'vue', lib: 'Vue', ic: 'oeil', options: [
+        { v: 'degagee', l: 'Dégagée', ic: 'horizon' }, { v: 'jardin', l: 'Sur jardin', ic: 'terrain' }, { v: 'cour', l: 'Sur cour', ic: 'cour' }, { v: 'rue', l: 'Sur rue', ic: 'couloir' }, { v: 'monument', l: 'Monument, Seine', ic: 'colonne' },
       ] },
-      { t: 'choix', cle: 'visAVis', lib: 'Vis-à-vis', options: [{ v: 'aucun', l: 'Aucun' }, { v: 'leger', l: 'Léger' }, { v: 'direct', l: 'Direct' }] },
-      { t: 'zone', cle: 'exterieurNote', lib: 'Ce qu’il faut savoir de l’extérieur', exemple: 'Balcon filant plein sud, sans vis-à-vis ; box en sous-sol accessible par la rampe' },
+      { t: 'choix', cle: 'visAVis', lib: 'Vis-à-vis', ic: 'fenetre', options: [{ v: 'aucun', l: 'Aucun', ic: 'oeilBarre' }, { v: 'leger', l: 'Léger', ic: 'oeil' }, { v: 'direct', l: 'Direct', ic: 'immeuble' }] },
+      { t: 'zone', cle: 'exterieurNote', lib: 'Ce qu’il faut savoir de l’extérieur', ic: 'bulle', exemple: 'Balcon filant plein sud, sans vis-à-vis ; box en sous-sol accessible par la rampe' },
     ],
   },
   {
@@ -341,38 +373,64 @@ export const ETAPES_BIEN: EtapeBien[] = [
   {
     id: 'energie', titre: 'L’énergie', court: 'Énergie', sous: 'DPE et GES, leurs valeurs, les dépenses estimées.', ic: 'eclair',
     champs: [
-      { t: 'choix', cle: 'dpeStatut', lib: 'Le DPE', options: [
-        { v: 'fait', l: 'Réalisé' }, { v: 'encours', l: 'Commandé' }, { v: 'vierge', l: 'Vierge' }, { v: 'non', l: 'Non soumis' },
+      { t: 'choix', cle: 'dpeStatut', lib: 'Le DPE', ic: 'doc', options: [
+        { v: 'fait', l: 'Réalisé', ic: 'check' }, { v: 'encours', l: 'Commandé', ic: 'horloge' }, { v: 'vierge', l: 'Vierge', ic: 'fiscal' }, { v: 'non', l: 'Non soumis', ic: 'croix' },
       ] },
-      { t: 'lettres', cle: 'dpe', lib: 'Classe énergie (DPE)', genre: 'dpe', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'nombre', cle: 'dpeValeur', lib: 'Consommation', unite: 'kWh/m²/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'lettres', cle: 'ges', lib: 'Classe climat (GES)', genre: 'ges', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'nombre', cle: 'gesValeur', lib: 'Émissions', unite: 'kg CO₂/m²/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'date', cle: 'dpeDate', lib: 'Date du DPE', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'lettres', cle: 'dpe', lib: 'Classe énergie (DPE)', ic: 'eclair', genre: 'dpe', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'nombre', cle: 'dpeValeur', lib: 'Consommation', ic: 'eclair', unite: 'kWh/m²/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'lettres', cle: 'ges', lib: 'Classe climat (GES)', ic: 'nuage', genre: 'ges', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'nombre', cle: 'gesValeur', lib: 'Émissions', ic: 'nuage', unite: 'kg CO₂/m²/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'date', cle: 'dpeDate', lib: 'Date du DPE', ic: 'calendrier', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
       { t: 'titre', cle: 't-cout', lib: 'Les dépenses d’énergie écrites sur le DPE', ic: 'euro', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non',
         aide: 'Ce n’est pas la copropriété : c’est l’estimation du DPE pour chauffer et éclairer le logement. Le DPE la donne en fourchette, l’annonce la reprend telle quelle.' },
-      { t: 'euros', cle: 'coutMin', lib: 'Montant bas', unite: '€/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'euros', cle: 'coutMax', lib: 'Montant haut', unite: '€/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
-      { t: 'nombre', cle: 'coutAnnee', lib: 'Prix de l’énergie de l’année', exemple: '2023', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non', aide: 'Écrite sur le DPE, à côté des montants' },
+      { t: 'euros', cle: 'coutMin', lib: 'Montant bas', ic: 'bas', unite: '€/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'euros', cle: 'coutMax', lib: 'Montant haut', ic: 'haut', unite: '€/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'nombre', cle: 'coutAnnee', lib: 'Prix de l’énergie de l’année', ic: 'calendrier', exemple: '2023', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non', aide: 'Écrite sur le DPE, à côté des montants' },
     ],
   },
   {
     id: 'copro', titre: 'Copropriété, charges et taxes', court: 'Copro et charges', sous: 'La copropriété, puis ce que le bien coûte chaque année.', ic: 'lots',
     champs: [
       { t: 'titre', cle: 't-copro', lib: 'La copropriété', ic: 'lots' },
-      { t: 'choix', cle: 'copro', lib: 'En copropriété ?', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
-      { t: 'nombre', cle: 'lots', lib: 'Nombre de lots', si: d => d.copro === 'oui', aide: 'Obligatoire dans l’annonce' },
-      { t: 'choix', cle: 'procedure', lib: 'Procédure en cours contre le syndicat ?', si: d => d.copro === 'oui', options: [{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui' }] },
-      { t: 'texte', cle: 'procedureNature', lib: 'Laquelle', large: true, si: d => d.copro === 'oui' && d.procedure === 'oui' },
-      { t: 'texte', cle: 'syndic', lib: 'Syndic', si: d => d.copro === 'oui', exemple: 'Foncia Boulogne' },
-      { t: 'euros', cle: 'fondsTravaux', lib: 'Fonds de travaux du lot', si: d => d.copro === 'oui' },
-      { t: 'zone', cle: 'travauxVotes', lib: 'Travaux votés ou à venir', si: d => d.copro === 'oui', exemple: 'Ravalement voté en AG 2025, 4 800 € à la charge du vendeur' },
+      { t: 'choix', cle: 'copro', lib: 'En copropriété ?', ic: 'lots', options: OUI_NON },
+      { t: 'nombre', cle: 'lots', lib: 'Nombre de lots', ic: 'lots', si: d => d.copro === 'oui', aide: 'Obligatoire dans l’annonce' },
+      { t: 'choix', cle: 'procedure', lib: 'Procédure en cours contre le syndicat ?', ic: 'balance', si: d => d.copro === 'oui', options: [{ v: 'non', l: 'Non', ic: 'croix' }, { v: 'oui', l: 'Oui', ic: 'check' }] },
+      { t: 'texte', cle: 'procedureNature', lib: 'Laquelle', ic: 'balance', large: true, si: d => d.copro === 'oui' && d.procedure === 'oui' },
+      { t: 'texte', cle: 'syndic', lib: 'Syndic', ic: 'agence', si: d => d.copro === 'oui', exemple: 'Foncia Boulogne' },
+      { t: 'euros', cle: 'fondsTravaux', lib: 'Fonds de travaux du lot', ic: 'banque', si: d => d.copro === 'oui' },
       { t: 'titre', cle: 't-fin', lib: 'Charges et taxes', ic: 'euro' },
       { t: 'eurosAn', cle: 'chargesAn', lib: 'Charges de copropriété', ic: 'lots', si: d => d.copro === 'oui', aide: 'Le montant annuel, celui que l’annonce doit donner (loi ALUR). Tape l’un ou l’autre : le second se calcule.' },
-      { t: 'cases', cle: 'chargesInclus', lib: 'Elles comprennent', si: d => d.copro === 'oui', options: [
-        { v: 'chauffage', l: 'Chauffage' }, { v: 'eauChaude', l: 'Eau chaude' }, { v: 'eauFroide', l: 'Eau froide' }, { v: 'gardien', l: 'Gardien' }, { v: 'ascenseur', l: 'Ascenseur' },
+      { t: 'cases', cle: 'chargesInclus', lib: 'Elles comprennent', ic: 'liste', si: d => d.copro === 'oui', options: [
+        { v: 'chauffage', l: 'Chauffage', ic: 'radiateur' }, { v: 'eauChaude', l: 'Eau chaude', ic: 'ballon' }, { v: 'eauFroide', l: 'Eau froide', ic: 'eau' }, { v: 'gardien', l: 'Gardien', ic: 'personne' }, { v: 'ascenseur', l: 'Ascenseur', ic: 'ascenseur' },
       ] },
-      { t: 'euros', cle: 'taxeFonciere', lib: 'Taxe foncière', unite: '€/an' },
+      { t: 'euros', cle: 'taxeFonciere', lib: 'Taxe foncière', ic: 'fiscal', unite: '€/an' },
+    ],
+  },
+  {
+    /* V3.16 : ce qu'on garde pour soi, dès l'ajout du bien. Les travaux et
+       les sinistres du logement, ce que disent les PV d'AG, les notes. Jamais
+       dans une annonce ni dans un espace client. */
+    id: 'observations', titre: 'Les observations', court: 'Observations', sous: 'Pour toi seul : les travaux, les sinistres, ce que disent les PV d’AG, tes notes.', ic: 'loupe',
+    champs: [
+      { t: 'titre', cle: 't-obs-log', lib: 'Le logement : travaux et sinistres', ic: 'outil', aide: 'Jamais dans l’annonce ni dans un espace client.' },
+      { t: 'journal', cle: 'travauxFaits', lib: 'Travaux réalisés', ic: 'outil', un: 'des travaux',
+        idees: ['Cuisine', 'Salle de bains', 'Électricité', 'Plomberie', 'Fenêtres', 'Chaudière', 'Peintures', 'Sols', 'Toiture', 'Isolation'] },
+      { t: 'choix', cle: 'sinistre', lib: 'Un sinistre, un dégât des eaux ?', ic: 'eau', options: [
+        { v: 'non', l: 'Aucun, à sa connaissance', ic: 'check' }, { v: 'oui', l: 'Oui', ic: 'eau' },
+      ] },
+      { t: 'journal', cle: 'sinistres', lib: 'Les sinistres', ic: 'eau', un: 'un sinistre', enCours: true, si: d => d.sinistre === 'oui',
+        idees: ['Dégât des eaux', 'Infiltration', 'Humidité', 'Fissures', 'Incendie', 'Canalisation'] },
+      { t: 'zone', cle: 'travaux', lib: 'Autres remarques sur les travaux', ic: 'crayon', exemple: 'Tableau électrique à changer ; devis de 3 200 € pour les fenêtres de la chambre' },
+      { t: 'titre', cle: 't-obs-copro', lib: 'La copropriété : ce que disent les PV d’AG', ic: 'lots', si: d => d.copro === 'oui' },
+      { t: 'journal', cle: 'coproVotes', lib: 'Gros travaux votés', ic: 'accord', un: 'des travaux votés', si: d => d.copro === 'oui',
+        idees: ['Ravalement', 'Toiture', 'Ascenseur', 'Chaufferie', 'Colonnes d’eau', 'Canalisations', 'Cage d’escalier', 'Mise aux normes'] },
+      { t: 'journal', cle: 'coproFaits', lib: 'Gros travaux réalisés', ic: 'check', un: 'des travaux réalisés', si: d => d.copro === 'oui',
+        idees: ['Ravalement', 'Toiture', 'Ascenseur', 'Chaufferie', 'Colonnes d’eau', 'Canalisations', 'Cage d’escalier', 'Mise aux normes'] },
+      { t: 'journal', cle: 'coproAVenir', lib: 'Gros travaux à venir', ic: 'horloge', un: 'des travaux à venir', si: d => d.copro === 'oui', aide: 'Évoqués dans les derniers PV d’AG, pas encore votés.',
+        idees: ['Ravalement', 'Toiture', 'Ascenseur', 'Chaufferie', 'Colonnes d’eau', 'Canalisations', 'Cage d’escalier', 'Mise aux normes'] },
+      { t: 'zone', cle: 'travauxVotes', lib: 'Autres remarques sur la copropriété', ic: 'crayon', si: d => d.copro === 'oui', exemple: 'Ravalement voté en AG 2025 : 4 800 € de quote-part, à la charge du vendeur' },
+      { t: 'titre', cle: 't-obs-notes', lib: 'Tes notes', ic: 'cadenas' },
+      { t: 'zone', cle: 'notes', lib: 'Notes internes', ic: 'cadenas', aide: 'Visibles par toi seul, jamais dans un espace client ni une annonce.', exemple: 'Ne pas descendre sous 870 000 € sans l’appeler' },
     ],
   },
   {
@@ -380,52 +438,68 @@ export const ETAPES_BIEN: EtapeBien[] = [
     avant: { titre: 'L’estimation et le prix', court: 'Estimation', sous: 'Le rendez-vous, la fourchette, le prix conseillé et les honoraires.' },
     champs: [
       { t: 'titre', cle: 't-estim', lib: 'L’estimation de l’agence', ic: 'regle' },
-      { t: 'date', cle: 'rdvEstimation', lib: 'Rendez-vous d’estimation' },
-      { t: 'date', cle: 'avisEnvoye', lib: 'Avis de valeur envoyé le' },
-      { t: 'euros', cle: 'estimBasse', lib: 'Fourchette basse' },
-      { t: 'euros', cle: 'estimHaute', lib: 'Fourchette haute' },
+      { t: 'date', cle: 'rdvEstimation', lib: 'Rendez-vous d’estimation', ic: 'calendrier' },
+      { t: 'date', cle: 'avisEnvoye', lib: 'Avis de valeur envoyé le', ic: 'envoyer' },
+      { t: 'euros', cle: 'estimBasse', lib: 'Fourchette basse', ic: 'bas' },
+      { t: 'euros', cle: 'estimHaute', lib: 'Fourchette haute', ic: 'haut' },
+      { t: 'euros', cle: 'prixSouhaite', lib: 'Prix espéré par le propriétaire', ic: 'personne', si: d => !sousMandat(d) },
       { t: 'titre', cle: 't-prix', lib: 'Le prix', ic: 'etiquette' },
-      { t: 'euros', cle: 'prix', lib: 'Prix affiché', aide: 'Honoraires compris quand ils sont à la charge de l’acquéreur. À l’estimation : le prix conseillé.' },
-      { t: 'choix', cle: 'charge', lib: 'Honoraires à la charge de', options: [{ v: 'acquereur', l: 'L’acquéreur' }, { v: 'vendeur', l: 'Le vendeur' }] },
-      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', options: [{ v: 'taux', l: 'En pourcentage' }, { v: 'forfait', l: 'Forfait' }] },
-      { t: 'nombre', cle: 'taux', lib: 'Taux', unite: '% TTC', si: d => d.honoMode !== 'forfait', aide: 'Du prix net vendeur' },
-      { t: 'euros', cle: 'forfait', lib: 'Forfait', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
+      { t: 'euros', cle: 'prix', lib: 'Prix affiché', ic: 'etiquette', aide: 'Honoraires compris quand ils sont à la charge de l’acquéreur. À l’estimation : le prix conseillé.' },
+      { t: 'choix', cle: 'charge', lib: 'Honoraires à la charge de', ic: 'personne', options: [{ v: 'acquereur', l: 'L’acquéreur', ic: 'cle' }, { v: 'vendeur', l: 'Le vendeur', ic: 'maison' }] },
+      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', ic: 'euro', options: [{ v: 'taux', l: 'En pourcentage', ic: 'pourcent' }, { v: 'forfait', l: 'Forfait', ic: 'euro' }] },
+      { t: 'nombre', cle: 'taux', lib: 'Taux', ic: 'pourcent', unite: '% TTC', si: d => d.honoMode !== 'forfait', aide: 'Du prix net vendeur' },
+      { t: 'euros', cle: 'forfait', lib: 'Forfait', ic: 'euro', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
       { t: 'titre', cle: 't-mandat', lib: 'Le mandat', ic: 'plume', si: sousMandat },
-      { t: 'choix', cle: 'mandatType', lib: 'Type de mandat', si: sousMandat, options: [{ v: 'simple', l: 'Simple' }, { v: 'semi', l: 'Semi-exclusif' }, { v: 'exclusif', l: 'Exclusif' }] },
-      { t: 'texte', cle: 'mandatNumero', lib: 'N° du registre', exemple: '4331', si: sousMandat },
-      { t: 'date', cle: 'mandatDate', lib: 'Signé le', si: sousMandat },
-      { t: 'date', cle: 'mandatFin', lib: 'Exclusivité ou mandat jusqu’au', si: sousMandat },
+      { t: 'choix', cle: 'mandatType', lib: 'Type de mandat', ic: 'plume', si: sousMandat, options: [{ v: 'simple', l: 'Simple', ic: 'doc' }, { v: 'semi', l: 'Semi-exclusif', ic: 'accord' }, { v: 'exclusif', l: 'Exclusif', ic: 'etoile' }] },
+      { t: 'texte', cle: 'mandatNumero', lib: 'N° du registre', ic: 'liste', exemple: '4331', si: sousMandat },
+      { t: 'date', cle: 'mandatDate', lib: 'Signé le', ic: 'calendrier', si: sousMandat },
+      { t: 'date', cle: 'mandatFin', lib: 'Exclusivité ou mandat jusqu’au', ic: 'calendrier', si: sousMandat },
     ],
   },
   {
-    id: 'pratique', titre: 'Pour la visite', court: 'Visite', sous: 'Occupation, clés, codes, contact sur place.', ic: 'cle', pour: e => !avantMandat(e),
+    /* V3.16 : ouvert dès l'ajout du bien (occupé ou libre, clés, codes),
+       plus seulement au mandat. */
+    id: 'pratique', titre: 'Les indications de visite', court: 'Indications', sous: 'Occupé ou libre, les clés, les codes, qui appeler sur place.', ic: 'cle',
     champs: [
-      { t: 'choix', cle: 'occupation', lib: 'Le bien est', options: [
-        { v: 'libre', l: 'Libre' }, { v: 'occupe', l: 'Occupé par le propriétaire' }, { v: 'loue', l: 'Loué' },
+      { t: 'titre', cle: 't-occup', lib: 'L’occupation', ic: 'porte' },
+      { t: 'choix', cle: 'occupation', lib: 'Le bien est', ic: 'porte', options: [
+        { v: 'libre', l: 'Libre', ic: 'ouvert' }, { v: 'occupe', l: 'Occupé par le propriétaire', ic: 'personne' }, { v: 'loue', l: 'Loué', ic: 'bail' },
       ] },
-      { t: 'euros', cle: 'loyer', lib: 'Loyer', unite: '€/mois', si: d => d.occupation === 'loue', aide: 'Hors charges' },
-      { t: 'date', cle: 'finBail', lib: 'Fin du bail', si: d => d.occupation === 'loue' },
-      { t: 'texte', cle: 'disponible', lib: 'Disponible', exemple: 'à la signature, ou à partir du 1er mars' },
-      { t: 'choix', cle: 'cles', lib: 'Les clés', options: [
-        { v: 'agence', l: 'À l’agence' }, { v: 'vendeur', l: 'Chez le vendeur' }, { v: 'gardien', l: 'Chez le gardien' }, { v: 'autre', l: 'Ailleurs' },
+      { t: 'euros', cle: 'loyer', lib: 'Loyer', ic: 'euro', unite: '€/mois', si: d => d.occupation === 'loue', aide: 'Hors charges' },
+      { t: 'date', cle: 'finBail', lib: 'Fin du bail', ic: 'calendrier', si: d => d.occupation === 'loue' },
+      { t: 'texte', cle: 'disponible', lib: 'Disponible', ic: 'calendrier', exemple: 'à la signature, ou à partir du 1er mars' },
+      { t: 'titre', cle: 't-cles', lib: 'Les clés', ic: 'cle' },
+      { t: 'choix', cle: 'cles', lib: 'Où sont-elles ?', ic: 'cle', options: [
+        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'vendeur', l: 'Chez le vendeur', ic: 'personne' }, { v: 'gardien', l: 'Chez le gardien', ic: 'immeuble' }, { v: 'autre', l: 'Ailleurs', ic: 'lieu' },
       ] },
-      { t: 'texte', cle: 'trousseau', lib: 'Trousseau', exemple: 'N° 12', si: d => d.cles === 'agence' },
-      { t: 'texte', cle: 'digicode', lib: 'Digicode', exemple: '4721B' },
-      { t: 'texte', cle: 'interphone', lib: 'Nom sur l’interphone' },
-      { t: 'texte', cle: 'porte', lib: 'Bâtiment, étage, porte', exemple: 'Bât. B, 3e gauche' },
-      { t: 'texte', cle: 'annexesNum', lib: 'Cave, box', exemple: 'Cave 14 · box 7' },
-      { t: 'texte', cle: 'contactNom', lib: 'Contact sur place' },
-      { t: 'texte', cle: 'contactTel', lib: 'Son téléphone' },
-      { t: 'texte', cle: 'creneaux', lib: 'Heures de visite', large: true, exemple: 'soirs après 18 h, samedi matin' },
-      { t: 'zone', cle: 'consignes', lib: 'Consignes', exemple: 'Le box se prend par la rampe rue de Silly ; cave au sous-sol, escalier B' },
+      { t: 'texte', cle: 'trousseau', lib: 'Trousseau', ic: 'cle', exemple: 'N° 12', si: d => d.cles === 'agence' },
+      /* V3.16 : les consignes d'accès, de la rue jusqu'à la porte. */
+      { t: 'titre', cle: 't-acces', lib: 'Pour arriver jusqu’à la porte', ic: 'carte' },
+      { t: 'cases', cle: 'accesBas', lib: 'En bas', ic: 'immeuble', options: [
+        { v: 'gardien', l: 'Un gardien', ic: 'personne' }, { v: 'vigile', l: 'Un vigile, un accueil', ic: 'bouclier' }, { v: 'interphone', l: 'Un interphone', ic: 'interphone' },
+        { v: 'digicode', l: 'Un digicode', ic: 'clavier' }, { v: 'badge', l: 'Un badge', ic: 'cle' }, { v: 'libre', l: 'Porte ouverte', ic: 'ouvert' },
+      ] },
+      { t: 'texte', cle: 'interphone', lib: 'Nom sur l’interphone', ic: 'interphone' },
+      { t: 'texte', cle: 'digicode', lib: 'Digicode', ic: 'clavier', exemple: '4721B' },
+      { t: 'texte', cle: 'porte', lib: 'Bâtiment, étage, porte', ic: 'porte', exemple: 'Bât. B, 3e gauche' },
+      { t: 'choix', cle: 'accesAscenseur', lib: 'En sortant de l’ascenseur', ic: 'ascenseur', si: d => enImmeuble(d) || !d.typeBien, options: [
+        { v: 'gauche', l: 'À gauche', ic: 'gauche' }, { v: 'droite', l: 'À droite', ic: 'droite' }, { v: 'face', l: 'En face', ic: 'haut' }, { v: 'aucun', l: 'Pas d’ascenseur', ic: 'escalier' },
+      ] },
+      { t: 'zone', cle: 'itineraire', lib: 'Le chemin jusqu’à la porte', ic: 'carte', exemple: 'Bât. B au fond de la cour, 3e étage : à gauche en sortant de l’ascenseur, puis la 2e porte à droite' },
+      { t: 'texte', cle: 'annexesNum', lib: 'Cave, box', ic: 'cave', exemple: 'Cave 14 · box 7' },
+      { t: 'titre', cle: 't-contact', lib: 'Sur place', ic: 'telephone' },
+      { t: 'texte', cle: 'contactNom', lib: 'Contact sur place', ic: 'personne' },
+      { t: 'texte', cle: 'contactTel', lib: 'Son téléphone', ic: 'tel' },
+      { t: 'texte', cle: 'creneaux', lib: 'Heures de visite', ic: 'horloge', large: true, exemple: 'soirs après 18 h, samedi matin' },
+      { t: 'zone', cle: 'consignes', lib: 'Consignes de visite', ic: 'info', exemple: 'Prévenir la veille ; un chat, bien refermer les portes ; le box se prend par la rampe rue de Silly' },
     ],
   },
   {
-    id: 'annonce', titre: 'L’annonce et les notes', court: 'Annonce', sous: 'Le texte de l’annonce, ce qu’on garde pour soi.', ic: 'megaphone',
-    avant: { titre: 'Les notes', court: 'Notes', sous: 'Ce que tu gardes pour toi : le projet, ce qu’il a dit, ce qu’il faut retenir.' },
+    /* Les notes sont parties dans « Les observations » (V3.16) : l'annonce
+       n'a plus rien à dire avant le mandat. */
+    id: 'annonce', titre: 'L’annonce', court: 'Annonce', sous: 'Le texte de l’annonce, prêt à copier.', ic: 'megaphone', pour: e => !avantMandat(e),
     champs: [
-      { t: 'annonce', cle: 'annonceTexte', lib: 'L’annonce', si: sousMandat },
-      { t: 'zone', cle: 'notes', lib: 'Notes internes', ic: 'cadenas', aide: 'Visibles par toi seul, jamais dans un espace client ni une annonce.', exemple: 'Ne pas descendre sous 870 000 € sans l’appeler' },
+      { t: 'annonce', cle: 'annonceTexte', lib: 'L’annonce' },
     ],
   },
   {
@@ -594,12 +668,46 @@ export function ligneEtat(b: BienVente, suivi: SuiviVente[]): { t: string; ton: 
     if (b.mandat_fin) return { t: `${excl ? 'Exclusivité' : 'Mandat'} jusqu’au ${dateCourte(b.mandat_fin)}`, ton: 'neutre' };
     return { t: 'Mandat en cours', ton: 'neutre' };
   }
-  const a = num(d, 'estimBasse'), h = num(d, 'estimHaute');
+  /* L'estimation (V3.16) : le rendez-vous, puis le montant, puis l'avis
+     de valeur. Le montant lui-même est sur la carte (prixCarte). */
+  const a = num(d, 'estimBasse'), h = num(d, 'estimHaute'), p = num(d, 'prix');
   const rdv = txt(d, 'rdvEstimation'), avis = txt(d, 'avisEnvoye');
-  if (avis) return { t: `Avis de valeur envoyé le ${dateCourte(avis)}`, ton: 'neutre' };
-  if (rdv && (joursAvant(rdv) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv)}`, ton: 'neutre' };
-  if (a || h) return { t: `Estimé ${a && h ? `entre ${euros(a)} et ${euros(h)}` : euros((a || h) as number)}`, ton: 'neutre' };
-  return { t: 'À estimer', ton: 'neutre' };
+  const j = joursAvant(rdv);
+  if (avis) return { t: `Avis de valeur envoyé le ${dateCourte(avis)}`, ton: 'ok' };
+  if (rdv && (j ?? -1) >= 0) return { t: j === 0 ? 'Rendez-vous d’estimation aujourd’hui' : `Rendez-vous d’estimation le ${dateCourte(rdv)}`, ton: 'neutre' };
+  if (a || h || p) return { t: p && (a || h) ? `Conseillé ${euros(p)} · avis de valeur à envoyer` : 'Avis de valeur à envoyer', ton: 'neutre' };
+  return { t: rdv ? `Vu le ${dateCourte(rdv)} · montant à définir` : 'Pas encore de rendez-vous', ton: 'neutre' };
+}
+
+/* ══ L'estimation (V3.16) ══════════════════════════════════════════════
+   Le montant se donne en passant le bien « estimation », ou plus tard avec
+   « Définir l'estimation » : la fourchette (estimBasse, estimHaute) et le
+   prix conseillé, rangé dans `prix` (il deviendra le prix affiché au
+   mandat). Rien ne s'efface quand le bien change d'étape : en pause ou
+   retiré, la carte garde son montant. */
+export const estimationFaite = (d: Donnees) => !!(num(d, 'estimBasse') || num(d, 'estimHaute') || num(d, 'prix'));
+/* Pour bien estimer : ce que la fiche dit déjà, et ce qui manque encore. */
+export function pretPourEstimer(d: Donnees): { l: string; ic: string; ok: boolean }[] {
+  const terr = estTerrain(d);
+  const etage = d.etage;
+  return [
+    { l: 'La surface', ic: 'regle', ok: terr ? !!num(d, 'terrain') : !!num(d, 'surface') },
+    ...(aDesPieces(d) ? [{ l: 'Les pièces', ic: 'plan', ok: !!num(d, 'pieces') }] : []),
+    ...(!terr ? [{ l: 'L’état général', ic: 'pinceau', ok: !!d.etat }] : []),
+    ...(enImmeuble(d) ? [{ l: 'L’étage', ic: 'ascenseur', ok: etage !== undefined && etage !== null && etage !== '' }] : []),
+    ...(!terr ? [{ l: 'L’exposition', ic: 'boussole', ok: !!d.expo }] : []),
+    ...(!terr ? [{ l: 'Le DPE', ic: 'eclair', ok: !!d.dpe || d.dpeStatut === 'vierge' || d.dpeStatut === 'non' }] : []),
+    ...(d.copro === 'oui' ? [{ l: 'Les charges', ic: 'lots', ok: !!num(d, 'chargesAn') }] : []),
+    { l: 'La taxe foncière', ic: 'fiscal', ok: !!num(d, 'taxeFonciere') },
+    { l: 'La visite', ic: 'tablette', ok: !!txt(d, 'visiteLe') || lirePieces(d.detailPieces).length > 0 },
+  ];
+}
+/* Une ligne d'historique : « Estimation : 850 000 € à 900 000 €, prix
+   conseillé 875 000 € ». */
+export function texteEstimation(x: { basse: number | null; haute: number | null; prix: number | null }): string {
+  const f = x.basse && x.haute ? `${euros(x.basse)} à ${euros(x.haute)}` : x.basse || x.haute ? euros((x.basse || x.haute) as number) : '';
+  const p = x.prix ? `prix conseillé ${euros(x.prix)}` : '';
+  return `Estimation : ${[f, p].filter(Boolean).join(', ') || 'montant retiré'}`;
 }
 
 /* ══ L'annonce : ce qui est obligatoire, ce qui manque ═══════════════════
