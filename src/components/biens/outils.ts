@@ -155,12 +155,16 @@ export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients
 }
 
 /* ══ Le bien ═══════════════════════════════════════════════════════════ */
-export async function creerBien(references: (string | null)[]): Promise<BienVente> {
+/* Un bien neuf, à l'étape choisie au départ (à suivre, estimation, mandat).
+   Un mandat déjà signé laisse sa ligne dans l'historique. */
+export async function creerBien(references: (string | null)[], etape: EtapeVente = 'estimation'): Promise<BienVente> {
   const maintenant = new Date().toISOString();
   const { data, error } = await supabase.from('biens_vente').insert({
-    reference: referenceSuivante(references), etape: 'estimation', donnees: {}, titre: 'Nouveau bien', etape_le: maintenant,
+    reference: referenceSuivante(references), etape, donnees: {}, titre: 'Nouveau bien', etape_le: maintenant,
+    ...(etape === 'mandat' ? { en_vente_le: maintenant } : {}),
   }).select().single();
   if (error) lever('Le bien n’a pas pu être créé', error.message);
+  if (etape === 'mandat') await ajouterSuivi({ bien_id: (data as BienVente).id, type: 'etape', statut: 'mandat', donnees: { de: 'creation', depuis: 'creation' } });
   return data as BienVente;
 }
 

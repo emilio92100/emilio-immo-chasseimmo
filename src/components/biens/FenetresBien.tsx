@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, etapeDe, honorairesPour, pourcent, titreBien,
+  argentBien, avantMandat, etapeDe, honorairesPour, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
@@ -142,10 +142,64 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
   );
 }
 
+/* ══ Un nouveau bien : où en est-il ? ════════════════════════════════════
+   Le choix décide des questions de l'éditeur : un bien « à suivre » n'a que
+   le propriétaire, le bien et les notes ; une estimation n'a ni mandat, ni
+   annonce, ni visite. */
+const DEPARTS: { k: EtapeVente; ic: string; t: string; s: string }[] = [
+  { k: 'a_suivre', ic: 'drapeau', t: 'À suivre', s: 'Un propriétaire pense vendre. Pas encore d’estimation : lui, son bien, tes notes.' },
+  { k: 'estimation', ic: 'regle', t: 'Une estimation', s: 'Le rendez-vous est pris ou fait : le bien en détail, la fourchette, l’avis de valeur. Pas encore de mandat.' },
+  { k: 'mandat', ic: 'plume', t: 'Un mandat signé', s: 'Il est en vente : tout, jusqu’à l’annonce et la visite.' },
+];
+export function FenNouveau({ occupe, erreur, onFermer, onChoisir }: { occupe: boolean; erreur: string; onFermer: () => void; onChoisir: (e: EtapeVente) => void }) {
+  return (
+    <Fenetre titre="Nouveau bien : où en est-il ?" sous="Le formulaire ne pose que les questions utiles à cette étape. Les autres arrivent quand le bien avance." occupe={occupe} onFermer={onFermer}
+      pied={<button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>}>
+      <div className={b.departs}>
+        {DEPARTS.map(x => (
+          <button key={x.k} type="button" className={b.depart} disabled={occupe} onClick={() => onChoisir(x.k)}>
+            <span className={b.departIc} style={{ color: etapeDe(x.k).c }}><Ic n={x.ic} t={20} /></span>
+            <span><b>{x.t}</b><small>{x.s}</small></span>
+            <Ic n="droite" t={16} e={2.4} />
+          </button>
+        ))}
+      </div>
+      {occupe && <div className={s.note}>Création…</div>}
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+
+/* ══ Un bien à suivre passe à l'estimation ═══════════════════════════════ */
+export function FenEstimation({ bien, onFermer, onFait }: { bien: BienVente; onFermer: () => void; onFait: (b: BienVente) => void }) {
+  const d = bien.donnees || {};
+  const [rdv, setRdv] = useState(txt(d, 'rdvEstimation'));
+  const [note, setNote] = useState('');
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  async function valider() {
+    setOccupe(true); setErreur('');
+    try {
+      const { bien: r } = await changerEtape(bien, 'estimation', { donnees: { ...d, rdvEstimation: rdv }, commentaire: note.trim() || undefined, infos: rdv ? { rdv } : {} });
+      onFait(r);
+    } catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  return (
+    <Fenetre sur="Le bien passe « Estimation »" couleur={etapeDe('estimation').c} titre="On passe à l’estimation" sous={resume(bien)} occupe={occupe} onFermer={onFermer}
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Passer à l’estimation'}</button></>}>
+      <Ch lib="Rendez-vous d’estimation (facultatif)"><input className={s.input} type="date" value={rdv} onChange={e => setRdv(e.target.value)} /></Ch>
+      <Ch lib="Commentaire (facultatif)"><textarea className={s.input} rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Ce qu’il attend, ce qu’il faut préparer" /></Ch>
+      <div className={b.calc}>Sa fiche s’ouvre aux questions de l’estimation : l’intérieur, les pièces, l’énergie, la copropriété, la fourchette.</div>
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+
 /* ══ Le mandat est signé (ou : remettre en vente) ═════════════════════════ */
 export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFermer: () => void; onFait: (b: BienVente) => void }) {
   const d = bien.donnees || {};
-  const reprise = bien.etape !== 'estimation';
+  const reprise = !avantMandat(bien.etape);
   const [type, setType] = useState<'simple' | 'semi' | 'exclusif' | ''>((d.mandatType as 'simple') || '');
   const [numero, setNumero] = useState(txt(d, 'mandatNumero'));
   const [date, setDate] = useState(txt(d, 'mandatDate') || aujourdhui());

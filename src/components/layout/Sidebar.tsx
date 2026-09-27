@@ -97,7 +97,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: '⊞', picto: 'accueil', badge: null },
         { id: 'clients', label: 'Clients', icon: '◎', picto: 'clients', badge: counts.actifs > 0 ? { count: counts.actifs, suffixe: 'actifs', type: 'gold' } : null },
-        { id: 'biens', label: 'Biens en vente', icon: '◇', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
+        { id: 'biens', label: 'Biens', icon: '◇', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
       ]
     },
     {

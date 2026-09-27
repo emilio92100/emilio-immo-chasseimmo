@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { euros } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import {
-  EXPOSITIONS, NIVEAUX, PIECES_GROUPES, PIECES_RAPIDES, lirePieces, lirePhotos, lireDossier, lignesDossier,
+  EXPOSITIONS, NIVEAUX, PIECES_GROUPES, PIECES_TUILES, lirePieces, lirePhotos, lireDossier, lignesDossier, pictoPiece,
   brouillonAnnonce, controleAnnonce, passoire, estChampActe, personneDepuisClient, m2,
   type ChampBien, type Donnees, type Piece, type Photo, type PieceDossier,
 } from '@/lib/biens-vente';
@@ -49,14 +50,15 @@ const ecrireNb = (n: number | null, euros = false) => (n === null ? '' : euros
   ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n).replace(/[\u202f\u00a0]/g, ' ')
   : String(n).replace('.', ','));
 
-export function SaisieNombre({ id, v, onChange, unite, off, ph, euros = false }: {
+export function SaisieNombre({ id, v, onChange, unite, off, ph, euros = false, auto = false, lib }: {
   id?: string; v: number | null; onChange: (n: number | null) => void; unite?: string; off: boolean; ph?: string; euros?: boolean;
+  auto?: boolean; lib?: string;
 }) {
   /* Pendant la frappe, le texte tel qu'il est tapé ; sinon, le nombre mis en forme. */
   const [saisie, setSaisie] = useState<string | null>(null);
   return (
     <div className={s.unite}>
-      <input id={id} className={s.input} inputMode="decimal" autoComplete="off" disabled={off} value={saisie ?? ecrireNb(v, euros)} placeholder={ph}
+      <input id={id} className={s.input} inputMode="decimal" autoComplete="off" disabled={off} value={saisie ?? ecrireNb(v, euros)} placeholder={ph} autoFocus={auto} aria-label={lib}
         onFocus={() => setSaisie(ecrireNb(v, euros))} onBlur={() => setSaisie(null)}
         onChange={e => { setSaisie(e.target.value); onChange(lireNb(e.target.value)); }}
         style={unite ? { paddingRight: 22 + unite.length * 7.5 } : undefined} />
@@ -93,70 +95,60 @@ function nomLibre(l: Piece[], nom: string, sauf?: string): string {
   return memes.length ? `${base} ${memes.length + 1}` : base;
 }
 
-function LignePiece({ p, i, n, off, ouverte, onOuvrir, onMaj, onBouger, onRetirer, onNom }: {
-  p: Piece; i: number; n: number; off: boolean; ouverte: boolean;
+/* Une pièce : son icône (d'après son nom), son nom, son niveau, sa surface,
+   son exposition en huit boutons, et un commentaire. */
+function CartePiece({ p, off, ouverte, auto, premier, dernier, onOuvrir, onMaj, onBouger, onRetirer, onNom }: {
+  p: Piece; off: boolean; ouverte: boolean; auto: boolean; premier: boolean; dernier: boolean;
   onOuvrir: (x: boolean) => void; onMaj: (k: keyof Piece, v: unknown) => void;
   onBouger: (sens: -1 | 1) => void; onRetirer: () => void; onNom: (nom: string) => void;
 }) {
   const niveaux = NIVEAUX.includes(p.niveau) || !p.niveau ? NIVEAUX : [p.niveau, ...NIVEAUX];
   return (
-    <div className={`${b.piece} ${ouverte ? b.pieceOuverte : ''}`}>
-      <label className={`${b.pieceCh} ${b.pNiv}`}>
-        <span>Niveau</span>
-        <select className={b.select} disabled={off} value={p.niveau} onChange={e => onMaj('niveau', e.target.value)}>
-          {!p.niveau && <option value="">—</option>}
-          {niveaux.map(x => <option key={x} value={x}>{x}</option>)}
-        </select>
-      </label>
-      <div className={`${b.pieceCh} ${b.pNom}`}>
-        <span>Pièce</span>
-        <button type="button" className={`${b.nomBtn} ${p.nom ? '' : b.nomBtnVide}`} disabled={off} aria-expanded={ouverte} onClick={() => onOuvrir(!ouverte)}>
-          <span>{p.nom || 'Choisir la pièce'}</span><Ic n={ouverte ? 'haut' : 'bas'} t={14} e={2.4} />
-        </button>
+    <div className={`${b.pc} ${ouverte ? b.pcOuverte : ''} ${!p.nom ? b.pcSansNom : ''}`}>
+      <span className={b.pcIc}><Ic n={pictoPiece(p.nom)} t={21} /></span>
+      <div className={b.pcNom}>
+        <input className={b.pcNomIn} disabled={off} value={p.nom} placeholder="Nom de la pièce" aria-label="Nom de la pièce"
+          onChange={e => onMaj('nom', e.target.value)} />
+        {!off && <button type="button" className={b.pcChanger} aria-expanded={ouverte} onClick={() => onOuvrir(!ouverte)}>{ouverte ? 'Fermer' : 'Changer'}</button>}
       </div>
-      <label className={`${b.pieceCh} ${b.pSurf}`}>
-        <span>Surface</span>
-        <SaisieNombre v={p.surface} unite="m²" off={off} onChange={x => onMaj('surface', x)} />
-      </label>
-      <label className={`${b.pieceCh} ${b.pExpo}`}>
-        <span>Exposition</span>
-        <select className={b.select} disabled={off} value={p.expo} onChange={e => onMaj('expo', e.target.value)}>
-          <option value="">—</option>
-          {EXPOSITIONS.map(x => <option key={x.v} value={x.v}>{x.l}</option>)}
-        </select>
-      </label>
+      <select className={`${b.pcNiv} ${b.pcNivPlace}`} disabled={off} value={p.niveau} aria-label="Niveau" onChange={e => onMaj('niveau', e.target.value)}>
+        {!p.niveau && <option value="">Niveau…</option>}
+        {niveaux.map(x => <option key={x} value={x}>{x}</option>)}
+      </select>
       {!off && (
-        <div className={b.pieceOutils}>
-          <button type="button" className={b.icBtn} disabled={i === 0} aria-label="Monter" title="Monter" onClick={() => onBouger(-1)}><Ic n="haut" t={16} e={2.2} /></button>
-          <button type="button" className={b.icBtn} disabled={i === n - 1} aria-label="Descendre" title="Descendre" onClick={() => onBouger(1)}><Ic n="bas" t={16} e={2.2} /></button>
+        <div className={b.pcOutils}>
+          <button type="button" className={b.icBtn} disabled={premier} aria-label="Monter" title="Monter" onClick={() => onBouger(-1)}><Ic n="haut" t={16} e={2.2} /></button>
+          <button type="button" className={b.icBtn} disabled={dernier} aria-label="Descendre" title="Descendre" onClick={() => onBouger(1)}><Ic n="bas" t={16} e={2.2} /></button>
           <button type="button" className={`${b.icBtn} ${b.icBtnDanger}`} aria-label="Retirer la pièce" title="Retirer" onClick={onRetirer}><Ic n="corbeille" t={16} /></button>
         </div>
       )}
-      <label className={`${b.pieceCh} ${b.pNote}`}>
-        <span>Commentaire</span>
-        <input className={s.input} disabled={off} value={p.note} placeholder="Ex : parquet d’origine, placard intégré, vue sur le jardin"
-          onChange={e => onMaj('note', e.target.value)} />
-      </label>
       {ouverte && !off && (
-        <div className={b.choixNom}>
+        <div className={b.pcChoix}>
           {PIECES_GROUPES.map(g => (
             <div key={g.g} className={b.choixG}>
               <span>{g.g}</span>
               <div className={b.choixL}>
                 {g.l.map(x => (
-                  <button key={x} type="button" className={`${b.chip} ${p.nom.replace(/\s+\d+$/, '') === x ? b.chipOn : ''}`} onClick={() => onNom(x)}>{x}</button>
+                  <button key={x} type="button" className={`${b.chip} ${p.nom.replace(/\s+\d+$/, '') === x ? b.chipOn : ''}`} onClick={() => onNom(x)}>
+                    <Ic n={pictoPiece(x)} t={14} />{x}
+                  </button>
                 ))}
               </div>
             </div>
           ))}
-          <div className={b.libre}>
-            <span>Note libre</span>
-            <input className={s.input} value={p.nom} placeholder="Écris le nom de la pièce" onChange={e => onMaj('nom', e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') onOuvrir(false); }} />
-            <button type="button" className={b.mini} onClick={() => onOuvrir(false)}>OK</button>
-          </div>
         </div>
       )}
+      <div className={b.pcBas}>
+        <div className={b.pcSurf}><SaisieNombre v={p.surface} unite="m²" off={off} auto={auto} ph="Surface" lib={`Surface ${p.nom || 'de la pièce'}`} onChange={x => onMaj('surface', x)} /></div>
+        <div className={b.pcExpo} role="radiogroup" aria-label="Exposition">
+          {EXPOSITIONS.map(x => (
+            <button key={x.v} type="button" role="radio" aria-checked={p.expo === x.v} title={x.l} disabled={off}
+              className={p.expo === x.v ? b.pcExpoOn : undefined} onClick={() => onMaj('expo', p.expo === x.v ? '' : x.v)}>{x.v}</button>
+          ))}
+        </div>
+        <input className={`${s.input} ${b.pcNote}`} disabled={off} value={p.note} placeholder="Un mot pour la fiche : parquet, placard, vue…"
+          aria-label="Commentaire" onChange={e => onMaj('note', e.target.value)} />
+      </div>
     </div>
   );
 }
@@ -164,16 +156,21 @@ function LignePiece({ p, i, n, off, ouverte, onOuvrir, onMaj, onBouger, onRetire
 function ChampPieces({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const l = lirePieces(d.detailPieces);
   const [ouverte, setOuverte] = useState<string | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
+  const defaut = d.typeBien === 'maison' ? 'Rez-de-chaussée' : 'Niveau principal';
+  const [niveauAjout, setNiveauAjout] = useState<string>(() => (l.length ? l[l.length - 1].niveau || defaut : defaut));
   const ecrire = (x: Piece[]) => maj('detailPieces', x);
-  const niveauDefaut = () => (l.length ? l[l.length - 1].niveau : d.typeBien === 'maison' ? 'Rez-de-chaussée' : 'Niveau principal');
   const ajouter = (nom = '') => {
-    const p: Piece = { id: nouvelId(), niveau: niveauDefaut(), nom: nom ? nomLibre(l, nom) : '', surface: null, expo: '', note: '' };
+    const p: Piece = { id: nouvelId(), niveau: niveauAjout, nom: nom ? nomLibre(l, nom) : '', surface: null, expo: '', note: '' };
     ecrire([...l, p]);
     setOuverte(nom ? null : p.id);
+    setFocus(nom ? p.id : null);
   };
   const majP = (id: string, k: keyof Piece, v: unknown) => ecrire(l.map(p => (p.id === id ? { ...p, [k]: v } : p)));
+  /* Monter, descendre : parmi les pièces du même niveau. */
   const bouger = (i: number, sens: -1 | 1) => {
-    const j = i + sens;
+    let j = i + sens;
+    while (j >= 0 && j < l.length && l[j].niveau !== l[i].niveau) j += sens;
     if (j < 0 || j >= l.length) return;
     const x = [...l]; [x[i], x[j]] = [x[j], x[i]]; ecrire(x);
   };
@@ -181,30 +178,56 @@ function ChampPieces({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const total = hab.reduce((t, p) => t + (p.surface || 0), 0);
   const declaree = typeof d.surface === 'number' ? d.surface : null;
   const ecart = declaree && total ? Math.abs(total - declaree) / declaree : 0;
-  const niveaux = new Set(l.map(p => p.niveau).filter(Boolean));
+  const niveaux = Array.from(new Set(l.map(p => p.niveau || '')));
+  const groupes = niveaux.length > 1 || (niveaux[0] && niveaux[0] !== defaut);
+  const choixNiveaux = NIVEAUX.includes(niveauAjout) ? NIVEAUX : [niveauAjout, ...NIVEAUX];
 
   return (
     <div className={b.pieces}>
-      {l.length === 0 && <div className={s.note}>Ajoute les pièces une par une, dans l’ordre de la visite : le niveau, la pièce, sa surface, son exposition, et un commentaire pour la fiche.</div>}
-      {l.map((p, i) => (
-        <LignePiece key={p.id} p={p} i={i} n={l.length} off={off} ouverte={ouverte === p.id}
-          onOuvrir={x => setOuverte(x ? p.id : null)}
-          onMaj={(k, v) => majP(p.id, k, v)}
-          onBouger={sens => bouger(i, sens)}
-          onRetirer={() => { if (!p.nom || confirm(`Retirer « ${p.nom} » ?`)) ecrire(l.filter(x => x.id !== p.id)); }}
-          onNom={nom => { majP(p.id, 'nom', nomLibre(l, nom, p.id)); setOuverte(null); }} />
-      ))}
+      {niveaux.map(n => {
+        const ps = l.map((p, i) => ({ p, i })).filter(x => (x.p.niveau || '') === n);
+        const surf = ps.reduce((t, x) => t + (habitable(x.p) ? x.p.surface || 0 : 0), 0);
+        return (
+          <div key={n || '-'} className={b.pcGroupe}>
+            {groupes && <div className={b.niveauT}><span>{n || 'Sans niveau'}</span><i>{`${ps.length} pièce${ps.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''}`}</i></div>}
+            {ps.map(({ p, i }, k) => (
+              <CartePiece key={p.id} p={p} off={off} ouverte={ouverte === p.id} auto={focus === p.id} premier={k === 0} dernier={k === ps.length - 1}
+                onOuvrir={x => setOuverte(x ? p.id : null)}
+                onMaj={(kk, v) => majP(p.id, kk, v)}
+                onBouger={sens => bouger(i, sens)}
+                onRetirer={() => { if (!p.nom || confirm(`Retirer « ${p.nom} » ?`)) ecrire(l.filter(x => x.id !== p.id)); }}
+                onNom={nom => { majP(p.id, 'nom', nomLibre(l, nom, p.id)); setOuverte(null); }} />
+            ))}
+          </div>
+        );
+      })}
       {!off && (
-        <div className={b.rapides}>
-          <span>Ajouter :</span>
-          {PIECES_RAPIDES.map(x => <button key={x} type="button" className={b.chip} onClick={() => ajouter(x)}>{x}</button>)}
-          <button type="button" className={s.ajouter} onClick={() => ajouter()}><Ic n="plus" t={15} e={2.4} />Autre pièce</button>
+        <div className={b.ajoutPiece}>
+          <div className={b.ajoutT}>
+            <span><Ic n="plus" t={15} e={2.6} />{l.length ? 'Ajouter une pièce' : 'Ajoute les pièces une par une, dans l’ordre de la visite'}</span>
+            <label className={b.ajoutNiv}>
+              <span>au niveau</span>
+              <select className={b.pcNiv} value={niveauAjout} onChange={e => setNiveauAjout(e.target.value)}>
+                {choixNiveaux.map(x => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className={b.tuilesP}>
+            {PIECES_TUILES.map(x => (
+              <button key={x} type="button" className={b.tuileP} onClick={() => ajouter(x)}>
+                <span><Ic n={pictoPiece(x)} t={20} /></span>{x}
+              </button>
+            ))}
+            <button type="button" className={`${b.tuileP} ${b.tuileAutre}`} onClick={() => ajouter()}>
+              <span><Ic n="plus" t={20} e={2.2} /></span>Autre pièce…
+            </button>
+          </div>
         </div>
       )}
       {l.length > 0 && (
         <div className={b.totaux}>
-          <span><b>{l.length}</b>{` pièce${l.length > 1 ? 's' : ''} saisie${l.length > 1 ? 's' : ''}`}{niveaux.size > 1 ? ` sur ${niveaux.size} niveaux` : ''}</span>
-          {total > 0 && <span>Surface des pièces à vivre : <b>{m2(total)}</b></span>}
+          <span><b>{l.length}</b>{` pièce${l.length > 1 ? 's' : ''}`}{niveaux.length > 1 ? ` sur ${niveaux.length} niveaux` : ''}</span>
+          {total > 0 && <span>Pièces à vivre : <b>{m2(total)}</b></span>}
           {total > 0 && declaree && ecart > 0.03 && <span className={b.totauxAlerte}>{`La surface habitable déclarée est de ${m2(declaree)} : écart de ${m2(Math.abs(total - declaree))}.`}</span>}
         </div>
       )}
@@ -212,8 +235,22 @@ function ChampPieces({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   );
 }
 
+/* ══ Les charges : par an ou par mois, l'autre se calcule ═══════════════ */
+function ChampEurosAn({ cle, d, maj, off }: { cle: string; d: Donnees; maj: Maj; off: boolean }) {
+  const an = typeof d[cle] === 'number' ? (d[cle] as number) : null;
+  const arrondi = (x: number) => Math.round(x * 100) / 100;
+  return (
+    <div className={b.anMois}>
+      <label className={b.anMoisCh}><span>Par an</span><SaisieNombre v={an} euros unite="€/an" off={off} onChange={n => maj(cle, n)} /></label>
+      <span className={b.anMoisEgal} aria-hidden="true">=</span>
+      <label className={b.anMoisCh}><span>Par mois</span><SaisieNombre v={an !== null ? arrondi(an / 12) : null} euros unite="€/mois" off={off} onChange={n => maj(cle, n === null ? null : arrondi(n * 12))} /></label>
+      {an ? <small className={b.anMoisT}>{`soit ${euros(an / 4)} par trimestre`}</small> : null}
+    </div>
+  );
+}
+
 /* ══ Les photos ═════════════════════════════════════════════════════════ */
-function ChampPhotos({ d, maj, off, bienId }: { d: Donnees; maj: Maj; off: boolean; bienId: string }) {
+export function ChampPhotos({ d, maj, off, bienId, grand = false }: { d: Donnees; maj: Maj; off: boolean; bienId: string; grand?: boolean }) {
   const l = lirePhotos(d.photos);
   const [envoi, setEnvoi] = useState<{ n: number; total: number } | null>(null);
   const [erreur, setErreur] = useState('');
@@ -248,7 +285,7 @@ function ChampPhotos({ d, maj, off, bienId }: { d: Donnees; maj: Maj; off: boole
 
   return (
     <div className={b.pieces}>
-      <div className={b.photos}>
+      <div className={`${b.photos} ${grand ? b.photosGrand : ''}`}>
         {l.map((p, i) => (
           <div key={p.url} className={b.photo}>
             <div className={b.photoImg}>
@@ -510,6 +547,7 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
   else if (c.t === 'dossier') controle = <ChampDossier d={d} maj={maj} off={off} bienId={bienId} />;
   else if (c.t === 'proprio') controle = <ChampProprio d={d} maj={maj} off={off} />;
   else if (c.t === 'annonce') controle = <ChampAnnonce d={d} maj={maj} off={off} />;
+  else if (c.t === 'eurosAn') controle = <ChampEurosAn cle={c.cle} d={d} maj={maj} off={off} />;
   const sansTitre = c.t === 'pieces';
   return (
     <div className={`${s.ch} ${s.large}`}>

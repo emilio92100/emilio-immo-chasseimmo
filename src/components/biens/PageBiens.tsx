@@ -3,24 +3,30 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { signalerMaj } from '@/lib/intentions';
-import { ETAPES_VENTE, EN_COURS, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
+import { EN_COURS, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
 import CarteBien, { honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
+import { FenNouveau } from './FenetresBien';
 import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, nomClient, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
-/* ═══ Biens en vente ══════════════════════════════════════════════════════
-   Les biens qu'Alexandre vend pour un propriétaire, de l'estimation à la
-   vente. La liste en cartes, filtrée par étape ; la fiche d'un bien ; son
-   éditeur plein écran. Le bien ouvert vit dans l'URL (?page=biens&bien=…) :
-   un F5 ou le bouton Précédent y ramènent. */
+/* ═══ Biens ═══════════════════════════════════════════════════════════════
+   Les biens qu'Alexandre vend ou pourrait vendre pour un propriétaire : un
+   projet à suivre, une estimation, un mandat, jusqu'à la vente. La liste en
+   cartes, avec une catégorie par étape ; la fiche d'un bien ; son éditeur
+   plein écran. « Nouveau bien » demande d'abord où il en est. Le bien ouvert
+   vit dans l'URL (?page=biens&bien=…) : un F5 ou le bouton Précédent y
+   ramènent. */
 
 type Filtre = 'tout' | EtapeVente | 'archives';
-const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'suspendu', 'vendu', 'retire'];
+const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire'];
+/* Les catégories toujours montrées ; « En pause » et « Retirés » seulement
+   quand il y en a. */
+const CATEGORIES: EtapeVente[] = ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis', 'vendu'];
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const lireBienUrl = () => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('bien'));
@@ -40,6 +46,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean } | null>(null);
   const [cree, setCree] = useState(false);
+  const [choixDepart, setChoixDepart] = useState(false);
+  const [erreurDepart, setErreurDepart] = useState('');
 
   const charger = useCallback(async () => {
     try {
@@ -77,14 +85,15 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     setListe(l => (l ? { ...l, biens: l.biens.some(x => x.id === r.id) ? l.biens.map(x => (x.id === r.id ? r : x)) : [r, ...l.biens] } : l));
   }, []);
 
-  async function nouveau() {
+  async function nouveau(etape: EtapeVente) {
     if (!liste) return;
-    setCree(true);
+    setCree(true); setErreurDepart('');
     try {
-      const r = await creerBien(liste.biens.map(x => x.reference));
+      const r = await creerBien(liste.biens.map(x => x.reference), etape);
       majBien(r);
+      setChoixDepart(false);
       setEdition({ bien: r, nouveau: true });
-    } catch (e) { alert((e as Error).message); }
+    } catch (e) { setErreurDepart((e as Error).message); }
     setCree(false);
   }
 
@@ -124,7 +133,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const phrase = [
     exclus ? `${exclus} exclusivité${exclus > 1 ? 's' : ''}` : '',
     honoCompromis ? `${euros(honoCompromis)} d’honoraires sous compromis` : '',
-  ].filter(Boolean).join(' · ') || 'Les biens que tu vends, de l’estimation à la signature chez le notaire.';
+  ].filter(Boolean).join(' · ') || 'Tes biens, du premier contact avec le propriétaire à la signature chez le notaire.';
 
   const bienOuvert = ouvert && liste ? biens.find(x => x.id === ouvert) || null : null;
 
@@ -158,14 +167,14 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const installer = erreur === MESSAGE_SQL;
   return (
     <div className={s.page}>
-      <EnteteRubrique titre="Biens en vente" icone={<Ic n="maison" t={22} />} phrase={phrase}
+      <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase}
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
-        bouton={installer ? undefined : { lib: cree ? 'Création…' : 'Nouveau bien', onClick: () => { if (!cree) void nouveau(); } }}
-        label="Filtrer par étape" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
+        bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setChoixDepart(true); } }}
+        label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
         tuiles={biens.length === 0 ? [] : [
           { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length },
-          ...ETAPES_VENTE.filter(e => ['estimation', 'mandat', 'offre', 'compromis', 'vendu'].includes(e.k) || n(e.k) > 0)
-            .map(e => ({ cle: e.k, lib: e.court, n: filtre === 'archives' ? actifs.filter(x => x.etape === e.k).length : n(e.k), couleur: e.c })),
+          ...[...CATEGORIES, 'suspendu' as const, 'retire' as const].map(k => etapeDe(k)).filter(e => CATEGORIES.includes(e.k) || n(e.k) > 0)
+            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => x.etape === e.k).length : n(e.k), couleur: e.c })),
           ...(archives.length ? [{ cle: 'archives', lib: 'Archivés', n: archives.length, couleur: '#cbd5e1' }] : []),
         ]} />
 
@@ -179,8 +188,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       ) : !installer && (visibles.length === 0 ? (
         <div className={s.liste}>
           <div className={s.vide}>
-            <b>{biens.length === 0 ? 'Aucun bien en vente pour l’instant' : 'Rien ici'}</b>
-            {biens.length === 0 ? 'Crée ton premier bien : étape par étape ou tout sur une page, il s’enregistre au fil de la saisie.' : 'Aucun bien ne correspond à ce filtre.'}
+            <b>{biens.length === 0 ? 'Aucun bien pour l’instant' : 'Rien ici'}</b>
+            {biens.length === 0 ? 'Crée ton premier bien : un projet à suivre, une estimation ou un mandat signé. Il s’enregistre au fil de la saisie.' : 'Aucun bien dans cette catégorie.'}
           </div>
         </div>
       ) : (
@@ -193,6 +202,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         </div>
       ))}
       {editeur}
+      {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} onFermer={() => { if (!cree) setChoixDepart(false); }} onChoisir={e => { void nouveau(e); }} />}
     </div>
   );
 }

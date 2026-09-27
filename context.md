@@ -287,13 +287,14 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     vérifié ou corrigé. `jeton` (son lien `/signer/<jeton>`), `lien_expire_le` (15 jours),
     `relances` (1 et 2 : rappels ; 3 : Alexandre prévenu du délai), code et preuves comme
     `mandats_signatures`, sa propre `execution_immediate`. RLS + `crm_authentifie`.
-- **Biens en vente** (`outils/sql/biens-vente.sql`, voir `src/lib/biens-vente.ts`) :
-  - **`biens_vente`** : un bien vendu par l'agence. Colonnes de liste (`titre`, `type_bien`,
+- **Biens** (`outils/sql/biens-vente.sql`, voir `src/lib/biens-vente.ts`) :
+  - **`biens_vente`** : un bien que l'agence vend ou pourrait vendre. Colonnes de liste (`titre`, `type_bien`,
     `adresse`, `code_postal`, `ville`, `quartier`, `prix`, `surface`, `nb_pieces`, `nb_chambres`,
     `etage`, `mandat_type`, `mandat_numero`, `mandat_fin`, `photo`, `client_id` = le propriétaire)
     recalculées à chaque enregistrement par `colonnesBien()` ; tout le reste dans `donnees` (les
-    réponses de l'éditeur, `ETAPES_BIEN`). `etape` : `estimation` · `mandat` · `suspendu` ·
-    `offre` · `compromis` · `vendu` · `retire` ; `etape_le`, `en_vente_le`, `vendu_le`, `archive`,
+    réponses de l'éditeur, `ETAPES_BIEN`). `etape` (texte libre, pas de contrainte en base) :
+    `a_suivre` (V3.13) · `estimation` · `mandat` · `suspendu` (« En pause ») · `offre` ·
+    `compromis` · `vendu` · `retire` ; `etape_le`, `en_vente_le`, `vendu_le`, `archive`,
     `reference` (EMI-V-AAAA-NNN), `document_id` (le mandat de vente dans Documents).
   - **`biens_vente_suivi`** : l'historique propre au bien — `type` `visite` (avec quelqu'un hors
     du CRM ; `statut` a_venir · faite · annulee, `avis` = les issues de `src/lib/visites.ts`),
@@ -337,7 +338,7 @@ sans typage, en `select('*')`.
 ### Le CRM
 
 Navigation (`Sidebar.tsx`), en trois sections :
-**Principal** — Dashboard · Clients · **Biens en vente** (V3.12) ·
+**Principal** — Dashboard · Clients · **Biens** (V3.12, renommée en V3.13) ·
 **Suivi** — Visites · Relances · Documents · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
 La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
@@ -369,23 +370,41 @@ en consommant `ANTHROPIC_API_KEY` : risque de facture pour personne. Supprimés 
 et `src/app/api/bien-from-bookmarklet/`. La saisie d'un bien passe par « Ajouter un bien » dans la
 fiche client, ou par la veille.
 
-**Biens en vente** (`src/components/biens/`, logique dans `src/lib/biens-vente.ts`) — les biens
-qu'Alexandre vend pour un propriétaire, de l'estimation à la vente. Voir V3.12.
+**Biens** (`src/components/biens/`, logique dans `src/lib/biens-vente.ts`) — les biens
+qu'Alexandre vend ou pourrait vendre pour un propriétaire : un projet à suivre, une estimation, un
+mandat, jusqu'à la vente. Voir V3.12 et V3.13.
 - **La liste** : une carte par bien (photo, étape, type de mandat, prix ou fourchette d'estimation,
   ligne d'état qui dit ce qui compte à cette étape, acheteurs qui correspondent, visites et
-  offres). Filtres par étape (`EnteteRubrique`), recherche (adresse, ville, propriétaire, n° de
-  mandat), « Archivés ». Le bien ouvert vit dans l'URL : `?page=biens&bien=<id>`.
-- **L'éditeur** (plein écran, même moteur que les documents) : 11 étapes — propriétaire, bien,
-  intérieur, extérieur, pièces, énergie, copropriété/charges et taxes, prix et mandat, visite,
-  annonce et notes, photos et dossier. Étape par étape ou tout sur une page (`biens.mode`). À
-  droite : la carte telle qu'elle paraîtra, les chiffres (net vendeur, honoraires, prix au m²) et
-  les mentions obligatoires de l'annonce. Un bien créé puis refermé vide est supprimé.
-- **Les pièces** : une ligne par pièce, dans cet ordre : niveau, pièce (liste à cliquer ou note
-  libre), surface, exposition, commentaire. Clé `detailPieces` (⚠️ `pieces` est leur nombre).
-- **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Le bien · Visites et
-  offres · Acheteurs · Documents · Historique. Chaque bloc a son « Modifier » qui ouvre l'éditeur à
-  la bonne étape. Le bouton d'étape propose ce qui peut arriver ensuite (mandat signé, offre,
-  compromis, vente, pause, retrait, prix), chaque fois dans une fenêtre qui écrit l'historique.
+  offres). Catégories (`EnteteRubrique`) : Tous · À suivre · Estimations · Mandats en cours · Sous
+  offre · Sous compromis · Vendus, puis En pause et Retirés quand il y en a, et « Archivés ».
+  Recherche (adresse, ville, propriétaire, n° de mandat). Le bien ouvert vit dans l'URL :
+  `?page=biens&bien=<id>`.
+- **Nouveau bien** : une fenêtre demande d'abord où il en est (`FenNouveau`) — à suivre, une
+  estimation, un mandat signé — et le bien est créé à cette étape (`creerBien(refs, etape)` ; un
+  mandat laisse sa ligne dans le suivi).
+- **L'éditeur** (plein écran, même moteur que les documents) : les étapes suivent l'étape de vente
+  (`etapesDuBien()`, champ `pour` et titre `avant` de chaque étape) — à suivre : propriétaire, bien,
+  notes ; estimation : dix étapes, « L'estimation et le prix » sans le mandat, pas de visite ni
+  d'annonce ; à partir du mandat : les onze. Les questions voient l'étape sous `_stade` (jamais
+  enregistré) : un champ `si: sousMandat` s'efface avant le mandat. Les questions sont rangées en
+  blocs (un par titre de section). Le fil des étapes défile avec deux flèches quand il ne tient
+  pas ; « Étape par étape / Tout sur une page » est dans la barre du haut (`biens.mode`). À
+  droite, en colonne étroite : la carte, les chiffres, les mentions obligatoires (après le
+  mandat). Un bien créé puis refermé vide est supprimé.
+- **Les pièces** : une carte par pièce, son icône d'après son nom (`pictoPiece`) ; nom, niveau,
+  surface, exposition en huit boutons, commentaire. On ajoute par des tuiles à icône
+  (`PIECES_TUILES`), au niveau choisi ; la surface prend le curseur tout de suite. Rangées par
+  niveau. Clé `detailPieces` (⚠️ `pieces` est leur nombre).
+- **Les charges de copropriété** : champ `eurosAn` — par an ou par mois, l'autre se calcule, le
+  trimestre s'affiche. Stocké en annuel (`chargesAn`).
+- **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Le bien · Photos ·
+  Visites et offres (à partir du mandat) · Acheteurs · Documents · Historique. Vue d'ensemble : le
+  bien en bref (tuiles à icône), puis deux colonnes équilibrées. Le bien : l'annonce et les photos
+  en haut, le détail par thème (lignes à icône, rangées en colonnes équilibrées), les pièces en
+  tuiles. Photos : ajouter, ranger, légender sans l'éditeur. Chaque bloc a son « Modifier » qui
+  ouvre l'éditeur à la bonne étape. Le bouton d'étape propose ce qui peut arriver ensuite (passer à
+  l'estimation, mandat signé, offre, compromis, vente, pause, retrait, prix), chaque fois dans une
+  fenêtre qui écrit l'historique.
 
 **Documents juridiques** (`src/components/documents/`, modèles dans `src/lib/actes/`) — mandat de
 vente (simple, semi-exclusif, exclusif), offre d'achat, bon de visite. Formulaire à gauche, aperçu
@@ -1261,6 +1280,32 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.13 — 27 septembre 2026 · « Biens » : à suivre, estimation, mandat
+
+Rien à passer dans Supabase : `etape` est un texte libre.
+
+**La rubrique devient « Biens »** : tous les biens, pas seulement ceux en vente, avec des
+catégories cliquables (Tous · À suivre · Estimations · Mandats en cours · Sous offre · Sous
+compromis · Vendus ; En pause et Retirés quand il y en a). **Une étape « À suivre »** avant
+l'estimation : un propriétaire qui pense vendre. Le bouton d'étape d'un bien à suivre propose
+« On passe à l'estimation » (rendez-vous facultatif), « Le mandat est signé », « Le propriétaire
+renonce ».
+
+**Nouveau bien demande d'abord où il en est**, et l'éditeur ne pose que les questions utiles :
+pas de mandat à l'estimation, pas de pièces pour un simple projet. L'ancienne fenêtre « Où en est
+ce bien ? » à la fin disparaît.
+
+**L'éditeur** : le fil des étapes ne déborde plus (libellés courts, flèches quand il ne tient
+pas), le choix du mode est dans la barre du haut, les questions prennent plus de place et sont
+rangées en blocs, l'aperçu est en colonne étroite. **Les pièces** : une carte par pièce avec son
+icône, l'exposition en boutons, des tuiles à icône pour ajouter. **Les charges** : par an ou par
+mois, l'autre se calcule. **Les dépenses d'énergie** du DPE sont nommées comme telles (montant bas,
+montant haut) : ce n'est pas la copropriété.
+
+**La fiche** : vue d'ensemble équilibrée (le bien en bref en tuiles à icône, deux colonnes),
+onglet « Le bien » avec l'annonce et les photos en haut et des icônes partout (chauffage, eau
+chaude, cuisine, pièces…), onglet « Photos » à part.
 
 ### V3.12 — 27 septembre 2026 · les biens en vente
 

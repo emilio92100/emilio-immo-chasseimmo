@@ -2,7 +2,7 @@
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, etapeDe, ligneEtat, lirePhotos, nomProprio, specsBien, type BienVente, type SuiviVente,
+  argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, nomProprio, specsBien, type BienVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import b from './Biens.module.css';
@@ -20,7 +20,7 @@ export function prixCarte(bien: BienVente): { t: string; vide: boolean } {
   const a = num(d, 'estimBasse'), h = num(d, 'estimHaute');
   if (a && h) return { t: `${euros(a).replace(' €', '')} – ${euros(h)}`, vide: false };
   if (a || h) return { t: euros((a || h) as number), vide: false };
-  return { t: bien.etape === 'estimation' ? 'À estimer' : 'Prix à fixer', vide: true };
+  return { t: bien.etape === 'a_suivre' ? 'Projet de vente' : bien.etape === 'estimation' ? 'À estimer' : 'Prix à fixer', vide: true };
 }
 
 /* Les honoraires d'une vente conclue : ceux saisis au compromis ou à la
@@ -60,7 +60,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffre
   const conclu = bien.etape === 'compromis' || bien.etape === 'vendu';
   const hono = conclu ? honorairesVente(bien, suivi) : null;
   const enVente = !['vendu', 'retire'].includes(bien.etape);
-  const compte = bien.etape !== 'estimation' && (nbVisites > 0 || nbOffres > 0 || bien.etape === 'mandat')
+  const compte = !avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0 || bien.etape === 'mandat')
     ? `${nbVisites} visite${nbVisites > 1 ? 's' : ''} · ${nbOffres} offre${nbOffres > 1 ? 's' : ''}` : '';
   const Tag = onClick ? 'button' : 'div';
 
@@ -75,7 +75,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffre
       <div className={b.carteCorps}>
         <div className={b.carteHaut}>
           <span><span className={b.point} style={{ background: e.c }} />{e.court}</span>
-          {mandat && <em className={mandat === 'exclusif' ? 'exclu' : undefined}>{NOM_MANDAT[mandat]?.toUpperCase()}</em>}
+          {mandat && <em className={mandat === 'exclusif' ? b.exclu : undefined}>{NOM_MANDAT[mandat]?.toUpperCase()}</em>}
         </div>
         <div className={`${b.prix} ${prix.vide ? b.prixVide : ''}`}>{prix.t}</div>
         <div className={b.specs}>{specsBien(d) || 'Caractéristiques à saisir'}</div>
