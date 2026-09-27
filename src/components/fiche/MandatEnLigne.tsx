@@ -32,6 +32,7 @@ import {
   type Contenu,
 } from '@/lib/mandat';
 import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
+import { contenuApresAvenants } from '@/lib/actes/avenant-recherche';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -92,6 +93,8 @@ function ecartsDe(m: Sig['mandant'], client: any): Ecart[] {
 const quand = (iso: string) => new Date(iso).toLocaleString('fr-FR', {
   timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
 }).replace(' ', ' à ');
+/* « 2026-10-12… » → « 12/10/2026 » : une date, sans heure. */
+const jourCourt = (iso: string) => String(iso).slice(0, 10).split('-').reverse().join('/');
 const numeros = (v: string) => v.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
 /* « 2,5 » → 2.5 ; NaN si ce n'est pas un nombre. */
 const lireTaux = (v: string) => { const n = parseFloat(String(v).replace(',', '.').replace('%', '').trim()); return Number.isFinite(n) ? n : NaN; };
@@ -112,7 +115,10 @@ const champ: React.CSSProperties = {
   width: '100%', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 14, fontFamily: 'inherit', color: '#1a2332',
 };
 
-export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
+/* Un avenant à ce mandat (Documents), pour la liste et pour les limites. */
+type AvenantMini = { id: string; statut: string; signe_le: string | null; donnees: Record<string, unknown> };
+
+export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAvenant }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recherche: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,7 +128,10 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   /* La fiche client rechargée, après « Reprendre dans la fiche ». */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onClient?: (c: any) => void;
+  /* « Préparer un avenant » : la fiche ouvre Documents sur cette recherche. */
+  onAvenant?: () => void;
 }) {
+  const [avenants, setAvenants] = useState<AvenantMini[]>([]);
   const [sig, setSig] = useState<Sig | null>(null);
   const [cos, setCos] = useState<CoSig[]>([]);
   const [numero, setNumero] = useState<string>(recherche?.mandat_numero || '');
@@ -141,14 +150,19 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
 
   const charger = useCallback(async () => {
     if (!recherche?.id) return;
-    const [s, p, f] = await Promise.all([
+    const [s, p, f, av] = await Promise.all([
       /* Toute la ligne : la société et le Kbis n'existent qu'une fois le SQL
          « signature-plusieurs » lancé. */
       supabase.from('mandats_signatures').select('*')
         .eq('recherche_id', recherche.id).order('created_at', { ascending: false }).limit(1),
       supabase.from('parametres').select('cle, valeur').in('cle', [CLE_RESERVE, CLE_APPROBATION]),
       supabase.storage.from('mandats').list('agence'),
+      /* Les avenants à son mandat (la table documents peut manquer : rien
+         ne s'affiche alors). */
+      supabase.from('documents').select('id, statut, signe_le, donnees')
+        .eq('recherche_id', recherche.id).eq('modele', 'avenant_recherche').neq('statut', 'annule').order('created_at'),
     ]);
+    setAvenants(!av.error && av.data ? (av.data as AvenantMini[]) : []);
     const derniere = !s.error && s.data?.length ? (s.data[0] as Sig) : null;
     setSig(derniere);
     /* Ceux qui signent avec lui (la table n'existe qu'après le SQL : sans
@@ -231,7 +245,17 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   /* Sa recherche d'aujourd'hui sort-elle de ce qu'il a signé (budget,
      secteurs, type de bien) ? Le client peut changer ses critères depuis
      son espace ; Alexandre reçoit aussi un mail à ce moment-là. */
-  const depasse = signeEnLigne && sig?.contenu?.recherche ? horsMandat(sig.contenu, rechercheDepuis(recherche || {})) : [];
+  const avenantsSignes = avenants.filter(a => a.statut === 'signe');
+  /* Un avenant déjà préparé, pas encore signé : le bouton l'ouvre. */
+  const avenantEnCours = avenants.some(a => a.statut === 'brouillon' || a.statut === 'pret');
+  const depasse = signeEnLigne && sig?.contenu?.recherche
+    ? horsMandat(contenuApresAvenants(sig.contenu, avenantsSignes.map(a => a.donnees)), rechercheDepuis(recherche || {}))
+    : [];
+  /* Les avenants, en une ligne chacun : « Avenant n° 1 · signé le 12/10 ». */
+  const lignesAvenants = avenants.map(a => {
+    const no = Number(a.donnees?.avenantNo) || 1;
+    return `📝 Avenant n° ${no} · ${a.statut === 'signe' ? `signé le ${a.signe_le ? jourCourt(a.signe_le) : '—'}` : a.statut === 'pret' ? 'à faire signer' : 'brouillon'}`;
+  });
 
   /* ── Reprendre dans la fiche ce que le client a saisi en signant ──
      Deux adresses e-mail et deux téléphones au plus : c'est ce que le
@@ -435,9 +459,11 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
               : `🔒 Invitation de ${nomCo(c)} close : le mandat continue sans sa signature.`}</div>
           ))}
           {sig.societe && <div style={{ marginTop: 6 }}>{`🏢 Pour la société ${sig.societe.denomination} (${sig.societe.forme}, SIREN ${sig.societe.siren}, RCS ${sig.societe.rcsVille}) · ${sig.societe.qualite.toLowerCase()}`}</div>}
+          {lignesAvenants.map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
             <button type="button" style={btn} onClick={voirPdf}>📄 Voir le mandat signé</button>
             {sig.kbis_chemin && <button type="button" style={btn} onClick={voirKbis}>📎 Voir le Kbis</button>}
+            {onAvenant && !sig.retracte_le && <button type="button" style={btn} onClick={onAvenant}>{avenantEnCours ? '📝 Ouvrir l’avenant en cours' : '📝 Préparer un avenant'}</button>}
           </div>
         </div>
       )}
@@ -484,7 +510,16 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
         <div style={boite('#fff7ed', '#fed7aa', '#7c2d12')}>
           <b>⚠️ Sa recherche dépasse son mandat signé</b>
           {depasse.map(e => <div key={e} style={{ marginTop: 4 }}>{`· ${e}`}</div>)}
-          <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 6 }}>{'Un achat hors de ces limites sortirait du mandat. Appelle-le : s’il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.'}</div>
+          <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 6 }}>{'Un achat hors de ces limites sortirait du mandat. Appelle-le : s’il vise vraiment plus haut ou ailleurs, prépare-lui un avenant. Ce qui a changé y est déjà coché.'}</div>
+          {onAvenant && <button type="button" style={{ ...btnOr, marginTop: 10 }} onClick={onAvenant}>{avenantEnCours ? '📝 Ouvrir l’avenant en cours' : '📝 Préparer l’avenant'}</button>}
+        </div>
+      )}
+      {valide && !signeEnLigne && (
+        <div style={boite('#f8fafc', '#e2e8f0', '#1a2332')}>
+          <b>{`📋 Mandat signé${recherche?.mandat_numero ? ` n° ${recherche.mandat_numero}` : ''}, hors ligne`}</b>
+          <div>{`Signé le ${jourCourt(recherche.mandat_date_signature)}${recherche?.mandat_date_expiration ? `, valable jusqu’au ${jourCourt(recherche.mandat_date_expiration)}` : ''}.`}</div>
+          {lignesAvenants.map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
+          {onAvenant && <button type="button" style={{ ...btn, marginTop: 10 }} onClick={onAvenant}>{avenantEnCours ? '📝 Ouvrir l’avenant en cours' : '📝 Préparer un avenant'}</button>}
         </div>
       )}
       {sig?.statut === 'retracte' && (

@@ -115,6 +115,145 @@ export async function identiteDuJour(): Promise<IdentiteAgence> {
   return lireIdentite(data?.valeur ?? null);
 }
 
+/* ── Partir d'un mandat (avenant, courrier) ──────────────────────────────
+   Un mandat « source » : un document signé (mandat de vente, mandat de
+   recherche papier) ou un mandat de recherche signé en ligne (sa propre
+   table, mandats_signatures). Les deux se présentent pareil à l'écran. */
+export type MandatChoix = {
+  cle: string;                       // « d-<id> » ou « r-<id> »
+  enLigne: boolean;
+  id: string;
+  modele: string;                    // mandat_vente, mandat_recherche, mandat_en_ligne
+  titre: string;
+  sous: string;
+  numero: string | null;
+  statut: string;
+  signe_le: string | null;
+  finalise_le: string | null;
+  client_id: string | null;
+  recherche_id: string | null;
+  bien_id: string | null;
+  donnees: Donnees;                  // vide pour un mandat en ligne : lu au moment de préparer
+  client: string;                    // son nom, pour chercher
+};
+
+const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+export const cleRecherche = (x: MandatChoix) => sansAccent(`${x.titre} ${x.sous} ${x.numero || ''} ${x.client}`);
+
+/* Les mandats d'où un modèle peut partir, le plus récent d'abord. */
+export async function mandatsPour(m: Modele): Promise<MandatChoix[]> {
+  const de = m.deriver?.de || [];
+  const papier = de.filter(x => x !== 'mandat_en_ligne');
+  const [a, b] = await Promise.all([
+    papier.length
+      ? supabase.from('documents')
+        .select('id, modele, titre, sous_titre, numero, statut, donnees, signe_le, finalise_le, bien_id, recherche_id, client_id')
+        .in('modele', papier).in('statut', ['pret', 'signe']).order('updated_at', { ascending: false }).limit(300)
+      : Promise.resolve({ data: [], error: null }),
+    de.includes('mandat_en_ligne')
+      ? supabase.from('mandats_signatures').select('id, numero, statut, signe_le, client_id, recherche_id, mandant, contenu')
+        .in('statut', ['signe', 'partiel']).order('signe_le', { ascending: false }).limit(300)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (a.error) throw new Error('Les mandats n’ont pas pu être lus : ' + a.error.message);
+  if (b.error) throw new Error('Les mandats signés en ligne n’ont pas pu être lus : ' + b.error.message);
+  const docs = (a.data || []) as (Pick<DocumentRow, 'id' | 'modele' | 'titre' | 'sous_titre' | 'numero' | 'statut' | 'donnees' | 'signe_le' | 'finalise_le' | 'bien_id' | 'recherche_id' | 'client_id'>)[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lignes = (b.data || []) as any[];
+  const ids = Array.from(new Set([...docs.map(x => x.client_id), ...lignes.map(x => x.client_id)].filter((x): x is string => !!x)));
+  const noms: Record<string, string> = {};
+  if (ids.length) {
+    const { data } = await supabase.from('clients').select('id, prenom, nom').in('id', ids.slice(0, 500));
+    for (const c of data || []) noms[c.id as string] = `${c.prenom || ''} ${c.nom || ''}`.trim();
+  }
+  const jour = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
+  const out: MandatChoix[] = [
+    ...docs.map(x => ({
+      cle: 'd-' + x.id, enLigne: false, id: x.id, modele: x.modele, titre: x.titre || 'Mandat',
+      sous: [x.sous_titre, x.statut === 'signe' ? `signé le ${jour(x.signe_le)}` : 'pas encore signé'].filter(Boolean).join(' · '),
+      numero: x.numero, statut: x.statut, signe_le: x.signe_le, finalise_le: x.finalise_le,
+      client_id: x.client_id, recherche_id: x.recherche_id, bien_id: x.bien_id, donnees: x.donnees || {},
+      client: x.client_id ? noms[x.client_id] || '' : '',
+    })),
+    ...lignes.map(x => {
+      const nom = [x.mandant?.prenom, x.mandant?.nom].filter(Boolean).join(' ') || (x.client_id ? noms[x.client_id] : '') || 'Client';
+      const secteurs: string[] = Array.isArray(x.contenu?.recherche?.secteurs) ? x.contenu.recherche.secteurs : [];
+      return {
+        cle: 'r-' + x.id, enLigne: true, id: x.id as string, modele: 'mandat_en_ligne', titre: `Mandat de recherche · ${nom}`,
+        sous: [secteurs.slice(0, 3).join(', '), `signé en ligne le ${jour(x.signe_le)}`].filter(Boolean).join(' · '),
+        numero: x.numero || null, statut: 'signe', signe_le: x.signe_le || null, finalise_le: x.signe_le || null,
+        client_id: x.client_id || null, recherche_id: x.recherche_id || null, bien_id: null, donnees: {},
+        client: x.client_id ? noms[x.client_id] || nom : nom,
+      };
+    }),
+  ];
+  return out.sort((p, q) => (q.statut === 'signe' ? 1 : 0) - (p.statut === 'signe' ? 1 : 0)
+    || String(q.signe_le || q.finalise_le || '').localeCompare(String(p.signe_le || p.finalise_le || '')));
+}
+
+/* Le mandat en ligne, relu en entier : ses réponses, et ceux qui l'ont
+   signé avec le premier. */
+async function donneesEnLigne(id: string): Promise<MandatChoix> {
+  const { data, error } = await supabase.from('mandats_signatures').select('*').eq('id', id).maybeSingle();
+  if (error || !data) throw new Error('Le mandat signé en ligne n’a pas pu être lu' + (error ? ' : ' + error.message : '.'));
+  const c = await supabase.from('mandats_cosignataires').select('personne, statut, rang').eq('signature_id', id).eq('statut', 'signe').order('rang');
+  const cos = !c.error && c.data ? c.data.map(x => x.personne as Record<string, string>) : [];
+  const { donneesMandatEnLigne } = await import('@/lib/actes/avenant-recherche');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const l = data as any;
+  return {
+    cle: 'r-' + id, enLigne: true, id, modele: 'mandat_en_ligne', titre: 'Mandat de recherche', sous: '',
+    numero: l.numero || null, statut: 'signe', signe_le: l.signe_le || null, finalise_le: l.signe_le || null,
+    client_id: l.client_id || null, recherche_id: l.recherche_id || null, bien_id: null,
+    donnees: donneesMandatEnLigne(l, cos), client: '',
+  };
+}
+
+/* Un mandat choisi par la ligne de sa table : un document, ou un mandat
+   signé en ligne (« r-<id> »). */
+export async function mandatDepuis(cle: string): Promise<MandatChoix> {
+  if (cle.startsWith('r-')) return donneesEnLigne(cle.slice(2));
+  const { data, error } = await supabase.from('documents').select('*').eq('id', cle.replace(/^d-/, '')).maybeSingle();
+  if (error || !data) throw new Error('Le mandat n’a pas pu être lu' + (error ? ' : ' + error.message : '.'));
+  const x = data as DocumentRow;
+  return {
+    cle: 'd-' + x.id, enLigne: false, id: x.id, modele: x.modele, titre: x.titre || 'Mandat', sous: x.sous_titre || '',
+    numero: x.numero, statut: x.statut, signe_le: x.signe_le, finalise_le: x.finalise_le,
+    client_id: x.client_id, recherche_id: x.recherche_id, bien_id: x.bien_id, donnees: x.donnees || {}, client: '',
+  };
+}
+
+/* Les réponses d'un document préparé à partir d'un mandat : le modèle
+   vierge avec le client et la recherche du moment, ce que le mandat dit,
+   puis ce que les avenants déjà signés y ont changé, enfin ce qui s'en
+   déduit. Un avenant reçoit son numéro : le suivant de ceux déjà faits à
+   ce mandat (hors annulés). */
+export async function preparerDepuis(m: Modele, x: MandatChoix, identite: IdentiteAgence, o: { echeance?: string } = {}): Promise<Donnees> {
+  if (!m.deriver) throw new Error('Ce modèle ne part pas d’un mandat.');
+  const src = x.enLigne && !Object.keys(x.donnees).length ? await donneesEnLigne(x.id) : x;
+  const [cl, rech] = await Promise.all([
+    src.client_id ? supabase.from('clients').select('id, prenom, nom, adresse, emails, telephones').eq('id', src.client_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    src.recherche_id ? supabase.from('recherches').select('*').eq('id', src.recherche_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (cl.error) throw new Error('Le client n’a pas pu être lu : ' + cl.error.message);
+  if (rech.error) throw new Error('La recherche n’a pas pu être lue : ' + rech.error.message);
+  let d: Donnees = {
+    ...m.defaut({ identite, client: cl.data || null, bien: null, visite: null, recherche: (rech.data as Record<string, unknown>) || null }),
+    ...m.deriver.fn({ id: src.id, modele: src.modele, donnees: src.donnees, numero: src.numero, signe_le: src.signe_le, finalise_le: src.finalise_le }, identite, o),
+  };
+  const numero = typeof d.mandatNumero === 'string' ? d.mandatNumero.trim() : '';
+  if ('avenantNo' in d && numero) {
+    const { data, error } = await supabase.from('documents').select('id, statut, donnees')
+      .eq('modele', m.id).neq('statut', 'annule').eq('donnees->>mandatNumero', numero);
+    if (error) throw new Error('Les avenants déjà faits à ce mandat n’ont pas pu être lus : ' + error.message);
+    const avant = ((data || []) as Pick<DocumentRow, 'id' | 'statut' | 'donnees'>[])
+      .sort((p, q) => (Number(p.donnees?.avenantNo) || 0) - (Number(q.donnees?.avenantNo) || 0));
+    if (m.enchainer) for (const a of avant.filter(a => a.statut === 'signe')) d = m.enchainer(d, a.donnees || {});
+    d.avenantNo = avant.reduce((n, a) => Math.max(n, Number(a.donnees?.avenantNo) || 0), 0) + 1;
+  }
+  return m.preparer ? m.preparer(d) : d;
+}
+
 /* Un numéro du registre ne sert qu'une fois : ni sur un autre document
    (hors annulés), ni sur un mandat de recherche. Rend le doublon trouvé.
    `rechercheId` : la recherche du document elle-même (un mandat de
@@ -164,19 +303,20 @@ export async function apresSignature(row: DocumentRow, m: Modele, jour: string):
   if (error) return 'Le document est bien marqué signé, mais le bloc Mandat de sa recherche n’a pas pu être rempli : ' + error.message + '. Saisis-le à la main dans la fiche client.';
   if (row.client_id) {
     const { error: e2 } = await supabase.from('journal').insert({
-      client_id: row.client_id, type: 'mandat', titre: '📋 Mandat de recherche signé (papier)',
+      client_id: row.client_id, type: 'mandat', titre: `📋 ${m.titre} signé (papier)`,
       description: [row.numero ? `n° ${row.numero}` : '', row.badge || '', `signé le ${jour.split('-').reverse().join('/')}`].filter(Boolean).join(' · '),
       metadata: { document_id: row.id },
     });
-    if (e2) return 'Le mandat est signé et le bloc Mandat rempli, mais la ligne du suivi client n’a pas pu être ajoutée : ' + e2.message;
+    if (e2) return `Le document est signé et le bloc Mandat ${m.numero ? 'rempli' : 'mis à jour'}, mais la ligne du suivi client n’a pas pu être ajoutée : ` + e2.message;
   }
   return null;
 }
 
 /* Annulé après signature : le bloc Mandat de sa recherche se vide, s'il
-   porte encore ce mandat (même numéro). */
+   porte encore ce mandat (même numéro). Un avenant, lui, n'a pas de numéro
+   à lui : l'annuler ne vide rien. */
 export async function apresAnnulation(row: DocumentRow, m: Modele): Promise<string | null> {
-  if (!m.surRecherche || !row.recherche_id || !row.numero || row.statut !== 'signe') return null;
+  if (!m.surRecherche || !m.numero || !row.recherche_id || !row.numero || row.statut !== 'signe') return null;
   const { error } = await supabase.from('recherches').update({
     mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null, mandat_date_expiration: null,
     sans_mandat: true, mandat_numero: null, updated_at: new Date().toISOString(),

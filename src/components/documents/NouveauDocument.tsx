@@ -3,22 +3,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MODELES, modele, type Contexte } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
-import { colonnesListe, identiteDuJour, tableAbsente, type DocumentRow } from './outils';
+import { cleRecherche, colonnesListe, identiteDuJour, mandatsPour, preparerDepuis, tableAbsente, type DocumentRow, type MandatChoix } from './outils';
 import s from './Documents.module.css';
 
 /* ═══ Nouveau document ════════════════════════════════════════════════════
    1. Le modèle.
    2. Pour qui : un client du CRM et, selon le modèle, l'un de ses biens
-      (mandat de vente, offre, bon de visite), l'une de ses recherches
-      (mandat de recherche) ou l'un de ses mandats finalisés (avenant,
-      courrier de reconduction) — tout ce que le CRM sait se remplit seul.
+      (mandat de vente, offre, bon de visite) ou l'une de ses recherches
+      (mandat de recherche) — tout ce que le CRM sait se remplit seul.
       Ou rien : on part d'un document vierge.
+      Un avenant ou un courrier part d'un mandat : on le cherche d'abord,
+      parmi tous (un nom, un numéro, une adresse), et le client vient avec.
    Puis le brouillon est créé et l'éditeur s'ouvre. */
 
 type ClientMini = { id: string; prenom: string; nom: string; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null };
 type BienMini = NonNullable<Contexte['bien']> & { recherche_id?: string | null; prix_vendeur?: number | null };
 type RechercheMini = Record<string, unknown> & { id: string; nom?: string | null; active?: boolean | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null };
-type MandatMini = Pick<DocumentRow, 'id' | 'modele' | 'titre' | 'sous_titre' | 'numero' | 'statut' | 'donnees' | 'signe_le' | 'finalise_le' | 'bien_id' | 'recherche_id' | 'client_id'>;
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -29,8 +29,10 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
 }) {
   const [recherches, setRecherches] = useState<RechercheMini[] | null>(null);
   const [recherche, setRecherche] = useState<RechercheMini | null>(null);
-  const [mandats, setMandats] = useState<MandatMini[] | null>(null);
-  const [source, setSource] = useState<MandatMini | null>(null);
+  const [mandats, setMandats] = useState<{ modele: string; liste: MandatChoix[] } | null>(null);
+  const [mandat, setMandat] = useState<MandatChoix | null>(null);
+  const [sansMandat, setSansMandat] = useState(false);
+  const [chercheM, setChercheM] = useState('');
   const [choix, setChoix] = useState<string>(modeleId || '');
   const [etape, setEtape] = useState<1 | 2>(modeleId ? 2 : 1);
   const [clients, setClients] = useState<ClientMini[] | null>(null);
@@ -69,21 +71,22 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
       });
   }, [client, lien]);
 
-  /* Ses mandats finalisés (avenant, courrier) : le plus récent d'abord. */
+  /* Tous les mandats d'où ce modèle peut partir (avenant, courrier) : les
+     documents, et pour un avenant de recherche les mandats signés en ligne. */
   useEffect(() => {
-    setSource(null); setMandats(null);
-    if (!client || lien !== 'mandat' || !m?.deriver) return;
-    supabase.from('documents')
-      .select('id, modele, titre, sous_titre, numero, statut, donnees, signe_le, finalise_le, bien_id, recherche_id, client_id')
-      .eq('client_id', client.id).in('modele', m.deriver.de).in('statut', ['pret', 'signe'])
-      .order('updated_at', { ascending: false }).limit(20)
-      .then(({ data, error }) => {
-        if (error) { setErreur('Ses mandats n’ont pas pu être lus : ' + error.message); setMandats([]); return; }
-        const l = (data || []) as MandatMini[];
-        setMandats(l);
-        setSource(l.find(x => x.statut === 'signe') || l[0] || null);
-      });
-  }, [client, lien, m]);
+    if (etape !== 2 || lien !== 'mandat' || !m?.deriver || mandats?.modele === m.id) return;
+    let vivant = true;
+    mandatsPour(m)
+      .then(l => { if (vivant) setMandats({ modele: m.id, liste: l }); })
+      .catch(e => { if (vivant) { setErreur((e as Error).message); setMandats({ modele: m.id, liste: [] }); } });
+    return () => { vivant = false; };
+  }, [etape, lien, m, mandats?.modele]);
+  const listeM = mandats?.modele === m?.id ? mandats?.liste || null : null;
+  const trouvesM = useMemo(() => {
+    if (!listeM) return [];
+    const q = sansAccent(chercheM.trim());
+    return (q ? listeM.filter(x => cleRecherche(x).includes(q)) : listeM).slice(0, 8);
+  }, [listeM, chercheM]);
 
   /* Les biens du client choisi. */
   useEffect(() => {
@@ -117,15 +120,15 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         if (error) throw new Error('La visite n’a pas pu être lue : ' + error.message);
         visite = data?.[0] || null;
       }
-      const base = m.defaut({ identite, client, bien, visite, recherche });
-      const donnees = source && m.deriver
-        ? { ...base, ...m.deriver.fn({ id: source.id, modele: source.modele, donnees: source.donnees, numero: source.numero, signe_le: source.signe_le, finalise_le: source.finalise_le }, identite) }
-        : base;
+      const avecMandat = lien === 'mandat' && !!mandat;
+      const donnees = avecMandat
+        ? await preparerDepuis(m, mandat!, identite)
+        : m.defaut({ identite, client, bien, visite, recherche });
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
-        client_id: client?.id || null,
-        bien_id: bien?.id || source?.bien_id || null,
-        recherche_id: recherche?.id || bien?.recherche_id || source?.recherche_id || null,
+        client_id: (avecMandat ? mandat!.client_id : null) || client?.id || null,
+        bien_id: bien?.id || (avecMandat ? mandat!.bien_id : null) || null,
+        recherche_id: recherche?.id || bien?.recherche_id || (avecMandat ? mandat!.recherche_id : null) || null,
       }).select().single();
       if (error) {
         throw new Error(tableAbsente(error.message)
@@ -145,13 +148,13 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         <div className={s.fenTete}>
           {m && etape === 2 && <span className={s.modeleIc}><Ic n={m.ic} t={19} /></span>}
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-            <h3>{etape === 1 ? 'Nouveau document' : m ? `${m.titre} : pour qui ?` : 'Pour qui ?'}</h3>
+            <h3>{etape === 1 ? 'Nouveau document' : m ? `${m.titre} : ${lien === 'mandat' ? 'sur quel mandat ?' : 'pour qui ?'}` : 'Pour qui ?'}</h3>
             <p>{etape === 1
               ? 'Choisis le modèle. Tout reste modifiable ensuite, et l’aperçu suit chaque réponse.'
               : m?.lien === 'recherche'
                 ? 'Choisis le client puis sa recherche : son nom, son adresse, le bien recherché et ton taux se remplissent tout seuls.'
                 : m?.lien === 'mandat'
-                  ? 'Choisis le client puis le mandat : vendeurs, bien, numéro et dates sont repris tels quels.'
+                  ? 'Cherche le mandat par un nom, un numéro ou une adresse : les signataires, le numéro, les dates et le client sont repris tels quels.'
                   : 'Choisis un client pour que son nom, son adresse et le bien se remplissent tout seuls. Sinon, pars d’un document vierge.'}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
@@ -171,8 +174,49 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
 
         {etape === 2 && m && (
           <div className={s.fenCorps}>
+            {lien === 'mandat' && (
+              <div className={s.champLigne}>
+                <label htmlFor="nd-mandat">Le mandat</label>
+                {mandat ? (
+                  <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
+                    <Ic n={mandat.enLigne ? 'ecran' : 'doc'} t={16} />
+                    <span className={s.resDeux}><b>{mandat.titre}</b><i>{[mandat.numero ? `N° ${mandat.numero}` : '', mandat.sous].filter(Boolean).join(' · ')}</i></span>
+                    <button type="button" className={s.btnLien} onClick={() => setMandat(null)}>Changer</button>
+                  </div>
+                ) : sansMandat ? (
+                  <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
+                    <Ic n="plume" t={16} /><span>Sans mandat : tu saisiras tout</span>
+                    <button type="button" className={s.btnLien} style={{ marginLeft: 'auto' }} onClick={() => setSansMandat(false)}>Changer</button>
+                  </div>
+                ) : (
+                  <>
+                    <input id="nd-mandat" className={s.cherche} placeholder="Un nom, un numéro, une adresse…" value={chercheM}
+                      onChange={e => setChercheM(e.target.value)} autoComplete="off" autoFocus />
+                    {listeM === null ? <div className={s.chAide}>Chargement des mandats…</div> : (
+                      <div className={s.resultats}>
+                        {trouvesM.map(x => (
+                          <button key={x.cle} type="button" className={s.resultat} onClick={() => setMandat(x)}>
+                            <Ic n={x.enLigne ? 'ecran' : 'doc'} t={16} />
+                            <span className={s.resDeux}><b>{x.titre}</b><i>{x.sous || '—'}</i></span>
+                            {x.numero ? <small>{`n° ${x.numero}`}</small> : null}
+                          </button>
+                        ))}
+                        {trouvesM.length === 0 && <div className={s.resultat} style={{ cursor: 'default', color: '#64748b' }}>{listeM.length ? 'Aucun mandat ne correspond.' : 'Aucun mandat signé pour l’instant.'}</div>}
+                        <button type="button" className={s.resultat} onClick={() => setSansMandat(true)}>
+                          <Ic n="plume" t={16} /><span>Aucun mandat : je saisirai tout</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {lien === 'mandat' && mandat?.client_id ? (
+              <div className={s.chAide}>{`Le client est repris du mandat${mandat.client ? ` : ${mandat.client}` : ''}. Le document sera rangé sur sa fiche.`}</div>
+            ) : (lien !== 'mandat' || mandat || sansMandat) && (
             <div className={s.champLigne}>
-              <label htmlFor="nd-client">Le client</label>
+              <label htmlFor="nd-client">{lien === 'mandat' ? 'Le client (pour ranger le document sur sa fiche)' : 'Le client'}</label>
               {client ? (
                 <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
                   <Ic n="personne" t={16} />
@@ -198,6 +242,7 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
                 </>
               )}
             </div>
+            )}
 
             {client && lien === 'recherche' && (
               <div className={s.champLigne}>
@@ -221,27 +266,6 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
                 {recherche?.mandat_date_signature && (!recherche.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10)) && (
                   <div className={s.chAide} style={{ color: '#a16207' }}>{`Cette recherche a déjà un mandat signé${recherche.mandat_date_expiration ? `, valable jusqu’au ${String(recherche.mandat_date_expiration).slice(0, 10).split('-').reverse().join('/')}` : ''}. Le nouveau le remplacera une fois signé.`}</div>
                 )}
-              </div>
-            )}
-
-            {client && lien === 'mandat' && (
-              <div className={s.champLigne}>
-                <label>À partir du mandat</label>
-                {mandats === null ? <div className={s.chAide}>Chargement de ses mandats…</div>
-                  : (
-                    <div className={s.resultats}>
-                      {mandats.map(x => (
-                        <button key={x.id} type="button" className={`${s.resultat} ${source?.id === x.id ? s.resultatOn : ''}`} onClick={() => setSource(x)}>
-                          <Ic n="doc" t={16} />
-                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.titre || 'Mandat'}</span>
-                          <small>{[x.numero ? `n° ${x.numero}` : '', x.statut === 'signe' ? 'signé' : 'pas encore signé'].filter(Boolean).join(' · ')}</small>
-                        </button>
-                      ))}
-                      <button type="button" className={`${s.resultat} ${!source ? s.resultatOn : ''}`} onClick={() => setSource(null)}>
-                        <Ic n="plume" t={16} /><span>{mandats.length ? 'Aucun, je saisirai tout' : 'Aucun mandat finalisé : je saisirai tout'}</span>
-                      </button>
-                    </div>
-                  )}
               </div>
             )}
 
@@ -273,8 +297,8 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         <div className={s.fenPied}>
           {etape === 2 && !modeleId && <button type="button" className={s.btn} disabled={travail} onClick={() => setEtape(1)}>Changer de modèle</button>}
           {etape === 2 && (
-            <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail} onClick={creer}>
-              {travail ? 'Création…' : client ? 'Créer le document' : 'Créer un document vierge'}
+            <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail || (lien === 'mandat' && !mandat && !sansMandat)} onClick={creer}>
+              {travail ? 'Préparation…' : lien === 'mandat' && !mandat && !sansMandat ? 'Choisis un mandat' : lien === 'mandat' && mandat ? `Préparer ${m?.courrier ? 'le courrier' : 'l’avenant'}` : client ? 'Créer le document' : 'Créer un document vierge'}
             </button>
           )}
         </div>

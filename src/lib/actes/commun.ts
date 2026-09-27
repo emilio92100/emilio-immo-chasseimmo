@@ -189,6 +189,12 @@ export type Modele = {
   /* Signé : ce que le document écrit sur sa recherche (le bloc Mandat de la
      fiche client). `jour` : AAAA-MM-JJ. */
   surRecherche?: (d: Donnees, jour: string) => Record<string, unknown>;
+  /* Un avenant déjà signé au même mandat (`precedent`) : ce qu'il a changé
+     devient la situation actuelle de celui qu'on prépare. */
+  enchainer?: (d: Donnees, precedent: Donnees) => Donnees;
+  /* Une fois tout repris (mandat, avenants signés, client, recherche du
+     moment) : ce qui s'en déduit — ce qui a changé, coché d'avance. */
+  preparer?: (d: Donnees) => Donnees;
   /* Un courrier qu'on envoie (pas un contrat qu'on fait signer) : la liste
      dit « À envoyer » et « Envoyé », et la preuve d'envoi remplace
      l'exemplaire signé. */

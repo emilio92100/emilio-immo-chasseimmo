@@ -10,9 +10,10 @@ import { BON_VISITE } from './bon-visite';
 import { OFFRE_ACHAT } from './offre-achat';
 import { MANDAT_RECHERCHE } from './mandat-recherche';
 import { AVENANT_VENTE } from './avenant-vente';
+import { AVENANT_RECHERCHE } from './avenant-recherche';
 import { COURRIER_RECONDUCTION } from './courrier-reconduction';
 
-export const MODELES: Modele[] = [MANDAT_VENTE, AVENANT_VENTE, MANDAT_RECHERCHE, OFFRE_ACHAT, BON_VISITE, COURRIER_RECONDUCTION];
+export const MODELES: Modele[] = [MANDAT_VENTE, AVENANT_VENTE, MANDAT_RECHERCHE, AVENANT_RECHERCHE, OFFRE_ACHAT, BON_VISITE, COURRIER_RECONDUCTION];
 export const modele = (id: string): Modele | null => MODELES.find(m => m.id === id) || null;
 
 /* Les rubriques de la page, dans l'ordre. Le mandat de recherche en ligne

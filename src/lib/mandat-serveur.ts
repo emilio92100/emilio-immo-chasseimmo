@@ -24,6 +24,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { etatMandat, horsMandat, rechercheDepuis, DUREE, type EtatMandat, type Contenu } from './mandat';
+import { contenuApresAvenants } from './actes/avenant-recherche';
 import { alerteMailActive } from './alertes';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
@@ -150,12 +151,21 @@ export async function alerteHorsMandat(sb: SupabaseClient, o: {
   rechercheId: string; clientId: string; avant: Record<string, unknown>; apres: Record<string, unknown>;
 }): Promise<void> {
   const { data: sig, error } = await sb.from('mandats_signatures')
-    .select('numero, signe_le, contenu').eq('recherche_id', o.rechercheId).eq('statut', 'signe')
+    .select('numero, signe_le, contenu').eq('recherche_id', o.rechercheId).in('statut', ['signe', 'partiel'])
     .order('signe_le', { ascending: false }).limit(1).maybeSingle();
   if (error || !sig?.contenu || !sig.signe_le) return;
-  if (Date.parse(sig.signe_le) + DUREE.total * 86_400_000 < Date.now()) return;
-  const contenu = sig.contenu as Contenu;
-  if (!contenu.recherche) return;
+  /* Les avenants signés à ce mandat déplacent ses limites (et sa fin). La
+     table documents peut manquer : on compare alors au mandat seul. */
+  const { data: avs } = await sb.from('documents').select('donnees')
+    .eq('recherche_id', o.rechercheId).eq('modele', 'avenant_recherche').eq('statut', 'signe');
+  const avenants = (avs || []).map(a => (a.donnees || {}) as Record<string, unknown>);
+  const finAvenant = avenants
+    .filter(a => Array.isArray(a.objets) && (a.objets as unknown[]).includes('duree') && typeof a.finNouvelle === 'string')
+    .map(a => Date.parse(`${a.finNouvelle}T23:59:59Z`)).filter(Number.isFinite);
+  const fin = Math.max(Date.parse(sig.signe_le) + DUREE.total * 86_400_000, ...finAvenant);
+  if (fin < Date.now()) return;
+  if (!(sig.contenu as Contenu).recherche) return;
+  const contenu = contenuApresAvenants(sig.contenu as Contenu, avenants);
   const avant = horsMandat(contenu, rechercheDepuis(o.avant));
   const neufs = horsMandat(contenu, rechercheDepuis(o.apres)).filter(e => !avant.includes(e));
   if (!neufs.length) return;
@@ -177,7 +187,7 @@ export async function alerteHorsMandat(sb: SupabaseClient, o: {
   const { error: eR } = await sb.from('relances').insert({
     client_id: o.clientId, recherche_id: o.rechercheId,
     type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
-    note: `À rappeler : sa recherche dépasse son mandat n° ${sig.numero} (${neufs.join(' · ')}). Voir s'il faut un nouveau mandat.`.slice(0, 600),
+    note: `À rappeler : sa recherche dépasse son mandat n° ${sig.numero} (${neufs.join(' · ')}). Voir s'il faut un avenant.`.slice(0, 600),
   });
   if (eR) console.error('[mandat] alerte hors mandat, relance', eR.message);
   /* Coupé dans Paramètres → Alertes mail : la relance du jour suffit. */
@@ -185,10 +195,10 @@ export async function alerteHorsMandat(sb: SupabaseClient, o: {
   const eM = await envoyerMail({
     a: ALERTES(), deLaPartDe: 'crm',
     sujet: `⚠️ ${nom} : sa recherche dépasse son mandat (n° ${sig.numero})`,
-    texte: `${nom} vient de modifier ses critères depuis son espace. Son mandat n° ${sig.numero}, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :\n${quoi}\n\nAppelle-le : s'il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.\n\n${lienCrm}`,
+    texte: `${nom} vient de modifier ses critères depuis son espace. Son mandat n° ${sig.numero}, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :\n${quoi}\n\nAppelle-le : s'il vise vraiment plus haut ou ailleurs, prépare-lui un avenant depuis sa fiche (Mandat de recherche › Préparer l'avenant) : ce qui a changé y est déjà coché.\n\n${lienCrm}`,
     html: gabarit(`${nom} : sa recherche dépasse son mandat`, `<p><b>${echappe(nom)}</b> vient de modifier ses critères depuis son espace. Son mandat <b>n° ${echappe(String(sig.numero))}</b>, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :</p>
       ${neufs.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
-      <p>Appelle-le : s’il vise vraiment plus haut ou ailleurs, il lui faudra un nouveau mandat.</p>
+      <p>Appelle-le : s’il vise vraiment plus haut ou ailleurs, prépare-lui un avenant depuis sa fiche (Mandat de recherche › Préparer l’avenant) : ce qui a changé y est déjà coché.</p>
       <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
   });
   if (eM) console.error('[mandat] alerte hors mandat, mail', eM);

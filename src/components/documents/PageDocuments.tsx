@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
@@ -8,7 +8,7 @@ import { Croix, Ic } from './ApercuActe';
 import EditeurDocument from './EditeurDocument';
 import NouveauDocument from './NouveauDocument';
 import {
-  apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, nomFichier, quand, retirerFichiers, tableAbsente,
+  apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
 } from './outils';
 import s from './Documents.module.css';
@@ -49,8 +49,8 @@ function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
   const nom = [x.mandant?.prenom, x.mandant?.nom].filter(Boolean).join(' ') || (x.client_id ? noms[x.client_id] : '') || 'Client';
   return {
     cle: 'r-' + x.id, categorie: 'mandats_recherche',
-    statut: x.retracte_le ? 'annule' : x.statut === 'signe' ? 'signe' : 'pret',
-    titre: `Mandat de recherche · ${nom}`, sous: [x.numero ? `N° ${x.numero}` : '', 'signé en ligne'].filter(Boolean).join(' · '),
+    statut: x.retracte_le ? 'annule' : x.statut === 'signe' || x.statut === 'partiel' ? 'signe' : 'pret',
+    titre: `Mandat de recherche · ${nom}`, sous: [x.numero ? `N° ${x.numero}` : '', 'signé en ligne', x.statut === 'partiel' ? 'une signature attendue' : ''].filter(Boolean).join(' · '),
     badge: 'En ligne', date: x.retracte_le || x.signe_le || x.created_at, mandat: x,
   };
 }
@@ -127,9 +127,11 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
             <h3>{courrier ? (dejaSigne ? 'Déposer la preuve d’envoi' : 'Le courrier est envoyé') : dejaSigne ? 'Déposer l’exemplaire signé' : 'Le document est signé'}</h3>
             <p>{courrier
               ? 'Garde la preuve de l’envoi avec le courrier : l’accusé du recommandé, ou une capture de l’e-mail envoyé. Elle est facultative, mais c’est elle qui prouve que le client a été prévenu à temps.'
-              : m?.surRecherche && doc.recherche_id
+              : m?.surRecherche && m.numero && doc.recherche_id
                 ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. Le bloc Mandat de sa recherche se remplit tout seul : son espace ne lui proposera plus de signer en ligne.'
-                : 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde : il reste ici, rangé avec le document.'}</p>
+                : m?.surRecherche && doc.recherche_id
+                  ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. S’il change la fin du mandat ou les honoraires, sa recherche se met à jour toute seule.'
+                  : 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde : il reste ici, rangé avec le document.'}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
         </div>
@@ -168,8 +170,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   onSupprime: (id: string) => void;
   onDupliquer: (d: DocumentRow) => void;
   onFiche: (clientId: string) => void;
-  /* Préparer un document à partir de celui-ci (avenant, courrier). */
-  onDeriver: (src: DocumentRow, modeleId: string, o?: { echeance?: string }) => void;
+  /* Préparer un document à partir d'un mandat (avenant, courrier) : « d-<id> »
+     pour un document, « r-<id> » pour un mandat signé en ligne. */
+  onDeriver: (cle: string, modeleId: string, o?: { echeance?: string }) => void;
 }) {
   const [travail, setTravail] = useState('');
   const [erreur, setErreur] = useState('');
@@ -279,8 +282,13 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                 ? <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, undefined)}><Ic n="doc" t={16} /><span>{courrier ? 'La preuve d’envoi' : 'L’exemplaire signé'}</span></button>
                 : <button type="button" className={`${s.btn} ${courrier ? '' : s.btnOr}`} onClick={() => setSigne(true)}><Ic n="doc" t={16} /><span>{courrier ? 'Déposer la preuve d’envoi' : 'Déposer l’exemplaire signé'}</span><small>pas encore déposé{courrier ? 'e' : ''}</small></button>)}
               {d.statut === 'signe' && d.modele === 'mandat_vente' && (
-                <button type="button" className={s.btn} onClick={() => onDeriver(d, 'avenant_vente')}>
+                <button type="button" className={s.btn} onClick={() => onDeriver('d-' + d.id, 'avenant_vente')}>
                   <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>prix, honoraires, durée</small>
+                </button>
+              )}
+              {d.statut === 'signe' && d.modele === 'mandat_recherche' && (
+                <button type="button" className={s.btn} onClick={() => onDeriver('d-' + d.id, 'avenant_recherche')}>
+                  <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>budget, recherche, durée</small>
                 </button>
               )}
               {(d.statut === 'signe' || d.statut === 'annule') && d.pdf_chemin && (
@@ -299,7 +307,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                 <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!!travail}
                   onClick={() => changer({ statut: 'annule', annule_le: new Date().toISOString() },
                     d.statut === 'signe'
-                      ? `Marquer ce document comme annulé (rétractation, fin du mandat…) ?\n\nIl reste dans la liste, avec ses fichiers.${m?.surRecherche && d.recherche_id ? '\n\nLe bloc Mandat de sa recherche sera vidé.' : ''}`
+                      ? `Marquer ce document comme annulé (rétractation, fin du mandat…) ?\n\nIl reste dans la liste, avec ses fichiers.${m?.surRecherche && m.numero && d.recherche_id ? '\n\nLe bloc Mandat de sa recherche sera vidé.' : ''}`
                       : 'Annuler ce document ?\n\nIl reste dans la liste, avec son PDF, marqué « Annulé ».')}>
                   <Croix t={15} /><span>{d.statut === 'signe' ? 'Marquer annulé' : 'Annuler le document'}</span>
                 </button>
@@ -312,6 +320,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
               {x.pdf_chemin && x.statut === 'signe' && (
                 <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(x.pdf_chemin, undefined, true)}>
                   <Ic n="doc" t={16} /><span>Le mandat signé</span>
+                </button>
+              )}
+              {(x.statut === 'signe' || x.statut === 'partiel') && !x.retracte_le && (
+                <button type="button" className={s.btn} onClick={() => onDeriver('r-' + x.id, 'avenant_recherche')}>
+                  <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>budget, recherche, durée</small>
                 </button>
               )}
               <div className={s.note}>Le mandat de recherche se prépare et se fait signer depuis la fiche du client (bloc Mandat) : il se signe en ligne, dans son espace.</div>
@@ -344,7 +357,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                       {maintenant && <i className={s.echeanceMaintenant}>C’est maintenant : envoie-lui le courrier ou l’e-mail.</i>}
                       {rate && !lettre && <i className={s.echeanceRatee}>Délai passé : sans ce courrier, le client pourra arrêter le mandat à tout moment après l’échéance.</i>}
                       {lettre && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onEditer(lettre)}>{`Courrier : ${libStatut(lettre.statut, true).toLowerCase()}${lettre.signe_le ? ` le ${jourLong(lettre.signe_le.slice(0, 10))}` : ''} · l’ouvrir`}</button>}
-                      {aPreparer && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onDeriver(d!, 'courrier_reconduction', { echeance: e.le })}>Préparer le courrier</button>}
+                      {aPreparer && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onDeriver('d-' + d!.id, 'courrier_reconduction', { echeance: e.le })}>Préparer le courrier</button>}
                     </span>
                   </div>
                 );
@@ -375,7 +388,14 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   );
 }
 
-export default function PageDocuments({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+/* Ce que la page doit faire en s'ouvrant, venue d'un autre écran. */
+export type IntentionDocuments = { avenantRecherche?: string };
+
+export default function PageDocuments({ onNavigate, intention, onIntention }: {
+  onNavigate: (page: string, data?: unknown) => void;
+  intention?: IntentionDocuments | null;
+  onIntention?: () => void;
+}) {
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [mandats, setMandats] = useState<MandatRecherche[]>([]);
   const [noms, setNoms] = useState<Record<string, string>>({});
@@ -411,7 +431,7 @@ export default function PageDocuments({ onNavigate }: { onNavigate: (page: strin
 
   const items = useMemo<Item[]>(() => [
     ...(docs || []).map(itemDoc),
-    ...mandats.filter(x => x.statut === 'signe' || x.retracte_le || x.statut === 'en_cours').map(x => itemMandat(x, noms)),
+    ...mandats.filter(x => x.statut === 'signe' || x.statut === 'partiel' || x.retracte_le || x.statut === 'en_cours').map(x => itemMandat(x, noms)),
   ].sort((p, q) => q.date.localeCompare(p.date)), [docs, mandats, noms]);
 
   const q = cherche.trim().toLowerCase();
@@ -440,17 +460,15 @@ export default function PageDocuments({ onNavigate }: { onNavigate: (page: strin
     setEdition(data as DocumentRow);
   }
 
-  /* Un avenant ou un courrier, à partir d'un mandat : repris, créé en
+  /* Un avenant ou un courrier, à partir d'un mandat (« d-<id> » : un
+     document ; « r-<id> » : un mandat signé en ligne) : repris, créé en
      brouillon, ouvert. */
-  async function deriver(src: DocumentRow, modeleId: string, o: { echeance?: string } = {}) {
+  const deriver = useCallback(async (cle: string, modeleId: string, o: { echeance?: string } = {}) => {
     const m = modele(modeleId);
     if (!m?.deriver) return;
     try {
-      const identite = await identiteDuJour();
-      const donnees = {
-        ...m.defaut({ identite, client: null, bien: null, visite: null }),
-        ...m.deriver.fn({ id: src.id, modele: src.modele, donnees: src.donnees, numero: src.numero, signe_le: src.signe_le, finalise_le: src.finalise_le }, identite, o),
-      };
+      const [identite, src] = await Promise.all([identiteDuJour(), mandatDepuis(cle)]);
+      const donnees = await preparerDepuis(m, src, identite, o);
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
         client_id: src.client_id, bien_id: src.bien_id, recherche_id: src.recherche_id,
@@ -462,7 +480,42 @@ export default function PageDocuments({ onNavigate }: { onNavigate: (page: strin
     } catch (e) {
       alert('Le document n’a pas pu être préparé.\n\n' + (e as Error).message);
     }
-  }
+  }, [majDoc]);
+
+  /* Venu d'ailleurs (la fiche client : « Préparer un avenant ») : le mandat
+     signé de cette recherche, en ligne d'abord, sinon sur papier. */
+  const faite = useRef('');
+  useEffect(() => {
+    const rid = intention?.avenantRecherche;
+    if (!rid || faite.current === rid) return;
+    faite.current = rid;
+    (async () => {
+      /* Un avenant déjà en route pour cette recherche : on l'ouvre, plutôt
+         que d'en préparer un second. */
+      const enCours = await supabase.from('documents').select('*').eq('recherche_id', rid).eq('modele', 'avenant_recherche')
+        .in('statut', ['brouillon', 'pret']).order('created_at', { ascending: false }).limit(1);
+      const deja = !enCours.error && enCours.data?.length ? (enCours.data[0] as DocumentRow) : null;
+      if (deja) {
+        onIntention?.();
+        majDoc(deja);
+        if (deja.statut === 'brouillon') setEdition(deja); else setOuvert(deja.id);
+        return;
+      }
+      const [a, b] = await Promise.all([
+        supabase.from('mandats_signatures').select('id').eq('recherche_id', rid).in('statut', ['signe', 'partiel'])
+          .order('signe_le', { ascending: false }).limit(1),
+        supabase.from('documents').select('id').eq('recherche_id', rid).eq('modele', 'mandat_recherche').eq('statut', 'signe')
+          .order('signe_le', { ascending: false }).limit(1),
+      ]);
+      const cle = a.data?.length ? 'r-' + a.data[0].id : b.data?.length ? 'd-' + b.data[0].id : '';
+      onIntention?.();
+      /* Pas de mandat signé dans le CRM (saisi à la main, signé ailleurs) :
+         la fenêtre « Nouveau document » s'ouvre sur l'avenant, pour le
+         retrouver ou tout saisir. */
+      if (!cle) { setNouveau({ modele: 'avenant_recherche' }); return; }
+      await deriver(cle, 'avenant_recherche');
+    })();
+  }, [intention, onIntention, deriver, majDoc]);
 
   async function ficheClient(id: string) {
     const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
@@ -517,7 +570,7 @@ export default function PageDocuments({ onNavigate }: { onNavigate: (page: strin
               <span className={s.modeleIc}><Ic n="loupe" t={20} /></span>
               <div>
                 <b>Mandat de recherche en ligne</b>
-                <p>Simple, une seule personne : il se prépare depuis la fiche du client et se signe dans son espace. Les mandats signés apparaissent ici.</p>
+                <p>Simple : il se prépare depuis la fiche du client et se signe dans son espace, seul, à plusieurs ou pour une société. Les mandats signés apparaissent ici, et leurs avenants se préparent d’ici ou depuis la fiche.</p>
                 <small className={s.modeleNote}>Depuis la fiche client, signé en ligne</small>
               </div>
             </div>

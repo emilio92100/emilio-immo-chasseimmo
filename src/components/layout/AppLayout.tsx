@@ -12,7 +12,7 @@ import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
 import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
-import PageDocuments from '@/components/documents/PageDocuments';
+import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
 import RappelCarte from '@/components/layout/RappelCarte';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
@@ -54,6 +54,7 @@ export default function AppLayout() {
   const [sens, setSens] = useState<'avant' | 'arriere'>('avant');
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
   const [chargeFiche, setChargeFiche] = useState(false);
+  const [intention, setIntention] = useState<IntentionDocuments | null>(null);
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
@@ -137,6 +138,9 @@ export default function AppLayout() {
 
   const handleNavigate = useCallback((page: string, data?: unknown) => {
     setMenuOuvert(false);
+    /* Documents peut s'ouvrir avec une tâche (« Préparer un avenant »
+       depuis la fiche d'un client). */
+    setIntention(page === 'documents' && data && typeof data === 'object' ? (data as IntentionDocuments) : null);
     /* Entrer dans une fiche pousse l'écran vers le haut, en sortir le fait
        redescendre : le mouvement dit d'où l'on vient. */
     setSens(page === 'fiche' ? 'avant' : 'arriere');
@@ -185,7 +189,7 @@ export default function AppLayout() {
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
-      case 'documents':  return <PageDocuments onNavigate={handleNavigate} />;
+      case 'documents':  return <PageDocuments onNavigate={handleNavigate} intention={intention} onIntention={() => setIntention(null)} />;
       case 'mail':       return <PageMail onNavigate={handleNavigate} />;
       case 'activite':   return <PageActivite />;
       case 'parametres': return <PageParametres />;

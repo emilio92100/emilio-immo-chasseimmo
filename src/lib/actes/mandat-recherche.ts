@@ -66,7 +66,7 @@ const RYTHMES: Record<string, string> = {
   mois: 'chaque mois',
 };
 
-const TYPES_BIEN: { v: string; l: string; ic: string }[] = [
+export const TYPES_BIEN: { v: string; l: string; ic: string }[] = [
   { v: 'appartement', l: 'Appartement', ic: 'immeuble' },
   { v: 'maison', l: 'Maison', ic: 'maison' },
   { v: 'terrain', l: 'Terrain', ic: 'terrain' },
@@ -565,7 +565,7 @@ function manques(d: Donnees): string[] {
 }
 
 /* Les types de la fiche (« Appartement, Maison ») vers les cases. */
-function typesDepuis(t: unknown): { types: string[]; autre: string } {
+export function typesDepuis(t: unknown): { types: string[]; autre: string } {
   const types: string[] = [], autres: string[] = [];
   for (const x of String(t || '').split(',').map(s => s.trim()).filter(Boolean)) {
     const v = /appart|studio|duplex|loft/i.test(x) ? 'appartement' : /maison|villa|pavillon/i.test(x) ? 'maison' : /terrain/i.test(x) ? 'terrain' : '';

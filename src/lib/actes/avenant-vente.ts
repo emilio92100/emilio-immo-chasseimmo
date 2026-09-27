@@ -350,6 +350,22 @@ function deriver(src: Source): Donnees {
   };
 }
 
+/* Un avenant déjà signé à ce mandat : son prix, ses honoraires, sa date de
+   fin deviennent la situation actuelle du suivant. */
+function enchainer(d: Donnees, a: Donnees): Donnees {
+  const x: Donnees = { ...d };
+  const ch = (k: string) => liste(a, 'objets').includes(k);
+  if (ch('prix') && num(a, 'nouveauPrix')) x.prix = num(a, 'nouveauPrix');
+  if (ch('honoraires')) {
+    x.charge = a.charge2; x.honoMode = a.honoMode2; x.taux = a.taux2; x.forfait = a.forfait2;
+    x.charge2 = a.charge2; x.honoMode2 = a.honoMode2; x.taux2 = a.taux2; x.forfait2 = a.forfait2;
+  }
+  if (ch('duree') && txt(a, 'finNouvelle')) { x.finActuelle = txt(a, 'finNouvelle'); x.finNouvelle = plusMois(txt(a, 'finNouvelle'), 3); }
+  if (ch('bien')) { x.description = a.description; x.lots = a.lots; x.tantiemesBase = a.tantiemesBase; }
+  if (ch('engagements')) { x.actions = a.actions; x.rythme = a.rythme; }
+  return x;
+}
+
 export const AVENANT_VENTE: Modele = {
   id: 'avenant_vente',
   categorie: 'mandats_vente',
@@ -377,4 +393,5 @@ export const AVENANT_VENTE: Modele = {
   reperes,
   lien: 'mandat',
   deriver: { de: ['mandat_vente'], fn: deriver },
+  enchainer,
 };

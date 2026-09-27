@@ -361,7 +361,8 @@ chaque reconduction). Pastille bleue dans le menu = documents « À faire signer
   reconduction L215-1** (`courrier: true` : « À envoyer » / « Envoyé », format lettre sans page de
   garde). Un mandat qui se poursuit par périodes reproduit en annexe les articles L215-1 à L215-3
   et L241-3 (obligatoire : article L215-4). Les clauses de l'article 78 (exclusivité, clause de
-  suite, clause pénale) sont en CAPITALES.
+  suite, clause pénale) sont en CAPITALES. Puis l'**avenant au mandat de recherche** (V3.10), qui
+  part d'un mandat signé en ligne ou sur papier et coche d'avance ce que la recherche a changé.
 
 ### La fiche bien publique — `/bien/<id>`
 
@@ -1089,3 +1090,57 @@ du pied des pages du mandat (on refait le mandat avec le bon compte).
 **Vérifié** : texte et PDF du signataire seul identiques octet pour octet ; 45 contrôles de bout en
 bout sur un Supabase en mémoire (seul sans le SQL, à deux, corrections, relances, déclin,
 clôture, société, renonciation, compteur de codes) ; captures 390 et 1280 de chaque écran.
+
+**Ajouté le 27 septembre** : le rappel des 7 jours devient « Dernier rappel » (sujet et texte
+différents, avec le nombre de jours qui restent avant que le lien ne marche plus).
+
+### V3.10 — 27 septembre 2026 · l'avenant au mandat de recherche
+
+**Un modèle de plus dans Documents** (`src/lib/actes/avenant-recherche.ts`). Il modifie un mandat
+de recherche signé, **en ligne ou sur papier** : prix maximum, bien recherché (types, pièces,
+chambres, surface, critères), secteurs, honoraires (taux ou forfait, jamais au-dessus du
+barème), durée (prolongation avant le terme), et une **clause particulière en texte libre**. Le
+reste du mandat est inchangé, l'avenant se rattache au numéro du registre du mandat.
+
+**D'où partent ses réponses** (`preparerDepuis`, dans `components/documents/outils.ts`) : le
+modèle vierge avec le client et la **recherche du moment** (le « nouveau »), ce que le **mandat**
+dit (l'« actuel » ; un mandat en ligne est lu dans `mandats_signatures` et ses co-signataires par
+`donneesMandatEnLigne`), puis ce que les **avenants déjà signés** à ce mandat y ont changé
+(`Modele.enchainer`, aussi écrit pour l'avenant de vente), enfin `Modele.preparer` : ce qui
+diffère entre l'actuel et le nouveau est **coché d'avance** (le client a monté son budget,
+ajouté Issy : prix et secteurs sont cochés). L'avenant prend le numéro suivant de ceux déjà faits
+à ce mandat (hors annulés), filtré sur `donnees->>mandatNumero`.
+
+**Trois portes** : la fiche client (fenêtre « Mandat de recherche » : « Préparer un avenant »
+sur le mandat signé, en ligne ou hors ligne, et « Préparer l'avenant » dans l'encadré « Sa
+recherche dépasse son mandat signé » ; s'il y en a déjà un en route, « Ouvrir l'avenant en
+cours ») — elle ouvre Documents avec une intention (`IntentionDocuments`, passée par
+`AppLayout`) ; le panneau d'un mandat dans Documents (en ligne ou papier) ; et « Nouveau
+document › Avenant… » qui demande **d'abord le mandat** (`mandatsPour` : tous les mandats,
+cherchés par nom, numéro, adresse ; le client vient avec) — vaut aussi pour l'avenant de vente et
+le courrier de reconduction. « Aucun mandat : je saisirai tout » reste possible.
+
+**Signé** (papier, « Il est signé ») : `surRecherche` met à jour la fin du mandat et ses
+honoraires sur la recherche s'ils changent (jamais le numéro ni la date ; l'annuler ne vide rien).
+Les limites du mandat en ligne tiennent compte des avenants signés (`contenuApresAvenants`) :
+l'encadré « dépasse » de la fiche et le mail d'alerte (`alerteHorsMandat`, qui propose désormais
+un avenant plutôt qu'un nouveau mandat) ne sonnent plus pour ce qu'un avenant a déjà couvert.
+
+**Relu par un second agent** : assiette des honoraires reprise du mandat (« du prix d'achat »
+en ligne), nom « non exclusif » pour le mandat en ligne, extension aux critères qui évoluent
+rappelée après la nouvelle description, indemnités égales aux honoraires recalculées et
+exclusivité prolongée (en capitales, mandat papier), rétractation comptée depuis la dernière
+signature et qui met fin à l'avenant pour tous, droit de rétractation conservé même avec
+application immédiate. Contrôles ajoutés : mandat pas encore signé, mandat en ligne encore en
+attente d'un co-signataire, mandat en ligne « exclusif », avenant daté avant le mandat,
+prolongation qui ne s'appliquerait qu'après la fin du mandat, clause libre qui parle
+d'exclusivité ou de prolongation. **À faire relire par l'avocat** avec le reste.
+
+**Chantier suivant, décidé avec Alexandre** : chaque document au choix **à la main** (imprimé,
+« mots rayés nuls » comme aujourd'hui), **en ligne** (un lien par signataire, code par e-mail,
+signature au doigt, PDF scellé et certificat, relances) ou **sur place** (sur l'ordinateur ou la
+tablette d'Alexandre, chaque signataire à son tour avec son code reçu sur son propre e-mail,
+grand cadre de signature, puis une timeline de finalisation d'une quinzaine de secondes dont
+chaque étape est réelle). Pour le mandat de vente, les avenants, le mandat de recherche papier,
+l'offre d'achat ; le bon de visite sur place, au doigt pendant la visite. Les vendeurs signent
+par lien (l'espace vendeur viendra plus tard).
