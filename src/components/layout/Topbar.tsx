@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
+import { estAcheteur, typeDe, typesDe } from '@/lib/contacts';
 
 /* Minuscules, sans accents ni ponctuation : « Rue de l'Église » → « rue de l eglise ». */
 function sansAccent(t: string) {
@@ -119,7 +120,9 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     if (index.current && Date.now() - index.current.le < 120_000) return;
     if (chargement.current) return chargement.current;
     chargement.current = (async () => {
-      const c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
+      /* Avec les types de contact (V3.14) ; avant leur SQL, sans eux. */
+      let c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro');
+      if (c.error) c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
       if (c.error) { chargement.current = null; return; }
       index.current = { le: Date.now(), clients: c.data || [] };
       chargement.current = null;
@@ -179,7 +182,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
         <input
           type="text"
           enterKeyHint="search"
-          placeholder="Rechercher un client, référence EMI..."
+          placeholder="Rechercher un contact, référence EMI..."
           className={styles.searchInput}
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -197,7 +200,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
               <div className={styles.searchEmpty}>Aucun résultat pour « {query} »</div>
             ) : (
               <>
-                {lesClients.length > 0 && <div className={styles.searchSection}>Clients</div>}
+                {lesClients.length > 0 && <div className={styles.searchSection}>Contacts</div>}
                 {lesClients.map(({ c, raison }) => (
                   <div key={c.id} className={styles.searchItem} onClick={() => selectClient(c)}>
                     <div className={styles.searchAv}>{(c.prenom || '?')[0]}{(c.nom || '?')[0]}</div>
@@ -208,9 +211,16 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                           propre ligne, pour qu'une adresse se lise en entier. */}
                       {raison && <div className={styles.searchRaison}>{raison}</div>}
                     </div>
-                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${statutColor[c.statut]}15`, color: statutColor[c.statut], fontWeight: 600, border: `1px solid ${statutColor[c.statut]}30` }}>
-                      {c.statut === 'prospect' ? '🟣' : c.statut === 'actif' ? '🟢' : c.statut === 'suspendu' ? '⏸️' : c.statut === 'bien_trouve' ? '✅' : '🔴'} {c.statut}
-                    </span>
+                    {estAcheteur(c) ? (
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${statutColor[c.statut]}15`, color: statutColor[c.statut], fontWeight: 600, border: `1px solid ${statutColor[c.statut]}30` }}>
+                        {c.statut === 'prospect' ? '🟣' : c.statut === 'actif' ? '🟢' : c.statut === 'suspendu' ? '⏸️' : c.statut === 'bien_trouve' ? '✅' : '🔴'} {c.statut}
+                      </span>
+                    ) : (
+                      /* Un vendeur, un notaire… : son type, pas un statut d'acheteur. */
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: typeDe(typesDe(c)[0]).fond, color: typeDe(typesDe(c)[0]).c, fontWeight: 700 }}>
+                        {typeDe(typesDe(c)[0]).lib}
+                      </span>
+                    )}
                   </div>
                 ))}
               </>
@@ -236,7 +246,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
       {/* Le bouton créait un client… en affichant la liste des clients. Il
           ouvre maintenant le formulaire, depuis n'importe quel écran. */}
       <button className={`${styles.btn} ${styles.btnDark} ${styles.btnBureau}`}
-        onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}>+ Nouveau client</button>
+        onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}>+ Nouveau contact</button>
     </header>
   );
 }

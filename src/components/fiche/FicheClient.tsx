@@ -19,6 +19,7 @@ import {
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
+import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -2545,8 +2546,8 @@ Emilio Immobilier
 
       <div className={styles.pageHeader}>
         <div className={styles.fil} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className={styles.backBtn} onClick={onBack} aria-label="Retour aux clients">
-            <span className={styles.surBureau}>← Clients</span>
+          <button className={styles.backBtn} onClick={onBack} aria-label="Retour aux contacts">
+            <span className={styles.surBureau}>← Contacts</span>
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
           <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
@@ -2722,6 +2723,8 @@ Emilio Immobilier
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
+                      {/* Ses types de contact : acheteur, et peut-être vendeur, propriétaire… */}
+                      <TypesEnLigne client={client} sombre onMaj={t => { if (!t.includes('acheteur')) onNavigate('fiche', { ...client, types: t }); }} />
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
                         {client.reference} · suivi depuis {jours}{' '}jours
                       </span>
@@ -2793,6 +2796,8 @@ Emilio Immobilier
         );
       })()}
       <div className={styles.contentWrap}>
+        {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
+        <div style={{ marginBottom: 16 }} className="fc-biens-vente"><BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} /></div>
         {/* LE LIEN DE L'ESPACE CLIENT, tout en haut */}
         {rechercheActive && (
           <div style={{ marginBottom: 16 }}>

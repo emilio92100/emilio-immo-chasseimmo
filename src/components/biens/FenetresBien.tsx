@@ -151,9 +151,9 @@ const DEPARTS: { k: EtapeVente; ic: string; t: string; s: string }[] = [
   { k: 'estimation', ic: 'regle', t: 'Une estimation', s: 'Le rendez-vous est pris ou fait : le bien en détail, la fourchette, l’avis de valeur. Pas encore de mandat.' },
   { k: 'mandat', ic: 'plume', t: 'Un mandat signé', s: 'Il est en vente : tout, jusqu’à l’annonce et la visite.' },
 ];
-export function FenNouveau({ occupe, erreur, onFermer, onChoisir }: { occupe: boolean; erreur: string; onFermer: () => void; onChoisir: (e: EtapeVente) => void }) {
+export function FenNouveau({ occupe, erreur, pour, onFermer, onChoisir }: { occupe: boolean; erreur: string; pour?: string; onFermer: () => void; onChoisir: (e: EtapeVente) => void }) {
   return (
-    <Fenetre titre="Nouveau bien : où en est-il ?" sous="Le formulaire ne pose que les questions utiles à cette étape. Les autres arrivent quand le bien avance." occupe={occupe} onFermer={onFermer}
+    <Fenetre sur={pour ? `Le bien de ${pour}` : undefined} titre="Nouveau bien : où en est-il ?" sous="Le formulaire ne pose que les questions utiles à cette étape. Les autres arrivent quand le bien avance." occupe={occupe} onFermer={onFermer}
       pied={<button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>}>
       <div className={b.departs}>
         {DEPARTS.map(x => (

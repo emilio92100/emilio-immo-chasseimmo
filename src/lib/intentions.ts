@@ -116,3 +116,20 @@ export function filtreDuSuivi(type?: string | null): NonNullable<OuvertureFiche[
   if (type === 'email_libre' || type === 'envoi_externe') return 'communications';
   return 'tout';
 }
+
+/* « Créer son bien » depuis la fiche d'un contact vendeur ou propriétaire :
+   la rubrique Biens s'ouvre sur « Nouveau bien », le propriétaire déjà relié.
+   Rangé dans la session le temps de changer d'écran, consommé une fois. */
+const CLE_BIEN = 'emi-nouveau-bien';
+
+export function demanderNouveauBien(clientId: string) {
+  try { window.sessionStorage.setItem(CLE_BIEN, clientId); } catch { /* la rubrique s'ouvrira sans propriétaire choisi */ }
+}
+
+export function prendreNouveauBien(): string | null {
+  try {
+    const id = window.sessionStorage.getItem(CLE_BIEN);
+    if (id) window.sessionStorage.removeItem(CLE_BIEN);
+    return id;
+  } catch { return null; }
+}

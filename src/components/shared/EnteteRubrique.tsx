@@ -35,7 +35,8 @@ export default function EnteteRubrique({
   recherche?: { valeur: string; onChange: (v: string) => void; placeholder: string; label: string };
   bouton?: { lib: string; onClick: () => void };
   tuiles: Tuile[];
-  actif: string;
+  /* Une tuile allumée, ou plusieurs quand elles se cumulent (Contacts). */
+  actif: string | string[];
   onChoisir: (cle: string) => void;
   label: string;
 }) {
@@ -70,7 +71,7 @@ export default function EnteteRubrique({
 
       {tuiles.length > 0 && <div className={styles.rangee} role="group" aria-label={label}>
         {tuiles.map(t => {
-          const on = t.cle === actif;
+          const on = Array.isArray(actif) ? actif.includes(t.cle) : t.cle === actif;
           const vide = t.n === 0 && !on;
           const alerte = !!t.alerte && t.n > 0 && !on;
           return (

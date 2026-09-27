@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
-import { signalerMaj } from '@/lib/intentions';
+import { prendreNouveauBien, signalerMaj } from '@/lib/intentions';
 import { EN_COURS, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -10,7 +10,7 @@ import CarteBien, { honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenNouveau } from './FenetresBien';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, nomClient, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, donneesProprio, marquerVendeur, nomClient, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -48,6 +48,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [cree, setCree] = useState(false);
   const [choixDepart, setChoixDepart] = useState(false);
   const [erreurDepart, setErreurDepart] = useState('');
+  /* « Créer son bien » depuis la fiche d'un contact : le propriétaire est déjà choisi. */
+  const [pour, setPour] = useState<string | null>(null);
 
   const charger = useCallback(async () => {
     try {
@@ -68,6 +70,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         /* Un lien vers un bien qui n'existe plus : on reste sur la liste. */
         const id = lireBienUrl();
         if (id && !l.biens.some(x => x.id === id)) { ecrireBienUrl(null); setOuvert(null); } else setOuvert(id);
+        const proprio = prendreNouveauBien();
+        if (proprio) { setPour(proprio); setChoixDepart(true); }
       })
       .catch(e => { if (vivant) { setErreur((e as Error).message); setListe({ biens: [], suivi: [], copies: [], visites: [], clients: {}, recherches: [] }); } });
     const retour = () => setOuvert(lireBienUrl());
@@ -89,9 +93,11 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     if (!liste) return;
     setCree(true); setErreurDepart('');
     try {
-      const r = await creerBien(liste.biens.map(x => x.reference), etape);
+      const c = pour ? liste.clients[pour] : null;
+      const r = await creerBien(liste.biens.map(x => x.reference), etape, c ? donneesProprio(c) : {});
+      if (c) void marquerVendeur(c.id);
       majBien(r);
-      setChoixDepart(false);
+      setChoixDepart(false); setPour(null);
       setEdition({ bien: r, nouveau: true });
     } catch (e) { setErreurDepart((e as Error).message); }
     setCree(false);
@@ -169,7 +175,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     <div className={s.page}>
       <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase}
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
-        bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setChoixDepart(true); } }}
+        bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
         label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
         tuiles={biens.length === 0 ? [] : [
           { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length },
@@ -202,7 +208,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         </div>
       ))}
       {editeur}
-      {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} onFermer={() => { if (!cree) setChoixDepart(false); }} onChoisir={e => { void nouveau(e); }} />}
+      {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} pour={pour && liste?.clients[pour] ? nomClient(liste.clients[pour]) : ''}
+        onFermer={() => { if (!cree) { setChoixDepart(false); setPour(null); } }} onChoisir={e => { void nouveau(e); }} />}
     </div>
   );
 }

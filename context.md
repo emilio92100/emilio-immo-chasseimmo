@@ -116,6 +116,14 @@ Identité et contact : `reference`, `prenom`, `nom`, `adresse`, `emails[]`, `tel
 (`Clients.tsx`), rattrapé à l'ouverture de la fiche s'il manque (`FicheClient.tsx`). Index unique
 partiel. C'est **ce** jeton qu'on envoie, jamais celui d'une recherche — voir §2 `recherches` et
 `AGENTS.md` §3.3.
+**Types de contact (V3.14)** — `types text[]` (défaut `{acheteur}`) : acheteur, vendeur,
+proprietaire, notaire, confrere, gardien, partenaire, plusieurs à la fois. `pro jsonb` : ce qui
+est propre au type (agence, statutPro, reseau, adresseAgence, siteWeb ; etude, adresseEtude,
+clerc, clercTel ; immeuble, horaires, acces ; metier, societe). `archive bool`. Tout passe par
+`src/lib/contacts.ts` (`typesDe`, `estAcheteur`, `sansCriteres`, `ligneContact`) : sans le SQL,
+un contact sans colonne `types` est un acheteur, comme avant. « Acheteur non filtré » n'est pas
+un type : c'est un acheteur dont la recherche n'a aucun critère (`sansCriteres`). Le `statut`
+(prospect, actif…) ne concerne que les acheteurs ; les autres sont créés en `prospect`.
 Occupation : `statut_occupation` (proprietaire / locataire / heberge / autre) et, si propriétaire,
 `bien_actuel_type`, `bien_actuel_surface`, `bien_actuel_valeur`, `bien_actuel_adresse`,
 `bien_actuel_a_vendre` (= **mandat de vente potentiel**), `bien_actuel_notes`.
@@ -338,11 +346,22 @@ sans typage, en `select('*')`.
 ### Le CRM
 
 Navigation (`Sidebar.tsx`), en trois sections :
-**Principal** — Dashboard · Clients · **Biens** (V3.12, renommée en V3.13) ·
+**Principal** — Dashboard · **Contacts** (« Clients » jusqu'à la V3.14) · **Biens** (V3.12, renommée en V3.13) ·
 **Suivi** — Visites · Relances · Documents · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
 La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
 accessible que par son adresse directe.
+
+**Contacts** (`Clients.tsx`, V3.14) — des tuiles par type qui se cumulent (« Acheteurs » +
+« Propriétaires » montre les deux ; « Tous » et « Archivés » sont seuls ; « Acheteurs » et
+« Acheteurs non filtrés » se remplacent). Quand on ne regarde que des acheteurs : le tableau
+détaillé d'avant, avec les rangées « Dossier » (statut) et « Son logement » (situation).
+Sinon : une ligne par contact, la même pour tous (`LigneContact` dans
+`components/contacts/ChampsContact.tsx`) — qui, types, ce qu'on suit (sa recherche, son bien et
+son étape, son agence, son étude…), le joindre, dernier échange. La fiche s'ouvre selon le type
+(`components/contacts/FicheContact.tsx`, `FicheSelonType`) : un acheteur a sa fiche d'acheteur,
+avec ses types modifiables et « Ses biens » ; les autres ont une fiche de contact (bloc propre au
+type, ses biens, notes, historique, « Il cherche aussi à acheter ? » qui ouvre une recherche).
 
 **Fiche client** — le cœur de l'outil.
 En-tête (avatar, contact cliquable, indicateurs, Envoyer, Relance J+5, Action, Ajouter un bien),
@@ -1280,6 +1299,22 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.14 — 27 septembre 2026 · les types de contact
+
+⚠️ **À passer dans Supabase avant de mettre le code en ligne** : `outils/sql/types-contact.sql`
+(colonnes `clients.types`, `pro`, `archive` ; les propriétaires déjà créés depuis un bien
+deviennent vendeurs ; vérification : cinq lignes « oui »). Sans lui, la liste s'affiche comme
+avant et la création d'un non-acheteur demande de lancer le SQL.
+
+**« Clients » devient « Contacts »** (barre latérale, barre du bas, recherche globale, boutons),
+et le chiffre « actifs » à côté disparaît. Un contact porte un ou plusieurs types : acheteur,
+vendeur, propriétaire, notaire, confrère ou agence (salarié, mandataire et son réseau, à son
+compte), gardien, partenaire (courtier, diagnostiqueur…). **Nouveau contact** commence par « Qui
+est-ce ? » (tuiles à cocher) ; un acheteur garde ses étapes recherche et mandat (ses critères
+peuvent attendre : acheteur non filtré) ; un vendeur ou un propriétaire peut enchaîner sur
+« Nouveau bien », lui déjà propriétaire ; un professionnel n'a que son identité, son bloc
+(agence, étude, immeuble, activité) et ses coordonnées. La page et les fiches : voir §3.
 
 ### V3.13 — 27 septembre 2026 · « Biens » : à suivre, estimation, mandat
 

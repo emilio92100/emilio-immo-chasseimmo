@@ -12,7 +12,13 @@ import {
   etapesCriteres, FriseCriteres, lireModeCrit,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
-import { prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT } from '@/lib/intentions';
+import { prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien } from '@/lib/intentions';
+import {
+  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, typeDe, typesDe,
+  type InfosPro, type TypeContact,
+} from '@/lib/contacts';
+import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
+import cc from '@/components/contacts/Contacts.module.css';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -22,6 +28,28 @@ const STATUTS = [
   { key: 'bien_trouve', label: 'Finalisés',  color: '#3b82f6' },
   { key: 'perdu',       label: 'Perdus',     color: '#ef4444' },
 ];
+
+/* ── Les catégories de la page Contacts (V3.14) ──
+   Les acheteurs (et, parmi eux, ceux dont la recherche n'a pas encore de
+   critères), puis un type par catégorie. Les acheteurs ont leur tableau
+   détaillé ; « Tous » et les autres types, une liste d'une ligne par
+   contact, la même pour tous. */
+type Categorie = 'tous' | 'acheteur' | 'non_filtre' | Exclude<TypeContact, 'acheteur'> | 'archives';
+/* Les pastilles des tuiles, sur le bandeau bleu : les couleurs des types,
+   éclaircies pour qu'on les voie (le bleu d'un notaire disparaissait). */
+const TEINTE_BANDEAU: Record<TypeContact, string> = {
+  acheteur: '#34d399', vendeur: '#e0c57a', proprietaire: '#fb923c', notaire: '#a9bce0',
+  confrere: '#b79cff', gardien: '#5fd4e8', partenaire: '#cbd5e1',
+};
+const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
+  { cle: 'tous', lib: 'Tous' },
+  { cle: 'acheteur', lib: 'Acheteurs', couleur: TEINTE_BANDEAU.acheteur },
+  { cle: 'non_filtre', lib: 'Acheteurs non filtrés', couleur: '#94a3b8' },
+  ...TYPES_CONTACT.filter(t => t.k !== 'acheteur').map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
+];
+/* L'emoji des blocs propres à un type, dans la fenêtre de création (les
+   autres blocs en ont un). */
+const EMOJI_PRO: Record<string, string> = { 'Son agence': '🏢', 'Son étude': '⚖️', 'L’immeuble': '🏢', 'Son activité': '🧰' };
 
 /* La « chaleur du client » a été retirée : elle se remplissait à la création
    et n'était plus jamais lue — ni affichée dans la liste, ni dans la fiche,
@@ -62,6 +90,13 @@ const initForm = {
   sans_mandat: false,
   mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '2,5% TTC',
   notes: '',
+  /* V3.14 : qui est ce contact, ce qui est propre à son métier, et la suite. */
+  types: [] as TypeContact[],
+  pro: {} as InfosPro,
+  /* Un acheteur dont on n'a pas encore pris les critères : « non filtré ». */
+  critPlusTard: false,
+  /* Un vendeur, un propriétaire : ouvrir tout de suite « Nouveau bien ». */
+  creerBien: true,
 };
 
 /* Monsieur ou Madame, pour une personne du couple. */
@@ -324,6 +359,7 @@ const TEINTE: Record<string, { bg: string; fg: string; trait: string }> = {
   perdu:       { bg: '#fef2f2', fg: '#b91c1c', trait: '#fecaca' },
 };
 
+/* Le titre d'une section de « Tous » : le type, son icône, combien. */
 export default function Clients({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -364,6 +400,20 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   /* On arrive sur les dossiers en cours, pas sur la liste entière : c'est
      eux qu'on vient voir. Les autres onglets restent à un clic. */
   const [filtre, setFiltre] = useState('actif');
+  /* Les catégories (types de contact) allumées, au-dessus du statut des
+     acheteurs. Elles se cumulent : « Acheteurs » + « Propriétaires » montre
+     les deux. « Tous » et « Archivés » sont seuls. */
+  const [cats, setCats] = useState<Categorie[]>(['acheteur']);
+  const choisirCat = (k: Categorie) => setCats(l => {
+    if (k === 'tous' || k === 'archives') return [k];
+    /* « Acheteurs non filtrés » est une partie des acheteurs : l'un remplace
+       l'autre, sinon le second clic ne changerait rien. */
+    const base = l.filter(x => x !== 'tous' && x !== 'archives' && !(k === 'acheteur' && x === 'non_filtre') && !(k === 'non_filtre' && x === 'acheteur'));
+    const n = base.includes(k) ? base.filter(x => x !== k) : [...base, k];
+    return n.length ? n : ['tous'];
+  });
+  /* Les biens de la rubrique Biens, pour les cartes des vendeurs. */
+  const [biensV, setBiensV] = useState<BienDuContact[]>([]);
   /* Le second filtre, croisé avec le premier : « Actifs » + « Propriétaires ». */
   const [filtreSit, setFiltreSit] = useState('toutes');
   const [search, setSearch] = useState('');
@@ -465,12 +515,16 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
     setClients(merged);
     setLoading(false);
+    supabase.from('biens_vente').select('id, client_id, etape, titre, ville, prix, archive').not('client_id', 'is', null).order('updated_at', { ascending: false })
+      .then(({ data, error }) => { if (!error) setBiensV((data || []) as BienDuContact[]); });
 
     /* Sauf s'il n'y a aucun dossier actif : ouvrir sur un écran vide alors que
        la base est pleine donnerait l'impression que le CRM a tout perdu. */
     if (!replieFiltre.current) {
       replieFiltre.current = true;
-      if (merged.length > 0 && !merged.some(c => c.statut === 'actif')) setFiltre('tous');
+      const acheteurs = merged.filter(c => estAcheteur(c));
+      if (acheteurs.length > 0 && !acheteurs.some(c => c.statut === 'actif')) setFiltre('tous');
+      if (merged.length > 0 && acheteurs.length === 0) setCats(['tous']);
     }
 
     /* Les compteurs. Jusqu'ici la liste affichait un tiret : ils n'étaient
@@ -551,7 +605,36 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   }
   function retenir() { if (minuteur.current) clearTimeout(minuteur.current); }
 
+  /* La recherche vaut pour toutes les catégories. */
+  const q0 = normer(search.trim());
+  const trouve = (c: Client) => { const p = lirePro(c.pro); return !q0 || normer([c.prenom, c.nom, c.reference, ...(c.emails || []), ...(c.telephones || []),
+    p.agence, p.etude, p.immeuble, p.societe, p.metier, p.reseau, c.adresse,
+    ...typesDe(c).map(k => typeDe(k).lib)].filter(Boolean).join(' ')).includes(q0) || (c.couple ? normer(nomFoyer(c)).includes(q0) : false); };
+  const visibles = clients.filter(c => !estArchive(c));
+  const nbCat = (k: Categorie) => k === 'tous' ? visibles.length
+    : k === 'archives' ? clients.filter(c => estArchive(c)).length
+      : k === 'acheteur' ? visibles.filter(c => estAcheteur(c)).length
+        : k === 'non_filtre' ? visibles.filter(c => estAcheteur(c) && sansCriteres(c)).length
+          : visibles.filter(c => typesDe(c).includes(k as TypeContact)).length;
+  /* Le dernier échange : la dernière ligne du journal, sinon la dernière
+     modification de la fiche. */
+  const derniere = (c: Client) => stats[c.id]?.dernierContact || (c as { updated_at?: string }).updated_at || (c as { created_at?: string }).created_at || null;
+  /* Le tableau détaillé des acheteurs quand on ne regarde que des
+     acheteurs ; sinon une ligne par contact, le plus récent en haut. */
+  const avecAcheteurs = cats.every(k => k === 'acheteur' || k === 'non_filtre');
+  const seulsNonFiltres = avecAcheteurs && !cats.includes('acheteur');
+  const dansCats = (c: Client) => cats.some(k => k === 'tous' ? true
+    : k === 'acheteur' ? estAcheteur(c)
+      : k === 'non_filtre' ? estAcheteur(c) && sansCriteres(c)
+        : typesDe(c).includes(k as TypeContact));
+  const autres = (avecAcheteurs ? [] : cats.includes('archives') ? clients.filter(c => estArchive(c)) : visibles.filter(dansCats)).filter(trouve)
+    .sort((a, b) => String(derniere(b) || '').localeCompare(String(derniere(a) || '')));
+  const seul = cats.length === 1 ? cats[0] : null;
+  const biensDe = (id: string) => biensV.filter(b => b.client_id === id);
+
   const filtered = clients.filter(c => {
+    if (!avecAcheteurs || !estAcheteur(c) || estArchive(c)) return false;
+    if (seulsNonFiltres && !sansCriteres(c)) return false;
     const matchStatut = filtre === 'tous' || c.statut === filtre;
     const sit = situationDe(c);
     const matchSit = filtreSit === 'toutes'
@@ -573,13 +656,16 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   /* Les compteurs du second filtre suivent le premier : « 3 propriétaires »
      parmi les actifs, pas dans toute la base. */
   const nbParSituation = (k: string) => clients
+    .filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)))
     .filter(c => filtre === 'tous' || c.statut === filtre)
     .filter(c => { const s = situationDe(c); return k === 'toutes' || (k === 'proprietaire' ? (s === 'proprietaire' || s === 'vendeur') : s === k); })
     .length;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.prenom.trim() && !form.nom.trim()) { setError('Renseignez au moins un prénom ou un nom'); setStep(0); return; }
+    if (!form.types.length) { setError('Choisissez qui est ce contact : acheteur, vendeur, notaire…'); setStep(0); return; }
+    if (!form.prenom.trim() && !form.nom.trim()) { setError('Renseignez au moins un prénom ou un nom'); setStep(1); return; }
+    const acheteur = form.types.includes('acheteur');
     setSaving(true); setError('');
     try {
       const reference = await genererReference();
@@ -588,7 +674,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       const adresse = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
       const ent = (v: string) => (v ? parseInt(v) : null);
 
-      const { data, error: err } = await supabase.from('clients').insert({
+      const ligne = {
         reference, prenom: form.prenom || '', nom: form.nom || '',
         /* Écrits seulement si Alexandre a choisi : avant le SQL « signature-
            plusieurs », ces colonnes n'existent pas. */
@@ -601,8 +687,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
            ouvre trois recherches par la suite (voir src/lib/espace.ts). */
         token_espace: jetonEspace(form.prenom, form.nom),
         adresse: adresse || null,
-        emails, telephones, statut: form.statut,
-        statut_occupation: form.statut_occupation || null,
+        emails, telephones,
+        /* Le statut est celui d'un dossier d'achat : un notaire, un vendeur
+           n'est pas un acheteur « actif ». */
+        statut: acheteur ? form.statut : 'prospect',
+        statut_occupation: form.statut_occupation || (form.types.includes('proprietaire') || form.types.includes('vendeur') ? 'proprietaire' : null),
         bien_actuel_a_vendre: form.bien_actuel_a_vendre,
         bien_actuel_type: form.bien_actuel_a_vendre ? (form.bien_actuel_type || null) : null,
         bien_actuel_surface: form.bien_actuel_a_vendre && form.bien_actuel_surface ? parseInt(form.bien_actuel_surface) : null,
@@ -610,15 +699,30 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         bien_actuel_adresse: form.bien_actuel_a_vendre && !form.bien_actuel_meme_adresse ? (form.bien_actuel_adresse || null) : null,
         bien_actuel_notes: form.bien_actuel_a_vendre ? (form.bien_actuel_notes || null) : null,
         notes: form.notes || null,
-        est_vendeur: false,
-      }).select().single();
+        est_vendeur: form.types.includes('vendeur'),
+      };
+      const pro = Object.fromEntries(Object.entries(form.pro).filter(([, v]) => typeof v === 'string' && v.trim()));
+      let r = await supabase.from('clients').insert({ ...ligne, types: form.types, pro }).select().single();
+      if (r.error && colonneContactAbsente(r.error.message)) {
+        /* Le SQL des types de contact n'est pas encore passé : un acheteur
+           se crée comme avant ; les autres attendent le SQL. */
+        if (form.types.length === 1 && acheteur && !Object.keys(pro).length) r = await supabase.from('clients').insert(ligne).select().single();
+        else throw new Error('Pour enregistrer un vendeur, un notaire, un confrère…, lance d’abord outils/sql/types-contact.sql dans Supabase.');
+      }
+      const { data, error: err } = r;
 
       if (err) throw err;
-      if (data) {
+      if (data && !acheteur) {
+        await addJournal(data.id, 'creation', 'Contact créé', `${form.types.map(k => typeDe(k).lib).join(', ')} · ${reference}`);
+      }
+      if (data && acheteur) {
         // Créer la 1ère recherche du client avec tous les critères
         /* Exactement les colonnes qu'écrit « Enregistrer » depuis la fiche :
            une recherche créée ici et une recherche modifiée là-bas sont la
            même chose. C'est la raison d'être du formulaire partagé. */
+        /* « Ses critères plus tard » : une recherche vide, l'acheteur est
+           « non filtré » tant qu'on ne l'a pas remplie. */
+        const cr = form.critPlusTard ? CRIT_VIDE : crit;
         await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
@@ -628,44 +732,54 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
              recherche l'espace parle. */
           token_espace: jetonEspace(form.prenom, form.nom),
           active: form.statut === 'actif',
-          type_bien: crit.types_bien.length ? crit.types_bien.join(', ') : null,
-          budget_min: ent(crit.budget_min), budget_max: ent(crit.budget_max),
-          surface_min: ent(crit.surface_min), surface_max: ent(crit.surface_max),
-          nb_pieces_min: ent(crit.nb_pieces_min), nb_pieces_max: ent(crit.nb_pieces_max),
-          chambres_min: ent(crit.chambres_min),
-          surface_sejour_min: ent(crit.surface_sejour_min),
-          secteurs: crit.secteurs,
-          transport_minutes: ent(crit.transport_minutes),
-          transport_lignes: crit.transport_lignes,
-          transport_arrets: crit.transport_arrets,
-          etage_min: ent(crit.etage_min), etage_max: ent(crit.etage_max),
-          etage_max_sans_ascenseur: ent(crit.etage_max_sans_ascenseur),
-          rdc_exclu: crit.rdc_exclu, dernier_etage: crit.dernier_etage,
-          dpe_max: crit.dpe_max || null,
-          annee_construction_min: ent(crit.annee_min),
-          etat_souhaite: crit.etat_souhaite || null,
-          exposition_souhaitee: crit.exposition_souhaitee || null,
-          cuisine_type: crit.cuisine_type || null,
-          exterieur_surface_min: ent(crit.exterieur_surface_min),
-          parking: crit.parking, cave: crit.cave, balcon: crit.balcon,
-          terrasse: crit.terrasse, jardin: crit.jardin,
-          ascenseur: crit.ascenseur, gardien: crit.gardien,
-          interphone: crit.interphone, digicode: crit.digicode,
-          exigences: crit.exigences,
-          urgence: crit.urgence || null,
-          financement: crit.financement || null,
-          apport: ent(crit.apport),
+          type_bien: cr.types_bien.length ? cr.types_bien.join(', ') : null,
+          budget_min: ent(cr.budget_min), budget_max: ent(cr.budget_max),
+          surface_min: ent(cr.surface_min), surface_max: ent(cr.surface_max),
+          nb_pieces_min: ent(cr.nb_pieces_min), nb_pieces_max: ent(cr.nb_pieces_max),
+          chambres_min: ent(cr.chambres_min),
+          surface_sejour_min: ent(cr.surface_sejour_min),
+          secteurs: cr.secteurs,
+          transport_minutes: ent(cr.transport_minutes),
+          transport_lignes: cr.transport_lignes,
+          transport_arrets: cr.transport_arrets,
+          etage_min: ent(cr.etage_min), etage_max: ent(cr.etage_max),
+          etage_max_sans_ascenseur: ent(cr.etage_max_sans_ascenseur),
+          rdc_exclu: cr.rdc_exclu, dernier_etage: cr.dernier_etage,
+          dpe_max: cr.dpe_max || null,
+          annee_construction_min: ent(cr.annee_min),
+          etat_souhaite: cr.etat_souhaite || null,
+          exposition_souhaitee: cr.exposition_souhaitee || null,
+          cuisine_type: cr.cuisine_type || null,
+          exterieur_surface_min: ent(cr.exterieur_surface_min),
+          parking: cr.parking, cave: cr.cave, balcon: cr.balcon,
+          terrasse: cr.terrasse, jardin: cr.jardin,
+          ascenseur: cr.ascenseur, gardien: cr.gardien,
+          interphone: cr.interphone, digicode: cr.digicode,
+          exigences: cr.exigences,
+          urgence: cr.urgence || null,
+          financement: cr.financement || null,
+          apport: ent(cr.apport),
           sans_mandat: form.sans_mandat,
           mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
           mandat_duree: form.sans_mandat ? null : ent(form.mandat_duree),
           mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
-          notes: crit.notes || null,
+          notes: cr.notes || null,
         });
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}`);
       }
       setShowModal(false);
+      const versBien = !!data && !acheteur && form.creerBien && (form.types.includes('vendeur') || form.types.includes('proprietaire'));
       setForm(initForm); setCrit(CRIT_VIDE);
-      fetchClients(); signalerMaj();
+      signalerMaj();
+      /* Un vendeur : « Nouveau bien » s'ouvre, lui déjà propriétaire. */
+      if (versBien && data) { demanderNouveauBien(data.id); onNavigate('biens'); return; }
+      fetchClients();
+      /* On le montre dans sa catégorie. */
+      if (data) setCats([acheteur ? (form.critPlusTard ? 'non_filtre' : 'acheteur') : (form.types.find(k => k !== 'acheteur') as Categorie) || 'tous']);
+      /* Un prospect créé pendant qu'on regarde les « Actifs » disparaissait
+         aussitôt : on montre son statut. */
+      if (data && acheteur && filtre !== 'tous' && filtre !== form.statut) setFiltre('tous');
+      if (data && acheteur) setFiltreSit('toutes');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur lors de la création');
     }
@@ -698,22 +812,38 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     }
   });
 
-  const nbParStatut = (s: string) => s === 'tous' ? clients.length : clients.filter(c => c.statut === s).length;
+  const acheteursCat = clients.filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)));
+  const nbParStatut = (s: string) => s === 'tous' ? acheteursCat.length : acheteursCat.filter(c => c.statut === s).length;
 
   return (
     <div className={styles.page}>
       {/* L'EN-TÊTE — le titre et les statuts dans un seul bloc. La ligne grise
           « 8 clients · 5 actifs · 2 prospects » a disparu : les mêmes chiffres
           sont dans les tuiles, en grand, et cliquer dessus filtre la liste. */}
-      <EnteteRubrique titre="Mes clients" icone={PictoClients}
-        recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, email, secteur, référence…', label: 'Chercher un client' }}
-        bouton={{ lib: 'Nouveau client', onClick: openModal }}
-        label="Filtrer par statut" actif={filtre} onChoisir={setFiltre}
-        tuiles={STATUTS.map(s => ({ cle: s.key, lib: s.label, n: nbParStatut(s.key), couleur: s.color || undefined }))} />
+      <EnteteRubrique titre="Mes contacts" icone={PictoClients}
+        recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, e-mail, agence, secteur, référence…', label: 'Chercher un contact' }}
+        bouton={{ lib: 'Nouveau contact', onClick: openModal }}
+        phrase="Clique plusieurs types pour les voir ensemble."
+        label="Filtrer par type de contact" actif={cats} onChoisir={k => choisirCat(k as Categorie)}
+        tuiles={[...CATEGORIES, ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
+          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur }))} />
 
-      {/* SITUATION — croisé avec le statut au-dessus */}
-      <div className={styles.situations}>
-        <span className={styles.situationsTitre}>Situation</span>
+      {/* LE DOSSIER DES ACHETEURS — leur statut, puis leur situation */}
+      {avecAcheteurs && <div className={styles.situations}>
+        <span className={styles.situationsTitre}>Dossier</span>
+        {STATUTS.map(s => {
+          const actif = filtre === s.key;
+          return (
+            <button key={s.key} type="button" className={`${styles.sitBtn} ${actif ? styles.sitBtnActif : ''}`} onClick={() => setFiltre(s.key)}>
+              {s.color && <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />}
+              <span>{s.label}</span>
+              <span className={styles.sitBadge}>{nbParStatut(s.key)}</span>
+            </button>
+          );
+        })}
+      </div>}
+      {avecAcheteurs && <div className={styles.situations}>
+        <span className={styles.situationsTitre}>Son logement</span>
         {SITUATIONS.map(s => {
           const actif = filtreSit === s.key;
           return (
@@ -726,172 +856,205 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             </button>
           );
         })}
-      </div>
+      </div>}
 
-      {/* LISTE */}
+      {/* LISTE — les acheteurs dans leur tableau détaillé ; « Tous » et les
+          autres types, une ligne par contact. */}
       {loading ? (
         <div className={styles.loading}>Chargement...</div>
-      ) : filtered.length === 0 ? (
-        <div className={styles.empty}>
-          <div className={styles.emptyIcon}>👥</div>
-          <div className={styles.emptyTitle}>{search || filtre !== 'tous' || filtreSit !== 'toutes' ? 'Aucun client trouvé' : 'Aucun client pour l\'instant'}</div>
-          <div className={styles.emptySub}>{!search && filtre === 'tous' && 'Cliquez sur "+ Nouveau client" pour commencer'}</div>
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
-              l'œil sans transformer la page en tableur. */}
-          <div className={styles.entete}>
-            <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
-              Client
-              {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
-              {/* Le bouton dit l'ordre en cours, pas le mot « Classer » : on veut
-                  savoir pourquoi la liste est dans cet ordre sans ouvrir le menu. */}
-              <button className={`${styles.triBtn} ${styles.triBtnActif}`}
-                onClick={() => setMenuTri(v => !v)} title="Choisir l'ordre de la liste">
-                <Ico t={11} c="#ffffff"
-                  d={tri.sens === 'asc'
-                    ? <><path d="M7 20V4" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h5" /><path d="M14 17h3" /></>
-                    : <><path d="M7 4v16" /><path d="M4 16l3 4 3-4" /><path d="M14 7h3" /><path d="M14 12h5" /><path d="M14 17h6" /></>} />
-                {TRIS.find(t => t.cle === tri.cle)?.court || 'Classer'}
-              </button>
-              {menuTri && (
-                <span className={styles.triMenu}>
-                  {TRIS.map(t => {
-                    const actif = tri.cle === t.cle;
-                    return (
-                      <button key={t.cle} className={styles.triItem} onClick={() => classer(t.cle, t.sensDefaut)}
-                        style={actif ? { background: '#fdfaf1' } : undefined}>
-                        <span style={{ width: 12, flexShrink: 0, color: '#c9a84c', fontSize: 12 }}>{actif ? '✓' : ''}</span>
-                        <span style={{ flexGrow: 1, minWidth: 0 }}>
-                          <b>{t.nom}</b>
-                          <small>{actif && tri.sens !== t.sensDefaut ? 'ordre inversé' : t.note}</small>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </span>
-              )}
-            </span>
-            <span className={styles.colRech}>Recherche</span>
-            <span className={styles.colSect}>Secteur recherché</span>
-            <span className={styles.colBud} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
-              Budget max
-              <button className={`${styles.triFleche} ${tri.cle === 'budget' ? styles.triBtnActif : ''}`}
-                onClick={() => classer('budget', 'desc')}
-                title={tri.cle === 'budget' && tri.sens === 'asc' ? 'Budgets les plus élevés en haut' : 'Budgets les plus bas en haut'}>
-                <Ico t={11} c={tri.cle === 'budget' ? '#ffffff' : '#8593a8'}
-                  d={tri.cle === 'budget' && tri.sens === 'asc'
-                    ? <><path d="M12 5v14" /><path d="M6 11l6-6 6 6" /></>
-                    : <><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></>} />
-              </button>
-            </span>
-            <span className={styles.colSig}>Signal</span>
-          </div>
-
-          <div className={styles.list} key={`${filtre}:${filtreSit}:${search}`}>
-            {ordonne.map((client, rang) => {
-              const st = stats[client.id];
-              const sig = signalDe(client, st);
-              const t = TEINTE[client.statut] || TEINTE.actif;
-              const villes = villesDe(client.secteurs);
-              const clos = (client.statut as string) === 'bien_trouve' || (client.statut as string) === 'perdu';
-              const ouvert = survol?.id === client.id;
-
-              return (
-                <div
-                  key={client.id}
-                  className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''}`}
-                  style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}) }}
-                  onClick={() => onNavigate('fiche', client)}
-                  onMouseEnter={e => entrer(client.id, e)}
-                  onMouseMove={bouger}
-                  onMouseLeave={sortir}
-                >
-                  <span className={styles.colClient}>
-                    <span className={styles.avatar} style={{ background: t.bg, color: t.fg, boxShadow: `inset 0 0 0 2px ${t.trait}` }}>
-                      {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
-                    </span>
-                    <span style={{ minWidth: 0 }}>
-                      <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
-                      <span className={styles.ref}>
-                        {client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}
-                        {/* Une couleur seule ne se comprend pas : on la nomme. */}
-                        {(client.statut as string) !== 'actif' && (
-                          <span className={styles.etiquette} style={{ color: t.fg, background: t.bg, border: `1px solid ${t.trait}` }}>
-                            {ETIQUETTE[client.statut] || client.statut}
-                          </span>
-                        )}
-                        {(() => {
-                          const sit = situationDe(client);
-                          if (sit === 'vendeur' || sit === 'proprietaire') return (
-                            <span className={`${styles.proprio} ${sit === 'vendeur' ? styles.proprioVend : ''}`}
-                              title={sit === 'vendeur' ? 'Propriétaire, il revendra sans doute son bien après l\u2019achat : mandat vendeur possible' : 'Propriétaire de son logement actuel'}>
-                              <Ico t={10} d={D_CLE} c={sit === 'vendeur' ? '#1a2332' : '#9a7d2e'} />
-                              {sit === 'vendeur' ? 'Revente possible' : 'Propriétaire'}
-                            </span>
-                          );
-                          if (sit === 'locataire') return <span className={styles.occupe}>{OCCUPATION[(client as any).statut_occupation] || 'Locataire'}</span>;
-                          return <span className={styles.aRenseigner} title="Situation actuelle non renseignée : à compléter dans la fiche">situation ?</span>;
-                        })()}
-                      </span>
-                    </span>
-                  </span>
-
-                  <span className={styles.colRech} title={phraseRecherche(client)}>
-                    <span className={styles.pastilles} style={clos ? { opacity: 0.68 } : undefined}>
-                      <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>
-                      {(() => {
-                        const p = borne(client.nb_pieces_min, client.nb_pieces_max);
-                        return p ? (
-                          <span style={PA_NOMBRE}>
-                            <Ico d={D_PIECES} />
-                            <span style={PA_FORT}>{p.valeur}</span> pièces
-                            {p.note && <span style={PA_FAIBLE}>{p.note}</span>}
-                          </span>
-                        ) : null;
-                      })()}
-                      {(() => {
-                        const su = borne(client.surface_min, client.surface_max);
-                        if (su) return (
-                          <span style={PA_NOMBRE}>
-                            <Ico d={D_SURFACE} />
-                            <span style={PA_FORT}>{su.valeur}</span> m²
-                            {su.note && <span style={PA_FAIBLE}>{su.note}</span>}
-                          </span>
-                        );
-                        /* Pas de surface demandée : les chambres disent au moins
-                           quelque chose du logement cherché. */
-                        return (client as any).chambres_min ? (
-                          <span style={PA_NOMBRE}>
-                            <Ico d={D_CHAMBRE} />
-                            <span style={PA_FORT}>{(client as any).chambres_min}</span> chambres
-                            <span style={PA_FAIBLE}>min</span>
-                          </span>
-                        ) : null;
-                      })()}
-                    </span>
-                  </span>
-
-                  <span className={styles.colSect}>
-                    {villes.slice(0, 1).map(v => <span key={v} className={styles.ville}>📍 {v}</span>)}
-                    {villes.length > 1 && <span className={styles.villePlus}>+{villes.length - 1}</span>}
-                    {villes.length === 0 && <span className={styles.villePlus}>—</span>}
-                  </span>
-
-                  <span className={styles.colBud}>
-                    <span className={styles.budget} style={clos ? { color: '#8593a8' } : undefined}>{budgetCourt(client)}</span>
-                  </span>
-
-                  <span className={styles.colSig}>
-                    <span className={styles.signal} title={sig.aide} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
-                  </span>
-
+        <>
+          {avecAcheteurs && (
+            <div className={cc.section}>
+              {filtered.length === 0 ? (
+                <div className={styles.empty}>
+                  <div className={styles.emptyIcon}>👥</div>
+                  <div className={styles.emptyTitle}>{search || filtre !== 'tous' || filtreSit !== 'toutes' || seulsNonFiltres ? 'Aucun acheteur ici' : 'Aucun acheteur pour l\'instant'}</div>
+                  <div className={styles.emptySub}>{seulsNonFiltres ? 'Tous tes acheteurs ont leurs critères.' : filtre !== 'tous' ? 'Change de statut, juste au-dessus.' : 'Clique sur « + Nouveau contact » pour commencer.'}</div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
+                  l'œil sans transformer la page en tableur. */}
+              <div className={styles.entete}>
+                <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
+                  Client
+                  {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
+                  {/* Le bouton dit l'ordre en cours, pas le mot « Classer » : on veut
+                      savoir pourquoi la liste est dans cet ordre sans ouvrir le menu. */}
+                  <button className={`${styles.triBtn} ${styles.triBtnActif}`}
+                    onClick={() => setMenuTri(v => !v)} title="Choisir l'ordre de la liste">
+                    <Ico t={11} c="#ffffff"
+                      d={tri.sens === 'asc'
+                        ? <><path d="M7 20V4" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h5" /><path d="M14 17h3" /></>
+                        : <><path d="M7 4v16" /><path d="M4 16l3 4 3-4" /><path d="M14 7h3" /><path d="M14 12h5" /><path d="M14 17h6" /></>} />
+                    {TRIS.find(t => t.cle === tri.cle)?.court || 'Classer'}
+                  </button>
+                  {menuTri && (
+                    <span className={styles.triMenu}>
+                      {TRIS.map(t => {
+                        const actif = tri.cle === t.cle;
+                        return (
+                          <button key={t.cle} className={styles.triItem} onClick={() => classer(t.cle, t.sensDefaut)}
+                            style={actif ? { background: '#fdfaf1' } : undefined}>
+                            <span style={{ width: 12, flexShrink: 0, color: '#c9a84c', fontSize: 12 }}>{actif ? '✓' : ''}</span>
+                            <span style={{ flexGrow: 1, minWidth: 0 }}>
+                              <b>{t.nom}</b>
+                              <small>{actif && tri.sens !== t.sensDefaut ? 'ordre inversé' : t.note}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </span>
+                  )}
+                </span>
+                <span className={styles.colRech}>Recherche</span>
+                <span className={styles.colSect}>Secteur recherché</span>
+                <span className={styles.colBud} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
+                  Budget max
+                  <button className={`${styles.triFleche} ${tri.cle === 'budget' ? styles.triBtnActif : ''}`}
+                    onClick={() => classer('budget', 'desc')}
+                    title={tri.cle === 'budget' && tri.sens === 'asc' ? 'Budgets les plus élevés en haut' : 'Budgets les plus bas en haut'}>
+                    <Ico t={11} c={tri.cle === 'budget' ? '#ffffff' : '#8593a8'}
+                      d={tri.cle === 'budget' && tri.sens === 'asc'
+                        ? <><path d="M12 5v14" /><path d="M6 11l6-6 6 6" /></>
+                        : <><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></>} />
+                  </button>
+                </span>
+                <span className={styles.colSig}>Signal</span>
+              </div>
+
+              <div className={styles.list} key={`${filtre}:${filtreSit}:${search}`}>
+                {ordonne.map((client, rang) => {
+                  const st = stats[client.id];
+                  const sig = signalDe(client, st);
+                  const t = TEINTE[client.statut] || TEINTE.actif;
+                  const villes = villesDe(client.secteurs);
+                  const clos = (client.statut as string) === 'bien_trouve' || (client.statut as string) === 'perdu';
+                  const ouvert = survol?.id === client.id;
+
+                  return (
+                    <div
+                      key={client.id}
+                      className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''}`}
+                      style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}) }}
+                      onClick={() => onNavigate('fiche', client)}
+                      onMouseEnter={e => entrer(client.id, e)}
+                      onMouseMove={bouger}
+                      onMouseLeave={sortir}
+                    >
+                      <span className={styles.colClient}>
+                        <span className={styles.avatar} style={{ background: t.bg, color: t.fg, boxShadow: `inset 0 0 0 2px ${t.trait}` }}>
+                          {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
+                          <span className={styles.ref}>
+                            {client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}
+                            {/* Une couleur seule ne se comprend pas : on la nomme. */}
+                            {(client.statut as string) !== 'actif' && (
+                              <span className={styles.etiquette} style={{ color: t.fg, background: t.bg, border: `1px solid ${t.trait}` }}>
+                                {ETIQUETTE[client.statut] || client.statut}
+                              </span>
+                            )}
+                            {(() => {
+                              /* Il vend aussi un bien (rubrique Biens) : on le dit. */
+                              if (typesDe(client).includes('vendeur')) return (
+                                <span className={styles.proprio} title="Il vend aussi un bien : voir sa fiche ou la rubrique Biens">
+                                  <Ico t={10} d={D_CLE} c="#9a7d2e" />Vendeur aussi
+                                </span>
+                              );
+                              const sit = situationDe(client);
+                              if (sit === 'vendeur' || sit === 'proprietaire') return (
+                                <span className={`${styles.proprio} ${sit === 'vendeur' ? styles.proprioVend : ''}`}
+                                  title={sit === 'vendeur' ? 'Propriétaire, il revendra sans doute son bien après l\u2019achat : mandat vendeur possible' : 'Propriétaire de son logement actuel'}>
+                                  <Ico t={10} d={D_CLE} c={sit === 'vendeur' ? '#1a2332' : '#9a7d2e'} />
+                                  {sit === 'vendeur' ? 'Revente possible' : 'Propriétaire'}
+                                </span>
+                              );
+                              if (sit === 'locataire') return <span className={styles.occupe}>{OCCUPATION[(client as any).statut_occupation] || 'Locataire'}</span>;
+                              return <span className={styles.aRenseigner} title="Situation actuelle non renseignée : à compléter dans la fiche">situation ?</span>;
+                            })()}
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className={styles.colRech} title={phraseRecherche(client)}>
+                        <span className={styles.pastilles} style={clos ? { opacity: 0.68 } : undefined}>
+                          <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>
+                          {(() => {
+                            const p = borne(client.nb_pieces_min, client.nb_pieces_max);
+                            return p ? (
+                              <span style={PA_NOMBRE}>
+                                <Ico d={D_PIECES} />
+                                <span style={PA_FORT}>{p.valeur}</span> pièces
+                                {p.note && <span style={PA_FAIBLE}>{p.note}</span>}
+                              </span>
+                            ) : null;
+                          })()}
+                          {(() => {
+                            const su = borne(client.surface_min, client.surface_max);
+                            if (su) return (
+                              <span style={PA_NOMBRE}>
+                                <Ico d={D_SURFACE} />
+                                <span style={PA_FORT}>{su.valeur}</span> m²
+                                {su.note && <span style={PA_FAIBLE}>{su.note}</span>}
+                              </span>
+                            );
+                            /* Pas de surface demandée : les chambres disent au moins
+                               quelque chose du logement cherché. */
+                            return (client as any).chambres_min ? (
+                              <span style={PA_NOMBRE}>
+                                <Ico d={D_CHAMBRE} />
+                                <span style={PA_FORT}>{(client as any).chambres_min}</span> chambres
+                                <span style={PA_FAIBLE}>min</span>
+                              </span>
+                            ) : null;
+                          })()}
+                        </span>
+                      </span>
+
+                      <span className={styles.colSect}>
+                        {villes.slice(0, 1).map(v => <span key={v} className={styles.ville}>📍 {v}</span>)}
+                        {villes.length > 1 && <span className={styles.villePlus}>+{villes.length - 1}</span>}
+                        {villes.length === 0 && <span className={styles.villePlus}>—</span>}
+                      </span>
+
+                      <span className={styles.colBud}>
+                        <span className={styles.budget} style={clos ? { color: '#8593a8' } : undefined}>{budgetCourt(client)}</span>
+                      </span>
+
+                      <span className={styles.colSig}>
+                        <span className={styles.signal} title={sig.aide} style={{ color: sig.color, background: sig.bg }}>{sig.texte}</span>
+                      </span>
+
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+              )}
+            </div>
+          )}
+          {!avecAcheteurs && (autres.length ? (
+            <div className={cc.liste}>
+              {cats.length > 1 && (
+                <div className={cc.cumul}>
+                  <span>{cats.map(k => CATEGORIES.find(x => x.cle === k)?.lib).filter(Boolean).join(' + ')}</span>
+                  <b>{`${autres.length} contact${autres.length > 1 ? 's' : ''}`}</b>
+                  <button type="button" onClick={() => setCats(['tous'])}>Tout revoir</button>
+                </div>
+              )}
+              <EnteteContacts />
+              {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })} />)}
+            </div>
+          ) : (
+            <div className={cc.vide}>
+              <b>{search ? 'Personne ne correspond' : seul === 'archives' ? 'Aucun contact archivé' : seul === 'tous' ? 'Aucun contact pour l’instant' : seul && seul !== 'non_filtre' && seul !== 'acheteur' ? `Aucun ${typeDe(seul).lib.toLowerCase()} pour l’instant` : 'Personne dans ces catégories'}</b>
+              {search ? 'Essaie un autre mot.' : seul === 'archives' ? 'Un contact archivé reste ici, hors de la liste.' : seul === 'tous' ? 'Clique sur « + Nouveau contact » pour commencer.' : seul && seul !== 'non_filtre' && seul !== 'acheteur' ? `« + Nouveau contact », puis coche « ${typeDe(seul).lib} ».` : 'Allume d’autres tuiles, ou « Tous ».'}
+            </div>
+          ))}
+        </>
       )}
 
 
@@ -988,20 +1151,39 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           Le deuxième reprend, à l'identique, le formulaire de critères de la
           fiche — il n'y a plus deux versions à tenir à jour. */}
       {showModal && (() => {
-        const GRANDES = [
-          { ico: '👤', nom: 'Le client',    sous: 'Qui il est, comment le joindre' },
-          { ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
-          { ico: '📋', nom: 'Le mandat',    sous: 'Ce qui vous lie, vos notes' },
+        /* Les temps de la création suivent le type : un acheteur a sa
+           recherche et son mandat ; un vendeur, un notaire, un confrère… n'ont
+           que « qui » et « comment le joindre ». */
+        const acheteur = form.types.includes('acheteur');
+        const pro = estPro(form.types);
+        /* Ce qui est propre au type : l'agence d'un confrère, l'étude d'un
+           notaire… Juste après l'identité pour un professionnel (c'est ce
+           qui compte), après les coordonnées pour un particulier. */
+        const champsPro = (
+          <ChampsPro types={form.types} pro={form.pro} onChange={x => setForm({ ...form, pro: x })}
+            cls={{ row: styles.formRow, group: styles.formGroup, label: styles.label, input: styles.input, bloc: (titre, enfants) => <Bloc key={titre} titre={`${EMOJI_PRO[titre] || '🗂️'} ${titre}`}>{enfants}</Bloc> }} />
+        );
+        const GRANDES: { cle: 'type' | 'contact' | 'recherche' | 'mandat'; ico: string; nom: string; sous: string }[] = [
+          { cle: 'type', ico: '🏷️', nom: 'Qui est-ce', sous: 'Acheteur, vendeur, notaire, confrère… plusieurs à la fois si besoin' },
+          { cle: 'contact', ico: '👤', nom: pro ? 'Ses coordonnées' : 'Le contact', sous: pro ? 'Qui il est, où il travaille, comment le joindre' : 'Qui il est, comment le joindre' },
+          ...(acheteur ? [
+            { cle: 'recherche' as const, ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
+            { cle: 'mandat' as const, ico: '📋', nom: 'Le mandat', sous: 'Ce qui vous lie, vos notes' },
+          ] : []),
         ];
+        const pas = GRANDES[Math.min(step, GRANDES.length - 1)].cle;
         const etapesCrit = etapesCriteres(crit, setCrit);
         const nbC = etapesCrit.length;
         const iC = Math.min(Math.max(etapeCrit, 0), nbC - 1);
-        const surCriteres = step === 1 && modeCrit === 'etapes';
+        const surCriteres = pas === 'recherche' && modeCrit === 'etapes' && !form.critPlusTard;
         const nomRempli = !!(form.prenom.trim() || form.nom.trim());
 
         const allerC = (n: number) => { setSensCrit(n > iC ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbC - 1, n))); };
         const changerMode = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
-        const allerGrande = (n: number) => { setError(''); setEtapeCrit(0); setSensCrit(1); setStep(Math.max(0, Math.min(2, n))); };
+        const allerGrande = (n: number) => {
+          if (n > 0 && !form.types.length) { setError('Choisissez d’abord qui est ce contact.'); return; }
+          setError(''); setEtapeCrit(0); setSensCrit(1); setStep(Math.max(0, Math.min(GRANDES.length - 1, n)));
+        };
 
         /* « Continuer » avance d'un cran — un cran, c'est une sous-étape des
            critères quand on les remplit une par une, sinon une grande étape. */
@@ -1014,7 +1196,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           if (step === 0) { setShowModal(false); return; }
           allerGrande(step - 1);
         }
-        const dernierCran = step === 2;
+        const dernierCran = step >= GRANDES.length - 1;
 
         return (
           <div className={`${styles.modalOverlay} nc-voile`} style={{ animation: 'crmFadeIn 0.2s ease' }}>
@@ -1073,21 +1255,22 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
                   <div style={{ flexGrow: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--emilio)', letterSpacing: -0.4 }}>
-                      {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau client'}
+                      {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau contact'}
                     </h2>
-                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[step].sous}</div>
+                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[Math.min(step, GRANDES.length - 1)].sous}</div>
+                    {form.types.length > 0 && step > 0 && <div style={{ marginTop: 6 }} className={cc.puces}>{form.types.map(k => <Puce key={k} k={k} />)}</div>}
                   </div>
-                  {step === 1 && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
+                  {pas === 'recherche' && !form.critPlusTard && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
                 </div>
 
                 <div className="nc-rail">
                   {GRANDES.map((g, i) => (
                     <button key={g.nom} type="button" className="nc-pas"
                       data-etat={i < step ? 'fait' : i === step ? 'ici' : 'avenir'}
-                      disabled={i > step && !nomRempli}
+                      disabled={i > step && (i > 1 ? !nomRempli : !form.types.length)}
                       onClick={() => allerGrande(i)}>
                       <div className="nc-barre" />
-                      <div className="nc-lig"><b>{g.ico} {g.nom}</b>{i === step && <i>{i + 1}/3</i>}</div>
+                      <div className="nc-lig"><b>{g.ico} {g.nom}</b>{i === step && <i>{`${i + 1}/${GRANDES.length}`}</i>}</div>
                     </button>
                   ))}
                 </div>
@@ -1102,11 +1285,24 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
                 <div key={`${step}-${surCriteres ? iC : 'x'}`} className="nc-corps">
 
-                  {/* ═══ 1 · LE CLIENT ═══ */}
-                  {step === 0 && (
+                  {/* ═══ 0 · QUI EST-CE ═══ */}
+                  {pas === 'type' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <ChoixTypes v={form.types} onChange={x => { setError(''); setForm({ ...form, types: x }); }} />
+                      <div className="nc-note">
+                        {form.types.length === 0 ? 'Coche un ou plusieurs types : un propriétaire qui vend et rachète est « vendeur » et « acheteur ».'
+                          : form.types.includes('acheteur') ? 'Acheteur : sa recherche et son mandat viennent ensuite. S’il n’a pas encore donné ses critères, il sera « acheteur non filtré ».'
+                            : form.types.includes('vendeur') || form.types.includes('proprietaire') ? 'Vendeur ou propriétaire : après ses coordonnées, « Nouveau bien » s’ouvre, lui déjà propriétaire.'
+                              : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ═══ 1 · LE CONTACT ═══ */}
+                  {pas === 'contact' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       <Bloc titre="👤 Identité">
-                        <div className="nc-qui">
+                        {!pro && <div className="nc-qui">
                           {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
                             <button type="button" key={k} className="nc-etat nc-qui-b"
                               data-on={k === 'couple' ? form.couple : !form.couple && form.civilite === k}
@@ -1114,8 +1310,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                               <b>{lib}</b>
                             </button>
                           ))}
-                        </div>
-                        {!form.couple ? (
+                        </div>}
+                        {pro && <Civilite v={form.civilite} onV={v => setForm({ ...form, couple: false, civilite: v })} />}
+                        {!form.couple || pro ? (
                           <div className={styles.formRow}>
                             <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" autoFocus /></div>
                             <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
@@ -1147,24 +1344,30 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                             <div className="nc-note">{'✍️ Le mandat en ligne sera préparé à leurs deux noms : la personne 1 signe depuis son espace, la personne 2 reçoit son propre lien et son propre code. Les e-mails et téléphones du bloc « Contact » restent ceux de la personne 1.'}</div>
                           </>
                         )}
-                        <div className={styles.formGroup} style={{ position: 'relative' }}>
-                          <label className={styles.label}>📍 Adresse actuelle</label>
-                          <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="12 rue de la Paix…" autoComplete="off" />
-                          {adrSug.length > 0 && (
-                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
-                              {adrSug.map((f: any, i: number) => (
-                                <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--emilio)' }}>
-                                  {f.properties?.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className={styles.formRow}>
-                          <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} placeholder="75002" /></div>
-                          <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} placeholder="Paris" /></div>
-                        </div>
+                        {/* Un professionnel se joint à son agence, son étude, son
+                           immeuble : son adresse est dans le bloc qui suit. */}
+                        {!pro && <>
+                          <div className={styles.formGroup} style={{ position: 'relative' }}>
+                            <label className={styles.label}>📍 Adresse actuelle</label>
+                            <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="12 rue de la Paix…" autoComplete="off" />
+                            {adrSug.length > 0 && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
+                                {adrSug.map((f: any, i: number) => (
+                                  <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--emilio)' }}>
+                                    {f.properties?.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} placeholder="75002" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} placeholder="Paris" /></div>
+                          </div>
+                        </>}
                       </Bloc>
+
+                      {pro && champsPro}
 
                       <Bloc titre="📞 Contact">
                         <div className={styles.formRow}>
@@ -1177,7 +1380,27 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         </div>
                       </Bloc>
 
-                      <Bloc titre="🎚️ Où en est ce dossier">
+                      {!pro && champsPro}
+
+                      {!acheteur && (form.types.includes('vendeur') || form.types.includes('proprietaire')) && (
+                        <Bloc titre="🏡 Son bien">
+                          <button type="button" onClick={() => setForm({ ...form, creerBien: !form.creerBien })} style={{ ...pill(form.creerBien, '#c9a84c', '#fbf6e9', '#8a6a1f'), alignSelf: 'flex-start' }}>
+                            {form.creerBien ? '✓ ' : ''}Créer son bien juste après (rubrique Biens)
+                          </button>
+                          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>« Nouveau bien » s’ouvre, lui déjà propriétaire : à suivre, estimation ou mandat signé.</div>
+                        </Bloc>
+                      )}
+
+                      {!acheteur && (
+                        <Bloc titre="🗒️ Notes">
+                          <div className={styles.formGroup}>
+                            <label className={styles.label}>Pour vous seul</label>
+                            <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} placeholder="Comment vous vous êtes connus, ce qu’il faut retenir…" />
+                          </div>
+                        </Bloc>
+                      )}
+
+                      {acheteur && <Bloc titre="🎚️ Où en est ce dossier">
                         <div className="nc-etats">
                           {ETATS_NOUVEAU.map(e => (
                             <button type="button" key={e.cle} className="nc-etat" data-on={form.statut === e.cle}
@@ -1198,9 +1421,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                             ? '🔍 La veille cherchera pour ce client dès la création du dossier.'
                             : '⏸️ Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
                         </div>
-                      </Bloc>
+                      </Bloc>}
 
-                      <Bloc titre="🏠 Sa situation aujourd'hui">
+                      {acheteur && <Bloc titre="🏠 Sa situation aujourd'hui">
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Statut d&apos;occupation</label>
                           <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
@@ -1230,20 +1453,29 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                             <div className={styles.formGroup}><label className={styles.label}>Précisions</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, contexte de vente…" rows={2} /></div>
                           </>
                         )}
-                      </Bloc>
+                      </Bloc>}
                     </div>
                   )}
 
                   {/* ═══ 2 · SA RECHERCHE ═══ */}
-                  {step === 1 && (
-                    <div className={modeCrit === 'etapes' ? classesCrit.critCorps : undefined}
-                      style={modeCrit === 'tout' ? { display: 'flex', flexDirection: 'column', gap: 14 } : undefined}>
-                      <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iC} sens={sensCrit} />
+                  {pas === 'recherche' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <button type="button" onClick={() => setForm({ ...form, critPlusTard: !form.critPlusTard })} style={{ ...pill(form.critPlusTard, '#64748b', '#f1f5f9', '#34496e'), alignSelf: 'flex-start' }}>
+                        {form.critPlusTard ? '✓ ' : ''}Ses critères plus tard : acheteur non filtré
+                      </button>
+                      {form.critPlusTard ? (
+                        <div className="nc-note">Il sera dans « Acheteurs non filtrés » jusqu’à ce que sa recherche ait ses critères : tu les saisiras depuis sa fiche.</div>
+                      ) : (
+                        <div className={modeCrit === 'etapes' ? classesCrit.critCorps : undefined}
+                          style={modeCrit === 'tout' ? { display: 'flex', flexDirection: 'column', gap: 14 } : undefined}>
+                          <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iC} sens={sensCrit} />
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* ═══ 3 · LE MANDAT ═══ */}
-                  {step === 2 && (
+                  {pas === 'mandat' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       <Bloc titre="📋 Mandat de recherche">
                         <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), alignSelf: 'flex-start' }}>
@@ -1281,7 +1513,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 </button>
                 <span style={{ flexGrow: 1 }} />
                 {!dernierCran && (
-                  <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli}
+                  <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli || !form.types.length}
                     style={{ opacity: nomRempli ? 1 : 0.45 }}
                     title="Crée le dossier avec ce qui est déjà rempli — le reste se complète depuis la fiche"
                     onClick={handleCreate}>
@@ -1290,10 +1522,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 )}
                 {dernierCran ? (
                   <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={saving} onClick={handleCreate}>
-                    {saving ? 'Création…' : '✓ Créer le dossier'}
+                    {saving ? 'Création…' : acheteur ? '✓ Créer le dossier' : '✓ Créer le contact'}
                   </button>
                 ) : (
-                  <button type="button" className={`${styles.btnPrimary} nc-suite`} onClick={continuer}>Continuer →</button>
+                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={step === 0 && !form.types.length} style={step === 0 && !form.types.length ? { opacity: 0.5 } : undefined} onClick={continuer}>Continuer →</button>
                 )}
               </div>
             </div>

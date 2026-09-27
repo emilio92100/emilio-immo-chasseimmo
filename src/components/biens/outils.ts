@@ -4,8 +4,10 @@ import { jetonEspace } from '@/lib/jeton';
 import { programmerRelance } from '@/lib/relances';
 import { modele, aujourdhui, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import { correspondance, criteresDepuisRecherche, type Correspondance } from '@/lib/correspondance';
+import { conjointDe } from '@/lib/foyer';
+import { colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
-  argentBien, colonnesBien, contexteDocument, lirePhotos, nomProprioActe, referenceSuivante, tableAbsente, titreBien,
+  argentBien, colonnesBien, contexteDocument, lirePhotos, nomProprioActe, personneDepuisClient, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -157,10 +159,12 @@ export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients
 /* ══ Le bien ═══════════════════════════════════════════════════════════ */
 /* Un bien neuf, à l'étape choisie au départ (à suivre, estimation, mandat).
    Un mandat déjà signé laisse sa ligne dans l'historique. */
-export async function creerBien(references: (string | null)[], etape: EtapeVente = 'estimation'): Promise<BienVente> {
+export async function creerBien(references: (string | null)[], etape: EtapeVente = 'estimation', donnees: Donnees = {}): Promise<BienVente> {
   const maintenant = new Date().toISOString();
   const { data, error } = await supabase.from('biens_vente').insert({
-    reference: referenceSuivante(references), etape, donnees: {}, titre: 'Nouveau bien', etape_le: maintenant,
+    reference: referenceSuivante(references), etape, titre: 'Nouveau bien', etape_le: maintenant,
+    ...(Object.keys(donnees).length ? { ...colonnesBien(donnees), titre: 'Nouveau bien' } : {}),
+    donnees,
     ...(etape === 'mandat' ? { en_vente_le: maintenant } : {}),
   }).select().single();
   if (error) lever('Le bien n’a pas pu être créé', error.message);
@@ -449,19 +453,43 @@ export async function ouvrirPiece(chemin: string, nom?: string) {
 }
 
 /* ══ Le propriétaire ═══════════════════════════════════════════════════ */
-/* Sa fiche client, créée depuis le bien : le minimum, rangée « vendeur ». */
+/* Sa fiche, créée depuis le bien : le minimum, de type « vendeur » (et pas
+   un acheteur « actif » : il ne cherche rien). Avant le SQL des types de
+   contact, la colonne `types` manque : on crée sans elle. */
 export async function creerFicheProprio(p: Personne): Promise<ClientMini> {
   const reference = await genererReference();
-  const { data, error } = await supabase.from('clients').insert({
+  const ligne = {
     reference, prenom: p.prenom || '', nom: p.nom || '',
     ...(p.civilite ? { civilite: p.civilite } : {}),
     token_espace: jetonEspace(p.prenom, p.nom),
     adresse: p.adresse || null,
     emails: p.email ? [p.email.trim().toLowerCase()] : [], telephones: p.telephone ? [p.telephone.trim()] : [],
-    statut: 'actif', statut_occupation: 'proprietaire', est_vendeur: true,
-  }).select(CLIENT_COLS).single();
-  if (error) throw new Error('La fiche client n’a pas pu être créée : ' + error.message);
-  return data as ClientMini;
+    statut: 'prospect', statut_occupation: 'proprietaire', est_vendeur: true,
+  };
+  let r = await supabase.from('clients').insert({ ...ligne, types: ['vendeur'] }).select(CLIENT_COLS).single();
+  if (r.error && colonneContactAbsente(r.error.message)) r = await supabase.from('clients').insert(ligne).select(CLIENT_COLS).single();
+  if (r.error) throw new Error('La fiche du propriétaire n’a pas pu être créée : ' + r.error.message);
+  return r.data as ClientMini;
+}
+
+/* Un contact relié à un bien comme propriétaire devient « vendeur ». Sans la
+   colonne des types (avant le SQL), rien à faire. */
+export async function marquerVendeur(clientId: string): Promise<void> {
+  const { data, error } = await supabase.from('clients').select('types').eq('id', clientId).maybeSingle();
+  if (error || !data) return;
+  const t = typesDe(data);
+  if (t.includes('vendeur')) return;
+  const { error: e2 } = await supabase.from('clients').update({ types: [...t, 'vendeur'] }).eq('id', clientId);
+  if (e2 && !colonneContactAbsente(e2.message)) console.error('[contacts] vendeur', e2.message);
+}
+
+/* Les réponses « propriétaire » d'un bien, tirées de sa fiche : la personne
+   (ou le couple) et le lien vers sa fiche. */
+export function donneesProprio(c: ClientMini): Donnees {
+  const j = c.couple ? conjointDe(c.conjoint) : null;
+  const l: Personne[] = [personneDepuisClient(c)];
+  if (j) l.push({ ...PERSONNE_VIDE, civilite: j.civilite === 'Madame' || j.civilite === 'Monsieur' ? j.civilite : '', prenom: j.prenom || '', nom: j.nom || '', email: j.email || '', telephone: j.telephone || '' });
+  return { clientId: c.id, proprietaires: l, qui: j ? 'couple' : 'personne' };
 }
 
 /* Ses recherches à lui : le propriétaire qui rachète ailleurs. */

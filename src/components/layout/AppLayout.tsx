@@ -5,7 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import Dashboard from '@/components/dashboard/Dashboard';
 import Clients from '@/components/clients/Clients';
-import FicheClient from '@/components/fiche/FicheClient';
+import FicheSelonType from '@/components/contacts/FicheContact';
 import PageRelances from '@/components/pages/PageRelances';
 import PageVisites from '@/components/pages/PageVisites';
 import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
@@ -180,8 +180,10 @@ export default function AppLayout() {
   const renderPage = () => {
     if (activePage === 'fiche') {
       if (ficheClient) {
+        /* Un acheteur a sa fiche d'acheteur ; un vendeur, un notaire, un
+           confrère… la fiche d'un contact (voir src/lib/contacts.ts). */
         return (
-          <FicheClient
+          <FicheSelonType
             client={ficheClient}
             onBack={() => handleNavigate('clients')}
             onNavigate={handleNavigate}

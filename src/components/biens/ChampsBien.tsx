@@ -11,7 +11,7 @@ import {
 } from '@/lib/biens-vente';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
-import { creerFicheProprio, deposerPhoto, deposerPiece, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
+import { creerFicheProprio, deposerPhoto, deposerPiece, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -440,6 +440,8 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
 
   function choisir(c: ClientMini) {
     maj('clientId', c.id);
+    /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses contacts. */
+    void marquerVendeur(c.id);
     const deja = lirePersonnes(d.proprietaires).some(p => p.nom || p.prenom);
     if (!deja) {
       const j = c.couple ? conjointDe(c.conjoint) : null;

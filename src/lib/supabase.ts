@@ -133,6 +133,12 @@ export interface Client {
   financement?: string
   apport?: number
   est_vendeur: boolean
+  /* Les types de contact (acheteur, vendeur, notaire…), ce qui est propre à
+     chacun, et l'archive : colonnes du SQL « types-contact » (V3.14), absentes
+     avant qu'il soit lancé. Voir src/lib/contacts.ts. */
+  types?: string[] | null
+  pro?: Record<string, unknown> | null
+  archive?: boolean | null
   mandat_date_signature?: string
   mandat_duree?: number
   mandat_honoraires?: string

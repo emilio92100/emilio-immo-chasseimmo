@@ -96,7 +96,9 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       section: 'PRINCIPAL',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: '⊞', picto: 'accueil', badge: null },
-        { id: 'clients', label: 'Clients', icon: '◎', picto: 'clients', badge: counts.actifs > 0 ? { count: counts.actifs, suffixe: 'actifs', type: 'gold' } : null },
+        /* « Contacts » : acheteurs, vendeurs, notaires, confrères… (V3.14). La
+           pastille « actifs » ne voulait plus rien dire ici : partie. */
+        { id: 'clients', label: 'Contacts', icon: '◎', picto: 'clients', badge: null },
         { id: 'biens', label: 'Biens', icon: '◇', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
       ]
     },
@@ -129,7 +131,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
      tiroir, à un geste. */
   const onglets: { id: string; label: string; picto: string; pastille?: number }[] = [
     { id: 'dashboard', label: 'Accueil', picto: 'accueil' },
-    { id: 'clients', label: 'Clients', picto: 'clients' },
+    { id: 'clients', label: 'Contacts', picto: 'clients' },
     { id: '+', label: 'Nouveau', picto: 'plus' },
     { id: 'visites', label: 'Visites', picto: 'cle', pastille: counts.demandes || counts.visites },
     { id: 'relances', label: 'Relances', picto: 'cloche', pastille: counts.relances },
@@ -231,7 +233,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           <div className={styles.plusVoile} onClick={() => setPlusOuvert(false)} aria-hidden="true" />
           <div className={styles.plusMenu} role="menu" aria-label="Créer">
             {([
-              { cle: 'client', ico: 'clients', t: 'Nouveau client', s: 'Ouvrir un dossier', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
+              { cle: 'client', ico: 'clients', t: 'Nouveau contact', s: 'Acheteur, vendeur, notaire…', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
               { cle: 'rdv', ico: 'calendrier', t: 'Nouveau rendez-vous', s: 'Visite, appel, signature…', go: () => demanderNouveauRdv() },
               { cle: 'mail', ico: 'mail', t: 'Nouveau mail', s: 'Écrire à un ou plusieurs clients', go: () => onNavigate('mail') },
             ]).map(x => (
