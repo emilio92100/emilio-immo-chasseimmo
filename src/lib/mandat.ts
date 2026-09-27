@@ -376,7 +376,10 @@ export type Bloc =
   | { t: 'etapes'; items: { titre: string; x: string }[] } // la mission, étape par étape, numérotée
   | { t: 'fiches'; items: Fiche[] }                      // des fiches à icône, deux par ligne
   | { t: 'case'; x: string; coche: boolean }             // une case à cocher
-  | { t: 'sig' };                                        // le cartouche des signatures
+  | { t: 'sig' }                                         // le cartouche des signatures (signature en ligne)
+  /* Les cadres de signature d'un document signé sur papier : un par
+     signataire, deux par ligne, avec la mention à recopier. */
+  | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[] }[]; mention?: string };
 export type Section = { titre?: string; ic?: Icone; blocs: Bloc[] };
 /* `court` : son nom dans le sommaire de la page de garde. */
 export type Partie = { titre: string; court: string; sous?: string; ic: Icone; sections: Section[] };
