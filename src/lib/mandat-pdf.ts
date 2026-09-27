@@ -237,6 +237,19 @@ export type OptionsPdf = {
   /* L'identité de l'agence le jour de la signature (Paramètres › Agence).
      Absente : l'identité d'origine. */
   identite?: IdentiteAgence;
+  /* ── Un autre document que le mandat de recherche (Documents juridiques) :
+     sa page de garde, son en-tête, son titre. Absents : ceux du mandat de
+     recherche, à l'identique. ── */
+  garde?: {
+    titre: string;            // « Mandat de vente »
+    sous: string;             // « exclusif, d’un bien à vendre »
+    etiquette: string;        // « MANDAT EXCLUSIF · N° 4330 »
+    pour?: string;            // « ÉTABLI POUR » par défaut
+    mention?: string;         // la ligne sous le nom, hors aperçu
+    ics?: Icone[];            // les icônes des cases du résumé
+  };
+  entete?: string;            // l'en-tête des pages : « Mandat de vente n° 4330 »
+  titreDoc?: string;          // le titre du fichier PDF
 };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
@@ -453,6 +466,7 @@ class Plume {
     if (b.t === 'coches') return 60;
     if (b.t === 'etapes') return 60;
     if (b.t === 'sig') return 150;
+    if (b.t === 'sigs') return 150;
     return 40;
   }
 
@@ -508,6 +522,35 @@ class Plume {
       let yp = haut - h + m.pad + 1 + (m.pied.length - 1) * 11.5;
       p.drawLine({ start: { x: cx, y: yp + 13 }, end: { x: x + w - m.pad, y: yp + 13 }, thickness: 0.5, color: FILET });
       m.pied.forEach(mots => { p.drawText(mots.join(' '), { x: cx, y: yp, size: 8.6, font: this.k.i, color: GRIS }); yp -= 11.5; });
+    }
+  }
+
+  /* Les cadres de signature sur papier : un par signataire, deux par ligne,
+     avec la mention manuscrite à recopier et la place de signer. */
+  signaturesPapier(cases: { qui: string; nom: string; lignes: string[] }[], mention?: string) {
+    const gap = 14, w = (LARGEUR - gap) / 2;
+    if (mention) this.paragraphe(mention, { taille: 8.9, couleur: GRIS, apres: 8 });
+    for (let i = 0; i < cases.length; i += 2) {
+      const paire = cases.slice(i, i + 2).map(c => ({
+        ...c, noms: couper(c.nom, this.k.g, 11, w - 28), txt: c.lignes.flatMap(l => couper(l, this.k.r, 8.5, w - 28)),
+      }));
+      const h = Math.max(150, ...paire.map(c => 39 + c.noms.length * 13.5 + 3 + c.txt.length * 12 + 70));
+      this.place(h + 14);
+      const y = this.y - h;
+      paire.forEach((c, j) => {
+        const x = MARGE.g + j * (w + gap);
+        rond(this.page, x, y, w, h, 9, { color: FOND, borderColor: FILET, borderWidth: 0.8 });
+        this.page.drawRectangle({ x: x + 10, y: y + h - 2.4, width: w - 20, height: 2.4, color: OR });
+        espace(this.page, c.qui.toUpperCase(), x + 14, y + h - 21, 7.5, this.k.g, OR_FONCE, 1.3);
+        let yy = y + h - 39;
+        c.noms.forEach(m => { this.page.drawText(m.join(' '), { x: x + 14, y: yy, size: 11, font: this.k.g, color: BLEU }); yy -= 13.5; });
+        yy -= 3;
+        c.txt.forEach(m => { this.page.drawText(m.join(' '), { x: x + 14, y: yy, size: 8.5, font: this.k.r, color: GRIS }); yy -= 12; });
+        /* La place de signer : un filet en pointillé au bas du cadre. */
+        this.page.drawLine({ start: { x: x + 14, y: y + 22 }, end: { x: x + w - 14, y: y + 22 }, thickness: 0.6, color: GRIS_CLAIR, dashArray: [1.2, 2.6] });
+        this.page.drawText(propre('Signature'), { x: x + 14, y: y + 10, size: 7.5, font: this.k.i, color: GRIS_CLAIR });
+      });
+      this.y = y - gap;
     }
   }
 
@@ -585,7 +628,7 @@ function filigrane(p: PDFPage, k: Kit) {
 }
 
 /* L'en-tête et le pied des pages intérieures (pas de la page de garde). */
-function habiller(doc: PDFDocument, k: Kit, numero: string, total: number, projet: boolean, id: IdentiteAgence) {
+function habiller(doc: PDFDocument, k: Kit, entete: string, total: number, projet: boolean, id: IdentiteAgence) {
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     if (projet) filigrane(p, k);
@@ -593,7 +636,7 @@ function habiller(doc: PDFDocument, k: Kit, numero: string, total: number, proje
     /* En-tête : le logo à gauche, le numéro du mandat à droite, un filet. */
     const lh = 21, lw = (k.logo.width / k.logo.height) * lh;
     p.drawImage(k.logo, { x: MARGE.g, y: A4.h - 30 - lh, width: lw, height: lh });
-    const droite = propre(`${projet ? 'PROJET NON SIGNÉ · ' : ''}Mandat de recherche n° ${numero}`);
+    const droite = propre(`${projet ? 'PROJET NON SIGNÉ · ' : ''}${entete}`);
     p.drawText(droite, { x: A4.l - MARGE.d - lg(k.r, droite, 8), y: A4.h - 44, size: 8, font: k.r, color: projet ? BRIQUE : GRIS });
     p.drawLine({ start: { x: MARGE.g, y: A4.h - 60 }, end: { x: A4.l - MARGE.d, y: A4.h - 60 }, thickness: 0.6, color: FILET });
     p.drawRectangle({ x: MARGE.g, y: A4.h - 60.9, width: 34, height: 1.8, color: OR });
@@ -618,26 +661,27 @@ function pageDeGarde(doc: PDFDocument, k: Kit, o: OptionsPdf, sommaire: { t: str
 
   let y = A4.h - 190;
   p.drawRectangle({ x: MARGE.g, y: y + 20, width: 38, height: 2, color: OR });
-  p.drawText('Mandat de recherche', { x: MARGE.g, y: y - 12, size: 30, font: k.g, color: BLANC });
-  p.drawText(propre('simple, d’un bien à acquérir'), { x: MARGE.g, y: y - 40, size: 17, font: k.serifI, color: BLEU_PALE });
-  espace(p, propre(`MANDAT NON EXCLUSIF · N° ${o.numero}`), MARGE.g, y - 76, 8.5, k.g, OR, 1.8);
+  const g = o.garde;
+  p.drawText(propre(g ? g.titre : 'Mandat de recherche'), { x: MARGE.g, y: y - 12, size: 30, font: k.g, color: BLANC });
+  p.drawText(propre(g ? g.sous : 'simple, d’un bien à acquérir'), { x: MARGE.g, y: y - 40, size: 17, font: k.serifI, color: BLEU_PALE });
+  espace(p, propre(g ? g.etiquette : `MANDAT NON EXCLUSIF · N° ${o.numero}`), MARGE.g, y - 76, 8.5, k.g, OR, 1.8);
 
   /* Pour qui, et quand. */
   y = A4.h - hb - 52;
-  espace(p, 'ÉTABLI POUR', MARGE.g, y, 7.5, k.g, OR_FONCE, 1.5);
+  espace(p, propre(g?.pour || 'ÉTABLI POUR'), MARGE.g, y, 7.5, k.g, OR_FONCE, 1.5);
   p.drawText(propre(o.mandantNom || '—'), { x: MARGE.g, y: y - 24, size: 20, font: k.g, color: BLEU });
   if (o.projet) {
     pastille(p, k, 'PROJET NON SIGNÉ', MARGE.g, y - 50, 'rouge');
     p.drawText(propre(`aperçu du ${dateLongue(new Date())}`), { x: MARGE.g + 118, y: y - 45, size: 9.5, font: k.r, color: GRIS });
   } else {
-    p.drawText(propre(o.sig ? `Signé électroniquement le ${dateLongue(o.sig.le)}` : 'Proposé à la signature électronique'),
+    p.drawText(propre(g?.mention ? g.mention : o.sig ? `Signé électroniquement le ${dateLongue(o.sig.le)}` : 'Proposé à la signature électronique'),
       { x: MARGE.g, y: y - 42, size: 10, font: k.r, color: GRIS });
   }
 
   /* L'essentiel, en quatre cases, chacune avec son icône. */
   y -= 70;
   const gw = (LARGEUR - 12) / 2, gh = 80;
-  const ics: Icone[] = ['maison', 'etiquette', 'euro', 'calendrier'];
+  const ics: Icone[] = g?.ics || ['maison', 'etiquette', 'euro', 'calendrier'];
   o.resume.forEach((c, i) => {
     const x = MARGE.g + (i % 2) * (gw + 12);
     const yy = y - Math.floor(i / 2) * (gh + 12) - gh;
@@ -652,7 +696,7 @@ function pageDeGarde(doc: PDFDocument, k: Kit, o: OptionsPdf, sommaire: { t: str
   });
 
   /* Le sommaire, avec la page de chaque partie. */
-  y -= 2 * (gh + 12) + 26;
+  y -= Math.ceil(o.resume.length / 2) * (gh + 12) + 26;
   espace(p, 'CE DOCUMENT CONTIENT', MARGE.g, y, 7.5, k.g, OR_FONCE, 1.5);
   y -= 20;
   sommaire.forEach((s, i) => {
@@ -675,7 +719,7 @@ function pageDeGarde(doc: PDFDocument, k: Kit, o: OptionsPdf, sommaire: { t: str
 
 export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(propre(`${o.projet ? 'Projet non signé — ' : ''}Mandat de recherche n° ${o.numero}`));
+  doc.setTitle(propre(`${o.projet ? 'Projet non signé — ' : ''}${o.titreDoc || `Mandat de recherche n° ${o.numero}`}`));
   doc.setAuthor('Emilio Immobilier');
   doc.setCreator('Emilio Immobilier');
   doc.setProducer('Emilio Immobilier');
@@ -708,7 +752,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     let n = 0;
     for (const s of partie.sections) {
       /* « Date et signatures » ne se sépare pas de ses cadres. */
-      if (s.blocs.some(b => b.t === 'sig')) pl.place(310);
+      if (s.blocs.some(b => b.t === 'sig' || b.t === 'sigs')) pl.place(310);
       if (s.titre && s.blocs[0]?.t === 'fiches') pl.place(44 + pl.hauteurPremierRang(s.blocs[0].items));
       if (s.titre) {
         if (s.ic) pl.titreSection(++n, s.titre, s.ic, pl.hauteurDebut(s.blocs[0]));
@@ -732,7 +776,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     pl.renvoi.page.drawText(t, { x: MARGE.g + (LARGEUR - lg(k.i, t, 8.6)) / 2, y: pl.renvoi.y, size: 8.6, font: k.i, color: VERT });
   }
 
-  habiller(doc, k, o.numero, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet, pl.id);
+  habiller(doc, k, o.entete || `Mandat de recherche n° ${o.numero}`, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet, pl.id);
   return doc.save({ useObjectStreams: false });
 }
 
@@ -748,6 +792,7 @@ function dessinerBloc(pl: Plume, b: Bloc, o: OptionsPdf) {
   else if (b.t === 'fiches') pl.fiches(b.items);
   else if (b.t === 'case') pl.caseACocher(b.x, b.coche);
   else if (b.t === 'sig') pl.signatures(o.sig, o.mandantNom);
+  else if (b.t === 'sigs') pl.signaturesPapier(b.cases, b.mention);
 }
 
 /* ══ Le tampon rond, bleu marine ════════════════════════════════════════
