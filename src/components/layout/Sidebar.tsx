@@ -27,7 +27,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 }) {
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0, aSigner: 0 });
+  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
      relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
@@ -63,7 +63,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        dans la page Relances, mais elle ne doit pas peser sur le menu.
        Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-    const [{ count: cl }, { count: rel }, { count: vis }, demandes, { count: sig }] = await Promise.all([
+    const [{ count: cl }, { count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }] = await Promise.all([
       /* Le total des clients ne dit rien : un dossier clos il y a deux ans pèse
          autant qu'une recherche en cours. On compte ce sur quoi on travaille. */
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
@@ -77,8 +77,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
          table n'existe pas (outils/sql/documents.sql), la lecture échoue et
          la pastille reste simplement absente. */
       supabase.from('documents').select('*', { count: 'exact', head: true }).eq('statut', 'pret'),
+      /* Les biens en vente qui se travaillent : en vente, sous offre, sous
+         compromis. Sans la table (outils/sql/biens-vente.sql), pas de pastille. */
+      supabase.from('biens_vente').select('*', { count: 'exact', head: true }).in('etape', ['mandat', 'offre', 'compromis']).eq('archive', false),
     ]);
-    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0 });
+    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste
@@ -94,6 +97,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: '⊞', picto: 'accueil', badge: null },
         { id: 'clients', label: 'Clients', icon: '◎', picto: 'clients', badge: counts.actifs > 0 ? { count: counts.actifs, suffixe: 'actifs', type: 'gold' } : null },
+        { id: 'biens', label: 'Biens en vente', icon: '◇', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
       ]
     },
     {

@@ -287,6 +287,28 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     vérifié ou corrigé. `jeton` (son lien `/signer/<jeton>`), `lien_expire_le` (15 jours),
     `relances` (1 et 2 : rappels ; 3 : Alexandre prévenu du délai), code et preuves comme
     `mandats_signatures`, sa propre `execution_immediate`. RLS + `crm_authentifie`.
+- **Biens en vente** (`outils/sql/biens-vente.sql`, voir `src/lib/biens-vente.ts`) :
+  - **`biens_vente`** : un bien vendu par l'agence. Colonnes de liste (`titre`, `type_bien`,
+    `adresse`, `code_postal`, `ville`, `quartier`, `prix`, `surface`, `nb_pieces`, `nb_chambres`,
+    `etage`, `mandat_type`, `mandat_numero`, `mandat_fin`, `photo`, `client_id` = le propriétaire)
+    recalculées à chaque enregistrement par `colonnesBien()` ; tout le reste dans `donnees` (les
+    réponses de l'éditeur, `ETAPES_BIEN`). `etape` : `estimation` · `mandat` · `suspendu` ·
+    `offre` · `compromis` · `vendu` · `retire` ; `etape_le`, `en_vente_le`, `vendu_le`, `archive`,
+    `reference` (EMI-V-AAAA-NNN), `document_id` (le mandat de vente dans Documents).
+  - **`biens_vente_suivi`** : l'historique propre au bien — `type` `visite` (avec quelqu'un hors
+    du CRM ; `statut` a_venir · faite · annulee, `avis` = les issues de `src/lib/visites.ts`),
+    `offre` (`montant`, `statut` en_attente · acceptee · refusee · contre · retiree, `donnees` :
+    validité, financement, fichier), `etape` (`statut` = l'étape atteinte, `donnees` : ce qui a
+    été saisi — dates du compromis, raison…), `prix` (`montant` = nouveau, `donnees.ancien`),
+    `note`.
+  - `biens.bien_vente_id` : la copie d'un bien en vente dans le dossier d'un acheteur (présenté
+    dans son espace, ou visité). C'est par elle que la fiche retrouve à qui il a été présenté,
+    ce qu'ils en ont dit et leurs visites (table `visites`, comme les autres).
+  - Photos : bucket **public** `photos-vente` (`<id du bien>/…`), déposées par le CRM connecté,
+    réduites à 1 920 px dans le navigateur. Jamais dans `photos-biens` : retirer un bien du dossier
+    d'un acheteur y efface les photos. Pièces du dossier et offres signées : bucket privé
+    `mandats`, sous `biens-vente/<id>/`, via `/api/biens-vente`.
+  - Documents créés depuis la fiche : `documents.donnees.bienVenteId` = l'id du bien.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
@@ -315,7 +337,7 @@ sans typage, en `select('*')`.
 ### Le CRM
 
 Navigation (`Sidebar.tsx`), en trois sections :
-**Principal** — Dashboard · Clients · Recherche en cours ·
+**Principal** — Dashboard · Clients · **Biens en vente** (V3.12) ·
 **Suivi** — Visites · Relances · Documents · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
 La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
@@ -346,6 +368,24 @@ d'extraction acceptait un appel depuis n'importe quel site (`Access-Control-Allo
 en consommant `ANTHROPIC_API_KEY` : risque de facture pour personne. Supprimés : `src/app/bookmarklet/`
 et `src/app/api/bien-from-bookmarklet/`. La saisie d'un bien passe par « Ajouter un bien » dans la
 fiche client, ou par la veille.
+
+**Biens en vente** (`src/components/biens/`, logique dans `src/lib/biens-vente.ts`) — les biens
+qu'Alexandre vend pour un propriétaire, de l'estimation à la vente. Voir V3.12.
+- **La liste** : une carte par bien (photo, étape, type de mandat, prix ou fourchette d'estimation,
+  ligne d'état qui dit ce qui compte à cette étape, acheteurs qui correspondent, visites et
+  offres). Filtres par étape (`EnteteRubrique`), recherche (adresse, ville, propriétaire, n° de
+  mandat), « Archivés ». Le bien ouvert vit dans l'URL : `?page=biens&bien=<id>`.
+- **L'éditeur** (plein écran, même moteur que les documents) : 11 étapes — propriétaire, bien,
+  intérieur, extérieur, pièces, énergie, copropriété/charges et taxes, prix et mandat, visite,
+  annonce et notes, photos et dossier. Étape par étape ou tout sur une page (`biens.mode`). À
+  droite : la carte telle qu'elle paraîtra, les chiffres (net vendeur, honoraires, prix au m²) et
+  les mentions obligatoires de l'annonce. Un bien créé puis refermé vide est supprimé.
+- **Les pièces** : une ligne par pièce, dans cet ordre : niveau, pièce (liste à cliquer ou note
+  libre), surface, exposition, commentaire. Clé `detailPieces` (⚠️ `pieces` est leur nombre).
+- **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Le bien · Visites et
+  offres · Acheteurs · Documents · Historique. Chaque bloc a son « Modifier » qui ouvre l'éditeur à
+  la bonne étape. Le bouton d'étape propose ce qui peut arriver ensuite (mandat signé, offre,
+  compromis, vente, pause, retrait, prix), chaque fois dans une fenêtre qui écrit l'historique.
 
 **Documents juridiques** (`src/components/documents/`, modèles dans `src/lib/actes/`) — mandat de
 vente (simple, semi-exclusif, exclusif), offre d'achat, bon de visite. Formulaire à gauche, aperçu
@@ -501,6 +541,7 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/mandat/cosignataire` | portail | Depuis la fiche : `renvoyer` son lien, `relancer` (lien neuf), `clore` l'invitation | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `GET /api/mandat/relances` | **publique** (`CRON_SECRET`) | Chaque matin à 9 h UTC : rappels à 2 et 7 jours, alerte à Alexandre à 7 jours et à l'expiration du lien | `CRON_SECRET` |
 | `POST /api/documents/signature` | portail | Signature en ligne ou sur place d'un document : `lancer`, `renvoyer`, `annuler`, `code` et `signer` (sur place), `finaliser` (étapes `verifier` · `assembler` · `sceller` · `envoyer` · `classer`) | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
+| `POST /api/biens-vente` | portail | Fichiers privés d'un bien en vente : `depot` (sous `biens-vente/<id>/`), `lien` (5 minutes), `retirer`, `tout` (le bien est supprimé) | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
@@ -1220,4 +1261,34 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.12 — 27 septembre 2026 · les biens en vente
+
+⚠️ **À passer dans Supabase avant de mettre le code en ligne** : `outils/sql/biens-vente.sql`
+(tables `biens_vente` et `biens_vente_suivi`, colonne `biens.bien_vente_id`, bucket public
+`photos-vente`). Sans lui, la rubrique affiche le message d'installation et le menu reste sans
+pastille.
+
+**Une rubrique « Biens en vente »** dans le menu (pastille = en vente, sous offre, sous
+compromis), sur les maquettes du 26 septembre. Créer un bien soi-même, étape par étape ou tout
+sur une page, avec tout ce qu'une fiche d'agence contient : le propriétaire (relié à sa fiche
+client, ou créée depuis le bien), le bien, l'intérieur, l'extérieur, **les pièces une à une**
+(niveau, pièce, surface, exposition, commentaire — pour la future fiche PDF), **l'énergie**
+(lettres DPE et GES, leurs valeurs en kWh/m²/an et kg CO₂/m²/an, coût annuel), **la
+copropriété** (lots, procédure, syndic, fonds et travaux votés) puis **les charges et taxes**
+(charges par an et par mois, taxe foncière — qui n'est pas la copropriété —, loyer si loué),
+le prix et le mandat, la visite (clés, codes, contact), l'annonce (brouillon écrit depuis la
+fiche avec les mentions obligatoires, et leur contrôle), les photos et le dossier (diagnostics
+et pièces, reçus/demandés, fichiers privés).
+
+**La fiche d'un bien** : les acheteurs qui correspondent (la note de l'espace, déplacée dans
+`src/lib/correspondance.ts` et partagée avec `EspaceClient`), « Envoyer dans son espace » (copie
+dans `biens`, journal, relance, notification), les visites (acheteur suivi : table `visites` et
+son dossier ; hors CRM : suivi du bien et rendez-vous dans l'agenda), les comptes rendus (la
+fenêtre commune `CompteRenduVisite`), les offres côte à côte (acceptée, refusée, contre-offre,
+retirée ; relance du propriétaire à la fin du délai), les étapes (mandat, offre, compromis avec
+ses dates, vente avec les honoraires, pause, retrait, changement de prix), les documents
+préremplis (mandat de vente, offre d'achat, bon de visite, qui s'ouvrent dans Documents :
+intention `{ ouvrir }`) et **un onglet Historique** : tout ce qui s'est passé sur le bien,
+filtrable.
 

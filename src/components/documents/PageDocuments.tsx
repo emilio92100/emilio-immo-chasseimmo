@@ -408,7 +408,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
 }
 
 /* Ce que la page doit faire en s'ouvrant, venue d'un autre écran. */
-export type IntentionDocuments = { avenantRecherche?: string };
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -504,6 +504,21 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   /* Venu d'ailleurs (la fiche client : « Préparer un avenant ») : le mandat
      signé de cette recherche, en ligne d'abord, sinon sur papier. */
   const faite = useRef('');
+  /* Un document précis (créé depuis la fiche d'un bien en vente) : on
+     l'ouvre, dans l'éditeur s'il est encore en brouillon. */
+  useEffect(() => {
+    const id = intention?.ouvrir;
+    if (!id || faite.current === 'o-' + id) return;
+    faite.current = 'o-' + id;
+    (async () => {
+      const { data, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle();
+      onIntention?.();
+      if (error || !data) { alert('Le document n’a pas pu être ouvert.' + (error ? `\n\n${error.message}` : '')); return; }
+      const r = data as DocumentRow;
+      majDoc(r);
+      if (r.statut === 'brouillon') setEdition(r); else setOuvert(r.id);
+    })();
+  }, [intention, onIntention, majDoc]);
   useEffect(() => {
     const rid = intention?.avenantRecherche;
     if (!rid || faite.current === rid) return;

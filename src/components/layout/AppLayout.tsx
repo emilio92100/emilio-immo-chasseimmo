@@ -13,6 +13,7 @@ import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
 import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
+import PageBiens from '@/components/biens/PageBiens';
 import RappelCarte from '@/components/layout/RappelCarte';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
@@ -28,7 +29,7 @@ import type { Client } from '@/lib/supabase';
  * L'URL reste volontairement une query string (`/?page=fiche&client=<id>`) :
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
-const PAGES = ['dashboard', 'clients', 'fiche', 'agenda', 'visites',
+const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'agenda', 'visites',
   'relances', 'documents', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
@@ -55,6 +56,9 @@ export default function AppLayout() {
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
   const [chargeFiche, setChargeFiche] = useState(false);
   const [intention, setIntention] = useState<IntentionDocuments | null>(null);
+  /* Chaque navigation remonte l'écran, même vers celui qui est déjà affiché :
+     « Biens en vente » depuis la fiche d'un bien revient à la liste. */
+  const [navN, setNavN] = useState(0);
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
@@ -154,7 +158,12 @@ export default function AppLayout() {
     }
     setFicheClient(null);
     setActivePage(page);
+    setNavN(n => n + 1);
     ecrireUrl(page, null);
+    /* Un bien en vente précis (« Voir le bien ») : Biens en vente le lit
+       dans l'URL en s'ouvrant. */
+    const bienId = page === 'biens' && data && typeof data === 'object' ? (data as { bien?: string }).bien : undefined;
+    if (bienId) window.history.replaceState(null, '', `${window.location.pathname}?page=biens&bien=${encodeURIComponent(bienId)}`);
   }, []);
 
   /* Le <main> (sur téléphone : la zone qui le contient) est le seul élément
@@ -186,6 +195,7 @@ export default function AppLayout() {
     switch (activePage) {
       case 'dashboard':  return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
+      case 'biens':      return <PageBiens onNavigate={handleNavigate} />;
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
@@ -205,7 +215,7 @@ export default function AppLayout() {
         <main className={styles.content} ref={contenu}>
           {/* La carte professionnelle à renouveler (Paramètres › Agence). */}
           <RappelCarte page={activePage} onNavigate={handleNavigate} />
-          <div key={`${activePage}:${ficheClient?.id || ''}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
+          <div key={`${activePage}:${ficheClient?.id || ''}:${navN}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
             {renderPage()}
           </div>
         </main>
