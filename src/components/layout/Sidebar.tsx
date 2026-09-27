@@ -27,7 +27,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 }) {
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0 });
+  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0, aSigner: 0 });
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
      relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
@@ -63,7 +63,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        dans la page Relances, mais elle ne doit pas peser sur le menu.
        Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-    const [{ count: cl }, { count: rel }, { count: vis }, demandes] = await Promise.all([
+    const [{ count: cl }, { count: rel }, { count: vis }, demandes, { count: sig }] = await Promise.all([
       /* Le total des clients ne dit rien : un dossier clos il y a deux ans pèse
          autant qu'une recherche en cours. On compte ce sur quoi on travaille. */
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
@@ -73,8 +73,12 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       /* Les clients qui ont demandé à visiter depuis leur espace, sans date
          encore calée : la même liste que la page Visites. */
       chargerDemandesVisite().catch(() => []),
+      /* Les documents juridiques finalisés, pas encore signés. Tant que la
+         table n'existe pas (outils/sql/documents.sql), la lecture échoue et
+         la pastille reste simplement absente. */
+      supabase.from('documents').select('*', { count: 'exact', head: true }).eq('statut', 'pret'),
     ]);
-    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length });
+    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste
@@ -102,6 +106,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           ? { count: counts.demandes, type: 'red', pulse: true, titre: `${counts.demandes} demande${counts.demandes > 1 ? 's' : ''} de visite à caler` }
           : counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
         { id: 'relances', label: 'Relances', icon: '◉', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
+        { id: 'documents', label: 'Documents', icon: '▤', picto: 'note', badge: counts.aSigner > 0
+          ? { count: counts.aSigner, type: 'blue', titre: `${counts.aSigner} document${counts.aSigner > 1 ? 's' : ''} à faire signer` } : null },
         { id: 'mail', label: 'Nouveau mail', icon: '◻', picto: 'mail', badge: null },
       ]
     },

@@ -12,6 +12,7 @@ import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
 import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
+import PageDocuments from '@/components/documents/PageDocuments';
 import RappelCarte from '@/components/layout/RappelCarte';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
@@ -28,7 +29,7 @@ import type { Client } from '@/lib/supabase';
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
 const PAGES = ['dashboard', 'clients', 'fiche', 'agenda', 'visites',
-  'relances', 'mail', 'activite', 'parametres'];
+  'relances', 'documents', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
   if (typeof window === 'undefined') return { page: 'dashboard', clientId: null };
@@ -184,6 +185,7 @@ export default function AppLayout() {
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
+      case 'documents':  return <PageDocuments onNavigate={handleNavigate} />;
       case 'mail':       return <PageMail onNavigate={handleNavigate} />;
       case 'activite':   return <PageActivite />;
       case 'parametres': return <PageParametres />;
