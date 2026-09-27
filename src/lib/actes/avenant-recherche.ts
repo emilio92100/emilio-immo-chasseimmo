@@ -13,8 +13,9 @@
    client l'a fait évoluer. Ce qui diffère est coché d'avance (preparer) :
    Alexandre relit, corrige, envoie.
 
-   Signé hors de l'agence ou à distance, un avenant ouvre le droit de
-   rétractation, avec le formulaire, quel que soit son objet (comme
+   Pas de délai de rétractation : l'avenant modifie un mandat dont les 14
+   jours ont déjà couru à sa signature, il n'en rouvre pas (choix
+   d'Alexandre du 27 septembre 2026, à confirmer par son avocat ; comme
    l'avenant au mandat de vente). Un mandat terminé ne se prolonge pas par
    avenant, et un mandat simple ne devient pas exclusif par avenant : dans
    les deux cas, un nouveau mandat.
@@ -30,8 +31,9 @@ import {
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, plusMois, couper,
-  lirePersonnes, nomComplet, nomsCourts, fichePersonne, ficheAgence, blocDonnees, formulaireType, PERSONNE_VIDE,
-  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Source,
+  lirePersonnes, nomComplet, nomsCourts, fichePersonne, ficheAgence, blocDonnees, PERSONNE_VIDE,
+  blocsSignature, manquesSignature, CHAMP_SIGNATURE,
+  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Source, type CaseSignature,
 } from './commun';
 import { TYPES_BIEN, typesDepuis } from './mandat-recherche';
 
@@ -42,8 +44,6 @@ const typeDe = (d: Donnees): TypeR => (d.type === 'exclusif' ? 'exclusif' : 'sim
 const nomMandat = (d: Donnees) => (typeDe(d) === 'exclusif' ? 'exclusif' : d.origine === 'en_ligne' ? 'non exclusif' : 'simple');
 const change = (d: Donnees, k: string) => liste(d, 'objets').includes(k);
 const enLigne = (d: Donnees) => d.origine === 'en_ligne';
-/* Signé hors de l'agence ou à distance : droit de rétractation. */
-const retractation = (d: Donnees) => d.lieu === 'domicile' || d.lieu === 'distance';
 
 function acquereursDe(d: Donnees): Personne[] {
   const l = lirePersonnes(d.acquereurs);
@@ -56,11 +56,6 @@ const MAJ = (t: string) => t.toLocaleUpperCase('fr-FR');
    l'avenant le rappelle, pour que « remplacée » ne se lise pas comme une
    limite. */
 const EXTENSION = 'Le mandat continue de s’étendre à tout bien correspondant aux critères que le MANDANT communique ensuite à l’Agence, comme il le prévoit.';
-/* « 2026-09-28 » + n jours. */
-function plusJours(ymd: string, n: number): string {
-  const t = Date.parse(`${ymd}T12:00:00Z`);
-  return Number.isFinite(t) ? new Date(t + n * 86_400_000).toISOString().slice(0, 10) : ymd;
-}
 const decoupe = (t: string) => t.split(/\s*[,;\n]\s*/).map(x => x.trim()).filter(Boolean);
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -169,14 +164,9 @@ const ETAPES: Etape[] = [
     ],
   },
   {
-    id: 'signature', titre: 'Signature', sous: 'Où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
+    id: 'signature', titre: 'Signature', sous: 'Comment, où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
     champs: [
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, options: [
-        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez lui', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
-      ], aide: 'Hors de l’agence ou à distance, l’avenant ouvre 14 jours de rétractation : il le dit, avec le formulaire.' },
-      { t: 'choix', cle: 'execution', lib: 'Appliquer avant la fin des 14 jours ?', si: retractation, options: [
-        { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera lui-même' },
-      ] },
+      CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
@@ -189,7 +179,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const no = num(d, 'avenantNo') || 1;
   const numero = txt(d, 'mandatNumero');
   const date = txt(d, 'mandatDate');
-  const retr = retractation(d);
   const sci = d.qui === 'sci';
   const [g, ...autres] = as;
 
@@ -296,37 +285,17 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     P(`Toutes les autres clauses du mandat demeurent inchangées. Le présent avenant en fait partie intégrante et se rattache à son numéro d’inscription au registre des mandats de l’Agence${numero ? ` (n° ${numero})` : ''}.`),
   ] });
 
-  if (retr) {
-    const ex = d.execution === 'oui' ? true : d.execution === 'non' ? false : null;
-    const plusieurs = (sci ? 1 : as.length) > 1;
-    sections.push({ titre: 'Droit de rétractation', ic: 'retour', blocs: [
-      P(`Le présent avenant étant signé ${d.lieu === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de ${plusieurs ? 'la dernière de leurs signatures' : 'sa signature'} (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}. Le mandat reste alors régi par ses conditions antérieures au présent avenant.`, true),
-      ...(plusieurs ? [P('La rétractation de l’un des signataires met fin au présent avenant à l’égard de tous.')] : []),
-      P('Même s’il demande que l’avenant s’applique dès sa signature, le MANDANT garde son droit de rétractation pendant ce délai. À défaut de choix, l’avenant s’applique à la fin du délai.'),
-      { t: 'case', coche: ex === true, x: 'Le MANDANT DEMANDE que l’avenant s’applique dès sa signature, sans attendre la fin du délai de rétractation.' },
-      { t: 'case', coche: ex === false, x: 'Le MANDANT préfère que l’avenant s’applique à la fin du délai de rétractation.' },
-    ] });
-  }
-
   sections.push({ titre: 'Informations', ic: 'info', blocs: [
     blocDonnees(A),
-    Pp(`Textes applicables : loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet, art. 6 et 7) et décret n° 72-678 du 20 juillet 1972 (art. 72 et 78)${retr ? ' ; Code de la consommation (art. L221-5, L221-18 et suivants)' : ''}. Le présent avenant est soumis à la loi française.`),
+    Pp(`Textes applicables : loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet, art. 6 et 7) et décret n° 72-678 du 20 juillet 1972 (art. 72 et 78). Le présent avenant est soumis à la loi française.`),
   ] });
 
   const nbSig = (sci ? 1 + autres.length : as.length) + 1;
-  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: [
-    P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbSig)} exemplaires originaux, dont un remis à chaque partie.`),
-    Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-    { t: 'sigs', mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé ».', cases: [
-      ...(sci
-        ? [
-          { qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(g)}`, ...(d.sciPerso === true ? ['et en son nom personnel'] : [])] },
-          ...autres.map(p => ({ qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[] })),
-        ]
-        : as.map(p => ({ qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[] }))),
-      { qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`] },
-    ] },
-  ] });
+  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+    papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbSig)} exemplaires originaux, dont un remis à chaque partie.`,
+    mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé ».',
+    cases: casesAvenant(d, A),
+  }) });
 
   const parties: Partie[] = [{
     titre: `Avenant n° ${no} au mandat de recherche${numero ? ` n° ${numero}` : ''}`,
@@ -335,12 +304,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     ic: 'doc',
     sections,
   }];
-  if (retr) parties.push(formulaireType(A, {
-    contrat: `avenant n° ${no} au mandat de recherche${numero ? ` n° ${numero}` : ''}`,
-    conclu: txt(d, 'date') ? jourLong(txt(d, 'date')) : '',
-    noms: sci ? [txt(d, 'sciNom'), d.sciPerso === true ? `${nomComplet(g)} (en son nom personnel)` : ''].filter(Boolean).join(', ') : as.map(nomComplet).join(', '),
-    adresse: sci ? txt(d, 'sciSiege') : as[0]?.adresse || '',
-  }));
   return parties;
 }
 
@@ -401,6 +364,21 @@ function reperes(d: Donnees, etape: string): Repere[] {
   return out;
 }
 
+/* Les cadres de signature : les mêmes signataires qu'au mandat (la société
+   par son représentant, puis ceux qui signent en leur nom), puis l'agence. */
+function casesAvenant(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
+  const as = acquereursDe(d);
+  const [g, ...autres] = as;
+  const out: CaseSignature[] = d.qui === 'sci'
+    ? [
+      { cle: 'sci', qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(g)}`, ...(d.sciPerso === true ? ['et en son nom personnel'] : [])], personne: g },
+      ...autres.map((p, i): CaseSignature => ({ cle: `a${i + 1}`, qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[], personne: p })),
+    ]
+    : as.map((p, i): CaseSignature => ({ cle: `a${i}`, qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[], personne: p }));
+  if (A) out.push({ cle: 'agence', qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`], agence: true });
+  return out;
+}
+
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   if (!txt(d, 'mandatNumero') || !txt(d, 'mandatDate')) out.push('Le numéro et la date du mandat');
@@ -428,13 +406,9 @@ function manques(d: Donnees): string[] {
   else if (change(d, 'duree') && txt(d, 'finActuelle') && txt(d, 'finNouvelle') <= txt(d, 'finActuelle')) out.push('Une nouvelle date de fin après l’ancienne');
   if (change(d, 'clause') && !txt(d, 'clause')) out.push('Le texte de la clause particulière');
   if (txt(d, 'finActuelle') && txt(d, 'date') && txt(d, 'date') >= txt(d, 'finActuelle')) out.push(`Un mandat en cours : celui-ci a pris fin le ${jourLong(txt(d, 'finActuelle'))}, il faut en signer un nouveau`);
-  /* Prolongé, mais appliqué seulement après 14 jours : si le mandat finit
-     avant, l'avenant prolongerait un mandat déjà terminé. */
-  else if (change(d, 'duree') && retractation(d) && d.execution !== 'oui' && txt(d, 'finActuelle') && txt(d, 'date')
-    && txt(d, 'finActuelle') <= plusJours(txt(d, 'date'), 16)) {
-    out.push('Une application immédiate de la prolongation (le mandat finit avant la fin du délai de rétractation), ou un nouveau mandat');
-  }
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date de signature');
+  /* Pas de « lieu » dans l'avenant : un ancien choix ne bloque rien. */
+  out.push(...manquesSignature({ ...d, lieu: '' }, casesAvenant(d)));
   return out;
 }
 
@@ -477,7 +451,7 @@ function defaut(c: Contexte): Donnees {
     honoMode: forfait ? 'forfait' : 'taux', taux: forfait ? HONORAIRES_TAUX : taux, forfait,
     dureeMode: 'fixe', finActuelle: fin,
     objets: [], ...nouveauDepuis(rech), criteres2: '', finNouvelle: '', clause: '',
-    lieu: 'distance', execution: '', faitA: c.identite.ville, date: aujourdhui(),
+    signature: 'en_ligne', faitA: c.identite.ville, date: aujourdhui(),
   };
 }
 
@@ -654,4 +628,6 @@ export const AVENANT_RECHERCHE: Modele = {
   enchainer,
   preparer,
   surRecherche,
+  cases: casesAvenant,
+  accepter: () => 'J’ai lu l’avenant en entier et je l’accepte.',
 };

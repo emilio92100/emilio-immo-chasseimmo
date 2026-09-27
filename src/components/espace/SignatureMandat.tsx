@@ -50,7 +50,10 @@ export type MandatEspace = {
   societe?: Societe | null;
   /** Signé à plusieurs : où en sont les autres signataires. */
   cos?: CoEspace[];
+  /** Ses documents signés en ligne (avenant, offre…) : à signer, ou signés. */
+  documents?: DocEspace[];
 };
+export type DocEspace = { id: string; titre: string; etat: 'a_signer' | 'signe'; lien?: string; le?: string | null };
 
 /* Un co-signataire vu depuis l'espace du premier : il l'a saisi lui-même,
    son adresse s'affiche donc en entier. */
@@ -98,12 +101,15 @@ export function Ic({ n, t = 18 }: { n: string; t?: number }) {
    Tant qu'il n'est pas signé, il le dit : un bandeau en tête, et « Non
    signé » à côté de chacune des deux parties, l'agence comprise. La
    signature d'Alexandre n'apparaît que sur le PDF, une fois le code saisi. */
-export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau }: {
+export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau, cadres }: {
   parties: Partie[]; identite: IdentiteAgence;
   /* À plusieurs : qui lit (son cadre dit « vous »), et qui a déjà signé. */
   moi?: number; signes?: (string | null)[];
   /* Le bandeau du haut, quand ce n'est plus un simple projet. */
   bandeau?: string;
+  /* Un document de la rubrique Documents signé électroniquement : quand
+     chaque cadre a été signé (par sa clé), et celui du lecteur. */
+  cadres?: { etats: Record<string, string | null>; moi?: string };
 }) {
   return (
     <div className="mdt-texte">
@@ -151,6 +157,27 @@ export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau }
                   </div>
                 );
                 if (b.t === 'case') return <p key={k} className="mdt-case"><span className="bx" data-on={b.coche ? '1' : undefined} />{b.x}</p>;
+                if (b.t === 'sigs') return (
+                  <div key={k}>
+                    {b.mention && <p className="petit">{b.mention}</p>}
+                    <div className="mdt-sigs">
+                      {b.cases.map((c, n) => {
+                        const le = c.cle ? cadres?.etats[c.cle] || null : null;
+                        const vous = !!c.cle && c.cle === cadres?.moi;
+                        return (
+                          <div key={n} className="mdt-sigc">
+                            <div className="q">{c.qui}</div>
+                            <div className="n">{vous ? `${c.nom} · vous` : c.nom}</div>
+                            {le ? <span className="mdt-ns ok">{`Signé le ${dateCourte(le)}`}</span> : <span className="mdt-ns">Non signé</span>}
+                            <div className="s">{c.agence
+                              ? le ? 'L’agence a signé en adressant le document.' : 'L’agence signe en adressant le document.'
+                              : vous ? 'Vous signez avec le code reçu sur votre e-mail.' : le ? 'Signé avec son code personnel.' : 'Signe avec son propre code.'}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
                 if (b.t === 'sig' && b.noms && b.noms.length > 1) return (
                   <div key={k} className="mdt-sigs">
                     {b.noms.map((nom, n) => {
@@ -1280,6 +1307,50 @@ export function CarteAttente({ mandat, onVoir }: { mandat: MandatEspace; onVoir:
   );
 }
 
+/* ══ Ses documents : ceux qui l'attendent, ceux qui sont signés ═══════════
+   Un avenant, une offre d'achat… envoyés pour signature en ligne depuis la
+   rubrique Documents du CRM. À signer : son lien personnel (le même que
+   dans l'e-mail). Signés : le PDF scellé, à télécharger. */
+export function CarteDocuments({ documents, envoyer }: { documents: DocEspace[]; envoyer: Envoyer }) {
+  const [erreur, setErreur] = useState('');
+  if (!documents.length) return null;
+  const aSigner = documents.filter(x => x.etat === 'a_signer');
+  const signes = documents.filter(x => x.etat === 'signe');
+  const telecharger = async (id: string) => {
+    const w = window.open('', '_blank');
+    const r = await envoyer('document', { id });
+    if (r?.ok && r.url) { (w || window).location.assign(String(r.url)); setErreur(''); }
+    else { w?.close(); setErreur('Le document n’a pas pu être ouvert. Vous l’avez aussi reçu par e-mail.'); }
+  };
+  return (
+    <>
+      {aSigner.map(x => (
+        <section key={x.id} className="mdt-pret">
+          <div className="mdt-pret-ic"><Ic n="plume" t={20} /></div>
+          <div className="mdt-pret-tx">
+            <b>{`Un document vous attend : ${x.titre}`}</b>
+            <span>{'Alexandre vous l’a envoyé à signer : vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.'}</span>
+          </div>
+          <a className="btn or" href={x.lien}>Le signer</a>
+        </section>
+      ))}
+      {signes.length > 0 && (
+        <section className="mdt-docs">
+          <b className="t">Vos documents signés</b>
+          {signes.map(x => (
+            <button key={x.id} type="button" className="mdt-doc" onClick={() => { void telecharger(x.id); }}>
+              <span className="ic"><Ic n="doc" t={17} /></span>
+              <span className="tx"><b>{x.titre}</b>{x.le && <span>{`Signé le ${dateLongue(x.le)}`}</span>}</span>
+              <span className="go">PDF</span>
+            </button>
+          ))}
+          {erreur && <div className="mdt-erreur">{erreur}</div>}
+        </section>
+      )}
+    </>
+  );
+}
+
 /* ══ La carte de l'accueil, quand Alexandre l'a préparé ═════════════════ */
 
 export function CartePret({ onSigner }: { onSigner: () => void }) {
@@ -1527,6 +1598,14 @@ export const CSS_MANDAT = `
 .mdt-pret-tx b{font-size:14.5px; color:var(--encre)}
 .mdt-pret-tx span{font-size:12.5px; color:var(--plume); line-height:1.45}
 .mdt-pret .btn{flex:0 0 auto; padding:10px 16px}
+.mdt-docs{display:flex; flex-direction:column; gap:8px; margin:14px 0 0; padding:14px 16px; border-radius:18px; background:var(--carte); border:1px solid var(--trait)}
+.mdt-docs .t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--or-fonce)}
+.mdt-doc{display:flex; align-items:center; gap:12px; width:100%; padding:10px 12px; border-radius:14px; border:1px solid var(--trait) !important; background:var(--fond) !important; text-align:left}
+.mdt-doc .ic{flex:0 0 auto; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce)}
+.mdt-doc .tx{flex:1; min-width:0; display:flex; flex-direction:column}
+.mdt-doc .tx b{font-size:14px; color:var(--encre)}
+.mdt-doc .tx span{font-size:12px; color:var(--plume)}
+.mdt-doc .go{flex:0 0 auto; font-size:11px; font-weight:800; letter-spacing:1px; color:var(--or-fonce)}
 @media(max-width:420px){ .mdt-pret{flex-wrap:wrap} .mdt-pret .btn{width:100%} }
 
 .mdt-brique{background:var(--brique); color:#fff; margin-top:14px}

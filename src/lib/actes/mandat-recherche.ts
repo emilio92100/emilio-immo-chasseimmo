@@ -32,7 +32,8 @@ import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, plusMois, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence, formulaireType, annexeL215,
-  PERSONNE_VIDE, type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere,
+  PERSONNE_VIDE, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
+  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type CaseSignature,
 } from './commun';
 import { echeances } from './mandat-vente';
 
@@ -132,7 +133,7 @@ function argent(d: Donnees): Argent {
   return { prix: prix && prix > 0 ? prix : null, honoraires, total: prix && honoraires !== null ? prix + honoraires : null, taux, forfait };
 }
 
-export const retractation = (d: Donnees) => d.lieu === 'domicile' || d.lieu === 'distance';
+export const retractation = (d: Donnees) => lieuDe(d) === 'domicile' || lieuDe(d) === 'distance';
 
 /* La recherche telle que decrireRecherche() l'attend (la même phrase que
    le mandat en ligne). */
@@ -215,12 +216,13 @@ const ETAPES: Etape[] = [
       { t: 'nombre', cle: 'periode', lib: 'Par périodes de', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
       { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
       { t: 'titre', cle: 't-sig', lib: 'La signature', ic: 'plume' },
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, options: [
+      CHAMP_SIGNATURE,
+      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
         { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez lui', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
       ], aide: 'Hors de l’agence ou à distance, il a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
       { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', si: retractation, options: [
         { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera sur place' },
-      ] },
+      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
       { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
@@ -398,7 +400,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   if (retr) {
     const ex = d.execution === 'oui' ? true : d.execution === 'non' ? false : null;
     sections.push({ titre: 'Droit de rétractation', ic: 'retour', blocs: [
-      P(`Le mandat étant signé ${d.lieu === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}.`, true),
+      P(`Le mandat étant signé ${lieuDe(d) === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}.`, true),
       P('L’Agence ne commence sa mission qu’à la fin de ce délai, sauf demande expresse du MANDANT. S’il demande qu’elle commence plus tôt, il garde son droit de rétractation tant que la mission n’est pas entièrement exécutée ; aucun honoraire n’est dû s’il se rétracte avant d’avoir acquis.'),
       { t: 'case', coche: ex === true, x: 'Le MANDANT DEMANDE que la mission commence dès la signature, sans attendre la fin du délai de rétractation.' },
       { t: 'case', coche: ex === false, x: 'Le MANDANT préfère que la mission commence à la fin du délai de rétractation.' },
@@ -418,18 +420,11 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   ] });
   if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: [P(txt(d, 'clause'))] });
   const signataires = d.qui === 'sci' ? 1 : repr >= 0 ? 1 : as.length;
-  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: [
-    P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(signataires + 1)} exemplaires originaux, dont un remis à chaque partie.`),
-    Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-    { t: 'sigs', mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».', cases: [
-      ...(d.qui === 'sci'
-        ? [{ qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(as[0])}`] }]
-        : as.map(p => ({ qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[] }))
-          .filter((_, i) => repr < 0 || i === repr)
-          .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(as[1 - repr])}, par procuration`] } : c))),
-      { qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`] },
-    ] },
-  ] });
+  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+    papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(signataires + 1)} exemplaires originaux, dont un remis à chaque partie.`,
+    mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».',
+    cases: casesRecherche(d, A),
+  }) });
 
   const parties: Partie[] = [{
     titre: `Mandat de recherche ${T.nom}${numero ? ` n° ${numero}` : ''}`,
@@ -442,7 +437,8 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   if (vrai(d, 'infoJointe')) parties.push(infoPrecontractuelle(d, A));
   if (retr) parties.push(formulaireType(A, {
     contrat: `mandat de recherche${numero ? ` n° ${numero}` : ''}`,
-    conclu: txt(d, 'date') ? jourLong(txt(d, 'date')) : '',
+    /* Signé en ligne ou sur place : conclu à la dernière signature. */
+    conclu: electronique(d) ? '……………… (la date de la dernière signature, sur le certificat joint)' : txt(d, 'date') ? jourLong(txt(d, 'date')) : '',
     noms: d.qui === 'sci' ? txt(d, 'sciNom') : as.map(nomComplet).join(', '),
     adresse: d.qui === 'sci' ? txt(d, 'sciSiege') : as[0]?.adresse || '',
   }));
@@ -540,6 +536,20 @@ function reperes(d: Donnees, etape: string): Repere[] {
   return out;
 }
 
+/* Les cadres de signature : chaque acheteur (ou celui qui représente
+   l'autre, ou le gérant pour la société), puis l'agence. */
+export function casesRecherche(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
+  const as = acquereursDe(d);
+  const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
+  const out: CaseSignature[] = d.qui === 'sci'
+    ? [{ cle: 'sci', qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(as[0])}`], personne: as[0] }]
+    : as.map((p, i): CaseSignature => ({ cle: `a${i}`, qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[], personne: p }))
+      .filter((_, i) => repr < 0 || i === repr)
+      .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(as[1 - repr])}, par procuration`] } : c));
+  if (A) out.push({ cle: 'agence', qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`], agence: true });
+  return out;
+}
+
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   const as = acquereursDe(d);
@@ -561,6 +571,8 @@ function manques(d: Donnees): string[] {
   if (!txt(d, 'numero')) out.push('Le numéro du registre des mandats');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date de signature');
   if (typeDe(d) === 'exclusif' && !liste(d, 'actions').length) out.push('Les actions promises (obligatoires pour un mandat exclusif)');
+  if (electronique(d) && retractation(d) && d.execution !== 'oui' && d.execution !== 'non') out.push(MANQUE_EXECUTION);
+  out.push(...manquesSignature(d, casesRecherche(d)));
   return out;
 }
 
@@ -595,7 +607,7 @@ function defaut(c: Contexte): Donnees {
     type: 'simple', prixMax, budgetFiche: rech?.budget ?? null, financement: '',
     honoMode: forfait ? 'forfait' : 'taux', taux: forfait ? HONORAIRES_TAUX : taux, forfait,
     duree: 12, dureeMode: 'fixe', periode: 3, dureeMax: 12,
-    lieu: 'agence', execution: '', numero, faitA: c.identite.ville, date: aujourdhui(),
+    signature: 'papier', lieu: 'agence', execution: '', numero, faitA: c.identite.ville, date: aujourdhui(),
     actions: ACTIONS_DEFAUT, rythme: 'semaine', penale: 'non', suite: 12,
     pouvoirs: ['renseignements', 'offres'], infoJointe: 'oui',
   };
@@ -621,7 +633,7 @@ export const MANDAT_RECHERCHE: Modele = {
   id: 'mandat_recherche',
   categorie: 'mandats_recherche',
   titre: 'Mandat de recherche',
-  description: 'Sur papier, simple ou exclusif : un couple, une SCI, ou une signature sur place. Signé, il remplit le bloc Mandat de sa recherche.',
+  description: 'Simple ou exclusif, signé à la main, en ligne ou sur place : un couple, une SCI. Signé, il remplit le bloc Mandat de sa recherche.',
   ic: 'loupe',
   signataires: 'Le ou les acheteurs, puis l’agence',
   etapes: ETAPES,
@@ -649,4 +661,6 @@ export const MANDAT_RECHERCHE: Modele = {
   echeances,
   lien: 'recherche',
   surRecherche,
+  cases: casesRecherche,
+  accepter: () => 'J’ai lu le mandat en entier, y compris les clauses écrites en capitales, et je l’accepte : bon pour mandat.',
 };

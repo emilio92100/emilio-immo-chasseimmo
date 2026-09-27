@@ -9,6 +9,8 @@ import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 import { etatMandat, finRetractationPour, rechercheDepuis, masquerEmail, type Mandant, type Societe } from '@/lib/mandat';
 import { lireReserve } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
+import { modele } from '@/lib/actes';
+import type { DocEspace } from '@/components/espace/SignatureMandat';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -404,6 +406,33 @@ export default async function PageEspace({ params, searchParams }: {
     })),
   };
 
+  /* ─── Ses documents signés en ligne (rubrique Documents du CRM) ───
+     Ceux qui attendent SA signature (son adresse est l'une de celles de sa
+     fiche), et ceux qui sont signés par tous. Avant le SQL de la signature
+     des documents, les lectures échouent sans bruit : rien ne s'affiche. */
+  const documents: DocEspace[] = [];
+  try {
+    const { data: docs } = await supabase.from('documents').select('id, modele, statut, titre, donnees, signe_le, signature')
+      .eq('client_id', client.id).in('statut', ['pret', 'signe']).order('updated_at', { ascending: false }).limit(30);
+    const elec = (docs || []).filter(x => x.signature);
+    const emails = [...(Array.isArray(coord?.emails) ? coord!.emails : []), ...(coord?.conjoint && typeof coord.conjoint === 'object' ? [(coord.conjoint as { email?: string }).email] : [])]
+      .filter((e): e is string => typeof e === 'string' && !!e).map(e => e.trim().toLowerCase());
+    const enAttente = elec.filter(x => x.statut === 'pret').map(x => x.id);
+    const { data: invites } = enAttente.length
+      ? await supabase.from('documents_signataires').select('document_id, jeton, statut, personne, lien_expire_le').in('document_id', enAttente).eq('statut', 'invite')
+      : { data: [] as { document_id: string; jeton: string | null; statut: string; personne: { email?: string } | null; lien_expire_le: string | null }[] };
+    for (const x of elec) {
+      const m = modele(x.modele as string);
+      const titre = m ? m.entete(x.donnees || {}) : (x.titre as string) || 'Document';
+      if (x.statut === 'signe') documents.push({ id: x.id as string, titre, etat: 'signe', le: x.signe_le as string | null });
+      else {
+        const sien = (invites || []).find(i => i.document_id === x.id && i.jeton && emails.includes(String(i.personne?.email || '').toLowerCase())
+          && (!i.lien_expire_le || Date.parse(i.lien_expire_le) > Date.now()));
+        if (sien) documents.push({ id: x.id as string, titre, etat: 'a_signer', lien: `/signer/${sien.jeton}` });
+      }
+    }
+  } catch { /* pas encore installé : rien à montrer */ }
+
   const jours = client?.created_at
     ? Math.max(1, Math.round((Date.now() - new Date(client.created_at).getTime()) / 86400000))
     : null;
@@ -489,7 +518,7 @@ export default async function PageEspace({ params, searchParams }: {
       } : null}
       semaine={semaine}
       visites={visites}
-      mandat={mandat}
+      mandat={{ ...mandat, documents }}
       mesVisites={mesVisites}
       apprisClient={apprisClient}
     />

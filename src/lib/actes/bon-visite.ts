@@ -17,9 +17,10 @@
 import { euros, type Partie, type Bloc, type Resume } from '@/lib/mandat';
 import { lignesMandataire, type IdentiteAgence } from '@/lib/agence';
 import {
-  P, Pp, nbLettres, jourLong, aujourdhui, txt, num, liste,
+  P, nbLettres, jourLong, aujourdhui, txt, num, liste,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, blocDonnees, ficheAgence,
-  PERSONNE_VIDE, type Donnees, type Modele, type Etape, type Contexte, type Personne,
+  PERSONNE_VIDE, blocsSignature, manquesSignature, CHAMP_SIGNATURE,
+  type Donnees, type Modele, type Etape, type Contexte, type Personne, type CaseSignature,
 } from './commun';
 
 const DOCS: { v: string; l: string; x: string; ic: string }[] = [
@@ -66,6 +67,7 @@ const ETAPES: Etape[] = [
         aide: 'L’état des risques doit être remis dès la première visite ; l’audit énergétique aussi, pour une maison classée E, F ou G.' },
       { t: 'nombre', cle: 'duree', lib: 'Pas d’achat en direct pendant', ic: 'chrono', unite: 'mois', si: d => d.role !== 'acquereur' },
       { t: 'zone', cle: 'note', lib: 'Une remarque ?', ic: 'plume', large: true },
+      CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
@@ -129,14 +131,10 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       { titre: 'La visite', ic: 'calendrier', blocs: visite },
       { titre: 'Engagements', ic: 'accord', blocs: engagements },
       { titre: 'Informations', ic: 'info', blocs: [blocDonnees(A)] },
-      { titre: 'Date et signatures', ic: 'plume', blocs: [
-        P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(2)} exemplaires.`),
-        Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-        { t: 'sigs', cases: [
-          ...vs.map(p => ({ qui: 'Le visiteur', nom: nomComplet(p), lignes: [] as string[] })),
-          { qui: 'L’agence', nom: A.nom.toUpperCase(), lignes: [`${A.signataireNom}, ${A.signataireQualite}`] },
-        ] },
-      ] },
+      { titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+        papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(2)} exemplaires.`,
+        cases: casesVisite(d, A),
+      }) },
     ],
   }];
 }
@@ -149,12 +147,20 @@ function resume(d: Donnees): Resume {
   ].concat(prix ? [{ titre: 'Prix annoncé', valeur: euros(prix), detail: txt(d, 'reference') ? `annonce ${txt(d, 'reference')}` : '—' }] : []);
 }
 
+/* Les cadres de signature : chaque visiteur, puis l'agence. */
+function casesVisite(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
+  const out: CaseSignature[] = visiteursDe(d).map((p, i) => ({ cle: `a${i}`, qui: 'Le visiteur', nom: nomComplet(p), lignes: [] as string[], personne: p }));
+  if (A) out.push({ cle: 'agence', qui: 'L’agence', nom: A.nom.toUpperCase(), lignes: [`${A.signataireNom}, ${A.signataireQualite}`], agence: true });
+  return out;
+}
+
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   visiteursDe(d).forEach((p, i) => { if (!p.nom) out.push(`Le nom du visiteur ${i + 1}`); });
   if (!txt(d, 'adresse') || !txt(d, 'ville')) out.push('L’adresse du bien');
   if (!txt(d, 'dateVisite')) out.push('La date de la visite');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date');
+  out.push(...manquesSignature(d, casesVisite(d)));
   return out;
 }
 
@@ -169,7 +175,7 @@ function defaut(c: Contexte): Donnees {
     agenceVendeur: b?.agence_nom || '',
     dateVisite: c.visite?.date_visite ? String(c.visite.date_visite).slice(0, 10) : aujourdhui(),
     heure: c.visite?.heure ? String(c.visite.heure).slice(0, 5) : '',
-    docs: ['erp'], duree: 12, note: '', faitA: c.identite.ville, date: aujourdhui(),
+    docs: ['erp'], duree: 12, note: '', signature: 'sur_place', faitA: c.identite.ville, date: aujourdhui(),
   };
 }
 
@@ -196,4 +202,6 @@ export const BON_VISITE: Modele = {
   }),
   entete: d => `Bon de visite${txt(d, 'dateVisite') ? ` du ${jourLong(txt(d, 'dateVisite'))}` : ''}`,
   manques,
+  cases: casesVisite,
+  accepter: () => 'J’ai lu le bon de visite : j’ai bien visité ce bien, qui m’a été présenté par l’Agence, et je prends les engagements qu’il contient.',
 };

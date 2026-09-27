@@ -415,8 +415,10 @@ export type Bloc =
   | { t: 'case'; x: string; coche: boolean }             // une case à cocher
   | { t: 'sig'; noms?: string[] }                        // le cartouche des signatures (signature en ligne) ; noms : les mandants, quand ils sont plusieurs
   /* Les cadres de signature d'un document signé sur papier : un par
-     signataire, deux par ligne, avec la mention à recopier. */
-  | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[] }[]; mention?: string };
+     signataire, deux par ligne, avec la mention à recopier. `electronique` :
+     signé en ligne ou sur place, chaque cadre (retrouvé par sa `cle`) dit
+     s'il est signé, quand, et porte la signature tracée. */
+  | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[]; mention?: string; electronique?: boolean };
 export type Section = { titre?: string; ic?: Icone; blocs: Bloc[] };
 /* `court` : son nom dans le sommaire de la page de garde. */
 export type Partie = { titre: string; court: string; sous?: string; ic: Icone; sections: Section[] };

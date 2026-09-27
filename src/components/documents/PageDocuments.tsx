@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
-import { CATEGORIES, MODELES, STATUTS, aujourdhui, jourLong, modele, type Categorie, type Statut } from '@/lib/actes';
+import { CATEGORIES, MODELES, STATUTS, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import EditeurDocument from './EditeurDocument';
 import NouveauDocument from './NouveauDocument';
+import { BlocSignature } from './SignatureEnLigne';
+import SignatureSurPlace from './SignatureSurPlace';
 import {
   apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
@@ -41,7 +43,8 @@ const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recher
 function itemDoc(d: DocumentRow): Item {
   return {
     cle: d.id, categorie: d.categorie, statut: d.statut, titre: d.titre || 'Document sans titre',
-    sous: [d.sous_titre, d.numero ? `N° ${d.numero}` : ''].filter(Boolean).join(' · '),
+    sous: [d.sous_titre, d.numero ? `N° ${d.numero}` : '',
+      d.statut === 'pret' && d.signature ? (d.signature.mode === 'en_ligne' ? 'signature en ligne en cours' : 'signature sur place en cours') : ''].filter(Boolean).join(' · '),
     badge: d.badge, date: d.signe_le || d.finalise_le || d.updated_at, doc: d, courrier: !!modele(d.modele)?.courrier,
   };
 }
@@ -177,19 +180,30 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   const [travail, setTravail] = useState('');
   const [erreur, setErreur] = useState('');
   const [signe, setSigne] = useState(false);
+  const [surPlace, setSurPlace] = useState<{ finaliser?: boolean } | null>(null);
   const d = it.doc, x = it.mandat;
   const m = d ? modele(d.modele) : null;
   const courrier = !!m?.courrier;
+  /* Signé en ligne ou sur place (et le modèle sait le faire). */
+  const elec = !!d && !!m?.cases && electronique(d.donnees);
   const clientId = d?.client_id || x?.client_id || null;
   /* Le courrier de reconduction déjà préparé pour une échéance. */
   const courrierDe = (le: string) => (d ? docs.find(c => c.modele === 'courrier_reconduction' && c.statut !== 'annule'
     && (c.donnees as Record<string, unknown>).sourceId === d.id && (c.donnees as Record<string, unknown>).echeance === le) : undefined);
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe) onFermer(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace) onFermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onFermer, signe]);
+  }, [onFermer, signe, surPlace]);
+
+  /* Relu après la signature sur place : le document a pu passer « Signé ». */
+  async function recharger() {
+    if (!d) return;
+    const { data, error } = await supabase.from('documents').select('*').eq('id', d.id).maybeSingle();
+    if (error) { setErreur('Le document n’a pas pu être relu : ' + error.message); return; }
+    if (data) onMaj(data as DocumentRow);
+  }
 
   async function ouvrirFichier(chemin: string | null | undefined, nom?: string, recherche = false) {
     if (!chemin) return;
@@ -268,7 +282,10 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                   <Ic n="plume" t={16} /><span>Reprendre le brouillon</span>
                 </button>
               )}
-              {d.statut === 'pret' && (
+              {d.statut === 'pret' && elec && (
+                <BlocSignature doc={d} onMaj={onMaj} onSurPlace={o => setSurPlace(o || {})} />
+              )}
+              {d.statut === 'pret' && !elec && (
                 <>
                   <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.pdf_chemin, nomFichier(d))}>
                     <Ic n="doc" t={16} /><span>{courrier ? 'Le PDF à signer et envoyer' : 'Le PDF à imprimer et faire signer'}</span>
@@ -279,7 +296,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                 </>
               )}
               {d.statut === 'signe' && (d.signe_chemin
-                ? <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, undefined)}><Ic n="doc" t={16} /><span>{courrier ? 'La preuve d’envoi' : 'L’exemplaire signé'}</span></button>
+                ? <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, d.signature ? nomFichier(d, '-signe') : undefined)}><Ic n="doc" t={16} /><span>{courrier ? 'La preuve d’envoi' : d.signature ? 'L’exemplaire signé et scellé' : 'L’exemplaire signé'}</span>{d.signature && <small>avec son certificat</small>}</button>
                 : <button type="button" className={`${s.btn} ${courrier ? '' : s.btnOr}`} onClick={() => setSigne(true)}><Ic n="doc" t={16} /><span>{courrier ? 'Déposer la preuve d’envoi' : 'Déposer l’exemplaire signé'}</span><small>pas encore déposé{courrier ? 'e' : ''}</small></button>)}
               {d.statut === 'signe' && d.modele === 'mandat_vente' && (
                 <button type="button" className={s.btn} onClick={() => onDeriver('d-' + d.id, 'avenant_vente')}>
@@ -291,6 +308,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                   <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>budget, recherche, durée</small>
                 </button>
               )}
+              {d.statut === 'signe' && d.signature && <BlocSignature doc={d} onMaj={onMaj} onSurPlace={() => {}} />}
               {(d.statut === 'signe' || d.statut === 'annule') && d.pdf_chemin && (
                 <button type="button" className={s.btn} disabled={!!travail} onClick={() => ouvrirFichier(d.pdf_chemin, nomFichier(d))}><Ic n="doc" t={16} /><span>Le PDF d’origine</span></button>
               )}
@@ -384,6 +402,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
         </div>
       </aside>
       {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} />}
+      {surPlace && d && <SignatureSurPlace doc={d} finaliser={!!surPlace.finaliser} onFermer={() => { setSurPlace(null); void recharger(); }} />}
     </>
   );
 }
@@ -618,7 +637,8 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         <NouveauDocument modeleId={nouveau.modele} onFermer={() => setNouveau(null)}
           onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }} />
       )}
-      {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }} />}
+      {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }}
+        onFinalise={r => { majDoc(r); setEdition(null); setOuvert(r.id); }} />}
       </>, document.body)}
     </div>
   );

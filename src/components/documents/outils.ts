@@ -8,7 +8,12 @@
                     avec l'identité de l'agence du jour ; plus rien ne bouge
                     tant qu'on ne le repasse pas en brouillon ;
      · signe      — l'exemplaire signé est déposé (scan ou photo).
-   Et `annule`, qui garde la trace sans rien effacer. */
+   Et `annule`, qui garde la trace sans rien effacer.
+
+   Signé en ligne ou sur place (`donnees.signature`), le document reste
+   « À faire signer » pendant que les signatures arrivent : `signature`
+   dit quand Alexandre l'a lancée, et `documents_signataires` qui a signé.
+   Il passe « Signé » tout seul, avec l'exemplaire scellé. */
 
 import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, lireIdentite, type IdentiteAgence } from '@/lib/agence';
@@ -35,7 +40,80 @@ export type DocumentRow = {
   annule_le: string | null;
   created_at: string;
   updated_at: string;
+  /* Signé en ligne ou sur place : lancé quand, et la dernière version
+     scellée (voir src/lib/signature-documents.ts). Absente avant le SQL. */
+  signature?: {
+    mode: 'en_ligne' | 'sur_place'; lance_le: string; agence_le: string;
+    scelle_chemin?: string; scelle_le?: string; complet_le?: string; envoye_le?: string; classe_le?: string;
+  } | null;
 };
+
+/* Un signataire, tel que le CRM le lit (documents_signataires). */
+export type SignataireRow = {
+  id: string; document_id: string; cle: string; rang: number; role: string; nom: string;
+  mode: 'en_ligne' | 'sur_place'; statut: 'attendu' | 'invite' | 'signe' | 'annule';
+  personne: { civilite?: string; prenom: string; nom: string; email: string; telephone?: string };
+  invite_le: string | null; ouvert_le: string | null; relances: number; lien_expire_le: string | null;
+  signe_le: string | null; code_envoye_le: string | null;
+};
+export const nomSignataire = (x: Pick<SignataireRow, 'personne' | 'nom'>) => `${x.personne.prenom || ''} ${x.personne.nom || ''}`.trim() || x.nom;
+
+/* La table des signataires n'existe pas encore (SQL pas encore passé). */
+export const tableSignaturesAbsente = (message: string) => /documents_signataires|column .*signature.* does not exist|Could not find the .*signature/i.test(message);
+
+export async function lireSignataires(docId: string): Promise<SignataireRow[]> {
+  const { data, error } = await supabase.from('documents_signataires').select('*').eq('document_id', docId).neq('statut', 'annule').order('rang');
+  if (error) throw new Error(error.message);
+  return (data || []) as SignataireRow[];
+}
+
+/* Les erreurs de la signature, en mots simples. */
+const ERREURS_SIGNATURE: Record<string, string> = {
+  emails: 'Il manque une adresse e-mail, ou deux signataires ont la même.',
+  deja: 'La signature est déjà lancée pour ce document.',
+  papier: 'Ce document se signe à la main : repasse-le en brouillon pour choisir « En ligne » ou « Sur place ».',
+  etat: 'Le document a changé d’état entre-temps : recharge la page.',
+  pas_lance: 'La signature n’est pas lancée.',
+  email: 'Cette adresse e-mail ne semble pas juste.',
+  email_pris: 'Cette adresse est déjà celle d’un autre signataire : chacun signe avec la sienne.',
+  attendre: 'Un code vient de partir : attends quelques secondes avant d’en redemander un.',
+  quota: 'Beaucoup de codes demandés d’affilée : réessaie dans une heure.',
+  mail: 'Le mail n’a pas pu partir. Vérifie l’adresse, puis réessaie.',
+  code: 'Ce code ne correspond pas.',
+  expire: 'Ce code a expiré : demandes-en un nouveau.',
+  trop: 'Trop d’essais : demande un nouveau code.',
+  recommencer: 'Demande un nouveau code pour signer.',
+  accepte: 'Il faut cocher la case pour signer.',
+  demande: 'Il faut aussi cocher la case « Je demande que l’Agence commence… » pour signer.',
+  attendus: 'Quelqu’un doit encore signer.',
+  preuves: 'Une signature n’a pas sa preuve de code : elle doit être refaite.',
+  pas_scelle: 'Le document n’est pas encore scellé.',
+  stockage: 'Le fichier n’a pas pu être rangé. Réessaie dans un instant.',
+};
+export class ErreurSignature extends Error {
+  code: string; plus: Record<string, unknown>;
+  constructor(code: string, message: string, plus: Record<string, unknown>) { super(message); this.code = code; this.plus = plus; }
+}
+export async function appelSignature<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch('/api/documents/signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch {
+    throw new ErreurSignature('reseau', 'Pas de connexion : vérifie le réseau, puis réessaie.', {});
+  }
+  const j = await r.json().catch(() => null) as (Record<string, unknown> & { ok?: boolean; erreur?: string; detail?: string }) | null;
+  if (!r.ok || !j?.ok) {
+    const code = String(j?.erreur || `http${r.status}`);
+    const detail = typeof j?.detail === 'string' ? j.detail : '';
+    const msg = detail && tableSignaturesAbsente(detail)
+      ? 'La signature en ligne n’est pas encore installée : lance d’abord le fichier outils/sql/signature-documents.sql dans Supabase › SQL Editor.'
+      : code === 'code' && typeof j?.restants === 'number'
+        ? (j.restants > 0 ? `Ce code ne correspond pas. Encore ${j.restants} essai${j.restants > 1 ? 's' : ''}.` : ERREURS_SIGNATURE.trop)
+        : ERREURS_SIGNATURE[code] || `Erreur : ${detail || code}`;
+    throw new ErreurSignature(code, msg, j || {});
+  }
+  return j as T;
+}
 
 /* Le mandat de recherche, signé en ligne depuis l'espace acheteur : il a
    sa propre table (mandats_signatures) ; la page le montre à côté des autres. */

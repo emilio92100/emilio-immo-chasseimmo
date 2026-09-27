@@ -258,6 +258,19 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
   `annule_le`. RLS + `crm_authentifie`, comme les autres. Les fichiers vivent dans le bucket privé
   `mandats`, sous `documents/<id>/`. Le mandat de recherche signé en ligne reste dans
   `mandats_signatures` : la rubrique le montre à côté, en lecture.
+  - `documents.signature` (jsonb, `outils/sql/signature-documents.sql`) : la signature en ligne ou
+    sur place d'un document — `{ mode, lance_le, agence_le, deroule, empreinte, version, versions,
+    seul_chemin, scelle_chemin, scelle_le, assemble_chemin, complet_le, envoye_le, classe_le }`.
+    Null : signé à la main (tous les documents d'avant). Le document reste `pret` tant que tout le
+    monde n'a pas signé, puis passe `signe` avec `signe_chemin` = le PDF scellé.
+  - **`documents_signataires`** (même fichier SQL) : un signataire par ligne, rattaché à
+    `document_id`. `cle` = son cadre dans le document (`v0`, `v1`, `sci`, `conjoint`, `a0`…),
+    `mode` (`en_ligne` · `sur_place`), `statut` `attendu` (sur place) · `invite` (son lien est parti)
+    · `signe` · `annule` (signature arrêtée). `jeton` (`/signer/<jeton>`, 15 jours), `relances`
+    (1 et 2 : rappels à J+2 et J+7 ; 3 : Alexandre prévenu de l'expiration), code haché, essais,
+    preuves (`ip`, `appareil`, `email_verifie`, `griffe_chemin`) et `deroule`. RLS +
+    `crm_authentifie`. Fichiers : `documents/<id>/seul-…`, `scelle-…`, `griffe-…` ; la signature
+    de l'agence est `agence/signature.png`.
 - **Signer à plusieurs** (`outils/sql/signature-plusieurs.sql`, voir `src/lib/cosignature.ts` et
   `src/lib/foyer.ts`) :
   - `clients.civilite` (la personne 1), `clients.couple`, `clients.conjoint` (jsonb : la personne 2
@@ -340,8 +353,11 @@ vente (simple, semi-exclusif, exclusif), offre d'achat, bon de visite. Formulair
 de remplir, retenues dans `localStorage` (`documents.mode`) : **étape par étape** ou **tout sur une
 page**. Le brouillon s'enregistre seul (800 ms). « Finaliser » fige le PDF avec l'identité de
 l'agence du jour et vérifie que le n° du registre n'a pas déjà servi (autres documents non annulés
-et `recherches.mandat_numero`). Ensuite : imprimer, faire signer sur papier, déposer le scan
-(« Il est signé »). Un mandat signé affiche ses échéances L215-1 (fenêtre d'un à trois mois avant
+et `recherches.mandat_numero`). Ensuite, selon « Comment sera-t-il signé ? » : **à la main**
+(imprimer, faire signer, déposer le scan : « Il est signé »), **en ligne** (« Envoyer les liens de
+signature » : un e-mail par signataire, suivi dans le panneau, relances, « Arrêter la signature »)
+ou **sur place** (`SignatureSurPlace` : plein écran, chacun son tour avec son code, puis la
+timeline de finalisation dont chaque étape est un vrai appel). Voir V3.11. Un mandat signé affiche ses échéances L215-1 (fenêtre d'un à trois mois avant
 chaque reconduction). Pastille bleue dans le menu = documents « À faire signer ».
 - **Les textes sont écrits à partir de la loi, pas copiés** d'un éditeur (Juridoc, Modelo…) :
   à faire relire par l'avocat d'Alexandre avant le premier usage réel.
@@ -480,10 +496,11 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/notifier` | portail | « Préviens le client, un bien est parti. » Réveille **tous les appareils du client**, pas ceux d'une recherche | clés VAPID |
 | `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
-| `POST /api/signer` | **publique** | Le co-signataire, depuis son lien : `afficher`, `code`, `signer`, `pdf`, `renoncer`, `decliner`. La serrure est son jeton | Supabase, Mailjet |
+| `POST /api/signer` | **publique** | Le co-signataire, depuis son lien : `afficher`, `code`, `signer`, `pdf`, `renoncer`, `decliner`. Un jeton de `documents_signataires` passe par `signerDocument()` (`afficher`, `code`, `signer`, `pdf`). La serrure est son jeton | Supabase, Mailjet |
 | `GET /signer/<jeton>` | **publique** | Sa page (aussi sur `espace.emilio-immo.com/signer/…`) : lire, vérifier ses informations, signer au doigt | Supabase |
 | `POST /api/mandat/cosignataire` | portail | Depuis la fiche : `renvoyer` son lien, `relancer` (lien neuf), `clore` l'invitation | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `GET /api/mandat/relances` | **publique** (`CRON_SECRET`) | Chaque matin à 9 h UTC : rappels à 2 et 7 jours, alerte à Alexandre à 7 jours et à l'expiration du lien | `CRON_SECRET` |
+| `POST /api/documents/signature` | portail | Signature en ligne ou sur place d'un document : `lancer`, `renvoyer`, `annuler`, `code` et `signer` (sur place), `finaliser` (étapes `verifier` · `assembler` · `sceller` · `envoyer` · `classer`) | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
@@ -1139,7 +1156,7 @@ en ligne), nom « non exclusif » pour le mandat en ligne, extension aux critèr
 rappelée après la nouvelle description, indemnités égales aux honoraires recalculées et
 exclusivité prolongée (en capitales, mandat papier), rétractation comptée depuis la dernière
 signature et qui met fin à l'avenant pour tous, droit de rétractation conservé même avec
-application immédiate. Contrôles ajoutés : mandat pas encore signé, mandat en ligne encore en
+application immédiate (la rétractation a été retirée des avenants en V3.11). Contrôles ajoutés : mandat pas encore signé, mandat en ligne encore en
 attente d'un co-signataire, mandat en ligne « exclusif », avenant daté avant le mandat,
 prolongation qui ne s'appliquerait qu'après la fin du mandat, clause libre qui parle
 d'exclusivité ou de prolongation. **À faire relire par l'avocat** avec le reste.
@@ -1152,3 +1169,55 @@ grand cadre de signature, puis une timeline de finalisation d'une quinzaine de s
 chaque étape est réelle). Pour le mandat de vente, les avenants, le mandat de recherche papier,
 l'offre d'achat ; le bon de visite sur place, au doigt pendant la visite. Les vendeurs signent
 par lien (l'espace vendeur viendra plus tard).
+
+### V3.11 — 27 septembre 2026 · chaque document se signe à la main, en ligne ou sur place
+
+⚠️ **À passer dans Supabase avant de mettre le code en ligne** : `outils/sql/signature-documents.sql`
+(colonne `documents.signature`, table `documents_signataires`). Sans elle, le panneau le dit et
+propose la signature à la main.
+
+**La question « Comment sera-t-il signé ? »** (`CHAMP_SIGNATURE`, `src/lib/actes/commun.ts`) dans
+les six modèles : **à la main** (le papier d'avant, octet pour octet), **en ligne**, **sur place**.
+Par défaut : papier pour les deux mandats, en ligne pour les avenants et l'offre, sur place pour
+le bon de visite. Un document enregistré avant cette question se signe à la main. En électronique,
+« Date et signatures » dit comment chacun signe et les cadres se remplissent au fil des signatures
+(`blocsSignature`) ; chaque modèle donne ses cadres (`Modele.cases` : vendeurs, société,
+conjoint, acquéreurs, visiteurs, agence) et la case à cocher qui remplace la mention manuscrite
+(`Modele.accepter(d, cle)` — le conjoint donne son accord, il ne devient pas mandant).
+
+**En ligne** : `src/lib/signature-documents.ts` (serveur) et `/api/documents/signature`.
+L'agence signe au lancement ; un lien par signataire (e-mail demandé avant l'envoi s'il manque),
+code à 6 chiffres par e-mail, signature au doigt ; à chaque signature, version scellée (empreinte
+SHA-256 + certificat) envoyée au signataire et alerte `document_signe` à Alexandre ; à la
+dernière, exemplaire complet à chacun, document `signe`, `surRecherche` et journal. Rappels J+2
+et J+7, puis Alexandre prévenu à l'expiration (`relancerDocuments`, dans le cron
+`/api/mandat/relances`). La page du signataire est `/signer/<jeton>`
+(`components/signer/SignatureDocument.tsx`) ; l'acheteur voit aussi « Un document vous attend »
+et « Vos documents signés » dans son espace (`CarteDocuments`).
+
+**Sur place** (`components/documents/SignatureSurPlace.tsx`) : chacun son tour sur l'écran
+d'Alexandre, relit l'essentiel, reçoit un code sur **sa propre** adresse, coche, signe dans un
+grand cadre ; « X signera plus tard » lui envoie son lien. Puis la finalisation : cinq étapes
+réelles (vérifier, assembler, sceller, envoyer, classer), 3,2 s minimum chacune, reprise à
+l'étape qui a échoué.
+
+**Relu par un second agent, puis corrigé** : case à part pour commencer avant 14 jours
+(`demandeExpresse` : L221-25, la demande doit venir du client, pas du choix écrit d'avance ;
+refusée côté serveur si elle manque), texte propre au conjoint, « Réponse du vendeur » de l'offre
+en ligne (l'Agence reçoit l'acceptation pour l'acquéreur ; une contre-proposition vaut refus),
+mention électronique exacte pour l'agence, « adresse e-mail vérifiée » (et non « identité »),
+« Certificat de signature » (sans « électronique », pour ne pas évoquer un prestataire qualifié),
+formulaire « Conclu le » = dernière signature. Les 14 jours ne s'annoncent que si le document
+les contient (`aRetractation`).
+
+**Les avenants n'ouvrent plus de délai de rétractation** (décision d'Alexandre, à confirmer par
+son avocat) : ils modifient un mandat dont les 14 jours ont déjà couru. Ni clause, ni formulaire,
+ni choix « appliquer avant 14 jours », ni question « Où sera-t-il signé ? ». Un « avenant » qui
+refait tout le contrat est un nouveau mandat.
+
+**Couleurs** : le CRM n'a plus de noir (§9) ; l'écran sur place est en bleu Emilio. La page du
+signataire et l'espace gardent leur marine.
+
+**À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
+les cases à cocher, la réponse du vendeur, le certificat.
+

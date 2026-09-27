@@ -17,7 +17,7 @@
 import {
   euros, enLettres, jourFr, type Partie, type Bloc, type Fiche, type Icone, type Resume,
 } from '@/lib/mandat';
-import type { IdentiteAgence } from '@/lib/agence';
+import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
 
 export type Donnees = Record<string, unknown>;
 
@@ -199,7 +199,98 @@ export type Modele = {
      dit « À envoyer » et « Envoyé », et la preuve d'envoi remplace
      l'exemplaire signé. */
   courrier?: boolean;
+  /* Ceux qui signent, dans l'ordre des cadres, l'agence comprise (voir
+     CaseSignature). Sans lui, le document ne se signe qu'à la main. */
+  cases?: (d: Donnees, id: IdentiteAgence) => CaseSignature[];
+  /* La case que coche chaque signataire en ligne ou sur place, à la place
+     de la mention manuscrite (« Bon pour offre d'achat au prix de… »).
+     `cle` : son cadre (le conjoint ne coche pas la même chose que le
+     mandant). */
+  accepter?: (d: Donnees, cle?: string) => string;
 };
+
+/* ── Comment le document est signé ──────────────────────────────────────
+   À la main (imprimé, « mots rayés nuls », scanné ensuite), en ligne
+   (chacun reçoit son lien par e-mail) ou sur place (sur l'écran de
+   l'agence, chacun son tour). Les deux derniers sont une signature
+   électronique : le même texte, sans mention manuscrite, des cadres qui
+   disent qui a signé et quand, et un certificat. Un document enregistré
+   avant cette question se signe à la main. */
+export type ModeSignature = 'papier' | 'en_ligne' | 'sur_place';
+export const modeSignature = (d: Donnees): ModeSignature => (d.signature === 'en_ligne' || d.signature === 'sur_place' ? d.signature : 'papier');
+export const electronique = (d: Donnees) => modeSignature(d) !== 'papier';
+/* Où il est signé. En ligne, c'est à distance, quoi qu'on ait coché avant. */
+export const lieuDe = (d: Donnees): string => (modeSignature(d) === 'en_ligne' ? 'distance' : typeof d.lieu === 'string' ? d.lieu : '');
+
+export const CHAMP_SIGNATURE: Champ = {
+  t: 'choix', cle: 'signature', lib: 'Comment sera-t-il signé ?', tuiles: true, options: [
+    { v: 'papier', l: 'À la main', aide: 'Imprimé, signé sur papier, puis scanné.', ic: 'plume' },
+    { v: 'en_ligne', l: 'En ligne', aide: 'Chacun reçoit son lien par e-mail et signe avec un code.', ic: 'mail' },
+    { v: 'sur_place', l: 'Sur place', aide: 'Sur ton écran, chacun son tour, avec un code reçu sur son e-mail.', ic: 'tablette' },
+  ],
+};
+
+/* Un cadre de signature. `cle` le retrouve d'une version à l'autre (v0,
+   v1 : les vendeurs ; conjoint ; a0 : un acquéreur…) ; `personne` : qui
+   signe (son nom, son e-mail, pour lui envoyer son lien ou son code) ;
+   `agence` : le cadre de l'agence, signé par Alexandre quand il lance la
+   signature. */
+export type CaseSignature = { cle: string; qui: string; nom: string; lignes: string[]; personne?: Personne; agence?: boolean };
+
+/* « Date et signatures » : à la main, la phrase « Fait à… en N
+   exemplaires », les mots rayés et les cadres à remplir ; en ligne ou sur
+   place, la façon dont chacun signe et des cadres qui se remplissent au
+   fil des signatures. */
+export function blocsSignature(d: Donnees, o: { papier: string; mention?: string; cases: CaseSignature[] }): Bloc[] {
+  if (!electronique(d)) return [
+    P(o.papier),
+    Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
+    { t: 'sigs', ...(o.mention ? { mention: o.mention } : {}), cases: o.cases.map(c => ({ qui: c.qui, nom: c.nom, lignes: c.lignes })) },
+  ];
+  const date = txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………';
+  const agence = o.cases.some(c => c.agence);
+  const ou = modeSignature(d) === 'en_ligne'
+    ? `Établi le ${date} et signé électroniquement à distance, chaque signataire depuis son lien personnel.`
+    : `Établi à ${txt(d, 'faitA') || '……………'} le ${date} et signé électroniquement sur place, chaque signataire à son tour sur l’écran de l’Agence.`;
+  return [
+    P(`${ou} La date et l’heure de chaque signature figurent dans son cadre et dans le certificat de signature joint. Chaque partie en reçoit un exemplaire électronique, avec ce certificat.`),
+    { t: 'sigs', electronique: true,
+      mention: `Chaque signataire${agence ? ', l’Agence exceptée,' : ''} déclare avoir lu le document en cochant la case prévue, puis le signe avec un code à usage unique reçu sur sa propre adresse e-mail et une signature tracée à l’écran.${agence ? ' L’Agence signe par son représentant, au lancement de la signature.' : ''} Articles 1366 et 1367 du Code civil. Le document signé est scellé, et le certificat joint en atteste.`,
+      cases: o.cases.map(c => ({ cle: c.cle, qui: c.qui, nom: c.nom, lignes: c.lignes, ...(c.agence ? { agence: true } : {}) })) },
+  ];
+}
+
+/* Ce qui manque pour signer en ligne ou sur place : un nom dans chaque
+   cadre (les e-mails se demandent au moment d'envoyer). */
+export function manquesSignature(d: Donnees, cases: CaseSignature[]): string[] {
+  if (!electronique(d)) return [];
+  const out: string[] = [];
+  cases.filter(c => !c.agence).forEach(c => { if (!c.personne || !(c.personne.nom || c.personne.prenom)) out.push(`Le nom de celui qui signe « ${c.qui.toLowerCase()} »`); });
+  if (modeSignature(d) === 'sur_place' && d.lieu === 'distance') out.push('Sur place, il n’est pas signé à distance : choisis où (à l’agence, ou chez le client)');
+  return out;
+}
+/* L'exécution avant la fin des 14 jours, quand le document ouvre la
+   rétractation : sans case à cocher à la main, il faut la choisir avant. */
+export const MANQUE_EXECUTION = 'Commencer avant la fin des 14 jours : oui ou non (en ligne ou sur place, il n’y a pas de case à cocher à la main)';
+
+/* Le document ouvre-t-il 14 jours de rétractation ? On le lit dans le texte
+   même : les mandats signés hors de l'agence ou à distance en ont un ;
+   jamais les avenants, l'offre d'achat ni le bon de visite. */
+export function aRetractation(m: Modele, d: Donnees): boolean {
+  return m.rediger(d, IDENTITE_DEFAUT).some(p => p.titre === 'Formulaire de rétractation' || p.sections.some(x => x.titre === 'Droit de rétractation'));
+}
+
+/* Commencer tout de suite, sans attendre les 14 jours : il faut la demande
+   expresse du client (article L221-25 du Code de la consommation). Le choix
+   écrit d'avance dans le document ne suffit pas : en ligne ou sur place,
+   chaque mandant la coche lui-même, dans une case à part, en signant.
+   Null : rien à demander (il attend la fin du délai, le document n'ouvre
+   pas de rétractation, ou ce cadre n'est pas celui d'un mandant). */
+export const DEMANDE_EXPRESSE = 'Je demande que l’Agence commence sa mission dès ma signature, sans attendre la fin du délai de rétractation de 14 jours. Je sais que je garde mon droit de me rétracter pendant ce délai.';
+export function demandeExpresse(m: Modele, d: Donnees, cle: string): string | null {
+  if (cle === 'agence' || cle === 'conjoint' || !electronique(d) || d.execution !== 'oui') return null;
+  return aRetractation(m, d) ? DEMANDE_EXPRESSE : null;
+}
 
 /* Une échéance d'un document signé : la date, et la fenêtre pendant
    laquelle il faut agir (« écrire au vendeur entre le … et le … »). */

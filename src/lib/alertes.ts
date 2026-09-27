@@ -18,7 +18,7 @@ export const CLE_ALERTES = 'alertes_mail';
 
 export type CleAlerte =
   | 'visite' | 'visite_offre' | 'visite_avis'
-  | 'mandat_question' | 'mandat_numero' | 'mandat_signe' | 'mandat_renonce' | 'mandat_depasse'
+  | 'mandat_question' | 'mandat_numero' | 'mandat_signe' | 'mandat_renonce' | 'mandat_depasse' | 'document_signe'
   | 'point_auto_recap';
 
 export type Alerte = {
@@ -85,6 +85,13 @@ export const ALERTES_MAIL: Alerte[] = [
     objet: '⚠️ Paul Martin : sa recherche dépasse son mandat (n° 4322)',
     quand: 'Il change ses critères au-delà de ce que couvre son mandat signé (budget, secteur…).',
     crm: 'Une relance du jour, et une ligne dans son suivi.',
+  },
+  {
+    cle: 'document_signe', groupe: 'mandats', titre: 'Un document signé en ligne',
+    objet: '✍️ Claire Martin a signé l’avenant n° 1 au mandat de vente n° 4330',
+    quand: 'Un signataire signe avec son lien un document de la rubrique Documents (mandat de vente, avenant, offre d’achat…). Le PDF signé est joint. Rien ne part pour une signature sur place : tu y étais.',
+    crm: 'Le document dans Documents, avec qui a signé et qui on attend, et une ligne dans le suivi du client.',
+    sauf: 'son exemplaire n’a pas pu lui être envoyé, ou le document n’a pas pu être mis à jour.',
   },
   {
     cle: 'point_auto_recap', groupe: 'auto', titre: 'Le récapitulatif du point automatique',

@@ -424,7 +424,7 @@ export default function SignatureCosignataire({ d }: { d: DonneesSigner }) {
 
 /* La page n'est pas dans l'espace : elle apporte ses propres bases (les
    couleurs, la police, les boutons), les mêmes que celles de l'espace. */
-const CSS_SIGNER = `
+export const CSS_SIGNER = `
 html, body{ height:auto !important; min-height:100% !important; overflow-x:hidden !important; overflow-y:auto !important }
 :root{
   --encre:#1a2332; --encre2:#2a3a52; --or:#c9a84c; --or-fonce:#a9822f;

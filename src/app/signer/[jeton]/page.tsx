@@ -1,12 +1,20 @@
 import type { Metadata, Viewport } from 'next';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import SignatureCosignataire, { type DonneesSigner } from '@/components/signer/SignatureCosignataire';
+import SignatureDocument, { type DonneesSignerDoc } from '@/components/signer/SignatureDocument';
+import { modele, aRetractation, demandeExpresse } from '@/lib/actes';
+import * as SD from '@/lib/signature-documents';
 import { lireCos, lienValide, dansLeMandat, finRetractationDe, type Co, type LigneMandat } from '@/lib/cosignature';
 import { lireIdentiteAgence, IDENTITE_DEFAUT } from '@/lib/agence';
 import { masquerEmail, type Mandant } from '@/lib/mandat';
 
 /**
  * La page d'un co-signataire : espace.emilio-immo.com/signer/<jeton>.
+ *
+ * Le même lien sert aux documents de la rubrique Documents envoyés pour
+ * signature en ligne (mandat de vente, avenant, offre…) : un jeton qui
+ * n'est pas celui d'un co-signataire est cherché dans
+ * `documents_signataires` (voir pageDocument, plus bas).
  *
  * Le conjoint (ou un co-acquéreur) que le premier signataire a ajouté en
  * signant. Pas d'espace, pas de compte : ce lien est sa seule porte, et il
@@ -16,7 +24,7 @@ import { masquerEmail, type Mandant } from '@/lib/mandat';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
-  title: 'Votre mandat de recherche — Emilio Immobilier',
+  title: 'Votre signature — Emilio Immobilier',
   robots: { index: false, follow: false },
 };
 export const viewport: Viewport = { themeColor: '#1a2332' };
@@ -37,7 +45,10 @@ export default async function PageSigner({ params }: { params: Promise<{ jeton: 
 
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
   const { data: brut } = await sb.from('mandats_cosignataires').select('*').eq('jeton', jeton).maybeSingle();
-  if (!brut) return <SignatureCosignataire d={introuvable()} />;
+  if (!brut) {
+    const doc = await pageDocument(sb, jeton);
+    return doc ? <SignatureDocument d={doc} /> : <SignatureCosignataire d={introuvable()} />;
+  }
   const co = brut as Co;
   const { data: lb } = await sb.from('mandats_signatures').select('*').eq('id', co.signature_id).maybeSingle();
   if (!lb || !lb.signe_le) return <SignatureCosignataire d={introuvable()} />;
@@ -63,4 +74,43 @@ export default async function PageSigner({ params }: { params: Promise<{ jeton: 
     signeLe: co.signe_le, fin: fin ? fin.toISOString() : null, complet: l.statut === 'signe', expire: co.lien_expire_le, tel: TEL_AGENT,
   };
   return <SignatureCosignataire d={d} />;
+}
+
+/* Le signataire d'un document de la rubrique Documents : ce qu'il lit, où
+   en sont les autres, son code encore valable. Null : ce n'est pas un jeton
+   de document (ou la table n'existe pas encore). */
+async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesSignerDoc | null> {
+  const { data: brut, error } = await sb.from('documents_signataires').select('*').eq('jeton', jeton).maybeSingle();
+  if (error || !brut) return null;
+  const s = brut as SD.SigDoc;
+  const { data: dr } = await sb.from('documents').select('*').eq('id', s.document_id).maybeSingle();
+  const doc = dr as SD.DocSigne | null;
+  const m = doc ? modele(doc.modele) : null;
+  if (!doc || !m) return null;
+  const identite = doc.identite || IDENTITE_DEFAUT;
+  const sigs = await SD.lireSignataires(sb, doc.id);
+  const nd = SD.nomDocument(m, doc.donnees);
+  const cases = SD.casesDe(m, doc);
+  const etats: Record<string, string | null> = {};
+  for (const x of sigs.filter(SD.actif)) etats[x.cle] = x.statut === 'signe' ? x.signe_le : null;
+  if (doc.signature?.agence_le) etats.agence = doc.signature.agence_le;
+  const etat: DonneesSignerDoc['etat'] = s.statut === 'signe' ? 'signe'
+    : s.statut !== 'invite' || doc.statut === 'annule' || (doc.statut === 'pret' && !doc.signature) ? 'annule'
+    : doc.statut !== 'pret' ? 'fin'
+    : SD.lienValide(s) ? 'invite' : 'expire';
+  const parties = m.rediger(doc.donnees, identite);
+  return {
+    jeton, etat, entete: m.entete(doc.donnees), le: nd.le, court: nd.court,
+    moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: masquerEmail(s.personne.email) },
+    role: cases.find(c => c.cle === s.cle)?.qui || s.role || 'Signataire',
+    autres: sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })),
+    parties, cadres: { etats, moi: s.cle },
+    resume: m.resume(doc.donnees), accepter: m.accepter ? m.accepter(doc.donnees, s.cle) : 'J’ai lu le document en entier et je l’accepte.',
+    expresse: demandeExpresse(m, doc.donnees, s.cle),
+    identite,
+    code: s.statut === 'invite' && s.code_hash && s.code_envoye_le && recent(s.code_envoye_le) ? { le: s.code_envoye_le, email: masquerEmail(s.personne.email) } : null,
+    signeLe: s.signe_le, complet: doc.statut === 'signe', expire: s.lien_expire_le,
+    /* « 14 jours pour changer d'avis » seulement si le document le dit. */
+    retractation: aRetractation(m, doc.donnees), tel: TEL_AGENT,
+  };
 }

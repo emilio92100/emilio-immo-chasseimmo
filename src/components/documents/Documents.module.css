@@ -117,6 +117,7 @@
 .actions .btn { width: 100%; justify-content: flex-start; padding: 12px 14px; }
 .actions .btn span { flex: 1 1 auto; text-align: left; }
 .actions .btn small { font-weight: 500; color: #94a3b8; font-size: 12px; }
+.actions .btnOr small { color: var(--emilio); opacity: .72; }
 .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .echeance { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--emilio); }
 .echeance b { white-space: nowrap; }
@@ -451,3 +452,19 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .papResume { grid-template-columns: 1fr; }
   .saut { margin-left: -16px; margin-right: -16px; padding: 0 16px; }
 }
+
+/* ── La signature en ligne ou sur place, dans la fiche du document ── */
+.modeSig { display: flex; gap: 10px; align-items: flex-start; padding: 12px 13px; border-radius: 12px; background: #f4f6fa; border: 1px solid #e3e8f0; font-size: 13px; line-height: 1.5; color: #4a5568; }
+.modeSig > svg { flex-shrink: 0; color: #a07c28; margin-top: 1px; }
+.modeSig b { color: var(--emilio); }
+.sigListe { display: flex; flex-direction: column; gap: 8px; }
+.sigLigne { display: flex; gap: 11px; align-items: flex-start; padding: 10px 11px; border-radius: 12px; border: 1px solid #eef1f6; background: #fbfcfe; }
+.sigPt { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.sigTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sigTx b { font-size: 13.5px; color: var(--emilio); }
+.sigTx i { font-style: normal; font-size: 12px; color: #64748b; line-height: 1.45; overflow-wrap: anywhere; }
+.sigActions { display: flex; flex-wrap: wrap; gap: 0 14px; margin-top: 2px; }
+.sigActions .btnLien { padding: 4px 0; font-size: 12.5px; }
+.sigMail { display: flex; gap: 6px; margin-top: 6px; }
+.sigMail .input { padding: 7px 10px; font-size: 13px; }
+.sigMail .btn { padding: 7px 12px; }

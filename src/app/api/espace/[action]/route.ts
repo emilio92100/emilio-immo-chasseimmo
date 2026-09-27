@@ -16,6 +16,7 @@ import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis,
  *   POST /api/espace/rappel    { token, creneau }
  *   POST /api/espace/partage   { token, bien_id, destinataire }
  *   POST /api/espace/toujours  { token }   « je cherche toujours » (point automatique)
+ *   POST /api/espace/document  { token, id }  le PDF scellé d'un de SES documents signés en ligne
  *
  * Chaque appel revérifie le lien : sans lui, rien ne s'écrit.
  * La route est publique (voir src/proxy.ts) mais le lien fait la serrure.
@@ -370,6 +371,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     }
 
     switch (action) {
+
+      /* ── un de ses documents signés en ligne (avenant, offre…) ── */
+      case 'document': {
+        const id = typeof body.id === 'string' ? body.id : '';
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ ok: false, error: 'document' }, { status: 400 });
+        const { data: doc } = await supabase.from('documents').select('id, client_id, statut, signe_chemin, signature, titre')
+          .eq('id', id).eq('client_id', recherche.client_id).maybeSingle();
+        if (!doc || doc.statut !== 'signe' || !doc.signature || !doc.signe_chemin) return NextResponse.json({ ok: false, error: 'aucun' }, { status: 404 });
+        const nom = String(doc.titre || 'Document').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) + '.pdf';
+        const { data, error } = await supabase.storage.from('mandats').createSignedUrl(doc.signe_chemin as string, 120, { download: nom });
+        if (error || !data?.signedUrl) return NextResponse.json({ ok: false, error: 'stockage' }, { status: 500 });
+        await evt('document', `PDF signé ouvert : ${doc.titre || 'document'}`);
+        return NextResponse.json({ ok: true, url: data.signedUrl });
+      }
 
       /* ── le client a ouvert une fiche ───────────────────────── */
       case 'vue': {

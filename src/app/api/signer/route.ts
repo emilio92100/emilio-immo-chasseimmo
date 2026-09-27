@@ -8,6 +8,8 @@ import {
 } from '@/lib/cosignature';
 import { envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
+import { modele } from '@/lib/actes';
+import * as SD from '@/lib/signature-documents';
 
 /**
  * La signature d'un co-signataire — le conjoint, un co-acquéreur — depuis
@@ -32,6 +34,11 @@ import { alerteMailActive } from '@/lib/alertes';
  *
  * Public dans src/proxy.ts : la serrure, c'est le jeton (16 caractères tirés
  * au hasard), vérifié ici à chaque appel.
+ *
+ * Le même lien sert aux documents de la rubrique Documents signés en ligne
+ * (mandat de vente, avenant, offre…) : un jeton qui n'est pas celui d'un
+ * co-signataire est cherché dans `documents_signataires` (voir
+ * signerDocument, plus bas) : afficher, code, signer, pdf.
  */
 
 export const dynamic = 'force-dynamic';
@@ -83,7 +90,7 @@ export async function POST(req: NextRequest) {
     const etape = String(body?.etape || '');
     const sb = base();
     const x = await charger(sb, jeton);
-    if (!x) return ko('lien invalide', 401);
+    if (!x) return signerDocument(req, sb, jeton, etape, body);
     const { co, l, cos } = x;
     const moi = nomDe(co.personne), premier = nomDe(l.mandant);
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(l.client_id || '')}`;
@@ -329,5 +336,106 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('[signer]', e);
     return ko('erreur', 500);
+  }
+}
+
+/* ══ Un document de la rubrique Documents, signé avec son lien ═══════════ */
+
+async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: string, etape: string, body: Record<string, unknown>) {
+  const { data: brut, error: eS } = await sb.from('documents_signataires').select('*').eq('jeton', jeton).maybeSingle();
+  if (eS || !brut) return ko('lien invalide', 401);
+  const s = brut as SD.SigDoc;
+  const { data: dr } = await sb.from('documents').select('*').eq('id', s.document_id).maybeSingle();
+  const doc = dr as SD.DocSigne | null;
+  const m = doc ? modele(doc.modele) : null;
+  if (!doc || !m) return ko('lien invalide', 401);
+  const d = doc.donnees;
+  const sigs = await SD.lireSignataires(sb, doc.id);
+  const moi = SD.nomSig(s);
+  const nd = SD.nomDocument(m, d);
+  const lienCrm = SD.lienCrmDocument(doc);
+  /* Le document l'attend-il encore ? Alexandre a pu arrêter la signature,
+     ou le document a pu être annulé. */
+  const ouvert = s.statut === 'invite' && doc.statut === 'pret' && !!doc.signature;
+
+  switch (etape) {
+    case 'afficher': {
+      if (s.statut === 'invite' && !s.ouvert_le) {
+        const le = new Date().toISOString();
+        await sb.from('documents_signataires').update({ ouvert_le: le, deroule: [...(s.deroule || []), { t: le, x: 'Lien personnel ouvert, document affiché' }] }).eq('id', s.id);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    case 'code': {
+      if (!ouvert) return ko('etat', 409, { statut: s.statut });
+      if (!SD.lienValide(s)) return ko('lien_expire', 410);
+      const r = await SD.envoyerCode(sb, s, sigs, m, d);
+      if ('erreur' in r) return ko(r.erreur, r.statut, r.plus || {});
+      return NextResponse.json({ ok: true, email: r.email });
+    }
+
+    case 'signer': {
+      if (body.accepte !== true) return ko('accepte', 400);
+      if (s.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
+      if (!ouvert) return ko('recommencer', 409);
+      if (!SD.lienValide(s)) return ko('lien_expire', 410);
+      const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
+      const appareil = appareilDe(req.headers.get('user-agent') || '');
+      const r = await SD.validerSignature(sb, s, m, d, { code: String(body.code || ''), griffe: body.griffe, ip, appareil, demande: body.demande === true });
+      if ('erreur' in r) return ko(r.erreur, r.statut, r.plus || {});
+      const tous = sigs.map(x => (x.id === r.s.id ? r.s : x));
+      const restants = tous.filter(x => SD.actif(x) && SD.attendu(x));
+      const echecs: string[] = [];
+      let pdf: Uint8Array | null = null;
+      if (!restants.length) {
+        /* Le dernier : tout est scellé, envoyé à chacun, rangé. */
+        const t = await SD.terminer(sb, doc, tous);
+        if (t.erreur) return ko('stockage', 500, { detail: t.erreur });
+        pdf = t.signe || null;
+        echecs.push(...t.echecs);
+      } else {
+        /* Pas le dernier : une version scellée avec les signatures du
+           moment, qu'il reçoit. */
+        const sc = await SD.sceller(sb, doc, tous);
+        if ('erreur' in sc) return ko('stockage', 500, { detail: sc.erreur });
+        const { error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id);
+        if (eD) echecs.push(`document : ${eD.message}`);
+        pdf = sc.signe;
+        const e = await SD.envoyerExemplaire({ s: r.s, m, d, signe: sc.signe, complet: false, attendus: restants.map(x => x.personne.prenom || SD.nomSig(x)) });
+        if (e) echecs.push(`${moi} : ${e}`);
+      }
+      const le = r.s.signe_le || new Date().toISOString();
+      if (doc.client_id) await sb.from('journal').insert({
+        client_id: doc.client_id, type: 'mandat', metadata: { document_id: doc.id, signataire_id: s.id },
+        titre: `✍️ ${moi} a signé ${nd.court}${restants.length ? '' : ' — signé par tous'}`,
+        description: `${doc.titre || m.titre} · signé avec son lien personnel le ${dateCourte(le)} à ${heureParis(le)}${restants.length ? `\nOn attend encore : ${restants.map(SD.nomSig).join(', ')}` : ''}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}`,
+      });
+      if (echecs.length || await alerteMailActive(sb, 'document_signe')) {
+        const titre = `✍️ ${moi} a signé ${nd.le}${restants.length ? '' : ' · signé par tous'}`;
+        await envoyerMail({
+          a: ALERTES(), deLaPartDe: 'crm', sujet: titre,
+          ...(pdf ? { pj: [{ nom: SD.nomFichierPdf(m, d), type: 'application/pdf', base64: Buffer.from(pdf).toString('base64') }] } : {}),
+          texte: `${moi} vient de signer ${nd.le} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}.\n${restants.length ? `On attend encore ${restants.map(SD.nomSig).join(', ')}.` : 'Tout le monde a signé : chacun a reçu son exemplaire, et le document est rangé dans Documents.'}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}\n\n${lienCrm}`,
+          html: gabarit(`${moi} a signé`, `<p><b>${echappe(moi)}</b> vient de signer ${echappe(nd.le)} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}.</p>
+            <p>${restants.length ? `On attend encore ${echappe(restants.map(SD.nomSig).join(', '))}.` : '<b>Tout le monde a signé</b> : chacun a reçu son exemplaire, et le document est rangé dans Documents.'}</p>
+            ${echecs.length ? `<p style="color:#b91c1c">⚠️ ${echappe(echecs.join(' ; '))}</p>` : ''}${bouton(lienCrm, 'Ouvrir le CRM')}`,
+            'Le PDF signé, avec son certificat, est en pièce jointe et dans Documents.'),
+        });
+      }
+      return NextResponse.json({ ok: true, complet: !restants.length, signeLe: le, attendus: restants.map(x => x.personne.prenom || SD.nomSig(x)) });
+    }
+
+    case 'pdf': {
+      if (s.statut !== 'signe') return ko('aucun', 404);
+      const chemin = doc.statut === 'signe' ? doc.signe_chemin : doc.signature?.scelle_chemin;
+      if (!chemin) return ko('aucun', 404);
+      const { data, error } = await sb.storage.from(SD.BUCKET).createSignedUrl(chemin, 120, { download: SD.nomFichierPdf(m, d) });
+      if (error || !data?.signedUrl) return ko('stockage', 500);
+      return NextResponse.json({ ok: true, url: data.signedUrl });
+    }
+
+    default:
+      return ko('etape inconnue', 400);
   }
 }

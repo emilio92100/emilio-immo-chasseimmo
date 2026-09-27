@@ -9,10 +9,10 @@
    numéro, date, prix et honoraires sont repris ; seul ce qui change est à
    saisir.
 
-   Signé hors de l'agence ou à distance, un avenant est un contrat comme un
-   autre : il ouvre le droit de rétractation, avec le formulaire, quel que
-   soit son objet (relecture du 27 septembre 2026). Un mandat terminé ne se
-   prolonge pas par avenant, et un mandat simple ne devient pas exclusif par
+   Pas de délai de rétractation : l'avenant modifie un mandat dont les 14
+   jours ont déjà couru à sa signature, il n'en rouvre pas (choix
+   d'Alexandre du 27 septembre 2026, à confirmer par son avocat). Un mandat
+   terminé ne se prolonge pas par avenant, et un mandat simple ne devient pas exclusif par
    avenant : dans les deux cas, un nouveau mandat, avec un nouveau numéro.
 
    ⚠️ Texte écrit pour Emilio, à faire relire par l'avocat d'Alexandre
@@ -22,10 +22,11 @@ import { euros, BAREME_VENTE, type Partie, type Bloc, type Fiche, type Resume } 
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, lignes, plusMois, couper,
-  nomComplet, nomsCourts, fichePersonne, ficheAgence, blocDonnees, formulaireType,
+  nomComplet, nomsCourts, fichePersonne, ficheAgence, blocDonnees,
+  blocsSignature, manquesSignature, CHAMP_SIGNATURE,
   type Donnees, type Modele, type Etape, type Contexte, type Repere, type Source,
 } from './commun';
-import { TYPES, typeDe, argent, vendeursDe, aConjoint, ACTIONS, RYTHMES, baseTantiemes, tantiemes, iconeLot } from './mandat-vente';
+import { TYPES, typeDe, argent, vendeursDe, aConjoint, ACTIONS, RYTHMES, baseTantiemes, tantiemes, iconeLot, casesVente } from './mandat-vente';
 
 /* Les réponses reprises du mandat d'origine. */
 const REPRIS = ['qui', 'situation', 'logementFamille', 'conjoint', 'lien', 'regime', 'vendeurs', 'represente',
@@ -36,8 +37,6 @@ const REPRIS = ['qui', 'situation', 'logementFamille', 'conjoint', 'lien', 'regi
 const change = (d: Donnees, k: string) => liste(d, 'objets').includes(k);
 const nomMandant = (d: Donnees) => (d.qui === 'sci' ? txt(d, 'sciNom') || 'La société' : nomsCourts(vendeursDe(d)));
 const adresseBien = (d: Donnees) => [txt(d, 'adresse'), [txt(d, 'cp'), txt(d, 'ville')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-/* Signé hors de l'agence ou à distance : droit de rétractation. */
-const retractation = (d: Donnees) => d.lieu === 'domicile' || d.lieu === 'distance';
 const estCopro = (d: Donnees) => d.nature !== 'terrain' && d.copro === 'oui';
 
 /* L'argent au nouveau prix, avec les honoraires du mandat ou les nouveaux. */
@@ -124,14 +123,9 @@ const ETAPES: Etape[] = [
     ],
   },
   {
-    id: 'signature', titre: 'Signature', sous: 'Où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
+    id: 'signature', titre: 'Signature', sous: 'Comment, où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
     champs: [
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, options: [
-        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez le vendeur', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
-      ], aide: 'Hors de l’agence ou à distance, l’avenant ouvre 14 jours de rétractation : il le dit, avec le formulaire.' },
-      { t: 'choix', cle: 'execution', lib: 'Appliquer avant la fin des 14 jours ?', si: retractation, options: [
-        { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera sur place' },
-      ] },
+      CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
@@ -145,7 +139,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const no = num(d, 'avenantNo') || 1;
   const numero = txt(d, 'mandatNumero');
   const adresse = adresseBien(d);
-  const retr = retractation(d);
 
   const fiches: Fiche[] = d.qui === 'sci'
     ? [{ ic: 'agence', titre: (txt(d, 'sciNom') || 'La société').toUpperCase(), lignes: [
@@ -216,33 +209,17 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   sections.push({ titre: 'Le reste du mandat', ic: 'doc', blocs: [
     P(`Toutes les autres clauses du mandat demeurent inchangées. Le présent avenant en fait partie intégrante et se rattache à son numéro d’inscription au registre des mandats de l’Agence${numero ? ` (n° ${numero})` : ''}.`),
   ] });
-  if (retr) {
-    const ex = d.execution === 'oui' ? true : d.execution === 'non' ? false : null;
-    sections.push({ titre: 'Droit de rétractation', ic: 'retour', blocs: [
-      P(`Le présent avenant étant signé ${d.lieu === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}. Le mandat continue alors aux conditions d’avant l’avenant.`, true),
-      { t: 'case', coche: ex === true, x: 'Le MANDANT DEMANDE que l’avenant s’applique dès sa signature, sans attendre la fin du délai de rétractation.' },
-      { t: 'case', coche: ex === false, x: 'Le MANDANT préfère que l’avenant s’applique à la fin du délai de rétractation.' },
-    ] });
-  }
   sections.push({ titre: 'Informations', ic: 'info', blocs: [
     blocDonnees(A),
-    Pp(`Textes applicables : loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet) et décret n° 72-678 du 20 juillet 1972${retr ? ' ; Code de la consommation (art. L221-5, L221-18 et suivants)' : ''}. Le présent avenant est soumis à la loi française.`),
+    Pp(`Textes applicables : loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet) et décret n° 72-678 du 20 juillet 1972. Le présent avenant est soumis à la loi française.`),
   ] });
   const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
   const nbEx = (d.qui === 'sci' ? 1 : repr >= 0 ? 1 : vs.length) + 1 + (aConjoint(d) ? 1 : 0);
-  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: [
-    P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`),
-    Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-    { t: 'sigs', mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé ».', cases: [
-      ...(d.qui === 'sci'
-        ? [{ qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(vs[0])}`] }]
-        : vs.map(p => ({ qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[] }))
-          .filter((_, i) => repr < 0 || i === repr)
-          .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(vs[1 - repr])}, par procuration`] } : c))),
-      ...(aConjoint(d) ? [{ qui: 'Le conjoint', nom: txt(d, 'conjoint') || '……………', lignes: ['Pour accord (article 215 du Code civil)'] }] : []),
-      { qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`] },
-    ] },
-  ] });
+  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+    papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`,
+    mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé ».',
+    cases: casesVente(d, A),
+  }) });
 
   const parties: Partie[] = [{
     titre: `Avenant n° ${no} au mandat de vente${numero ? ` n° ${numero}` : ''}`,
@@ -251,12 +228,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     ic: 'doc',
     sections,
   }];
-  if (retr) parties.push(formulaireType(A, {
-    contrat: `avenant n° ${no} au mandat de vente${numero ? ` n° ${numero}` : ''}, pour le bien situé ${adresse || '……………'}`,
-    conclu: txt(d, 'date') ? jourLong(txt(d, 'date')) : '',
-    noms: d.qui === 'sci' ? txt(d, 'sciNom') : vs.map(nomComplet).join(', '),
-    adresse: d.qui === 'sci' ? txt(d, 'sciSiege') : vs[0]?.adresse || '',
-  }));
   return parties;
 }
 
@@ -317,6 +288,8 @@ function manques(d: Donnees): string[] {
   if (change(d, 'engagements') && typeDe(d) === 'exclusif' && !liste(d, 'actions').length) out.push('Au moins une action (obligatoire pour un mandat exclusif)');
   if (txt(d, 'finActuelle') && txt(d, 'date') && txt(d, 'date') >= txt(d, 'finActuelle')) out.push(`Un mandat en cours : celui-ci a pris fin le ${jourLong(txt(d, 'finActuelle'))}, il faut en signer un nouveau`);
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date de signature');
+  /* Pas de « lieu » dans l'avenant : un ancien choix ne bloque rien. */
+  out.push(...manquesSignature({ ...d, lieu: '' }, casesVente(d)));
   return out;
 }
 
@@ -330,7 +303,7 @@ function defaut(c: Contexte): Donnees {
     charge: 'acquereur', honoMode: 'taux', taux: BAREME_VENTE, prix: b?.prix_acquereur || null,
     objets: ['prix'], nouveauPrix: null, charge2: 'acquereur', honoMode2: 'taux', taux2: BAREME_VENTE, forfait2: null,
     finActuelle: '', finNouvelle: '', autreTexte: '',
-    lieu: 'agence', execution: '', faitA: c.identite.ville, date: aujourdhui(),
+    signature: 'en_ligne', faitA: c.identite.ville, date: aujourdhui(),
   };
 }
 
@@ -394,4 +367,8 @@ export const AVENANT_VENTE: Modele = {
   lien: 'mandat',
   deriver: { de: ['mandat_vente'], fn: deriver },
   enchainer,
+  cases: casesVente,
+  accepter: (d, cle) => (cle === 'conjoint'
+    ? 'J’ai lu l’avenant en entier et, le bien étant le logement de la famille, j’y donne mon accord (article 215 du Code civil).'
+    : 'J’ai lu l’avenant en entier et je l’accepte.'),
 };

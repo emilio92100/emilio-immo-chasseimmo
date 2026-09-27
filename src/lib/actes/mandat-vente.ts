@@ -30,7 +30,8 @@ import { BAREME_VENTE } from '@/lib/mandat';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, lignes, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence,
-  PERSONNE_VIDE, plusMois, veille, annexeL215, type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance,
+  PERSONNE_VIDE, plusMois, veille, annexeL215, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
+  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance, type CaseSignature,
 } from './commun';
 
 export type TypeMandat = 'simple' | 'semi' | 'exclusif';
@@ -100,7 +101,7 @@ export function argent(d: Donnees): Argent {
 
 /* Le mandat est-il soumis au droit de rétractation ? Signé hors de
    l'agence ou à distance, avec un particulier : oui. */
-export const retractation = (d: Donnees) => d.lieu === 'domicile' || d.lieu === 'distance';
+export const retractation = (d: Donnees) => lieuDe(d) === 'domicile' || lieuDe(d) === 'distance';
 
 export function vendeursDe(d: Donnees): Personne[] {
   const l = lirePersonnes(d.vendeurs);
@@ -290,12 +291,13 @@ const ETAPES: Etape[] = [
       { t: 'nombre', cle: 'periode', lib: 'Par périodes de', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
       { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
       { t: 'titre', cle: 't-sig', lib: 'La signature', ic: 'plume' },
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, options: [
+      CHAMP_SIGNATURE,
+      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
         { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez le vendeur', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
       ], aide: 'Hors de l’agence ou à distance, le vendeur a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
-      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', si: d => d.lieu === 'domicile' || d.lieu === 'distance', options: [
+      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', si: d => retractation(d), options: [
         { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera sur place' },
-      ] },
+      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
       { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
@@ -519,7 +521,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   if (retr) {
     const ex = d.execution === 'oui' ? true : d.execution === 'non' ? false : null;
     sections.push({ titre: 'Droit de rétractation', ic: 'retour', blocs: [
-      P(`Le mandat étant signé ${d.lieu === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}.`, true),
+      P(`Le mandat étant signé ${lieuDe(d) === 'distance' ? 'à distance' : 'hors des locaux de l’Agence'}, le MANDANT peut se rétracter sans avoir à se justifier pendant ${nbLettres(14)} jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié), par une déclaration écrite dénuée d’ambiguïté — lettre, e-mail, ou le formulaire joint — adressée à l’Agence, ${A.adresse}, ${A.cp} ${A.ville}, ${A.mail}.`, true),
       P('L’Agence ne commence sa mission qu’à la fin de ce délai, sauf demande expresse du MANDANT. S’il demande qu’elle commence plus tôt, il garde son droit de rétractation tant que la mission n’est pas entièrement exécutée ; aucun honoraire n’est dû s’il se rétracte avant la vente.'),
       { t: 'case', coche: ex === true, x: 'Le MANDANT DEMANDE que la mission commence dès la signature, sans attendre la fin du délai de rétractation.' },
       { t: 'case', coche: ex === false, x: 'Le MANDANT préfère que la mission commence à la fin du délai de rétractation.' },
@@ -539,19 +541,11 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   ] });
   if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: [P(txt(d, 'clause'))] });
   const nbEx = (d.qui === 'sci' ? 1 : vs.length) + 1 + (aConjoint(d) ? 1 : 0);
-  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: [
-    P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`),
-    Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-        { t: 'sigs', mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».', cases: [
-      ...(d.qui === 'sci'
-        ? [{ qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(vs[0])}`] }]
-        : vs.map(p => ({ qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[] }))
-          .filter((_, i) => repr < 0 || i === repr)
-          .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(vs[1 - repr])}, par procuration`] } : c))),
-      ...(aConjoint(d) ? [{ qui: 'Le conjoint', nom: txt(d, 'conjoint') || '……………', lignes: ['Pour accord (article 215 du Code civil)'] }] : []),
-      { qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`] },
-    ] },
-  ] });
+  sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+    papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`,
+    mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».',
+    cases: casesVente(d, A),
+  }) });
 
   const parties: Partie[] = [{
     titre: `Mandat de vente ${T.nom}${numero ? ` n° ${numero}` : ''}`,
@@ -631,7 +625,7 @@ export function formulaireRetractation(d: Donnees, A: IdentiteAgence): Partie {
       P(`À l’attention de : ${A.nom.toUpperCase()}, ${A.adresse}, ${A.cp} ${A.ville} — ${A.mail}`, true),
       { t: 'l', items: [
         `Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de service ci-dessous : mandat de vente${txt(d, 'numero') ? ` n° ${txt(d, 'numero')}` : ''}, pour le bien situé ${[txt(d, 'adresse'), txt(d, 'cp'), txt(d, 'ville')].filter(Boolean).join(' ') || '………………'}.`,
-        `Conclu le : ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '………………'}`,
+        `Conclu le : ${electronique(d) ? '……………… (la date de la dernière signature, sur le certificat joint)' : txt(d, 'date') ? jourLong(txt(d, 'date')) : '………………'}`,
         `Nom du ou des consommateurs : ${vs.map(nomComplet).join(', ')}`,
         `Adresse : ${vs[0]?.adresse || '………………'}`,
         'Signature (uniquement si ce formulaire est envoyé sur papier) :',
@@ -706,6 +700,22 @@ export function echeances(d: Donnees, signeLe: string): Echeance[] {
   return out;
 }
 
+/* Les cadres de signature : chaque vendeur (ou celui qui représente
+   l'autre, ou le gérant pour la société), le conjoint qui donne son
+   accord, puis l'agence. */
+export function casesVente(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
+  const vs = vendeursDe(d);
+  const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
+  const out: CaseSignature[] = d.qui === 'sci'
+    ? [{ cle: 'sci', qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(vs[0])}`], personne: vs[0] }]
+    : vs.map((p, i): CaseSignature => ({ cle: `v${i}`, qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[], personne: p }))
+      .filter((_, i) => repr < 0 || i === repr)
+      .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(vs[1 - repr])}, par procuration`] } : c));
+  if (aConjoint(d)) out.push({ cle: 'conjoint', qui: 'Le conjoint', nom: txt(d, 'conjoint') || '……………', lignes: ['Pour accord (article 215 du Code civil)'], personne: { ...PERSONNE_VIDE, nom: txt(d, 'conjoint') } });
+  if (A) out.push({ cle: 'agence', qui: 'Le mandataire', nom: A.nom.toUpperCase(), lignes: [`Représentée par ${A.signataireNom}, ${A.signataireQualite}`], agence: true });
+  return out;
+}
+
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   const vs = vendeursDe(d);
@@ -730,6 +740,8 @@ function manques(d: Donnees): string[] {
   if (!txt(d, 'numero')) out.push('Le numéro du registre des mandats');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date de signature');
   if (typeDe(d) === 'exclusif' && !liste(d, 'actions').length) out.push('Les actions promises (obligatoires pour un mandat exclusif)');
+  if (electronique(d) && retractation(d) && d.execution !== 'oui' && d.execution !== 'non') out.push(MANQUE_EXECUTION);
+  out.push(...manquesSignature(d, casesVente(d)));
   return out;
 }
 
@@ -747,7 +759,7 @@ function defaut(c: Contexte): Donnees {
     type: 'exclusif', prix: b?.prix_acquereur || null, charge: 'acquereur', honoMode: 'taux', taux: BAREME_VENTE,
     semiDirect: 'aucun',
     duree: 3, dureeMode: 'prorogation', periode: 3, dureeMax: 12,
-    lieu: 'agence', execution: '', numero: '', faitA: c.identite.ville, date: aujourdhui(),
+    signature: 'papier', lieu: 'agence', execution: '', numero: '', faitA: c.identite.ville, date: aujourdhui(),
     actions: ACTIONS_DEFAUT, rythme: 'semaine', pouvoirs: ['syndic'], suite: 12, memePrix: 'non', penale: 'non', infoJointe: 'oui',
   };
 }
@@ -782,4 +794,9 @@ export const MANDAT_VENTE: Modele = {
   badge: d => TYPES[typeDe(d)].court,
   reperes,
   echeances,
+  cases: casesVente,
+  /* Le conjoint ne devient pas mandant : il donne son accord (article 215). */
+  accepter: (d, cle) => (cle === 'conjoint'
+    ? 'J’ai lu le mandat en entier et, le bien étant le logement de la famille, je donne mon accord à sa signature (article 215 du Code civil).'
+    : 'J’ai lu le mandat en entier, y compris les clauses écrites en capitales, et je l’accepte : bon pour mandat.'),
 };

@@ -6,7 +6,7 @@ import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
-import SignatureMandat, { CarteMonMandat, CartePret, CarteAttente, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
+import SignatureMandat, { CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
 import { jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 
@@ -1672,11 +1672,15 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               onFin={ouvrirFinRecherche}
               /* Alexandre a préparé le mandat : une carte le propose, sans
                  attendre la première demande de visite. */
-              mandatPret={mandat.propose && mandat.etat === 'a_signer'
-                ? <CartePret onSigner={() => ouvrirMandat('libre')} />
-                /* Signé, mais on attend encore son conjoint : l'accueil le dit. */
-                : mandat.cos?.some(c => c.statut === 'invite')
-                  ? <CarteAttente mandat={mandat} onVoir={() => aller('recherche')} /> : null}
+              mandatPret={<>
+                {mandat.propose && mandat.etat === 'a_signer'
+                  ? <CartePret onSigner={() => ouvrirMandat('libre')} />
+                  /* Signé, mais on attend encore son conjoint : l'accueil le dit. */
+                  : mandat.cos?.some(c => c.statut === 'invite')
+                    ? <CarteAttente mandat={mandat} onVoir={() => aller('recherche')} /> : null}
+                {/* Ses documents signés en ligne : à signer, ou signés. */}
+                {mandat.documents?.length ? <CarteDocuments documents={mandat.documents} envoyer={envoyer} /> : null}
+              </>}
               /* Sa dernière visite, sans réponse encore : la question l'attend
                  en haut de l'accueil pendant 7 jours. */
               avisVisite={(() => {

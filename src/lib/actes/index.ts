@@ -4,7 +4,8 @@
    juridiques, l'éditeur et le PDF le prennent en charge sans autre code. */
 
 import type { IdentiteAgence } from '@/lib/agence';
-import type { Categorie, Donnees, Modele } from './commun';
+import type { CadreSigne } from '@/lib/mandat-pdf';
+import { electronique, type Categorie, type Donnees, type Modele } from './commun';
 import { MANDAT_VENTE } from './mandat-vente';
 import { BON_VISITE } from './bon-visite';
 import { OFFRE_ACHAT } from './offre-achat';
@@ -34,22 +35,39 @@ export const STATUTS: Record<string, { l: string; ton: 'gris' | 'bleu' | 'vert' 
   annule: { l: 'Annulé', ton: 'rouge' },
 };
 
+/* Signé en ligne ou sur place : où en sont les cadres (voir CadreSigne),
+   et, une fois une signature faite, ce qui fixe le fichier (l'instant de
+   la dernière signature, qui est aussi sa date de création : même
+   document, même empreinte). */
+export type EtatSignature = {
+  signes: Record<string, CadreSigne>;
+  dernier?: string | null;
+  agenceLe?: string | null;
+  signatureAgence?: Uint8Array | null;
+  pagesEnTout?: (n: number) => number;
+  mention?: string;
+};
+
 /* Le PDF d'un document : la même mise en page que le mandat de recherche
    (page de garde, résumé, sommaire, parties à icône, cadres de signature). */
-export async function pdfDocument(m: Modele, d: Donnees, identite: IdentiteAgence, o: { projet?: boolean } = {}): Promise<Uint8Array> {
+export async function pdfDocument(m: Modele, d: Donnees, identite: IdentiteAgence, o: { projet?: boolean; signature?: EtatSignature } = {}): Promise<Uint8Array> {
   const { pdfMandat } = await import('@/lib/mandat-pdf');
   const g = m.garde(d);
+  const sg = o.signature;
   return pdfMandat(m.rediger(d, identite), {
     numero: typeof d.numero === 'string' ? d.numero : '',
     mandantNom: m.pour(d),
     resume: m.resume(d),
-    sig: null,
+    sig: sg?.dernier ? { mandantNom: m.pour(d), le: sg.dernier, email: '', agenceLe: sg.agenceLe || null } : null,
     projet: !!o.projet,
     identite,
-    garde: { ...g, mention: o.projet ? undefined : 'À signer par les parties, en autant d’exemplaires que de signataires' },
+    garde: { ...g, mention: o.projet ? undefined : sg?.mention || (electronique(d)
+      ? 'À signer électroniquement : chaque signataire avec son code, reçu sur son adresse e-mail'
+      : 'À signer par les parties, en autant d’exemplaires que de signataires') },
     entete: m.entete(d),
     titreDoc: m.titreDoc(d),
     lettre: !!g.lettre,
+    ...(electronique(d) ? { signes: sg?.signes || {}, signatureAgence: sg?.signatureAgence || null, ...(sg?.pagesEnTout ? { pagesEnTout: sg.pagesEnTout } : {}) } : {}),
   });
 }
 

@@ -263,7 +263,13 @@ export type OptionsPdf = {
   /* Un courrier : ni page de garde ni « PARTIE 1 », l'en-tête de l'agence
      dès la première page. */
   lettre?: boolean;
+  /* Un document signé en ligne ou sur place : l'état de chaque cadre d'un
+     bloc « sigs » électronique, retrouvé par sa `cle` (v0, a1, conjoint,
+     agence…). Un cadre absent est « en attente ». La signature tracée est
+     posée dans son cadre ; celle de l'agence vient de `signatureAgence`. */
+  signes?: Record<string, CadreSigne>;
 };
+export type CadreSigne = { le: string | null; griffe?: Uint8Array | null; refus?: boolean; surPlace?: boolean };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
    imprimées. */
@@ -275,6 +281,12 @@ class Plume {
   griffeMandant: PDFImage | null = null;
   /* Les signatures tracées de chaque signataire, quand ils sont plusieurs. */
   griffes: (PDFImage | null)[] = [];
+  /* Un document signé électroniquement : l'état de chaque cadre, par clé,
+     et sa signature tracée ; `tousSignes` dit, une fois les cadres
+     dessinés, si plus personne n'est attendu. */
+  signes: Record<string, CadreSigne> = {};
+  griffesCle: Record<string, PDFImage | null> = {};
+  tousSignes: boolean | null = null;
   id: IdentiteAgence = IDENTITE_DEFAUT;
   page!: PDFPage; y = 0;
   /* Où écrire « certificat en page N », une fois qu'on sait N. */
@@ -569,6 +581,71 @@ class Plume {
     }
   }
 
+  /* Les cadres d'un document signé en ligne ou sur place : deux par ligne,
+     chacun avec son état (signé, en attente), l'heure de la signature et
+     le trait tracé à l'écran ; celui de l'agence porte la signature
+     d'Alexandre. Même dessin que les cadres du mandat de recherche. */
+  signaturesElectroniques(cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[], mention?: string) {
+    const gap = 14, w = (LARGEUR - gap) / 2;
+    if (mention) this.paragraphe(mention, { taille: 8.9, couleur: GRIS, apres: 8 });
+    type Cadre = { qui: string; nom: string; lignes: string[]; ton: 'vert' | 'or' | 'rouge'; etat: string; griffe: PDFImage | null; agence: boolean };
+    let attendu = false;
+    const cadres: Cadre[] = cases.map(c => {
+      const x = (c.cle && this.signes[c.cle]) || { le: null };
+      const fait = !!x.le && !this.projet;
+      if (!fait && !x.refus) attendu = true;
+      const quand = fait ? `le ${dateCourte(x.le!)} à ${heureParis(x.le!)} (heure de Paris)` : '';
+      const ligne = c.agence
+        ? fait ? `Signé électroniquement ${quand}, en ouvrant la signature aux autres parties.` : 'Signé par l’Agence en ouvrant la signature aux autres parties.'
+        : fait ? `Signé électroniquement ${quand}${x.surPlace ? ', sur place' : ''}, par code à usage unique reçu par e-mail${this.griffesCle[c.cle || ''] ? ' et signature tracée à l’écran' : ''}.`
+        : x.refus ? 'N’a pas signé.'
+        : 'Signature électronique par code à usage unique reçu par e-mail.';
+      return {
+        qui: c.qui.toUpperCase(), nom: c.nom, lignes: [...c.lignes, ligne], agence: !!c.agence,
+        ton: fait ? 'vert' : x.refus || this.projet ? 'rouge' : 'or',
+        etat: fait ? 'SIGNÉ' : x.refus || this.projet ? 'NON SIGNÉ' : 'EN ATTENTE',
+        griffe: fait ? (c.agence ? this.griffe : this.griffesCle[c.cle || ''] || null) : null,
+      };
+    });
+    this.tousSignes = !attendu;
+    const larg = (c: Cadre) => (c.agence && c.griffe ? 118 : w - 28);
+    const mes = cadres.map(c => ({ c, noms: couper(c.nom, this.k.g, 11.5, larg(c)), txt: c.lignes.flatMap(l => couper(l, this.k.r, 8.5, larg(c))) }));
+    for (let r = 0; r < mes.length; r += 2) {
+      const rang = mes.slice(r, r + 2);
+      const bonus = rang.some(m => m.c.griffe && !m.c.agence) ? 46 : 0;
+      const h = Math.max(132, ...rang.map(m => 39 + m.noms.length * 14 + 3 + m.txt.length * 12 + 34)) + bonus;
+      this.place(h + 30);
+      const y = this.y - h - 4;
+      rang.forEach((m, j) => {
+        const x = MARGE.g + j * (w + gap);
+        rond(this.page, x, y, w, h, 9, { color: FOND, borderColor: FILET, borderWidth: 0.8 });
+        this.page.drawRectangle({ x: x + 10, y: y + h - 2.4, width: w - 20, height: 2.4, color: OR });
+        espace(this.page, propre(m.c.qui), x + 14, y + h - 21, 7.5, this.k.g, OR_FONCE, 1.3);
+        let yy = y + h - 39;
+        m.noms.forEach(l => { this.page.drawText(l.join(' '), { x: x + 14, y: yy, size: 11.5, font: this.k.g, color: BLEU }); yy -= 14; });
+        yy -= 3;
+        m.txt.forEach(l => { this.page.drawText(l.join(' '), { x: x + 14, y: yy, size: 8.5, font: this.k.r, color: GRIS }); yy -= 12; });
+        pastille(this.page, this.k, m.c.etat, x + 14, y + 13, m.c.ton);
+        const img = m.c.griffe;
+        if (img && m.c.agence) {
+          /* À droite du texte (colonne de 118), bornée : une signature très
+             allongée ne déborde pas du cadre. */
+          const k = Math.min(88 / img.height, (w - 118 - 34) / img.width);
+          const gw = img.width * k, gh = img.height * k;
+          this.page.drawImage(img, { x: x + w - gw - 12, y: y + 10, width: gw, height: gh, opacity: 0.95 });
+        } else if (img) {
+          const maxW = w - 14 - 84, maxH = 58;
+          const k = Math.min(maxW / img.width, maxH / img.height);
+          const gw = img.width * k, gh = img.height * k;
+          this.page.drawImage(img, { x: x + w - gw - 14, y: y + 10 + (maxH - gh) / 2, width: gw, height: gh });
+        }
+      });
+      this.y = y - gap;
+    }
+    this.renvoi = { page: this.page, y: this.y + gap - 18 };
+    this.y -= 16;
+  }
+
   caseACocher(texte: string, coche: boolean) {
     this.place(32);
     const x = MARGE.g + 1, y = this.y - 12;
@@ -821,6 +898,14 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
       pl.griffes.push(img);
     }
   }
+  if (o.signes) {
+    pl.signes = o.signes;
+    for (const [cle, x] of Object.entries(o.signes)) {
+      let img: PDFImage | null = null;
+      if (!o.projet && x.le && x.griffe && x.griffe.length) { try { img = await doc.embedPng(x.griffe); } catch { img = null; } }
+      pl.griffesCle[cle] = img;
+    }
+  }
   const debuts: number[] = [];
   parties.forEach((partie, ip) => {
     /* Les parties s'enchaînent, sans page à moitié vide entre elles. */
@@ -840,7 +925,9 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
         /* À plusieurs, les cadres tiennent sur deux ou trois rangs : on
            garde tout le bloc sur la même page. */
         const sg = s.blocs.find(b => b.t === 'sig');
-        const n = sg && sg.t === 'sig' && sg.noms && sg.noms.length > 1 ? sg.noms.length + 1 : 0;
+        const se = s.blocs.find(b => b.t === 'sigs' && b.electronique);
+        const n = sg && sg.t === 'sig' && sg.noms && sg.noms.length > 1 ? sg.noms.length + 1
+          : se && se.t === 'sigs' && se.cases.length > 2 ? se.cases.length : 0;
         pl.place(n ? Math.min(650, 150 + Math.ceil(n / 2) * 185) : 310);
       }
       if (s.titre && s.blocs[0]?.t === 'fiches') pl.place(44 + pl.hauteurPremierRang(s.blocs[0].items));
@@ -856,12 +943,17 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
 
   const pagesMandat = doc.getPageCount() + 1;   // avec la page de garde
   const sommaire = parties.map((pt, i) => ({ t: pt.court, page: debuts[i] + 1 }));
-  if (o.sig && !o.projet) sommaire.push({ t: 'Certificat de signature électronique', page: pagesMandat + 1 });
+  if (o.sig && !o.projet) sommaire.push({ t: o.signes ? 'Certificat de signature' : 'Certificat de signature électronique', page: pagesMandat + 1 });
   if (!o.lettre) pageDeGarde(doc, k, o, sommaire);
 
   /* Sous les signatures, le renvoi vers le certificat, maintenant qu'on
      connaît sa page. */
-  if (pl.renvoi && o.sig && !o.projet) {
+  if (pl.renvoi && o.sig && !o.projet && o.signes) {
+    const t = propre(pl.tousSignes
+      ? `Document signé et scellé : le certificat de signature, page ${pagesMandat + 1}, en atteste.`
+      : `Signatures scellées au fur et à mesure : le certificat de signature, page ${pagesMandat + 1}, en atteste.`);
+    pl.renvoi.page.drawText(t, { x: MARGE.g + (LARGEUR - lg(k.i, t, 8.6)) / 2, y: pl.renvoi.y, size: 8.6, font: k.i, color: VERT });
+  } else if (pl.renvoi && o.sig && !o.projet) {
     const tous = o.sig.mandants?.length ? o.sig.mandants.every(x => x.le || x.refus) : true;
     const t = propre(!o.sig.mandants?.length
       ? `Mandat signé par les deux parties et scellé : le certificat de signature électronique, page ${pagesMandat + 1}, en atteste.`
@@ -887,6 +979,7 @@ function dessinerBloc(pl: Plume, b: Bloc, o: OptionsPdf) {
   else if (b.t === 'fiches') pl.fiches(b.items);
   else if (b.t === 'case') pl.caseACocher(b.x, b.coche);
   else if (b.t === 'sig') pl.signatures(o.sig, o.mandantNom, b.noms);
+  else if (b.t === 'sigs' && b.electronique) pl.signaturesElectroniques(b.cases, b.mention);
   else if (b.t === 'sigs') pl.signaturesPapier(b.cases, b.mention);
 }
 
@@ -939,7 +1032,7 @@ function surArc(p: PDFPage, texte: string, o: {
   });
 }
 
-export function dessinerTampon(p: PDFPage, k: Kit, cx: number, cy: number, diametre: number, t: { quand: string; numero: string }) {
+export function dessinerTampon(p: PDFPage, k: Kit, cx: number, cy: number, diametre: number, t: { quand: string; numero: string; objet?: string }) {
   const u = diametre / 240;                     // la maquette est dessinée sur 240
   const incl = -7;                              // penché vers la droite, comme la maquette
   const op = 0.9;
@@ -969,12 +1062,12 @@ export function dessinerTampon(p: PDFPage, k: Kit, cx: number, cy: number, diame
     const a = rot(-58 * u, -(yM - 120) * u), b = rot(58 * u, -(yM - 120) * u);
     p.drawLine({ start: a, end: b, thickness: 1.2 * u, color: ENCRE, opacity: op });
   };
-  ligneC('MANDAT DE RECHERCHE', 96, 8.4, 1);
+  ligneC(t.objet || 'MANDAT DE RECHERCHE', 96, 8.4, 1);
   trait(101);
   ligneC('SIGNÉ', 127, 26, 2);
   trait(137);
   ligneC(`le ${dateCourte(t.quand).replace(/\//g, '.')} à ${heureParis(t.quand)}`, 155, 12, 0.6);
-  ligneC(`N° ${t.numero}`, 172, 11, 1);
+  if (t.numero) ligneC(`N° ${t.numero}`, 172, 11, 1);
 
   /* Le grain d'encre : de petits manques blancs, toujours les mêmes pour un
      même numéro (le hasard est tiré du numéro), pour qu'on ne dise pas que
@@ -1009,6 +1102,19 @@ export type Certificat = {
   /* Les empreintes des versions déjà scellées (une par signature
      précédente) : chacune reste vérifiable. */
   versions?: { x: string; empreinte: string }[];
+  /* Un autre document que le mandat de recherche (Documents juridiques,
+     signé en ligne ou sur place) : ses mots à lui. Absent : ceux du
+     mandat de recherche, à l'identique. `roles` : la qualité de chaque
+     signataire, dans l'ordre de `signataires`. */
+  doc?: {
+    entete: string;           // « Mandat de vente n° 4330 », en haut à droite
+    titre: string;            // « Mandat de vente exclusif n° 4330 »
+    court: string;            // « mandat de vente n° 4330 », en tête des pages de suite
+    tampon: string;           // « MANDAT DE VENTE »
+    roles: string[];
+    execution?: string;       // la ligne « Exécution », s'il y a lieu
+    note: string;             // la note du bas
+  };
 };
 export type SignataireCertif = {
   nom: string; adresse: string; email: string; telephone: string;
@@ -1035,11 +1141,11 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   p.drawImage(k.logoBlanc, { x: MARGE.g, y: A4.h - 28 - lh, width: lw, height: lh });
   const e1 = 'CERTIFICAT DE SIGNATURE';
   espace(p, e1, A4.l - MARGE.d - lg(k.g, e1, 8, 1.6), A4.h - 42, 8, k.g, OR, 1.6);
-  const e2 = propre(`Mandat de recherche n° ${c.numero}`);
+  const e2 = propre(c.doc ? c.doc.entete : `Mandat de recherche n° ${c.numero}`);
   p.drawText(e2, { x: A4.l - MARGE.d - lg(k.g, e2, 13), y: A4.h - 62, size: 13, font: k.g, color: BLANC });
 
   let y = A4.h - hb - 32;
-  p.drawText('Certificat de signature électronique', { x: MARGE.g, y, size: 17, font: k.g, color: BLEU });
+  p.drawText(c.doc ? 'Certificat de signature' : 'Certificat de signature électronique', { x: MARGE.g, y, size: 17, font: k.g, color: BLEU });
   p.drawRectangle({ x: MARGE.g, y: y - 11, width: 42, height: 2.2, color: OR });
 
   /* Le tampon, et l'encadré qui dit tout : signé par les deux parties,
@@ -1051,18 +1157,23 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   const attendus = sgn ? sgn.filter(x => !x.le && !x.refus) : [];
   const dernier = faits.map(x => x.le as string).sort().pop() || c.signeLe;
   const bx = MARGE.g + diam + 20, bw = A4.l - MARGE.d - bx, bh = sgn ? 150 : 138, by = y - bh;
-  dessinerTampon(p, k, MARGE.g + diam / 2, by + bh / 2, diam, { quand: sgn ? dernier : c.signeLe, numero: c.numero });
+  dessinerTampon(p, k, MARGE.g + diam / 2, by + bh / 2, diam, { quand: sgn ? dernier : c.signeLe, numero: c.numero, ...(c.doc ? { objet: c.doc.tampon } : {}) });
   rond(p, bx, by, bw, bh, 10, { color: VERT_FOND, borderColor: VERT_TRAIT, borderWidth: 1 });
   p.drawCircle({ x: bx + 23, y: by + bh - 23, size: 10, color: VERT });
   icone(p, 'check', bx + 16, by + bh - 16, 14, BLANC, 2.6);
-  p.drawText(propre(!sgn || !attendus.length ? 'Mandat signé et scellé' : 'Signatures enregistrées et scellées'), { x: bx + 42, y: by + bh - 27.5, size: 12.5, font: k.g, color: VERT });
+  p.drawText(propre(!sgn || !attendus.length ? (c.doc ? 'Document signé et scellé' : 'Mandat signé et scellé') : 'Signatures enregistrées et scellées'), { x: bx + 42, y: by + bh - 27.5, size: 12.5, font: k.g, color: VERT });
   const qui = (x: SignataireCertif) => `${x.nom} le ${dateLongue(x.le!)} à ${heureParis(x.le!)}`;
   const phrase = !sgn
     ? `Signé par les deux parties. Le client, ${c.mandant.nom}, a signé le ${dateLongue(c.signeLe)} à ${heureParis(c.signeLe, true)} (heure de Paris).`
     : `Signé par ${faits.map(qui).join(', puis par ')} (heure de Paris).${attendus.length ? ` En attente de la signature de ${attendus.map(x => x.nom).join(' et de ')}.` : ''}`;
   let yb = texteLibre(p, phrase, bx + 16, by + bh - 50, bw - 30, 9, k.r, VERT, 12);
   yb -= 4;
-  const preuves = sgn ? [
+  const preuves = c.doc ? [
+    'Adresse e-mail de chaque signataire vérifiée par un code à usage unique, reçu sur sa propre adresse',
+    c.agenceLe ? `Signé pour l’agence le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Signé pour l’agence par ${id.signataireNom}`,
+    'Document scellé : son empreinte, relevée à la signature, révèle toute modification',
+    'Un exemplaire est adressé à chaque signataire par e-mail',
+  ] : sgn ? [
     'Identité de chaque signataire vérifiée par un code à usage unique envoyé à sa propre adresse e-mail',
     c.agenceLe ? `Offre de l’agence signée le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Mandat signé pour l’agence par ${id.signataireNom}`,
     'Document scellé à chaque signature : toute modification serait détectable',
@@ -1088,7 +1199,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
     pagesCertif.push(p);
     const lh2 = 20, lw2 = (k.logo.width / k.logo.height) * lh2;
     p.drawImage(k.logo, { x: MARGE.g, y: A4.h - 30 - lh2, width: lw2, height: lh2 });
-    const t = propre(`Certificat de signature · mandat n° ${c.numero} (suite)`);
+    const t = propre(c.doc ? `Certificat de signature · ${c.doc.court} (suite)` : `Certificat de signature · mandat n° ${c.numero} (suite)`);
     p.drawText(t, { x: A4.l - MARGE.d - lg(k.r, t, 8), y: A4.h - 44, size: 8, font: k.r, color: GRIS });
     p.drawLine({ start: { x: MARGE.g, y: A4.h - 60 }, end: { x: A4.l - MARGE.d, y: A4.h - 60 }, thickness: 0.6, color: FILET });
     y = A4.h - 80;
@@ -1117,13 +1228,16 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   };
 
   titre('Le document');
-  ligne('Document', `Mandat de recherche non exclusif n° ${c.numero} — pages 1 à ${nbMandat}`, { gras: true });
-  if (sgn) sgn.forEach((x, i) => ligne(`Mandant ${i + 1}`, `${x.nom} · ${x.adresse}`));
+  const role = (i: number) => (c.doc ? c.doc.roles[i] || 'Signataire' : `Mandant ${i + 1}`);
+  ligne('Document', c.doc ? `${c.doc.titre} — pages 1 à ${nbMandat}` : `Mandat de recherche non exclusif n° ${c.numero} — pages 1 à ${nbMandat}`, { gras: true });
+  if (sgn) sgn.forEach((x, i) => ligne(role(i), c.doc && !x.adresse ? x.nom : `${x.nom} · ${x.adresse}`));
   else ligne('Mandant', `${c.mandant.nom} · ${c.mandant.adresse}`);
-  ligne('Mandataire', `${id.nom} (${id.societe}, ${formeCourte(id)}) · carte professionnelle ${id.carte}`);
-  ligne('Signé pour l’agence', `${id.signataireNom}, ${id.signataireQualite}${c.agenceLe
+  ligne(c.doc ? 'L’agence' : 'Mandataire', `${id.nom} (${id.societe}, ${formeCourte(id)}) · carte professionnelle ${id.carte}`);
+  if (c.doc) ligne('Signé pour l’agence', `${id.signataireNom}, ${id.signataireQualite}${c.agenceLe ? ` — le ${dateCourte(c.agenceLe)} à ${heureParis(c.agenceLe)}, en ouvrant la signature aux autres parties` : ''}`);
+  else ligne('Signé pour l’agence', `${id.signataireNom}, ${id.signataireQualite}${c.agenceLe
     ? ` — offre de mandat signée le ${dateCourte(c.agenceLe)} à ${heureParis(c.agenceLe)}, avant l’acceptation du mandant` : ''}`);
-  ligne('Exécution', sgn
+  if (c.doc) { if (c.doc.execution) ligne('Exécution', c.doc.execution); }
+  else ligne('Exécution', sgn
     ? sgn.filter(x => x.le).map(x => `${x.nom} : ${x.execution ? 'dès sa signature, à sa demande' : 'à la fin de son délai de rétractation'}`).join(' · ')
     : c.executionImmediate
       ? 'Le mandant a demandé que la mission commence dès la signature, sans attendre la fin du délai de rétractation.'
@@ -1132,7 +1246,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   if (sgn) {
     titre('Les signataires');
     sgn.forEach((x, i) => {
-      ligne(`Mandant ${i + 1}`, x.nom, { gras: true });
+      ligne(role(i), x.nom, { gras: true });
       ligne('E-mail', x.le ? `${x.email} (vérifié par le code)` : x.email);
       ligne('Téléphone déclaré', x.telephone || '—');
       ligne('Signature', x.le
@@ -1163,7 +1277,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   if (c.versions?.length) ligne(`Version ${c.versions.length + 1}`, 'celle-ci, reçue avec ce certificat');
   ligne(`Empreinte SHA-256 (p. 1 à ${nbMandat})`, c.empreinte, { mono: true });
 
-  const note = sgn
+  const note = c.doc ? c.doc.note : sgn
     ? `Chaque signataire peut se rétracter pendant 14 jours à compter du lendemain de sa signature (prolongés si un autre signe entre-temps), en ligne (« Renoncer au mandat »), par e-mail ou avec le formulaire joint. Le mandat est scellé à chaque signature : les empreintes ci-dessus sont celles des versions successives du mandat seul, conservées à l’identique par l’agence ; les recalculer permet de vérifier qu’aucun mot n’a changé.`
     : `Le mandant peut se rétracter pendant 14 jours à compter du lendemain de la signature, depuis son espace personnel (« Mon mandat »), par e-mail ou avec le formulaire joint. L’empreinte ci-dessus est celle du mandat seul (pages 1 à ${nbMandat}), conservé à l’identique par l’agence : la recalculer permet de vérifier qu’aucun mot n’a changé depuis la signature.`;
   const lignesNote = couper(note, k.r, 7.6, LARGEUR);

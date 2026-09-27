@@ -21,7 +21,8 @@ import { lignesMandataire, type IdentiteAgence } from '@/lib/agence';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, blocDonnees, ficheAgence,
-  PERSONNE_VIDE, type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere,
+  PERSONNE_VIDE, blocsSignature, manquesSignature, electronique, CHAMP_SIGNATURE,
+  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type CaseSignature,
 } from './commun';
 
 const ETAPES: Etape[] = [
@@ -73,6 +74,7 @@ const ETAPES: Etape[] = [
       { t: 'nombre', cle: 'delai', lib: 'Avant-contrat signé dans les', ic: 'chrono', unite: 'jours suivant l’acceptation' },
       { t: 'texte', cle: 'notaire', lib: 'Notaire de l’acquéreur', ic: 'balance', large: true, exemple: 'Me Leroy, notaire à Paris' },
       { t: 'zone', cle: 'note', lib: 'Une précision ?', ic: 'plume', large: true },
+      CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
@@ -159,15 +161,17 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       { titre: 'Les conditions', ic: 'check', blocs: [P('L’avant-contrat sera conclu sous les conditions suspensives suivantes :'), { t: 'l', items: conditions }] },
       { titre: 'Ce que l’offre engage', ic: 'balance', blocs: engage },
       { titre: 'Informations', ic: 'info', blocs: [blocDonnees(A), P('Lutte contre le blanchiment : l’acquéreur fournira à l’Agence et au notaire les justificatifs d’identité et d’origine des fonds qui lui seront demandés (articles L561-1 et suivants du Code monétaire et financier).')] },
-      { titre: 'Date et signatures', ic: 'plume', blocs: [
-        P(`Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}.`),
-        Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
-        { t: 'sigs', mention: 'Chaque acquéreur date et signe, précédé de la mention manuscrite « Bon pour offre d’achat au prix de ______ euros ».', cases: [
-          ...as.map(p => ({ qui: 'L’acquéreur', nom: nomComplet(p), lignes: [] as string[] })),
-          { qui: 'Transmise par', nom: A.nom.toUpperCase(), lignes: [`${A.signataireNom}, ${A.signataireQualite}`] },
-        ] },
-      ] },
-      { titre: 'Réponse du vendeur', ic: 'accord', blocs: [
+      { titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
+        papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}.`,
+        mention: 'Chaque acquéreur date et signe, précédé de la mention manuscrite « Bon pour offre d’achat au prix de ______ euros ».',
+        cases: casesOffre(d, A),
+      }) },
+      /* Signée en ligne ou sur place, l'offre part au vendeur en PDF : il
+         répond par écrit, sans cadres à remplir à la main. */
+      electronique(d) ? { titre: 'Réponse du vendeur', ic: 'accord', blocs: [
+        P(`Le VENDEUR adresse sa réponse par écrit à l’Agence avant le ${jusquau} : il accepte la présente offre au prix de ${prix ? euros(prix) : '……………'}, aux conditions ci-dessus, la refuse, ou fait une contre-proposition. Une contre-proposition vaut refus de la présente offre ; elle n’engage l’acquéreur qu’une fois signée par lui.`),
+        Pp('L’acquéreur charge l’Agence de recevoir cette réponse : l’acceptation reçue par l’Agence dans le délai forme l’accord. L’Agence la transmet à l’acquéreur par écrit (un e-mail suffit), le jour même.'),
+      ] } : { titre: 'Réponse du vendeur', ic: 'accord', blocs: [
         P(`À remplir par le VENDEUR avant le ${jusquau}, puis à retourner signé à l’Agence.`),
         { t: 'case', coche: false, x: `Le VENDEUR ACCEPTE la présente offre au prix de ${prix ? euros(prix) : '……………'}, aux conditions ci-dessus.` },
         { t: 'case', coche: false, x: 'Le VENDEUR REFUSE la présente offre.' },
@@ -194,6 +198,13 @@ function resume(d: Donnees): Resume {
   ];
 }
 
+/* Les cadres de signature : chaque acquéreur, puis l'agence qui transmet. */
+function casesOffre(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
+  const out: CaseSignature[] = acquereursDe(d).map((p, i) => ({ cle: `a${i}`, qui: 'L’acquéreur', nom: nomComplet(p), lignes: [] as string[], personne: p }));
+  if (A) out.push({ cle: 'agence', qui: 'Transmise par', nom: A.nom.toUpperCase(), lignes: [`${A.signataireNom}, ${A.signataireQualite}`], agence: true });
+  return out;
+}
+
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   acquereursDe(d).forEach((p, i) => {
@@ -205,6 +216,7 @@ function manques(d: Donnees): string[] {
   if (!d.pret) out.push('Le financement (avec ou sans prêt)');
   if (!txt(d, 'validite')) out.push('La date de validité de l’offre');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date');
+  out.push(...manquesSignature(d, casesOffre(d)));
   return out;
 }
 
@@ -244,7 +256,7 @@ function defaut(c: Contexte): Donnees {
     adresse: b?.adresse || '', ville: b?.ville || '', description: desc, vendeurNom: '', agenceVendeur: b?.agence_nom || '',
     prixAffiche: b?.prix_acquereur || null, prix: null, forme: 'fai', honoVendeur: null, honoRecherche: null,
     apport: null, pret: 'oui', pretMontant: null, pretDuree: 25, pretTaux: null, conditions: [],
-    validite: dans(5), validiteHeure: '18:00', delai: 30, notaire: '', note: '', faitA: c.identite.ville, date: aujourdhui(),
+    validite: dans(5), validiteHeure: '18:00', delai: 30, notaire: '', note: '', signature: 'en_ligne', faitA: c.identite.ville, date: aujourdhui(),
   };
 }
 
@@ -272,4 +284,10 @@ export const OFFRE_ACHAT: Modele = {
   entete: d => `Offre d’achat${txt(d, 'adresse') ? ` · ${txt(d, 'adresse')}` : ''}`,
   manques,
   reperes,
+  cases: casesOffre,
+  accepter: d => {
+    const prix = num(d, 'prix');
+    const jusquau = `${txt(d, 'validite') ? jourLong(txt(d, 'validite')) : '……………'}${txt(d, 'validiteHeure') ? ` à ${txt(d, 'validiteHeure').replace(':', ' h ')}` : ''}`;
+    return `J’ai lu cette offre en entier et je m’engage à acheter ce bien${prix ? ` au prix de ${eurosLettres(prix)}${d.forme === 'fai' ? ', honoraires de l’agence du vendeur compris' : ', net vendeur'}` : ''}, aux conditions ci-dessus. Mon offre tient jusqu’au ${jusquau} : bon pour offre d’achat.`;
+  },
 };

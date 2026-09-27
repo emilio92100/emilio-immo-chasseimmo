@@ -2,7 +2,7 @@
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
-import { STATUTS, modele, pdfDocument, type Donnees, type Etape, type Repere } from '@/lib/actes';
+import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import { ChampActe, manquesEtape } from './ChampsActe';
 import {
@@ -63,10 +63,13 @@ function Reperes({ l }: { l: Repere[] }) {
   );
 }
 
-export default function EditeurDocument({ doc, onFermer, onMaj }: {
+export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   doc: DocumentRow;
   onFermer: () => void;
   onMaj: (d: DocumentRow) => void;
+  /* Finalisé pour une signature en ligne ou sur place : la fiche du
+     document prend le relais (envoyer les liens, signer sur place). */
+  onFinalise?: (d: DocumentRow) => void;
 }) {
   const m = modele(doc.modele);
   const [row, setRow] = useState<DocumentRow>(doc);
@@ -248,7 +251,10 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
   }
 
   async function lancerFinalisation() {
-    const onglet = window.open('', '_blank');
+    /* Signé en ligne ou sur place : pas de PDF à imprimer, la fiche du
+       document s'ouvre sur l'envoi des liens (ou la signature sur place). */
+    const elec = electronique(d) && !!onFinalise;
+    const onglet = elec ? null : window.open('', '_blank');
     setTravail('finaliser');
     setMessage(null);
     try {
@@ -257,6 +263,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
       setRow(r); onMaj(r);
       if (r.identite) setIdentite(r.identite);
       setFin(false);
+      if (elec) { setTravail(''); onFinalise!(r); return; }
       setMessage({ t: m?.courrier ? 'Courrier finalisé : le PDF est prêt à signer et à envoyer.' : 'Document finalisé : le PDF est prêt à imprimer et à faire signer.', ok: true });
       const url = await lienFichier(r.pdf_chemin || '', nomFichier(r));
       if (onglet) onglet.location.href = url; else window.location.href = url;
@@ -268,6 +275,10 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
   }
 
   async function repasserBrouillon() {
+    if (row.signature) {
+      setMessage({ t: 'La signature est lancée : arrête-la d’abord depuis la fiche du document (Arrêter la signature), puis repasse-le en brouillon.', ok: false });
+      return;
+    }
     if (!confirm('Repasser ce document en brouillon pour le modifier ?\n\nLe PDF figé ne sera plus proposé : s’il a déjà été imprimé, ne fais pas signer l’ancien exemplaire. Tu le finaliseras à nouveau une fois modifié.')) return;
     setTravail('brouillon');
     const { data, error } = await supabase.from('documents').update({
@@ -404,7 +415,9 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
                   ? 'Un document incomplet ne se finalise pas : complète ces points, l’aperçu les surligne en jaune.'
                   : m.courrier
                     ? 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le courrier passe « À envoyer ». Tant qu’il n’est pas envoyé, tu peux encore le repasser en brouillon.'
-                    : 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le document passe « À faire signer ». Tant qu’il n’est pas signé, tu peux encore le repasser en brouillon.'}</p>
+                    : electronique(d)
+                      ? `Le texte est figé avec l’identité de ton agence d’aujourd’hui, et le document passe « À faire signer ». ${modeSignature(d) === 'en_ligne' ? 'Tu enverras ensuite les liens de signature depuis sa fiche.' : 'Tu lanceras ensuite la signature sur place depuis sa fiche.'}`
+                      : 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le document passe « À faire signer ». Tant qu’il n’est pas signé, tu peux encore le repasser en brouillon.'}</p>
               </div>
               <button type="button" className={s.panFermer} aria-label="Fermer" onClick={() => setFin(false)} disabled={!!travail}><Croix /></button>
             </div>
@@ -419,6 +432,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
                   <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Toutes les informations obligatoires sont remplies.`}</span></li>
                   {m.numero && <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Numéro du registre : ${String(d.numero || '')}. Il sera vérifié : un numéro ne sert qu’une fois.`}</span></li>}
                   <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{m.courrier ? m.signataires + '.' : `À signer : ${m.signataires.charAt(0).toLowerCase()}${m.signataires.slice(1)}.`}</span></li>
+                  {!m.courrier && <li><span className={`${s.k} ${s.kOr}`}><Ic n={modeSignature(d) === 'en_ligne' ? 'mail' : modeSignature(d) === 'sur_place' ? 'tablette' : 'doc'} t={12} /></span><span>{modeSignature(d) === 'en_ligne' ? 'Signature en ligne : chacun avec son lien et un code reçu par e-mail.' : modeSignature(d) === 'sur_place' ? 'Signature sur place, sur ton écran : chacun à son tour, avec un code reçu sur son e-mail.' : 'Signature à la main : le PDF s’ouvre, prêt à imprimer.'}</span></li>}
                 </ul>
               )}
               {!manques.length && alertes.length > 0 && (
@@ -432,7 +446,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
               <button type="button" className={s.btn} disabled={!!travail} onClick={() => setFin(false)}>{manques.length ? 'Compléter' : 'Pas encore'}</button>
               {!manques.length && (
                 <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={lancerFinalisation}>
-                  <Ic n="check" t={15} e={2.4} />{travail === 'finaliser' ? 'Finalisation…' : 'Finaliser et ouvrir le PDF'}
+                  <Ic n="check" t={15} e={2.4} />{travail === 'finaliser' ? 'Finalisation…' : electronique(d) && onFinalise ? (modeSignature(d) === 'en_ligne' ? 'Finaliser, puis envoyer les liens' : 'Finaliser, puis signer sur place') : 'Finaliser et ouvrir le PDF'}
                 </button>
               )}
             </div>
