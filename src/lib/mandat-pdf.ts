@@ -250,6 +250,9 @@ export type OptionsPdf = {
   };
   entete?: string;            // l'en-tête des pages : « Mandat de vente n° 4330 »
   titreDoc?: string;          // le titre du fichier PDF
+  /* Un courrier : ni page de garde ni « PARTIE 1 », l'en-tête de l'agence
+     dès la première page. */
+  lettre?: boolean;
 };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
@@ -321,7 +324,7 @@ class Plume {
     rond(this.page, x, haut - s, s, s, 11, { color: BLEU });
     icone(this.page, partie.ic, x + 10, haut - 10, 22, BLANC, 1.7);
     const tx = x + s + 16, tw = LARGEUR - s - 16;
-    espace(this.page, `PARTIE ${n}`, tx, haut - 9, 7.8, this.k.g, OR_FONCE, 1.6);
+    if (n > 0) espace(this.page, `PARTIE ${n}`, tx, haut - 9, 7.8, this.k.g, OR_FONCE, 1.6);
     let base = haut - 31;
     const lignes = couper(partie.titre, this.k.g, 18.5, tw);
     lignes.forEach((m, i) => {
@@ -628,11 +631,11 @@ function filigrane(p: PDFPage, k: Kit) {
 }
 
 /* L'en-tête et le pied des pages intérieures (pas de la page de garde). */
-function habiller(doc: PDFDocument, k: Kit, entete: string, total: number, projet: boolean, id: IdentiteAgence) {
+function habiller(doc: PDFDocument, k: Kit, entete: string, total: number, projet: boolean, id: IdentiteAgence, lettre = false) {
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     if (projet) filigrane(p, k);
-    if (i === 0) return;
+    if (i === 0 && !lettre) return;
     /* En-tête : le logo à gauche, le numéro du mandat à droite, un filet. */
     const lh = 21, lw = (k.logo.width / k.logo.height) * lh;
     p.drawImage(k.logo, { x: MARGE.g, y: A4.h - 30 - lh, width: lw, height: lh });
@@ -748,7 +751,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     const seule = ip === 0 || pl.y - (formulaire ? 500 : suite) < MARGE.b;
     if (seule) pl.nouvellePage(); else pl.y -= 30;
     debuts.push(doc.getPageCount());            // sa page, une fois la garde posée devant
-    pl.titrePartie(ip + 1, partie);
+    pl.titrePartie(o.lettre ? 0 : ip + 1, partie);
     let n = 0;
     for (const s of partie.sections) {
       /* « Date et signatures » ne se sépare pas de ses cadres. */
@@ -767,7 +770,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
   const pagesMandat = doc.getPageCount() + 1;   // avec la page de garde
   const sommaire = parties.map((pt, i) => ({ t: pt.court, page: debuts[i] + 1 }));
   if (o.sig && !o.projet) sommaire.push({ t: 'Certificat de signature électronique', page: pagesMandat + 1 });
-  pageDeGarde(doc, k, o, sommaire);
+  if (!o.lettre) pageDeGarde(doc, k, o, sommaire);
 
   /* Sous les signatures, le renvoi vers le certificat, maintenant qu'on
      connaît sa page. */
@@ -776,7 +779,7 @@ export async function pdfMandat(parties: Partie[], o: OptionsPdf): Promise<Uint8
     pl.renvoi.page.drawText(t, { x: MARGE.g + (LARGEUR - lg(k.i, t, 8.6)) / 2, y: pl.renvoi.y, size: 8.6, font: k.i, color: VERT });
   }
 
-  habiller(doc, k, o.entete || `Mandat de recherche n° ${o.numero}`, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet, pl.id);
+  habiller(doc, k, o.entete || `Mandat de recherche n° ${o.numero}`, o.pagesEnTout ? o.pagesEnTout(doc.getPageCount()) : doc.getPageCount(), !!o.projet, pl.id, !!o.lettre);
   return doc.save({ useObjectStreams: false });
 }
 
