@@ -12,7 +12,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, lireIdentite, type IdentiteAgence } from '@/lib/agence';
-import { pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
+import { STATUTS, pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
 
 export type DocumentRow = {
   id: string;
@@ -116,13 +116,17 @@ export async function identiteDuJour(): Promise<IdentiteAgence> {
 }
 
 /* Un numéro du registre ne sert qu'une fois : ni sur un autre document
-   (hors annulés), ni sur un mandat de recherche. Rend le doublon trouvé. */
-export async function numeroDejaPris(numero: string, id: string): Promise<string | null> {
+   (hors annulés), ni sur un mandat de recherche. Rend le doublon trouvé.
+   `rechercheId` : la recherche du document elle-même (un mandat de
+   recherche papier reprend le numéro réservé sur sa recherche). */
+export async function numeroDejaPris(numero: string, id: string, rechercheId?: string | null): Promise<string | null> {
   const n = numero.trim();
   if (!n) return null;
+  let qr = supabase.from('recherches').select('id').eq('mandat_numero', n);
+  if (rechercheId) qr = qr.neq('id', rechercheId);
   const [a, b] = await Promise.all([
     supabase.from('documents').select('id, titre, statut').eq('numero', n).neq('id', id).neq('statut', 'annule').limit(1),
-    supabase.from('recherches').select('id').eq('mandat_numero', n).limit(1),
+    qr.limit(1),
   ]);
   if (a.error) throw new Error(a.error.message);
   if (b.error) throw new Error(b.error.message);
@@ -135,7 +139,7 @@ export async function numeroDejaPris(numero: string, id: string): Promise<string
 export async function finaliser(row: DocumentRow, m: Modele, d: Donnees): Promise<DocumentRow> {
   const numero = typeof d.numero === 'string' ? d.numero.trim() : '';
   if (m.numero && numero) {
-    const pris = await numeroDejaPris(numero, row.id);
+    const pris = await numeroDejaPris(numero, row.id, m.surRecherche ? row.recherche_id : null);
     if (pris) throw new Error(`Le numéro ${numero} est déjà utilisé par ${pris}. Un numéro du registre ne sert qu’une fois.`);
   }
   const identite = await identiteDuJour();
@@ -148,6 +152,43 @@ export async function finaliser(row: DocumentRow, m: Modele, d: Donnees): Promis
   }).eq('id', row.id).select().single();
   if (error) throw new Error('Le PDF est prêt mais le document n’a pas pu être mis à jour : ' + error.message);
   return data as DocumentRow;
+}
+
+/* ── Signé : ce que le document écrit ailleurs ──
+   Un mandat de recherche papier remplit le bloc Mandat de sa recherche
+   (comme une signature en ligne), et laisse une ligne dans le suivi du
+   client. Rend un message d'erreur, ou null. */
+export async function apresSignature(row: DocumentRow, m: Modele, jour: string): Promise<string | null> {
+  if (!m.surRecherche || !row.recherche_id) return null;
+  const { error } = await supabase.from('recherches').update(m.surRecherche(row.donnees, jour)).eq('id', row.recherche_id);
+  if (error) return 'Le document est bien marqué signé, mais le bloc Mandat de sa recherche n’a pas pu être rempli : ' + error.message + '. Saisis-le à la main dans la fiche client.';
+  if (row.client_id) {
+    const { error: e2 } = await supabase.from('journal').insert({
+      client_id: row.client_id, type: 'mandat', titre: '📋 Mandat de recherche signé (papier)',
+      description: [row.numero ? `n° ${row.numero}` : '', row.badge || '', `signé le ${jour.split('-').reverse().join('/')}`].filter(Boolean).join(' · '),
+      metadata: { document_id: row.id },
+    });
+    if (e2) return 'Le mandat est signé et le bloc Mandat rempli, mais la ligne du suivi client n’a pas pu être ajoutée : ' + e2.message;
+  }
+  return null;
+}
+
+/* Annulé après signature : le bloc Mandat de sa recherche se vide, s'il
+   porte encore ce mandat (même numéro). */
+export async function apresAnnulation(row: DocumentRow, m: Modele): Promise<string | null> {
+  if (!m.surRecherche || !row.recherche_id || !row.numero || row.statut !== 'signe') return null;
+  const { error } = await supabase.from('recherches').update({
+    mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null, mandat_date_expiration: null,
+    sans_mandat: true, mandat_numero: null, updated_at: new Date().toISOString(),
+  }).eq('id', row.recherche_id).eq('mandat_numero', row.numero);
+  return error ? 'Le document est annulé, mais le bloc Mandat de sa recherche n’a pas pu être vidé : ' + error.message : null;
+}
+
+/* Le libellé d'un état : un courrier est « À envoyer », puis « Envoyé ». */
+export function libStatut(statut: Statut, courrier = false): string {
+  if (courrier && statut === 'pret') return 'À envoyer';
+  if (courrier && statut === 'signe') return 'Envoyé';
+  return (STATUTS[statut] || STATUTS.brouillon).l;
 }
 
 /* ── Les dates, pour la liste ── */

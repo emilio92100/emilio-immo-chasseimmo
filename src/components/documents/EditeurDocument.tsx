@@ -257,7 +257,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
       setRow(r); onMaj(r);
       if (r.identite) setIdentite(r.identite);
       setFin(false);
-      setMessage({ t: 'Document finalisé : le PDF est prêt à imprimer et à faire signer.', ok: true });
+      setMessage({ t: m?.courrier ? 'Courrier finalisé : le PDF est prêt à signer et à envoyer.' : 'Document finalisé : le PDF est prêt à imprimer et à faire signer.', ok: true });
       const url = await lienFichier(r.pdf_chemin || '', nomFichier(r));
       if (onglet) onglet.location.href = url; else window.location.href = url;
     } catch (e) {
@@ -284,7 +284,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
   const etat = STATUTS[row.statut] || STATUTS.brouillon;
 
   const texteEnreg = off
-    ? (row.statut === 'pret' && row.finalise_le ? `Figé ${quand(row.finalise_le)}` : row.statut === 'signe' && row.signe_le ? `Signé ${quand(row.signe_le)}` : '')
+    ? (row.statut === 'pret' && row.finalise_le ? `Figé ${quand(row.finalise_le)}` : row.statut === 'signe' && row.signe_le ? `${m.courrier ? 'Envoyé' : 'Signé'} ${quand(row.signe_le)}` : '')
     : enreg === 'ok' ? `Enregistré ${quand(row.updated_at)}`
       : enreg === 'attente' ? 'Modifications en attente…'
         : enreg === 'encours' ? 'Enregistrement…'
@@ -347,12 +347,12 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
           <div className={s.edFormIn}>
             {row.statut === 'pret' && (
               <div className={s.lecture}>
-                <span>{`Document figé ${quand(row.finalise_le)} : c’est ce PDF qu’on fait signer. Pour changer quelque chose, repasse-le en brouillon.`}</span>
+                <span>{`Document figé ${quand(row.finalise_le)} : c’est ce PDF qu’on ${m.courrier ? 'envoie' : 'fait signer'}. Pour changer quelque chose, repasse-le en brouillon.`}</span>
                 <button type="button" className={s.btn} disabled={travail === 'brouillon'} onClick={repasserBrouillon}><Ic n="plume" t={14} />Modifier</button>
               </div>
             )}
             {(row.statut === 'signe' || row.statut === 'annule') && (
-              <div className={s.lecture}><span>{row.statut === 'signe' ? 'Document signé : il ne se modifie plus. Pour une nouvelle version, duplique-le depuis la liste.' : 'Document annulé : consultation seulement.'}</span></div>
+              <div className={s.lecture}><span>{row.statut === 'signe' ? `${m.courrier ? 'Courrier envoyé' : 'Document signé'} : il ne se modifie plus. Pour une nouvelle version, duplique-le depuis la liste.` : 'Document annulé : consultation seulement.'}</span></div>
             )}
             {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
             {erreurIdentite && <div className={s.erreur}>{`${erreurIdentite} L’aperçu utilise l’identité par défaut ; la finalisation la relira.`}</div>}
@@ -402,7 +402,9 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
                 <h3>{manques.length ? 'Il manque encore quelque chose' : 'Finaliser le document'}</h3>
                 <p>{manques.length
                   ? 'Un document incomplet ne se finalise pas : complète ces points, l’aperçu les surligne en jaune.'
-                  : 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le document passe « À faire signer ». Tant qu’il n’est pas signé, tu peux encore le repasser en brouillon.'}</p>
+                  : m.courrier
+                    ? 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le courrier passe « À envoyer ». Tant qu’il n’est pas envoyé, tu peux encore le repasser en brouillon.'
+                    : 'Le PDF est figé avec l’identité de ton agence d’aujourd’hui, et le document passe « À faire signer ». Tant qu’il n’est pas signé, tu peux encore le repasser en brouillon.'}</p>
               </div>
               <button type="button" className={s.panFermer} aria-label="Fermer" onClick={() => setFin(false)} disabled={!!travail}><Croix /></button>
             </div>
@@ -416,7 +418,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj }: {
                 <ul className={s.liste2}>
                   <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Toutes les informations obligatoires sont remplies.`}</span></li>
                   {m.numero && <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Numéro du registre : ${String(d.numero || '')}. Il sera vérifié : un numéro ne sert qu’une fois.`}</span></li>}
-                  <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{`À signer : ${m.signataires.charAt(0).toLowerCase()}${m.signataires.slice(1)}.`}</span></li>
+                  <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{m.courrier ? m.signataires + '.' : `À signer : ${m.signataires.charAt(0).toLowerCase()}${m.signataires.slice(1)}.`}</span></li>
                 </ul>
               )}
               {!manques.length && alertes.length > 0 && (

@@ -306,6 +306,10 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .papGarde .sous { margin-top: 3px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 15px; color: rgba(255,255,255,.72); }
 .papGarde .etiq { margin-top: 12px; font-size: 10.5px; letter-spacing: 1.6px; font-weight: 800; color: #c9a84c; }
 .papGarde .projet { position: absolute; top: 22px; right: 24px; padding: 4px 10px; border-radius: 99px; border: 1px solid rgba(201,168,76,.5); color: #e7cf8a; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; }
+.papLettre { position: relative; padding: 24px 0 16px; margin: 0 34px; border-bottom: 1px solid #e8edf3; }
+.papLettre::after { content: ''; position: absolute; left: 0; bottom: -1px; width: 38px; height: 2px; background: #c9a84c; }
+.papLettre img { display: block; height: 30px; width: auto; }
+.papLettre .projet { position: absolute; top: 24px; right: 0; padding: 4px 10px; border-radius: 99px; border: 1px solid #ecdcb0; color: #a07c28; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; }
 .papPour { padding: 18px 34px 4px; }
 .papPour span { display: block; font-size: 10px; letter-spacing: 1.5px; font-weight: 800; color: #a07c28; }
 .papPour b { display: block; margin-top: 3px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 21px; font-weight: 800; color: #1a2332; }
@@ -438,6 +442,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .papGarde img { height: 36px; }
   .papGarde h2 { font-size: 23px; }
   .papPour, .papResume, .papCorps, .papPied { padding-left: 16px; padding-right: 16px; }
+  .papLettre { margin: 0 16px; }
   .papResume { grid-template-columns: 1fr; }
   .saut { margin-left: -16px; margin-right: -16px; padding: 0 16px; }
 }

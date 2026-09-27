@@ -7,14 +7,18 @@ import { colonnesListe, identiteDuJour, tableAbsente, type DocumentRow } from '.
 import s from './Documents.module.css';
 
 /* ═══ Nouveau document ════════════════════════════════════════════════════
-   1. Le modèle (mandat de vente, offre d'achat, bon de visite).
-   2. Pour qui : un client du CRM et, s'il y a lieu, l'un de ses biens —
-      nom, adresse, bien, prix, date de visite se remplissent seuls. Ou
-      rien : on part d'un document vierge.
+   1. Le modèle.
+   2. Pour qui : un client du CRM et, selon le modèle, l'un de ses biens
+      (mandat de vente, offre, bon de visite), l'une de ses recherches
+      (mandat de recherche) ou l'un de ses mandats finalisés (avenant,
+      courrier de reconduction) — tout ce que le CRM sait se remplit seul.
+      Ou rien : on part d'un document vierge.
    Puis le brouillon est créé et l'éditeur s'ouvre. */
 
 type ClientMini = { id: string; prenom: string; nom: string; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null };
 type BienMini = NonNullable<Contexte['bien']> & { recherche_id?: string | null; prix_vendeur?: number | null };
+type RechercheMini = Record<string, unknown> & { id: string; nom?: string | null; active?: boolean | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null };
+type MandatMini = Pick<DocumentRow, 'id' | 'modele' | 'titre' | 'sous_titre' | 'numero' | 'statut' | 'donnees' | 'signe_le' | 'finalise_le' | 'bien_id' | 'recherche_id' | 'client_id'>;
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -23,6 +27,10 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
   onFermer: () => void;
   onCree: (d: DocumentRow) => void;
 }) {
+  const [recherches, setRecherches] = useState<RechercheMini[] | null>(null);
+  const [recherche, setRecherche] = useState<RechercheMini | null>(null);
+  const [mandats, setMandats] = useState<MandatMini[] | null>(null);
+  const [source, setSource] = useState<MandatMini | null>(null);
   const [choix, setChoix] = useState<string>(modeleId || '');
   const [etape, setEtape] = useState<1 | 2>(modeleId ? 2 : 1);
   const [clients, setClients] = useState<ClientMini[] | null>(null);
@@ -44,10 +52,43 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
       });
   }, [etape, clients]);
 
+  const lien = m?.lien || 'bien';
+
+  /* Ses recherches (mandat de recherche) : la plus récente active d'abord. */
+  useEffect(() => {
+    setRecherche(null); setRecherches(null);
+    if (!client || lien !== 'recherche') return;
+    supabase.from('recherches')
+      .select('id, nom, active, type_bien, nb_pieces_min, chambres_min, surface_min, secteurs, budget_max, mandat_taux, mandat_forfait, mandat_numero, mandat_date_signature, mandat_date_expiration')
+      .eq('client_id', client.id).order('created_at', { ascending: false }).limit(20)
+      .then(({ data, error }) => {
+        if (error) { setErreur('Ses recherches n’ont pas pu être lues : ' + error.message); setRecherches([]); return; }
+        const l = (data || []) as RechercheMini[];
+        setRecherches(l);
+        setRecherche(l.find(r => r.active !== false) || l[0] || null);
+      });
+  }, [client, lien]);
+
+  /* Ses mandats finalisés (avenant, courrier) : le plus récent d'abord. */
+  useEffect(() => {
+    setSource(null); setMandats(null);
+    if (!client || lien !== 'mandat' || !m?.deriver) return;
+    supabase.from('documents')
+      .select('id, modele, titre, sous_titre, numero, statut, donnees, signe_le, finalise_le, bien_id, recherche_id, client_id')
+      .eq('client_id', client.id).in('modele', m.deriver.de).in('statut', ['pret', 'signe'])
+      .order('updated_at', { ascending: false }).limit(20)
+      .then(({ data, error }) => {
+        if (error) { setErreur('Ses mandats n’ont pas pu être lus : ' + error.message); setMandats([]); return; }
+        const l = (data || []) as MandatMini[];
+        setMandats(l);
+        setSource(l.find(x => x.statut === 'signe') || l[0] || null);
+      });
+  }, [client, lien, m]);
+
   /* Les biens du client choisi. */
   useEffect(() => {
     setBien(null); setBiens(null);
-    if (!client) return;
+    if (!client || lien !== 'bien') return;
     supabase.from('biens')
       .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id')
       .eq('client_id', client.id).order('created_at', { ascending: false }).limit(60)
@@ -55,7 +96,7 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         if (error) { setErreur('Ses biens n’ont pas pu être lus : ' + error.message); setBiens([]); return; }
         setBiens((data || []) as BienMini[]);
       });
-  }, [client]);
+  }, [client, lien]);
 
   const trouves = useMemo(() => {
     if (!clients) return [];
@@ -76,10 +117,15 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         if (error) throw new Error('La visite n’a pas pu être lue : ' + error.message);
         visite = data?.[0] || null;
       }
-      const donnees = m.defaut({ identite, client, bien, visite });
+      const base = m.defaut({ identite, client, bien, visite, recherche });
+      const donnees = source && m.deriver
+        ? { ...base, ...m.deriver.fn({ id: source.id, modele: source.modele, donnees: source.donnees, numero: source.numero, signe_le: source.signe_le, finalise_le: source.finalise_le }, identite) }
+        : base;
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
-        client_id: client?.id || null, bien_id: bien?.id || null, recherche_id: bien?.recherche_id || null,
+        client_id: client?.id || null,
+        bien_id: bien?.id || source?.bien_id || null,
+        recherche_id: recherche?.id || bien?.recherche_id || source?.recherche_id || null,
       }).select().single();
       if (error) {
         throw new Error(tableAbsente(error.message)
@@ -102,7 +148,11 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
             <h3>{etape === 1 ? 'Nouveau document' : m ? `${m.titre} : pour qui ?` : 'Pour qui ?'}</h3>
             <p>{etape === 1
               ? 'Choisis le modèle. Tout reste modifiable ensuite, et l’aperçu suit chaque réponse.'
-              : 'Choisis un client pour que son nom, son adresse et le bien se remplissent tout seuls. Sinon, pars d’un document vierge.'}</p>
+              : m?.lien === 'recherche'
+                ? 'Choisis le client puis sa recherche : son nom, son adresse, le bien recherché et ton taux se remplissent tout seuls.'
+                : m?.lien === 'mandat'
+                  ? 'Choisis le client puis le mandat : vendeurs, bien, numéro et dates sont repris tels quels.'
+                  : 'Choisis un client pour que son nom, son adresse et le bien se remplissent tout seuls. Sinon, pars d’un document vierge.'}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
         </div>
@@ -149,7 +199,53 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
               )}
             </div>
 
-            {client && (
+            {client && lien === 'recherche' && (
+              <div className={s.champLigne}>
+                <label>Sa recherche</label>
+                {recherches === null ? <div className={s.chAide}>Chargement de ses recherches…</div>
+                  : recherches.length === 0 ? <div className={s.chAide}>Aucune recherche sur sa fiche : tu décriras le bien recherché dans le document.</div>
+                    : (
+                      <div className={s.resultats}>
+                        {recherches.map(r => {
+                          const valide = !!r.mandat_date_signature && (!r.mandat_date_expiration || String(r.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
+                          return (
+                            <button key={r.id} type="button" className={`${s.resultat} ${recherche?.id === r.id ? s.resultatOn : ''}`} onClick={() => setRecherche(r)}>
+                              <Ic n="loupe" t={16} />
+                              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nom || 'Recherche'}</span>
+                              <small>{valide ? 'mandat déjà signé' : r.active === false ? 'close' : 'en cours'}</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                {recherche?.mandat_date_signature && (!recherche.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10)) && (
+                  <div className={s.chAide} style={{ color: '#a16207' }}>{`Cette recherche a déjà un mandat signé${recherche.mandat_date_expiration ? `, valable jusqu’au ${String(recherche.mandat_date_expiration).slice(0, 10).split('-').reverse().join('/')}` : ''}. Le nouveau le remplacera une fois signé.`}</div>
+                )}
+              </div>
+            )}
+
+            {client && lien === 'mandat' && (
+              <div className={s.champLigne}>
+                <label>À partir du mandat</label>
+                {mandats === null ? <div className={s.chAide}>Chargement de ses mandats…</div>
+                  : (
+                    <div className={s.resultats}>
+                      {mandats.map(x => (
+                        <button key={x.id} type="button" className={`${s.resultat} ${source?.id === x.id ? s.resultatOn : ''}`} onClick={() => setSource(x)}>
+                          <Ic n="doc" t={16} />
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.titre || 'Mandat'}</span>
+                          <small>{[x.numero ? `n° ${x.numero}` : '', x.statut === 'signe' ? 'signé' : 'pas encore signé'].filter(Boolean).join(' · ')}</small>
+                        </button>
+                      ))}
+                      <button type="button" className={`${s.resultat} ${!source ? s.resultatOn : ''}`} onClick={() => setSource(null)}>
+                        <Ic n="plume" t={16} /><span>{mandats.length ? 'Aucun, je saisirai tout' : 'Aucun mandat finalisé : je saisirai tout'}</span>
+                      </button>
+                    </div>
+                  )}
+              </div>
+            )}
+
+            {client && lien === 'bien' && (
               <div className={s.champLigne}>
                 <label>Le bien</label>
                 {biens === null ? <div className={s.chAide}>Chargement de ses biens…</div>

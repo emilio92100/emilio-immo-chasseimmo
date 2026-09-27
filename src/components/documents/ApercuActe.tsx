@@ -114,20 +114,31 @@ export default function ApercuActe({ parties, garde, pour, resume, projet = true
 }) {
   return (
     <article className={s.papier} aria-label="Aperçu du document">
-      <div className={s.papGarde}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo_high_resolution_white.png" alt="Emilio Immobilier" />
-        {projet && <span className={s.projet}>PROJET</span>}
-        <div className={s.filet} />
-        <h2>{garde.titre}</h2>
-        <div className={s.sous}>{garde.sous}</div>
-        <div className={s.etiq}><T x={garde.etiquette} /></div>
-      </div>
-      <div className={s.papPour}>
-        <span>{garde.pour || 'ÉTABLI POUR'}</span>
-        <b><T x={pour} /></b>
-      </div>
-      {resume.length > 0 && (
+      {garde.lettre ? (
+        /* Un courrier : l'en-tête de l'agence, sans page de garde. */
+        <div className={s.papLettre}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo_high_resolution.png" alt="Emilio Immobilier" />
+          {projet && <span className={s.projet}>PROJET</span>}
+        </div>
+      ) : (
+        <>
+          <div className={s.papGarde}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo_high_resolution_white.png" alt="Emilio Immobilier" />
+            {projet && <span className={s.projet}>PROJET</span>}
+            <div className={s.filet} />
+            <h2>{garde.titre}</h2>
+            <div className={s.sous}>{garde.sous}</div>
+            <div className={s.etiq}><T x={garde.etiquette} /></div>
+          </div>
+          <div className={s.papPour}>
+            <span>{garde.pour || 'ÉTABLI POUR'}</span>
+            <b><T x={pour} /></b>
+          </div>
+        </>
+      )}
+      {!garde.lettre && resume.length > 0 && (
         <div className={s.papResume}>
           {resume.map(r => (
             <div key={r.titre}>
@@ -145,7 +156,7 @@ export default function ApercuActe({ parties, garde, pour, resume, projet = true
             <div className={s.partieT}>
               <span className={s.ic}><Ic n={p.ic} t={19} /></span>
               <div>
-                <div className={s.partieN}>{`Partie ${i + 1}`}</div>
+                {!garde.lettre && <div className={s.partieN}>{`Partie ${i + 1}`}</div>}
                 <h3><T x={p.titre} /></h3>
                 {p.sous && <div className={s.s}>{p.sous}</div>}
               </div>
