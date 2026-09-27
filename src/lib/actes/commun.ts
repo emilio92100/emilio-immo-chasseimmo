@@ -127,13 +127,22 @@ export type Contexte = {
     prix_acquereur?: number | null; prix_vendeur?: number | null; agence_nom?: string | null; description?: string | null;
   } | null;
   visite?: { date_visite?: string | null; heure?: string | null } | null;
+  /* La recherche choisie (une ligne de `recherches`), pour un mandat de
+     recherche : le bien recherché, le budget, le taux s'en déduisent. */
+  recherche?: Record<string, unknown> | null;
   identite: IdentiteAgence;
 };
 
-export type Categorie = 'mandats_vente' | 'mandats_recherche' | 'offres' | 'bons_visite';
+/* Le document d'où l'on part (un mandat signé, pour un avenant ou le
+   courrier de reconduction). */
+export type Source = { id: string; modele: string; donnees: Donnees; numero: string | null; signe_le: string | null; finalise_le: string | null };
+
+export type Categorie = 'mandats_vente' | 'mandats_recherche' | 'offres' | 'bons_visite' | 'courriers';
 export type Statut = 'brouillon' | 'pret' | 'signe' | 'annule';
 
-export type Garde = { titre: string; sous: string; etiquette: string; pour?: string; ics?: Icone[] };
+/* `lettre` : un courrier, sans page de garde ni résumé (l'en-tête de
+   l'agence est en haut de la première page). */
+export type Garde = { titre: string; sous: string; etiquette: string; pour?: string; ics?: Icone[]; lettre?: boolean };
 
 /* Un repère de l'éditeur, sous les questions d'une étape : un calcul
    (« Net vendeur : 652 381 € ») ou une mise en garde. Jamais imprimé. */
@@ -144,7 +153,8 @@ export type Modele = {
   categorie: Categorie;
   titre: string;                     // « Mandat de vente »
   description: string;               // une ligne pour la bibliothèque
-  ic: Icone;
+  /* Le pictogramme de la carte (PICTOS de l'écran ou ICONES du PDF). */
+  ic: string;
   signataires: string;               // « Le ou les vendeurs, puis l'agence »
   etapes: Etape[];
   defaut: (c: Contexte) => Donnees;
@@ -168,6 +178,21 @@ export type Modele = {
   reperes?: (d: Donnees, etape: string) => Repere[];
   /* Une fois signé, les dates à ne pas manquer (voir Echeance). */
   echeances?: (d: Donnees, signeLe: string) => Echeance[];
+  /* Ce que « Nouveau document » propose de choisir après le client : un
+     de ses biens (par défaut), une de ses recherches, ou un de ses mandats
+     déjà finalisés (un avenant, un courrier part d'un mandat). */
+  lien?: 'bien' | 'recherche' | 'mandat';
+  /* Partir d'un mandat : les modèles acceptés, et les réponses qu'on en
+     tire (noms, bien, numéro, dates). `echeance` : pour le courrier de
+     reconduction, la date de l'échéance visée. */
+  deriver?: { de: string[]; fn: (src: Source, id: IdentiteAgence, o?: { echeance?: string }) => Donnees };
+  /* Signé : ce que le document écrit sur sa recherche (le bloc Mandat de la
+     fiche client). `jour` : AAAA-MM-JJ. */
+  surRecherche?: (d: Donnees, jour: string) => Record<string, unknown>;
+  /* Un courrier qu'on envoie (pas un contrat qu'on fait signer) : la liste
+     dit « À envoyer » et « Envoyé », et la preuve d'envoi remplace
+     l'exemplaire signé. */
+  courrier?: boolean;
 };
 
 /* Une échéance d'un document signé : la date, et la fenêtre pendant
@@ -184,6 +209,13 @@ export function plusMois(ymd: string, n: number): string {
   const fin = new Date(Date.UTC(an, mois + 1, 0)).getUTCDate();
   const j = Math.min(Number(m[3]), fin);
   return `${an}-${String(mois + 1).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
+}
+
+/* La veille d'un jour « AAAA-MM-JJ ». */
+export function veille(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  if (!m) return '';
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1)).toISOString().slice(0, 10);
 }
 
 /* ── Petits outils de lecture des réponses ── */
@@ -254,4 +286,67 @@ export function blocsInformations(id: IdentiteAgence, qui: string, o: { lcbft?: 
 /* La fiche « l'Agence » (mandataire ou intermédiaire). */
 export function ficheAgence(id: IdentiteAgence, lignes: string[], note: string | undefined, pied: string): Fiche {
   return { ic: 'agence', titre: id.nom.toUpperCase(), lignes, ...(note ? { note } : {}), pied };
+}
+
+/* Le formulaire type de rétractation (annexe de l'article R221-1 du Code
+   de la consommation), pour un contrat signé hors de l'agence ou à
+   distance. */
+export function formulaireType(A: IdentiteAgence, o: { contrat: string; conclu: string; noms: string; adresse: string }): Partie {
+  return {
+    titre: 'Formulaire de rétractation',
+    court: 'Formulaire de rétractation',
+    sous: 'À renvoyer uniquement si vous souhaitez vous rétracter',
+    ic: 'retour',
+    sections: [{ blocs: [
+      P(`À l’attention de : ${A.nom.toUpperCase()}, ${A.adresse}, ${A.cp} ${A.ville} — ${A.mail}`, true),
+      { t: 'l', items: [
+        `Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de service ci-dessous : ${o.contrat}.`,
+        `Conclu le : ${o.conclu || '………………'}`,
+        `Nom du ou des consommateurs : ${o.noms || '………………'}`,
+        `Adresse : ${o.adresse || '………………'}`,
+        'Signature (uniquement si ce formulaire est envoyé sur papier) :',
+        'Date :',
+      ] },
+    ] }],
+  };
+}
+
+/* ── Les articles L215-1 à L215-3 et L241-3 du Code de la consommation ──
+   Un mandat qui se poursuit par périodes (reconduction tacite) doit les
+   reproduire intégralement (article L215-4). Texte en vigueur depuis le
+   1er juin 2023 (L215-1 : 18 août 2022), relevé mot pour mot sur deux
+   miroirs de Légifrance en septembre 2026. L215-1-1 est compris : il se
+   trouve entre L215-1 et L215-3, et L215-2 y renvoie. À revérifier si la
+   loi change. */
+const ARTICLES_L215: { n: string; al: string[] }[] = [
+  { n: 'Article L215-1', al: [
+    'Pour les contrats de prestations de services conclus pour une durée déterminée avec une clause de reconduction tacite, le professionnel prestataire de services informe le consommateur par écrit, par lettre nominative ou courrier électronique dédiés, au plus tôt trois mois et au plus tard un mois avant le terme de la période autorisant le rejet de la reconduction, de la possibilité de ne pas reconduire le contrat qu’il a conclu avec une clause de reconduction tacite. Cette information, délivrée dans des termes clairs et compréhensibles, mentionne, dans un encadré apparent, la date limite de non-reconduction.',
+    'Lorsque cette information ne lui a pas été adressée conformément aux dispositions du premier alinéa, le consommateur peut mettre gratuitement un terme au contrat, à tout moment à compter de la date de reconduction.',
+    'Les avances effectuées après la dernière date de reconduction ou, s’agissant des contrats à durée indéterminée, après la date de transformation du contrat initial à durée déterminée, sont dans ce cas remboursées dans un délai de trente jours à compter de la date de résiliation, déduction faite des sommes correspondant, jusqu’à celle-ci, à l’exécution du contrat.',
+    'Les dispositions du présent article s’appliquent sans préjudice de celles qui soumettent légalement certains contrats à des règles particulières en ce qui concerne l’information du consommateur.',
+    'Par exception au premier alinéa du présent article, pour les contrats de fourniture de service de télévision au sens de l’article 2 de la loi n° 86-1067 du 30 septembre 1986 relative à la liberté de communication et pour les contrats de fourniture de services de médias audiovisuels à la demande, le consommateur peut mettre gratuitement un terme au contrat, à tout moment à compter de la première reconduction, dès lors qu’il change de domicile ou que son foyer fiscal évolue.',
+  ] },
+  { n: 'Article L215-1-1', al: [
+    'Lorsqu’un contrat a été conclu par voie électronique ou a été conclu par un autre moyen et que le professionnel, au jour de la résiliation par le consommateur, offre au consommateur la possibilité de conclure des contrats par voie électronique, la résiliation est rendue possible selon cette modalité.',
+    'A cet effet, le professionnel met à la disposition du consommateur une fonctionnalité gratuite permettant d’accomplir, par voie électronique, la notification et les démarches nécessaires à la résiliation du contrat. Lorsque le consommateur notifie la résiliation du contrat, le professionnel lui confirme la réception de la notification et l’informe, sur un support durable et dans des délais raisonnables, de la date à laquelle le contrat prend fin et des effets de la résiliation.',
+    'Un décret fixe notamment les modalités techniques de nature à garantir une identification du consommateur et un accès facile, direct et permanent à la fonctionnalité mentionnée au deuxième alinéa, telles que ses modalités de présentation et d’utilisation. Il détermine les informations devant être fournies par le consommateur.',
+  ] },
+  { n: 'Article L215-2', al: [
+    'Les dispositions du présent chapitre, à l’exception de l’article L. 215-1-1, ne sont pas applicables aux exploitants des services d’eau potable et d’assainissement.',
+  ] },
+  { n: 'Article L215-3', al: [
+    'Les dispositions du présent chapitre sont également applicables aux contrats conclus entre des professionnels et des non-professionnels.',
+  ] },
+  { n: 'Article L241-3', al: [
+    'Lorsque le professionnel n’a pas procédé au remboursement dans les conditions prévues à l’article L. 215-1, les sommes dues sont productives d’intérêts au taux légal.',
+  ] },
+];
+export function annexeL215(): Partie {
+  return {
+    titre: 'Annexe : la reconduction du mandat',
+    court: 'Annexe · Code de la consommation',
+    sous: 'Articles L215-1 à L215-3 et L241-3, reproduits comme l’exige l’article L215-4',
+    ic: 'livre',
+    sections: ARTICLES_L215.map(a => ({ titre: a.n, blocs: a.al.map(x => Pp(x)) })),
+  };
 }

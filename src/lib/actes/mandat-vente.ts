@@ -30,16 +30,20 @@ import { BAREME_VENTE } from '@/lib/mandat';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, lignes, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence,
-  PERSONNE_VIDE, plusMois, type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance,
+  PERSONNE_VIDE, plusMois, veille, annexeL215, type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance,
 } from './commun';
 
 export type TypeMandat = 'simple' | 'semi' | 'exclusif';
-const TYPES: Record<TypeMandat, { court: string; nom: string; maj: string }> = {
+export const TYPES: Record<TypeMandat, { court: string; nom: string; maj: string }> = {
   simple: { court: 'Simple', nom: 'simple', maj: 'NON EXCLUSIF' },
   semi: { court: 'Semi-exclusif', nom: 'semi-exclusif', maj: 'SEMI-EXCLUSIF' },
   exclusif: { court: 'Exclusif', nom: 'exclusif', maj: 'EXCLUSIF' },
 };
-const typeDe = (d: Donnees): TypeMandat => (d.type === 'semi' || d.type === 'exclusif' ? d.type : 'simple');
+export const typeDe = (d: Donnees): TypeMandat => (d.type === 'semi' || d.type === 'exclusif' ? d.type : 'simple');
+/* Les clauses de l'article 78 du décret (exclusivité, engagement exclusif,
+   clause de suite, clause pénale), en caractères très apparents : en
+   CAPITALES, pour se distinguer des encadrés ordinaires. */
+const MAJ = (t: string) => t.toLocaleUpperCase('fr-FR');
 
 /* Les actions que l'Agence promet : cases à cocher, dans cet ordre. */
 export const ACTIONS: { v: string; ic: string; l: string; titre: string; x: string }[] = [
@@ -59,7 +63,7 @@ export const ACTIONS: { v: string; ic: string; l: string; titre: string; x: stri
 ];
 const ACTIONS_DEFAUT = ['estimation', 'photos', 'dossier', 'site', 'portails', 'fichier', 'visites', 'offres', 'suivi'];
 
-const RYTHMES: Record<string, string> = {
+export const RYTHMES: Record<string, string> = {
   visite: 'après chaque visite',
   semaine: 'chaque semaine',
   quinzaine: 'toutes les deux semaines',
@@ -98,7 +102,7 @@ export function argent(d: Donnees): Argent {
    l'agence ou à distance, avec un particulier : oui. */
 export const retractation = (d: Donnees) => d.lieu === 'domicile' || d.lieu === 'distance';
 
-function vendeursDe(d: Donnees): Personne[] {
+export function vendeursDe(d: Donnees): Personne[] {
   const l = lirePersonnes(d.vendeurs);
   const nb = d.qui === 'couple' ? 2 : d.qui === 'personne' || d.qui === 'sci' ? 1 : Math.max(2, l.length);
   const out = l.slice(0, nb);
@@ -109,15 +113,15 @@ function vendeursDe(d: Donnees): Personne[] {
 const estCopro = (d: Donnees) => d.nature !== 'terrain' && d.copro === 'oui';
 /* Une personne mariée qui vend le logement de la famille : son conjoint
    donne son accord (article 215 du Code civil). */
-const aConjoint = (d: Donnees) => d.qui === 'personne' && d.situation === 'marie' && d.logementFamille === 'oui';
-const baseTantiemes = (d: Donnees) => (d.tantiemesBase === '10000' || d.tantiemesBase === '100000' ? String(d.tantiemesBase) : '1000');
+export const aConjoint = (d: Donnees) => d.qui === 'personne' && d.situation === 'marie' && d.logementFamille === 'oui';
+export const baseTantiemes = (d: Donnees) => (d.tantiemesBase === '10000' || d.tantiemesBase === '100000' ? String(d.tantiemesBase) : '1000');
 /* « 145/1 000es » ; une saisie complète (« 145/10 000es ») est gardée telle quelle. */
-function tantiemes(d: Donnees, v: string): string {
+export function tantiemes(d: Donnees, v: string): string {
   if (!v) return '';
   if (v.includes('/')) return v;
   return `${v}/${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}es`;
 }
-function iconeLot(l: Record<string, string>): string {
+export function iconeLot(l: Record<string, string>): string {
   const n = (l.nature || '').toLowerCase();
   if (/cave|cellier/.test(n)) return 'cave';
   if (/parking|box|garage|stationnement/.test(n)) return 'parking';
@@ -305,7 +309,7 @@ const ETAPES: Etape[] = [
       { t: 'cases', cle: 'pouvoirs', lib: 'Pouvoirs donnés à l’agence', ic: 'cle', options: [
         { v: 'syndic', l: 'Demander les pièces au syndic', ic: 'immeuble' }, { v: 'cles', l: 'Détenir les clés', ic: 'cle' }, { v: 'delegation', l: 'Déléguer à un confrère', ic: 'accord' },
       ] },
-      { t: 'nombre', cle: 'suite', lib: 'Pas de vente en direct à un acquéreur présenté, pendant le mandat et', unite: 'mois après', aide: 'Au-delà, les honoraires ne sont plus dus.' },
+      { t: 'nombre', cle: 'suite', lib: 'Pas de vente en direct à un acquéreur présenté, pendant le mandat et', unite: 'mois après', aide: '12 mois au plus. Au-delà, plus rien n’est dû.' },
       { t: 'choix', cle: 'memePrix', lib: 'Le même prix dans toutes les agences ?', si: d => d.type === 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
       { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type !== 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
         aide: 'S’il ne respecte pas l’exclusivité, il doit une indemnité égale aux honoraires. Elle est imprimée en caractères très apparents, comme la loi l’exige.' },
@@ -374,11 +378,17 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   if (txt(d, 'noteVendeurs')) entre.push(P(`Précision : ${txt(d, 'noteVendeurs')}`));
 
   /* ── L'objet ── */
-  const objet = type === 'exclusif'
-    ? `Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente. Pendant toute la durée du mandat, le MANDANT s’interdit de vendre le bien, directement ou par un autre intermédiaire.`
+  const objet: Bloc[] = type === 'exclusif'
+    ? [
+      P('Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente.', true),
+      P(MAJ('Clause d’exclusivité : pendant toute la durée du mandat, le MANDANT s’interdit de vendre le bien, directement ou par un autre intermédiaire.'), true),
+    ]
     : type === 'semi'
-      ? `Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat SEMI-EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente. Pendant toute la durée du mandat, le MANDANT s’interdit de confier la vente à un autre intermédiaire ; il reste libre de vendre lui-même, directement, à un acquéreur qui ne lui a été présenté par aucun intermédiaire.`
-      : `Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat NON EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente. Le MANDANT reste libre de vendre lui-même ou de confier d’autres mandats non exclusifs.`;
+      ? [
+        P('Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat SEMI-EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente.', true),
+        P(MAJ('Clause de semi-exclusivité : pendant toute la durée du mandat, le MANDANT s’interdit de confier la vente à un autre intermédiaire ; il reste libre de vendre lui-même, directement, à un acquéreur qui ne lui a été présenté par aucun intermédiaire.'), true),
+      ]
+      : [P('Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat NON EXCLUSIF de rechercher un acquéreur pour le bien désigné ci-après et d’en négocier la vente. Le MANDANT reste libre de vendre lui-même ou de confier d’autres mandats non exclusifs.', true)];
 
   /* ── Le bien ── */
   const nature = String(d.nature || '');
@@ -431,13 +441,13 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       ? `Si le MANDANT vend lui-même, à un acquéreur qui ne lui a été présenté par aucun intermédiaire, les honoraires sont ramenés à ${euros(num(d, 'semiMontant') || 0)} TTC.`
       : 'Si le MANDANT vend lui-même, à un acquéreur qui ne lui a été présenté par aucun intermédiaire, aucun honoraire n’est dû.'));
   }
-  hono.push(P('Aucune somme n’est due, ni ne peut être versée à l’Agence, avant que la vente soit conclue et constatée par un acte authentique signé devant notaire (article 6 de la loi du 2 janvier 1970). Les honoraires sont alors réglés par l’intermédiaire du notaire.'));
+  hono.push(P('Aucune somme n’est due, ni ne peut être versée à l’Agence, avant la signature de l’acte authentique (l’article 6 de la loi du 2 janvier 1970 interdit tout versement avant que l’opération soit effectivement conclue). Les honoraires sont alors réglés par l’intermédiaire du notaire.'));
 
   /* ── La durée ── */
   const dur: Bloc[] = [];
   if (d.dureeMode === 'prorogation') {
-    dur.push(P(`Le mandat prend effet à sa signature pour une durée de ${nbLettres(duree)} mois. À ce terme, il se poursuit par périodes de ${nbLettres(periode)} mois, dans la limite de ${nbLettres(dureeMax)} mois au total, sauf si l’une des parties y met fin.`));
-    dur.push(P('Avant chaque échéance, au plus tôt trois mois et au plus tard un mois avant, l’Agence rappelle par écrit au MANDANT qu’il peut ne pas poursuivre le mandat (article L215-1 du Code de la consommation).'));
+    dur.push(P(`Le mandat prend effet à sa signature pour une durée de ${nbLettres(duree)} mois. À ce terme, il se poursuit par périodes de ${nbLettres(periode)} mois, dans la limite de ${nbLettres(dureeMax)} mois au total, sauf si l’une des parties y met fin. Chaque partie peut s’opposer à cette poursuite par écrit (lettre ou e-mail), au plus tard la veille de l’échéance ; le mandat prend alors fin à l’échéance.`));
+    dur.push(P('Avant chaque échéance, au plus tôt trois mois et au plus tard un mois avant, l’Agence rappelle par écrit au MANDANT qu’il peut ne pas poursuivre le mandat (article L215-1 du Code de la consommation, reproduit en annexe avec les articles L215-1-1 à L215-3 et L241-3).'));
   } else {
     dur.push(P(`Le mandat prend effet à sa signature et dure ${nbLettres(duree)} mois. Il prend fin de plein droit à son terme, sans reconduction.`));
   }
@@ -462,14 +472,15 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     P('Il s’interdit de demander à l’Agence d’écarter un acquéreur pour l’un des motifs de discrimination interdits par l’article 225-1 du Code pénal : l’Agence présente le bien à tous, sans distinction.'),
   ];
   if (type === 'exclusif') {
-    engM.push(P('Il renvoie à l’Agence toute personne qui le contacterait en vue d’acheter le bien, et lui transmet toute proposition reçue.', true));
+    engM.push(P(MAJ('Il renvoie à l’Agence toute personne qui le contacterait en vue d’acheter le bien, et lui transmet toute proposition reçue.'), true));
   } else if (type === 'semi') {
-    engM.push(P('Il ne confie la vente à aucun autre intermédiaire pendant la durée du mandat. S’il vend lui-même, il en informe aussitôt l’Agence par écrit, en indiquant le nom de l’acquéreur, le prix et le notaire chargé de la vente.', true));
+    engM.push(P(MAJ('Il ne confie la vente à aucun autre intermédiaire pendant la durée du mandat.'), true));
+    engM.push(P('S’il vend lui-même, il en informe aussitôt l’Agence par écrit, en indiquant le nom de l’acquéreur, le prix et le notaire chargé de la vente.'));
   } else {
     engM.push(P('S’il vend le bien lui-même ou par un autre intermédiaire, il en informe aussitôt l’Agence par écrit, en indiquant le nom de l’acquéreur, le prix et le notaire chargé de la vente, pour éviter toute double négociation.'));
     if (vrai(d, 'memePrix')) engM.push(P('Il s’engage à proposer le bien au même prix dans toutes les agences auxquelles il en confie la vente.'));
   }
-  engM.push(P(`Pendant le mandat et les ${nbLettres(suite)} mois qui suivent sa fin, le MANDANT s’interdit de vendre, directement ou par un autre intermédiaire, à un acquéreur que l’Agence lui a présenté ou qui a visité le bien avec elle. S’il le fait, les honoraires prévus restent dus à l’Agence.`, true));
+  engM.push(P(MAJ(`Pendant le mandat et les ${nbLettres(suite)} mois qui suivent sa fin, le MANDANT s’interdit de vendre, directement ou par un autre intermédiaire, à un acquéreur que l’Agence lui a présenté ou qui a visité le bien avec elle. S’il le fait, il doit à l’Agence, à titre de clause pénale, une indemnité forfaitaire égale aux honoraires prévus au présent mandat.`), true));
 
   /* ── Les pouvoirs ── */
   const pvs: string[] = [
@@ -489,7 +500,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   /* ── La partie 1 ── */
   const sections: Partie['sections'] = [
     { titre: 'Entre les soussignés', blocs: entre },
-    { titre: 'Il a été convenu ce qui suit', blocs: [P(objet, true)] },
+    { titre: 'Il a été convenu ce qui suit', blocs: objet },
     { titre: 'Le bien', ic: 'maison', blocs: bien },
     { titre: 'Prix', ic: 'etiquette', blocs: prix },
     { titre: 'Honoraires', ic: 'euro', blocs: hono },
@@ -502,7 +513,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     const montant = a.honoraires || a.forfait;
     sections.push({ titre: 'Clause pénale', ic: 'balance', blocs: [
       P(`EN CAS DE MANQUEMENT DU MANDANT À ${type === 'exclusif' ? 'L’EXCLUSIVITÉ' : 'SON ENGAGEMENT DE NE CONFIER LA VENTE À AUCUN AUTRE INTERMÉDIAIRE'} OU À L’INTERDICTION DE VENDRE EN DIRECT À UN ACQUÉREUR PRÉSENTÉ PAR L’AGENCE, IL LUI DEVRA, À TITRE DE CLAUSE PÉNALE, UNE INDEMNITÉ FORFAITAIRE ÉGALE AU MONTANT DES HONORAIRES PRÉVUS${montant ? `, SOIT ${euros(montant).toUpperCase()} TTC` : ''}.`, true),
-      Pp('Le juge peut modérer ou augmenter cette indemnité si elle est manifestement excessive ou dérisoire (article 1231-5 du Code civil).'),
+      Pp('Cette indemnité ne se cumule pas avec celle prévue aux engagements du mandant pour un acquéreur présenté par l’Agence. Le juge peut la modérer ou l’augmenter si elle est manifestement excessive ou dérisoire (article 1231-5 du Code civil).'),
     ] });
   }
   if (retr) {
@@ -549,6 +560,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     ic: 'doc',
     sections,
   }];
+  if (d.dureeMode === 'prorogation') parties.push(annexeL215());
   if (vrai(d, 'infoJointe')) parties.push(infoPrecontractuelle(d, A));
   if (retr) parties.push(formulaireRetractation(d, A));
   return parties;
@@ -572,7 +584,7 @@ export function infoPrecontractuelle(d: Donnees, A: IdentiteAgence): Partie {
     sections: [{ blocs: [
       { t: 'fiches', items: [
         { ic: 'agence', titre: 'Qui nous sommes', lignes: [
-          `${A.nom} — ${A.societe}, ${A.forme}, ${A.rcs}.`,
+          `${A.nom} — ${A.societe}, ${A.forme}, ${A.rcs}${A.tva ? `, TVA ${A.tva}` : ''}.`,
           `${A.adresse}, ${A.cp} ${A.ville} · ${A.tel} · ${A.mail}`,
           `Carte professionnelle « ${A.carteMention} » n° ${A.carte}, délivrée par ${A.carteDelivree}.`,
           `Assurance de responsabilité civile professionnelle : ${A.assureur}, police n° ${A.police}.`,
@@ -586,6 +598,7 @@ export function infoPrecontractuelle(d: Donnees, A: IdentiteAgence): Partie {
         { ic: 'euro', titre: 'Le prix du service', lignes: [
           `${combien}, à la charge ${a.charge === 'acquereur' ? 'de l’acquéreur' : 'du vendeur'}.`,
           'Dus uniquement si la vente est conclue et signée chez le notaire : rien n’est versé avant.',
+          'Si vous vendez sans l’Agence à un acquéreur qu’elle vous a présenté, pendant le mandat et les mois qui suivent, une indemnité égale à ces honoraires est due.',
           `Barème de l’Agence : jusqu’à ${pourcent(BAREME_VENTE)} TTC du prix, affiché à l’Agence et sur son site.`,
         ] },
         { ic: 'calendrier', titre: 'La durée', lignes: [
@@ -595,7 +608,7 @@ export function infoPrecontractuelle(d: Donnees, A: IdentiteAgence): Partie {
           'Après trois mois, chacun peut y mettre fin avec quinze jours de préavis, par lettre recommandée.',
         ] },
         { ic: 'retour', titre: 'Votre droit de rétractation', lignes: retr
-          ? ['Signé hors de l’Agence ou à distance, le mandat peut être annulé sans motif pendant 14 jours, avec le formulaire joint ou par tout écrit clair.',
+          ? ['Signé hors de l’Agence ou à distance, le mandat vous permet de vous rétracter sans motif pendant 14 jours, avec le formulaire joint ou par tout écrit clair.',
             'Vous pouvez demander que la mission commence avant la fin de ce délai.']
           : ['Signé dans les locaux de l’Agence, le mandat n’ouvre pas de droit de rétractation.'] },
         { ic: 'balance', titre: 'En cas de litige', lignes: [
@@ -673,7 +686,7 @@ function reperes(d: Donnees, etape: string): Repere[] {
    et au plus tard un mois avant (article L215-1 du Code de la consommation).
    La dernière échéance, celle de la limite totale, n'en demande pas : le
    mandat s'arrête. */
-function echeances(d: Donnees, signeLe: string): Echeance[] {
+export function echeances(d: Donnees, signeLe: string): Echeance[] {
   const jour = String(signeLe || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return [];
   const duree = num(d, 'duree') ?? 3;
@@ -684,7 +697,10 @@ function echeances(d: Donnees, signeLe: string): Echeance[] {
   }
   const periode = Math.max(1, num(d, 'periode') ?? 3), max = num(d, 'dureeMax') ?? 12;
   for (let t = duree; t < max && out.length < 24; t += periode) {
-    out.push({ le: plusMois(jour, t), quoi: 'Le mandat se prolonge', du: plusMois(jour, Math.max(0, t - 3)), au: plusMois(jour, t - 1) });
+    /* La fenêtre se compte depuis la date limite de refus (la veille de
+       l'échéance) : au plus tard un mois avant elle. */
+    const limite = veille(plusMois(jour, t));
+    out.push({ le: plusMois(jour, t), quoi: 'Le mandat se prolonge', du: plusMois(limite, -3), au: plusMois(limite, -1) });
   }
   out.push({ le: plusMois(jour, max), quoi: 'Fin du mandat (limite totale)' });
   return out;
@@ -708,6 +724,9 @@ function manques(d: Donnees): string[] {
   if (!num(d, 'prix')) out.push('Le prix de présentation');
   if (d.honoMode === 'forfait' ? !num(d, 'forfait') : num(d, 'taux') === null) out.push('Les honoraires');
   if (!num(d, 'duree')) out.push('La durée');
+  if (d.dureeMode === 'prorogation' && (num(d, 'dureeMax') ?? 12) < (num(d, 'duree') ?? 0)) out.push('Une limite totale au moins égale à la première durée');
+  const suite = num(d, 'suite');
+  if (suite === null || suite < 1 || suite > 12) out.push('La durée d’interdiction de vendre en direct après le mandat : de 1 à 12 mois');
   if (!txt(d, 'numero')) out.push('Le numéro du registre des mandats');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date de signature');
   if (typeDe(d) === 'exclusif' && !liste(d, 'actions').length) out.push('Les actions promises (obligatoires pour un mandat exclusif)');
