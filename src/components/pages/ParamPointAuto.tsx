@@ -95,7 +95,7 @@ export default function ParamPointAuto() {
       <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: '#1a2332' }}>📨 Point automatique</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: 'var(--emilio)' }}>📨 Point automatique</div>
             <div style={{ fontSize: 13, color: '#64748b', marginTop: 4, lineHeight: 1.5, maxWidth: 560 }}>{'Le mail « Où en est votre recherche ? », envoyé tout seul quand un dossier actif ne bouge plus. Le client répond en un clic depuis son espace, et sa réponse arrive dans tes Relances.'}</div>
           </div>
           {note && <span style={{ fontSize: 12, fontWeight: 700, color: '#10b981' }}>✓ {note}</span>}
@@ -108,24 +108,24 @@ export default function ParamPointAuto() {
 
         <div style={{ ...LIGNE, marginTop: 18 }}>
           <Interrupteur on={reglages.actif} disabled={enCours} onClick={() => regler({ actif: !reglages.actif })} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1a2332' }}>{reglages.actif ? 'Envoi automatique activé' : 'Activer l’envoi automatique'}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--emilio)' }}>{reglages.actif ? 'Envoi automatique activé' : 'Activer l’envoi automatique'}</span>
         </div>
 
         <div style={LIGNE}>
-          <span style={{ fontSize: 14, color: '#1a2332', fontWeight: 600 }}>Envoyer après</span>
+          <span style={{ fontSize: 14, color: 'var(--emilio)', fontWeight: 600 }}>Envoyer après</span>
           <span style={{ display: 'inline-flex', gap: 6 }}>
             {DELAIS.map(d => (
               <button key={d} type="button" disabled={enCours} onClick={() => d !== reglages.delai && regler({ delai: d })}
-                style={{ padding: '6px 14px', borderRadius: 99, border: `1px solid ${d === reglages.delai ? '#1a2332' : '#e2e8f0'}`, background: d === reglages.delai ? '#1a2332' : 'white', color: d === reglages.delai ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ padding: '6px 14px', borderRadius: 99, border: `1px solid ${d === reglages.delai ? 'var(--emilio)' : '#e2e8f0'}`, background: d === reglages.delai ? 'var(--emilio)' : 'white', color: d === reglages.delai ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 {d} jours
               </button>
             ))}
           </span>
-          <span style={{ fontSize: 14, color: '#1a2332', fontWeight: 600 }}>sans mouvement</span>
+          <span style={{ fontSize: 14, color: 'var(--emilio)', fontWeight: 600 }}>sans mouvement</span>
         </div>
 
         <div style={LIGNE}>
-          <span style={{ fontSize: 14, color: '#1a2332', fontWeight: 600 }}>Qui le reçoit</span>
+          <span style={{ fontSize: 14, color: 'var(--emilio)', fontWeight: 600 }}>Qui le reçoit</span>
           <span style={{ fontSize: 13, color: '#475569' }}>Les dossiers <b>Actifs</b>, qui ont une adresse mail et une recherche en cours. Jamais les autres.</span>
         </div>
 
@@ -158,7 +158,7 @@ export default function ParamPointAuto() {
       </div>
 
       <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
-        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 15, color: '#1a2332' }}>Qui le recevrait</div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 15, color: 'var(--emilio)' }}>Qui le recevrait</div>
         <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 3 }}>{`Calculé maintenant, avec le délai de ${reglages.delai} jours.`}</div>
 
         <div style={{ marginTop: 16 }}>
@@ -167,7 +167,7 @@ export default function ParamPointAuto() {
             ? <div style={{ fontSize: 13, color: '#94a3b8' }}>Personne : tous les dossiers actifs ont bougé récemment.</div>
             : dus.map(c => (
               <div key={c.clientId} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '9px 12px', borderRadius: 10, background: '#fdf8ea', border: '1px solid #efe1b6', marginBottom: 6, fontSize: 13.5 }}>
-                <b style={{ color: '#1a2332' }}>{nomDe(c)}</b>
+                <b style={{ color: 'var(--emilio)' }}>{nomDe(c)}</b>
                 <span style={{ color: '#8a6d1f', fontSize: 12.5 }}>{c.dernierMouvement ? `rien depuis le ${jour(c.dernierMouvement)}` : 'rien depuis la création'}</span>
               </div>
             ))}
@@ -178,7 +178,7 @@ export default function ParamPointAuto() {
             <div style={RUBRIQUE}>{`Plus tard, si rien ne bouge · ${aVenir.length}`}</div>
             {aVenir.map(c => (
               <div key={c.clientId} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '8px 2px', borderBottom: '1px solid #f1f5f9', fontSize: 13.5 }}>
-                <span style={{ color: '#1a2332', fontWeight: 600 }}>{nomDe(c)}</span>
+                <span style={{ color: 'var(--emilio)', fontWeight: 600 }}>{nomDe(c)}</span>
                 <span style={{ color: '#64748b', fontSize: 12.5 }}>le {jour(c.echeance)}</span>
               </div>
             ))}

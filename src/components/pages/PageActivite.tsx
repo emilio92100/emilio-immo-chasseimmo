@@ -59,7 +59,7 @@ export default function PageActivite() {
             <div className={styles.statVal}>{stats.finalisés}</div>
             <div className={styles.statLabel}>Dossiers finalisés</div>
           </div>
-          <div className={styles.statCard} style={{ background: '#1a2332', borderColor: '#1a2332' }}>
+          <div className={styles.statCard} style={{ background: 'var(--emilio-fond)', borderColor: 'var(--emilio)' }}>
             <div style={{ fontSize: 28 }}>💰</div>
             <div className={styles.statVal} style={{ color: '#c9a84c' }}>0€</div>
             <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.45)' }}>CA total HT</div>

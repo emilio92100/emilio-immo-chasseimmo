@@ -97,7 +97,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ <span className={styles.motLong}>Nouveau mail</span><span className={styles.motCourt}>Mail</span></button>
           <button className={styles.mailBtn} onClick={demanderNouveauRdv}>📅 <span className={styles.motLong}>Nouveau RDV</span><span className={styles.motCourt}>RDV</span></button>
           {/* Comme celui de la barre du haut : il ouvre directement le formulaire. */}
-          <button className={styles.nouveauBtn} onClick={() => { demanderNouveauClient(); onNavigate('clients'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: '#1a2332', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ <span className={styles.motLong}>Nouveau client</span><span className={styles.motCourt}>Client</span></button>
+          <button className={styles.nouveauBtn} onClick={() => { demanderNouveauClient(); onNavigate('clients'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: 'var(--emilio)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ <span className={styles.motLong}>Nouveau client</span><span className={styles.motCourt}>Client</span></button>
         </div>
       </div>
 
@@ -221,13 +221,13 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           </div>
 
           {clients.length === 0 && (
-            <div style={{ background: 'linear-gradient(135deg, #1a2332, #243044)', borderRadius: 16, padding: 16 }}>
+            <div style={{ background: 'var(--emilio-fond)', borderRadius: 16, padding: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#c9a84c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>🚀 Pour commencer</div>
               <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: 13, color: 'white', marginBottom: 4 }}>Créez votre premier client</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>Ajoutez vos acheteurs et commencez la chasse !</div>
               <button
                 onClick={() => onNavigate('clients')}
-                style={{ width: '100%', background: '#c9a84c', color: '#1a2332', border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                style={{ width: '100%', background: '#c9a84c', color: 'var(--emilio)', border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
               >
                 + Nouveau client
               </button>

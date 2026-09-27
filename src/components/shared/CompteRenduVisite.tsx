@@ -19,7 +19,7 @@ export type ValeursCR = {
   etoiles: number; commentaire: string; retenir: boolean;
 };
 
-const NAVY = '#1a2332', OR = '#c9a84c', GRIS = '#64748b', CLAIR = '#94a3b8', BORD = '#e3e8f0';
+const NAVY = '#34496e', OR = '#c9a84c', GRIS = '#64748b', CLAIR = '#94a3b8', BORD = '#e3e8f0';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
 
 const QUESTION: Record<Issue, string> = {

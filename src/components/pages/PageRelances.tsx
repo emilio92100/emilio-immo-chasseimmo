@@ -15,7 +15,7 @@ import ChoixDate from '@/components/shared/ChoixDate';
  * pour une relance automatique, le Suivi sur l'action qui l'a créée sinon.
  */
 
-const NAVY = '#1a2332', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
+const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
 const DOUX = '#5b6678', PALE = '#8d99ab';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
 

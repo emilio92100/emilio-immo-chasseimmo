@@ -79,7 +79,7 @@ function Civilite({ v, onV }: { v: string; onV: (c: 'Monsieur' | 'Madame') => vo
 function Bloc({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
     <div className="nc-bloc" style={{ background: '#fafbfd', border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px' }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: '#1a2332', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 14 }}>{titre}</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--emilio)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 14 }}>{titre}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
     </div>
   );
@@ -258,7 +258,7 @@ const PA_BASE: React.CSSProperties = {
 };
 const PA_TYPE: React.CSSProperties = { ...PA_BASE, background: '#eef4fb', border: '1px solid #dbe7f6', color: '#2d5c8f' };
 const PA_NOMBRE: React.CSSProperties = { ...PA_BASE, background: '#f8fafc', border: '1px solid #eef2f7', color: '#45566e' };
-const PA_FORT: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800, color: '#1a2332' };
+const PA_FORT: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800, color: 'var(--emilio)' };
 const PA_FAIBLE: React.CSSProperties = { fontSize: 11, color: '#a3b0c2', fontWeight: 600 };
 
 /* Deux types tiennent sur une ligne, au-delà on compte. */
@@ -1022,7 +1022,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
               @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
               @keyframes ncEntre { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-              .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-color: #fff !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9a84c' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding: 11px 38px 11px 14px !important; border-radius: 12px !important; border: 1.5px solid #e3e8f0 !important; font-size: 13.5px !important; font-weight: 600; color: #1a2332; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+              .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-color: #fff !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9a84c' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding: 11px 38px 11px 14px !important; border-radius: 12px !important; border: 1.5px solid #e3e8f0 !important; font-size: 13.5px !important; font-weight: 600; color: var(--emilio); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
               .crm-select:hover { border-color: #cbd5e1 !important; }
               .crm-select:focus { border-color: #c9a84c !important; background-color: #fff !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.12); outline: none; }
 
@@ -1032,11 +1032,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-pas:disabled { cursor: default; }
               .nc-barre { height: 4px; border-radius: 4px; background: #e3e8f0; margin-right: 6px; transition: background .3s ease; }
               .nc-pas[data-etat="fait"] .nc-barre { background: #c9a84c; }
-              .nc-pas[data-etat="ici"] .nc-barre { background: #1a2332; }
+              .nc-pas[data-etat="ici"] .nc-barre { background: var(--emilio); }
               .nc-lig { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; }
               .nc-lig b { font-size: 11.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
               .nc-pas[data-etat="fait"] .nc-lig b { color: #a9822f; }
-              .nc-pas[data-etat="ici"] .nc-lig b { color: #1a2332; }
+              .nc-pas[data-etat="ici"] .nc-lig b { color: var(--emilio); }
               .nc-lig i { font-style: normal; font-size: 11.5px; color: #b4bfcd; }
               @media (max-width: 720px) { .nc-lig i { display: none; } }
 
@@ -1047,9 +1047,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-etats { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 8px; }
               .nc-etat { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #e3e8f0; background: #fff; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .14s, background .14s, transform .12s; }
               .nc-etat:hover { transform: translateY(-1px); }
-              .nc-etat[data-on="true"] { border-color: #1a2332; background: #f8fafc; }
+              .nc-etat[data-on="true"] { border-color: var(--emilio); background: #f8fafc; }
               .nc-etat u { text-decoration: none; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
-              .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: #1a2332; }
+              .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: var(--emilio); }
               .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
 
               /* Une personne ou un couple */
@@ -1061,7 +1061,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-pers-t { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
               .nc-civ { display: flex; gap: 6px; }
               .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
-              .nc-civ button[data-on="true"] { border-color: #1a2332; background: #f8fafc; color: #1a2332; }
+              .nc-civ button[data-on="true"] { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
               .nc-note { font-size: 12px; line-height: 1.55; border-radius: 10px; padding: 9px 12px; background: #f8fafc; border: 1px solid #eef1f6; color: #64748b; }
             `}</style>
 
@@ -1072,7 +1072,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 <button className="nc-fermer" aria-label="Fermer" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
                   <div style={{ flexGrow: 1, minWidth: 0 }}>
-                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a2332', letterSpacing: -0.4 }}>
+                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--emilio)', letterSpacing: -0.4 }}>
                       {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau client'}
                     </h2>
                     <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[step].sous}</div>
@@ -1153,7 +1153,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                           {adrSug.length > 0 && (
                             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
                               {adrSug.map((f: any, i: number) => (
-                                <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: '#1a2332' }}>
+                                <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--emilio)' }}>
                                   {f.properties?.label}
                                 </button>
                               ))}

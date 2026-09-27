@@ -93,7 +93,7 @@ export default function PointAuto({ clientId }: { clientId: string }) {
         </span>
         <span style={{ flex: '1 1 220px', minWidth: 0 }}>
           <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8' }}>{'Mail « Où en est votre recherche ? »'}</span>
-          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: ton === 'gris' ? '#64748b' : ton === 'or' ? '#8a6d1f' : '#1a2332', marginTop: 2 }}>{phrase}</span>
+          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: ton === 'gris' ? '#64748b' : ton === 'or' ? '#8a6d1f' : 'var(--emilio)', marginTop: 2 }}>{phrase}</span>
           <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{sous || dernier}</span>
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -117,7 +117,7 @@ export default function PointAuto({ clientId }: { clientId: string }) {
         <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 9, display: 'flex', flexDirection: 'column', gap: 5 }}>
           {c.historique.map(h => (
             <div key={h.le} style={{ fontSize: 12.5, color: '#475569' }}>
-              <b style={{ color: '#1a2332' }}>{jour(h.le, true)}</b>{' · mail envoyé → '}
+              <b style={{ color: 'var(--emilio)' }}>{jour(h.le, true)}</b>{' · mail envoyé → '}
               {h.reponse ? <span style={{ color: '#0f7a4f', fontWeight: 700 }}>{h.reponse}</span> : <span style={{ color: '#94a3b8' }}>pas de réponse</span>}
               {h.reponduLe ? <span style={{ color: '#94a3b8' }}>{` (le ${jour(h.reponduLe)})`}</span> : null}
             </div>

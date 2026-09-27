@@ -108,11 +108,11 @@ const boite = (fond: string, trait: string, encre: string): React.CSSProperties 
 const titreBloc: React.CSSProperties = { fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 800, color: '#94a3b8', margin: '4px 0 8px' };
 const btn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid #e2e8f0',
-  background: '#fff', color: '#1a2332', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+  background: '#fff', color: 'var(--emilio)', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
 };
-const btnOr: React.CSSProperties = { ...btn, background: '#c9a84c', borderColor: '#c9a84c', color: '#1a2332' };
+const btnOr: React.CSSProperties = { ...btn, background: '#c9a84c', borderColor: '#c9a84c', color: 'var(--emilio)' };
 const champ: React.CSSProperties = {
-  width: '100%', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 14, fontFamily: 'inherit', color: '#1a2332',
+  width: '100%', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 14, fontFamily: 'inherit', color: 'var(--emilio)',
 };
 
 /* Un avenant à ce mandat (Documents), pour la liste et pour les limites. */
@@ -476,7 +476,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
             const occupe = travail.startsWith('co-') && travail.endsWith(c.id);
             return (
               <div key={c.id} style={{ borderTop: '1px solid #fde68a', marginTop: 9, paddingTop: 8 }}>
-                <div style={{ fontWeight: 700, color: '#1a2332' }}>{`${nomCo(c)} · ${c.personne?.email || ''}`}</div>
+                <div style={{ fontWeight: 700, color: 'var(--emilio)' }}>{`${nomCo(c)} · ${c.personne?.email || ''}`}</div>
                 {c.statut === 'invite' ? (
                   <>
                     <div>{`Lien envoyé le ${c.invite_le ? quand(c.invite_le) : '—'} · ${c.ouvert_le ? `ouvert le ${quand(c.ouvert_le)}` : 'pas encore ouvert'} · pas encore signé.`}</div>
@@ -515,7 +515,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
         </div>
       )}
       {valide && !signeEnLigne && (
-        <div style={boite('#f8fafc', '#e2e8f0', '#1a2332')}>
+        <div style={boite('#f8fafc', '#e2e8f0', 'var(--emilio)')}>
           <b>{`📋 Mandat signé${recherche?.mandat_numero ? ` n° ${recherche.mandat_numero}` : ''}, hors ligne`}</b>
           <div>{`Signé le ${jourCourt(recherche.mandat_date_signature)}${recherche?.mandat_date_expiration ? `, valable jusqu’au ${jourCourt(recherche.mandat_date_expiration)}` : ''}.`}</div>
           {lignesAvenants.map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
@@ -544,7 +544,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
           {ecarts.map(e => (
             <div key={e.cle} style={{ borderTop: '1px solid #fed7aa', marginTop: 9, paddingTop: 8 }}>
               <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 800, color: '#c2410c' }}>{e.libelle}</div>
-              <div style={{ color: '#1a2332', wordBreak: 'break-word' }}>{'Sur le mandat : '}<b>{e.mandat}</b></div>
+              <div style={{ color: 'var(--emilio)', wordBreak: 'break-word' }}>{'Sur le mandat : '}<b>{e.mandat}</b></div>
               <div style={{ color: '#9a3412', wordBreak: 'break-word' }}>{`Sur ta fiche : ${e.fiche}`}</div>
               <button type="button" disabled={travail === 'reprendre'} onClick={() => reprendre([e.cle])}
                 style={{ background: 'none', border: 'none', padding: '3px 0 0', color: '#a07c28', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
@@ -573,7 +573,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
             {([['taux', 'Pourcentage'], ['forfait', 'Forfait']] as const).map(([m, l]) => (
               <button key={m} type="button" onClick={() => setMode(m)}
                 style={{ border: 'none', borderRadius: 8, padding: '6px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                  background: mode === m ? '#fff' : 'transparent', color: mode === m ? '#1a2332' : '#64748b', boxShadow: mode === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>
+                  background: mode === m ? '#fff' : 'transparent', color: mode === m ? 'var(--emilio)' : '#64748b', boxShadow: mode === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>
                 {l}
               </button>
             ))}
@@ -673,7 +673,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
               Réserve quelques numéros dans ImmoFacile et colle-les ici. Un client qui clique « Je souhaite le visiter » sans mandat préparé prend le premier libre, signe tout de suite, et tu reçois un mail pour reporter le nom dans le registre.
             </div>
             <input style={champ} value={reserve} onChange={e => setReserve(e.target.value)} placeholder="ex. 997, 998, 999" />
-            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: '#1a2332', lineHeight: 1.5, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--emilio)', lineHeight: 1.5, cursor: 'pointer' }}>
               <input type="checkbox" checked={approuve} onChange={e => setApprouve(e.target.checked)} style={{ marginTop: 3 }} />
               <span>J’approuve le mandat de recherche simple type et je signe l’offre au nom d’Emilio Immobilier pour ces numéros.{approuveLe ? ` (approuvé le ${quand(approuveLe)})` : ''}</span>
             </label>

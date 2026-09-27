@@ -33,7 +33,7 @@ const CRIT_CHIP: React.CSSProperties = {
 };
 const CRIT_CHIP_FORT: React.CSSProperties = {
   ...CRIT_CHIP, background: '#ffffff', border: '1px solid #e3d3ab',
-  fontSize: 14.5, fontWeight: 800, color: '#1a2332',
+  fontSize: 14.5, fontWeight: 800, color: 'var(--emilio)',
 };
 
 /* Une fenêtre se pose sur <body>, jamais dans la page.
@@ -156,14 +156,14 @@ function DiffCriteres({ changements }: { changements: ChangementCrit[] }) {
               ))}
             </span>
           ) : c.a === null ? (
-            <span><span style={{ ...PASTILLE_DIFF, background: '#dcfce7', color: '#15803d' }}>Ajouté</span><b style={{ color: '#1a2332' }}>{c.p}</b></span>
+            <span><span style={{ ...PASTILLE_DIFF, background: '#dcfce7', color: '#15803d' }}>Ajouté</span><b style={{ color: 'var(--emilio)' }}>{c.p}</b></span>
           ) : c.p === null ? (
             <span><span style={{ ...PASTILLE_DIFF, background: '#fee2e2', color: '#b91c1c' }}>Retiré</span><s style={{ color: '#94a3b8' }}>{c.a}</s></span>
           ) : (
             <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 7px' }}>
               <s style={{ color: '#94a3b8', textDecorationColor: 'rgba(148,163,184,.8)' }}>{c.a}</s>
               <span style={{ color: '#c9a84c', fontWeight: 800 }}>→</span>
-              <b style={{ color: '#1a2332' }}>{c.p}</b>
+              <b style={{ color: 'var(--emilio)' }}>{c.p}</b>
             </span>
           )}
         </div>
@@ -219,7 +219,7 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
             borderBottom: i === lignes.length - 1 ? 'none' : '1px solid #f1f5f9',
           }}>
             <span style={{ fontSize: 13, color: l.fort ? '#a9822f' : '#64748b', fontWeight: l.fort ? 700 : 600 }}>{l.lib}</span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: l.fort ? '#a9822f' : '#1a2332' }}>{l.val}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: l.fort ? '#a9822f' : 'var(--emilio)' }}>{l.val}</span>
           </div>
         ))}
       </div>
@@ -2550,7 +2550,7 @@ Emilio Immobilier
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
           <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
-          <span className={styles.filNom} style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{nomFoyer(client)}</span>
+          <span className={styles.filNom} style={{ fontWeight: 600, color: 'var(--emilio)', fontSize: 14 }}>{nomFoyer(client)}</span>
           {etiquetteRelance && (
             <span className={styles.filRelance} title={etiquetteRelance.note} style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px',
@@ -2614,7 +2614,7 @@ Emilio Immobilier
         const Champ = ({ lib, val, premier }: { lib: string; val: React.ReactNode; premier?: boolean }) => (
           <div className="fc-champ" style={{ padding: premier ? '2px 26px 2px 0' : '2px 26px', borderLeft: premier ? 'none' : '1px solid #edf1f6' }}>
             <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>{lib}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1a2332', letterSpacing: -0.1 }}>{val}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)', letterSpacing: -0.1 }}>{val}</div>
           </div>
         );
 
@@ -2677,7 +2677,7 @@ Emilio Immobilier
                                     style={{ display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%', textAlign: 'left', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
                                     <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5, boxShadow: courant ? `0 0 0 3px ${e.point}26` : 'none' }} />
                                     <span style={{ flexGrow: 1, minWidth: 0 }}>
-                                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: '#1a2332' }}>{e.nom}</span>
+                                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: 'var(--emilio)' }}>{e.nom}</span>
                                       <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1, lineHeight: 1.35 }}>{e.quand}</span>
                                     </span>
                                     {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
@@ -2710,7 +2710,7 @@ Emilio Immobilier
                                     💼 {transaction ? 'Voir la transaction' : 'Ouvrir une transaction'}
                                   </button>
                                   <button onClick={() => { setMenuStatut(null); setShowCloture(true); }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: '#1a2332', fontWeight: 700, fontSize: 13 }}>
+                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--emilio)', fontWeight: 700, fontSize: 13 }}>
                                     🏁 Clôturer la recherche
                                   </button>
                                 </>
@@ -2887,7 +2887,7 @@ Emilio Immobilier
                 <button className={styles.editBtn} onClick={ouvrirHistorique}
                   title="Ce que le client a changé ou demandé depuis son espace"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
-                    color: histoNonVus ? '#1a2332' : undefined, fontWeight: histoNonVus ? 700 : 600 }}>
+                    color: histoNonVus ? 'var(--emilio)' : undefined, fontWeight: histoNonVus ? 700 : 600 }}>
                   🕑 Historique client
                   {histoNonVus > 0 && (
                     <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
@@ -2932,7 +2932,7 @@ Emilio Immobilier
                   {recherches.map(r => (
                     <div key={r.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f4f7fb', background: r.id === rechercheId ? '#f8fafc' : 'white' }}>
                       <button onClick={() => { setRechercheId(r.id); setPosRecherche(null); setTab('presentes'); }} style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', padding: '11px 15px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 800 : 600, color: '#1a2332' }}>{r.nom}</span>
+                        <span style={{ fontSize: 14, fontWeight: r.id === rechercheId ? 800 : 600, color: 'var(--emilio)' }}>{r.nom}</span>
                         {r.id === rechercheId && <span style={{ color: '#10b981', fontSize: 13 }}>✓</span>}
                       </button>
                       {/* La corbeille est là même sur la dernière recherche :
@@ -2949,7 +2949,7 @@ Emilio Immobilier
               {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Le bandeau : le client et son enveloppe */}
-                  <div className="fc-bandeau" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: '#1a2332', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
+                  <div className="fc-bandeau" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: 'var(--emilio)', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
                     {cr.type_bien && <span style={CRIT_CHIP_FORT}>🏡 {cr.type_bien}</span>}
                     {cr.urgence && <span style={CRIT_CHIP}>⏱️ {texteChoix(URGENCES, cr.urgence)}</span>}
                     {cr.financement && <span style={CRIT_CHIP}>💳 {texteChoix(FINANCEMENTS, cr.financement)}</span>}
@@ -2991,7 +2991,7 @@ Emilio Immobilier
                     if (cr.dernier_etage) immeuble.push({ lib: 'Dernier étage', val: <span style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 99, padding: '2px 9px', fontSize: 11.5, fontWeight: 700, color: '#6d28d9' }}>recherché</span> });
                     if (cr.etage_max_sans_ascenseur) immeuble.push({ lib: 'Sans ascenseur', val: <span style={{ fontSize: 13.5 }}>{ordinal(cr.etage_max_sans_ascenseur || 0)} maximum</span> });
                     if (cr.annee_construction_min) immeuble.push({ lib: 'Construit après', val: cr.annee_construction_min });
-                    if (cr.dpe_max) immeuble.push({ lib: 'DPE', val: <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 7, background: '#1a2332', color: '#fff', fontSize: 12.5, fontWeight: 800 }}>{cr.dpe_max}</span> });
+                    if (cr.dpe_max) immeuble.push({ lib: 'DPE', val: <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 7, background: 'var(--emilio-fond)', color: '#fff', fontSize: 12.5, fontWeight: 800 }}>{cr.dpe_max}</span> });
                     if (cr.exposition_souhaitee) immeuble.push({ lib: 'Exposition', val: <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{cr.exposition_souhaitee.split(',').map((x: string) => x.trim()).filter(Boolean).map((x: string) => (
                       <span key={x} style={{ background: '#ecfdf5', color: '#0f766e', border: '1px solid #99f6e4', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{ICONE_EXPO[x] || '🧭'} {x}</span>
                     ))}</span> });
@@ -3028,7 +3028,7 @@ Emilio Immobilier
                                       <span style={{ flexGrow: 1, minWidth: 0 }}>
                                         <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                                           {(a.lignes || []).slice(0, 4).map((l: string) => <PastilleArret key={l} id={l} t={22} />)}
-                                          <span style={{ fontSize: 14, fontWeight: 800, color: '#1a2332' }}>{a.nom}</span>
+                                          <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--emilio)' }}>{a.nom}</span>
                                         </span>
                                         <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 3 }}>à pied{a.ville ? ` · ${a.ville}` : ''}</span>
                                       </span>
@@ -3042,7 +3042,7 @@ Emilio Immobilier
                                     <span style={{ fontSize: 8, fontWeight: 800, color: '#4f9d6b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>min</span>
                                   </span>
                                   <span style={{ minWidth: 0 }}>
-                                    <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: '#1a2332' }}>à pied maximum</span>
+                                    <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: 'var(--emilio)' }}>à pied maximum</span>
                                     <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 3 }}>d'un transport en commun</span>
                                   </span>
                                 </div>
@@ -3072,7 +3072,7 @@ Emilio Immobilier
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {lignes.map(l => (
                             <span key={l.cle} style={l.fort
-                              ? { background: '#1a2332', color: '#f2dfa6', border: '1px solid #c9a84c', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 700 }
+                              ? { background: 'var(--emilio-fond)', color: '#f2dfa6', border: '1px solid #c9a84c', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 700 }
                               : { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l.texte}</span>
                           ))}
                         </div>
@@ -3098,7 +3098,7 @@ Emilio Immobilier
                             <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 9, background: '#eff4fb', border: '1px solid #d6e3f5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#3b6ea8' }}>
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></svg>
                             </span>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: '#1a2332', minWidth: 'max-content' }}>{ville}</span>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)', minWidth: 'max-content' }}>{ville}</span>
                             {qs.length > 0 && qs.map(q => <span key={q} className={styles.secteurTag}>{q}</span>)}
                             {qs.length === 0 && <span className={styles.secteurTag}>Toute la ville</span>}
                           </div>
@@ -3110,7 +3110,7 @@ Emilio Immobilier
                   {cr.notes && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #c9a84c' }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 }}>💬 Précisions sur la recherche</div>
-                      <div style={{ fontSize: 14, color: '#1a2332', lineHeight: 1.6 }}>{cr.notes}</div>
+                      <div style={{ fontSize: 14, color: 'var(--emilio)', lineHeight: 1.6 }}>{cr.notes}</div>
                     </div>
                   )}
                   </div>
@@ -3187,7 +3187,7 @@ Emilio Immobilier
         .tx-sur { display: block; font-size: 10px; font-weight: 800; color: #94a3b8;
           text-transform: uppercase; letter-spacing: .9px; }
         .tx-titre { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
-          font-size: 14.5px; color: #1a2332; margin-top: 2px;
+          font-size: 14.5px; color: var(--emilio); margin-top: 2px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .tx-detail { display: block; font-size: 12.5px; color: #64748b; }
 
@@ -3204,14 +3204,14 @@ Emilio Immobilier
           display: inline-flex; align-items: center; justify-content: center;
           font-size: 15px; font-weight: 800; background: #fff; border: 2px solid #e3e8f0; color: #b0bec5;
           transition: transform .22s cubic-bezier(.3,1.5,.5,1), box-shadow .22s, background .3s, border-color .3s, color .3s; }
-        .tx-pas[data-etat="fait"] .tx-rond { background: #c9a84c; border-color: #c9a84c; color: #1a2332; }
-        .tx-pas[data-etat="encours"] .tx-rond { background: #1a2332; border-color: #1a2332; color: #fff; }
+        .tx-pas[data-etat="fait"] .tx-rond { background: #c9a84c; border-color: #c9a84c; color: var(--emilio); }
+        .tx-pas[data-etat="encours"] .tx-rond { background: var(--emilio); border-color: var(--emilio); color: #fff; }
         .tx-pas[data-vue="true"] .tx-rond { transform: scale(1.14); box-shadow: 0 0 0 5px rgba(201,168,76,.2); }
         .tx-pas:not(:disabled):hover .tx-rond { transform: scale(1.09); }
         .tx-nom { font-size: 11.5px; font-weight: 700; color: #a8b3c4; text-align: center;
           line-height: 1.25; padding: 0 3px; transition: color .25s; }
         .tx-pas[data-etat="fait"] .tx-nom { color: #64748b; }
-        .tx-pas[data-etat="encours"] .tx-nom, .tx-pas[data-vue="true"] .tx-nom { color: #1a2332; font-weight: 800; }
+        .tx-pas[data-etat="encours"] .tx-nom, .tx-pas[data-vue="true"] .tx-nom { color: var(--emilio); font-weight: 800; }
 
         .tx-chiffres { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 16px; }
         .tx-chiffre { flex: 1 1 145px; background: #fff; border: 1px solid #e8edf5;
@@ -3230,7 +3230,7 @@ Emilio Immobilier
           border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
         .tx-tete[data-encours="true"] { background: #fdfaf1; border-bottom-color: #f0e4c6; }
         .tx-tete-nom { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
-          font-weight: 800; font-size: 16px; color: #1a2332; letter-spacing: -.2px; }
+          font-weight: 800; font-size: 16px; color: var(--emilio); letter-spacing: -.2px; }
         .tx-tete-quoi { display: block; font-size: 12px; color: #8593a8; margin-top: 1px; }
         .tx-franchie { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #a9822f;
           background: #fff; border: 1px solid #ecdcb4; border-radius: 99px; padding: 3px 10px; }
@@ -3246,7 +3246,7 @@ Emilio Immobilier
         .tx-co[data-partie="acheteur"] { border-color: #dbe7fa; background: #f7fbff; }
         .tx-co[data-partie="vendeur"] { border-color: #fbe0e0; background: #fffafa; }
         .tx-co-qui { font-size: 12px; font-weight: 700; color: #55647a; flex-shrink: 0; }
-        .tx-co b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; color: #1a2332; }
+        .tx-co b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; color: var(--emilio); }
         .tx-co-x { background: none; border: none; cursor: pointer; color: #cbd5e1;
           font-size: 13px; padding: 2px 4px; line-height: 1; transition: color .15s; }
         .tx-co-x:hover { color: #ef4444; }
@@ -3296,7 +3296,7 @@ Emilio Immobilier
         {tab === 'biens' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {biens.length === 0 ? (
-              <div className={styles.emptyTab}><div style={{ fontSize: 40, marginBottom: 12 }}>🏠</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: '#1a2332', marginBottom: 6 }}>Aucun bien proposé</div><div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 18 }}>Collez une URL d'annonce SeLoger, LeBonCoin, PAP...</div><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien par URL</button></div>
+              <div className={styles.emptyTab}><div style={{ fontSize: 40, marginBottom: 12 }}>🏠</div><div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 17, color: 'var(--emilio)', marginBottom: 6 }}>Aucun bien proposé</div><div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 18 }}>Collez une URL d'annonce SeLoger, LeBonCoin, PAP...</div><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowBien(true)}>+ Ajouter un bien par URL</button></div>
             ) : biens.map(b => {
               const badge = BADGES[b.badge_retour] || BADGES.propose;
               const visitesBien = visites
@@ -3309,7 +3309,7 @@ Emilio Immobilier
                   <div className={styles.bienPhoto}>{b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}</div>
                   <div className={styles.bienBody}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 5 }}>
-                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 15, color: 'var(--emilio)' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
                       <div style={{ flexShrink: 0, textAlign: 'right' }}>
                         <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: '#c9a84c' }}>{b.prix_acquereur ? `${b.prix_acquereur.toLocaleString('fr-FR')}€` : '—'}</div>
                         {b.prix_vendeur && b.commission_val && (
@@ -3329,15 +3329,15 @@ Emilio Immobilier
                       {b.source_portail && <span style={{ fontSize: 12, background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>{b.source_portail}</span>}
                       {b.url && <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', textDecoration: 'none' }}>🔗 Annonce</a>}
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                        <button onClick={() => openFicheBien(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>✏️ Détail</button>
+                        <button onClick={() => openFicheBien(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: 'var(--emilio)', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>✏️ Détail</button>
                         <button onClick={() => openEnvoiBien(b.id)} style={{ fontSize: 12, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📤 Envoyer</button>
                         <button onClick={() => planifierVisite(b.id)} style={{ fontSize: 12, background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📅 Visite</button>
                         {b.pdf_statut === 'pret' && b.pdf_url ? (
-                          <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, background: '#1a2332', color: 'white', border: '1px solid #1a2332', padding: '4px 12px', borderRadius: 20, fontWeight: 600, textDecoration: 'none' }}>📄 Fiche client</a>
+                          <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, background: 'var(--emilio-fond)', color: 'white', border: '1px solid var(--emilio)', padding: '4px 12px', borderRadius: 20, fontWeight: 600, textDecoration: 'none' }}>📄 Fiche client</a>
                         ) : b.pdf_statut === 'demande' ? (
                           <span style={{ fontSize: 12, background: '#fdfaf1', color: '#a17d2c', border: '1px solid #ecdcb4', padding: '4px 12px', borderRadius: 20, fontWeight: 600 }}>⏳ Fiche en attente</span>
                         ) : (
-                          <button onClick={() => demanderPdf(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: '#1a2332', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📄 Demander une fiche soignée</button>
+                          <button onClick={() => demanderPdf(b.id)} style={{ fontSize: 12, background: '#f8fafc', color: 'var(--emilio)', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>📄 Demander une fiche soignée</button>
                         )}
                       </div>
                     </div>
@@ -3382,7 +3382,7 @@ Emilio Immobilier
                 return (
                   <div className={styles.emptyTab} style={{ padding: '46px 24px' }}>
                     <div style={{ fontSize: 40, marginBottom: 14 }}>💼</div>
-                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#1a2332', marginBottom: 6 }}>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: 'var(--emilio)', marginBottom: 6 }}>
                       Aucune transaction en cours
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 20, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
@@ -3434,7 +3434,7 @@ Emilio Immobilier
                   chiffres.push({ k: 'Dernière contre-offre', v: m !== null ? eur(m) : '—', d: derniere.partie === 'acheteur' ? 'de votre client' : 'du vendeur', c: '#2d5c8f' });
                 }
                 if (prixFinal !== null) chiffres.push({ k: 'Prix retenu', v: eur(prixFinal), d: ecart !== null ? `${ecart > 0 ? '+' : ''}${eur(ecart)} vs offre` : null, c: '#15803d' });
-                if (hono !== null) chiffres.push({ k: 'Honoraires', v: `${eur(hono)} HT`, d: `${eur(Math.round(hono * 1.2))} TTC`, c: '#1a2332' });
+                if (hono !== null) chiffres.push({ k: 'Honoraires', v: `${eur(hono)} HT`, d: `${eur(Math.round(hono * 1.2))} TTC`, c: 'var(--emilio)' });
 
                 const SUIVANT: Record<string, { label: string; vers: string }> = {
                   offre:          { label: '→ Passer en négociation', vers: 'negociation' },
@@ -3820,7 +3820,7 @@ Emilio Immobilier
             {suiviItems.length === 0 ? (
               <div className={styles.emptyTab}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>🗂️</div>
-                <div style={{ fontWeight: 700, color: '#1a2332' }}>Rien à afficher</div>
+                <div style={{ fontWeight: 700, color: 'var(--emilio)' }}>Rien à afficher</div>
                 {suiviFiltre !== 'tout' && <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Aucun élément dans « {suiviGroupes[suiviFiltre]?.label} ». Clique sur « Tout » pour l'historique complet.</div>}
               </div>
             ) : suiviItems.map((it, i) => {
@@ -3838,7 +3838,7 @@ Emilio Immobilier
                       {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
                     </div>
                     <div style={{ flex: 1, paddingTop: 2 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{e.objet || e.type}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)' }}>{e.objet || e.type}</div>
                       {isCR && parts.length > 0 && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 3 }}>{parts.slice(0, 2).join(' · ')}</div>}
                       {isCR && parts.length > 2 && <div style={{ fontSize: 13, color: '#64748b', background: '#f0fdf4', borderRadius: 8, padding: '6px 10px', marginTop: 6, borderLeft: '3px solid #10b981' }}>{parts[2]}</div>}
                       {!isCR && e.destinataires?.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{e.destinataires.join(', ')}</div>}
@@ -3857,7 +3857,7 @@ Emilio Immobilier
                   </div>
                   <div style={{ flex: 1, paddingTop: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ flexGrow: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: '#1a2332' }}>{j.titre}</div>
+                      <div style={{ flexGrow: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: 'var(--emilio)' }}>{j.titre}</div>
                       {TYPES_MODIFIABLES.has(j.type) && (
                         <span className="suivi-actions" style={{ display: 'inline-flex', gap: 4, flexShrink: 0 }}>
                           <button onClick={() => modifierAction(j)} title="Modifier cette ligne"
@@ -3920,7 +3920,7 @@ Emilio Immobilier
                   const on = k === 'couple' ? cf.couple : !cf.couple && cf.civilite === k;
                   return (
                     <button type="button" key={k} onClick={() => setCf(f => (k === 'couple' ? { ...f, couple: true } : { ...f, couple: false, civilite: k }))}
-                      style={{ padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${on ? '#1a2332' : '#e2e8f0'}`, background: on ? '#f8fafc' : '#fff', color: on ? '#1a2332' : '#64748b' }}>
+                      style={{ padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${on ? 'var(--emilio)' : '#e2e8f0'}`, background: on ? '#f8fafc' : '#fff', color: on ? 'var(--emilio)' : '#64748b' }}>
                       {lib}
                     </button>
                   );
@@ -3931,7 +3931,7 @@ Emilio Immobilier
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['Monsieur', 'Madame'] as const).map(c => (
                     <button type="button" key={c} onClick={() => setCf(f => ({ ...f, civilite: c }))}
-                      style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.civilite === c ? '#1a2332' : '#e2e8f0'}`, background: cf.civilite === c ? '#f8fafc' : '#fff', color: cf.civilite === c ? '#1a2332' : '#8593a8' }}>{c}</button>
+                      style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.civilite === c ? 'var(--emilio)' : '#e2e8f0'}`, background: cf.civilite === c ? '#f8fafc' : '#fff', color: cf.civilite === c ? 'var(--emilio)' : '#8593a8' }}>{c}</button>
                   ))}
                 </div>
               )}
@@ -3942,7 +3942,7 @@ Emilio Immobilier
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(['Monsieur', 'Madame'] as const).map(c => (
                       <button type="button" key={c} onClick={() => setCf(f => ({ ...f, c2_civilite: c }))}
-                        style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.c2_civilite === c ? '#1a2332' : '#e2e8f0'}`, background: cf.c2_civilite === c ? '#f8fafc' : '#fff', color: cf.c2_civilite === c ? '#1a2332' : '#8593a8' }}>{c}</button>
+                        style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.c2_civilite === c ? 'var(--emilio)' : '#e2e8f0'}`, background: cf.c2_civilite === c ? '#f8fafc' : '#fff', color: cf.c2_civilite === c ? 'var(--emilio)' : '#8593a8' }}>{c}</button>
                     ))}
                   </div>
                   <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.c2_prenom} onChange={e => setCf(f => ({ ...f, c2_prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.c2_nom} onChange={e => setCf(f => ({ ...f, c2_nom: e.target.value }))} /></div></div>
@@ -4032,7 +4032,7 @@ Emilio Immobilier
                     <span style={{ fontSize: 17, lineHeight: 1.2 }}>{msg ? '💬' : '🎯'}</span>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                        <b style={{ fontSize: 13.5, color: '#1a2332' }}>
+                        <b style={{ fontSize: 13.5, color: 'var(--emilio)' }}>
                           {msg ? 'Il vous a écrit' : 'Il a modifié ses critères'}
                         </b>
                         {diff && diff.length > 0 && <span style={{ fontSize: 12, color: '#64748b' }}>{`· ${diff.length} changement${diff.length > 1 ? 's' : ''}`}</span>}
@@ -4143,7 +4143,7 @@ Emilio Immobilier
                         {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
                       </span>
                       <span style={{ flexGrow: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: 'var(--emilio)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || '—'}`}
                         </span>
                         <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>
@@ -4199,7 +4199,7 @@ Emilio Immobilier
                         <span style={{ flexGrow: 1, minWidth: 0 }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.point, flexShrink: 0 }} />
-                            <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1a2332' }}>{m.nom}</span>
+                            <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--emilio)' }}>{m.nom}</span>
                             <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.7, borderRadius: 99, padding: '1px 8px', color: m.statut === 'bien_trouve' ? '#1d4ed8' : '#b91c1c', background: m.statut === 'bien_trouve' ? '#eff6ff' : '#fef2f2' }}>
                               {m.statut === 'bien_trouve' ? 'Bien trouvé' : 'Perdu'}
                             </span>
@@ -4274,7 +4274,7 @@ Emilio Immobilier
               <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3 }}>
                 {(['url', 'texte'] as const).map(m => (
                   <button key={m} onClick={() => { setBienMode(m); setBienForm(null); }}
-                    style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', background: bienMode === m ? 'white' : 'transparent', color: bienMode === m ? '#1a2332' : '#64748b', fontWeight: bienMode === m ? 700 : 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', boxShadow: bienMode === m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s' }}>
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', background: bienMode === m ? 'white' : 'transparent', color: bienMode === m ? 'var(--emilio)' : '#64748b', fontWeight: bienMode === m ? 700 : 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', boxShadow: bienMode === m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s' }}>
                     {m === 'url' ? '🔗 Par URL' : '📋 Coller le texte'}
                   </button>
                 ))}
@@ -4356,7 +4356,7 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody}>
               <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
-                Revenir à l'étape <strong style={{ color: '#1a2332' }}>« {ETAPES_LABELS[etapePrecTx]} »</strong> ?
+                Revenir à l'étape <strong style={{ color: 'var(--emilio)' }}>« {ETAPES_LABELS[etapePrecTx]} »</strong> ?
               </p>
               <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#55647a', lineHeight: 1.55 }}>
                 Rien n'est effacé : les montants et les dates déjà saisis restent en place.
@@ -4391,7 +4391,7 @@ Emilio Immobilier
               {!supprEnCours && <button className={styles.modalClose} onClick={() => setShowSupprClient(false)}>✕</button>}
             </div>
             <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <p style={{ fontSize: 14, color: '#1a2332', margin: 0, lineHeight: 1.6 }}>
+              <p style={{ fontSize: 14, color: 'var(--emilio)', margin: 0, lineHeight: 1.6 }}>
                 La fiche et <b>tout ce qu&apos;il y a dessous</b>{' '}disparaissent de la base. Il n&apos;y a
                 pas de corbeille : une fois parti, rien ne se récupère.
               </p>
@@ -4403,7 +4403,7 @@ Emilio Immobilier
                 {!supprStats ? (
                   <div style={{ fontSize: 13, color: '#94a3b8' }}>Calcul en cours…</div>
                 ) : (
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: 'var(--emilio)', lineHeight: 1.85 }}>
                     <li>La fiche du client, ses coordonnées et ses notes</li>
                     <li><b>{supprStats.recherches}</b> recherche{supprStats.recherches > 1 ? 's' : ''}, avec leurs critères et leur mandat</li>
                     <li><b>{supprStats.biens}</b> bien{supprStats.biens > 1 ? 's' : ''} et <b>{supprStats.propositions}</b> proposition{supprStats.propositions > 1 ? 's' : ''} de veille, photos comprises</li>
@@ -4458,7 +4458,7 @@ Emilio Immobilier
               {!reinitEnCours && <button className={styles.modalClose} onClick={() => setShowReinit(false)}>✕</button>}
             </div>
             <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <p style={{ fontSize: 14, color: '#1a2332', margin: 0, lineHeight: 1.6 }}>
+              <p style={{ fontSize: 14, color: 'var(--emilio)', margin: 0, lineHeight: 1.6 }}>
                 Tout le travail fait sur <b>{rechercheActive?.nom || 'cette recherche'}</b> sera effacé.
                 La recherche repart comme si tu venais de la créer, et la prochaine veille rouvrira
                 tout le marché.
@@ -4471,7 +4471,7 @@ Emilio Immobilier
                 {!reinitStats ? (
                   <div style={{ fontSize: 13, color: '#94a3b8' }}>Calcul en cours…</div>
                 ) : (
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: 'var(--emilio)', lineHeight: 1.85 }}>
                     <li><b>{reinitStats.propositions}</b> proposition{reinitStats.propositions > 1 ? 's' : ''} de veille, y compris les écartées et leurs motifs</li>
                     <li><b>{reinitStats.biens}</b> bien{reinitStats.biens > 1 ? 's' : ''} en sélection ou présentés{reinitStats.presentes > 0 ? ` (dont ${reinitStats.presentes} déjà envoyé${reinitStats.presentes > 1 ? 's' : ''} au client)` : ''}, avec leurs photos</li>
                     <li><b>{reinitStats.visites}</b> visite{reinitStats.visites > 1 ? 's' : ''} et leurs comptes rendus</li>
@@ -4485,7 +4485,7 @@ Emilio Immobilier
                 <div style={{ fontSize: 10.5, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
                   Ce qui ne bouge pas
                 </div>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: '#1a2332', lineHeight: 1.85 }}>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: 'var(--emilio)', lineHeight: 1.85 }}>
                   <li>Les critères, les précisions libres et le mandat</li>
                   <li>Le lien de l&apos;espace client — il continue de fonctionner, le client y trouvera une page vide</li>
                   <li>L&apos;historique du client : appels, notes, changements de critères</li>
@@ -4567,10 +4567,10 @@ Emilio Immobilier
                 { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
                 { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé sans bien', action: () => { setShowEnvoi(false); openEnvoiLibre(); }, primary: false },
               ].map((btn, i) => (
-                <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid #1a2332' : '1px solid #e3e8f0', background: btn.primary ? '#1a2332' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
+                <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid var(--emilio)' : '1px solid #e3e8f0', background: btn.primary ? 'var(--emilio)' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
                   <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: btn.primary ? 'white' : '#1a2332' }}>{btn.label}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: btn.primary ? 'white' : 'var(--emilio)' }}>{btn.label}</div>
                     <div style={{ fontSize: 12, color: btn.primary ? 'rgba(255,255,255,0.5)' : '#94a3b8', marginTop: 2 }}>{btn.sub}</div>
                   </div>
                   <span style={{ marginLeft: 'auto', color: btn.primary ? 'rgba(255,255,255,0.4)' : '#cbd5e1', fontSize: 18 }}>›</span>
@@ -4589,7 +4589,7 @@ Emilio Immobilier
           <div className={styles.modal} style={{ maxWidth: 720 }}>
 
             {/* Header */}
-            <div className={`${styles.modalHeader} fc-fb-tete`} style={{ background: 'linear-gradient(135deg, #1a2332 0%, #243044 100%)', borderRadius: '20px 20px 0 0', borderBottom: 'none', padding: '20px 24px' }}>
+            <div className={`${styles.modalHeader} fc-fb-tete`} style={{ background: 'var(--emilio-fond)', borderRadius: '20px 20px 0 0', borderBottom: 'none', padding: '20px 24px' }}>
               <div>
                 <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 17, color: 'white', margin: 0 }}>
                   {editBienForm.type_bien || '🏠'} — {editBienForm.titre?.substring(0, 45) || 'Détail du bien'}
@@ -4652,7 +4652,7 @@ Emilio Immobilier
                         <img src={p} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} onError={e => { (e.target as HTMLImageElement).parentElement!.style.opacity = '0.3'; }} />
                         {/* Badge couverture */}
                         {i === 0 && (
-                          <span style={{ position: 'absolute', bottom: 7, left: 7, background: 'linear-gradient(135deg,#c9a84c,#e8c96a)', color: '#1a2332', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 8, letterSpacing: 0.8, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>⭐ COUVERTURE</span>
+                          <span style={{ position: 'absolute', bottom: 7, left: 7, background: 'linear-gradient(135deg,#c9a84c,#e8c96a)', color: 'var(--emilio)', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 8, letterSpacing: 0.8, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>⭐ COUVERTURE</span>
                         )}
                         {/* Indicateur drag */}
                         <div style={{ position: 'absolute', top: 7, left: 7, background: 'rgba(0,0,0,0.4)', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 6, opacity: 0.8 }}>⠿ {i+1}</div>
@@ -4760,8 +4760,8 @@ Emilio Immobilier
                   </select>
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1a2332' }}>
-                    <input type="checkbox" checked={editBienForm.parking||false} onChange={e => setEditBienForm((f: any) => ({ ...f, parking: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--emilio)' }}>
+                    <input type="checkbox" checked={editBienForm.parking||false} onChange={e => setEditBienForm((f: any) => ({ ...f, parking: e.target.checked }))} style={{ accentColor: '#34496e', width: 16, height: 16 }} />
                     🅿️ Parking / Garage inclus
                   </label>
                 </div>
@@ -4867,7 +4867,7 @@ Emilio Immobilier
                       {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
                     </div>
                     {b.prix_acquereur && <div style={{ fontWeight: 800, fontSize: 16, color: '#c9a84c' }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
@@ -4888,12 +4888,12 @@ Emilio Immobilier
                       const checked = envoiBienIds.includes(b.id);
                       return (
                         <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#c9a84c' : '#e3e8f0'}`, background: checked ? '#faf6ee' : 'white', cursor: 'pointer', transition: 'all 0.12s' }}>
-                          <input type="checkbox" checked={checked} onChange={e => { if (e.target.checked) setEnvoiBienIds(prev => [...prev, b.id]); else setEnvoiBienIds(prev => prev.filter(id => id !== b.id)); }} style={{ accentColor: '#1a2332', width: 16, height: 16, flexShrink: 0 }} />
+                          <input type="checkbox" checked={checked} onChange={e => { if (e.target.checked) setEnvoiBienIds(prev => [...prev, b.id]); else setEnvoiBienIds(prev => prev.filter(id => id !== b.id)); }} style={{ accentColor: '#34496e', width: 16, height: 16, flexShrink: 0 }} />
                           <div style={{ width: 38, height: 38, borderRadius: 6, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, overflow: 'hidden', flexShrink: 0 }}>
                             {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--emilio)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
                             <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{[b.surface && `${b.surface}m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ')}</div>
                           </div>
                           {b.prix_acquereur && <div style={{ fontWeight: 700, fontSize: 13, color: '#c9a84c', flexShrink: 0 }}>{b.prix_acquereur.toLocaleString('fr-FR')}€</div>}
@@ -4914,8 +4914,8 @@ Emilio Immobilier
                 <textarea className={styles.inp} rows={8} value={envoiForm.corps} onChange={e => setEnvoiForm(f => ({ ...f, corps: e.target.value }))} style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6 }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e3e8f0' }}>
-                <input type="checkbox" id="sms_envoi" checked={envoiForm.sms} onChange={e => setEnvoiForm(f => ({ ...f, sms: e.target.checked }))} style={{ accentColor: '#1a2332', width: 16, height: 16 }} />
-                <label htmlFor="sms_envoi" style={{ fontSize: 13, fontWeight: 600, color: '#1a2332', cursor: 'pointer' }}>📱 Envoyer aussi un SMS de notification</label>
+                <input type="checkbox" id="sms_envoi" checked={envoiForm.sms} onChange={e => setEnvoiForm(f => ({ ...f, sms: e.target.checked }))} style={{ accentColor: '#34496e', width: 16, height: 16 }} />
+                <label htmlFor="sms_envoi" style={{ fontSize: 13, fontWeight: 600, color: 'var(--emilio)', cursor: 'pointer' }}>📱 Envoyer aussi un SMS de notification</label>
                 {client.telephones?.[0] && <span style={{ fontSize: 12, color: '#94a3b8' }}>→ {client.telephones[0]}</span>}
               </div>
 
@@ -4956,12 +4956,12 @@ Emilio Immobilier
                     const b = biens.find(x => x.id === id);
                     if (!b) return null;
                     return (
-                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, border: '2px solid #1a2332', background: '#f8fafc' }}>
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, border: '2px solid var(--emilio)', background: '#f8fafc' }}>
                         {b.photos?.[0]
                           ? <img src={b.photos[0]} alt="" style={{ width: 52, height: 52, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
                           : <div style={{ width: 52, height: 52, borderRadius: 9, background: '#eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🏠</div>}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13.5, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--emilio)' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</div>
                           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                             {[b.surface ? `${b.surface} m²` : '', b.nb_pieces ? `${b.nb_pieces}P` : '', b.ville || ''].filter(Boolean).join(' · ')}
                             {b.prix_acquereur ? ` · ${Number(b.prix_acquereur).toLocaleString('fr-FR')} €` : ''}
@@ -5003,7 +5003,7 @@ Emilio Immobilier
                               ? <img src={b.photos[0]} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                               : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🏠</div>}
                             <span style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: '#1a2332' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</span>
+                              <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: 'var(--emilio)' }}>{b.titre || `${b.type_bien||'Bien'} — ${b.ville||'—'}`}</span>
                               <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 1 }}>
                                 {[b.surface ? `${b.surface} m²` : '', b.ville || '', (b.etape === 'presente' ? 'présenté' : 'en sélection')].filter(Boolean).join(' · ')}
                               </span>
@@ -5057,8 +5057,8 @@ Emilio Immobilier
               {!actionEdit && rechercheActive && (
                 <button type="button" className="fc-rdv-agenda"
                   onClick={() => { demanderRendezVous(rechercheActive.id); fermerAction(); onNavigate('agenda'); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #ecdcae', background: 'linear-gradient(135deg, #fffaf0 0%, #fbf1d8 100%)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: '#1a2332' }}>
-                  <span style={{ width: 46, height: 46, borderRadius: 13, background: '#1a2332', color: '#c9a84c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #ecdcae', background: 'linear-gradient(135deg, #fffaf0 0%, #fbf1d8 100%)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--emilio)' }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--emilio-fond)', color: '#c9a84c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Icone nom="calendrier" taille={21} epaisseur={2} />
                   </span>
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
@@ -5076,7 +5076,7 @@ Emilio Immobilier
               <div>
                 <label className={styles.lbl}>Type d'action</label>
                 <div className="fc-types-action" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? '#1a2332' : '#e2e8f0'}`, background: actionF.type === o.v ? '#1a2332' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
+                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? 'var(--emilio)' : '#e2e8f0'}`, background: actionF.type === o.v ? 'var(--emilio)' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
                 </div>
               </div>
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
@@ -5103,7 +5103,7 @@ Emilio Immobilier
                         const actif = actionF.relance === d;
                         return (
                           <button type="button" key={lib} onClick={() => setActionF(f => ({ ...f, relance: actif ? '' : d }))}
-                            style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? '#f2dfa6' : '#64748b', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? 'var(--emilio)' : 'white', color: actif ? '#f2dfa6' : '#64748b', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {lib}
                           </button>
                         );
@@ -5146,7 +5146,7 @@ Emilio Immobilier
                         </span>
                         <span style={{ width: 38, height: 38, borderRadius: 6, background: '#eef2f7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>💬</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: '#1a2332' }}>Aucun bien en particulier</span>
+                          <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--emilio)' }}>Aucun bien en particulier</span>
                           <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginTop: 1 }}>Suivi général du dossier</span>
                         </span>
                       </button>
@@ -5164,7 +5164,7 @@ Emilio Immobilier
                               {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏠'}
                             </span>
                             <span style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: '#1a2332', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien || 'Bien'} — ${b.ville || '—'}`}</span>
+                              <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--emilio)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || `${b.type_bien || 'Bien'} — ${b.ville || '—'}`}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                 <span style={{ fontSize: 11, color: '#64748b' }}>{[b.surface && `${b.surface} m²`, b.nb_pieces && `${b.nb_pieces}P`, b.ville].filter(Boolean).join(' · ') || '—'}</span>
                                 <span style={{ fontSize: 10.5, fontWeight: 700, color: badge.color, background: badge.bg, border: `1px solid ${badge.color}2e`, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{badge.label}</span>

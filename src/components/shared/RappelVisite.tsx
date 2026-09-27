@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase';
  * rappel-visites.sql : sans elle, le mail part quand même, et on le dit.
  */
 
-const NAVY = '#1a2332', OR = '#c9a84c', BORD = '#e3e8f0', DOUX = '#5b6678', PALE = '#8d99ab';
+const NAVY = '#34496e', OR = '#c9a84c', BORD = '#e3e8f0', DOUX = '#5b6678', PALE = '#8d99ab';
 const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];

@@ -787,6 +787,14 @@ plusieurs biens = liste photo à gauche.
 - **Le prix sourcé est le prix affiché en gros** (FAI), jamais le « hors honoraires », même quand
   la ventilation net + commission est détaillée. Raison métier : Alexandre pose **sa** commission
   par-dessus.
+- **Pas de noir dans le CRM** (demande d'Alexandre, 27 septembre) : le marine `#1a2332`, qui se
+  lit comme du noir, a laissé la place au **bleu Emilio**, celui des en-têtes de rubrique
+  (`src/styles/globals.css`) : `--emilio` (`#34496e`) pour les titres, les noms et le texte fort,
+  `--emilio-fond` (le dégradé `#3a5178 → #2e4166`) pour les pastilles, les icônes et les boutons
+  pleins, `--emilio-clair` au survol. **Le noir discret ne reste que sur les filtres** (situation,
+  tri « dernière modif », « Tout » des Documents, pastilles des en-têtes) et sur l'aperçu papier des
+  documents, qui imite le PDF. L'espace client, l'écran de connexion et les mails gardent leur
+  marine. Tout nouvel écran du CRM prend `var(--emilio)`, jamais `#1a2332`.
 
 ---
 

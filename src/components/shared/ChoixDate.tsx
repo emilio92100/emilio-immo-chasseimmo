@@ -15,7 +15,7 @@ const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
-const OR = '#c9a84c', OR_FONCE = '#a9822f', ENCRE = '#1a2332';
+const OR = '#c9a84c', OR_FONCE = '#a9822f', ENCRE = '#34496e';
 
 function iso(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -107,7 +107,7 @@ export default function ChoixDate({ valeur, onChange, min, placeholder = 'Choisi
               .cal-j:disabled { color:#cbd5e1; cursor:default }
               .cal-j[data-auj="true"] { color:${OR_FONCE}; font-weight:800 }
               .cal-j[data-pris="true"] { background:${ENCRE}; color:#f2dfa6; font-weight:800 }
-              .cal-j[data-pris="true"]:hover { background:#243044 }
+              .cal-j[data-pris="true"]:hover { background:#3a5178 }
               .cal-fl { width:28px; height:28px; border-radius:8px; border:1px solid #e3e8f0; background:white;
                 color:#64748b; cursor:pointer; display:inline-flex; align-items:center; justify-content:center }
               .cal-fl:hover { border-color:${OR}; color:${ENCRE} }`}</style>

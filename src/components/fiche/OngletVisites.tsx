@@ -11,7 +11,7 @@ import { ISSUES, issueDe, apprisDe, visitePassee, type Issue } from '@/lib/visit
    En tête, « Ce que ses visites ont appris » : ce que la recherche relit
    avant chaque passage. */
 
-const NAVY = '#1a2332', GRIS = '#64748b', CLAIR = '#94a3b8', BORD = '#e3e8f0';
+const NAVY = '#34496e', GRIS = '#64748b', CLAIR = '#94a3b8', BORD = '#e3e8f0';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
 
 const jourMois = (d?: string | null) => {

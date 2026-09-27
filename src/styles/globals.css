@@ -10,6 +10,13 @@
   --gold-pale:   #fdf6e3;
   --gold-border: rgba(201,168,76,0.2);
 
+  /* Le bleu Emilio, celui des en-têtes de rubrique : titres, noms, icônes,
+     pastilles et boutons pleins. Le marine #1a2332, presque noir, ne reste
+     que sur les filtres (un noir discret) et dans l'espace client. */
+  --emilio:       #34496e;
+  --emilio-clair: #3a5178;
+  --emilio-fond:  linear-gradient(152deg, #3a5178 0%, #2e4166 100%);
+
   /* Neutrals */
   --white:       #ffffff;
   --bg:          #f7f9fc;

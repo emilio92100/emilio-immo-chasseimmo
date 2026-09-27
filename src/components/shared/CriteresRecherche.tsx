@@ -28,12 +28,12 @@ export const PastilleExigence = ({ ico, libelle, niveau, onChange }: {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20,
         border: `1px solid ${indisp ? '#c9a84c' : souh ? '#10b981' : '#e2e8f0'}`,
-        background: indisp ? '#1a2332' : souh ? '#ecfdf5' : 'white',
+        background: indisp ? 'var(--emilio)' : souh ? '#ecfdf5' : 'white',
         color: indisp ? '#f2dfa6' : souh ? '#10b981' : '#64748b',
         fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.14s',
       }}>
       <span>{ico}</span><span>{libelle}</span>
-      {indisp ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, background: '#c9a84c', color: '#1a2332', borderRadius: 6, padding: '2px 5px' }}>INDISPENSABLE</span>
+      {indisp ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, background: '#c9a84c', color: 'var(--emilio)', borderRadius: 6, padding: '2px 5px' }}>INDISPENSABLE</span>
         : souh ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: '#10b981' }}>SOUHAITÉ</span> : null}
     </button>
   );
@@ -82,7 +82,7 @@ export const texteEtats = (v?: string | null): string | null => {
   const l = etatsDe(v);
   return l.length ? l.map(k => { const e = ETATS.find(x => x[0] === k)!; return `${e[2]} ${e[1]}`; }).join(' · ') : null;
 };
-export const ChoixEtats = ({ valeur, onChange, couleur = '#1a2332' }: { valeur: string; onChange: (v: string) => void; couleur?: string }) => {
+export const ChoixEtats = ({ valeur, onChange, couleur = 'var(--emilio)' }: { valeur: string; onChange: (v: string) => void; couleur?: string }) => {
   const choisis = etatsDe(valeur);
   const puce = (actif: boolean): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20,
@@ -115,7 +115,7 @@ export const texteChoix = (table: [string, string, string][], v?: string | null)
 };
 
 /* Une ligne de pastilles à choix unique — remplace les anciens menus déroulants. */
-export const ChoixIco = ({ table, valeur, onChange, couleur = '#1a2332' }: {
+export const ChoixIco = ({ table, valeur, onChange, couleur = 'var(--emilio)' }: {
   table: [string, string, string][]; valeur: string; onChange: (v: string) => void; couleur?: string;
 }) => (
   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -157,7 +157,7 @@ export const SectionCrit = ({ ico, titre, note }: { ico: string; titre: string; 
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 -4px',
     paddingBottom: 9, borderBottom: '1px solid #e3e8f0' }}>
     <span style={{ fontSize: 16, lineHeight: 1 }}>{ico}</span>
-    <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1a2332', letterSpacing: 0.2 }}>{titre}</span>
+    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--emilio)', letterSpacing: 0.2 }}>{titre}</span>
     {note ? <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{note}</span> : null}
   </div>
 );
@@ -213,7 +213,7 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
             contenu: (<>
               <div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[...TYPES_BIEN, ...crit.types_bien.filter(t => !TYPES_BIEN.some(o => o.t === t)).map(t => ({ t, i: '✳️' }))].map(o => { const sel = crit.types_bien.includes(o.t); return <button key={o.t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==o.t) : [...f.types_bien, o.t] }))} style={{ padding: '7px 15px', borderRadius: 20, border: `1px solid ${sel ? '#1a2332' : '#e2e8f0'}`, background: sel ? '#1a2332' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.i} {o.t}</button>; })}
+                  {[...TYPES_BIEN, ...crit.types_bien.filter(t => !TYPES_BIEN.some(o => o.t === t)).map(t => ({ t, i: '✳️' }))].map(o => { const sel = crit.types_bien.includes(o.t); return <button key={o.t} onClick={() => setCrit(f => ({ ...f, types_bien: sel ? f.types_bien.filter(x=>x!==o.t) : [...f.types_bien, o.t] }))} style={{ padding: '7px 15px', borderRadius: 20, border: `1px solid ${sel ? 'var(--emilio)' : '#e2e8f0'}`, background: sel ? 'var(--emilio)' : 'white', color: sel ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.i} {o.t}</button>; })}
                 </div>
               </div>
               <div className={styles.formRow}>
@@ -244,7 +244,7 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
             sous: 'Niveau dans l\'immeuble, ascenseur et orientation',
             contenu: (<>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? '#1a2332' : '#e2e8f0'}`, background: (crit as any)[o.k] ? '#1a2332' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
+                {[{k:'rdc_exclu',l:'🚫 Exclure RDC'},{k:'dernier_etage',l:'🏙️ Dernier étage'}].map(o => (<button key={o.k} onClick={() => setCrit(f=>({...f,[o.k]:!(f as any)[o.k]}))} style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${(crit as any)[o.k] ? 'var(--emilio)' : '#e2e8f0'}`, background: (crit as any)[o.k] ? 'var(--emilio)' : 'white', color: (crit as any)[o.k] ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}>{o.l}</button>))}
                 <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage min</span><input className={styles.inp} type="number" value={crit.etage_min} onChange={e=>setCrit(f=>({...f,etage_min:e.target.value}))} style={{width:80}} /></div>
                 <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,color:'#64748b',fontWeight:600}}>Étage max</span><input className={styles.inp} type="number" value={crit.etage_max} onChange={e=>setCrit(f=>({...f,etage_max:e.target.value}))} style={{width:80}} /></div>
               </div>
@@ -320,7 +320,7 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
                   <span style={{ fontSize: 13, color: '#64748b', fontWeight: 700 }}>🍳 Cuisine</span>
                   {CUISINES.map(([v, l, i]) => {
                     const actif = crit.cuisine_type === v;
-                    return <button type="button" key={v || 'ind'} onClick={() => setCrit(f => ({ ...f, cuisine_type: v }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${actif ? '#1a2332' : '#e2e8f0'}`, background: actif ? '#1a2332' : 'white', color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{i}</span>{l}</button>;
+                    return <button type="button" key={v || 'ind'} onClick={() => setCrit(f => ({ ...f, cuisine_type: v }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 20, border: `1px solid ${actif ? 'var(--emilio)' : '#e2e8f0'}`, background: actif ? 'var(--emilio)' : 'white', color: actif ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}><span style={{ fontSize: 14 }}>{i}</span>{l}</button>;
                   })}
                 </div>
                 {crit.cuisine_type && (
@@ -343,7 +343,7 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
                   const lettres = ['A','B','C','D','E','F','G'];
                   const passe = crit.dpe_max ? lettres.indexOf(d) <= lettres.indexOf(crit.dpe_max) : false;
                   const choisi = crit.dpe_max === d;
-                  return (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${choisi ? '#1a2332' : passe ? '#bbf7d0' : '#e2e8f0'}`, background: choisi ? '#1a2332' : passe ? '#f0fdf4' : 'white', color: choisi ? 'white' : passe ? '#15803d' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>);
+                  return (<button key={d} onClick={() => setCrit(f=>({...f,dpe_max:f.dpe_max===d?'':d}))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${choisi ? 'var(--emilio)' : passe ? '#bbf7d0' : '#e2e8f0'}`, background: choisi ? 'var(--emilio)' : passe ? '#f0fdf4' : 'white', color: choisi ? 'white' : passe ? '#15803d' : '#64748b', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{d}</button>);
                 })}
               </div>
               {crit.dpe_max ? (() => {

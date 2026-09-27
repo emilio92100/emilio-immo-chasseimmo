@@ -45,7 +45,7 @@ export default function RappelCarte({ page, onNavigate }: { page: string; onNavi
     }}>
       <span style={{ flex: '1 1 260px', minWidth: 0 }}><b>{expiree ? 'Carte professionnelle expirée' : 'Carte professionnelle à renouveler'}</b>{` · ${texte}`}</span>
       <button type="button" onClick={() => onNavigate('parametres')}
-        style={{ background: expiree ? '#b91c1c' : '#1a2332', color: 'white', border: 'none', borderRadius: 9, padding: '8px 12px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+        style={{ background: expiree ? '#b91c1c' : 'var(--emilio-fond)', color: 'white', border: 'none', borderRadius: 9, padding: '8px 12px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
         Mettre à jour la date
       </button>
       {!expiree && (

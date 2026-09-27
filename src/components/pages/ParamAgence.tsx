@@ -16,7 +16,7 @@ import { BAREME, BAREME_VENTE, HONORAIRES_TAUX, tauxTexte } from '@/lib/mandat';
    datée, avec l'ancienne et la nouvelle valeur. */
 
 const SIGNATURE = 'agence/signature.png';
-const NAVY = '#1a2332', OR = '#c9a84c', OR_FONCE = '#a07c28', GRIS = '#64748b', GRIS_CLAIR = '#94a3b8', TRAIT = '#e3e8f0';
+const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#a07c28', GRIS = '#64748b', GRIS_CLAIR = '#94a3b8', TRAIT = '#e3e8f0';
 
 const jourLong = (ymd: string) => new Date(ymd.slice(0, 10) + 'T12:00:00Z')
   .toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris' });

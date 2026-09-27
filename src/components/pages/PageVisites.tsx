@@ -241,7 +241,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                             <span style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 9px', whiteSpace: 'nowrap' }}>{'👀 Veut visiter'}</span>
                             <span style={{ fontSize: 12, fontWeight: att.vieux ? 700 : 500, color: att.vieux ? '#dc2626' : '#94a3b8' }}>{att.texte}</span>
                           </div>
-                          <div style={{ fontSize: 15, color: '#1a2332', marginTop: 8, lineHeight: 1.35 }}>
+                          <div style={{ fontSize: 15, color: 'var(--emilio)', marginTop: 8, lineHeight: 1.35 }}>
                             <b>{nom}</b>{' souhaite visiter ce logement'}
                           </div>
                           <div style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', marginTop: 3 }}>{d.bien.titre || lieu || 'Bien présenté'}</div>
@@ -249,7 +249,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                             <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>{[lieu, carac].filter(Boolean).join(' · ')}</div>
                           )}
                           {d.dispos && (
-                            <div style={{ fontSize: 12.5, color: '#1a2332', background: '#fff8f8', border: '1px solid #fde4e4', borderRadius: 10, padding: '7px 11px', marginTop: 9, lineHeight: 1.5 }}>
+                            <div style={{ fontSize: 12.5, color: 'var(--emilio)', background: '#fff8f8', border: '1px solid #fde4e4', borderRadius: 10, padding: '7px 11px', marginTop: 9, lineHeight: 1.5 }}>
                               <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#b91c1c', marginBottom: 2 }}>Ses disponibilités</span>
                               {d.dispos}
                             </div>
@@ -257,7 +257,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                         </div>
                         <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
                           <button type="button" onClick={e => { e.stopPropagation(); ouvrirDemande(d); }}
-                            style={{ background: '#1a2332', color: 'white', border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                            style={{ background: 'var(--emilio-fond)', color: 'white', border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                             {'Ouvrir sa fiche →'}
                           </button>
                         </div>
@@ -290,13 +290,13 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                         <div className="pv-corps" style={{ flex: 1, padding: '14px 16px' }}>
                           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                             {date && (
-                              <div style={{ background: '#1a2332', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 44, flexShrink: 0 }}>
+                              <div style={{ background: 'var(--emilio-fond)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 44, flexShrink: 0 }}>
                                 <div style={{ fontWeight: 800, fontSize: 18, color: 'white', lineHeight: 1 }}>{date.day}</div>
                                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>{date.mon} {date.year}</div>
                               </div>
                             )}
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{v.clients?.prenom} {v.clients?.nom}</div>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--emilio)' }}>{v.clients?.prenom} {v.clients?.nom}</div>
                               <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{v.biens?.titre || v.biens?.ville || '—'}</div>
                               {v.heure && <div style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700, marginTop: 4 }}>🕐 {v.heure}</div>}
                               {v.contact_agence && <div style={{ fontSize: 12, color: '#94a3b8' }}>📞 {v.contact_agence}</div>}
@@ -325,7 +325,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                           </div>
                         </div>
                         <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
-                          <button onClick={() => openCR(v.id)} style={{ background: g.id === 'a_faire' ? '#c9a84c' : '#1a2332', color: g.id === 'a_faire' ? '#1a2332' : 'white', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{g.id === 'a_faire' ? 'Compte rendu' : '✓ Effectuée'}</button>
+                          <button onClick={() => openCR(v.id)} style={{ background: g.id === 'a_faire' ? '#c9a84c' : 'var(--emilio)', color: g.id === 'a_faire' ? 'var(--emilio)' : 'white', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{g.id === 'a_faire' ? 'Compte rendu' : '✓ Effectuée'}</button>
                           <button onClick={() => annuler(v.id)} style={{ background: 'white', color: '#64748b', border: '1px solid #e3e8f0', borderRadius: 10, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
                         </div>
                       </div>
@@ -361,7 +361,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                               </div>
                             )}
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 15, color: '#1a2332' }}>{v.clients?.prenom} {v.clients?.nom}</div>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--emilio)' }}>{v.clients?.prenom} {v.clients?.nom}</div>
                               <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{v.biens?.titre || v.biens?.ville || '—'}</div>
                               {v.heure && <div style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700, marginTop: 4 }}>🕐 {v.heure}</div>}
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
@@ -378,7 +378,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                                 <div style={{ fontSize: 12.5, color: '#1e3a8a', background: '#eff6ff', borderRadius: 9, padding: '7px 10px', marginTop: 8 }}>{`« ${v.mot_client} » — ${v.clients?.prenom || 'le client'}, dans son espace`}</div>
                               )}
                               {v.commentaire && (
-                                <div style={{ fontSize: 13, color: '#1a2332', background: '#f0fdf4', borderRadius: 10, padding: '8px 12px', marginTop: 8, borderLeft: '3px solid #10b981' }}>
+                                <div style={{ fontSize: 13, color: 'var(--emilio)', background: '#f0fdf4', borderRadius: 10, padding: '8px 12px', marginTop: 8, borderLeft: '3px solid #10b981' }}>
                                   {v.commentaire}
                                 </div>
                               )}

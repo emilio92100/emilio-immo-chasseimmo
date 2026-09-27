@@ -23,14 +23,14 @@ import { solderRelancesVisite } from '@/lib/demandes-visite';
  * même. « Prévenir le client » part par /api/send-mail, en mail simple.
  */
 
-const NAVY = '#1a2332', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
+const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
 const DOUX = '#5b6678', PALE = '#8d99ab', FOND = '#f4f6fa', AUJ_FOND = '#fcfaf3', CHOISI = '#eef1f7';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
 
 type TypeRdv = 'visite' | 'client' | 'libre' | 'appel' | 'signature' | 'estimation' | 'perso';
 const TYPES: Record<TypeRdv, { nom: string; fond: string; trait: string; encre: string; point: string; ico: string }> = {
   visite: { nom: 'Visite', fond: '#fbf4e1', trait: '#ecdcae', encre: '#5f450c', point: '#c9a84c', ico: 'maison' },
-  client: { nom: 'Rendez-vous client', fond: '#e9edf5', trait: '#cdd5e4', encre: '#1a2332', point: '#1a2332', ico: 'personne' },
+  client: { nom: 'Rendez-vous client', fond: '#e9edf5', trait: '#cdd5e4', encre: '#34496e', point: '#34496e', ico: 'personne' },
   /* Un rendez-vous sans client : notaire, banque, partenaire, agence… */
   libre: { nom: 'Rendez-vous libre', fond: '#e6f5f3', trait: '#bfe5df', encre: '#115e59', point: '#0d9488', ico: 'groupe' },
   appel: { nom: 'Appel · visio', fond: '#eaf1fe', trait: '#c8d9fb', encre: '#1e3a8a', point: '#2563eb', ico: 'visio' },
@@ -49,7 +49,7 @@ type Genre = 'relance' | 'signature' | 'mandat' | 'visite';
 const TACHES: Record<Genre, { fond: string; encre: string; trait: string }> = {
   relance: { fond: '#fff6e3', encre: '#8a4b0f', trait: '#f3dcae' },
   signature: { fond: '#e5f4ec', encre: '#0b5e41', trait: '#bfe3cf' },
-  mandat: { fond: '#e9edf5', encre: '#1a2332', trait: '#cdd5e4' },
+  mandat: { fond: '#e9edf5', encre: '#34496e', trait: '#cdd5e4' },
   visite: { fond: '#fbf4e1', encre: '#5f450c', trait: '#ecdcae' },
 };
 

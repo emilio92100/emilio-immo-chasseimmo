@@ -153,11 +153,11 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
                         style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f8fafc', display: 'flex', gap: 8, alignItems: 'center' }}
                         onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
                         onMouseOut={e => (e.currentTarget.style.background = 'white')}>
-                        <div style={{ width: 30, height: 30, borderRadius: 8, background: '#1a2332', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--emilio-fond)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <span style={{ fontSize: 10, fontWeight: 800, color: '#c9a84c' }}>{c.prenom[0]}{c.nom[0]}</span>
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, color: '#1a2332' }}>{c.prenom} {c.nom}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--emilio)' }}>{c.prenom} {c.nom}</div>
                           <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.reference} · {(c.emails||[])[0] || 'Pas d\'email'}</div>
                         </div>
                       </div>
@@ -185,7 +185,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
                     <div className={styles.preMenu} style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 280 }}>
                       {MESSAGES_PRE.map((m, i) => (
                         <div key={i} onClick={() => { setCorps(m.corps); setShowPre(false); }}
-                          style={{ padding: '12px 16px', cursor: 'pointer', fontSize: 13, borderBottom: i < MESSAGES_PRE.length-1 ? '1px solid #f8fafc' : 'none', fontWeight: 600, color: '#1a2332' }}
+                          style={{ padding: '12px 16px', cursor: 'pointer', fontSize: 13, borderBottom: i < MESSAGES_PRE.length-1 ? '1px solid #f8fafc' : 'none', fontWeight: 600, color: 'var(--emilio)' }}
                           onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
                           onMouseOut={e => (e.currentTarget.style.background = 'white')}>
                           {m.label}
@@ -207,7 +207,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             {/* FOOTER */}
             <div className={styles.piedForm} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a5568', cursor: 'pointer' }}>
-                <input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} style={{ accentColor: '#1a2332' }} />
+                <input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} style={{ accentColor: '#34496e' }} />
                 📱 Envoyer aussi un SMS de notification
                 {selected.length > 0 && selected[0].telephones?.[0] && <span style={{ fontSize: 11, color: '#94a3b8' }}>→ {selected[0].telephones[0]}</span>}
               </label>

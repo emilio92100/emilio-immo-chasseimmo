@@ -77,7 +77,7 @@
   .recherche:focus-within { background: rgba(255, 255, 255, 0.12); border-color: rgba(201, 168, 76, 0.6); }
   .recherche input { font-size: 13.5px; color: #fff; }
   .recherche input::placeholder { color: rgba(255, 255, 255, 0.45); }
-  .bouton { height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; background: #c9a84c; color: #1a2332; }
+  .bouton { height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; background: #c9a84c; color: var(--emilio); }
 
   /* Les chiffres : des pastilles sur une ligne, le chiffre à côté du mot. */
   .rangee { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
@@ -110,20 +110,20 @@
   }
   .haut { flex-wrap: wrap; padding: 14px 14px 12px; gap: 10px; }
   .titreZone { flex: 1 1 auto; gap: 10px; }
-  .icone { width: 34px; height: 34px; border-radius: 10px; background: #1a2332; color: #e8c96a; }
+  .icone { width: 34px; height: 34px; border-radius: 10px; background: var(--emilio-fond); color: #e8c96a; }
   .icone svg { width: 18px; height: 18px; }
-  .titre { font-size: 20px; letter-spacing: -0.3px; color: #1a2332; }
+  .titre { font-size: 20px; letter-spacing: -0.3px; color: var(--emilio); }
   .phrase { font-size: 12px; margin-top: 2px; color: #7a889b; }
   /* Les outils se défont : le bouton reste à droite du titre, la recherche
      prend toute la largeur en dessous. */
   .outils { display: contents; }
-  .bouton { order: 2; height: 34px; padding: 0 12px; font-size: 12.5px; border-radius: 10px; background: #1a2332; color: #fff; }
+  .bouton { order: 2; height: 34px; padding: 0 12px; font-size: 12.5px; border-radius: 10px; background: var(--emilio-fond); color: #fff; }
   .recherche {
     order: 3; flex: 1 1 100%; height: 38px; border-radius: 10px;
     background: #f6f8fb; border-color: #e3e8f0; color: #94a3b8;
   }
   .recherche:focus-within { background: #fff; border-color: #c9a84c; }
-  .recherche input { font-size: 16px; color: #1a2332; } /* 16 px : iOS ne zoome pas au toucher */
+  .recherche input { font-size: 16px; color: var(--emilio); } /* 16 px : iOS ne zoome pas au toucher */
 
   /* Les chiffres en bandeau, séparés d'un trait ; la rangée défile au doigt. */
   .rangee {

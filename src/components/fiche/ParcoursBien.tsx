@@ -19,7 +19,7 @@ import { HONORAIRES_TAUX } from '@/lib/mandat';
  *  <ModaleObservation> / <ModaleEnvoi> / <ModaleScore>
  */
 
-export const NAVY = '#1a2332';
+export const NAVY = '#34496e';
 export const OR = '#c9a84c';
 export const BORD = '#e3e8f0';
 
@@ -55,7 +55,7 @@ export function StylesEmilio() {
       .emi-vignette:hover img { transform: scale(1.07) }
       .emi-bande { display:flex; gap:7px; align-items:stretch }
       /* Le bouton « Voir le plan », posé sur le bas du bandeau de photos. */
-      .emi-voir-plan { display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.96); color:#1a2332;
+      .emi-voir-plan { display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.96); color:#34496e;
         border:none; border-radius:20px; padding:7px 13px; font-size:12px; font-weight:800; cursor:pointer;
         font-family:inherit; box-shadow:0 6px 16px -8px rgba(16,24,40,.55); transition: transform .18s ease }
       .emi-voir-plan:hover { transform: translateY(-1px) }

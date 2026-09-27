@@ -2,18 +2,18 @@
 
 /* HEADER */
 .header { display: flex; align-items: flex-start; justify-content: space-between; }
-.title  { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 22px; font-weight: 800; color: #1a2332; }
+.title  { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 22px; font-weight: 800; color: var(--emilio); }
 .sub    { font-size: 12px; color: #8896a8; margin-top: 2px; }
 
 /* BUTTONS */
 .btnPrimary {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 8px 16px; border-radius: 10px;
-  background: #1a2332; color: white; border: none;
+  background: var(--emilio-fond); color: white; border: none;
   font-size: 13px; font-weight: 600; cursor: pointer;
   font-family: 'DM Sans', sans-serif; transition: background 0.15s;
 }
-.btnPrimary:hover { background: #243044; }
+.btnPrimary:hover { background: var(--emilio-clair); }
 .btnPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btnSecondary {
@@ -59,7 +59,7 @@
 
 .searchInput {
   border: none; outline: none; background: none;
-  font-size: 12px; color: #1a2332; width: 220px;
+  font-size: 12px; color: var(--emilio); width: 220px;
   font-family: 'DM Sans', sans-serif;
 }
 .searchInput::placeholder { color: #94a3b8; }
@@ -79,14 +79,14 @@
 
 .clientAv {
   width: 42px; height: 42px; border-radius: 12px;
-  background: #1a2332;
+  background: var(--emilio-fond);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .clientAv span { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; color: #c9a84c; font-size: 13px; }
 
 .clientInfo { flex: 1; min-width: 0; }
 .clientTop  { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; flex-wrap: wrap; }
-.clientName { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 14px; color: #1a2332; }
+.clientName { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 14px; color: var(--emilio); }
 
 .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 .badgeSlate { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
@@ -96,7 +96,7 @@
 
 .clientStats { display: flex; gap: 16px; text-align: center; flex-shrink: 0; }
 .stat   { min-width: 36px; }
-.statN  { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px; color: #1a2332; }
+.statN  { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px; color: var(--emilio); }
 .statL  { font-size: 10px; color: #94a3b8; }
 
 .chevron { color: #cbd5e1; font-size: 18px; flex-shrink: 0; }
@@ -105,7 +105,7 @@
 .loading { text-align: center; padding: 48px; color: #94a3b8; font-size: 13px; }
 .empty { text-align: center; padding: 64px 24px; }
 .emptyIcon  { font-size: 40px; margin-bottom: 12px; }
-.emptyTitle { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 16px; color: #1a2332; margin-bottom: 4px; }
+.emptyTitle { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 16px; color: var(--emilio); margin-bottom: 4px; }
 .emptySub   { font-size: 13px; color: #94a3b8; }
 
 /* MODAL */
@@ -129,7 +129,7 @@
   flex-shrink: 0;
 }
 
-.modalTitle { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px; color: #1a2332; }
+.modalTitle { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px; color: var(--emilio); }
 
 .modalClose {
   width: 30px; height: 30px; border-radius: 8px;
@@ -154,7 +154,7 @@
 
 .input, .textarea {
   background: #f8fafc; border: 1.5px solid #e3e8f0; border-radius: 8px;
-  padding: 8px 11px; font-size: 12.5px; color: #1a2332;
+  padding: 8px 11px; font-size: 12.5px; color: var(--emilio);
   font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.15s;
   width: 100%;
 }
@@ -218,7 +218,7 @@
 .nom {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 14.5px; font-weight: 800; color: #1a2332; letter-spacing: -0.15px;
+  font-size: 14.5px; font-weight: 800; color: var(--emilio); letter-spacing: -0.15px;
   line-height: 1.18; overflow: hidden;
 }
 .ref { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 700; color: #b0bccd; letter-spacing: 0.4px; }
@@ -271,7 +271,7 @@
 }
 .ficheNom {
   display: block; font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 15px; font-weight: 800; color: #1a2332; letter-spacing: -0.2px;
+  font-size: 15px; font-weight: 800; color: var(--emilio); letter-spacing: -0.2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ficheRef { display: block; font-size: 11px; color: #a08c60; font-weight: 600; margin-top: 1px; }
@@ -289,7 +289,7 @@
 }
 .chiffre b {
   display: block; font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 17px; font-weight: 800; color: #1a2332; line-height: 1.1;
+  font-size: 17px; font-weight: 800; color: var(--emilio); line-height: 1.1;
 }
 .chiffre i {
   display: block; font-style: normal; font-size: 9.5px; font-weight: 800;
@@ -322,7 +322,7 @@
   color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px;
 }
 .ficheCase b {
-  display: block; font-size: 12.5px; font-weight: 800; color: #1a2332;
+  display: block; font-size: 12.5px; font-weight: 800; color: var(--emilio);
   margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -335,8 +335,8 @@
   transition: background 0.12s;
 }
 .ficheBtn:hover { background: #f7f9fc; }
-.ficheBtnFort { flex-grow: 1; background: #1a2332; border-color: #1a2332; color: white; }
-.ficheBtnFort:hover { background: #243044; }
+.ficheBtnFort { flex-grow: 1; background: var(--emilio-fond); border-color: var(--emilio); color: white; }
+.ficheBtnFort:hover { background: var(--emilio-clair); }
 
 /* L'étiquette de statut, à côté de la référence : une couleur seule ne dit rien. */
 .etiquette {
@@ -382,7 +382,7 @@
 .triItem:last-child { border-bottom: none; }
 .triItem:hover { background: #f8fafc; }
 .triItem b {
-  display: block; font-size: 13px; font-weight: 700; color: #1a2332;
+  display: block; font-size: 13px; font-weight: 700; color: var(--emilio);
   text-transform: none; letter-spacing: 0;
 }
 .triItem small {
