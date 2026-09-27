@@ -249,6 +249,15 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     plafonne pas plus bas ; un mandat de vente, **5 % TTC** (`BAREME_VENTE`). Les valeurs par
     défaut suivent : « 2,5% TTC » (et non plus « 3,5% TTC ») pour un mandat saisi à la main, 2,5 %
     (et non plus 3 %) pour les honoraires d'un bien envoyé sans mandat.
+- **`documents`** (`outils/sql/documents.sql`, passé le 26 septembre) : les documents juridiques
+  rédigés dans le CRM — `modele` (`mandat_vente` · `offre_achat` · `bon_visite`), `categorie`,
+  `statut` (`brouillon` · `pret` « À faire signer » · `signe` · `annule`), `donnees` (jsonb, les
+  réponses), `identite` (l'identité de l'agence figée à la finalisation), `titre` / `sous_titre` /
+  `badge` / `numero` (recalculés depuis le modèle à chaque enregistrement, pour la liste),
+  `client_id`, `recherche_id`, `bien_id`, `pdf_chemin`, `signe_chemin`, `finalise_le`, `signe_le`,
+  `annule_le`. RLS + `crm_authentifie`, comme les autres. Les fichiers vivent dans le bucket privé
+  `mandats`, sous `documents/<id>/`. Le mandat de recherche signé en ligne reste dans
+  `mandats_signatures` : la rubrique le montre à côté, en lecture.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
@@ -278,7 +287,7 @@ sans typage, en `select('*')`.
 
 Navigation (`Sidebar.tsx`), en trois sections :
 **Principal** — Dashboard · Clients · Recherche en cours ·
-**Suivi** — Visites · Relances · Nouveau mail ·
+**Suivi** — Visites · Relances · Documents · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
 La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
 accessible que par son adresse directe.
@@ -308,6 +317,27 @@ d'extraction acceptait un appel depuis n'importe quel site (`Access-Control-Allo
 en consommant `ANTHROPIC_API_KEY` : risque de facture pour personne. Supprimés : `src/app/bookmarklet/`
 et `src/app/api/bien-from-bookmarklet/`. La saisie d'un bien passe par « Ajouter un bien » dans la
 fiche client, ou par la veille.
+
+**Documents juridiques** (`src/components/documents/`, modèles dans `src/lib/actes/`) — mandat de
+vente (simple, semi-exclusif, exclusif), offre d'achat, bon de visite. Formulaire à gauche, aperçu
+« papier » à droite qui suit chaque réponse et défile jusqu'à la section de l'étape. Deux façons
+de remplir, retenues dans `localStorage` (`documents.mode`) : **étape par étape** ou **tout sur une
+page**. Le brouillon s'enregistre seul (800 ms). « Finaliser » fige le PDF avec l'identité de
+l'agence du jour et vérifie que le n° du registre n'a pas déjà servi (autres documents non annulés
+et `recherches.mandat_numero`). Ensuite : imprimer, faire signer sur papier, déposer le scan
+(« Il est signé »). Un mandat signé affiche ses échéances L215-1 (fenêtre d'un à trois mois avant
+chaque reconduction). Pastille bleue dans le menu = documents « À faire signer ».
+- **Les textes sont écrits à partir de la loi, pas copiés** d'un éditeur (Juridoc, Modelo…) :
+  à faire relire par l'avocat d'Alexandre avant le premier usage réel.
+- Les références de loi sont citées par leur nom (« Textes applicables »), sans annexe : le
+  mandat reste court.
+- « Mots rayés nuls » n'apparaît que sur un document signé à la main.
+- Le mandat de vente guide selon le vendeur : personne seule (situation, accord du conjoint pour
+  le logement de la famille, art. 215 C. civ.), couple, plusieurs propriétaires (« Ajouter un
+  propriétaire »), SCI (Kbis, statuts, PV d'autorisation). Lots de copropriété en liste, base des
+  tantièmes au choix (1 000 · 10 000 · 100 000). Maison : surface habitable et terrain, pas de Carrez.
+- Un modèle = un objet `Modele` (étapes, champs, `rediger(d, identite)` → blocs communs au texte et
+  au PDF). En ajouter un : un fichier dans `src/lib/actes/`, une ligne dans `MODELES`.
 
 ### La fiche bien publique — `/bien/<id>`
 
@@ -425,6 +455,7 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/notifier` | portail | « Préviens le client, un bien est parti. » Réveille **tous les appareils du client**, pas ceux d'une recherche | clés VAPID |
 | `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
+| `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
 
@@ -930,3 +961,22 @@ réinstaller, aucun lien cassé.
 
 ⚠️ **Ce qui reste** : la double authentification sur Supabase, Vercel et GitHub (§7). Ce sont eux
 les vraies clés maintenant — qui entre dans le compte Supabase peut rééteindre le RLS.
+
+### V3.7 — 26-27 septembre 2026 · les documents juridiques
+
+**Une rubrique Documents dans le menu**, entre Relances et Nouveau mail : mandat de vente
+(simple, semi-exclusif, exclusif), offre d'achat, bon de visite, rédigés depuis le CRM et signés
+sur papier. Détail au §3 (« Documents juridiques ») ; table `documents` au §2 ; route
+`/api/documents` au §5.
+
+**Ce qui a été construit autour :** `src/lib/mandat-pdf.ts` sait faire une page de garde, un
+en-tête et des cadres de signature papier pour n'importe quel document (le PDF du mandat de
+recherche en ligne est resté identique octet pour octet, vérifié) ; `src/lib/actes/` contient les
+modèles et leurs règles (charge des honoraires vendeur/acquéreur, prix en lettres, durée modifiable,
+échéances L215-1).
+
+**Migration** : `outils/sql/documents.sql` — **passée le 26 septembre** (`rls = true`, 1 politique).
+
+**À venir, dans cet ordre** : le mandat de recherche papier (simple et exclusif), l'avenant au
+mandat de vente (baisse de prix, prolongation), le courrier L215-1 au vendeur ; puis la signature
+en ligne de ces documents et leur place dans l'espace client (« Mes documents »).
