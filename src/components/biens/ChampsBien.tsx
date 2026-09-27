@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
@@ -538,6 +538,89 @@ function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   );
 }
 
+/* ── Un nombre entier au – / + (V3.15) ──
+   Pièces, chambres, salles d'eau, étage… : un toucher plutôt qu'une frappe,
+   et le chiffre reste modifiable au clavier. */
+type Compteur = Extract<ChampBien, { t: 'compteur' }>;
+function ChampCompteur({ c, v, onChange, off }: { c: Compteur; v: unknown; onChange: (n: number | null) => void; off: boolean }) {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const min = c.min ?? 0, max = c.max ?? 99;
+  const [saisie, setSaisie] = useState<string | null>(null);
+  const borne = (x: number) => Math.max(min, Math.min(max, x));
+  const mot = n !== null && c.mots ? c.mots(n) : '';
+  return (
+    <div className={b.cpt}>
+      <button type="button" className={b.cptBtn} disabled={off || n === null || n <= min} aria-label={`${c.lib} : un de moins`}
+        onClick={() => { setSaisie(null); if (n !== null) onChange(borne(n - 1)); }}>−</button>
+      <input className={b.cptVal} inputMode="numeric" autoComplete="off" disabled={off} aria-label={c.lib} placeholder="–"
+        value={saisie ?? (n === null ? '' : String(n))}
+        onFocus={e => e.currentTarget.select()} onBlur={() => setSaisie(null)}
+        onChange={e => {
+          const t = e.target.value.replace(/\D/g, '').slice(0, 3);
+          setSaisie(t);
+          onChange(t === '' ? null : borne(parseInt(t, 10)));
+        }} />
+      <button type="button" className={b.cptBtn} disabled={off || (n !== null && n >= max)} aria-label={`${c.lib} : un de plus`}
+        onClick={() => { setSaisie(null); onChange(n === null ? Math.max(min, 1) : borne(n + 1)); }}>+</button>
+      {mot && <span className={b.cptMot}>{mot}</span>}
+    </div>
+  );
+}
+
+/* ── L'adresse, proposée pendant la frappe (V3.15) ──
+   La base adresse nationale, comme pour les contacts. Un choix remplit la
+   rue, le code postal, la ville, et garde la position (pour la carte et
+   les ventes autour, plus tard). */
+type Suggestion = { properties?: { label?: string; name?: string; postcode?: string; city?: string; context?: string }; geometry?: { coordinates?: number[] } };
+function ChampAdresse({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
+  const [sug, setSug] = useState<Suggestion[]>([]);
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const derniere = useRef('');
+  useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  const taper = (q: string) => {
+    maj('adresse', q);
+    derniere.current = q;
+    if (minuterie.current) clearTimeout(minuterie.current);
+    if (q.trim().length < 4) { setSug([]); return; }
+    minuterie.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&autocomplete=1`);
+        const j = await r.json();
+        if (derniere.current === q) setSug(Array.isArray(j.features) ? j.features : []);
+      } catch { setSug([]); }
+    }, 250);
+  };
+  const choisir = (f: Suggestion) => {
+    const p = f.properties || {};
+    maj('adresse', p.name || p.label || '');
+    if (p.postcode) maj('cp', p.postcode);
+    if (p.city) maj('ville', p.city);
+    const xy = f.geometry?.coordinates;
+    if (xy && xy.length === 2) maj('gps', { lon: xy[0], lat: xy[1] });
+    derniere.current = '';
+    setSug([]);
+  };
+  return (
+    <div className={b.adr}>
+      <input id="ch-adresse" className={s.input} disabled={off} autoComplete="off" placeholder="Tape le début : 12 rue de Silly…"
+        value={typeof d.adresse === 'string' ? d.adresse : ''} onChange={e => taper(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') setSug([]); }} onBlur={() => setTimeout(() => setSug([]), 180)} />
+      {sug.length > 0 && (
+        <ul className={b.adrSug} role="listbox" aria-label="Adresses proposées">
+          {sug.map((f, i) => (
+            <li key={i}>
+              <button type="button" role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => choisir(f)}>
+                <Ic n="lieu" t={15} />
+                <span><b>{f.properties?.name || f.properties?.label}</b><small>{[f.properties?.postcode, f.properties?.city].filter(Boolean).join(' ')}</small></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /* ── Un champ de la fiche, quel qu'il soit ── */
 export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees; maj: Maj; off: boolean; bienId: string }) {
   if (estChampActe(c)) return <ChampActe c={c} d={d} maj={maj} off={off} />;
@@ -550,9 +633,13 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
   else if (c.t === 'proprio') controle = <ChampProprio d={d} maj={maj} off={off} />;
   else if (c.t === 'annonce') controle = <ChampAnnonce d={d} maj={maj} off={off} />;
   else if (c.t === 'eurosAn') controle = <ChampEurosAn cle={c.cle} d={d} maj={maj} off={off} />;
+  else if (c.t === 'compteur') controle = <ChampCompteur c={c} v={d[c.cle]} off={off} onChange={x => maj(c.cle, x)} />;
+  else if (c.t === 'adresse') controle = <ChampAdresse d={d} maj={maj} off={off} />;
   const sansTitre = c.t === 'pieces';
+  /* Deux compteurs côte à côte ; le reste sur toute la largeur. */
+  const large = c.t !== 'compteur';
   return (
-    <div className={`${s.ch} ${s.large}`}>
+    <div className={`${s.ch} ${large ? s.large : b.chCpt}`}>
       {!sansTitre && <div className={s.chLib}>{c.ic && <span className={s.chIc}><Ic n={c.ic} t={14} /></span>}<span>{c.lib}</span></div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}
@@ -565,5 +652,6 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
 export function manquesBien(champs: ChampBien[], d: Donnees): number {
   let n = manquesEtape(champs.filter(estChampActe), d);
   if (champs.some(c => c.t === 'pieces')) n += lirePieces(d.detailPieces).filter(p => !p.nom).length;
+  if (champs.some(c => c.t === 'adresse') && !(typeof d.adresse === 'string' && d.adresse.trim())) n++;
   return n;
 }

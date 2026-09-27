@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
-import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance } from '@/lib/intentions';
+import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
 import { estAcheteur } from '@/lib/contacts';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -98,6 +98,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
         <div className={styles.welcomeRight} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ <span className={styles.motLong}>Nouveau mail</span><span className={styles.motCourt}>Mail</span></button>
           <button className={styles.mailBtn} onClick={demanderNouveauRdv}>📅 <span className={styles.motLong}>Nouveau RDV</span><span className={styles.motCourt}>RDV</span></button>
+          <button className={styles.mailBtn} onClick={() => { demanderNouveauBien(); onNavigate('biens'); }}>🏡 <span className={styles.motLong}>Nouveau bien</span><span className={styles.motCourt}>Bien</span></button>
           {/* Comme celui de la barre du haut : il ouvre directement le formulaire. */}
           <button className={styles.nouveauBtn} onClick={() => { demanderNouveauClient(); onNavigate('clients'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: 'var(--emilio)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ <span className={styles.motLong}>Nouveau contact</span><span className={styles.motCourt}>Contact</span></button>
         </div>

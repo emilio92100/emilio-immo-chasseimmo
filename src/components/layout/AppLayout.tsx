@@ -15,6 +15,7 @@ import PageParametres from '@/components/pages/PageParametres';
 import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
 import PageBiens from '@/components/biens/PageBiens';
 import RappelCarte from '@/components/layout/RappelCarte';
+import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
@@ -225,6 +226,8 @@ export default function AppLayout() {
       {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
           l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}
       <NouveauRdvPartout />
+      {/* « Une nouvelle version est prête — Recharger », après une mise en ligne. */}
+      <NouvelleVersion />
     </div>
   );
 }

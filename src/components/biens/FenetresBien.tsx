@@ -62,6 +62,11 @@ export function Fenetre({ sur, couleur, titre, sous, occupe, onFermer, children,
 function Ch({ lib, children, large }: { lib: string; children: ReactNode; large?: boolean }) {
   return <label className={b.chF} style={large ? { gridColumn: '1 / -1' } : undefined}><span>{lib}</span>{children}</label>;
 }
+/* Pour des boutons (Pills) : pas de <label>, qui renverrait son clic au
+   premier bouton. */
+function ChG({ lib, children }: { lib: string; children: ReactNode }) {
+  return <div className={b.chF} role="group" aria-label={lib}><span>{lib}</span>{children}</div>;
+}
 function Pills<T extends string>({ options, v, onChange }: { options: { v: T; l: string }[]; v: T | ''; onChange: (x: T) => void }) {
   return (
     <div className={s.pills} role="radiogroup">
@@ -205,14 +210,26 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
   const [date, setDate] = useState(txt(d, 'mandatDate') || aujourdhui());
   const [finM, setFinM] = useState(txt(d, 'mandatFin'));
   const [prix, setPrix] = useState<number | null>(num(d, 'prix'));
+  /* Les honoraires (V3.15) : à la charge de qui, en % ou au forfait. À la
+     charge de l'acquéreur, l'annonce doit donner le % et le prix hors
+     honoraires : on les demande ici, au moment où le prix est fixé. */
+  const [charge, setCharge] = useState<'acquereur' | 'vendeur'>(d.charge === 'vendeur' ? 'vendeur' : 'acquereur');
+  const [honoMode, setHonoMode] = useState<'taux' | 'forfait'>(d.honoMode === 'forfait' ? 'forfait' : 'taux');
+  const [taux, setTaux] = useState<number | null>(num(d, 'taux'));
+  const [forfait, setForfait] = useState<number | null>(num(d, 'forfait'));
   const [raison, setRaison] = useState('');
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
+  const hono: Donnees = { charge, honoMode, ...(honoMode === 'taux' ? { taux } : { forfait }) };
+  const a = argentBien({ ...d, prix, ...hono });
+  const ventile = !!(a.prix && a.net !== null && a.hono !== null && a.taux !== null && a.net > 0);
   async function valider() {
     if (!type) { setErreur('Choisis le type de mandat.'); return; }
+    if (!prix) { setErreur('Écris le prix affiché.'); return; }
+    if (charge === 'acquereur' && !ventile) { setErreur('Honoraires à la charge de l’acquéreur : écris le taux ou le forfait. L’annonce doit donner le pourcentage et le prix hors honoraires.'); return; }
     setOccupe(true); setErreur('');
     try {
-      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, ...(prix ? { prix } : {}) };
+      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono };
       const { bien: r } = await changerEtape(bien, 'mandat', { donnees, commentaire: raison.trim() || undefined, infos: { type, numero: numero.trim(), date, fin: finM, prix } });
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
@@ -233,8 +250,28 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
         {type && type !== 'simple' && !finM && <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => setFinM(plusJours(date, 91))}>Trois mois d’exclusivité : jusqu’au {new Date(`${plusJours(date, 91)}T12:00:00`).toLocaleDateString('fr-FR')}</button>}
       </div>
       <div className={b.groupe}>
-        <div className={b.groupeT}><Ic n="etiquette" t={14} />Le prix affiché</div>
-        <SaisieNombre v={prix} euros unite="€" off={false} onChange={setPrix} ph="Honoraires compris s’ils sont à la charge de l’acquéreur" />
+        <div className={b.groupeT}><Ic n="etiquette" t={14} />Le prix et les honoraires</div>
+        <SaisieNombre v={prix} euros unite="€" off={false} onChange={setPrix} ph={charge === 'acquereur' ? 'Prix affiché, honoraires compris' : 'Prix affiché'} lib="Prix affiché" />
+        <div className={b.g2}>
+          <ChG lib="À la charge de"><Pills options={[{ v: 'acquereur', l: 'L’acquéreur' }, { v: 'vendeur', l: 'Le vendeur' }]} v={charge} onChange={setCharge} /></ChG>
+          <ChG lib="Honoraires"><Pills options={[{ v: 'taux', l: 'En %' }, { v: 'forfait', l: 'Au forfait' }]} v={honoMode} onChange={setHonoMode} /></ChG>
+        </div>
+        <div className={b.g2}>
+          {honoMode === 'taux'
+            ? <Ch lib={charge === 'acquereur' ? 'Taux, du prix net vendeur' : 'Taux'}><SaisieNombre v={taux} unite="% TTC" off={false} onChange={setTaux} ph="Ex : 4" lib="Taux" /></Ch>
+            : <Ch lib="Forfait"><SaisieNombre v={forfait} euros unite="€ TTC" off={false} onChange={setForfait} ph="Ex : 15 000" lib="Forfait" /></Ch>}
+        </div>
+        {/* Ce que l'annonce écrira : la ventilation, obligatoire à la charge
+            de l'acquéreur ; le prix seul à la charge du vendeur. */}
+        <div className={`${b.ventile} ${charge === 'acquereur' && !ventile ? b.ventileManque : ''}`}>
+          <Ic n={charge === 'acquereur' && !ventile ? 'info' : 'megaphone'} t={16} />
+          <span>
+            {!prix ? 'Écris le prix : l’annonce reprendra la mention légale ici.'
+              : charge === 'vendeur' ? `Dans l’annonce : ${euros(prix)}, honoraires à la charge du vendeur.`
+                : ventile ? `Dans l’annonce : ${euros(prix)} honoraires inclus, dont ${pourcent(a.taux as number)} TTC à la charge de l’acquéreur (${euros(a.net as number)} hors honoraires).`
+                  : 'À la charge de l’acquéreur, l’annonce doit donner le pourcentage et le prix hors honoraires : écris le taux ou le forfait.'}
+          </span>
+        </div>
       </div>
       {reprise && <Ch lib="Pourquoi (pour l’historique)"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex : l’offre est tombée, le vendeur reprend la vente" /></Ch>}
       <Erreur t={erreur} />

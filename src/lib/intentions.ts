@@ -122,14 +122,21 @@ export function filtreDuSuivi(type?: string | null): NonNullable<OuvertureFiche[
    Rangé dans la session le temps de changer d'écran, consommé une fois. */
 const CLE_BIEN = 'emi-nouveau-bien';
 
-export function demanderNouveauBien(clientId: string) {
-  try { window.sessionStorage.setItem(CLE_BIEN, clientId); } catch { /* la rubrique s'ouvrira sans propriétaire choisi */ }
+export const EVT_NOUVEAU_BIEN = 'emilio:nouveau-bien';
+
+/* Sans propriétaire (le « + » du téléphone) : la fenêtre s'ouvre, on le
+   choisira dans la fiche. Si la rubrique est déjà affichée, l'événement la
+   réveille. */
+export function demanderNouveauBien(clientId = '') {
+  try { window.sessionStorage.setItem(CLE_BIEN, clientId || '-'); } catch { /* la rubrique s'ouvrira sans propriétaire choisi */ }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_NOUVEAU_BIEN));
 }
 
+/* null : rien de demandé ; '' : un nouveau bien sans propriétaire. */
 export function prendreNouveauBien(): string | null {
   try {
     const id = window.sessionStorage.getItem(CLE_BIEN);
     if (id) window.sessionStorage.removeItem(CLE_BIEN);
-    return id;
+    return id === '-' ? '' : id;
   } catch { return null; }
 }

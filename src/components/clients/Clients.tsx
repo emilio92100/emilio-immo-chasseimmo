@@ -12,7 +12,7 @@ import {
   etapesCriteres, FriseCriteres, lireModeCrit,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
-import { prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien } from '@/lib/intentions';
+import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien } from '@/lib/intentions';
 import {
   TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, typeDe, typesDe,
   type InfosPro, type TypeContact,
@@ -417,7 +417,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   /* Le second filtre, croisé avec le premier : « Actifs » + « Propriétaires ». */
   const [filtreSit, setFiltreSit] = useState('toutes');
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  /* Venue du « + » ou de « Nouveau contact » : la fenêtre est ouverte dès
+     le premier affichage, sans montrer la liste une fraction de seconde. */
+  const [showModal, setShowModal] = useState(() => intentions.nouveauClient);
   const [form, setForm] = useState(initForm);
   const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
   const [step, setStep] = useState(0);
@@ -1198,7 +1200,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         }
         const dernierCran = step >= GRANDES.length - 1;
 
+        /* Sur <body> : la page qui arrive glisse (animation d'entrée), et la
+           fenêtre, dedans, glissait avec elle avant de sauter à sa place. */
         return (
+          <Portail>
           <div className={`${styles.modalOverlay} nc-voile`} style={{ animation: 'crmFadeIn 0.2s ease' }}>
             <style>{`
               @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -1221,6 +1226,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-pas[data-etat="ici"] .nc-lig b { color: var(--emilio); }
               .nc-lig i { font-style: normal; font-size: 11.5px; color: #b4bfcd; }
               @media (max-width: 720px) { .nc-lig i { display: none; } }
+              .nc-ou { display: none; }
 
               .nc-corps { animation: ncEntre .26s cubic-bezier(.22,.9,.3,1) both; }
 
@@ -1253,12 +1259,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               <div className="nc-tete" style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
                 <button className="nc-fermer" aria-label="Fermer" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
-                  <div style={{ flexGrow: 1, minWidth: 0 }}>
+                  <div className="nc-titres" style={{ flexGrow: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--emilio)', letterSpacing: -0.4 }}>
                       {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau contact'}
                     </h2>
-                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[Math.min(step, GRANDES.length - 1)].sous}</div>
-                    {form.types.length > 0 && step > 0 && <div style={{ marginTop: 6 }} className={cc.puces}>{form.types.map(k => <Puce key={k} k={k} />)}</div>}
+                    <div className="nc-sous" style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[Math.min(step, GRANDES.length - 1)].sous}</div>
+                    {form.types.length > 0 && step > 0 && <div style={{ marginTop: 6 }} className={`${cc.puces} nc-types`}>{form.types.map(k => <Puce key={k} k={k} />)}</div>}
                   </div>
                   {pas === 'recherche' && !form.critPlusTard && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
                 </div>
@@ -1274,6 +1280,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                     </button>
                   ))}
                 </div>
+                {/* Au téléphone, les libellés du rail sont masqués : l'étape en
+                    cours tient sur une ligne. */}
+                <div className="nc-ou">{`${GRANDES[Math.min(step, GRANDES.length - 1)].ico} ${GRANDES[Math.min(step, GRANDES.length - 1)].nom} · ${Math.min(step, GRANDES.length - 1) + 1}/${GRANDES.length}`}</div>
 
                 {/* La frise porte son propre retrait : on annule celui du bloc. */}
                 {surCriteres && <div className="nc-frise" style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
@@ -1526,9 +1535,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
               {/* ── Pied ── */}
               <div className="nc-pied" style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
-                <button type="button" className={`${styles.btnSecondary} nc-prec`} onClick={revenir}>
-                  {step === 0 ? 'Annuler' : '← Précédent'}
-                </button>
+                {/* Au téléphone : « ← » seul, et pas d'« Annuler » (la croix
+                    est en haut) — tout tient sur une ligne. */}
+                {step === 0
+                  ? <button type="button" className={`${styles.btnSecondary} nc-annuler`} onClick={revenir}>Annuler</button>
+                  : <button type="button" className={`${styles.btnSecondary} nc-prec`} onClick={revenir} aria-label="Précédent"><span aria-hidden="true">←</span><span className="nc-mot">{' Précédent'}</span></button>}
                 <span style={{ flexGrow: 1 }} />
                 {!dernierCran && (
                   <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli || !form.types.length}
@@ -1548,6 +1559,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               </div>
             </div>
           </div>
+          </Portail>
         );
       })()}
     </div>

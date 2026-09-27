@@ -1300,6 +1300,40 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.15 — 28 septembre 2026 · saisir un bien plus simplement
+
+Rien à passer dans Supabase.
+
+**« À suivre » peut tout remplir** : intérieur, extérieur, pièces, énergie, copro, photos. Seules
+l'estimation (fourchette, prix conseillé) attend l'étape « estimation », et la visite (clés, codes)
+le mandat. Avant, « Modifier » sur un bloc masqué ouvrait l'éditeur ailleurs sans un mot ; il dit
+maintenant pourquoi (`Notice` dans `EditeurBien.tsx`). Un titre de section masqué ne coupe plus
+ses questions (`groupes`) : « L'immeuble » pour un appartement, « La construction » pour une
+maison, mêmes questions.
+
+**La saisie** : compteurs – / + (`t: 'compteur'`, `ChampCompteur`) pour pièces, chambres, salles
+de bains et d'eau, WC, niveaux, étage, étages, places de parking ; « Les surfaces » puis « Les
+pièces » ; l'adresse proposée pendant la frappe (`t: 'adresse'`, base adresse nationale : rue,
+code postal, ville, et `gps` gardé pour plus tard) ; une icône sur chaque champ. Nouveaux champs :
+`niveaux` (appartement, duplex, loft : 2 = duplex, 3 = triplex), `constructible` et `viabilise`
+(terrain). `etages` reste « les niveaux » pour une maison, « les étages en tout » en immeuble.
+
+**Le mandat signé** (`FenMandat`) demande aussi la charge, le taux ou le forfait, et montre la
+mention de l'annonce en direct ; à la charge de l'acquéreur, « Mettre en vente » attend le taux ou
+le forfait (le % et le prix hors honoraires sont obligatoires dans l'annonce).
+
+**« Nouveau bien »** dans le « + » du téléphone et sur le tableau de bord
+(`demanderNouveauBien()` sans propriétaire, événement `EVT_NOUVEAU_BIEN`).
+
+**Nouveau contact au téléphone** : la fenêtre s'ouvre dès le premier affichage (plus de liste
+entrevue) et vit sur `<body>` (l'animation d'entrée de la page la faisait glisser puis sauter) ;
+l'en-tête tient en deux lignes (nom et types, puis l'étape en cours), le pied en une.
+
+**« Une nouvelle version du CRM est prête — Recharger »** (`NouvelleVersion.tsx`) : la version
+gravée à la construction (`EMI_VERSION`, `next.config.ts`, le commit Vercel) comparée à
+`/api/version` au retour sur l'onglet et toutes les dix minutes. Un téléphone gardait l'ancienne
+version des heures après une mise en ligne.
+
 ### V3.14 — 27 septembre 2026 · les types de contact
 
 ⚠️ **À passer dans Supabase avant de mettre le code en ligne** : `outils/sql/types-contact.sql`

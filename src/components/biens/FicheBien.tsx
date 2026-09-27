@@ -267,7 +267,9 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   if (n('chambres')) items.push({ ic: 'lit', v: String(n('chambres')), l: (n('chambres') as number) > 1 ? 'Chambres' : 'Chambre' });
   if (eau) items.push({ ic: n('sdb') ? 'bain' : 'douche', v: String(eau), l: eau > 1 ? 'Salles d’eau ou de bains' : n('sdb') ? 'Salle de bains' : 'Salle d’eau' });
   if (enImm && n('etage') !== null) items.push({ ic: asc ? 'ascenseur' : 'escalier', v: etageTexte(n('etage'), n('etages')).replace(' étage', ''), l: n('etage') === 0 ? (asc ? 'Avec ascenseur' : 'Étage') : asc ? 'Étage, avec ascenseur' : 'Étage, sans ascenseur' });
-  if (!enImm && n('etages')) items.push({ ic: 'escalier', v: String(n('etages')), l: (n('etages') as number) > 1 ? 'Niveaux' : 'Niveau' });
+  if (!enImm && n('etages')) items.push({ ic: 'escalier', v: n('etages') === 1 ? 'Plain-pied' : String(n('etages')), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
+  if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
+  if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
   if (ann.length) items.push({ ic: icExt, v: exterieurCourt(d), l: 'Extérieur' });
   if (d.expo) items.push({ ic: 'boussole', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo), l: 'Exposition' });
   if (d.dpe) items.push({ ic: '', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: 'DPE, par m² et par an' });

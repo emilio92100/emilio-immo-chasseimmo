@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
-import { prendreNouveauBien, signalerMaj } from '@/lib/intentions';
+import { EVT_NOUVEAU_BIEN, prendreNouveauBien, signalerMaj } from '@/lib/intentions';
 import { EN_COURS, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -71,12 +71,18 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         const id = lireBienUrl();
         if (id && !l.biens.some(x => x.id === id)) { ecrireBienUrl(null); setOuvert(null); } else setOuvert(id);
         const proprio = prendreNouveauBien();
-        if (proprio) { setPour(proprio); setChoixDepart(true); }
+        if (proprio !== null) { setPour(proprio || null); setChoixDepart(true); }
       })
       .catch(e => { if (vivant) { setErreur((e as Error).message); setListe({ biens: [], suivi: [], copies: [], visites: [], clients: {}, recherches: [] }); } });
     const retour = () => setOuvert(lireBienUrl());
     window.addEventListener('popstate', retour);
-    return () => { vivant = false; window.removeEventListener('popstate', retour); };
+    /* « Nouveau bien » du « + », la rubrique déjà ouverte. */
+    const demande = () => {
+      const proprio = prendreNouveauBien();
+      if (proprio !== null) { setErreurDepart(''); setPour(proprio || null); setChoixDepart(true); }
+    };
+    window.addEventListener(EVT_NOUVEAU_BIEN, demande);
+    return () => { vivant = false; window.removeEventListener('popstate', retour); window.removeEventListener(EVT_NOUVEAU_BIEN, demande); };
   }, []);
 
   const ouvrir = (id: string | null) => {

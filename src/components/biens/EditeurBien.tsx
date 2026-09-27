@@ -19,9 +19,10 @@ import b from './Biens.module.css';
    bien telle qu'elle paraîtra dans la liste, ses chiffres et ce qui manque
    à l'annonce. Au téléphone, deux onglets : Questions / Aperçu.
 
-   Les étapes suivent l'étape de vente : un bien « à suivre » n'a que le
-   propriétaire, le bien et les notes ; une estimation n'a ni mandat, ni
-   visite, ni annonce. Elles apparaissent quand le bien avance.
+   Les étapes suivent l'étape de vente : tout ce qui décrit le bien se
+   remplit dès « à suivre » (V3.15) ; l'estimation et le prix attendent
+   l'étape « estimation », la visite (clés, codes) le mandat. Ouvert sur une
+   étape qui n'existe pas encore, l'éditeur dit pourquoi.
 
    Tout s'enregistre seul, 0,8 s après la dernière frappe. */
 
@@ -34,7 +35,9 @@ type Groupe = { titre: Extract<TChamp, { t: 'titre' }> | null; champs: TChamp[] 
 function groupes(champs: TChamp[], d: Donnees): Groupe[] {
   const out: Groupe[] = [];
   for (const c of champs) {
-    if (c.t === 'titre') { out.push({ titre: c, champs: [] }); continue; }
+    /* Un titre masqué (« L'immeuble » pour une maison) ne coupe pas : ses
+       questions restent sous le titre d'avant (« La construction »). */
+    if (c.t === 'titre') { if (!c.si || c.si(d)) out.push({ titre: c, champs: [] }); continue; }
     if (!out.length) out.push({ titre: null, champs: [] });
     out[out.length - 1].champs.push(c);
   }
@@ -62,7 +65,9 @@ function BlocEtape({ e, i, n, d, maj, bienId }: { e: EtapeBien; i: number; n: nu
             </div>
           )}
           <div className={s.grille}>
-            {g.champs.map(c => <Fragment key={c.cle}><ChampBien c={c} d={d} maj={maj} off={false} bienId={bienId} /></Fragment>)}
+            {/* Une même clé peut avoir deux libellés selon le type (« etages » :
+                les niveaux d'une maison, les étages d'un immeuble). */}
+            {g.champs.map(c => <Fragment key={`${c.cle}:${"lib" in c ? c.lib : ""}`}><ChampBien c={c} d={d} maj={maj} off={false} bienId={bienId} /></Fragment>)}
           </div>
         </div>
       ))}
@@ -153,6 +158,21 @@ function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbOffres }: { bien: Bi
   );
 }
 
+const NOTICES: Record<string, { t: string; x: string }> = {
+  prix: { t: 'Le prix se donne à l’estimation', x: 'Ce bien est « à suivre » : décris-le autant que tu veux, tout est ouvert. La fourchette et le prix conseillé viendront quand tu le passeras en estimation, avec le bouton d’étape de sa fiche.' },
+  pratique: { t: 'Les clés et la visite viennent avec le mandat', x: 'Occupation, clés, codes, contact sur place : ces questions s’ouvrent quand le mandat est signé.' },
+};
+function Notice({ id, onFermer }: { id: string; onFermer: () => void }) {
+  const n = NOTICES[id] || { t: 'Cette partie s’ouvrira plus tard', x: 'Elle dépend de l’étape de vente du bien.' };
+  return (
+    <div className={b.notice} role="status">
+      <Ic n="info" t={18} />
+      <div><b>{n.t}</b>{n.x}</div>
+      <button type="button" onClick={onFermer} aria-label="Fermer">✕</button>
+    </div>
+  );
+}
+
 export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbOffres = 0, onMaj, onFermer }: {
   bien: BienVente;
   etapeDepart?: string;
@@ -170,6 +190,10 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
   /* Les étapes du formulaire pour cette étape de vente. */
   const ETAPES = useMemo(() => etapesDuBien(row.etape), [row.etape]);
   const [etape, setEtape] = useState(() => Math.max(0, etapesDuBien(bien.etape).findIndex(e => e.id === etapeDepart)));
+  /* « Modifier » d'un bloc qui n'est pas encore ouvert à cette étape de
+     vente (le prix d'un bien à suivre) : on le dit, au lieu d'ouvrir
+     ailleurs sans un mot. */
+  const [notice, setNotice] = useState<string | null>(() => (etapeDepart && !etapesDuBien(bien.etape).some(e => e.id === etapeDepart) ? etapeDepart : null));
   const [vue, setVue] = useState<'form' | 'apercu'>('form');
   const [mode, setMode] = useState<'etapes' | 'tout'>(() => {
     try { return localStorage.getItem('biens.mode') === 'tout' ? 'tout' : 'etapes'; } catch { return 'etapes'; }
@@ -361,6 +385,7 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
       <div className={`${s.edCorps} ${b.edCorps}`} data-vue={vue}>
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
           <div className={`${s.edFormIn} ${b.edFormIn}`}>
+            {notice && <Notice id={notice} onFermer={() => setNotice(null)} />}
             {mode === 'tout'
               ? ETAPES.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />)
               : <BlocEtape e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />}

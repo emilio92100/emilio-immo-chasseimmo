@@ -602,3 +602,35 @@ input.pcNote { flex: 1 1 200px; min-width: 0; width: auto; }
 .carteHaut em { font-style: normal; font-size: 11px; letter-spacing: .6px; color: #94a3b8; }
 .carteHaut em.exclu { color: #a07c28; }
 .exclu { color: #a07c28; }
+
+/* ═══ V3.15 — les compteurs – / + et l'adresse proposée ═════════════════ */
+.cpt { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 4px; border-radius: 14px; border: 1.5px solid #e3e8f0; background: #fbfcfe; }
+.cptBtn { width: 38px; height: 38px; border-radius: 11px; border: none; background: white; box-shadow: 0 1px 2px rgba(15,23,42,.08), inset 0 0 0 1px #e3e8f0; color: var(--emilio); font: 700 20px/1 'DM Sans', sans-serif; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s, transform .08s; -webkit-tap-highlight-color: transparent; }
+.cptBtn:hover:not(:disabled) { background: #f4f6fa; }
+.cptBtn:active:not(:disabled) { transform: scale(.94); }
+.cptBtn:disabled { color: #cbd5e1; cursor: default; box-shadow: inset 0 0 0 1px #eef1f6; }
+.cptVal { width: 44px; height: 38px; border: none; background: transparent; text-align: center; font: 800 18px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); padding: 0; }
+.cptVal:focus { outline: none; background: white; border-radius: 10px; box-shadow: inset 0 0 0 1.5px #c9a84c; }
+.cptVal::placeholder { color: #cbd5e1; }
+.cptMot { padding: 0 8px 0 2px; font-size: 12.5px; font-weight: 700; color: #a07c28; white-space: nowrap; }
+.adr { position: relative; }
+.adrSug { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none; background: white; border: 1px solid #e3e8f0; border-radius: 14px; box-shadow: 0 14px 34px rgba(15,23,42,.16); }
+.adrSug button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 10px; background: none; text-align: left; font-family: inherit; color: #94a3b8; cursor: pointer; }
+.adrSug button:hover { background: #fbf8ef; }
+.adrSug span { min-width: 0; display: flex; flex-direction: column; }
+.adrSug b { font-size: 13.5px; color: var(--emilio); font-weight: 700; }
+.adrSug small { font-size: 12px; color: #8593a8; }
+.notice { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; color: #4c1d95; font-size: 13px; line-height: 1.5; }
+.notice b { display: block; font-size: 13.5px; color: #3b0764; }
+.notice button { flex-shrink: 0; margin-left: auto; border: none; background: none; color: #7c3aed; font-size: 16px; cursor: pointer; padding: 0 2px; }
+@media (max-width: 760px) {
+  .cptBtn { width: 44px; height: 44px; font-size: 22px; }
+  .cptVal { width: 46px; height: 44px; font-size: 19px; }
+}
+.ventile { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 13px; line-height: 1.5; }
+.ventile svg { flex-shrink: 0; margin-top: 1px; }
+.ventileManque { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+/* Un compteur tient sur une ligne : le libellé à gauche, – n + à droite. */
+.chCpt { flex-direction: row !important; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px !important; padding: 6px 8px 6px 12px; border-radius: 14px; background: #fbfcfe; border: 1px solid #eef1f6; }
+.chCpt > .cpt { border: none; background: transparent; padding: 0; }
+.chCpt > div:last-child:not(.cpt) { flex-basis: 100%; margin-top: -4px; }

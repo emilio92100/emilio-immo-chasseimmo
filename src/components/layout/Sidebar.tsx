@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
-import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
+import { EVT_MAJ, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
 
@@ -234,6 +234,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           <div className={styles.plusMenu} role="menu" aria-label="Créer">
             {([
               { cle: 'client', ico: 'clients', t: 'Nouveau contact', s: 'Acheteur, vendeur, notaire…', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
+              { cle: 'bien', ico: 'maison', t: 'Nouveau bien', s: 'À suivre, estimation, mandat…', go: () => { demanderNouveauBien(); onNavigate('biens'); } },
               { cle: 'rdv', ico: 'calendrier', t: 'Nouveau rendez-vous', s: 'Visite, appel, signature…', go: () => demanderNouveauRdv() },
               { cle: 'mail', ico: 'mail', t: 'Nouveau mail', s: 'Écrire à un ou plusieurs clients', go: () => onNavigate('mail') },
             ]).map(x => (

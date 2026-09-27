@@ -75,6 +75,8 @@ const estMaison = (d: Donnees) => d.typeBien === 'maison';
 const estTerrain = (d: Donnees) => d.typeBien === 'terrain';
 const aDesPieces = (d: Donnees) => !['terrain', 'parking'].includes(String(d.typeBien || ''));
 const enImmeuble = (d: Donnees) => !['maison', 'terrain'].includes(String(d.typeBien || ''));
+/* Un appartement peut être sur plusieurs niveaux (duplex, triplex). */
+const surNiveaux = (d: Donnees) => ['appartement', 'duplex', 'loft'].includes(String(d.typeBien || ''));
 
 export const EXPOSITIONS: Option[] = [
   { v: 'N', l: 'Nord' }, { v: 'NE', l: 'Nord-Est' }, { v: 'E', l: 'Est' }, { v: 'SE', l: 'Sud-Est' },
@@ -181,16 +183,24 @@ export type ChampBien = Champ
   | (BaseB & { t: 'dossier' })
   | (BaseB & { t: 'proprio' })
   | (BaseB & { t: 'annonce' })
-  | (BaseB & { t: 'eurosAn' });
-/* Une étape du formulaire. `pour` : les étapes de vente où elle se montre
-   (un bien « à suivre » n'a pas besoin de ses pièces ; une estimation, pas
-   de la visite). `avant` : son titre tant que le mandat n'est pas signé. */
+  | (BaseB & { t: 'eurosAn' })
+  /* Un nombre entier au – / + (pièces, chambres, étage…) ; `mots` : ce
+     qu'on écrit à côté (0 → « RDC », 2 niveaux → « Duplex »). */
+  | (BaseB & { t: 'compteur'; min?: number; max?: number; mots?: (n: number) => string })
+  /* L'adresse, proposée pendant la frappe (base adresse nationale) : un
+     choix remplit aussi le code postal et la ville. */
+  | (BaseB & { t: 'adresse' });
+/* Une étape du formulaire. `pour` : les étapes de vente où elle se montre.
+   Tout ce qui décrit le bien se remplit dès « à suivre » (V3.15) : seules
+   l'estimation (fourchette, prix) attend l'étape « estimation », et la
+   visite (clés, codes) le mandat. `avant` : son titre tant que le mandat
+   n'est pas signé. */
 export type EtapeBien = {
   id: string; titre: string; court: string; sous: string; ic: string; champs: ChampBien[];
   pour?: (e: EtapeVente) => boolean;
   avant?: { titre: string; court: string; sous: string };
 };
-export const estChampActe = (c: ChampBien): c is Champ => !['lettres', 'pieces', 'photos', 'dossier', 'proprio', 'annonce', 'eurosAn'].includes(c.t);
+export const estChampActe = (c: ChampBien): c is Champ => !['lettres', 'pieces', 'photos', 'dossier', 'proprio', 'annonce', 'eurosAn', 'compteur', 'adresse'].includes(c.t);
 /* Dans l'éditeur, les données portent l'étape de vente sous `_stade` (jamais
    enregistrée) : un champ réservé au mandat s'efface avant. Sans `_stade`
    (la fiche, l'annonce), tout se montre. */
@@ -233,26 +243,34 @@ export const ETAPES_BIEN: EtapeBien[] = [
     champs: [
       { t: 'choix', cle: 'typeBien', lib: 'Type de bien', tuiles: true, requis: true, options: TYPES_BIEN },
       { t: 'titre', cle: 't-adresse', lib: 'Adresse', ic: 'lieu' },
-      { t: 'texte', cle: 'adresse', lib: 'Adresse', large: true, requis: true, exemple: '12 rue de Silly' },
-      { t: 'texte', cle: 'cp', lib: 'Code postal', exemple: '92100' },
-      { t: 'texte', cle: 'ville', lib: 'Ville', requis: true, exemple: 'Boulogne-Billancourt' },
-      { t: 'texte', cle: 'quartier', lib: 'Quartier', exemple: 'Silly-Gallieni' },
-      { t: 'texte', cle: 'lot', lib: 'N° de lot', si: enImmeuble, exemple: '12' },
-      { t: 'texte', cle: 'cadastre', lib: 'Cadastre', si: d => estMaison(d) || estTerrain(d), exemple: 'Section AB, parcelle 123' },
-      { t: 'titre', cle: 't-surf', lib: 'Surfaces et pièces', ic: 'regle' },
-      { t: 'nombre', cle: 'surface', lib: 'Surface habitable', unite: 'm²', si: d => !estTerrain(d) },
-      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', unite: 'm²', si: enImmeuble },
-      { t: 'nombre', cle: 'sejour', lib: 'Séjour', unite: 'm²', si: aDesPieces },
-      { t: 'nombre', cle: 'terrain', lib: 'Terrain', unite: 'm²', si: d => estMaison(d) || estTerrain(d) },
-      { t: 'nombre', cle: 'pieces', lib: 'Pièces', si: aDesPieces },
-      { t: 'nombre', cle: 'chambres', lib: 'Chambres', si: aDesPieces },
-      { t: 'nombre', cle: 'sdb', lib: 'Salles de bains', si: aDesPieces },
-      { t: 'nombre', cle: 'salleseau', lib: 'Salles d’eau', si: aDesPieces },
-      { t: 'nombre', cle: 'wc', lib: 'WC', si: aDesPieces },
-      { t: 'titre', cle: 't-imm', lib: 'L’immeuble', ic: 'immeuble', si: d => !estTerrain(d) },
-      { t: 'nombre', cle: 'etage', lib: 'Étage', aide: '0 pour le rez-de-chaussée', si: enImmeuble },
-      { t: 'nombre', cle: 'etages', lib: 'Nombre d’étages', unite: 'étages', si: d => !estTerrain(d) },
-      { t: 'nombre', cle: 'annee', lib: 'Année de construction', si: d => !estTerrain(d), exemple: '1968' },
+      { t: 'adresse', cle: 'adresse', lib: 'Adresse', ic: 'lieu' },
+      { t: 'texte', cle: 'cp', lib: 'Code postal', ic: 'drapeau', exemple: '92100' },
+      { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true, exemple: 'Boulogne-Billancourt' },
+      { t: 'texte', cle: 'quartier', lib: 'Quartier', ic: 'boussole', exemple: 'Silly-Gallieni' },
+      { t: 'texte', cle: 'lot', lib: 'N° de lot', ic: 'lots', si: enImmeuble, exemple: '12' },
+      { t: 'texte', cle: 'cadastre', lib: 'Cadastre', ic: 'plan', si: d => estMaison(d) || estTerrain(d), exemple: 'Section AB, parcelle 123' },
+      /* Les surfaces, puis juste après les pièces, au – / +. */
+      { t: 'titre', cle: 't-surf', lib: 'Les surfaces', ic: 'regle' },
+      { t: 'nombre', cle: 'surface', lib: 'Surface habitable', ic: 'regle', unite: 'm²', si: d => !estTerrain(d) },
+      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: enImmeuble },
+      { t: 'nombre', cle: 'sejour', lib: 'Séjour', ic: 'canape', unite: 'm²', si: aDesPieces },
+      { t: 'nombre', cle: 'terrain', lib: 'Terrain', ic: 'terrain', unite: 'm²', si: d => estMaison(d) || estTerrain(d) },
+      { t: 'titre', cle: 't-pieces', lib: 'Les pièces', ic: 'plan', si: aDesPieces },
+      { t: 'compteur', cle: 'pieces', lib: 'Pièces', ic: 'plan', si: aDesPieces },
+      { t: 'compteur', cle: 'chambres', lib: 'Chambres', ic: 'lit', si: aDesPieces },
+      { t: 'compteur', cle: 'sdb', lib: 'Salles de bains', ic: 'bain', si: aDesPieces },
+      { t: 'compteur', cle: 'salleseau', lib: 'Salles d’eau', ic: 'douche', si: aDesPieces },
+      { t: 'compteur', cle: 'wc', lib: 'WC', ic: 'wc', si: aDesPieces },
+      { t: 'compteur', cle: 'niveaux', lib: 'Niveaux', ic: 'escalier', min: 1, max: 4, si: surNiveaux, aide: '2 : duplex · 3 : triplex', mots: n => (n === 2 ? 'Duplex' : n === 3 ? 'Triplex' : '') },
+      { t: 'compteur', cle: 'etages', lib: 'Niveaux', ic: 'escalier', min: 1, si: estMaison, aide: '1 : de plain-pied', mots: n => (n === 1 ? 'Plain-pied' : '') },
+      { t: 'titre', cle: 't-terrain', lib: 'Le terrain', ic: 'terrain', si: estTerrain },
+      { t: 'choix', cle: 'constructible', lib: 'Constructible', si: estTerrain, options: [{ v: 'oui', l: 'Oui' }, { v: 'partiel', l: 'En partie' }, { v: 'non', l: 'Non' }] },
+      { t: 'choix', cle: 'viabilise', lib: 'Viabilisé', si: estTerrain, aide: 'Eau, électricité, assainissement en bordure', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
+      { t: 'titre', cle: 't-imm', lib: 'L’immeuble', ic: 'immeuble', si: enImmeuble },
+      { t: 'titre', cle: 't-constr', lib: 'La construction', ic: 'maison', si: estMaison },
+      { t: 'compteur', cle: 'etage', lib: 'Étage', ic: 'ascenseur', min: 0, si: enImmeuble, mots: n => (n === 0 ? 'RDC' : '') },
+      { t: 'compteur', cle: 'etages', lib: 'Étages en tout', ic: 'immeuble', min: 0, si: enImmeuble },
+      { t: 'nombre', cle: 'annee', lib: 'Année de construction', ic: 'calendrier', si: d => !estTerrain(d), exemple: '1968' },
       { t: 'cases', cle: 'immeuble', lib: 'Dans l’immeuble', si: enImmeuble, options: [
         { v: 'ascenseur', l: 'Ascenseur' }, { v: 'gardien', l: 'Gardien' }, { v: 'digicode', l: 'Digicode' },
         { v: 'interphone', l: 'Interphone' }, { v: 'velos', l: 'Local vélos' }, { v: 'fibre', l: 'Fibre' },
@@ -260,7 +278,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    id: 'interieur', titre: 'L’intérieur', court: 'Intérieur', sous: 'État, cuisine, chauffage, équipements.', ic: 'canape', pour: pasASuivre,
+    id: 'interieur', titre: 'L’intérieur', court: 'Intérieur', sous: 'État, cuisine, chauffage, équipements.', ic: 'canape',
     champs: [
       { t: 'titre', cle: 't-etat', lib: 'L’état général', ic: 'pinceau' },
       { t: 'choix', cle: 'etat', lib: 'État général', options: [
@@ -295,7 +313,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    id: 'exterieur', titre: 'Extérieur et annexes', court: 'Extérieur', sous: 'Balcon, jardin, cave, parking, vue.', ic: 'terrain', pour: pasASuivre,
+    id: 'exterieur', titre: 'Extérieur et annexes', court: 'Extérieur', sous: 'Balcon, jardin, cave, parking, vue.', ic: 'terrain',
     champs: [
       { t: 'cases', cle: 'annexes', lib: 'Ce qu’il y a', options: [
         { v: 'balcon', l: 'Balcon' }, { v: 'terrasse', l: 'Terrasse' }, { v: 'loggia', l: 'Loggia' }, { v: 'jardin', l: 'Jardin' },
@@ -306,7 +324,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'nombre', cle: 'surfLoggia', lib: 'Loggia', unite: 'm²', si: d => liste(d, 'annexes').includes('loggia') },
       { t: 'nombre', cle: 'surfJardin', lib: 'Jardin', unite: 'm²', si: d => liste(d, 'annexes').includes('jardin') },
       { t: 'nombre', cle: 'surfCave', lib: 'Cave', unite: 'm²', si: d => liste(d, 'annexes').includes('cave') },
-      { t: 'nombre', cle: 'nbParking', lib: 'Places de parking', si: d => liste(d, 'annexes').some(x => ['parking', 'box', 'garage'].includes(x)) },
+      { t: 'compteur', cle: 'nbParking', lib: 'Places de parking', ic: 'parking', si: d => liste(d, 'annexes').some(x => ['parking', 'box', 'garage'].includes(x)) },
       { t: 'titre', cle: 't-vue', lib: 'Exposition et vue', ic: 'soleil' },
       { t: 'choix', cle: 'expo', lib: 'Exposition principale', options: [...EXPOSITIONS, { v: 'traversant', l: 'Traversant' }] },
       { t: 'choix', cle: 'vue', lib: 'Vue', options: [
@@ -317,11 +335,11 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    id: 'pieces', titre: 'Les pièces', court: 'Pièces', sous: 'Une par une, dans l’ordre de la visite : la pièce, sa surface, son exposition.', ic: 'plan', pour: pasASuivre,
+    id: 'pieces', titre: 'Les pièces', court: 'Pièces', sous: 'Une par une, dans l’ordre de la visite : la pièce, sa surface, son exposition.', ic: 'plan',
     champs: [{ t: 'pieces', cle: 'detailPieces', lib: 'Les pièces' }],
   },
   {
-    id: 'energie', titre: 'L’énergie', court: 'Énergie', sous: 'DPE et GES, leurs valeurs, les dépenses estimées.', ic: 'eclair', pour: pasASuivre,
+    id: 'energie', titre: 'L’énergie', court: 'Énergie', sous: 'DPE et GES, leurs valeurs, les dépenses estimées.', ic: 'eclair',
     champs: [
       { t: 'choix', cle: 'dpeStatut', lib: 'Le DPE', options: [
         { v: 'fait', l: 'Réalisé' }, { v: 'encours', l: 'Commandé' }, { v: 'vierge', l: 'Vierge' }, { v: 'non', l: 'Non soumis' },
@@ -339,7 +357,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    id: 'copro', titre: 'Copropriété, charges et taxes', court: 'Copro et charges', sous: 'La copropriété, puis ce que le bien coûte chaque année.', ic: 'lots', pour: pasASuivre,
+    id: 'copro', titre: 'Copropriété, charges et taxes', court: 'Copro et charges', sous: 'La copropriété, puis ce que le bien coûte chaque année.', ic: 'lots',
     champs: [
       { t: 'titre', cle: 't-copro', lib: 'La copropriété', ic: 'lots' },
       { t: 'choix', cle: 'copro', lib: 'En copropriété ?', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
@@ -411,7 +429,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    id: 'photos', titre: 'Photos et dossier', court: 'Photos et dossier', sous: 'Les photos, les diagnostics, les pièces à réunir.', ic: 'photo', pour: pasASuivre,
+    id: 'photos', titre: 'Photos et dossier', court: 'Photos et dossier', sous: 'Les photos, les diagnostics, les pièces à réunir.', ic: 'photo',
     champs: [
       { t: 'photos', cle: 'photos', lib: 'Les photos' },
       { t: 'dossier', cle: 'dossier', lib: 'Le dossier' },
@@ -620,6 +638,14 @@ export function brouillonAnnonce(d: Donnees): string {
   const phrases: string[] = [];
   const debut = `${d.typeBien === 'appartement' || d.typeBien === 'duplex' || d.typeBien === 'loft' ? 'À' : 'À'} ${lieu || '…'}, ${t === 'maison' ? 'une maison' : t === 'terrain' ? 'un terrain' : `un ${t}`}${p && aDesPieces(d) ? ` de ${p} pièce${p > 1 ? 's' : ''}` : ''}${s ? ` de ${m2(s)}` : ''}${enImmeuble(d) && e !== null ? `, au ${e === 0 ? 'rez-de-chaussée' : `${e}${e === 1 ? 'er' : 'e'} étage`}${et ? ` sur ${et}` : ''}${liste(d, 'immeuble').includes('ascenseur') ? ' avec ascenseur' : ''}` : ''}.`;
   phrases.push(debut);
+  /* Sur plusieurs niveaux, de plain-pied ; un terrain constructible. */
+  const niv = nb(d, 'niveaux');
+  if (surNiveaux(d) && niv && niv >= 2) phrases.push(`Il se développe ${niv === 2 ? 'en duplex' : niv === 3 ? 'en triplex' : `sur ${niv} niveaux`}.`);
+  if (estMaison(d) && et) phrases.push(et === 1 ? 'Elle est de plain-pied.' : `Elle se développe sur ${et} niveaux.`);
+  if (estTerrain(d) && (d.constructible || d.viabilise)) {
+    const t2 = [d.constructible === 'oui' ? 'constructible' : d.constructible === 'partiel' ? 'constructible en partie' : d.constructible === 'non' ? 'non constructible' : '', d.viabilise === 'oui' ? 'viabilisé' : d.viabilise === 'non' ? 'non viabilisé' : ''].filter(Boolean);
+    if (t2.length) phrases.push(`Le terrain est ${t2.join(' et ')}.`);
+  }
   const pieces = lirePieces(d.detailPieces).filter(x => x.nom);
   const sejour = nb(d, 'sejour');
   const vie: string[] = [];

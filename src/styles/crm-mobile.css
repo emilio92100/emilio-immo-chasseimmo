@@ -72,7 +72,25 @@ html.crm .fc-crit-bascule { display: none; }
   html.crm .nc-pied { padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)) !important; gap: 8px !important; }
   html.crm .nc-pied > span { display: none; }
   html.crm .nc-pied > button { flex: 1 1 0; justify-content: center; padding: 12px 8px; font-size: 14px; border-radius: 12px; }
-  html.crm .nc-pied > .nc-suite { order: 3; flex: 1 1 100%; padding: 14px 10px; font-size: 15px; }
+  html.crm .nc-pied > .nc-suite { flex: 1.35 1 0; padding: 13px 10px; font-size: 15px; }
+
+  /* V3.15 — la fenêtre garde de la place pour les questions : l'en-tête
+     tient en deux lignes (le nom et ses types, puis l'étape), le pied en
+     une seule (« ← », « Créer maintenant », « Continuer »). */
+  html.crm .nc-tete { padding: 12px 14px 0 !important; }
+  html.crm .nc-tete h2 { font-size: 19px !important; }
+  html.crm .nc-titres { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+  html.crm .nc-sous { display: none; }
+  html.crm .nc-types { margin-top: 0 !important; }
+  html.crm .nc-rail { margin-top: 10px; }
+  html.crm .nc-lig { display: none; }
+  html.crm .nc-barre { height: 3px; }
+  html.crm .nc-ou { display: block; margin: 7px 0 2px; font-size: 11.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--emilio); }
+  html.crm .nc-fermer { top: 9px !important; width: 34px !important; height: 34px !important; }
+  html.crm .nc-annuler { display: none; }
+  html.crm .nc-pied > .nc-prec { flex: 0 0 48px; padding: 12px 0; font-size: 17px; }
+  html.crm .nc-prec .nc-mot { display: none; }
+  html.crm .nc-pied > .nc-maint { white-space: nowrap; font-size: 13px; padding: 12px 6px; }
 
   /* ═══ FICHE CLIENT — le bloc identité ═══════════════════════════════ */
 
