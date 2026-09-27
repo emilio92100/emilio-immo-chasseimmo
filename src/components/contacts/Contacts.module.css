@@ -119,6 +119,7 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .heroCoord { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .heroCoord a, .heroCoord span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: white; font: 600 13px 'DM Sans', sans-serif; text-decoration: none; }
 .heroCoord a:hover { background: rgba(255,255,255,.14); }
+.heroCoord em { align-self: center; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 2px 8px; border: 1px solid rgba(255,255,255,.18); border-radius: 99px; }
 .archiveBandeau { padding: 10px 14px; border-radius: 12px; background: #f8fafc; border: 1px solid #e3e8f0; font-size: 13px; color: #64748b; }
 .deux { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }

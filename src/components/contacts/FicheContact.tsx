@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase, addJournal, type Client } from '@/lib/supabase';
-import { nomFoyer } from '@/lib/foyer';
+import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
 import {
   colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, typeDe, typesDe,
@@ -42,15 +42,22 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
     : <FicheContact key={x.id} client={x} onBack={onBack} onNavigate={onNavigate} />;
 }
 
+/* Un vendeur, un propriétaire peuvent être un couple (src/lib/foyer.ts) :
+   la personne 2 a son nom, son e-mail, son téléphone. */
 type Form = {
   types: TypeContact[]; civilite: string; prenom: string; nom: string;
   tel1: string; tel2: string; email1: string; email2: string; adresse: string; pro: InfosPro;
+  couple: boolean; c2_civilite: string; c2_prenom: string; c2_nom: string; c2_email: string; c2_tel: string;
 };
-const formDe = (x: Client): Form => ({
-  types: typesDe(x), civilite: x.civilite || '', prenom: x.prenom || '', nom: x.nom || '',
-  tel1: x.telephones?.[0] || '', tel2: x.telephones?.[1] || '', email1: x.emails?.[0] || '', email2: x.emails?.[1] || '',
-  adresse: x.adresse || '', pro: lirePro(x.pro),
-});
+const formDe = (x: Client): Form => {
+  const j = conjointDe(x.conjoint);
+  return {
+    types: typesDe(x), civilite: x.civilite || '', prenom: x.prenom || '', nom: x.nom || '',
+    tel1: x.telephones?.[0] || '', tel2: x.telephones?.[1] || '', email1: x.emails?.[0] || '', email2: x.emails?.[1] || '',
+    adresse: x.adresse || '', pro: lirePro(x.pro),
+    couple: !!x.couple, c2_civilite: j?.civilite || '', c2_prenom: j?.prenom || '', c2_nom: j?.nom || '', c2_email: j?.email || '', c2_tel: j?.telephone || '',
+  };
+};
 
 function Li({ ic, l, v }: { ic: string; l: string; v?: string | null }) {
   if (!v) return null;
@@ -91,11 +98,23 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     if (!edit) return;
     if (!edit.prenom.trim() && !edit.nom.trim()) { setErreur('Écris au moins un prénom ou un nom.'); return; }
     if (!edit.types.length) { setErreur('Choisis au moins un type.'); return; }
+    const couple = edit.couple && !estPro(edit.types);
+    if (couple && !edit.c2_prenom.trim() && !edit.c2_nom.trim()) { setErreur('Écris au moins le prénom ou le nom de la personne 2.'); return; }
     setOccupe(true);
+    /* Les colonnes du couple ne s'écrivent que si elles servent : avant le SQL
+       « signature-plusieurs », elles n'existent pas. */
+    const foyer = 'couple' in x || couple
+      ? {
+        couple, conjoint: couple ? {
+          ...(conjointDe(x.conjoint) || {}), civilite: edit.c2_civilite, prenom: edit.c2_prenom.trim(), nom: edit.c2_nom.trim(),
+          email: edit.c2_email.trim().toLowerCase(), telephone: edit.c2_tel.trim(),
+        } : null,
+      }
+      : {};
     const r = await ecrire({
       types: edit.types, civilite: edit.civilite || null, prenom: edit.prenom.trim(), nom: edit.nom.trim(),
       telephones: [edit.tel1, edit.tel2].map(s => s.trim()).filter(Boolean), emails: [edit.email1, edit.email2].map(s => s.trim().toLowerCase()).filter(Boolean),
-      adresse: edit.adresse.trim() || null, pro: edit.pro,
+      adresse: edit.adresse.trim() || null, pro: edit.pro, ...foyer,
     }, 'La fiche n’a pas pu être enregistrée');
     setOccupe(false);
     if (!r) return;
@@ -125,6 +144,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   }
 
   const tels = (x.telephones || []).filter(Boolean), mails = (x.emails || []).filter(Boolean);
+  const j2 = x.couple ? conjointDe(x.conjoint) : null;
   const ligne = ligneContact(x);
   const cls = { row: c.g2, group: c.ch, label: '', input: c.in };
 
@@ -148,11 +168,22 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />
           {ligne && <div className={c.heroLigne}>{ligne}</div>}
           <div className={c.heroCoord}>
+            {j2 && <em>{x.prenom || 'Personne 1'}</em>}
             {tels.map(t => <a key={t} href={`tel:${t.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />{t}</a>)}
             {mails.map(m => <a key={m} href={`mailto:${m}`}><Ic n="mail" t={14} />{m}</a>)}
-            {x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}
-            {!tels.length && !mails.length && !x.adresse && <span>Pas encore de coordonnées</span>}
+            {!j2 && x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}
+            {!tels.length && !mails.length && !x.adresse && !j2 && <span>Pas encore de coordonnées</span>}
           </div>
+          {/* Un couple : les coordonnées de la personne 2, sous son prénom. */}
+          {j2 && (
+            <div className={c.heroCoord}>
+              <em>{j2.prenom || 'Personne 2'}</em>
+              {j2.telephone && <a href={`tel:${j2.telephone.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />{j2.telephone}</a>}
+              {j2.email && <a href={`mailto:${j2.email}`}><Ic n="mail" t={14} />{j2.email}</a>}
+              {!j2.telephone && !j2.email && <span>Pas encore de coordonnées</span>}
+            </div>
+          )}
+          {j2 && x.adresse && <div className={c.heroCoord}><span><Ic n="lieu" t={14} />{x.adresse}</span></div>}
         </div>
       </div>
 
@@ -249,20 +280,36 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 {edit.types.includes('acheteur') && <div className={c.typesNote}>Acheteur : en enregistrant, sa fiche d’acheteur s’ouvre. Pense à lui ouvrir une recherche (« Il cherche aussi à acheter »).</div>}
               </div>
               <div className={c.groupe}>
-                <div className={c.groupeT}>Qui, et comment le joindre</div>
+                <div className={c.groupeT}>{edit.couple && !estPro(edit.types) ? 'Personne 1 · contact principal' : 'Qui, et comment le joindre'}</div>
                 <div className={c.pills}>
                   {['Monsieur', 'Madame'].map(v => <button key={v} type="button" className={`${c.pill} ${edit.civilite === v ? c.pillOn : ''}`} onClick={() => setEdit({ ...edit, civilite: edit.civilite === v ? '' : v })}>{v}</button>)}
+                  {/* Un vendeur ou un propriétaire peut être un couple. */}
+                  {!estPro(edit.types) && <button type="button" className={`${c.pill} ${edit.couple ? c.pillOn : ''}`} onClick={() => setEdit({ ...edit, couple: !edit.couple })}>{edit.couple ? '✓ Un couple' : '+ Un couple'}</button>}
                 </div>
                 <div className={c.g2}>
                   <label className={c.ch}><span>Prénom</span><input className={c.in} value={edit.prenom} onChange={e => setEdit({ ...edit, prenom: e.target.value })} /></label>
                   <label className={c.ch}><span>Nom</span><input className={c.in} value={edit.nom} onChange={e => setEdit({ ...edit, nom: e.target.value })} /></label>
                   <label className={c.ch}><span>Téléphone</span><input className={c.in} value={edit.tel1} onChange={e => setEdit({ ...edit, tel1: e.target.value })} /></label>
-                  <label className={c.ch}><span>Autre téléphone</span><input className={c.in} value={edit.tel2} onChange={e => setEdit({ ...edit, tel2: e.target.value })} /></label>
                   <label className={c.ch}><span>E-mail</span><input className={c.in} type="email" value={edit.email1} onChange={e => setEdit({ ...edit, email1: e.target.value })} /></label>
+                  <label className={c.ch}><span>Autre téléphone</span><input className={c.in} value={edit.tel2} onChange={e => setEdit({ ...edit, tel2: e.target.value })} /></label>
                   <label className={c.ch}><span>Autre e-mail</span><input className={c.in} type="email" value={edit.email2} onChange={e => setEdit({ ...edit, email2: e.target.value })} /></label>
                 </div>
                 <label className={c.ch}><span>Adresse</span><input className={c.in} value={edit.adresse} onChange={e => setEdit({ ...edit, adresse: e.target.value })} /></label>
               </div>
+              {edit.couple && !estPro(edit.types) && (
+                <div className={c.groupe}>
+                  <div className={c.groupeT}>Personne 2</div>
+                  <div className={c.pills}>
+                    {['Monsieur', 'Madame'].map(v => <button key={v} type="button" className={`${c.pill} ${edit.c2_civilite === v ? c.pillOn : ''}`} onClick={() => setEdit({ ...edit, c2_civilite: edit.c2_civilite === v ? '' : v })}>{v}</button>)}
+                  </div>
+                  <div className={c.g2}>
+                    <label className={c.ch}><span>Prénom</span><input className={c.in} value={edit.c2_prenom} onChange={e => setEdit({ ...edit, c2_prenom: e.target.value })} /></label>
+                    <label className={c.ch}><span>Nom</span><input className={c.in} value={edit.c2_nom} onChange={e => setEdit({ ...edit, c2_nom: e.target.value })} /></label>
+                    <label className={c.ch}><span>Téléphone</span><input className={c.in} value={edit.c2_tel} onChange={e => setEdit({ ...edit, c2_tel: e.target.value })} /></label>
+                    <label className={c.ch}><span>E-mail</span><input className={c.in} type="email" value={edit.c2_email} onChange={e => setEdit({ ...edit, c2_email: e.target.value })} /></label>
+                  </div>
+                </div>
+              )}
               <ChampsPro types={edit.types} pro={edit.pro} onChange={p => setEdit({ ...edit, pro: p })} cls={cls} />
               {erreur && <div className={c.erreur}>{erreur}</div>}
             </div>

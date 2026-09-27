@@ -2604,6 +2604,12 @@ Emilio Immobilier
         const teinte = st === 'actif' ? '#34d399' : st === 'prospect' ? '#a78bfa' : st === 'suspendu' || st === 'offre_ecrite' ? '#fbbf24' : st === 'bien_trouve' ? '#60a5fa' : '#f87171';
         const tels = (client.telephones || []).filter(Boolean);
         const mails = (client.emails || []).filter(Boolean);
+        /* Un couple : les coordonnées de chacun, sous son prénom. Avant, seules
+           celles de la personne 1 se voyaient ici. */
+        const j2 = client.couple ? conjointDe(client.conjoint) : null;
+        const deux = !!j2 && !!(j2.telephone || j2.email);
+        const groupeTete: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', columnGap: 16, rowGap: 6, flexWrap: 'wrap' };
+        const quiTete: React.CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '2px 8px', border: '1px solid rgba(255,255,255,.18)', borderRadius: 99 };
 
         const kpis = [
           { val: presentes.length, l: 'Propositions', or: false },
@@ -2735,22 +2741,40 @@ Emilio Immobilier
                     </div>
 
                     <div className="fc-id-contacts" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 9, alignItems: 'center', marginTop: 14 }}>
-                      {tels.map((t) => (
-                        <a key={t} className="fc-id-lien" href={`tel:${t}`} style={lienEntete}>
-                          <Icone nom="tel" taille={14} /> {t}
-                        </a>
-                      ))}
-                      {mails.map((e) => (
-                        <a key={e} className="fc-id-lien" href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
-                          <Icone nom="mail" taille={14} /> {e}
-                        </a>
-                      ))}
+                      <span className="fc-id-groupe" style={groupeTete}>
+                        {deux && <span className="fc-id-qui" style={quiTete}>{client.prenom || 'Personne 1'}</span>}
+                        {tels.map((t) => (
+                          <a key={t} className="fc-id-lien" href={`tel:${t}`} style={lienEntete}>
+                            <Icone nom="tel" taille={14} /> {t}
+                          </a>
+                        ))}
+                        {mails.map((e) => (
+                          <a key={e} className="fc-id-lien" href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
+                            <Icone nom="mail" taille={14} /> {e}
+                          </a>
+                        ))}
+                      </span>
+                      {deux && j2 && (
+                        <span className="fc-id-groupe" style={groupeTete}>
+                          <span className="fc-id-qui" style={quiTete}>{j2.prenom || 'Personne 2'}</span>
+                          {j2.telephone && (
+                            <a className="fc-id-lien" href={`tel:${j2.telephone}`} style={lienEntete}>
+                              <Icone nom="tel" taille={14} /> {j2.telephone}
+                            </a>
+                          )}
+                          {j2.email && (
+                            <a className="fc-id-lien" href={`mailto:${j2.email}`} style={{ ...lienEntete, color: '#c9a84c' }}>
+                              <Icone nom="mail" taille={14} /> {j2.email}
+                            </a>
+                          )}
+                        </span>
+                      )}
                       {client.adresse && (
-                        <span className="fc-id-lien fc-id-adresse" style={{ ...lienEntete, color: 'rgba(255,255,255,.55)' }}>
+                        <span className="fc-id-lien fc-id-adresse" style={{ ...lienEntete, color: 'rgba(255,255,255,.55)', ...(deux ? { flexBasis: '100%' } : {}) }}>
                           <Icone nom="lieu" taille={14} /> {client.adresse}
                         </span>
                       )}
-                      {!tels.length && !mails.length && <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)' }}>Aucun contact renseigné</span>}
+                      {!tels.length && !mails.length && !deux && <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)' }}>Aucun contact renseigné</span>}
                     </div>
                   </div>
                 </div>
@@ -3931,16 +3955,23 @@ Emilio Immobilier
                   );
                 })}
               </div>
-              {cf.couple && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a9822f', marginTop: 4 }}>Personne 1 · contact principal</div>}
-              {cf.couple && (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(['Monsieur', 'Madame'] as const).map(c => (
-                    <button type="button" key={c} onClick={() => setCf(f => ({ ...f, civilite: c }))}
-                      style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.civilite === c ? 'var(--emilio)' : '#e2e8f0'}`, background: cf.civilite === c ? '#f8fafc' : '#fff', color: cf.civilite === c ? 'var(--emilio)' : '#8593a8' }}>{c}</button>
-                  ))}
+              {/* Un couple : chaque personne dans son cadre, avec son e-mail et
+                  son téléphone. La personne 1 reçoit les mails et a l'espace. */}
+              {cf.couple ? (
+                <div style={{ border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, margin: '6px 0 0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a9822f' }}>Personne 1 · contact principal</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['Monsieur', 'Madame'] as const).map(c => (
+                      <button type="button" key={c} onClick={() => setCf(f => ({ ...f, civilite: c }))}
+                        style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.civilite === c ? 'var(--emilio)' : '#e2e8f0'}`, background: cf.civilite === c ? '#f8fafc' : '#fff', color: cf.civilite === c ? 'var(--emilio)' : '#8593a8' }}>{c}</button>
+                    ))}
+                  </div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div></div>
                 </div>
+              ) : (
+                <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
               )}
-              <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
               {cf.couple && (
                 <div style={{ border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, margin: '6px 0' }}>
                   <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a9822f' }}>Personne 2</div>
@@ -3955,8 +3986,14 @@ Emilio Immobilier
                 </div>
               )}
               <div><label className={styles.lbl}>Adresse</label><input className={styles.inp} value={cf.adresse} onChange={e => setCf(f => ({ ...f, adresse: e.target.value }))} /></div>
-              <div className={styles.formRow}><div><label className={styles.lbl}>Email principal</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Email secondaire</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div></div>
-              <div className={styles.formRow}><div><label className={styles.lbl}>Tél. principal</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div><div><label className={styles.lbl}>Tél. secondaire</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
+              {cf.couple ? (
+                <div className={styles.formRow}><div><label className={styles.lbl}>Autre e-mail (facultatif)</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div><div><label className={styles.lbl}>Autre téléphone (facultatif)</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
+              ) : (
+                <>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Email principal</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Email secondaire</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div></div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Tél. principal</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div><div><label className={styles.lbl}>Tél. secondaire</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
+                </>
+              )}
 
               {/* Situation actuelle (propriétaire / locataire) */}
               <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 8, paddingTop: 12 }}>

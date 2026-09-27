@@ -96,6 +96,9 @@ html.crm .fc-crit-bascule { display: none; }
     font-size: 13px !important;
   }
   html.crm .fc-id-adresse { background: rgba(255,255,255,.035); font-size: 12px !important; }
+  /* Un couple : les coordonnées de chacun, sous son prénom, en colonne aussi. */
+  html.crm .fc-id-groupe { display: flex !important; flex-direction: column; align-items: stretch !important; gap: 6px !important; }
+  html.crm .fc-id-qui { align-self: flex-start; margin-top: 4px; }
 
   html.crm .fc-kpis { width: 100%; flex-shrink: 1 !important; }
   html.crm .fc-kpi { flex: 1 1 0; min-width: 0 !important; padding: 8px 3px !important; }

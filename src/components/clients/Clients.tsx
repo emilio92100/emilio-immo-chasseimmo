@@ -1327,6 +1327,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                                   <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Paul" autoFocus /></div>
                                   <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
                                 </div>
+                                {/* Ses coordonnées ici, comme pour la personne 2 : elles
+                                    étaient plus bas, dans « Contact », et on les cherchait. */}
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>✉️ Email</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="paul@gmail.com" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
+                                </div>
                               </div>
                               <div className="nc-pers">
                                 <div className="nc-pers-t">Personne 2</div>
@@ -1341,7 +1347,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                                 </div>
                               </div>
                             </div>
-                            <div className="nc-note">{'✍️ Le mandat en ligne sera préparé à leurs deux noms : la personne 1 signe depuis son espace, la personne 2 reçoit son propre lien et son propre code. Les e-mails et téléphones du bloc « Contact » restent ceux de la personne 1.'}</div>
+                            <div className="nc-note">{'✍️ Le mandat en ligne sera préparé à leurs deux noms. La personne 1 reçoit les mails et a l’espace client ; la personne 2 reçoit son propre lien et son propre code pour signer.'}</div>
                           </>
                         )}
                         {/* Un professionnel se joint à son agence, son étude, son
@@ -1369,16 +1375,28 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
                       {pro && champsPro}
 
-                      <Bloc titre="📞 Contact">
-                        <div className={styles.formRow}>
-                          <div className={styles.formGroup}><label className={styles.label}>✉️ Email principal</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="sophie@gmail.com" /></div>
-                          <div className={styles.formGroup}><label className={styles.label}>✉️ Email secondaire</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="s.martin@travail.fr" /></div>
-                        </div>
-                        <div className={styles.formRow}>
-                          <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone principal</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
-                          <div className={styles.formGroup}><label className={styles.label}>☎️ Téléphone secondaire</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
-                        </div>
-                      </Bloc>
+                      {form.couple && !pro ? (
+                        /* Un couple : chacun a déjà son e-mail et son téléphone
+                           ci-dessus. Ici, seulement un numéro commun ou un autre
+                           e-mail, s'il y en a. */
+                        <Bloc titre="📞 Autres coordonnées (facultatif)">
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>✉️ Autre e-mail</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="martin.famille@gmail.com" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>☎️ Autre téléphone</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
+                          </div>
+                        </Bloc>
+                      ) : (
+                        <Bloc titre="📞 Contact">
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>✉️ Email principal</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="sophie@gmail.com" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>✉️ Email secondaire</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="s.martin@travail.fr" /></div>
+                          </div>
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone principal</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>☎️ Téléphone secondaire</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
+                          </div>
+                        </Bloc>
+                      )}
 
                       {!pro && champsPro}
 

@@ -1316,6 +1316,13 @@ peuvent attendre : acheteur non filtré) ; un vendeur ou un propriétaire peut e
 « Nouveau bien », lui déjà propriétaire ; un professionnel n'a que son identité, son bloc
 (agence, étude, immeuble, activité) et ses coordonnées. La page et les fiches : voir §3.
 
+**Un couple** (même jour, après la mise en ligne) : dans « Nouveau contact » et « Modifier le
+contact », chaque personne a son e-mail et son téléphone dans son cadre (ceux de la personne 1
+étaient plus bas, dans « Contact », et on ne les trouvait pas) ; il reste un bloc « Autres
+coordonnées » facultatif. La fiche montre les coordonnées de chacun sous son prénom. Un vendeur
+ou un propriétaire peut aussi être un couple (« + Un couple » dans sa fiche). Le nom affiché ne
+change pas : « Paul et Claire Martin », ou « Paul Martin et Claire Durand » (`nomFoyer`).
+
 ### V3.13 — 27 septembre 2026 · « Biens » : à suivre, estimation, mandat
 
 Rien à passer dans Supabase : `etape` est un texte libre.
