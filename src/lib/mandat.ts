@@ -50,6 +50,14 @@ export const BAREME_VENTE = 5;               // % TTC du prix : le barème du ma
    aux dates (fin du mandat), en jours. */
 export const DUREE = { mois: 12, total: 365, preavis: 15 } as const;
 export const RETRACTATION_JOURS = 14;
+/* Un co-signataire (conjoint, co-acquéreur) a quinze jours pour signer à
+   son tour, à compter de l'envoi de son lien. Au-delà, le mandat continue
+   avec les seuls signataires (le texte le prévoit) et Alexandre décide :
+   le relancer avec un nouveau lien, ou clore l'invitation. */
+export const DELAI_COSIGNATURE = 15;
+/* Au plus quatre personnes avec lui : au-delà, ce n'est plus un couple ni
+   une famille, c'est un dossier à traiter à part. */
+export const COSIGNATAIRES_MAX = 4;
 
 /* ── Le taux des honoraires ─────────────────────────────────────────────
    2,5 % par défaut. Alexandre peut en proposer un autre à un client depuis
@@ -215,12 +223,41 @@ export type Recherche = {
   forfait?: number | null;
 };
 
+/* Il achète via une société, qu'il représente (« J'achète via une
+   société », dans l'espace). Il la décrit lui-même et certifie ce qu'il
+   écrit ; le Kbis est facultatif. */
+export type Societe = {
+  denomination: string;       // « SCI Les Tilleuls »
+  forme: string;              // SCI, SARL, SAS…
+  siren: string;              // 9 chiffres, sans espace
+  rcsVille: string;           // la ville du greffe
+  siege: string;              // l'adresse du siège, sur une ligne
+  qualite: string;            // Gérant, Président… (au masculin : accordé à l'impression)
+};
+export const FORMES_SOCIETE = ['SCI', 'SARL', 'SAS', 'SASU', 'EURL', 'SNC', 'Autre'] as const;
+export const QUALITES_SOCIETE = ['Gérant', 'Président', 'Directeur général', 'Associé habilité'] as const;
+
 export type DonneesMandat = {
   numero: string;
   mandant: Mandant | null;              // null tant que le client n'a pas confirmé ses coordonnées
   recherche: Recherche;
   executionImmediate: boolean | null;   // null tant qu'il n'a pas choisi
   signature?: { le: string; email: string } | null;
+  /* Les autres signataires — son conjoint, un co-acquéreur — qu'il a ajoutés
+     dans l'espace. Chacun signe ensuite avec son propre lien et son propre
+     code. Absent ou vide : il signe seul, et le texte est celui d'avant, mot
+     pour mot. */
+  cosignataires?: Mandant[] | null;
+  /* Pour chaque co-signataire, dans le même ordre : il a décliné, ou son
+     invitation a été close — il n'est pas partie au mandat (le texte le dit,
+     sa fiche et son cadre de signature disparaissent). */
+  absents?: boolean[] | null;
+  /* Pour chaque co-signataire, sa propre demande d'exécution immédiate
+     (null tant qu'il n'a pas signé). */
+  executionsCos?: (boolean | null)[] | null;
+  /* Il achète via une société : elle est le mandant, il la représente et
+     s'engage aussi en son nom. Jamais en même temps que des co-signataires. */
+  societe?: Societe | null;
 };
 
 /* Ce qui est figé dans la ligne de signature : le texte ne dépend plus des
@@ -376,7 +413,7 @@ export type Bloc =
   | { t: 'etapes'; items: { titre: string; x: string }[] } // la mission, étape par étape, numérotée
   | { t: 'fiches'; items: Fiche[] }                      // des fiches à icône, deux par ligne
   | { t: 'case'; x: string; coche: boolean }             // une case à cocher
-  | { t: 'sig' }                                         // le cartouche des signatures (signature en ligne)
+  | { t: 'sig'; noms?: string[] }                        // le cartouche des signatures (signature en ligne) ; noms : les mandants, quand ils sont plusieurs
   /* Les cadres de signature d'un document signé sur papier : un par
      signataire, deux par ligne, avec la mention à recopier. */
   | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[] }[]; mention?: string };
@@ -415,6 +452,53 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
   const mandataire: Fiche = { ic: 'agence', titre: A.nom.toUpperCase(), lignes: lignesMandataire(A),
     note: phraseFonds(A), pied: 'Ci-après « l’Agence » ou « le MANDATAIRE »' };
 
+  /* ─── Plusieurs mandants, ou une société ───
+     Tant qu'il signe seul, en son nom, rien ne bouge : chaque phrase
+     ci-dessous garde sa forme d'origine. Sinon, trois choses changent :
+     les parties (une fiche par mandant, ou la société et son représentant),
+     ce qui se passe si un co-mandant ne signe pas, et la rétractation, qui
+     court pour tous à compter de la dernière signature. */
+  const cos = m ? (d.cosignataires || []).filter(Boolean) : [];
+  const soc = m && !cos.length ? d.societe || null : null;
+  const plusieurs = cos.length > 0;
+  /* Ceux qui ont décliné, ou dont l'invitation est close, ne sont pas partie
+     au mandat ; les clauses, elles, restent celles que le premier a signées. */
+  const presents = cos.filter((_, i) => !d.absents?.[i]);
+  const absents = cos.filter((_, i) => !!d.absents?.[i]);
+  const signataires = m ? [m, ...presents] : [];
+  const execDe = (x: Mandant) => (x === m ? d.executionImmediate : d.executionsCos?.[cos.indexOf(x)] ?? null);
+  const nomLong = (x: Mandant) => `${x.civilite ? x.civilite + ' ' : ''}${x.prenom} ${x.nom.toUpperCase()}`;
+  const ficheDe = (x: Mandant, pied?: string): Fiche => {
+    const ne = x.naissanceDate ? `Né${x.civilite === 'Madame' ? 'e' : ''} le ${jourFr(x.naissanceDate)} à ${x.naissanceLieu}` : '';
+    return { ic: 'personne', titre: nomLong(x), lignes: [
+      ...(ne ? [ne] : []),
+      `Demeurant ${x.adresse}`,
+      `${x.telephone ? x.telephone + ' · ' : ''}${x.email}`,
+    ], ...(pied ? { pied } : {}) };
+  };
+  const e = (x: Mandant) => (x.civilite === 'Madame' ? 'e' : '');
+  let parties: Bloc[] = [{ t: 'fiches', items: [mandant, mandataire] }];
+  if (plusieurs && m) {
+    parties = [
+      { t: 'fiches', items: [...signataires.map(x => ficheDe(x)), { ...mandataire, large: signataires.length % 2 === 0 }] },
+      P(`Ci-après ensemble « le MANDANT ». ${nomLong(m)}, titulaire de l’espace personnel, est le « premier signataire ». Chacun est tenu des engagements du MANDANT pour lui-même ; ceux qui achètent ensemble un bien sont tenus solidairement des honoraires de cet achat.`),
+      ...absents.map(x => P(`${nomLong(x)}, ${x.civilite === 'Madame' ? 'invitée' : 'invité'} à signer, ne l’a pas fait : ${x.civilite === 'Madame' ? 'elle' : 'il'} n’est pas partie au mandat.`)),
+    ];
+  } else if (soc && m) {
+    const ne = m.naissanceDate ? `, né${e(m)} le ${jourFr(m.naissanceDate)} à ${m.naissanceLieu}` : '';
+    const fs: Fiche = { ic: 'agence', titre: soc.denomination.toUpperCase(), lignes: [
+      `${soc.forme === 'Autre' ? 'Société' : soc.forme} immatriculée au RCS de ${soc.rcsVille} sous le n° ${sirenLisible(soc.siren)}`,
+      `Siège : ${soc.siege}`,
+      `Représentée par ${nomLong(m)}, ${qualiteAccordee(soc.qualite, m.civilite)}${ne}, demeurant ${m.adresse}`,
+      `${m.telephone ? m.telephone + ' · ' : ''}${m.email}`,
+    ], pied: 'Ci-après « le MANDANT »' };
+    parties = [
+      { t: 'fiches', items: [fs, mandataire] },
+      P(`${nomLong(m)} déclare être habilité${e(m)} à signer ce mandat au nom de la société, en vertu de ses statuts ou d’une décision de ses associés.`),
+      P(`${nomLong(m)} signe aussi en son nom personnel : les engagements du MANDANT s’appliquent à ${m.civilite === 'Madame' ? 'elle' : 'lui'}, notamment s’${m.civilite === 'Madame' ? 'elle' : 'il'} achète ${m.civilite === 'Madame' ? 'elle' : 'lui'}-même, ou par une autre société, un bien présenté par l’Agence. Comme la société, ${m.civilite === 'Madame' ? 'elle' : 'il'} peut se rétracter dans les conditions ci-dessous.`),
+    ];
+  }
+
   const honoraires: Bloc[] = forfait
     ? [
       P(`Honoraires de l’Agence : forfait de ${euros(forfait)} TTC (${enLettres(forfait)} euros).`, true),
@@ -428,9 +512,13 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
     sous: 'Mandat simple, non exclusif',
     ic: 'doc',
     sections: [
-      { titre: 'Entre les soussignés', blocs: [{ t: 'fiches', items: [mandant, mandataire] }] },
+      { titre: 'Entre les soussignés', blocs: parties },
       { titre: 'Il a été convenu ce qui suit', blocs: [
         P('Le MANDANT confie au MANDATAIRE, qui l’accepte, un mandat NON EXCLUSIF de rechercher un bien à acheter. Il reste libre de chercher lui-même et de confier d’autres mandats non exclusifs.', true),
+        ...(plusieurs ? [
+          P(`Le mandat engage chaque signataire dès qu’il le signe. Un signataire invité qui décline, ou qui ne signe pas dans les ${enLettres(DELAI_COSIGNATURE)} (${DELAI_COSIGNATURE}) jours suivant l’envoi de son dernier lien, n’est pas partie au mandat : celui-ci se poursuit avec les seuls signataires.`),
+          P('Les autres signataires chargent le premier de faire évoluer pour eux, depuis son espace personnel, les critères de la recherche et le budget.'),
+        ] : []),
       ] },
       { titre: 'Le bien recherché', ic: 'maison', blocs: [
         P(decrireRecherche(d.recherche), true),
@@ -446,14 +534,21 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
         ...honoraires,
         P('Ils sont à la charge du MANDANT, en plus du prix, et ne sont dus que si l’achat se réalise grâce à l’Agence. Ils sont payés le jour de la signature de l’acte authentique, par l’intermédiaire du notaire : aucune somme n’est due avant. En cas de préemption, le titulaire du droit de préemption les doit à la place de l’acquéreur.'),
       ] },
-      { titre: 'Durée', ic: 'calendrier', blocs: [
-        P(`Le mandat prend effet à sa signature et dure ${enLettres(DUREE.mois)} (${DUREE.mois}) mois au plus. Il prend fin de lui-même à ce terme, sans reconduction.`),
-        P(`Chaque partie peut y mettre fin à tout moment, par lettre recommandée avec avis de réception ou par e-mail, avec un préavis de ${enLettres(DUREE.preavis)} (${DUREE.preavis}) jours.`, true),
-      ] },
+      { titre: 'Durée', ic: 'calendrier', blocs: plusieurs
+        ? [
+          P(`Le mandat prend effet à la première signature et dure ${enLettres(DUREE.mois)} (${DUREE.mois}) mois au plus à compter de celle-ci. Il prend fin de lui-même à ce terme, sans reconduction.`),
+          P(`Chaque partie peut y mettre fin à tout moment, par lettre recommandée avec avis de réception ou par e-mail, avec un préavis de ${enLettres(DUREE.preavis)} (${DUREE.preavis}) jours : un signataire pour lui-même, le premier signataire pour tous.`, true),
+        ]
+        : [
+          P(`Le mandat prend effet à sa signature et dure ${enLettres(DUREE.mois)} (${DUREE.mois}) mois au plus. Il prend fin de lui-même à ce terme, sans reconduction.`),
+          P(`Chaque partie peut y mettre fin à tout moment, par lettre recommandée avec avis de réception ou par e-mail, avec un préavis de ${enLettres(DUREE.preavis)} (${DUREE.preavis}) jours.`, true),
+        ] },
       { titre: 'Engagements du mandant', ic: 'personne', blocs: [
         P('Le MANDANT déclare avoir la capacité d’acheter et n’avoir confié aucun mandat exclusif de recherche portant sur les mêmes biens. Il autorise le MANDATAIRE à se faire assister ou substituer par un autre professionnel habilité.'),
         P('S’il achète un bien, avec ou sans le MANDATAIRE, il l’en informe sans délai et lui indique, à sa demande, le vendeur, le prix et le notaire chargé de la vente.'),
-        P('Pendant le mandat et les douze mois qui suivent sa fin, le MANDANT s’interdit d’acheter sans le MANDATAIRE, directement ou par personne interposée, un bien que celui-ci lui a présenté. Il s’en porte fort pour son conjoint, son partenaire de PACS, son concubin et toute personne avec qui il achèterait.', true),
+        soc
+          ? P('Pendant le mandat et les douze mois qui suivent sa fin, le MANDANT s’interdit d’acheter sans le MANDATAIRE, directement ou par personne interposée, un bien que celui-ci lui a présenté. Il s’en porte fort pour les associés et dirigeants de la société, et pour toute société qu’ils contrôlent.', true)
+          : P('Pendant le mandat et les douze mois qui suivent sa fin, le MANDANT s’interdit d’acheter sans le MANDATAIRE, directement ou par personne interposée, un bien que celui-ci lui a présenté. Il s’en porte fort pour son conjoint, son partenaire de PACS, son concubin et toute personne avec qui il achèterait.', true),
       ] },
       { titre: 'Engagements de l’Agence', ic: 'etoile', blocs: [
         P('Le MANDATAIRE s’engage, à chaque étape :'),
@@ -466,22 +561,34 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
           { titre: 'Rendre compte', x: 'Tenir à jour, dans l’espace personnel du MANDANT, le suivi de sa recherche et les biens présentés, et lui adresser un compte rendu après chaque visite.' },
         ] },
       ] },
-      { titre: 'Droit de rétractation', ic: 'retour', blocs: [
-        P(`Le mandat étant conclu à distance, le MANDANT peut se rétracter sans motif pendant ${enLettres(RETRACTATION_JOURS)} (${RETRACTATION_JOURS}) jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié) : par écrit, avec le formulaire ci-après s’il le souhaite, ou depuis son espace personnel (« Mon mandat », « Renoncer au mandat »). Il reçoit un accusé de réception par e-mail.`, true),
-        P('La mission ne commence qu’à la fin de ce délai, sauf demande expresse du MANDANT ; il garde alors son droit de rétractation tant que la mission n’est pas entièrement exécutée.'),
-        { t: 'case', coche: d.executionImmediate === true, x: 'Le MANDANT DEMANDE que la mission commence dès la signature, sans attendre la fin du délai de rétractation, et reconnaît qu’il perdra ce droit une fois la mission entièrement exécutée.' },
-        { t: 'case', coche: d.executionImmediate === false, x: 'Le MANDANT préfère que la mission commence à la fin du délai de rétractation.' },
-      ] },
+      { titre: 'Droit de rétractation', ic: 'retour', blocs: plusieurs
+        ? [
+          P(`Le mandat étant conclu à distance, chaque signataire peut se rétracter sans motif pendant ${enLettres(RETRACTATION_JOURS)} (${RETRACTATION_JOURS}) jours à compter du lendemain de sa propre signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié) ; si un autre signataire signe pendant ce délai, il est prolongé jusqu’à la fin du délai de celui-ci. Il se rétracte par écrit, avec le formulaire ci-après s’il le souhaite, ou en ligne (« Renoncer au mandat », depuis son espace personnel ou son lien personnel), et reçoit un accusé de réception par e-mail. La rétractation d’un signataire ne met fin au mandat qu’à son égard ; celle du premier signataire y met fin pour tous, et chacun en est prévenu par e-mail.`, true),
+          P('La mission ne commence, pour chaque signataire, qu’à la fin de son délai de rétractation, sauf s’il demande qu’elle commence plus tôt ; il garde alors son droit de rétractation tant que la mission n’est pas entièrement exécutée.'),
+          ...signataires.map((x): Bloc => ({ t: 'case', coche: execDe(x) === true,
+            x: `${x.prenom} ${x.nom.toUpperCase()} DEMANDE que la mission commence dès sa signature, sans attendre la fin de son délai de rétractation, et reconnaît qu’${x.civilite === 'Madame' ? 'elle' : 'il'} perdra ce droit une fois la mission entièrement exécutée.` })),
+        ]
+        : [
+          P(`Le mandat étant conclu à distance, le MANDANT peut se rétracter sans motif pendant ${enLettres(RETRACTATION_JOURS)} (${RETRACTATION_JOURS}) jours à compter du lendemain de sa signature (délai prolongé jusqu’au premier jour ouvrable s’il finit un samedi, un dimanche ou un jour férié) : par écrit, avec le formulaire ci-après s’il le souhaite, ou depuis son espace personnel (« Mon mandat », « Renoncer au mandat »). Il reçoit un accusé de réception par e-mail.`, true),
+          P('La mission ne commence qu’à la fin de ce délai, sauf demande expresse du MANDANT ; il garde alors son droit de rétractation tant que la mission n’est pas entièrement exécutée.'),
+          { t: 'case', coche: d.executionImmediate === true, x: 'Le MANDANT DEMANDE que la mission commence dès la signature, sans attendre la fin du délai de rétractation, et reconnaît qu’il perdra ce droit une fois la mission entièrement exécutée.' },
+          { t: 'case', coche: d.executionImmediate === false, x: 'Le MANDANT préfère que la mission commence à la fin du délai de rétractation.' },
+        ] },
       { titre: 'Informations', ic: 'info', blocs: [
         P(`Réclamations : par écrit à l’Agence. Sans réponse satisfaisante sous 30 jours, le MANDANT peut saisir gratuitement le médiateur de la consommation : ${A.mediateurNom}, ${A.mediateurAdresse}, ${A.mediateurSite}.`),
         P(`Données personnelles : l’Agence les traite pour exécuter le mandat et respecter ses obligations légales, et ne les communique qu’aux intervenants de l’opération. Le MANDANT peut y accéder, les rectifier ou les faire effacer en écrivant à ${A.mail}, et saisir la CNIL (www.cnil.fr).`),
         P('Démarchage téléphonique : le MANDANT peut s’inscrire gratuitement sur la liste d’opposition Bloctel (www.bloctel.gouv.fr).'),
         P('L’Agence exerce sous la loi n° 70-9 du 2 janvier 1970 (dite loi Hoguet), son décret d’application du 20 juillet 1972 et le code de déontologie des professionnels de l’immobilier. Le mandat est soumis à la loi française.'),
       ] },
-      { titre: 'Date et signatures', ic: 'plume', blocs: [
-        P(`Fait à ${A.ville}${d.signature ? `, le ${dateLongue(d.signature.le)}` : ''}. Le MANDANT a lu le mandat en entier avant de le signer, depuis son espace personnel, avec un code à usage unique reçu par e-mail ; le certificat de signature figure en dernière page. Chaque partie en conserve un exemplaire.`),
-        { t: 'sig' },
-      ] },
+      { titre: 'Date et signatures', ic: 'plume', blocs: plusieurs && m
+        ? [
+          P(`Fait à ${A.ville}. Chaque signataire a lu le mandat en entier avant de le signer, depuis son espace personnel ou son lien personnel, avec un code à usage unique reçu par e-mail ; les dates de signature et le certificat figurent ci-après. Chaque partie en conserve un exemplaire.`),
+          { t: 'sig', noms: signataires.map(x => `${x.prenom} ${x.nom.toUpperCase()}`) },
+        ]
+        : [
+          P(`Fait à ${A.ville}${d.signature ? `, le ${dateLongue(d.signature.le)}` : ''}. Le MANDANT a lu le mandat en entier avant de le signer, depuis son espace personnel, avec un code à usage unique reçu par e-mail ; le certificat de signature figure en dernière page. Chaque partie en conserve un exemplaire.`),
+          { t: 'sig' },
+        ] },
     ],
   };
 
@@ -494,15 +601,35 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
     ic: 'retour',
     sections: [{ blocs: [
       P(`À l’attention de : ${A.nom.toUpperCase()}, ${A.adresse}, ${A.cp} ${A.ville} — ${A.mail}`, true),
-      { t: 'l', items: [
-        `Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de service ci-dessous : ${titreMandat(d.numero)}.`,
-        `Conclu le : ${d.signature ? dateCourte(d.signature.le) : '………………'}`,
-        `Nom du consommateur : ${m ? `${m.prenom} ${m.nom.toUpperCase()}` : '………………'}`,
-        `Adresse du consommateur : ${m ? m.adresse : '………………'}`,
-        'Signature du consommateur (uniquement en cas de notification du présent formulaire sur papier) :',
-        'Date :',
-      ] },
-      P('Vous pouvez aussi renoncer en ligne, depuis votre espace personnel : « Mon mandat », « Renoncer au mandat ».'),
+      { t: 'l', items: plusieurs && m
+        ? [
+          /* Le modèle de l'annexe à l'article R221-1, au pluriel possible :
+             chacun rature ce qui ne le concerne pas, et ne signe que pour lui. */
+          `Je/nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat portant sur la prestation de services ci-dessous : ${titreMandat(d.numero)}.`,
+          'Conclu le : ………………',
+          'Nom du (des) consommateur(s) : ………………',
+          'Adresse du (des) consommateur(s) : ………………',
+          'Signature du (des) consommateur(s) (uniquement en cas de notification du présent formulaire sur papier) :',
+          'Date :',
+        ]
+        : [
+          `Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de service ci-dessous : ${titreMandat(d.numero)}.`,
+          `Conclu le : ${d.signature ? dateCourte(d.signature.le) : '………………'}`,
+          ...(soc && m ? [
+            `Nom du mandant : ${soc.denomination.toUpperCase()}, représentée par ${m.prenom} ${m.nom.toUpperCase()}, et ${m.prenom} ${m.nom.toUpperCase()} en son nom personnel`,
+            `Adresse : ${soc.siege}`,
+            'Signature (uniquement en cas de notification du présent formulaire sur papier) :',
+          ] : [
+            `Nom du consommateur : ${m ? `${m.prenom} ${m.nom.toUpperCase()}` : '………………'}`,
+            `Adresse du consommateur : ${m ? m.adresse : '………………'}`,
+            'Signature du consommateur (uniquement en cas de notification du présent formulaire sur papier) :',
+          ]),
+          'Date :',
+        ] },
+      ...(plusieurs ? [P('(*) Rayez la mention inutile. La rétractation ne vaut que pour les personnes nommées dans ce formulaire.', false)] : []),
+      P(plusieurs
+        ? 'Vous pouvez aussi renoncer en ligne : depuis votre espace personnel (« Mon mandat », « Renoncer au mandat »), ou depuis votre lien personnel de signature.'
+        : 'Vous pouvez aussi renoncer en ligne, depuis votre espace personnel : « Mon mandat », « Renoncer au mandat ».'),
     ] }],
   };
 
@@ -528,18 +655,49 @@ export function etatMandat(r: {
 
 /* Jusqu'à quand le client peut renoncer. Le délai part du lendemain de la
    signature et dure 14 jours : signé le 25, il court jusqu'au 9 à minuit,
-   heure de Paris. S'il tombe un samedi ou un dimanche, il glisse au lundi.
-   Les jours fériés ne sont pas calculés : on arrête toujours un peu plus
-   tard que la loi, jamais plus tôt (minuit « heure d'hiver », soit une
-   heure de marge l'été). */
+   heure de Paris. S'il tombe un samedi, un dimanche ou un jour férié, il
+   glisse au premier jour ouvrable (article L221-19 : « prolongé jusqu'au
+   premier jour ouvrable suivant »). Minuit « heure d'hiver » : une heure de
+   marge l'été, jamais une de moins. */
+function paques(an: number): number {
+  /* Algorithme de Meeus : le dimanche de Pâques, en jours UTC. */
+  const a = an % 19, b = Math.floor(an / 100), c = an % 100, d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31), jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return Date.UTC(an, mois - 1, jour);
+}
+export function jourFerie(t: number): boolean {
+  const d = new Date(t), an = d.getUTCFullYear(), md = `${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+  if (['1-1', '5-1', '5-8', '7-14', '8-15', '11-1', '11-11', '12-25'].includes(md)) return true;
+  const p = paques(an), j = 86_400_000, jour = Date.UTC(an, d.getUTCMonth(), d.getUTCDate());
+  return jour === p + j || jour === p + 39 * j || jour === p + 50 * j;   // lundi de Pâques, Ascension, lundi de Pentecôte
+}
 export function finRetractation(signeLe: string): Date {
   const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(signeLe));
   let fin = Date.parse(jour + 'T12:00:00Z') + RETRACTATION_JOURS * 86_400_000;
-  const js = new Date(fin).getUTCDay();          // 6 = samedi, 0 = dimanche
-  if (js === 6) fin += 2 * 86_400_000;
-  if (js === 0) fin += 86_400_000;
+  for (let n = 0; n < 7; n++) {
+    const js = new Date(fin).getUTCDay();          // 6 = samedi, 0 = dimanche
+    if (js !== 6 && js !== 0 && !jourFerie(fin)) break;
+    fin += 86_400_000;
+  }
   return new Date(new Date(fin).toISOString().slice(0, 10) + 'T23:59:59+01:00');
+}
+
+/* À plusieurs : son délai part de SA signature, et se prolonge jusqu'à la
+   fin du délai d'un autre signataire qui signe pendant qu'il court (le
+   texte du mandat le dit). Une signature arrivée après la fin de son délai
+   ne le rouvre pas. */
+export function finRetractationPour(soi: string, toutes: (string | null | undefined)[]): Date {
+  let fin = finRetractation(soi);
+  for (const t of toutes.filter((x): x is string => !!x).sort()) {
+    if (t > soi && Date.parse(t) <= fin.getTime()) {
+      const f = finRetractation(t);
+      if (f > fin) fin = f;
+    }
+  }
+  return fin;
 }
 
 /* Masquer une adresse : « j•••••@exemple.fr ». */
@@ -587,6 +745,80 @@ export function validerMandant(x: unknown): { ok: true; mandant: Mandant } | { o
   if (m.adresse.length < 8) champs.adresse = 'Votre adresse complète';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(m.email)) champs.email = 'Une adresse e-mail valide';
   return Object.keys(champs).length ? { ok: false, champs } : { ok: true, mandant: m };
+}
+
+/* ── Un co-signataire, saisi par le premier signataire ──
+   Les mêmes champs que lui, les mêmes contrôles, mais dit à la troisième
+   personne (« Son prénom »). Le téléphone reste facultatif. Son e-mail doit
+   être le sien : chacun reçoit son propre lien et son propre code, deux
+   signataires ne peuvent donc pas partager une adresse. */
+export function validerPersonne(x: unknown, emailsPris: string[] = []): { ok: true; mandant: Mandant } | { ok: false; champs: Record<string, string> } {
+  const v = validerMandant(x);
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+  const txt = (w: unknown, max: number) => (typeof w === 'string' ? w.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+  const email = txt(o.email, 120).toLowerCase();
+  const champs: Record<string, string> = {};
+  if (!v.ok) {
+    const DIRE: Record<string, string> = {
+      civilite: 'Madame ou Monsieur ?', prenom: 'Son prénom', nom: 'Son nom',
+      naissanceLieu: 'Sa ville de naissance', adresse: 'Son adresse complète', email: 'Son adresse e-mail',
+    };
+    for (const [k, t] of Object.entries(v.champs)) {
+      champs[k] = k === 'naissanceDate' ? t.replace('Votre date', 'Sa date') : DIRE[k] || t;
+    }
+  }
+  if (!champs.email && emailsPris.map(a => a.trim().toLowerCase()).includes(email)) {
+    champs.email = 'Chacun signe avec sa propre adresse e-mail';
+  }
+  if (Object.keys(champs).length) return { ok: false, champs };
+  return v.ok ? v : { ok: false, champs };
+}
+
+/* ── La société, telle qu'il la décrit ──
+   Le SIREN se vérifie (neuf chiffres, clé de Luhn) : une faute de frappe se
+   voit tout de suite, avant d'arriver sur le mandat. */
+export function sirenValide(t: string): boolean {
+  const d = String(t || '').replace(/\s/g, '');
+  if (!/^\d{9}$/.test(d)) return false;
+  let somme = 0;
+  for (let i = 0; i < 9; i++) {
+    let n = Number(d[8 - i]);
+    if (i % 2 === 1) { n *= 2; if (n > 9) n -= 9; }
+    somme += n;
+  }
+  return somme % 10 === 0;
+}
+export const sirenLisible = (t: string) => String(t || '').replace(/\s/g, '').replace(/^(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3');
+/* « Gérant » devient « gérante » pour Madame, en minuscules dans la phrase. */
+export function qualiteAccordee(q: string, civilite: string): string {
+  const f = civilite === 'Madame';
+  const t: Record<string, [string, string]> = {
+    'Gérant': ['gérant', 'gérante'], 'Président': ['président', 'présidente'],
+    'Directeur général': ['directeur général', 'directrice générale'], 'Associé habilité': ['associé habilité', 'associée habilitée'],
+  };
+  const x = t[q];
+  return x ? x[f ? 1 : 0] : String(q || '').toLowerCase();
+}
+export function validerSociete(x: unknown): { ok: true; societe: Societe } | { ok: false; champs: Record<string, string> } {
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+  const txt = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+  const s: Societe = {
+    denomination: txt(o.denomination, 120),
+    forme: (FORMES_SOCIETE as readonly string[]).includes(String(o.forme)) ? String(o.forme) : '',
+    siren: txt(o.siren, 20).replace(/\s/g, ''),
+    rcsVille: txt(o.rcsVille, 60),
+    siege: txt(o.siege, 200),
+    qualite: (QUALITES_SOCIETE as readonly string[]).includes(String(o.qualite)) ? String(o.qualite) : '',
+  };
+  const champs: Record<string, string> = {};
+  if (s.denomination.length < 2) champs.denomination = 'Le nom de la société';
+  if (!s.forme) champs.forme = 'Sa forme';
+  if (!/^\d{9}$/.test(s.siren)) champs.siren = 'Les 9 chiffres du SIREN';
+  else if (!sirenValide(s.siren)) champs.siren = 'Ce numéro ne semble pas juste : vérifiez-le sur le Kbis';
+  if (s.rcsVille.length < 2) champs.rcsVille = 'La ville du greffe';
+  if (s.siege.length < 8) champs.siege = 'L’adresse complète du siège';
+  if (!s.qualite) champs.qualite = 'Votre fonction dans la société';
+  return Object.keys(champs).length ? { ok: false, champs } : { ok: true, societe: s };
 }
 
 /* La recherche telle que le mandat la décrit, lue dans une ligne de

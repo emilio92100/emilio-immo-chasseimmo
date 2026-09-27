@@ -258,6 +258,22 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
   `annule_le`. RLS + `crm_authentifie`, comme les autres. Les fichiers vivent dans le bucket privé
   `mandats`, sous `documents/<id>/`. Le mandat de recherche signé en ligne reste dans
   `mandats_signatures` : la rubrique le montre à côté, en lecture.
+- **Signer à plusieurs** (`outils/sql/signature-plusieurs.sql`, voir `src/lib/cosignature.ts` et
+  `src/lib/foyer.ts`) :
+  - `clients.civilite` (la personne 1), `clients.couple`, `clients.conjoint` (jsonb : la personne 2
+    `{ civilite, prenom, nom, email, telephone, naissanceDate?, naissanceLieu? }`). Les `emails` et
+    `telephones` de la fiche restent ceux de la personne 1. `nomFoyer()` affiche « Paul et Claire
+    Martin » (liste, fiche, recherche par le prénom du conjoint).
+  - `mandats_signatures.societe` (jsonb `{ denomination, forme, siren, rcsVille, siege, qualite }`),
+    `kbis_chemin`, `griffe_chemin` (la signature tracée du premier signataire, gardée pour refaire
+    le PDF). `statut` gagne `partiel` : il a signé, on attend les autres.
+  - **`mandats_cosignataires`** : un co-signataire par ligne, rattaché à `signature_id`. `statut`
+    `prevu` (saisi, le premier n'a pas encore signé) → `invite` (son lien est parti) → `signe` ;
+    ou `decline` (« pas concerné »), `annule` (invitation close par Alexandre, ou le premier a
+    renoncé), `retracte`. `saisi` = ce que le premier a tapé, `personne` = ce que le co-signataire a
+    vérifié ou corrigé. `jeton` (son lien `/signer/<jeton>`), `lien_expire_le` (15 jours),
+    `relances` (1 et 2 : rappels ; 3 : Alexandre prévenu du délai), code et preuves comme
+    `mandats_signatures`, sa propre `execution_immediate`. RLS + `crm_authentifie`.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
@@ -463,6 +479,10 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/notifier` | portail | « Préviens le client, un bien est parti. » Réveille **tous les appareils du client**, pas ceux d'une recherche | clés VAPID |
 | `POST /api/upload-photos` | portail | Rapatrie les photos externes dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/upload-pdf` | portail | Dépose un PDF base64 dans le Storage | `SUPABASE_SERVICE_ROLE_KEY` |
+| `POST /api/signer` | **publique** | Le co-signataire, depuis son lien : `afficher`, `code`, `signer`, `pdf`, `renoncer`, `decliner`. La serrure est son jeton | Supabase, Mailjet |
+| `GET /signer/<jeton>` | **publique** | Sa page (aussi sur `espace.emilio-immo.com/signer/…`) : lire, vérifier ses informations, signer au doigt | Supabase |
+| `POST /api/mandat/cosignataire` | portail | Depuis la fiche : `renvoyer` son lien, `relancer` (lien neuf), `clore` l'invitation | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
+| `GET /api/mandat/relances` | **publique** (`CRON_SECRET`) | Chaque matin à 9 h UTC : rappels à 2 et 7 jours, alerte à Alexandre à 7 jours et à l'expiration du lien | `CRON_SECRET` |
 | `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
@@ -1012,9 +1032,60 @@ pourrait imposer, puisque l'agence fait signer en ligne, d'ouvrir aussi une rés
 pour tous ses mandats ; la couverture géographique de l'assurance RCP n'est pas indiquée dans
 l'information précontractuelle (article R111-2).
 
-**Chantier suivant, décidé avec Alexandre** : la signature en ligne à plusieurs. Fiche client
+**Chantier suivant, décidé avec Alexandre** (fait en V3.9) : la signature en ligne à plusieurs. Fiche client
 « une personne / un couple » ; dans l'espace, « J'achète via une société » et « Ajouter un
 co-acquéreur » (chacun son lien et son code, le mandat n'est complet qu'aux deux signatures,
 relances J+2 et J+7) ; signer seul reste la voie par défaut, avec un rappel clair et une case
 « je certifie que les informations sont exactes ». Puis la signature en ligne des avenants (vente
 et recherche) dans l'espace du client, et l'avenant au mandat de recherche.
+
+### V3.9 — 27 septembre 2026 · signer le mandat à plusieurs, ou via une société
+
+**Dans l'espace (étape 2 de la signature)** : « Vous achetez : en mon nom / via une société » et
+« Qui signe le mandat ? ». Signer seul reste la voie par défaut, avec un encadré « Vous signez
+seul » (son engagement vaut aussi pour la personne avec qui il achète et pour sa société) et une
+case obligatoire « Je certifie que les informations que j'ai renseignées sont exactes et
+complètes… ». « Ajouter mon conjoint ou un co-acquéreur » : civilité, nom, naissance, e-mail,
+téléphone facultatif, « même adresse que moi » (4 personnes au plus). Une fiche « couple » arrive
+pré-remplie avec la personne 2. « Via une société » : il la retrouve dans le registre public
+(`src/lib/entreprises.ts`, API Recherche d'entreprises de l'État, appelée du navigateur) — nom,
+forme, SIREN (vérifié), siège, greffe quand le département n'en a qu'un, sa fonction s'il figure
+parmi les dirigeants ; Kbis facultatif (photo réduite dans le navigateur, 3 Mo au plus).
+
+**À sa signature** (`/api/espace/mandat`, étape `signer`) : la ligne passe en `partiel`, chaque
+co-signataire reçoit son lien, le PDF (« en attente de Claire ») lui est envoyé, la recherche porte
+le mandat (ses visites peuvent partir : le texte l'engage dès sa signature), la fiche passe en
+couple. « Mon mandat » montre qui a signé et qui on attend, avec « Renvoyer le lien » et
+« Corriger son e-mail » (lien neuf, l'ancien ne marche plus) ; l'accueil le dit aussi.
+
+**Le co-signataire** (`/signer/<jeton>`, `src/components/signer/SignatureCosignataire.tsx`) :
+accueil, récapitulatif, ses informations (il corrige ce que le premier a saisi — noté au
+déroulé), son code (15 minutes à partir de sa demande), son choix d'exécution, sa signature au
+doigt. « Je ne suis pas concerné » ferme son invitation. À chaque signature le PDF est refait et
+scellé ; le certificat liste chaque signataire et cite l'empreinte des versions précédentes.
+
+**Délais** : lien valable 15 jours ; rappels à 2 et 7 jours (cron `/api/mandat/relances`, qui a
+besoin de `CRON_SECRET` sur Vercel, comme le point automatique) ; à l'expiration, Alexandre choisit
+dans la fenêtre « Mandat de recherche » : lien neuf, ou clore (le mandat continue au seul nom des
+signataires, version définitive envoyée). Rétractation : 14 jours après SA signature, prolongés si
+un autre signe pendant qu'ils courent (`finRetractationPour`). `finRetractation` compte désormais
+les jours fériés (L221-19).
+
+**Relu par un second agent** : case d'exécution immédiate propre à chaque signataire, « premier
+signataire » défini, solidarité limitée aux honoraires d'un achat commun, un invité qui décline
+n'est pas partie (sa fiche et son cadre disparaissent), formulaire de rétractation au modèle
+« Je/nous (*) », variante société sans solidarité personnelle (risque de cautionnement) mais avec
+son engagement propre et un porte-fort adapté aux associés.
+
+**À faire relire par l'avocat** : la rétractation du premier signataire qui met fin au mandat pour
+tous ; une seule signature pour la société et en son nom personnel ; rendre le Kbis obligatoire
+(pouvoirs, obligations anti-blanchiment) — laissé facultatif à la demande d'Alexandre.
+
+**Corrigé en passant** : après six codes, un client restait bloqué pour toujours (le compteur
+repart après une heure sans code) ; « Mon mandat » disait « renouvelé chaque mois » alors que le
+mandat en ligne dure 12 mois sans reconduction ; un certificat de deux pages faussait le « 3 / 8 »
+du pied des pages du mandat (on refait le mandat avec le bon compte).
+
+**Vérifié** : texte et PDF du signataire seul identiques octet pour octet ; 45 contrôles de bout en
+bout sur un Supabase en mémoire (seul sans le SQL, à deux, corrections, relances, déclin,
+clôture, société, renonciation, compteur de codes) ; captures 390 et 1280 de chaque écran.

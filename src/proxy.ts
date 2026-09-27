@@ -13,6 +13,8 @@ import type { NextRequest } from 'next/server';
  *  - /espace/...                   (l'espace acheteur, protégé par son propre lien)
  *  - /api/espace/...               (ce que cet espace écrit : chaque route vérifie le lien)
  *  - /api/point-auto/envoi         (l'envoi quotidien, appelé par Vercel : protégé par CRON_SECRET)
+ *  - /api/mandat/relances          (les rappels aux co-signataires, idem : CRON_SECRET)
+ *  - /signer/... et /api/signer     (le lien personnel d'un co-signataire : protégé par son jeton)
  *  - les fichiers statiques
  */
 
@@ -21,8 +23,8 @@ const COOKIE = 'emilio_acces';
 // Chemins accessibles sans code
 /* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
    Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
-const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi'];
-const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/'];
+const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer'];
+const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
 
 async function sha256(texte: string): Promise<string> {
   const data = new TextEncoder().encode(texte);
@@ -65,6 +67,9 @@ export async function proxy(request: NextRequest) {
          ligne, /bien/<id> était réécrit en /espace/bien/<id> et ne menait
          nulle part — et les liens partaient donc sur l'adresse Vercel. */
       pathname.startsWith('/bien/') ||
+      /* Le lien personnel d'un co-signataire (conjoint, co-acquéreur) :
+         espace.emilio-immo.com/signer/<jeton>. */
+      pathname.startsWith('/signer/') ||
       pathname.startsWith('/api/') ||
       pathname.startsWith('/_next/') ||
       /\.[a-z0-9]+$/i.test(pathname);

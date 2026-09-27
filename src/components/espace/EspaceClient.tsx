@@ -6,7 +6,7 @@ import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
-import SignatureMandat, { CarteMonMandat, CartePret, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
+import SignatureMandat, { CarteMonMandat, CartePret, CarteAttente, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
 import { jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 
@@ -1213,6 +1213,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         setMandat(x => ({
           ...x, etat: 'valide', numero: r.numero, propose: false, expiration: fin,
           signe: { le: r.signeLe, numero: r.numero, fin: r.finRetractation, execution: r.execution },
+          /* Signé à plusieurs : « Mon mandat » suit ceux qu'on attend. */
+          ...(r.attente?.length ? { cos: r.attente } : {}),
         }));
         if (apres) await apres();
       }} />, 'pleine mandat');
@@ -1671,7 +1673,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               /* Alexandre a préparé le mandat : une carte le propose, sans
                  attendre la première demande de visite. */
               mandatPret={mandat.propose && mandat.etat === 'a_signer'
-                ? <CartePret onSigner={() => ouvrirMandat('libre')} /> : null}
+                ? <CartePret onSigner={() => ouvrirMandat('libre')} />
+                /* Signé, mais on attend encore son conjoint : l'accueil le dit. */
+                : mandat.cos?.some(c => c.statut === 'invite')
+                  ? <CarteAttente mandat={mandat} onVoir={() => aller('recherche')} /> : null}
               /* Sa dernière visite, sans réponse encore : la question l'attend
                  en haut de l'accueil pendant 7 jours. */
               avisVisite={(() => {

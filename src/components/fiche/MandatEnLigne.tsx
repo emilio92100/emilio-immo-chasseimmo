@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
-import { lienEspace } from '@/lib/jeton';
+import { lienEspace, HOTE_ESPACE } from '@/lib/jeton';
 import {
   HONORAIRES_TAUX, BAREME, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
   forfaitDe, seuilForfait, honorairesCourt, pourcentDe,
@@ -42,7 +42,18 @@ type Sig = {
   pdf_chemin: string | null; execution_immediate: boolean | null; code_envoye_le: string | null;
   mandant: { civilite?: string; prenom?: string; nom?: string; email?: string; telephone?: string; adresse?: string } | null;
   contenu?: Contenu | null;
+  /* SQL « signature-plusieurs » : la société, son Kbis. */
+  societe?: { denomination: string; forme: string; siren: string; rcsVille: string; qualite: string } | null;
+  kbis_chemin?: string | null;
 };
+/* Un co-signataire (conjoint, co-acquéreur) : voir src/lib/cosignature.ts. */
+type CoSig = {
+  id: string; rang: number; statut: string; jeton: string | null;
+  personne: { civilite?: string; prenom?: string; nom?: string; email?: string };
+  invite_le: string | null; ouvert_le: string | null; lien_expire_le: string | null; relances: number;
+  signe_le: string | null; decline_le: string | null; retracte_le: string | null;
+};
+const nomCo = (c: CoSig) => `${c.personne?.prenom || ''} ${c.personne?.nom || ''}`.trim();
 
 /* ── Ce que le client a corrigé en signant ──
    Nom, e-mail, téléphone et adresse sont modifiables dans l'espace : une
@@ -113,6 +124,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   onClient?: (c: any) => void;
 }) {
   const [sig, setSig] = useState<Sig | null>(null);
+  const [cos, setCos] = useState<CoSig[]>([]);
   const [numero, setNumero] = useState<string>(recherche?.mandat_numero || '');
   const [reserve, setReserve] = useState('');
   const [approuveLe, setApprouveLe] = useState<string | null>(null);
@@ -130,13 +142,21 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   const charger = useCallback(async () => {
     if (!recherche?.id) return;
     const [s, p, f] = await Promise.all([
-      supabase.from('mandats_signatures')
-        .select('id, numero, statut, signe_le, retracte_le, pdf_chemin, execution_immediate, code_envoye_le, mandant, contenu')
+      /* Toute la ligne : la société et le Kbis n'existent qu'une fois le SQL
+         « signature-plusieurs » lancé. */
+      supabase.from('mandats_signatures').select('*')
         .eq('recherche_id', recherche.id).order('created_at', { ascending: false }).limit(1),
       supabase.from('parametres').select('cle, valeur').in('cle', [CLE_RESERVE, CLE_APPROBATION]),
       supabase.storage.from('mandats').list('agence'),
     ]);
-    setSig(!s.error && s.data?.length ? (s.data[0] as Sig) : null);
+    const derniere = !s.error && s.data?.length ? (s.data[0] as Sig) : null;
+    setSig(derniere);
+    /* Ceux qui signent avec lui (la table n'existe qu'après le SQL : sans
+       elle, la lecture échoue sans bruit et rien ne s'affiche). */
+    if (derniere && derniere.statut !== 'en_cours') {
+      const c = await supabase.from('mandats_cosignataires').select('*').eq('signature_id', derniere.id).neq('statut', 'prevu').order('rang');
+      setCos(!c.error && c.data ? (c.data as CoSig[]) : []);
+    } else setCos([]);
     if (!p.error && p.data) {
       setReserve(numeros(p.data.find(x => x.cle === CLE_RESERVE)?.valeur || '').join(', '));
       const a = p.data.find(x => x.cle === CLE_APPROBATION)?.valeur || null;
@@ -172,8 +192,42 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   const premierDeLaReserve = numeros(reserve)[0] || '';
   const valide = !!recherche?.mandat_date_signature
     && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
-  const signeEnLigne = sig?.statut === 'signe';
-  const ecarts = sig && (sig.statut === 'signe' || sig.statut === 'en_cours') ? ecartsDe(sig.mandant, client) : [];
+  const signeEnLigne = sig?.statut === 'signe' || sig?.statut === 'partiel';
+  const ecarts = sig && (sig.statut === 'signe' || sig.statut === 'partiel' || sig.statut === 'en_cours') ? ecartsDe(sig.mandant, client) : [];
+  const attendus = cos.filter(c => c.statut === 'invite');
+  const nomP = `${sig?.mandant?.prenom || ''} ${sig?.mandant?.nom || ''}`.trim();
+  const lienCo = (c: CoSig) => (c.jeton ? `https://${HOTE_ESPACE}/signer/${c.jeton}` : '');
+
+  /* ── Les gestes sur un co-signataire (le serveur envoie les mails) ── */
+  async function gesteCo(action: 'renvoyer' | 'relancer' | 'clore', c: CoSig) {
+    const qui = nomCo(c);
+    if (action === 'clore' && !confirm(`Clore l’invitation de ${qui} ?\n\nLe mandat continue au seul nom de ${nomP} (le texte le prévoit). ${nomP.split(' ')[0]} est prévenu par e-mail.`)) return;
+    setTravail(`co-${action}-${c.id}`); setMsg(null);
+    try {
+      const r = await fetch('/api/mandat/cosignataire', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, coId: c.id }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.erreur || `erreur ${r.status}`);
+      setMsg({ t: action === 'clore' ? `Invitation close : le mandat continue avec ${nomP}.` : `Lien ${action === 'relancer' ? 'neuf ' : ''}envoyé à ${qui}.`, ok: true });
+      await charger();
+    } catch (e) {
+      setMsg({ t: (e as Error).message, ok: false });
+      await charger();
+    }
+    setTravail('');
+  }
+  async function copierLienCo(c: CoSig) {
+    const l = lienCo(c);
+    if (!l) return;
+    try { await navigator.clipboard.writeText(l); setMsg({ t: `Lien de ${nomCo(c)} copié : tu peux le lui envoyer par SMS.`, ok: true }); }
+    catch { window.prompt('Copie ce lien :', l); }
+  }
+  async function voirKbis() {
+    if (!sig?.kbis_chemin) return;
+    const w = window.open('', '_blank');
+    const { data, error } = await supabase.storage.from('mandats').createSignedUrl(sig.kbis_chemin, 300);
+    if (error || !data?.signedUrl) { w?.close(); setMsg({ t: 'Le Kbis n’a pas pu être ouvert : ' + (error?.message || 'lien indisponible'), ok: false }); return; }
+    if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
+  }
   /* Sa recherche d'aujourd'hui sort-elle de ce qu'il a signé (budget,
      secteurs, type de bien) ? Le client peut changer ses critères depuis
      son espace ; Alexandre reçoit aussi un mail à ce moment-là. */
@@ -369,12 +423,61 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 1 — L'état de la signature en ligne */}
-      {signeEnLigne && sig && (
+      {signeEnLigne && sig && !attendus.length && (
         <div style={boite('#f0fdf4', '#bbf7d0', '#166534')}>
-          <b>{`✍️ Signé en ligne par ${sig.mandant?.prenom || ''} ${sig.mandant?.nom || ''}`.trim()}</b>
+          <b>{`✍️ Signé en ligne par ${[nomP, ...cos.filter(c => c.statut === 'signe').map(nomCo)].join(' et ')}`}</b>
           <div>{`N° ${sig.numero} · le ${sig.signe_le ? quand(sig.signe_le) : '—'}`}</div>
           <div style={{ color: '#15803d' }}>{sig.execution_immediate ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours de rétractation.'}</div>
-          <button type="button" style={{ ...btn, marginTop: 10 }} onClick={voirPdf}>📄 Voir le mandat signé</button>
+          {cos.filter(c => c.statut !== 'signe').map(c => (
+            <div key={c.id} style={{ color: '#15803d', marginTop: 4 }}>{c.statut === 'decline'
+              ? `🙅 ${nomCo(c)} a indiqué ne pas être concerné${c.personne?.civilite === 'Madame' ? 'e' : ''}${c.decline_le ? ` (le ${quand(c.decline_le)})` : ''} : le mandat continue sans ${c.personne?.civilite === 'Madame' ? 'elle' : 'lui'}.`
+              : c.statut === 'retracte' ? `↩️ ${nomCo(c)} a renoncé au mandat${c.retracte_le ? ` le ${quand(c.retracte_le)}` : ''}.`
+              : `🔒 Invitation de ${nomCo(c)} close : le mandat continue sans sa signature.`}</div>
+          ))}
+          {sig.societe && <div style={{ marginTop: 6 }}>{`🏢 Pour la société ${sig.societe.denomination} (${sig.societe.forme}, SIREN ${sig.societe.siren}, RCS ${sig.societe.rcsVille}) · ${sig.societe.qualite.toLowerCase()}`}</div>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            <button type="button" style={btn} onClick={voirPdf}>📄 Voir le mandat signé</button>
+            {sig.kbis_chemin && <button type="button" style={btn} onClick={voirKbis}>📎 Voir le Kbis</button>}
+          </div>
+        </div>
+      )}
+      {sig?.statut === 'partiel' && attendus.length > 0 && (
+        <div style={boite('#fffbeb', '#fde68a', '#92400e')}>
+          <b>{`⏳ Signé par ${nomP} · en attente de ${attendus.map(nomCo).join(' et ')}`}</b>
+          <div>{`N° ${sig.numero} · ${sig.mandant?.prenom || 'il'} a signé le ${sig.signe_le ? quand(sig.signe_le) : '—'}${sig.execution_immediate ? ' et a demandé que la recherche commence tout de suite' : ' et préfère attendre la fin des 14 jours'}. Le mandat l’engage déjà.`}</div>
+          {cos.map(c => {
+            const expire = !!c.lien_expire_le && Date.parse(c.lien_expire_le) < Date.now();
+            const occupe = travail.startsWith('co-') && travail.endsWith(c.id);
+            return (
+              <div key={c.id} style={{ borderTop: '1px solid #fde68a', marginTop: 9, paddingTop: 8 }}>
+                <div style={{ fontWeight: 700, color: '#1a2332' }}>{`${nomCo(c)} · ${c.personne?.email || ''}`}</div>
+                {c.statut === 'invite' ? (
+                  <>
+                    <div>{`Lien envoyé le ${c.invite_le ? quand(c.invite_le) : '—'} · ${c.ouvert_le ? `ouvert le ${quand(c.ouvert_le)}` : 'pas encore ouvert'} · pas encore signé.`}</div>
+                    <div style={{ color: expire ? '#b91c1c' : '#a16207', fontSize: 12.5, marginTop: 2 }}>{expire
+                      ? `Lien expiré le ${quand(c.lien_expire_le!)} sans signature : envoie-lui un lien neuf, ou clos l’invitation.`
+                      : `${c.relances ? `${c.relances} rappel${c.relances > 1 ? 's' : ''} parti${c.relances > 1 ? 's' : ''}` : 'Rappels automatiques à 2 et 7 jours'} · lien valable jusqu’au ${c.lien_expire_le ? quand(c.lien_expire_le) : '—'}.`}</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                      <button type="button" style={btn} disabled={occupe} onClick={() => gesteCo(expire ? 'relancer' : 'renvoyer', c)}>{expire ? '✉️ Envoyer un lien neuf' : `✉️ Renvoyer le lien à ${c.personne?.prenom || ''}`}</button>
+                      {!expire && <button type="button" style={btn} onClick={() => copierLienCo(c)}>🔗 Copier son lien</button>}
+                      <button type="button" style={{ ...btn, color: '#b91c1c' }} disabled={occupe} onClick={() => gesteCo('clore', c)}>Clore l’invitation</button>
+                    </div>
+                  </>
+                ) : (
+                  <div>{c.statut === 'signe' ? `✓ A signé le ${c.signe_le ? quand(c.signe_le) : '—'}.`
+                    : c.statut === 'decline' ? '🙅 A indiqué ne pas être concerné par cet achat.'
+                    : c.statut === 'retracte' ? '↩️ A renoncé au mandat.' : '🔒 Invitation close.'}</div>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" style={{ ...btn, marginTop: 10 }} onClick={voirPdf}>📄 Voir le mandat (tel qu’il est signé aujourd’hui)</button>
+        </div>
+      )}
+      {cos.length > 0 && client?.couple && (
+        <div style={boite('#eff6ff', '#bfdbfe', '#1e3a8a')}>
+          <b>👥 Fiche en couple</b>
+          <div>{`${sig?.mandant?.prenom || 'Le client'} a indiqué ${cos.map(nomCo).join(' et ')} en signant son mandat${sig?.signe_le ? `, le ${quand(sig.signe_le)}` : ''}.`}</div>
         </div>
       )}
       {depasse.length > 0 && (

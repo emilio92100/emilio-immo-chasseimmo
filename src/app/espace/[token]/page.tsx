@@ -6,7 +6,7 @@ import EspaceClient from '@/components/espace/EspaceClient';
 import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '@/lib/espace';
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
-import { etatMandat, finRetractation, rechercheDepuis, masquerEmail, type Mandant } from '@/lib/mandat';
+import { etatMandat, finRetractationPour, rechercheDepuis, masquerEmail, type Mandant, type Societe } from '@/lib/mandat';
 import { lireReserve } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 
@@ -134,7 +134,9 @@ export default async function PageEspace({ params, searchParams }: {
        dernière signature, et la réserve de numéros d'Alexandre. Avant que le
        SQL soit passé, la table n'existe pas : la lecture échoue sans bruit,
        et l'espace se comporte comme avant. */
-    supabase.from('clients').select('emails, telephones, adresse').eq('id', client.id).maybeSingle(),
+    /* Toute la fiche : la civilité et le conjoint (fiche « couple ») n'existent
+       qu'une fois le SQL de la signature à plusieurs lancé. */
+    supabase.from('clients').select('*').eq('id', client.id).maybeSingle(),
     supabase.from('mandats_signatures').select('*').eq('recherche_id', recherche.id)
       .order('created_at', { ascending: false }).limit(1),
     lireReserve(supabase),
@@ -341,18 +343,48 @@ export default async function PageEspace({ params, searchParams }: {
   const prefill: Mandant = derniereSig && derniereSig.statut === 'en_cours' && derniereSig.mandant
     ? derniereSig.mandant as Mandant
     : {
-      civilite: '', prenom: client?.prenom || '', nom: client?.nom || '',
+      civilite: coord?.civilite === 'Madame' || coord?.civilite === 'Monsieur' ? coord.civilite : '',
+      prenom: client?.prenom || '', nom: client?.nom || '',
       naissanceDate: '', naissanceLieu: '', adresse: coord?.adresse || '',
       email: (Array.isArray(coord?.emails) ? coord!.emails[0] : '') || '',
       telephone: (Array.isArray(coord?.telephones) ? coord!.telephones[0] : '') || '',
     };
+
+  /* Signer à plusieurs : ceux qu'il a déjà indiqués (ligne en cours), ceux
+     qu'on attend ou qui ont signé (ligne signée), ou — s'il n'a encore rien
+     commencé — le conjoint de sa fiche « couple ». La table n'existe qu'une
+     fois le SQL lancé : sans elle, la lecture échoue sans bruit. */
+  type LigneCo = { id: string; statut: string; personne: Mandant; invite_le: string | null; signe_le: string | null; lien_expire_le: string | null };
+  let cosSig: LigneCo[] = [];
+  if (derniereSig?.id) {
+    const { data: cosRes } = await supabase.from('mandats_cosignataires')
+      .select('id, rang, statut, personne, invite_le, signe_le, lien_expire_le').eq('signature_id', derniereSig.id).order('rang');
+    cosSig = (cosRes || []) as LigneCo[];
+  }
+  const enCoursSig = derniereSig?.statut === 'en_cours';
+  const conjointFiche = coord?.couple && coord?.conjoint && typeof coord.conjoint === 'object' ? coord.conjoint as Partial<Mandant> : null;
+  const prefillCos: Mandant[] = enCoursSig
+    ? cosSig.filter(c => c.statut === 'prevu').map(c => c.personne)
+    : conjointFiche && etatM !== 'valide'
+      ? [{
+        civilite: conjointFiche.civilite === 'Madame' || conjointFiche.civilite === 'Monsieur' ? conjointFiche.civilite : '',
+        prenom: String(conjointFiche.prenom || ''), nom: String(conjointFiche.nom || ''),
+        naissanceDate: String(conjointFiche.naissanceDate || ''), naissanceLieu: String(conjointFiche.naissanceLieu || ''),
+        adresse: prefill.adresse, email: String(conjointFiche.email || ''), telephone: String(conjointFiche.telephone || ''),
+      }]
+      : [];
+  const signeOuPartiel = derniereSig && (derniereSig.statut === 'signe' || derniereSig.statut === 'partiel') && derniereSig.signe_le;
+  const membres = signeOuPartiel ? cosSig.filter(c => c.statut !== 'prevu') : [];
+  /* Son délai de rétractation : 14 jours après sa signature, prolongés si un
+     co-signataire signe pendant qu'ils courent. */
+  const signesCos = membres.filter(c => c.statut === 'signe' || c.statut === 'retracte').map(c => c.signe_le);
   const mandat = {
     etat: etatM,
     numero: (recherche.mandat_numero as string | null) || (derniereSig?.statut === 'en_cours' ? derniereSig.numero : null) || null,
     propose: !!recherche.mandat_propose_le && etatM === 'a_signer',
-    signe: etatM === 'valide' && derniereSig?.statut === 'signe' && derniereSig.signe_le
+    signe: etatM === 'valide' && signeOuPartiel
       ? { le: derniereSig.signe_le as string, numero: derniereSig.numero as string,
-          fin: finRetractation(derniereSig.signe_le).toISOString(), execution: derniereSig.execution_immediate ?? null }
+          fin: finRetractationPour(derniereSig.signe_le, signesCos).toISOString(), execution: derniereSig.execution_immediate ?? null }
       : null,
     expiration: (recherche.mandat_date_expiration as string | null) || null,
     recherche: rechercheDepuis(recherche),
@@ -364,6 +396,12 @@ export default async function PageEspace({ params, searchParams }: {
       && (derniereSig.mandant as Mandant | null)?.email
       ? { le: derniereSig.code_envoye_le as string, email: masquerEmail((derniereSig.mandant as Mandant).email) }
       : null,
+    prefillCos,
+    societe: enCoursSig ? (derniereSig?.societe as Societe | null) || null : null,
+    cos: membres.map(c => ({
+      id: c.id, prenom: c.personne?.prenom || '', nom: c.personne?.nom || '', email: c.personne?.email || '',
+      statut: c.statut, invite: c.invite_le, signe: c.signe_le, expire: c.lien_expire_le,
+    })),
   };
 
   const jours = client?.created_at

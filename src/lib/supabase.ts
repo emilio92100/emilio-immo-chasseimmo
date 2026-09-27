@@ -84,6 +84,11 @@ export interface Client {
      Les jetons posés sur les recherches restent valables : ce sont les liens
      déjà envoyés, et ils retombent tout seuls sur celui-ci. */
   token_espace?: string
+  /* Une personne ou un couple (src/lib/foyer.ts) : colonnes du SQL
+     « signature-plusieurs », absentes avant qu'il soit lancé. */
+  civilite?: string | null
+  couple?: boolean | null
+  conjoint?: unknown
   adresse?: string
   emails: string[]
   telephones: string[]

@@ -10,6 +10,7 @@ import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi } from '@/lib/intentions';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
+import { nomFoyer, conjointDe } from '@/lib/foyer';
 import {
   BasculeCriteres, CorpsCriteres, CRIT_VIDE, EXPOSITIONS, etapesCriteres,
   FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
@@ -547,6 +548,24 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
   );
 }
 
+/* Le formulaire « Modifier le contact », rempli depuis la fiche. La
+   personne 2 d'une fiche « couple » y est aussi (src/lib/foyer.ts). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function cfDe(client: any) {
+  const j = conjointDe(client.conjoint);
+  return {
+    prenom: client.prenom, nom: client.nom, adresse: client.adresse || '', email1: client.emails?.[0] || '', email2: client.emails?.[1] || '',
+    tel1: client.telephones?.[0] || '', tel2: client.telephones?.[1] || '', statut_occupation: client.statut_occupation || '',
+    bien_actuel_type: client.bien_actuel_type || '', bien_actuel_surface: client.bien_actuel_surface?.toString() || '',
+    bien_actuel_valeur: client.bien_actuel_valeur?.toString() || '', bien_actuel_a_vendre: client.bien_actuel_a_vendre || false,
+    bien_actuel_notes: client.bien_actuel_notes || '', bien_actuel_adresse: client.bien_actuel_adresse || '', bien_actuel_meme_adresse: !client.bien_actuel_adresse,
+    civilite: (client.civilite === 'Monsieur' || client.civilite === 'Madame' ? client.civilite : '') as '' | 'Monsieur' | 'Madame',
+    couple: !!client.couple,
+    c2_civilite: (j?.civilite === 'Monsieur' || j?.civilite === 'Madame' ? j.civilite : '') as '' | 'Monsieur' | 'Madame',
+    c2_prenom: j?.prenom || '', c2_nom: j?.nom || '', c2_email: j?.email || '', c2_tel: j?.telephone || '',
+  };
+}
+
 export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
      Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
@@ -711,7 +730,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [delaiJours, setDelaiJours] = useState(5);
   const [showAction, setShowAction] = useState(false);
 
-  const [cf, setCf] = useState({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse });
+  const [cf, setCf] = useState(() => cfDe(client));
   const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
   const [mandat, setMandat] = useState({ date_signature: '', duree: '3', honoraires: '2,5% TTC', date_expiration: '' });
   const [actionF, setActionF] = useState({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
@@ -1268,8 +1287,21 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (JSON.stringify(client.emails||[]) !== JSON.stringify(newEmails)) changes.push(`Email modifié`);
     if (JSON.stringify(client.telephones||[]) !== JSON.stringify(newTels)) changes.push(`Téléphone modifié`);
     if (((client as any).statut_occupation||'') !== cf.statut_occupation) changes.push(`Situation actuelle modifiée`);
+    /* Une personne ou un couple : écrit seulement si la colonne existe (SQL
+       « signature-plusieurs » lancé) ou si Alexandre vient de choisir. */
+    const jAvant = conjointDe(client.conjoint);
+    const conjoint = cf.couple ? {
+      ...(jAvant || {}), civilite: cf.c2_civilite, prenom: cf.c2_prenom.trim(), nom: cf.c2_nom.trim(),
+      email: cf.c2_email.trim().toLowerCase(), telephone: cf.c2_tel.trim(),
+    } : null;
+    const foyer = 'couple' in client || cf.couple || cf.civilite
+      ? { civilite: cf.civilite || null, couple: cf.couple, conjoint }
+      : {};
+    if (!!client.couple !== cf.couple) changes.push(cf.couple ? `Fiche passée en couple (avec ${`${cf.c2_prenom} ${cf.c2_nom}`.trim() || 'une 2e personne'})` : 'Fiche repassée à une seule personne');
+    else if (cf.couple && JSON.stringify(jAvant || {}) !== JSON.stringify(conjointDe(conjoint) || {})) changes.push(`Personne 2 mise à jour`);
 
-    const { data } = await supabase.from('clients').update({
+    const { data, error: eContact } = await supabase.from('clients').update({
+      ...foyer,
       prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels,
       statut_occupation: cf.statut_occupation||null,
       bien_actuel_a_vendre: cf.bien_actuel_a_vendre,
@@ -1279,8 +1311,14 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       bien_actuel_adresse: cf.bien_actuel_a_vendre && !cf.bien_actuel_meme_adresse ? (cf.bien_actuel_adresse||null) : null,
       bien_actuel_notes: cf.bien_actuel_a_vendre ? (cf.bien_actuel_notes||null) : null,
     }).eq('id', client.id).select().single();
+    if (eContact) {
+      setSaving(false);
+      alert('Le contact n’a pas pu être enregistré.\n\n' + eContact.message + (/couple|civilite|conjoint/.test(eContact.message) ? '\n\nLance d’abord le fichier SQL « signature-plusieurs.sql » dans Supabase.' : ''));
+      return;
+    }
     if (data) {
       setClient(data as Client);
+      if (changes.length) await addJournal(client.id, 'contact', '✏️ Contact modifié', changes.join('\n'));
     }
     setSaving(false); setShowContact(false);
   }
@@ -2512,7 +2550,7 @@ Emilio Immobilier
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
           <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
-          <span className={styles.filNom} style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{client.prenom} {client.nom}</span>
+          <span className={styles.filNom} style={{ fontWeight: 600, color: '#1a2332', fontSize: 14 }}>{nomFoyer(client)}</span>
           {etiquetteRelance && (
             <span className={styles.filRelance} title={etiquetteRelance.note} style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px',
@@ -2610,7 +2648,7 @@ Emilio Immobilier
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                       <div className="fc-id-nom" style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
-                        {client.prenom} {client.nom}
+                        {nomFoyer(client)}
                       </div>
                       {/* Le menu natif s'ouvrait en blanc brut sur le bandeau sombre.
                           Celui-ci nomme chaque état et dit ce qu'il veut dire. */}
@@ -2687,7 +2725,7 @@ Emilio Immobilier
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
                         {client.reference} · suivi depuis {jours}{' '}jours
                       </span>
-                      <button onClick={() => { setCf({ prenom: client.prenom, nom: client.nom, adresse: client.adresse||'', email1: client.emails?.[0]||'', email2: client.emails?.[1]||'', tel1: client.telephones?.[0]||'', tel2: client.telephones?.[1]||'', statut_occupation: (client as any).statut_occupation||'', bien_actuel_type: (client as any).bien_actuel_type||'', bien_actuel_surface: (client as any).bien_actuel_surface?.toString()||'', bien_actuel_valeur: (client as any).bien_actuel_valeur?.toString()||'', bien_actuel_a_vendre: (client as any).bien_actuel_a_vendre||false, bien_actuel_notes: (client as any).bien_actuel_notes||'', bien_actuel_adresse: (client as any).bien_actuel_adresse||'', bien_actuel_meme_adresse: !(client as any).bien_actuel_adresse }); setShowContact(true); }}
+                      <button onClick={() => { setCf(cfDe(client)); setShowContact(true); }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.42)', cursor: 'pointer', fontFamily: 'inherit' }}>
                         <Icone nom="crayon" taille={12} />{' '}Modifier
                       </button>
@@ -3876,7 +3914,41 @@ Emilio Immobilier
           <div className={styles.modal}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📞 Modifier le contact</h2><button className={styles.modalClose} onClick={() => setShowContact(false)}>✕</button></div>
             <div className={styles.modalBody}>
+              {/* Une personne ou un couple : la personne 2 signe le mandat avec son propre lien. */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => {
+                  const on = k === 'couple' ? cf.couple : !cf.couple && cf.civilite === k;
+                  return (
+                    <button type="button" key={k} onClick={() => setCf(f => (k === 'couple' ? { ...f, couple: true } : { ...f, couple: false, civilite: k }))}
+                      style={{ padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${on ? '#1a2332' : '#e2e8f0'}`, background: on ? '#f8fafc' : '#fff', color: on ? '#1a2332' : '#64748b' }}>
+                      {lib}
+                    </button>
+                  );
+                })}
+              </div>
+              {cf.couple && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a9822f', marginTop: 4 }}>Personne 1 · contact principal</div>}
+              {cf.couple && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['Monsieur', 'Madame'] as const).map(c => (
+                    <button type="button" key={c} onClick={() => setCf(f => ({ ...f, civilite: c }))}
+                      style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.civilite === c ? '#1a2332' : '#e2e8f0'}`, background: cf.civilite === c ? '#f8fafc' : '#fff', color: cf.civilite === c ? '#1a2332' : '#8593a8' }}>{c}</button>
+                  ))}
+                </div>
+              )}
               <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
+              {cf.couple && (
+                <div style={{ border: '1px solid #e3e8f0', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, margin: '6px 0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a9822f' }}>Personne 2</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['Monsieur', 'Madame'] as const).map(c => (
+                      <button type="button" key={c} onClick={() => setCf(f => ({ ...f, c2_civilite: c }))}
+                        style={{ padding: '5px 11px', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${cf.c2_civilite === c ? '#1a2332' : '#e2e8f0'}`, background: cf.c2_civilite === c ? '#f8fafc' : '#fff', color: cf.c2_civilite === c ? '#1a2332' : '#8593a8' }}>{c}</button>
+                    ))}
+                  </div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.c2_prenom} onChange={e => setCf(f => ({ ...f, c2_prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.c2_nom} onChange={e => setCf(f => ({ ...f, c2_nom: e.target.value }))} /></div></div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.c2_email} onChange={e => setCf(f => ({ ...f, c2_email: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.c2_tel} onChange={e => setCf(f => ({ ...f, c2_tel: e.target.value }))} placeholder="facultatif" /></div></div>
+                </div>
+              )}
               <div><label className={styles.lbl}>Adresse</label><input className={styles.inp} value={cf.adresse} onChange={e => setCf(f => ({ ...f, adresse: e.target.value }))} /></div>
               <div className={styles.formRow}><div><label className={styles.lbl}>Email principal</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Email secondaire</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div></div>
               <div className={styles.formRow}><div><label className={styles.lbl}>Tél. principal</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div><div><label className={styles.lbl}>Tél. secondaire</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>

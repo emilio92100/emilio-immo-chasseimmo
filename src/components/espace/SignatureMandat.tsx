@@ -24,10 +24,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  resumeMandat, redigerMandat, validerMandant, titreMandat, dateLongue, versionMandat, heureParis, RETRACTATION_JOURS, ICONES,
-  type Mandant, type Recherche, type Partie, type Icone,
+  resumeMandat, redigerMandat, validerMandant, validerPersonne, validerSociete, sirenLisible, titreMandat, dateLongue, dateCourte, versionMandat, heureParis,
+  RETRACTATION_JOURS, COSIGNATAIRES_MAX, FORMES_SOCIETE, QUALITES_SOCIETE, ICONES,
+  type Mandant, type Recherche, type Partie, type Icone, type Societe,
 } from '@/lib/mandat';
 import { IDENTITE_DEFAUT, lireIdentite, type IdentiteAgence } from '@/lib/agence';
+import { chercherSocietes, qualiteDe, type SocieteTrouvee } from '@/lib/entreprises';
 
 export type MandatEspace = {
   etat: 'valide' | 'a_signer' | 'sans_numero';
@@ -42,7 +44,25 @@ export type MandatEspace = {
   /** Un code est parti il y a moins d'un quart d'heure et n'a pas servi :
       le client revient de sa messagerie, on le remet devant la case du code. */
   code?: { le: string; email: string } | null;
+  /** Pré-remplissage : ceux qu'il avait déjà indiqués pour signer avec lui
+      (ou le conjoint d'une fiche « couple »), et sa société. */
+  prefillCos?: Mandant[];
+  societe?: Societe | null;
+  /** Signé à plusieurs : où en sont les autres signataires. */
+  cos?: CoEspace[];
 };
+
+/* Un co-signataire vu depuis l'espace du premier : il l'a saisi lui-même,
+   son adresse s'affiche donc en entier. */
+export type CoEspace = {
+  id: string; prenom: string; nom: string; email: string;
+  statut: string;                 // invite · signe · decline · annule · retracte
+  invite: string | null; signe: string | null; expire: string | null;
+};
+const SOCIETE_VIDE: Societe = { denomination: '', forme: 'SCI', siren: '', rcsVille: '', siege: '', qualite: 'Gérant' };
+const PERSONNE_VIDE: Mandant = { civilite: '', prenom: '', nom: '', naissanceDate: '', naissanceLieu: '', adresse: '', email: '', telephone: '' };
+/* « Claire », « Claire et Marc », « Claire, Marc et Léa ». */
+export const prenoms = (l: { prenom: string }[]) => l.map(x => x.prenom).join(', ').replace(/, ([^,]*)$/, ' et $1');
 
 type Envoyer = (route: string, corps: Record<string, unknown>) => Promise<any>;
 
@@ -57,8 +77,12 @@ const TRACES: Record<string, string[]> = {
   mail: ['M4 6h16v12H4z', 'M4 7l8 6 8-6'],
   plume: ['M4 20l4-1 10-10-3-3L5 16z', 'M13 6l3 3'],
   horloge: ['M12 7v5l3 2', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  groupe: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5', 'M16 4.3a3.5 3.5 0 0 1 0 6.4', 'M18 14.8c1.9.7 3.2 2.5 3.5 5.2'],
+  societe: ['M4 21V5l8-2v18', 'M12 8l8 2.5V21', 'M7.5 8h1.5', 'M7.5 12h1.5', 'M7.5 16h1.5', 'M15.5 13h1.5', 'M15.5 17h1.5', 'M2 21h20'],
+  trombone: ['M20 11.5l-8.2 8.2a5 5 0 0 1-7-7L13 4.5a3.4 3.4 0 0 1 4.8 4.8l-8.1 8.2a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4'],
 };
-function Ic({ n, t = 18 }: { n: string; t?: number }) {
+export function Ic({ n, t = 18 }: { n: string; t?: number }) {
   const traces: readonly string[] = TRACES[n] || ICONES[n as Icone] || [];
   return (
     <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
@@ -74,10 +98,16 @@ function Ic({ n, t = 18 }: { n: string; t?: number }) {
    Tant qu'il n'est pas signé, il le dit : un bandeau en tête, et « Non
    signé » à côté de chacune des deux parties, l'agence comprise. La
    signature d'Alexandre n'apparaît que sur le PDF, une fois le code saisi. */
-function TexteMandat({ parties, identite }: { parties: Partie[]; identite: IdentiteAgence }) {
+export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau }: {
+  parties: Partie[]; identite: IdentiteAgence;
+  /* À plusieurs : qui lit (son cadre dit « vous »), et qui a déjà signé. */
+  moi?: number; signes?: (string | null)[];
+  /* Le bandeau du haut, quand ce n'est plus un simple projet. */
+  bandeau?: string;
+}) {
   return (
     <div className="mdt-texte">
-      <div className="mdt-projet"><Ic n="doc" t={15} /><span>Projet de mandat · non signé</span></div>
+      <div className="mdt-projet"><Ic n="doc" t={15} /><span>{bandeau || 'Projet de mandat · non signé'}</span></div>
       {parties.map((p, i) => (
         <section key={i} className="mdt-partie">
           <div className="mdt-partie-t">
@@ -121,6 +151,27 @@ function TexteMandat({ parties, identite }: { parties: Partie[]; identite: Ident
                   </div>
                 );
                 if (b.t === 'case') return <p key={k} className="mdt-case"><span className="bx" data-on={b.coche ? '1' : undefined} />{b.x}</p>;
+                if (b.t === 'sig' && b.noms && b.noms.length > 1) return (
+                  <div key={k} className="mdt-sigs">
+                    {b.noms.map((nom, n) => {
+                      const le = signes[n] || null;
+                      return (
+                        <div key={n} className="mdt-sigc">
+                          <div className="q">{`Mandant ${n + 1}`}</div>
+                          <div className="n">{n === moi ? `${nom} · vous` : nom}</div>
+                          {le ? <span className="mdt-ns ok">{`Signé le ${dateCourte(le)}`}</span> : <span className="mdt-ns">Non signé</span>}
+                          <div className="s">{n === moi ? 'Vous signez à l’étape 3, avec le code reçu par e-mail.' : le ? 'Signé avec son code personnel.' : 'Signe avec son propre lien et son propre code.'}</div>
+                        </div>
+                      );
+                    })}
+                    <div className="mdt-sigc">
+                      <div className="q">Le mandataire</div>
+                      <div className="n">{`${identite.nom.toUpperCase()} · ${identite.signataireNom}`}</div>
+                      {signes[0] ? <span className="mdt-ns ok">Signé</span> : <span className="mdt-ns">Non signé</span>}
+                      <div className="s">{signes[0] ? 'Sa signature a été apposée quand le premier mandant a signé.' : 'Sa signature est apposée sur le document au moment où le premier mandant signe.'}</div>
+                    </div>
+                  </div>
+                );
                 return (
                   <div key={k} className="mdt-sigs">
                     <div className="mdt-sigc">
@@ -148,7 +199,7 @@ function TexteMandat({ parties, identite }: { parties: Partie[]; identite: Ident
 
 /* ── Un champ du formulaire (au niveau du module : sinon il se remonte à
    chaque frappe et le clavier se referme — AGENTS.md §2.4) ── */
-function Champ({ lib, val, onChange, err, type = 'text', mode, auto, placeholder }: {
+export function Champ({ lib, val, onChange, err, type = 'text', mode, auto, placeholder }: {
   lib: string; val: string; onChange: (v: string) => void; err?: string; type?: string;
   mode?: 'text' | 'email' | 'tel' | 'numeric'; auto?: string; placeholder?: string;
 }) {
@@ -175,7 +226,7 @@ function frVersIso(t: string): string {
   const x = new Date(Date.UTC(a, m - 1, j));
   return x.getUTCFullYear() === a && x.getUTCMonth() === m - 1 && x.getUTCDate() === j ? `${d[3]}-${d[2]}-${d[1]}` : '';
 }
-function ChampDate({ lib, val, onChange, err }: { lib: string; val: string; onChange: (v: string) => void; err?: string }) {
+export function ChampDate({ lib, val, onChange, err }: { lib: string; val: string; onChange: (v: string) => void; err?: string }) {
   const [t, setT] = useState(() => isoVersFr(val) || (/^\d{4}-/.test(val) ? '' : val));
   useEffect(() => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(val) && frVersIso(t) !== val) setT(isoVersFr(val));
@@ -201,13 +252,13 @@ function ChampDate({ lib, val, onChange, err }: { lib: string; val: string; onCh
    Rue, code postal, ville : plus simple à remplir, et rien ne manque sur
    le mandat. Le mandat garde une seule ligne, « 18 avenue Victor Hugo,
    92100 Boulogne-Billancourt » ; une adresse déjà connue est redécoupée. */
-type Adresse = { rue: string; cp: string; ville: string };
-function couperAdresse(a: string): Adresse {
+export type Adresse = { rue: string; cp: string; ville: string };
+export function couperAdresse(a: string): Adresse {
   const t = (a || '').trim();
   const d = /^(.*?)[,\s]+(\d{5})\s+(.+)$/.exec(t);
   return d ? { rue: d[1].trim(), cp: d[2], ville: d[3].trim() } : { rue: t, cp: '', ville: '' };
 }
-const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+export const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ');
 
 /* ── La signature à la main ──
    Le dernier geste : le client a tapé son code, il appuie sur « Signer mon
@@ -216,7 +267,7 @@ const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim
    code, pose la signature dans la case du mandant du PDF, puis scelle. Le
    tracé n'ajoute rien à la valeur juridique (c'est le code qui identifie),
    mais le client sait qu'il signe. Au niveau du module (AGENTS.md §2.4). */
-function PadSignature({ nom, envoi, onAnnuler, onValider }: {
+export function PadSignature({ nom, envoi, onAnnuler, onValider }: {
   nom: string; envoi: boolean; onAnnuler: () => void; onValider: (png: string) => void;
 }) {
   const toile = useRef<HTMLCanvasElement>(null);
@@ -293,10 +344,10 @@ function PadSignature({ nom, envoi, onAnnuler, onValider }: {
     <div className="mdt-pad" role="dialog" aria-modal="true" aria-label="Votre signature">
       <div className="mdt-pad-in">
         <div className="mdt-pad-t">
-          <b>Votre signature</b>
+          <b>Dernière étape : votre signature</b>
           <button type="button" className="mdt-rond" aria-label="Annuler" disabled={envoi} onClick={onAnnuler}><Ic n="croix" t={14} /></button>
         </div>
-        <p className="mdt-p">Signez dans le cadre avec votre doigt (ou votre souris), comme sur papier.</p>
+        <p className="mdt-p">Pour finaliser, signez dans le cadre avec votre doigt (ou votre souris), comme sur papier.</p>
         <div className="mdt-pad-zone">
           <canvas ref={toile} onPointerDown={poser} onPointerMove={tracer} onPointerUp={lever} onPointerCancel={lever} />
           <span className="ligne" />
@@ -320,8 +371,13 @@ function PadSignature({ nom, envoi, onAnnuler, onValider }: {
   );
 }
 
-const ERREURS: Record<string, string> = {
+export const ERREURS: Record<string, string> = {
   code: 'Ce code ne correspond pas.',
+  quota: 'Vous avez demandé beaucoup de codes d’affilée : réessayez dans une heure, ou appelez Alexandre.',
+  kbis: 'Le Kbis n’a pas pu être lu : un PDF ou une photo de 3 Mo au plus. Vous pouvez aussi continuer sans.',
+  email: 'Cette adresse e-mail ne semble pas juste.',
+  email_pris: 'Cette adresse est déjà celle d’un autre signataire : chacun signe avec la sienne.',
+  aucun: 'Cette action n’est plus possible : rechargez la page.',
   expire: 'Ce code a expiré : demandez-en un nouveau.',
   trop: 'Trop d’essais : demandez un nouveau code.',
   recommencer: 'Demandez un nouveau code pour signer.',
@@ -334,6 +390,169 @@ const ERREURS: Record<string, string> = {
   deja: 'Votre mandat est déjà signé.',
 };
 
+/* ── Son conjoint, un co-acquéreur : la fiche qu'il remplit pour lui ──
+   Au niveau du module (AGENTS.md §2.4). « Même adresse que moi » est coché
+   d'office : c'est le cas le plus courant, et trois cases de moins. */
+function FormPersonne({ p, meme, champs, nouveau, onP, onMeme, onEnregistrer, onAnnuler, onRetirer }: {
+  p: Mandant; meme: boolean; champs: Record<string, string>; nouveau: boolean;
+  onP: (p: Mandant) => void; onMeme: (b: boolean) => void; onEnregistrer: () => void; onAnnuler: () => void; onRetirer: () => void;
+}) {
+  const [adr, setAdr] = useState<Adresse>(() => couperAdresse(p.adresse));
+  const maj = (k: keyof Mandant) => (v: string) => onP({ ...p, [k]: v });
+  const majAdr = (k: keyof Adresse) => (v: string) => { const x = { ...adr, [k]: v }; setAdr(x); onP({ ...p, adresse: joindreAdresse(x) }); };
+  const qui = p.prenom.trim() || (p.civilite === 'Madame' ? 'elle' : p.civilite === 'Monsieur' ? 'lui' : 'cette personne');
+  return (
+    <div className="mdt-perso">
+      <div className="mdt-perso-t">
+        <span className="n">Votre co-acquéreur</span>
+        {!nouveau && <button type="button" className="mdt-qui-a" onClick={onRetirer}>Retirer</button>}
+      </div>
+      <div className={'mdt-civ' + (champs.civilite ? ' err' : '')}>
+        {(['Madame', 'Monsieur'] as const).map(c => (
+          <button key={c} type="button" data-on={p.civilite === c ? '1' : undefined} onClick={() => onP({ ...p, civilite: c })}>{c}</button>
+        ))}
+      </div>
+      {champs.civilite && <div className="mdt-err-l">{champs.civilite}</div>}
+      <div className="mdt-deux">
+        <Champ lib="Prénom" val={p.prenom} onChange={maj('prenom')} err={champs.prenom} auto="off" />
+        <Champ lib="Nom" val={p.nom} onChange={maj('nom')} err={champs.nom} auto="off" />
+      </div>
+      <div className="mdt-deux">
+        <ChampDate lib="Date de naissance" val={p.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />
+        <Champ lib="Lieu de naissance" val={p.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu} placeholder="Ville (département)" />
+      </div>
+      <Champ lib="Son e-mail — son lien de signature arrive ici" val={p.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="off" />
+      <Champ lib="Son téléphone (facultatif)" val={p.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="off" />
+      <button type="button" className="mdt-coche mdt-leger" data-on={meme ? '1' : undefined} onClick={() => onMeme(!meme)}>
+        <span className="bx">{meme && <Ic n="check" t={14} />}</span><span>Même adresse que moi</span>
+      </button>
+      {champs.meme && <div className="mdt-err-l">{champs.meme}</div>}
+      {!meme && (
+        <>
+          <Champ lib="Son adresse" val={adr.rue} onChange={majAdr('rue')} err={champs.adresse} placeholder="Numéro et rue" auto="off" />
+          <div className="mdt-cpv">
+            <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} mode="numeric" auto="off" />
+            <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} auto="off" />
+          </div>
+        </>
+      )}
+      <div className="mdt-info"><Ic n="mail" t={16} /><span>{`${qui.charAt(0).toUpperCase() + qui.slice(1)} recevra son propre lien dès que vous aurez signé : relire le mandat, vérifier ses informations, signer avec son propre code.`}</span></div>
+      <div className="mdt-perso-b">
+        <button type="button" className="btn fant" onClick={onAnnuler}>Annuler</button>
+        <button type="button" className="btn or" onClick={onEnregistrer}>Enregistrer</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sa société ──
+   Il la cherche dans le registre public (nom ou SIREN) et la choisit : on
+   remplit tout pour lui (src/lib/entreprises.ts). Les champs restent
+   modifiables — le greffe, surtout, quand on ne peut pas le déduire. */
+function FormSociete({ s, champs, civilite, prenom, nom, kbis, kbisErr, onS, onKbis }: {
+  s: Societe; champs: Record<string, string>; civilite: string; prenom: string; nom: string; kbis: { nom: string } | null; kbisErr: string;
+  onS: (s: Societe) => void; onKbis: (f: File | null) => void;
+}) {
+  const maj = (k: keyof Societe) => (v: string) => onS({ ...s, [k]: v });
+  const f = civilite === 'Madame';
+  const fem: Record<string, string> = { 'Gérant': 'Gérante', 'Président': 'Présidente', 'Directeur général': 'Directrice générale', 'Associé habilité': 'Associée habilitée' };
+  const [q, setQ] = useState('');
+  const [res, setRes] = useState<SocieteTrouvee[]>([]);
+  const [etat, setEtat] = useState<'' | 'cherche' | 'vide' | 'erreur'>('');
+  const [repris, setRepris] = useState(false);
+  const court = q.trim().replace(/\s/g, '').length < 3;
+  useEffect(() => {
+    const t = q.trim();
+    if (t.replace(/\s/g, '').length < 3) return;
+    const c = new AbortController();
+    const minuteur = setTimeout(async () => {
+      setEtat('cherche');
+      try {
+        const r = await chercherSocietes(t, c.signal);
+        setRes(r); setEtat(r.length ? '' : 'vide');
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') { setRes([]); setEtat('erreur'); }
+      }
+    }, 350);
+    return () => { clearTimeout(minuteur); c.abort(); };
+  }, [q]);
+  const choisir = (x: SocieteTrouvee) => {
+    onS({
+      denomination: x.denomination, forme: (FORMES_SOCIETE as readonly string[]).includes(x.forme) ? x.forme : 'Autre',
+      siren: sirenLisible(x.siren), rcsVille: x.rcsVille || s.rcsVille, siege: x.siege, qualite: qualiteDe(x, prenom, nom) || s.qualite,
+    });
+    setQ(''); setRes([]); setEtat(''); setRepris(true);
+  };
+  return (
+    <div className="mdt-perso">
+      <div className="mdt-perso-t"><span className="n">Votre société</span></div>
+      <div className="mdt-soc-q">
+        <Champ lib="Retrouvez-la : son nom ou son SIREN" val={q} onChange={v => setQ(v)} placeholder="SCI Les Tilleuls, ou 732 829 320" auto="off" />
+        {!court && etat === 'cherche' && <div className="mdt-soc-e">Recherche…</div>}
+        {!court && etat === 'vide' && <div className="mdt-soc-e">{'Aucune société active ne correspond : vérifiez l’orthographe, ou remplissez les cases ci-dessous.'}</div>}
+        {!court && etat === 'erreur' && <div className="mdt-soc-e">{'La recherche ne répond pas pour le moment : remplissez les cases ci-dessous.'}</div>}
+        {!court && res.length > 0 && (
+          <div className="mdt-soc-l" role="listbox">
+            {res.map(x => (
+              <button key={x.siren} type="button" role="option" aria-selected={false} onClick={() => choisir(x)}>
+                <b>{x.denomination}</b>
+                <span>{[x.forme !== 'Autre' ? x.forme : '', `SIREN ${sirenLisible(x.siren)}`, x.commune].filter(Boolean).join(' · ')}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {repris && <div className="mdt-info"><Ic n="check" t={16} /><span>{'Repris du registre national des entreprises. Vérifiez chaque case, et complétez la ville du greffe si elle manque.'}</span></div>}
+      <Champ lib="Nom de la société" val={s.denomination} onChange={maj('denomination')} err={champs.denomination} placeholder="SCI Les Tilleuls" auto="organization" />
+      <label className={'mdt-ch' + (champs.forme ? ' err' : '')}>
+        <span className="l">Forme</span>
+        <select className="mdt-sel" value={s.forme} onChange={e => maj('forme')(e.target.value)}>
+          {FORMES_SOCIETE.map(x => <option key={x} value={x}>{x}</option>)}
+        </select>
+        {champs.forme && <span className="e">{champs.forme}</span>}
+      </label>
+      <div className="mdt-deux">
+        <Champ lib="N° SIREN" val={s.siren} onChange={v => maj('siren')(v.replace(/[^\d ]/g, '').slice(0, 11))} err={champs.siren} mode="numeric" placeholder="9 chiffres" auto="off" />
+        <Champ lib="Ville du greffe (RCS)" val={s.rcsVille} onChange={maj('rcsVille')} err={champs.rcsVille} placeholder="Nanterre" auto="off" />
+      </div>
+      <Champ lib="Adresse du siège" val={s.siege} onChange={maj('siege')} err={champs.siege} placeholder="Numéro, rue, code postal et ville" auto="off" />
+      <label className={'mdt-ch' + (champs.qualite ? ' err' : '')}>
+        <span className="l">Vous la représentez en tant que</span>
+        <select className="mdt-sel" value={s.qualite} onChange={e => maj('qualite')(e.target.value)}>
+          {QUALITES_SOCIETE.map(x => <option key={x} value={x}>{f ? fem[x] || x : x}</option>)}
+        </select>
+        {champs.qualite && <span className="e">{champs.qualite}</span>}
+      </label>
+      <label className="mdt-depot">
+        <Ic n="trombone" t={20} />
+        <span><b>{kbis ? kbis.nom : 'Joindre le Kbis'}</b><span>{kbis ? 'Touchez pour le remplacer' : 'PDF ou photo · facultatif'}</span></span>
+        <input type="file" accept="application/pdf,image/*" onChange={e => onKbis(e.target.files?.[0] || null)} />
+      </label>
+      {kbisErr && <div className="mdt-err-l">{kbisErr}</div>}
+      <div className="mdt-info"><Ic n="info" t={16} /><span>{'Votre société n’est pas encore créée ? Choisissez « En mon nom » : le mandat vous engage aussi pour la société que vous créerez.'}</span></div>
+    </div>
+  );
+}
+
+/* Le Kbis : un PDF tel quel (3 Mo au plus), une photo réduite à 1 800 px. */
+async function lireKbisFichier(f: File): Promise<string> {
+  const lire = (b: Blob) => new Promise<string>((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = ko; r.readAsDataURL(b); });
+  if (f.type === 'application/pdf') { if (f.size > 3_000_000) throw new Error('lourd'); return lire(f); }
+  if (!f.type.startsWith('image/')) throw new Error('format');
+  const url = URL.createObjectURL(f);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+    const k = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+    const d = c.toDataURL('image/jpeg', 0.82);
+    if (d.length > 4_000_000) throw new Error('lourd');
+    return d;
+  } finally { URL.revokeObjectURL(url); }
+}
+const initiales = (x: { prenom: string; nom: string }) => `${x.prenom.trim().charAt(0)}${x.nom.trim().charAt(0)}`.toUpperCase() || '·';
+
 /* ══ Le parcours de signature ═══════════════════════════════════════════ */
 
 export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onSigne, tel, bienId }: {
@@ -345,7 +564,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   envoyer: Envoyer;
   onFermer: () => void;
   /** Appelé une fois signé : l'espace se met à jour, la demande de visite part. */
-  onSigne: (r: { numero: string; signeLe: string; finRetractation: string; execution: boolean }) => Promise<void> | void;
+  onSigne: (r: { numero: string; signeLe: string; finRetractation: string; execution: boolean; attente?: CoEspace[] }) => Promise<void> | void;
   tel: string;
 }) {
   /* Un code déjà envoyé et encore valable : on reprend là où il en était. */
@@ -376,7 +595,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
   const [attente, setAttente] = useState(0);
-  const [fin, setFin] = useState<{ numero: string; finRetractation: string; execution: boolean } | null>(null);
+  const [fin, setFin] = useState<{ numero: string; finRetractation: string; execution: boolean; signeLe?: string } | null>(null);
   /* La recherche telle que le mandat la décrit, taux compris. Elle part de
      la page, et se remet à jour si Alexandre change le taux entre-temps. */
   const [rech, setRech] = useState<Recherche>(mandat.recherche);
@@ -385,6 +604,21 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const [identite, setIdentite] = useState<IdentiteAgence>(IDENTITE_DEFAUT);
   const [avis, setAvis] = useState('');
   const [question, setQuestion] = useState<'' | 'envoi' | 'ok'>('');
+  /* À plusieurs, ou via une société (étape 2). Signer seul, en son nom,
+     reste la voie par défaut. */
+  const [achat, setAchat] = useState<'nom' | 'societe'>(mandat.societe ? 'societe' : 'nom');
+  const [soc, setSoc] = useState<Societe>(mandat.societe || SOCIETE_VIDE);
+  const [champsSoc, setChampsSoc] = useState<Record<string, string>>({});
+  const [kbis, setKbis] = useState<{ nom: string; data: string } | null>(null);
+  const [kbisErr, setKbisErr] = useState('');
+  const [cos, setCos] = useState<Mandant[]>(mandat.prefillCos || []);
+  const [memes, setMemes] = useState<boolean[]>(() => (mandat.prefillCos || []).map(c => !c.adresse || c.adresse === mandat.mandant.adresse));
+  const [edite, setEdite] = useState<number | null>(null);
+  const [brouillon, setBrouillon] = useState<Mandant>(PERSONNE_VIDE);
+  const [memeB, setMemeB] = useState(true);
+  const [champsCo, setChampsCo] = useState<Record<string, string>>({});
+  /* Après sa signature : ceux qu'on attend encore. */
+  const [enAttente, setEnAttente] = useState<CoEspace[]>([]);
   const haut = useRef<HTMLDivElement>(null);
 
   /* On note l'ouverture : c'est la première ligne du déroulé du certificat.
@@ -415,10 +649,15 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   }, [attente]);
 
   const resume = useMemo(() => resumeMandat(rech), [rech]);
-  const parties = useMemo(() => redigerMandat({
-    numero: numero || '…', mandant: etape === 'lecture' && retourLecture === 'signer' ? m : null,
-    recherche: rech, executionImmediate: null,
-  }, identite), [numero, m, etape, retourLecture, rech, identite]);
+  const avecQui = useMemo(() => (achat === 'nom' ? cos.map((c, i) => (memes[i] ? { ...c, adresse: m.adresse } : c)) : []), [achat, cos, memes, m.adresse]);
+  const parties = useMemo(() => {
+    const complet = etape === 'lecture' && retourLecture === 'signer';
+    return redigerMandat({
+      numero: numero || '…', mandant: complet ? m : null,
+      recherche: rech, executionImmediate: null,
+      ...(complet ? { cosignataires: avecQui, societe: achat === 'societe' ? soc : null } : {}),
+    }, identite);
+  }, [numero, m, etape, retourLecture, rech, identite, avecQui, achat, soc]);
 
   /* Le mandat a changé sous ses yeux (Alexandre a mis à jour le taux) :
      il relit le récapitulatif, et redemande un code. */
@@ -452,6 +691,40 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const pas = etape === 'recap' || etape === 'lecture' ? 1 : etape === 'coord' ? 2 : etape === 'signer' ? 3 : 0;
   const maj = (k: keyof Mandant) => (v: string) => { setM(x => ({ ...x, [k]: v })); setChamps(c => ({ ...c, [k]: '' })); };
 
+  /* ── Ses co-signataires : ajouter, modifier, retirer ── */
+  const ouvrirCo = (i: number, champsInit: Record<string, string> = {}) => {
+    setEdite(i); setBrouillon(cos[i] || PERSONNE_VIDE); setMemeB(i < memes.length ? memes[i] : true); setChampsCo(champsInit); setErreur('');
+  };
+  const ajouterCo = () => { setEdite(cos.length); setBrouillon(PERSONNE_VIDE); setMemeB(true); setChampsCo({}); setErreur(''); };
+  const enregistrerCo = () => {
+    if (edite === null) return;
+    if (memeB && m.adresse.trim().length < 8) { setChampsCo({ meme: 'Complétez d’abord votre adresse, plus haut.' }); return; }
+    const pris = [m.email, ...cos.filter((_, j) => j !== edite).map(c => c.email)];
+    const v = validerPersonne({ ...brouillon, adresse: memeB ? m.adresse : brouillon.adresse }, pris);
+    if (!v.ok) { setChampsCo(v.champs); return; }
+    const l = [...cos]; l[edite] = v.mandant; setCos(l);
+    const mm = [...memes]; mm[edite] = memeB; setMemes(mm);
+    setEdite(null); setChampsCo({});
+  };
+  const retirerCo = (i: number) => {
+    setCos(cos.filter((_, j) => j !== i)); setMemes(memes.filter((_, j) => j !== i)); setEdite(null); setChampsCo({});
+  };
+  const choisirKbis = async (f: File | null) => {
+    setKbisErr('');
+    if (!f) return;
+    try { setKbis({ nom: f.name, data: await lireKbisFichier(f) }); }
+    catch { setKbis(null); setKbisErr(ERREURS.kbis); }
+  };
+
+  /* Ce qui part avec chaque demande de code : lui, et ceux qui signent avec
+     lui (ou sa société). Le renvoi du code repart avec la même chose, sinon
+     le serveur oublierait ses co-signataires. */
+  const corps = (mm: Mandant) => ({
+    etape: 'code', mandant: mm, version: versionMandat(rech),
+    cosignataires: achat === 'nom' ? cos.map((c, i) => (memes[i] ? { ...c, adresse: mm.adresse } : c)) : [],
+    societe: achat === 'societe' ? soc : null,
+  });
+
   const demanderCode = async () => {
     const v = validerMandant(m);
     /* Les trois cases de l'adresse, chacune la sienne. */
@@ -461,8 +734,19 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     if (adr.ville.trim().length < 2) manque.ville = 'Ville';
     if (!certifie) manque.certifie = 'Cochez cette case pour recevoir votre code.';
     if (!v.ok || Object.keys(manque).length) { setChamps({ ...(v.ok ? {} : v.champs), ...manque, ...(Object.keys(manque).length ? { adresse: '' } : {}) }); return; }
+    if (edite !== null) { setErreur(`Enregistrez d’abord les informations de ${brouillon.prenom.trim() || 'votre co-acquéreur'} (ou annulez).`); return; }
+    const c0 = corps(v.mandant);
+    if (achat === 'nom') {
+      for (let i = 0; i < c0.cosignataires.length; i++) {
+        const vc = validerPersonne(c0.cosignataires[i], [v.mandant.email, ...c0.cosignataires.filter((_, j) => j !== i).map(c => c.email)]);
+        if (!vc.ok) { ouvrirCo(i, vc.champs); setErreur(`Complétez les informations de ${c0.cosignataires[i].prenom || 'votre co-acquéreur'}.`); return; }
+      }
+    } else {
+      const vs = validerSociete(soc);
+      if (!vs.ok) { setChampsSoc(vs.champs); setErreur('Complétez les informations de votre société.'); return; }
+    }
     setEnvoi(true); setErreur('');
-    const r = await envoyer('mandat', { etape: 'code', mandant: v.mandant, version: versionMandat(rech), certifie: true });
+    const r = await envoyer('mandat', { ...c0, certifie: true, ...(achat === 'societe' && kbis ? { kbis: kbis.data } : {}) });
     setEnvoi(false);
     if (r?.ok) {
       setNumero(r.numero); setEmailMasque(r.email); setCode(''); setAttente(45); setAvis(''); setCodeParti(true); setCodeDe('');
@@ -470,7 +754,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     } else if (r?.error === 'change') {
       relire(r);
     } else if (r?.error === 'coordonnees' && r.champs) {
-      setChamps(r.champs);
+      if (typeof r.co === 'number') { ouvrirCo(r.co, r.champs); setErreur('Vérifiez les informations de votre co-acquéreur.'); }
+      else if (r.societe) { setChampsSoc(r.champs); setErreur('Vérifiez les informations de votre société.'); }
+      else setChamps(r.champs);
     } else {
       setErreur(ERREURS[r?.error] || 'Une erreur est survenue. Réessayez dans un instant.');
     }
@@ -478,7 +764,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
 
   const renvoyer = async () => {
     setErreur('');
-    const r = await envoyer('mandat', { etape: 'code', mandant: m, version: versionMandat(rech) });
+    const r = await envoyer('mandat', corps(m));
     if (r?.ok) { setEmailMasque(r.email); setCode(''); setAttente(45); setCodeParti(true); setCodeDe(''); }
     else if (r?.error === 'change') relire(r);
     else setErreur(ERREURS[r?.error] || 'Le code n’a pas pu être renvoyé.');
@@ -495,7 +781,12 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     ]);
     setPad(false);
     if (r?.ok) {
-      const res = { numero: r.numero, signeLe: r.signeLe || new Date().toISOString(), finRetractation: r.finRetractation, execution: r.execution ?? execution };
+      const att: CoEspace[] = Array.isArray(r.attente)
+        ? r.attente.map((x: { id: string; prenom: string; nom: string; email: string }) => ({
+          id: x.id, prenom: x.prenom, nom: x.nom, email: x.email, statut: 'invite', invite: r.signeLe || new Date().toISOString(), signe: null, expire: null,
+        })) : [];
+      setEnAttente(att);
+      const res = { numero: r.numero, signeLe: r.signeLe || new Date().toISOString(), finRetractation: r.finRetractation, execution: r.execution ?? execution, ...(att.length ? { attente: att } : {}) };
       try { await onSigne(res); } catch { /* la signature est faite : la suite ne doit pas la cacher */ }
       setFin(res);
       setEnvoi(false);
@@ -651,11 +942,65 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
           </div>
           <Champ lib="E-mail — votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" />
           <Champ lib="Téléphone" val={m.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="tel" />
+
+          <div className="mdt-q2">Vous achetez</div>
+          <div className="mdt-seg">
+            <button type="button" data-on={achat === 'nom' ? '1' : undefined} onClick={() => { setAchat('nom'); setErreur(''); }}><Ic n="personne" t={17} /><span>En mon nom</span></button>
+            <button type="button" data-on={achat === 'societe' ? '1' : undefined} onClick={() => { setAchat('societe'); setEdite(null); setErreur(''); }}><Ic n="societe" t={17} /><span>Via une société</span></button>
+          </div>
+          {achat === 'societe' ? (
+            <FormSociete s={soc} champs={champsSoc} civilite={m.civilite} prenom={m.prenom} nom={m.nom} kbis={kbis} kbisErr={kbisErr}
+              onS={x => { setSoc(x); setChampsSoc({}); }} onKbis={f => { void choisirKbis(f); }} />
+          ) : (
+            <>
+              <div className="mdt-q2">Qui signe le mandat&nbsp;?</div>
+              <div className="mdt-qui">
+                <div className="mdt-qui-l">
+                  <span className="mdt-av">{initiales(m)}</span>
+                  <span className="mdt-qui-tx"><b>{`${m.prenom} ${m.nom}`.trim() || 'Vous'}</b><span>Vous · vous signez maintenant</span></span>
+                </div>
+                {cos.map((c, i) => (i === edite ? null : (
+                  <div key={i} className="mdt-qui-l">
+                    <span className="mdt-av b">{initiales(c)}</span>
+                    <span className="mdt-qui-tx"><b>{`${c.prenom} ${c.nom}`.trim()}</b><span>{`${c.email || 'e-mail à compléter'} · signera ensuite`}</span></span>
+                    <button type="button" className="mdt-qui-a" onClick={() => ouvrirCo(i)}>Modifier</button>
+                  </div>
+                )))}
+              </div>
+              {edite !== null && (
+                <FormPersonne key={edite} p={brouillon} meme={memeB} champs={champsCo} nouveau={edite >= cos.length}
+                  onP={x => { setBrouillon(x); setChampsCo({}); }} onMeme={setMemeB}
+                  onEnregistrer={enregistrerCo} onAnnuler={() => { setEdite(null); setChampsCo({}); }} onRetirer={() => retirerCo(edite)} />
+              )}
+              {edite === null && cos.length < COSIGNATAIRES_MAX && (
+                <button type="button" className="mdt-ajout" onClick={ajouterCo}>
+                  <Ic n="plus" t={17} /><span>{cos.length ? 'Ajouter une autre personne' : 'Ajouter mon conjoint ou un co\u2011acquéreur'}</span>
+                </button>
+              )}
+              {edite === null && !cos.length && (
+                <div className="mdt-rappel">
+                  <Ic n="info" t={19} />
+                  <div>
+                    <b>{m.civilite === 'Madame' ? 'Vous signez seule' : 'Vous signez seul'}</b>
+                    <p>{'Votre signature vous engage personnellement, même si vous achetez à deux ou via une société : votre engagement de ne pas acheter sans Alexandre un bien qu’il vous a présenté vaut aussi pour la personne avec qui vous achetez, et pour votre société.'}</p>
+                    <p>{'Vous préférez qu’elle signe aussi ? Ajoutez-la ci-dessus : elle recevra son propre lien.'}</p>
+                  </div>
+                </div>
+              )}
+              {edite === null && cos.length > 0 && (
+                <div className="mdt-info"><Ic n="groupe" t={16} /><span>{`Vous signez en premier. Le mandat sera complet quand ${prenoms(cos)} ${cos.length > 1 ? 'auront' : 'aura'} signé à ${cos.length > 1 ? 'leur' : 'son'} tour ; vous serez prévenu${m.civilite === 'Madame' ? 'e' : ''} par e-mail.`}</span></div>
+              )}
+            </>
+          )}
           {erreur && <div className="mdt-erreur">{erreur}</div>}
           <button type="button" className={'mdt-coche' + (champs.certifie ? ' err' : '')} data-on={certifie ? '1' : undefined}
             onClick={() => { setCertifie(x => !x); setChamps(c => ({ ...c, certifie: '' })); }}>
             <span className="bx">{certifie && <Ic n="check" t={14} />}</span>
-            <span>{'Je certifie que ces informations sont exactes et que ce sont les miennes. Le mandat est établi à mon nom et je le signe moi-même ; une information inexacte engagerait ma responsabilité.'}</span>
+            <span>{achat === 'societe'
+              ? `Je certifie que les informations que j’ai renseignées sont exactes et complètes, et que je suis habilité${m.civilite === 'Madame' ? 'e' : ''} à engager ${soc.denomination.trim() || 'la société'}. Ma signature m’engage aussi personnellement.`
+              : cos.length
+                ? `Je certifie que les informations que j’ai renseignées, pour moi et pour ${prenoms(cos)}, sont exactes et complètes.`
+                : 'Je certifie que les informations que j’ai renseignées sont exactes et complètes. Je signe ce mandat moi-même, et ma signature m’engage même si j’achète à plusieurs.'}</span>
           </button>
           {champs.certifie && <div className="mdt-err-l">{champs.certifie}</div>}
           <button type="button" className="btn or mdt-plein" disabled={envoi} onClick={demanderCode}>
@@ -679,6 +1024,12 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
         <div className="mdt-corps">
           <h3>Signer mon mandat</h3>
           <p className="mdt-p">{numero ? titreMandat(numero) : 'Mandat de recherche'}</p>
+          {achat === 'nom' && cos.length > 0 && (
+            <div className="mdt-info"><Ic n="groupe" t={16} /><span>{`Vous signez en premier. ${prenoms(cos)} ${cos.length > 1 ? 'recevront ensuite chacun leur' : 'recevra ensuite son'} propre lien pour signer à ${cos.length > 1 ? 'leur' : 'son'} tour.`}</span></div>
+          )}
+          {achat === 'societe' && soc.denomination.trim() && (
+            <div className="mdt-info"><Ic n="societe" t={16} /><span>{`Vous signez pour ${soc.denomination.trim()}, et en votre nom.`}</span></div>
+          )}
 
           <button type="button" className="mdt-coche" data-on={lu ? '1' : undefined} onClick={() => setLu(x => !x)}>
             <span className="bx">{lu && <Ic n="check" t={14} />}</span>
@@ -722,7 +1073,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             <span><Ic n="bouclier" t={15} /><span>Document scellé et horodaté</span></span>
             <span><Ic n="retour" t={15} /><span>{`${RETRACTATION_JOURS} jours pour changer d’avis`}</span></span>
           </div>
-          <p className="mdt-mention">{`En signant, vous acceptez votre mandat de recherche non exclusif. Vous en recevez un exemplaire par e-mail, et vous pouvez y renoncer pendant ${RETRACTATION_JOURS} jours depuis votre espace.`}</p>
+          <p className="mdt-mention">{achat === 'nom' && cos.length
+            ? `En signant, vous acceptez votre mandat de recherche non exclusif : il vous engage dès maintenant, et il sera complet quand ${prenoms(cos)} l’${cos.length > 1 ? 'auront' : 'aura'} signé. Vous en recevez un exemplaire par e-mail, et vous pouvez y renoncer pendant ${RETRACTATION_JOURS} jours après votre signature, prolongés si un autre signataire signe entre-temps.`
+            : `En signant, vous acceptez votre mandat de recherche non exclusif. Vous en recevez un exemplaire par e-mail, et vous pouvez y renoncer pendant ${RETRACTATION_JOURS} jours depuis votre espace.`}</p>
         </div>
       </div>
     );
@@ -730,17 +1083,45 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
 
   /* ── 4. C'est signé ── */
   const attendre = fin && !fin.execution;
+  const phraseVisite = raison === 'visite'
+    ? (attendre
+      ? `Votre demande de visite est partie. Comme vous avez choisi d’attendre vos ${RETRACTATION_JOURS} jours, Alexandre vous proposera un créneau à partir du ${dateLongue(fin!.finRetractation)}.`
+      : 'Votre demande de visite est partie avec vos disponibilités. Alexandre vous propose un créneau très vite.')
+    : 'Alexandre est prévenu. Vous pouvez maintenant demander vos visites en un geste, depuis chaque bien.';
+
+  /* Signé à plusieurs : sa signature est faite, on attend les autres. Pas
+     de rond qui tourne : qui a signé, qui on attend, et quoi faire si le
+     mail n'arrive pas. */
+  if (enAttente.length) {
+    const n = enAttente.length;
+    return (
+      <div className="mdt">
+        <div className="mdt-corps mdt-fini">
+          <div className="mdt-ok"><Ic n="check" t={34} /></div>
+          <div className="mdt-sur-c">Votre signature est enregistrée</div>
+          <h3>{`Merci ${m.prenom}, c’est signé de votre côté`}</h3>
+          <p className="mdt-p">{`${prenoms(enAttente)} ${n > 1 ? 'viennent' : 'vient'} de recevoir ${n > 1 ? 'leur' : 'son'} lien par e-mail. Dès que ${prenoms(enAttente)} ${n > 1 ? 'auront' : 'aura'} signé, vous recevrez le mandat complet, en PDF.`}</p>
+          <div className="mdt-sgn">
+            <div className="mdt-sgn-l"><span className="pt ok"><Ic n="check" t={16} /></span><span><b>{`${m.prenom} ${m.nom}`}</b><span className="s">{`Signé aujourd’hui à ${heureParis(fin?.signeLe || new Date())}`}</span></span></div>
+            {enAttente.map(c => (
+              <div key={c.id} className="mdt-sgn-l"><span className="pt att"><Ic n="horloge" t={16} /></span><span><b>{`${c.prenom} ${c.nom}`}</b><span className="s">{`Lien envoyé à ${c.email} · en attente`}</span></span></div>
+            ))}
+          </div>
+          <p className="mdt-p petit">{`${phraseVisite} Si ${n > 1 ? 'un lien n’arrive pas' : `${enAttente[0].prenom} ne reçoit pas son lien`}, vous pourrez le renvoyer depuis « Ma recherche ».`}</p>
+          {erreur && <div className="mdt-erreur">{erreur}</div>}
+          <button type="button" className="btn or mdt-plein" onClick={onFermer}>Revenir à mon espace</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mdt">
       <div className="mdt-corps mdt-fini">
         <div className="mdt-ok"><Ic n="check" t={34} /></div>
         <div className="mdt-sur-c">Mandat signé et scellé</div>
         <h3>{`Merci ${m.prenom}, c’est fait`}</h3>
-        <p className="mdt-p">{raison === 'visite'
-          ? (attendre
-            ? `Votre demande de visite est partie. Comme vous avez choisi d’attendre vos ${RETRACTATION_JOURS} jours, Alexandre vous proposera un créneau à partir du ${dateLongue(fin!.finRetractation)}.`
-            : 'Votre demande de visite est partie avec vos disponibilités. Alexandre vous propose un créneau très vite.')
-          : 'Alexandre est prévenu. Vous pouvez maintenant demander vos visites en un geste, depuis chaque bien.'}</p>
+        <p className="mdt-p">{phraseVisite}</p>
         <button type="button" className="btn fant mdt-plein" onClick={telecharger}><Ic n="doc" t={16} /><span>Télécharger mon mandat signé</span></button>
         <div className="mdt-confiance fini">
           <span><Ic n="check" t={15} /><span>Signé par vous et par Emilio Immobilier</span></span>
@@ -772,13 +1153,18 @@ export function CarteMonMandat({ mandat, envoyer, onSigner, onRenoncer }: {
   if (mandat.etat === 'valide') {
     const s = mandat.signe;
     const peutRenoncer = s && Date.now() < Date.parse(s.fin);
+    const cos = mandat.cos || [];
+    const attendus = cos.filter(c => c.statut === 'invite').length;
     return (
       <section className="mdt-carte">
         <div className="mdt-carte-t"><span className="ic"><Ic n="bouclier" t={17} /></span><span>Mon mandat de recherche</span></div>
         {s ? (
           <>
-            <p className="mdt-carte-p"><b>{`N° ${s.numero}`}</b>{` · signé le ${dateLongue(s.le)}`}</p>
-            {mandat.expiration && <p className="mdt-carte-s">{`Renouvelé chaque mois, jusqu’au ${dateLongue(mandat.expiration + 'T12:00:00Z')} au plus tard.`}</p>}
+            <p className="mdt-carte-p"><b>{`N° ${s.numero}`}</b>{attendus
+              ? ` · ${cos.length + 1 - attendus} signature${cos.length - attendus > 0 ? 's' : ''} sur ${cos.length + 1}`
+              : ` · signé le ${dateLongue(s.le)}`}</p>
+            {cos.length > 0 && <SuiviCos moi={mandat.mandant} le={s.le} cos={cos} envoyer={envoyer} />}
+            {mandat.expiration && <p className="mdt-carte-s">{`Valable jusqu’au ${dateLongue(mandat.expiration + 'T12:00:00Z')} au plus tard.`}</p>}
             <button type="button" className="btn fant" onClick={telecharger}><Ic n="doc" t={16} /><span>Télécharger mon mandat (PDF)</span></button>
             {erreur && <div className="mdt-erreur">{erreur}</div>}
             {/* La renonciation en ligne : obligatoire, et donc bien là, mais
@@ -799,6 +1185,97 @@ export function CarteMonMandat({ mandat, envoyer, onSigner, onRenoncer }: {
       <div className="mdt-carte-t"><span className="ic"><Ic n="bouclier" t={17} /></span><span>Mon mandat de recherche</span></div>
       <p className="mdt-carte-p">Il vous sera proposé à votre première demande de visite. Vous pouvez aussi le signer dès maintenant&nbsp;: deux minutes, avec un code reçu par e-mail.</p>
       <button type="button" className="btn fant" onClick={onSigner}><Ic n="plume" t={16} /><span>Signer mon mandat</span></button>
+    </section>
+  );
+}
+
+/* ── Qui a signé, qui on attend ──
+   Dans « Mon mandat » : une ligne par signataire. Pour celui qu'on attend,
+   « Renvoyer le lien » et « Corriger son e-mail » (un lien neuf part, l'ancien
+   ne marche plus). Au niveau du module (AGENTS.md §2.4). */
+const etatCo = (c: CoEspace): string => {
+  if (c.statut === 'signe') return c.signe ? `Signé le ${dateLongue(c.signe)} à ${heureParis(c.signe)}` : 'Signé';
+  if (c.statut === 'decline') return 'A indiqué ne pas être concerné par cet achat';
+  if (c.statut === 'annule') return 'N’a pas signé : le mandat continue sans cette signature';
+  if (c.statut === 'retracte') return 'A renoncé au mandat';
+  if (c.expire && Date.parse(c.expire) < Date.now()) return `Son lien a expiré : renvoyez-le (${c.email})`;
+  return `${c.invite ? `Lien envoyé le ${dateLongue(c.invite)}` : 'Lien envoyé'} à ${c.email} · pas encore signé`;
+};
+function SuiviCos({ moi, le, cos, envoyer }: { moi: Mandant; le: string; cos: CoEspace[]; envoyer: Envoyer }) {
+  const [liste, setListe] = useState(cos);
+  const [corrige, setCorrige] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [envoi, setEnvoi] = useState('');
+  const [msg, setMsg] = useState<{ id: string; t: string; ok: boolean } | null>(null);
+  useEffect(() => { setListe(cos); }, [cos]);
+  const relancer = async (c: CoEspace) => {
+    setEnvoi(c.id); setMsg(null);
+    const r = await envoyer('mandat', { etape: 'relancer', coId: c.id });
+    setEnvoi('');
+    if (r?.ok) {
+      setListe(l => l.map(x => (x.id === c.id ? { ...x, expire: r.expire || x.expire } : x)));
+      setMsg({ id: c.id, ok: true, t: `C’est reparti : ${c.prenom} reçoit à nouveau son lien.` });
+    } else setMsg({ id: c.id, ok: false, t: r?.error === 'attendre' ? 'Le lien vient de partir : attendez un quart d’heure avant de le renvoyer.' : ERREURS[r?.error] || 'Le lien n’a pas pu être renvoyé. Réessayez dans un instant.' });
+  };
+  const corriger = async (c: CoEspace) => {
+    setEnvoi(c.id); setMsg(null);
+    const r = await envoyer('mandat', { etape: 'corriger', coId: c.id, email });
+    setEnvoi('');
+    if (r?.ok) {
+      const e = email.trim().toLowerCase();
+      setListe(l => l.map(x => (x.id === c.id ? { ...x, email: e, invite: new Date().toISOString(), expire: r.expire || x.expire } : x)));
+      setCorrige(null);
+      setMsg({ id: c.id, ok: true, t: `Un nouveau lien est parti à ${e}. L’ancien ne fonctionne plus.` });
+    } else setMsg({ id: c.id, ok: false, t: ERREURS[r?.error] || 'L’adresse n’a pas pu être corrigée. Réessayez dans un instant.' });
+  };
+  return (
+    <div className="mdt-sgn">
+      <div className="mdt-sgn-l"><span className="pt ok"><Ic n="check" t={16} /></span><span><b>{`${moi.prenom} ${moi.nom}`}</b><span className="s">{`Vous · signé le ${dateLongue(le)} à ${heureParis(le)}`}</span></span></div>
+      {liste.map(c => (
+        <div key={c.id} className="mdt-sgn-bloc">
+          <div className="mdt-sgn-l">
+            <span className={'pt ' + (c.statut === 'signe' ? 'ok' : c.statut === 'invite' ? 'att' : 'non')}><Ic n={c.statut === 'signe' ? 'check' : c.statut === 'invite' ? 'horloge' : 'croix'} t={16} /></span>
+            <span><b>{`${c.prenom} ${c.nom}`}</b><span className="s">{etatCo(c)}</span></span>
+          </div>
+          {c.statut === 'invite' && (corrige === c.id ? (
+            <div className="mdt-sgn-f">
+              <Champ lib={`Nouvelle adresse e-mail de ${c.prenom}`} val={email} onChange={setEmail} type="email" mode="email" auto="off" />
+              <div className="mdt-sgn-a">
+                <button type="button" className="btn or" disabled={envoi === c.id} onClick={() => { void corriger(c); }}>{envoi === c.id ? 'Envoi…' : 'Envoyer le lien à cette adresse'}</button>
+                <button type="button" className="mdt-relire" onClick={() => setCorrige(null)}>Annuler</button>
+              </div>
+            </div>
+          ) : (
+            <div className="mdt-sgn-a">
+              <button type="button" className="btn fant" disabled={envoi === c.id} onClick={() => { void relancer(c); }}>
+                <Ic n="mail" t={16} /><span>{envoi === c.id ? 'Envoi…' : `Renvoyer le lien à ${c.prenom}`}</span>
+              </button>
+              <button type="button" className="mdt-relire" onClick={() => { setCorrige(c.id); setEmail(c.email); setMsg(null); }}>Corriger son e-mail</button>
+            </div>
+          ))}
+          {msg?.id === c.id && <div className={msg.ok ? 'mdt-ok-l' : 'mdt-err-l'}>{msg.t}</div>}
+        </div>
+      ))}
+      {liste.some(c => c.statut === 'invite') && (
+        <p className="mdt-carte-s">{'Un rappel part tout seul 2 jours puis 7 jours après l’envoi du lien.'}</p>
+      )}
+    </div>
+  );
+}
+
+/* ══ L'accueil, pendant qu'on attend une signature ══════════════════════ */
+
+export function CarteAttente({ mandat, onVoir }: { mandat: MandatEspace; onVoir: () => void }) {
+  const att = (mandat.cos || []).filter(c => c.statut === 'invite');
+  if (!att.length || !mandat.signe) return null;
+  return (
+    <section className="mdt-pret">
+      <div className="mdt-pret-ic"><Ic n="horloge" t={20} /></div>
+      <div className="mdt-pret-tx">
+        <b>{`Votre mandat attend la signature de ${prenoms(att)}`}</b>
+        <span>{`Vous l’avez signé le ${dateLongue(mandat.signe.le)}. Il sera complet dès que ${prenoms(att)} ${att.length > 1 ? 'auront' : 'aura'} signé.`}</span>
+      </div>
+      <button type="button" className="btn fant" onClick={onVoir}>Voir</button>
     </section>
   );
 }
@@ -1063,6 +1540,82 @@ export const CSS_MANDAT = `
   background:var(--vert-fond, #f0fdf4); border-color:var(--vert-trait, #bbf7d0)}
 .mdt-confiance.fini > span{font-size:13px; color:var(--encre)}
 .mdt-confiance.fini > span > svg{color:var(--vert)}
+
+/* ── Signer à plusieurs, ou via une société ── */
+.mdt-q2{margin-top:10px; font-size:11px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--plume)}
+.mdt-seg{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.mdt-seg button{display:flex; align-items:center; justify-content:center; gap:8px; padding:12px 10px; border-radius:14px;
+  border:1.5px solid var(--trait); background:var(--carte); font-weight:700; color:var(--plume); font-size:14px}
+.mdt-seg button[data-on]{border-color:var(--or); background:var(--or-fond); color:var(--encre)}
+.mdt-seg button svg{flex:0 0 auto; color:var(--or-fonce)}
+.mdt-qui{display:flex; flex-direction:column; border:1px solid var(--trait); border-radius:16px; overflow:hidden}
+.mdt-qui-l{display:flex; align-items:center; gap:12px; padding:12px 14px; border-top:1px solid var(--trait); background:var(--carte)}
+.mdt-qui-l:first-child{border-top:none}
+.mdt-av{flex:0 0 auto; width:38px; height:38px; border-radius:50%; background:var(--encre); color:var(--or);
+  font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; letter-spacing:.5px}
+.mdt-av.b{background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.mdt-qui-tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px}
+.mdt-qui-tx b{font-size:14.5px; color:var(--encre); line-height:1.3}
+.mdt-qui-tx span{font-size:12.5px; color:var(--plume); line-height:1.45; overflow-wrap:anywhere}
+.mdt-qui-a{flex:0 0 auto; font-size:12.5px; font-weight:700; color:var(--or-fonce); text-decoration:underline; text-underline-offset:3px; padding:4px 0}
+.mdt-ajout{display:flex; align-items:center; justify-content:center; gap:8px; padding:13px; border-radius:14px;
+  border:1.5px dashed var(--or-trait); background:var(--carte); color:var(--or-fonce); font-weight:800; font-size:14px; width:100%}
+.mdt-ajout svg{flex:0 0 auto}
+.mdt-rappel{display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:16px; background:var(--fond);
+  border:1px solid var(--trait); border-left:4px solid var(--or)}
+.mdt-rappel > svg{flex:0 0 auto; color:var(--or-fonce); margin-top:2px}
+.mdt-rappel b{display:block; font-size:14.5px; color:var(--encre)}
+.mdt-rappel p{margin:5px 0 0; font-size:13.5px; line-height:1.55; color:var(--encre2)}
+.mdt-perso{border:1.5px solid var(--or-trait); border-radius:18px; padding:14px; display:flex; flex-direction:column; gap:10px; background:var(--carte)}
+.mdt-perso-t{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.mdt-perso-t .n{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--or-fonce)}
+/* ⚠️ pas « .mini » : l'espace a déjà une classe .mini (height:34px). */
+.mdt-coche.mdt-leger{padding:11px 12px; font-size:13.5px; border-radius:14px}
+.mdt-coche.mdt-leger .bx{width:22px; height:22px}
+.mdt-info{display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.55; color:var(--encre2);
+  padding:11px 13px; border-radius:12px; background:var(--fond); border:1px solid var(--trait)}
+.mdt-info > svg{flex:0 0 auto; color:var(--or-fonce); margin-top:1px}
+.mdt-perso-b{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.mdt-perso-b .btn{padding:11px 12px; font-size:14px}
+.mdt-depot{position:relative; display:flex; align-items:center; gap:12px; padding:13px 14px; border-radius:14px; border:1.5px dashed var(--trait-fort);
+  background:var(--fond); color:var(--plume); text-align:left; width:100%; cursor:pointer}
+.mdt-depot > svg{flex:0 0 auto; color:var(--or-fonce)}
+.mdt-depot b{display:block; font-size:14px; color:var(--encre); overflow-wrap:anywhere}
+.mdt-depot span span{display:block; font-size:12.5px}
+.mdt-depot input{position:absolute; inset:0; opacity:0; cursor:pointer; width:100%}
+.mdt-soc-q{position:relative; display:flex; flex-direction:column; gap:6px}
+.mdt-soc-e{font-size:12.5px; color:var(--plume); line-height:1.5}
+.mdt-soc-l{display:flex; flex-direction:column; border:1.5px solid var(--or-trait); border-radius:14px; overflow:hidden; background:#fff;
+  box-shadow:0 14px 30px -18px rgba(16,24,40,.45)}
+.mdt-soc-l button{display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:11px 13px; text-align:left; border-top:1px solid var(--trait)}
+.mdt-soc-l button:first-child{border-top:none}
+.mdt-soc-l button:hover, .mdt-soc-l button:focus-visible{background:var(--or-fond)}
+.mdt-soc-l b{font-size:14px; color:var(--encre)}
+.mdt-soc-l span{font-size:12.5px; color:var(--plume)}
+.mdt-sel{width:100%; border:1.5px solid var(--trait); border-radius:13px; padding:12px 13px; font:inherit; font-size:15px;
+  color:var(--encre); background:#fff; -webkit-appearance:none; appearance:none}
+.mdt-ch.err .mdt-sel{border-color:var(--brique)}
+.mdt-sgn{display:flex; flex-direction:column; gap:8px; width:100%; max-width:440px}
+.mdt-carte .mdt-sgn{max-width:none}
+.mdt-sgn-l{display:flex; gap:12px; align-items:center; padding:12px 14px; border-radius:14px; border:1px solid var(--trait);
+  background:var(--carte); text-align:left}
+.mdt-sgn-l > span:last-child{min-width:0}
+.mdt-sgn .pt{flex:0 0 auto; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center}
+.mdt-sgn .pt.ok{background:var(--vert); color:#fff}
+.mdt-sgn .pt.att{background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.mdt-sgn .pt.non{background:var(--fond); color:var(--plume); border:1px solid var(--trait)}
+.mdt-sgn b{display:block; font-size:14px; color:var(--encre)}
+.mdt-sgn span.s{display:block; font-size:12.5px; color:var(--plume); line-height:1.45; overflow-wrap:anywhere}
+.mdt-sgn-bloc{display:flex; flex-direction:column; gap:6px}
+.mdt-sgn-a{display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; padding:0 2px}
+.mdt-sgn-a .btn{width:auto; padding:10px 14px; font-size:13.5px}
+.mdt-carte .mdt-sgn-a .btn{align-self:auto}
+.mdt-sgn-f{display:flex; flex-direction:column; gap:8px}
+.mdt-sgn .mdt-relire{margin-top:0}
+.mdt-ok-l{font-size:12.5px; color:var(--vert); font-weight:700}
+.mdt-ns.ok{background:var(--vert-fond); border-color:var(--vert-trait); color:var(--vert)}
+.mdt-pret .btn.fant{width:auto}
+@media(min-width:640px){ .mdt-perso-b{max-width:420px} }
 
 /* Téléphone : plus serré, pour que chaque étape tienne sans trop défiler. */
 @media(max-width:639px){

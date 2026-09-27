@@ -115,9 +115,12 @@ display:inline-block` (classe `.nv`).
 ### 2.6 Next 16
 
 `middleware.ts` s'appelle **`src/proxy.ts`** et exporte `proxy()`. Il protège
-tout sauf `PUBLIC_PATHS = ['/login','/api/login']` et
-`PUBLIC_PREFIXES = ['/bien/','/espace/','/api/espace/']`. Toute nouvelle route
-publique doit être ajoutée là, sinon elle redirige vers `/login`.
+tout sauf `PUBLIC_PATHS` (`/login`, `/api/login`, les deux crons
+`/api/point-auto/envoi` et `/api/mandat/relances`, et `/api/signer`) et
+`PUBLIC_PREFIXES = ['/bien/','/espace/','/api/espace/','/signer/']`. Toute
+nouvelle route publique doit être ajoutée là, sinon elle redirige vers `/login`.
+Sur `espace.emilio-immo.com`, un chemin inconnu est réécrit en `/espace/…` :
+`/bien/` et `/signer/` sont exemptés à la main, dans le même fichier.
 
 ---
 

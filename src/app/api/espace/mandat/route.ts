@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import {
-  redigerMandat, resumeMandat, figerContenu, etatMandat, finRetractation, masquerEmail, validerMandant,
-  dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS,
-  rechercheDepuis, versionMandat, type Mandant, type Contenu,
+  redigerMandat, resumeMandat, figerContenu, etatMandat, finRetractation, masquerEmail, validerMandant, validerPersonne, validerSociete,
+  dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS, COSIGNATAIRES_MAX,
+  rechercheDepuis, versionMandat, type Mandant, type Contenu, type Societe,
 } from '@/lib/mandat';
+import {
+  lireCos, lienNeuf, envoyerLien, inviter, sceller, rangerGriffe, envoyerExemplaire, finRetractationDe, nomDe,
+  type Co, type LigneMandat,
+} from '@/lib/cosignature';
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
+import { PDFDocument } from 'pdf-lib';
 import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { lireIdentiteAgence } from '@/lib/agence';
@@ -33,6 +38,16 @@ import { lireIdentiteAgence } from '@/lib/agence';
  *   POST /api/espace/mandat  { token, etape: 'renoncer', confirme }
  *        la rétractation en ligne, pendant 14 jours (obligatoire depuis le
  *        19 juin 2026 pour un contrat conclu sur une interface en ligne)
+ *   POST /api/espace/mandat  { token, etape: 'relancer', coId }
+ *   POST /api/espace/mandat  { token, etape: 'corriger', coId, email }
+ *        il signe à plusieurs : il renvoie son lien à son conjoint, ou
+ *        corrige son adresse (un lien neuf part, l'ancien ne marche plus)
+ *
+ * À plusieurs (src/lib/cosignature.ts) : `code` reçoit aussi `cosignataires`
+ * (son conjoint, ses co-acquéreurs) ou `societe` (il achète via une
+ * société, `kbis` facultatif). À sa signature, la ligne passe en 'partiel',
+ * chaque co-signataire reçoit son lien (/signer/<jeton>), et le mandat
+ * l'engage déjà : la fiche du CRM se remplit comme s'il signait seul.
  *
  * Même serrure que les autres routes de l'espace : le jeton de la recherche.
  * Le texte vient de src/lib/mandat.ts — le même que celui que le client a lu.
@@ -69,7 +84,20 @@ type Ligne = {
   code_hash: string | null; code_expire_le: string | null; code_essais: number; codes_envoyes: number;
   code_envoye_le: string | null; signe_le: string | null; pdf_chemin: string | null; deroule: { t: string; x: string }[];
   execution_immediate: boolean | null; email_verifie: string | null; retracte_le: string | null;
+  /* Colonnes du SQL « signature-plusieurs » : absentes avant qu'il soit lancé. */
+  societe?: Societe | null; kbis_chemin?: string | null; griffe_chemin?: string | null;
 };
+
+/* Le Kbis, joint à la demande de code : un PDF ou une photo (déjà réduite
+   par le navigateur), 3 Mo au plus une fois décodé. */
+function lireKbis(v: unknown): { octets: Uint8Array; ext: string; type: string } | null {
+  if (typeof v !== 'string') return null;
+  const m = /^data:(application\/pdf|image\/jpeg|image\/png);base64,/.exec(v);
+  if (!m || v.length > 4_200_000) return null;
+  const octets = new Uint8Array(Buffer.from(v.slice(m[0].length), 'base64'));
+  if (octets.length < 500) return null;
+  return { octets, ext: m[1] === 'application/pdf' ? 'pdf' : m[1] === 'image/png' ? 'png' : 'jpg', type: m[1] };
+}
 
 async function derniere(sb: SupabaseClient, rechercheId: string): Promise<Ligne | null> {
   const { data, error } = await sb.from('mandats_signatures').select('*')
@@ -123,12 +151,33 @@ export async function POST(req: NextRequest) {
         if (!v.ok) return ko('coordonnees', 400, { champs: v.champs });
         const mandant = v.mandant;
 
+        /* Ceux qui signent avec lui, ou la société qu'il représente. */
+        const brutsCo: unknown[] = Array.isArray(body.cosignataires) ? body.cosignataires : [];
+        if (brutsCo.length > COSIGNATAIRES_MAX) return ko('coordonnees', 400, { champs: { cosignataires: `${COSIGNATAIRES_MAX} personnes au plus avec vous` } });
+        const cosV: Mandant[] = [];
+        for (let i = 0; i < brutsCo.length; i++) {
+          const vc = validerPersonne(brutsCo[i], [mandant.email, ...cosV.map(c => c.email)]);
+          if (!vc.ok) return ko('coordonnees', 400, { co: i, champs: vc.champs });
+          cosV.push(vc.mandant);
+        }
+        let societe: Societe | null = null;
+        if (body.societe && !cosV.length) {
+          const vs = validerSociete(body.societe);
+          if (!vs.ok) return ko('coordonnees', 400, { societe: true, champs: vs.champs });
+          societe = vs.societe;
+        }
+        const kbis = societe ? lireKbis(body.kbis) : null;
+        if (societe && body.kbis && !kbis) return ko('kbis', 400);
+
         const avant = await derniere(sb, recherche.id);
         const reprise = avant && avant.statut === 'en_cours' ? avant : null;
         if (reprise?.code_envoye_le && Date.now() - Date.parse(reprise.code_envoye_le) < ECART_ENVOIS_S * 1000) {
           return ko('attendre', 429, { secondes: ECART_ENVOIS_S });
         }
-        if (reprise && reprise.codes_envoyes >= CODES_MAX) return ko('trop', 429);
+        /* Six codes au plus d'affilée ; une heure sans en demander, et le
+           compteur repart (avant, il restait bloqué pour toujours). */
+        const remise = !reprise?.code_envoye_le || Date.now() - Date.parse(reprise.code_envoye_le) > 3_600_000;
+        if (reprise && !remise && reprise.codes_envoyes >= CODES_MAX) return ko('quota', 429);
 
         /* Le numéro : celui de la ligne en cours, sinon celui qu'Alexandre a
            préparé, sinon le premier de sa réserve. Il est posé AVANT la
@@ -183,22 +232,53 @@ export async function POST(req: NextRequest) {
             .eq('recherche_id', recherche.id).eq('type', 'mandat').order('created_at', { ascending: false }).limit(1).maybeSingle();
           if (vu?.created_at) deroule.push({ t: vu.created_at, x: 'Mandat affiché dans son espace personnel, récapitulatif lu' });
           deroule.push({ t: maintenant, x: body.certifie === true
-            ? 'Coordonnées confirmées et certifiées exactes par le signataire (« ce sont les miennes, le mandat est établi à mon nom »)'
+            ? (cosV.length || societe
+              ? 'Coordonnées confirmées et certifiées exactes et complètes par le signataire'
+              : 'Coordonnées confirmées et certifiées exactes par le signataire (« ce sont les miennes, le mandat est établi à mon nom »)')
             : 'Coordonnées confirmées par le signataire' });
         }
+        if (cosV.length) deroule.push({ t: maintenant, x: `${cosV.length > 1 ? 'Co-signataires indiqués' : 'Co-signataire indiqué'} et informations certifiées exactes par le signataire : ${cosV.map(c => `${nomDe(c)} (${c.email})`).join(', ')}` });
+        if (societe) deroule.push({ t: maintenant, x: `Achat via la société ${societe.denomination} (SIREN ${societe.siren}) ; habilitation à l’engager certifiée par le signataire${kbis ? ', Kbis joint' : ''}` });
         deroule.push({ t: maintenant, x: `${reprise ? 'Nouveau code' : 'Code à 6 chiffres'} envoyé à ${mandant.email}` });
+
+        /* Le Kbis, s'il en a joint un : rangé avant la ligne, qui garde son chemin. */
+        let kbisChemin: string | null = null;
+        if (kbis) {
+          const c = `${recherche.id}/kbis-${Date.now()}.${kbis.ext}`;
+          const up = await sb.storage.from(BUCKET).upload(c, kbis.octets, { contentType: kbis.type, upsert: false });
+          if (up.error) return ko('stockage', 500, { detail: up.error.message });
+          kbisChemin = c;
+        }
 
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
         const ligne = {
           id, recherche_id: recherche.id, client_id: recherche.client_id, numero, type: 'simple', statut: 'en_cours',
           mandant, contenu: { ...figerContenu(actuelle), agenceLe, source },
           code_hash: hacher(code, id), code_expire_le: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString(),
-          code_essais: 0, codes_envoyes: (reprise?.codes_envoyes || 0) + 1, code_envoye_le: maintenant, deroule,
+          code_essais: 0, codes_envoyes: remise ? 1 : (reprise?.codes_envoyes || 0) + 1, code_envoye_le: maintenant, deroule,
+          /* La société : écrite seulement si elle existe ou si la colonne est
+             là (le SQL lancé) — sinon, un client qui signe seul ne doit pas
+             buter sur une colonne manquante. */
+          ...(societe || (reprise && 'societe' in reprise) ? { societe } : {}),
+          ...(kbisChemin ? { kbis_chemin: kbisChemin } : {}),
         };
         const { error } = reprise
           ? await sb.from('mandats_signatures').update(ligne).eq('id', id)
           : await sb.from('mandats_signatures').insert(ligne);
         if (error) return ko('enregistrement', 500, { detail: error.message });
+
+        /* Ses co-signataires : remplacés à chaque demande de code (il a pu
+           revenir en arrière et changer d'avis). */
+        if (reprise) {
+          const { error: eDel } = await sb.from('mandats_cosignataires').delete().eq('signature_id', id).eq('statut', 'prevu');
+          if (eDel && cosV.length) return ko('enregistrement', 500, { detail: eDel.message });
+        }
+        if (cosV.length) {
+          const { error: eCo } = await sb.from('mandats_cosignataires').insert(cosV.map((c, i) => ({
+            signature_id: id, recherche_id: recherche.id, rang: i + 2, statut: 'prevu', saisi: c, personne: c, deroule: [],
+          })));
+          if (eCo) return ko('enregistrement', 500, { detail: eCo.message });
+        }
 
         const joli = `${code.slice(0, 3)} ${code.slice(3)}`;
         const eMail = await envoyerMail({
@@ -263,6 +343,94 @@ export async function POST(req: NextRequest) {
             : 'Je préfère que la recherche commence à la fin de mon délai de rétractation'} »` },
         ];
 
+        /* ── À plusieurs : il signe en premier ──
+           Son conjoint, ses co-acquéreurs reçoivent ensuite chacun leur lien.
+           Le mandat l'engage dès maintenant (le texte le dit) : la fiche se
+           remplit comme s'il signait seul, et ses visites peuvent partir. */
+        const cos = (await lireCos(sb, l.id)).filter(c => c.statut === 'prevu');
+        if (cos.length) {
+          const contenu = l.contenu;
+          const identite = await lireIdentiteAgence(sb);
+          const griffeChemin = await rangerGriffe(sb, recherche.id, l.numero, '1', griffeMandant);
+          const lp: LigneMandat = {
+            ...(l as unknown as LigneMandat), recherche_id: recherche.id, client_id: recherche.client_id,
+            statut: 'partiel', signe_le: le, ip, appareil, execution_immediate: execution, email_verifie: m.email,
+            deroule, contenu: { ...l.contenu, identite }, griffe_chemin: griffeChemin, empreinte: null, societe: null,
+          };
+          /* Leurs liens sont préparés avant le PDF, qui les dit « en attente ». */
+          const prets: Co[] = cos.map(c => ({ ...c, ...lienNeuf(c, le) }) as Co);
+          const sc = await sceller(sb, lp, prets);
+          if (!sc.ok) return ko('stockage', 500, { detail: sc.erreur });
+          const { error: eLigne } = await sb.from('mandats_signatures').update({
+            statut: 'partiel', signe_le: le, ip, appareil, execution_immediate: execution, email_verifie: m.email,
+            code_hash: null, code_essais: l.code_essais + 1, deroule, griffe_chemin: griffeChemin, ...sc.maj,
+          }).eq('id', l.id);
+          if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
+          const echecs: string[] = [];
+          for (const c of prets) {
+            const { error: eC } = await sb.from('mandats_cosignataires').update({
+              statut: c.statut, jeton: c.jeton, invite_le: c.invite_le, lien_expire_le: c.lien_expire_le,
+              relances: 0, relance_le: null, deroule: c.deroule,
+            }).eq('id', c.id);
+            const eM = eC ? eC.message : await envoyerLien(c, lp);
+            if (eM) echecs.push(`${nomDe(c.personne)} : ${eM}`);
+          }
+
+          const jourP = jourParis(le);
+          const finP = new Date(Date.parse(jourP + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
+          const { error: eFicheP } = await sb.from('recherches').update({
+            mandat_date_signature: jourP, mandat_duree: 12, mandat_honoraires: honorairesCourt(contenu),
+            mandat_date_expiration: finP, sans_mandat: false, mandat_numero: l.numero, mandat_type: 'simple',
+            updated_at: new Date().toISOString(),
+          }).eq('id', recherche.id);
+
+          /* La fiche passe en couple avec la personne qu'il a ajoutée (la
+             première, s'il en a mis plusieurs). Alexandre le voit. */
+          const netP = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z@.0-9]/g, '');
+          const conj = cos[0].personne;
+          let fiche = '';
+          if ('couple' in client) {
+            const lite = { civilite: conj.civilite, prenom: conj.prenom, nom: conj.nom, email: conj.email, telephone: conj.telephone, naissanceDate: conj.naissanceDate, naissanceLieu: conj.naissanceLieu };
+            if (!client.couple) {
+              const { error: eC } = await sb.from('clients').update({ couple: true, conjoint: lite, ...(client.civilite ? {} : { civilite: m.civilite }) }).eq('id', client.id);
+              fiche = eC ? `La fiche n'a pas pu passer en couple (${eC.message}).` : `La fiche passe en couple : ${nomDe(conj)} a été ajouté${conj.civilite === 'Madame' ? 'e' : ''} par ${m.prenom}.`;
+            } else if (netP(client.conjoint?.email) !== netP(conj.email) || netP(client.conjoint?.nom) !== netP(conj.nom)) {
+              fiche = `${m.prenom} a indiqué ${nomDe(conj)} (${conj.email}) ; ta fiche indique ${[client.conjoint?.prenom, client.conjoint?.nom].filter(Boolean).join(' ') || 'une autre personne'}.`;
+            }
+          }
+          const autres = cos.map(c => nomDe(c.personne)).join(' et ');
+          const { error: eJP } = await sb.from('journal').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
+            titre: `✍️ Mandat signé en ligne par ${m.prenom}, en attente de ${cos.map(c => c.personne.prenom).join(' et ')}`,
+            description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}\nLien personnel envoyé à ${cos.map(c => `${nomDe(c.personne)} (${c.personne.email})`).join(', ')}${fiche ? `\n👥 ${fiche}` : ''}${echecs.length ? `\n⚠️ Lien non envoyé : ${echecs.join(' ; ')}` : ''}`,
+            metadata: { signature_id: l.id, numero: l.numero, empreinte: sc.empreinte },
+          });
+          if (eJP) console.error('[mandat] journal', eJP.message);
+          await evt('mandat', `Mandat n° ${l.numero} signé, en attente de ${autres}`);
+
+          const eP = await envoyerExemplaire({ a: m, numero: l.numero, signe: sc.signe, complet: false, fin: null, attendus: cos.map(c => c.personne.prenom) });
+          const pjP = [{ nom: `Mandat-de-recherche-${l.numero}.pdf`, type: 'application/pdf', base64: Buffer.from(sc.signe).toString('base64') }];
+          if (eP || eFicheP || echecs.length || fiche || await alerteMailActive(sb, 'mandat_signe')) await envoyerMail({
+            a: ALERTES(), deLaPartDe: 'crm', pj: pjP,
+            sujet: `✍️ ${nom} a signé son mandat (n° ${l.numero}) · en attente de ${autres}`,
+            texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nIl signe avec ${autres}, qui ${cos.length > 1 ? 'ont' : 'a'} reçu son lien personnel. Le mandat l'engage déjà ; il sera complet à leur signature.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin des 14 jours.'}${contenu.source === 'reserve' ? '\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.' : ''}${fiche ? `\n👥 ${fiche}` : ''}${echecs.length ? `\n⚠️ Lien non envoyé : ${echecs.join(' ; ')}. Renvoie-le depuis sa fiche.` : ''}${eP ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eP}).` : ''}${eFicheP ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFicheP.message}).` : ''}\n\n${lienCrm}`,
+            html: gabarit(`${nom} a signé son mandat`, `<p><b>${echappe(nom)}</b> vient de signer son mandat de recherche <b>n° ${echappe(l.numero)}</b> depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.</p>
+              <p>Il signe avec <b>${echappe(autres)}</b>, qui ${cos.length > 1 ? 'ont' : 'a'} reçu son lien personnel. Le mandat l’engage déjà ; il sera complet à leur signature.</p>
+              <p>${execution ? 'Il a demandé que la recherche commence <b>tout de suite</b>.' : 'Il préfère attendre la fin des 14 jours.'}</p>
+              ${contenu.source === 'reserve' ? '<p>Numéro pris dans ta réserve : <b>reporte-le dans ImmoFacile</b>.</p>' : ''}
+              ${fiche ? `<p style="color:#1e3a8a">👥 ${echappe(fiche)}</p>` : ''}
+              ${echecs.length ? `<p style="color:#b91c1c">⚠️ Lien non envoyé : ${echappe(echecs.join(' ; '))}. Renvoie-le depuis sa fiche.</p>` : ''}
+              ${eP ? `<p style="color:#b91c1c">⚠️ Sa copie n’a pas pu lui être envoyée (${echappe(eP)}).</p>` : ''}
+              ${eFicheP ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFicheP.message)}).</p>` : ''}
+              <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+          });
+          const finR = finRetractation(le);
+          return NextResponse.json({
+            ok: true, numero: l.numero, signeLe: le, finRetractation: finR.toISOString(), execution,
+            attente: prets.map(c => ({ id: c.id, prenom: c.personne.prenom, nom: c.personne.nom, email: masquerEmail(c.personne.email), envoye: !echecs.some(e => e.startsWith(nomDe(c.personne))) })),
+          });
+        }
+
         /* La signature manuscrite d'Alexandre, si elle est déposée. */
         let griffe: Uint8Array | null = null;
         try {
@@ -274,21 +442,36 @@ export async function POST(req: NextRequest) {
         /* L'identité de l'agence du jour de la signature. Elle est gardée
            avec le mandat : ce qui est signé ne bouge plus. */
         const identite = await lireIdentiteAgence(sb);
+        /* Via une société : c'est elle, représentée par lui, qui est nommée
+           sur le PDF ; les mails, eux, restent adressés à la personne. */
+        const soc = l.societe || null;
+        const nomPdf = soc ? `${soc.denomination.toUpperCase()}, représentée par ${nom}` : nom;
         const parties = redigerMandat({
           numero: l.numero, mandant: m, recherche: contenu.recherche, executionImmediate: execution,
-          signature: { le, email: m.email },
+          signature: { le, email: m.email }, ...(soc ? { societe: soc } : {}),
         }, identite);
-        const sig = { mandantNom: nom, le, email: m.email, agenceLe: contenu.agenceLe || null };
-        const seul = await pdfMandat(parties, {
-          numero: l.numero, mandantNom: nom, resume: resumeMandat(contenu.recherche), sig,
-          pagesEnTout: n => n + 1, signatureAgence: griffe, signatureMandant: griffeMandant, identite,
+        const sig = { mandantNom: nomPdf, le, email: m.email, agenceLe: contenu.agenceLe || null };
+        const fabriquer = (certif: number) => pdfMandat(parties, {
+          numero: l.numero, mandantNom: nomPdf, resume: resumeMandat(contenu.recherche), sig,
+          pagesEnTout: n => n + certif, signatureAgence: griffe, signatureMandant: griffeMandant, identite,
         });
-        const empreinte = createHash('sha256').update(seul).digest('hex');
-        const signe = await pdfSigne(seul, {
-          numero: l.numero, mandant: { nom, adresse: m.adresse, email: m.email, telephone: m.telephone },
-          signeLe: le, ip, appareil, empreinte, deroule, executionImmediate: execution, agenceLe: contenu.agenceLe || null,
+        const certifier = (s1: Uint8Array, e1: string) => pdfSigne(s1, {
+          numero: l.numero, mandant: { nom: nomPdf, adresse: soc ? soc.siege : m.adresse, email: m.email, telephone: m.telephone },
+          signeLe: le, ip, appareil, empreinte: e1, deroule, executionImmediate: execution, agenceLe: contenu.agenceLe || null,
           identite,
         });
+        let seul = await fabriquer(1);
+        let empreinte = createHash('sha256').update(seul).digest('hex');
+        let signe = await certifier(seul, empreinte);
+        /* Un certificat qui déborde sur une 2e page (long déroulé, société) :
+           le pied « 3 / 8 » du mandat doit le savoir. On refait avec le bon
+           compte — une seule page, et rien ne change. */
+        const nbCertif = (await PDFDocument.load(signe)).getPageCount() - (await PDFDocument.load(seul)).getPageCount();
+        if (nbCertif !== 1) {
+          seul = await fabriquer(nbCertif);
+          empreinte = createHash('sha256').update(seul).digest('hex');
+          signe = await certifier(seul, empreinte);
+        }
 
         const racine = `${recherche.id}/${l.numero}-${Date.now()}`;
         const cheminSeul = `${racine}-mandat.pdf`, cheminSigne = `${racine}-signe.pdf`;
@@ -327,8 +510,8 @@ export async function POST(req: NextRequest) {
         ];
         await sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
-          type: 'mandat', titre: '✍️ Mandat signé en ligne par le client',
-          description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.mois} mois au plus, fin possible à tout moment · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
+          type: 'mandat', titre: soc ? `✍️ Mandat signé en ligne par le client, pour la société ${soc.denomination}` : '✍️ Mandat signé en ligne par le client',
+          description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.mois} mois au plus, fin possible à tout moment · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${soc ? `\n🏢 ${soc.forme} ${soc.denomination} · SIREN ${soc.siren} · RCS ${soc.rcsVille} · ${soc.qualite}${l.kbis_chemin ? ' · Kbis joint' : ' · sans Kbis'}` : ''}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
           metadata: { signature_id: l.id, numero: l.numero, empreinte },
         });
         await evt('mandat', `Mandat n° ${l.numero} signé`);
@@ -357,6 +540,7 @@ export async function POST(req: NextRequest) {
           texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nPrix maximum : ${prix}. Honoraires : ${honorairesCourt(contenu)}.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin de ses 14 jours : pas de visite avant le ' + dateCourte(limite) + '.'}\n${contenu.source === 'reserve' ? `\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.` : ''}${ecarts.map(e => `\n⚠️ ${e}`).join('')}${eClient ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eClient}) : envoie-lui le PDF ci-joint.` : ''}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}) : remplis le bloc Mandat à la main.` : ''}\n\n${lienCrm}`,
           html: gabarit(`${nom} a signé son mandat`, `<p><b>${echappe(nom)}</b> vient de signer son mandat de recherche <b>n° ${echappe(l.numero)}</b> depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.</p>
             <p>Prix maximum : ${echappe(prix)} · Honoraires : ${echappe(honorairesCourt(contenu))}</p>
+            ${soc ? `<p>🏢 Pour la société <b>${echappe(soc.denomination)}</b> (${echappe(soc.forme)}, SIREN ${echappe(soc.siren)}, RCS ${echappe(soc.rcsVille)}), dont il est ${echappe(soc.qualite.toLowerCase())}${l.kbis_chemin ? ' · Kbis joint (dans le dossier privé)' : ' · pas de Kbis joint'}.</p>` : ''}
             <p>${execution ? 'Il a demandé que la recherche commence <b>tout de suite</b>.' : `Il préfère attendre la fin de ses 14 jours : <b>pas de visite avant le ${dateCourte(limite)}</b>.`}</p>
             ${contenu.source === 'reserve' ? '<p>Numéro pris dans ta réserve : <b>reporte-le dans ImmoFacile</b>.</p>' : ''}
             ${ecarts.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
@@ -372,7 +556,7 @@ export async function POST(req: NextRequest) {
       /* ── son exemplaire ───────────────────────────────────── */
       case 'pdf': {
         const l = await derniere(sb, recherche.id);
-        if (!l || !l.pdf_chemin || (l.statut !== 'signe' && l.statut !== 'retracte')) return ko('aucun', 404);
+        if (!l || !l.pdf_chemin || !['signe', 'retracte', 'partiel'].includes(l.statut)) return ko('aucun', 404);
         const { data, error } = await sb.storage.from(BUCKET)
           .createSignedUrl(l.pdf_chemin, 120, { download: `Mandat-de-recherche-${l.numero}.pdf` });
         if (error || !data?.signedUrl) return ko('stockage', 500);
@@ -383,14 +567,37 @@ export async function POST(req: NextRequest) {
       case 'renoncer': {
         if (body.confirme !== true) return ko('confirmer', 400);
         const l = await derniere(sb, recherche.id);
-        if (!l || l.statut !== 'signe' || !l.signe_le) return ko('aucun', 404);
-        if (Date.now() > finRetractation(l.signe_le).getTime()) return ko('delai', 409);
+        if (!l || !['signe', 'partiel'].includes(l.statut) || !l.signe_le) return ko('aucun', 404);
+        /* À plusieurs, le délai court jusqu'à 14 jours après la dernière signature. */
+        const cosR = await lireCos(sb, l.id);
+        const finR = finRetractationDe(l, cosR) || finRetractation(l.signe_le);
+        if (Date.now() > finR.getTime()) return ko('delai', 409);
         const le = new Date().toISOString();
         const { error } = await sb.from('mandats_signatures').update({
           statut: 'retracte', retracte_le: le,
           deroule: [...(l.deroule || []), { t: le, x: 'Rétractation exercée en ligne depuis son espace personnel' }],
         }).eq('id', l.id);
         if (error) return ko('enregistrement', 500, { detail: error.message });
+        /* Le premier signataire renonce : le mandat prend fin pour tous (le
+           texte le prévoit). Ceux qu'on attendait ne le sont plus ; ceux qui
+           avaient signé sont prévenus. */
+        for (const c of cosR.filter(x => x.statut === 'invite' || x.statut === 'prevu')) {
+          const { error: eC } = await sb.from('mandats_cosignataires').update({
+            statut: 'annule', code_hash: null, deroule: [...(c.deroule || []), { t: le, x: `Invitation close : ${l.mandant.prenom} a renoncé au mandat` }],
+          }).eq('id', c.id);
+          if (eC) console.error('[mandat] renonciation, co-signataire', eC.message);
+        }
+        for (const c of cosR.filter(x => x.statut === 'signe')) {
+          await envoyerMail({
+            a: c.personne.email, nomA: nomDe(c.personne), repondreA: 'agence@emilio-immo.com',
+            sujet: `Le mandat de recherche n° ${l.numero} a pris fin`,
+            texte: `Bonjour ${c.personne.prenom},\n\n${l.mandant.prenom} a renoncé au mandat de recherche n° ${l.numero}, le ${dateLongue(le)} : il prend fin pour vous deux, sans aucun frais.\n\nSi vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.\n\nAlexandre Rogelet — Emilio Immobilier`,
+            html: gabarit('Le mandat a pris fin', `<p>Bonjour ${echappe(c.personne.prenom)},</p>
+              <p>${echappe(l.mandant.prenom)} a renoncé au <b>mandat de recherche n° ${echappe(l.numero)}</b>, le ${dateLongue(le)} : il prend fin pour vous deux, sans aucun frais.</p>
+              <p>Si vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.</p>
+              <p>Alexandre Rogelet — Emilio Immobilier</p>`),
+          });
+        }
         /* Le numéro reste attaché à ce mandat dans le registre : un nouveau
            mandat en prendra un autre. */
         const { error: eFiche } = await sb.from('recherches').update({
@@ -439,6 +646,44 @@ export async function POST(req: NextRequest) {
             <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
         return NextResponse.json({ ok: true });
+      }
+
+      /* ── à plusieurs : renvoyer son lien, corriger son adresse ── */
+      case 'relancer':
+      case 'corriger': {
+        const l = await derniere(sb, recherche.id);
+        if (!l || l.statut !== 'partiel') return ko('aucun', 404);
+        const cosR = await lireCos(sb, l.id);
+        const co = cosR.find(c => c.id === body.coId && c.statut === 'invite');
+        if (!co) return ko('aucun', 404);
+        const lp = l as unknown as LigneMandat;
+        if (etape === 'relancer') {
+          /* Un renvoi tous les quarts d'heure : un bouton pressé deux fois ne
+             doit pas remplir sa messagerie. */
+          if (co.relance_le && Date.now() - Date.parse(co.relance_le) < 15 * 60_000) return ko('attendre', 429);
+          const r = await inviter(sb, co, lp, { note: `Lien renvoyé à la demande de ${l.mandant.prenom}` });
+          if (r.erreur) return ko('mail', 502);
+          await evt('mandat', `Lien renvoyé à ${nomDe(co.personne)}`);
+          return NextResponse.json({ ok: true, expire: r.co.lien_expire_le, email: masquerEmail(r.co.personne.email) });
+        }
+        const email = String(body.email || '').replace(/\s+/g, '').toLowerCase().slice(0, 120);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return ko('email', 400);
+        const pris = [l.mandant.email, ...cosR.filter(c => c.id !== co.id).map(c => c.personne.email)].map(x => String(x).toLowerCase());
+        if (pris.includes(email)) return ko('email_pris', 400);
+        const le = new Date().toISOString();
+        const personne = { ...co.personne, email };
+        const maj = { personne, ...lienNeuf({ ...co, personne }, le, `Adresse e-mail corrigée par ${l.mandant.prenom} (avant : ${co.personne.email})`) };
+        const { data: neuf, error: eN } = await sb.from('mandats_cosignataires').update(maj).eq('id', co.id).select('*').single();
+        if (eN || !neuf) return ko('enregistrement', 500, { detail: eN?.message });
+        const eM = await envoyerLien(neuf as Co, lp);
+        await sb.from('journal').insert({
+          client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
+          titre: `✉️ Adresse de ${co.personne.prenom} corrigée par ${l.mandant.prenom}`,
+          description: `${co.personne.email} → ${email}. Un nouveau lien est parti${eM ? ` — ⚠️ le mail n'est pas parti (${eM})` : ''}, l'ancien ne fonctionne plus.`,
+          metadata: { signature_id: l.id, cosignataire_id: co.id },
+        });
+        if (eM) return ko('mail', 502);
+        return NextResponse.json({ ok: true, email: masquerEmail(email), expire: (neuf as Co).lien_expire_le });
       }
 
       /* ── une question avant de signer ─────────────────────── */

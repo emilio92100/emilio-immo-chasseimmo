@@ -5,6 +5,7 @@ import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
 import styles from './Clients.module.css';
+import { nomFoyer } from '@/lib/foyer';
 import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
 import {
   BasculeCriteres, classesCrit, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
@@ -48,6 +49,10 @@ const statutBadge: Record<string, { label: string; color: string; bg: string }> 
    part, dans le formulaire partagé avec la fiche. */
 const initForm = {
   prenom: '', nom: '',
+  /* Monsieur, Madame, ou un couple (deux personnes : la 2e signe le mandat
+     avec son propre lien). Rien de choisi : la fiche se crée comme avant. */
+  civilite: '' as '' | 'Monsieur' | 'Madame', couple: false,
+  c2_civilite: '' as '' | 'Monsieur' | 'Madame', c2_prenom: '', c2_nom: '', c2_email: '', c2_tel: '',
   adresse_rue: '', adresse_cp: '', adresse_ville: '',
   email1: '', email2: '', tel1: '', tel2: '',
   statut: 'prospect' as StatutClient,
@@ -58,6 +63,17 @@ const initForm = {
   mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '2,5% TTC',
   notes: '',
 };
+
+/* Monsieur ou Madame, pour une personne du couple. */
+function Civilite({ v, onV }: { v: string; onV: (c: 'Monsieur' | 'Madame') => void }) {
+  return (
+    <div className="nc-civ">
+      {(['Monsieur', 'Madame'] as const).map(c => (
+        <button type="button" key={c} data-on={v === c} onClick={() => onV(c)}>{c}</button>
+      ))}
+    </div>
+  );
+}
 
 // Carte de section pour le formulaire en étapes
 function Bloc({ titre, children }: { titre: string; children: React.ReactNode }) {
@@ -545,6 +561,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     const motSituation = sit === 'vendeur' ? 'proprietaire revente possible' : sit === 'proprietaire' ? 'proprietaire' : sit === 'locataire' ? normer(OCCUPATION[(c as any).statut_occupation] || '') : '';
     const matchSearch = !search ||
       c.prenom.toLowerCase().includes(q) ||
+      /* Le conjoint d'une fiche « couple » se cherche aussi par son prénom. */
+      (c.couple ? nomFoyer(c).toLowerCase().includes(q) : false) ||
       c.nom.toLowerCase().includes(q) ||
       c.reference.toLowerCase().includes(q) ||
       (c.emails || []).some(e => e.toLowerCase().includes(q)) ||
@@ -572,6 +590,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
       const { data, error: err } = await supabase.from('clients').insert({
         reference, prenom: form.prenom || '', nom: form.nom || '',
+        /* Écrits seulement si Alexandre a choisi : avant le SQL « signature-
+           plusieurs », ces colonnes n'existent pas. */
+        ...(form.civilite || form.couple ? {
+          civilite: form.civilite || null, couple: form.couple,
+          conjoint: form.couple ? { civilite: form.c2_civilite, prenom: form.c2_prenom.trim(), nom: form.c2_nom.trim(), email: form.c2_email.trim().toLowerCase(), telephone: form.c2_tel.trim() } : null,
+        } : {}),
         /* Le lien de l'espace naît avec le client, pas avec la recherche.
            C'est LE lien qu'on lui enverra : un seul, définitif, même s'il
            ouvre trois recherches par la suite (voir src/lib/espace.ts). */
@@ -789,7 +813,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
                     </span>
                     <span style={{ minWidth: 0 }}>
-                      <span className={styles.nom} title={`${client.prenom} ${client.nom}`} style={clos ? { color: '#6b7a90' } : undefined}>{client.prenom} {client.nom}</span>
+                      <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
                       <span className={styles.ref}>
                         {client.reference?.replace('EMI-2026-', 'EMI-') || client.reference}
                         {/* Une couleur seule ne se comprend pas : on la nomme. */}
@@ -890,7 +914,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       <div className={styles.ficheTete}>
                         <span className={styles.ficheAv}>{(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}</span>
                         <span style={{ flexGrow: 1, minWidth: 0 }}>
-                          <span className={styles.ficheNom}>{client.prenom} {client.nom}</span>
+                          <span className={styles.ficheNom}>{nomFoyer(client)}</span>
                           <span className={styles.ficheRef}>{client.reference} · suivi depuis {joursDepuis(client.created_at)} j</span>
                         </span>
                         <span className={styles.ficheStatut} style={{ color: t.fg, background: t.bg, border: `1px solid ${t.trait}` }}>
@@ -1027,6 +1051,18 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-etat u { text-decoration: none; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
               .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: #1a2332; }
               .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
+
+              /* Une personne ou un couple */
+              .nc-qui { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 460px; }
+              .nc-qui-b { justify-content: center; align-items: center; padding: 10px 12px; }
+              .nc-couple { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+              @media (max-width: 720px) { .nc-couple { grid-template-columns: 1fr; } }
+              .nc-pers { border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+              .nc-pers-t { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
+              .nc-civ { display: flex; gap: 6px; }
+              .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
+              .nc-civ button[data-on="true"] { border-color: #1a2332; background: #f8fafc; color: #1a2332; }
+              .nc-note { font-size: 12px; line-height: 1.55; border-radius: 10px; padding: 9px 12px; background: #f8fafc; border: 1px solid #eef1f6; color: #64748b; }
             `}</style>
 
             <div className={`${styles.modal} nc-fenetre`} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
@@ -1037,7 +1073,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
                   <div style={{ flexGrow: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a2332', letterSpacing: -0.4 }}>
-                      {nomRempli ? `${form.prenom} ${form.nom}`.trim() : 'Nouveau client'}
+                      {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau client'}
                     </h2>
                     <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[step].sous}</div>
                   </div>
@@ -1070,10 +1106,47 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   {step === 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       <Bloc titre="👤 Identité">
-                        <div className={styles.formRow}>
-                          <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" autoFocus /></div>
-                          <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                        <div className="nc-qui">
+                          {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
+                            <button type="button" key={k} className="nc-etat nc-qui-b"
+                              data-on={k === 'couple' ? form.couple : !form.couple && form.civilite === k}
+                              onClick={() => setForm(k === 'couple' ? { ...form, couple: true } : { ...form, couple: false, civilite: k })}>
+                              <b>{lib}</b>
+                            </button>
+                          ))}
                         </div>
+                        {!form.couple ? (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" autoFocus /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="nc-couple">
+                              <div className="nc-pers">
+                                <div className="nc-pers-t">Personne 1 · contact principal</div>
+                                <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Paul" autoFocus /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                                </div>
+                              </div>
+                              <div className="nc-pers">
+                                <div className="nc-pers-t">Personne 2</div>
+                                <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} placeholder="Claire" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} placeholder="Martin" /></div>
+                                </div>
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>✉️ Email</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} placeholder="claire@gmail.com" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone</label><input className={styles.input} value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} placeholder="facultatif" /></div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="nc-note">{'✍️ Le mandat en ligne sera préparé à leurs deux noms : la personne 1 signe depuis son espace, la personne 2 reçoit son propre lien et son propre code. Les e-mails et téléphones du bloc « Contact » restent ceux de la personne 1.'}</div>
+                          </>
+                        )}
                         <div className={styles.formGroup} style={{ position: 'relative' }}>
                           <label className={styles.label}>📍 Adresse actuelle</label>
                           <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="12 rue de la Paix…" autoComplete="off" />
