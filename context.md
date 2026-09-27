@@ -338,6 +338,14 @@ chaque reconduction). Pastille bleue dans le menu = documents « À faire signer
   tantièmes au choix (1 000 · 10 000 · 100 000). Maison : surface habitable et terrain, pas de Carrez.
 - Un modèle = un objet `Modele` (étapes, champs, `rediger(d, identite)` → blocs communs au texte et
   au PDF). En ajouter un : un fichier dans `src/lib/actes/`, une ligne dans `MODELES`.
+- Depuis le 27 septembre : **mandat de recherche papier** (simple ou exclusif ; une personne, un
+  couple, plusieurs acheteurs ou une SCI ; signé, il remplit le bloc Mandat de sa recherche via
+  `surRecherche`, et le vide s'il est annulé), **avenant au mandat de vente** (`deriver` : repris
+  du mandat signé ; prix, honoraires, durée, bien et lots, actions, texte libre) et **courrier de
+  reconduction L215-1** (`courrier: true` : « À envoyer » / « Envoyé », format lettre sans page de
+  garde). Un mandat qui se poursuit par périodes reproduit en annexe les articles L215-1 à L215-3
+  et L241-3 (obligatoire : article L215-4). Les clauses de l'article 78 (exclusivité, clause de
+  suite, clause pénale) sont en CAPITALES.
 
 ### La fiche bien publique — `/bien/<id>`
 
@@ -980,3 +988,33 @@ modèles et leurs règles (charge des honoraires vendeur/acquéreur, prix en let
 **À venir, dans cet ordre** : le mandat de recherche papier (simple et exclusif), l'avenant au
 mandat de vente (baisse de prix, prolongation), le courrier L215-1 au vendeur ; puis la signature
 en ligne de ces documents et leur place dans l'espace client (« Mes documents »).
+
+### V3.8 — 27 septembre 2026 · mandat de recherche papier, avenant, courrier de reconduction
+
+**Trois modèles de plus** dans Documents (détail au §3). Le mandat de recherche papier ne remplace
+pas celui en ligne : il couvre l'exclusif, les couples, les SCI et la signature sur place.
+
+**Relu par un second agent** avant la mise en ligne. Corrigé à cette occasion, sur le mandat de
+vente aussi :
+- la clause de suite devient une indemnité (clause pénale), non cumulable avec la clause pénale
+  de l'exclusivité — elle disait « les honoraires restent dus », ce qui est faux sans entremise ;
+- les clauses de l'article 78 passent en capitales (les encadrés gras ne suffisaient plus à les
+  distinguer : CA Amiens, 6 janvier 2022) ;
+- préemption (Cass. 3e civ., 19 décembre 2024), non-cumul des honoraires si l'agence a aussi le
+  mandat de vente, acquisition par une société constituée pour l'achat ;
+- le mandat dit comment s'opposer à la reconduction (par écrit, au plus tard la veille) ;
+- l'échéancier L215-1 se compte depuis la date limite de refus (échéance le 1er du mois) ;
+- l'avenant ouvre la rétractation dès qu'il est signé hors de l'agence, quel que soit son objet ;
+  un mandat terminé ne se prolonge pas par avenant.
+
+**À faire relire par l'avocat**, en plus des textes : l'article L215-1-1 (résiliation en ligne)
+pourrait imposer, puisque l'agence fait signer en ligne, d'ouvrir aussi une résiliation en ligne
+pour tous ses mandats ; la couverture géographique de l'assurance RCP n'est pas indiquée dans
+l'information précontractuelle (article R111-2).
+
+**Chantier suivant, décidé avec Alexandre** : la signature en ligne à plusieurs. Fiche client
+« une personne / un couple » ; dans l'espace, « J'achète via une société » et « Ajouter un
+co-acquéreur » (chacun son lien et son code, le mandat n'est complet qu'aux deux signatures,
+relances J+2 et J+7) ; signer seul reste la voie par défaut, avec un rappel clair et une case
+« je certifie que les informations sont exactes ». Puis la signature en ligne des avenants (vente
+et recherche) dans l'espace du client, et l'avenant au mandat de recherche.
