@@ -49,11 +49,20 @@ export function sansCriteres(x: object | null | undefined): boolean {
 }
 
 /* ── Ce qui est propre à chaque type (clients.pro) ── */
+/* Un confrère : ce que la délégation de mandat imprime sur lui (V3.19).
+   Écrit sur sa fiche à chaque délégation finalisée, repris à la suivante. */
+export type Juridique = {
+  societe?: string; forme?: string; capital?: string; siege?: string; rcs?: string;
+  carte?: string; cci?: string; fonds?: 'garantie' | 'aucun'; garant?: string; rcp?: string; qualite?: string;
+  /* La date de la délégation d'où ça vient (AAAA-MM-JJ). */
+  le?: string;
+};
 export type InfosPro = {
   agence?: string; statutPro?: 'salarie' | 'mandataire' | 'independant' | ''; reseau?: string; adresseAgence?: string; siteWeb?: string;
   etude?: string; adresseEtude?: string; clerc?: string; clercTel?: string;
   immeuble?: string; horaires?: string; acces?: string;
   metier?: string; societe?: string;
+  juridique?: Juridique;
 };
 export const lirePro = (x: unknown): InfosPro => (x && typeof x === 'object' && !Array.isArray(x) ? x as InfosPro : {});
 export const STATUTS_PRO: { v: 'salarie' | 'mandataire' | 'independant'; l: string; aide: string }[] = [

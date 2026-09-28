@@ -74,6 +74,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const [journal, setJournal] = useState<{ id: string; titre: string; created_at: string }[]>([]);
   const types = typesDe(x);
   const pro = lirePro(x.pro);
+  const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
   const principal = typeDe(types[0]);
   const archive = estArchive(x);
 
@@ -154,6 +155,9 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       <div className={c.barre}>
         <button type="button" className={c.retour} onClick={onBack}><Ic n="retour" t={16} />Contacts</button>
         <div className={c.actions}>
+          {types.includes('confrere') && (
+            <button type="button" className={`${c.btn} ${c.btnOr}`} onClick={() => onNavigate('documents', { delegation: x.id })}><Ic n="accord" t={15} />Déléguer un mandat</button>
+          )}
           <button type="button" className={c.btn} onClick={() => { setErreur(''); setEdit(formDe(x)); }}><Ic n="crayon" t={15} />Modifier</button>
           <button type="button" className={`${c.btn} ${c.masquable}`} disabled={occupe} onClick={() => ecrire({ archive: !archive }, 'Le contact n’a pas pu être archivé')}>
             <Ic n="archive" t={15} />{archive ? 'Sortir des archives' : 'Archiver'}
@@ -204,8 +208,23 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 <Li ic="globe" l="Site" v={pro.siteWeb} />
               </div>
               {!pro.agence && !pro.statutPro && <div className={c.pied}>Son agence, son statut (salarié, mandataire, à son compte) : « Modifier » pour les noter.</div>}
+              {/* Ce que sa dernière délégation a gardé (V3.19). */}
+              {jur?.le && (
+                <>
+                  <div className={c.lignes} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef1f6' }}>
+                    <Li ic="immeuble" l="Société" v={[jur.societe, jur.forme].filter(Boolean).join(', ')} />
+                    <Li ic="doc" l="RCS" v={jur.rcs} />
+                    <Li ic="carte" l="Carte professionnelle" v={[jur.carte, jur.cci ? `délivrée par ${jur.cci}` : ''].filter(Boolean).join(', ')} />
+                    <Li ic="bouclier" l="Garantie financière" v={jur.fonds === 'aucun' ? 'Ne détient aucuns fonds' : jur.garant} />
+                    <Li ic="balance" l="Assurance (RCP)" v={jur.rcp} />
+                  </div>
+                  <div className={c.pied}>{`Repris de sa délégation du ${new Date(jur.le + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}, et remis à jour à chaque délégation finalisée.`}</div>
+                </>
+              )}
             </section>
           )}
+          {/* Ses délégations, et « Déléguer un mandat » (V3.19). */}
+          {types.includes('confrere') && <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} confrere />}
           {types.includes('notaire') && (
             <section className={c.bloc}>
               <div className={c.blocT}><span className={c.blocIc}><Ic n="balance" t={15} /></span><h3>Son étude</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>

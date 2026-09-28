@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.6 · 23 septembre 2026**
+**Version 3.19 · 28 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -14,7 +14,7 @@ Alexandre Rogelet dirige **Emilio Immobilier**, agence indépendante sur Paris e
 **chasse immobilière** : un acquéreur lui confie une recherche, il écume le marché pour lui.
 
 Ce dépôt est le CRM sur mesure qui remplace Immofacile — sauf pour la diffusion portails, qui reste
-sur Immofacile faute de partenariats techniques reproductibles.
+sur Immofacile faute de partenariats techniques reproductibles (le passage au CRM est à l'étude : §7).
 
 L'outil a **trois faces** :
 
@@ -347,7 +347,8 @@ sans typage, en `select('*')`.
 
 Navigation (`Sidebar.tsx`), en trois sections :
 **Principal** — Dashboard · **Contacts** (« Clients » jusqu'à la V3.14) · **Biens** (V3.12, renommée en V3.13) ·
-**Suivi** — Visites · Relances · Documents · Nouveau mail ·
+**Suivi** — Agenda · Visites · Relances · Documents (sous-menu ouvert par défaut : Créer un document ·
+Liste des documents · Registre des mandats, V3.18) · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
 La fiche client s'ouvre depuis une liste, elle n'est pas dans la barre. `/veille/import` n'est
 accessible que par son adresse directe.
@@ -425,13 +426,19 @@ mandat, jusqu'à la vente. Voir V3.12 et V3.13.
   l'estimation, mandat signé, offre, compromis, vente, pause, retrait, prix), chaque fois dans une
   fenêtre qui écrit l'historique.
 
+**La fiche d'un confrère** (V3.19) — « Déléguer un mandat » (en haut) et « Ses délégations »
+(`DocumentsDuClient` en mode `confrere` : les délégations dont `donnees.confrereId` est ce contact).
+Sa société, sa carte et ses garanties, gardées par sa dernière délégation (`pro.juridique`),
+s'affichent sous « Son agence ».
+
 **Documents juridiques** (`src/components/documents/`, modèles dans `src/lib/actes/`) — mandat de
 vente (simple, semi-exclusif, exclusif), offre d'achat, bon de visite. Formulaire à gauche, aperçu
 « papier » à droite qui suit chaque réponse et défile jusqu'à la section de l'étape. Deux façons
 de remplir, retenues dans `localStorage` (`documents.mode`) : **étape par étape** ou **tout sur une
 page**. Le brouillon s'enregistre seul (800 ms). « Finaliser » fige le PDF avec l'identité de
 l'agence du jour et vérifie que le n° du registre n'a pas déjà servi (autres documents non annulés
-et `recherches.mandat_numero`). Ensuite, selon « Comment sera-t-il signé ? » : **à la main**
+et `recherches.mandat_numero`) ; une fois le **registre des mandats** démarré (V3.18), c'est lui qui
+donne le numéro à cet instant. Ensuite, selon « Comment sera-t-il signé ? » : **à la main**
 (imprimer, faire signer, déposer le scan : « Il est signé »), **en ligne** (« Envoyer les liens de
 signature » : un e-mail par signataire, suivi dans le panneau, relances, « Arrêter la signature »)
 ou **sur place** (`SignatureSurPlace` : plein écran, chacun son tour avec son code, puis la
@@ -461,6 +468,10 @@ Documents avec ce client déjà choisi (intention `{ nouveau: clientId }`).
   et L241-3 (obligatoire : article L215-4). Les clauses de l'article 78 (exclusivité, clause de
   suite, clause pénale) sont en CAPITALES. Puis l'**avenant au mandat de recherche** (V3.10), qui
   part d'un mandat signé en ligne ou sur papier et coche d'avance ce que la recherche a changé.
+- Depuis la V3.18 : la **délégation de mandat** à un confrère (`lib/actes/delegation.ts` : depuis la
+  fiche d'un mandat signé, Nouveau document, ou la fiche du confrère depuis la V3.19), jamais montrée
+  dans l'espace du client ; et le **registre des mandats** (Documents › Registre des mandats,
+  `PageRegistre.tsx`, `lib/registre.ts`), qui numérote les mandats une fois démarré.
 
 ### La fiche bien publique — `/bien/<id>`
 
@@ -806,25 +817,43 @@ dessous sur toute la largeur.
    en deux clics. Gratuit, cinq minutes chacun, et c'est aujourd'hui le meilleur rapport
    sécurité/effort du projet. À faire aussi : passer `SUPABASE_SERVICE_ROLE_KEY` en variable
    sensible sur Vercel (il le signale déjà en « Needs Attention »).
-1. **SMS à chaque dépôt de bien** — un SMS au client quand un bien arrive dans son espace, avec le
-   lien. Voie retenue : **API SMS d'OVH** (~0,045 € le SMS), **un seul SMS groupé par client et par
-   fenêtre de 2 h**, case à cocher dans la fenêtre d'envoi.
-   ❌ **WhatsApp écarté** : la plateforme Business exige une vérification d'entreprise Meta et des
-   modèles de message approuvés hors de la fenêtre de 24 h.
-3. **Données de marché DVF, dans le CRM uniquement** (jamais dans l'espace client) :
+1. **Données de marché DVF, dans le CRM uniquement** (jamais dans l'espace client) :
    `https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/communes/{dept}/{insee}.csv` — structure
    vérifiée, 2021 à 2025 disponibles. ⚠️ `api.cquest.org` renvoie des 502, écarté.
-4. **Mandat de recherche avec signature électronique** (Yousign) — nécessite un avis juridique
-   (loi Hoguet).
-5. **Confirmer les notifications sur iPhone.** Le parcours a été testé sur iPhone le 23 septembre
-   et fonctionne. Reste à confirmer le point le plus fragile d'iOS : les notifications n'arrivent
-   que si l'espace a été posé sur l'écran d'accueil, jamais depuis Safari.
-6. **L'avertissement Play Protect** à l'installation, sur un deuxième téléphone Android : jamais
-   reproduit, jamais infirmé.
-7. **Découper `recherche-immobiliere-emilio/SKILL.md`** (91 Ko) en `SKILL.md` + `references/`.
+2. **Découper `recherche-immobiliere-emilio/SKILL.md`** (91 Ko) en `SKILL.md` + `references/`.
+
+Réglés ou abandonnés (28 septembre) : la signature électronique du mandat « avec Yousign » est
+faite autrement (signature maison, V3.9 et V3.11) ; les vérifications sur téléphone (notifications
+iPhone, avertissement Play Protect) sont abandonnées à la demande d'Alexandre.
+
+### À décider
+
+- **Le mandat de recherche papier** dit encore que son prix se change « par écrit (un simple e-mail
+  suffit) » (`mandat-recherche.ts`), quand le mandat de vente exige un avenant depuis la V3.17.
+
+### À l'étude — diffuser les annonces depuis le CRM, plus depuis Immofacile (28 septembre)
+
+- Pas d'API chez SeLoger ni Leboncoin : une **passerelle** dépose chaque jour un fichier sur leur
+  serveur. Format commun : **Poliris** (celui de SeLoger) — un `Annonces.csv` d'environ 300
+  colonnes numérotées, séparateur `!#`, CP-1252, plus les photos (ou leurs URL), dans un zip
+  déposé par FTP ; identifiant agence et accès fournis par chaque portail après un test.
+- Deux voies : en direct (chaque portail doit accepter un logiciel développé en interne — LA
+  question à leur poser), ou un multidiffuseur (Ubiflow…) : un seul flux, redistribué ; abonnement
+  en plus. Les abonnements pro des portails restent payés à part dans les deux cas.
+- Les photos des biens sont déjà dans un bucket public (`photos-vente`) : le flux donne leurs URL.
+- Les mentions obligatoires sont déjà des champs de la fiche (DPE, GES, valeurs, date, dépenses
+  d'énergie, lots, charges, procédure, honoraires) : reste à faire la table de correspondance.
+- Le site emilio-immo.com lit aujourd'hui un **flux XML d'Immofacile** (ses mandats en cours) : le
+  CRM publierait le sien, idéalement au même format pour que le site n'ait qu'une adresse à
+  changer. Ce flux Immofacile peut aussi servir une fois à importer les biens en cours.
 
 ### Plus tard
 
+- **SMS à chaque dépôt de bien** (API SMS d'OVH, un SMS groupé par client et par fenêtre de 2 h) :
+  pas utile pour le moment (Alexandre, 28 septembre). WhatsApp écarté (vérification Meta, modèles
+  approuvés).
+- **Atelier d'estimation** (comparables, prix au m², plus et moins) et **avis de valeur en PDF** :
+  gardés de côté en V3.16.
 - **PDF d'une sélection de biens** : jsPDF + html2canvas (⚠️ pas encore dans `package.json`),
   page de garde, fiche par bien, note du conseiller, dépôt dans le Storage, pièce jointe Mailjet.
 - **Scoring de compatibilité bien ↔ recherche.** Couche 1 : critères durs, pondération des champs
@@ -832,9 +861,9 @@ dessous sur toute la largeur.
   de la recherche** et la description de l'annonce à Claude pour repérer ce qui ne se met pas en
   colonne (calme, travaux, exposition, état), seulement sur les biens ayant passé un seuil en
   couche 1. Les notes libres sont une consigne de matching en langage naturel.
-- **Extension du CRM aux vendeurs** : fiche unifiée, biens en mandat, pipeline de vente.
 - Relances automatiques après envoi · Dashboard réellement branché · Export Excel ·
-  Corbeille avec archivage à J+30 · Multi-utilisateur.
+  Corbeille avec archivage à J+30 · Multi-utilisateur. (L'extension aux vendeurs est faite :
+  V3.12 à V3.14.)
 
 ### Sourcing automatique d'annonces — comparatif de mai 2026
 
@@ -911,6 +940,8 @@ plusieurs biens = liste photo à gauche.
 ---
 
 ## 11. Historique
+
+V3.0 à V3.11 dans l'ordre ; à partir de la V3.12, la plus récente en premier.
 
 ### V1 → V2 (mai 2026)
 Journal anti-bruit. Envoi de mails branché sur Mailjet avec quatre modes (libre, un bien, sélection,
@@ -1308,6 +1339,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.19 — 28 septembre 2026 · déléguer un mandat depuis la fiche d'un confrère
+
+Rien à passer dans Supabase : tout vit dans `clients.pro` et `documents.donnees`.
+
+- **Sur la fiche d'un confrère** : « Déléguer un mandat » (en haut, en or) et le bloc « Ses
+  délégations » (déplié, avec « + Déléguer un mandat »). Le bouton ouvre Documents sur Nouveau
+  document › Délégation, le confrère déjà choisi (`IntentionDocuments.delegation`).
+- **Dans Nouveau document › Délégation**, « Le confrère » se choisit dans tes contacts (un nom, une
+  agence, un réseau), ou « Pas dans mes contacts : je le saisirai ».
+- **Ce qui se remplit** (`depuisConfrere`) : son agence, l'adresse de l'agence, lui (civilité,
+  nom, e-mail, téléphone) comme signataire ; et, s'il a déjà eu une délégation, sa société, sa
+  forme, son capital, son RCS, sa carte et sa CCI, sa garantie, son assurance, sa qualité. Un guide
+  le dit en tête de l'étape « Le confrère » ; un autre prévient, pour un mandataire (IAD, SAFTI…),
+  que la carte est celle du réseau et qu'il signe comme agent commercial habilité.
+- **Ce qui est gardé** : à la finalisation, ces informations s'écrivent sur sa fiche
+  (`clients.pro.juridique`, avec la date), pour la délégation suivante ; la fiche les montre sous
+  « Son agence ». Un échec s'affiche en rouge (« La fiche du confrère : pas enregistré »), sans
+  bloquer la délégation.
+- La délégation reste rangée sur la fiche du mandant (`client_id`) et se retrouve sur celle du
+  confrère par `donnees.confrereId`.
+
 ### V3.18 — 28 septembre 2026 · le registre des mandats, la délégation, l'éditeur repensé
 
 ⚠️ **À passer dans Supabase avant de déployer** : `outils/sql/registre-mandats.sql` (tables,
@@ -1429,6 +1481,7 @@ le veut).
 **Biens** : un affichage en lignes (photo réduite), au choix avec les cartes, retenu dans
 `localStorage` (`biens.vue`).
 
+### V3.16 — 28 septembre 2026 · la visite sur place, sur tablette
 
 Rien à passer dans Supabase : tout vit dans `biens_vente.donnees`.
 

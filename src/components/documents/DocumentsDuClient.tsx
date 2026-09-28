@@ -46,7 +46,7 @@ function depuisDoc(d: DocumentRow): Element {
   return {
     cle: d.id, categorie: d.categorie, statut: d.statut, courrier,
     titre: d.titre || 'Document sans titre',
-    sous: [d.numero ? `N° ${d.numero}` : '', quand].filter(Boolean).join(' · '),
+    sous: [d.numero ? `N° ${d.numero}` : d.modele === 'delegation' && d.donnees?.mandatNumero ? `Mandat n° ${String(d.donnees.mandatNumero)}` : '', quand].filter(Boolean).join(' · '),
     date: d.signe_le || d.annule_le || d.finalise_le || d.updated_at,
     signe: d.statut === 'signe' && d.signe_chemin ? { chemin: d.signe_chemin, nom: nomFichier(d, d.signature ? '-signe' : '') } : undefined,
   };
@@ -65,8 +65,11 @@ function depuisMandat(x: MandatRecherche): Element {
   };
 }
 
-export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
-  clientId: string; prenom?: string; onNavigate: (page: string, data?: unknown) => void;
+/* `confrere` (V3.19) : sur la fiche d'un confrère, « Ses délégations » —
+   les mandats que tu lui as confiés (`donnees.confrereId`), et « Déléguer
+   un mandat ». */
+export default function DocumentsDuClient({ clientId, prenom, onNavigate, confrere = false }: {
+  clientId: string; prenom?: string; onNavigate: (page: string, data?: unknown) => void; confrere?: boolean;
 }) {
   const [liste, setListe] = useState<Element[] | null>(null);
   const [erreur, setErreur] = useState('');
@@ -77,9 +80,13 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
     let vivant = true;
     (async () => {
       const [a, b] = await Promise.all([
-        supabase.from('documents').select('*').eq('client_id', clientId).order('updated_at', { ascending: false }).limit(100),
-        supabase.from('mandats_signatures').select('id, numero, statut, signe_le, retracte_le, pdf_chemin, client_id, recherche_id, mandant, created_at')
-          .eq('client_id', clientId).order('created_at', { ascending: false }).limit(30),
+        confrere
+          ? supabase.from('documents').select('*').eq('modele', 'delegation').eq('donnees->>confrereId', clientId).order('updated_at', { ascending: false }).limit(100)
+          : supabase.from('documents').select('*').eq('client_id', clientId).order('updated_at', { ascending: false }).limit(100),
+        confrere
+          ? Promise.resolve({ data: [], error: null })
+          : supabase.from('mandats_signatures').select('id, numero, statut, signe_le, retracte_le, pdf_chemin, client_id, recherche_id, mandant, created_at')
+            .eq('client_id', clientId).order('created_at', { ascending: false }).limit(30),
       ]);
       if (!vivant) return;
       /* La table des documents absente (SQL pas encore passé) : pas de bloc. */
@@ -90,7 +97,7 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
       setListe([...docs, ...mandats].sort((p, q) => q.date.localeCompare(p.date)));
     })();
     return () => { vivant = false; };
-  }, [clientId]);
+  }, [clientId, confrere]);
 
   async function ouvrirSigne(el: Element) {
     if (!el.signe) return;
@@ -117,14 +124,16 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
   const montres = tout ? liste : liste.slice(0, VISIBLES);
 
   return (
-    <BlocRepliable ic="doc" titre="Ses documents" n={liste.length}
+    <BlocRepliable ic={confrere ? 'accord' : 'doc'} titre={confrere ? 'Ses délégations' : 'Ses documents'} n={liste.length} ouvertAuDebut={confrere}
       resume={liste.length > 0 && (signes > 0 || aSigner > 0) ? (
         <>
           {signes > 0 && <span className={s.dcOk}><Ic n="check" t={12} e={2.8} />{`${signes} signé${signes > 1 ? 's' : ''}`}</span>}
           {aSigner > 0 && <span className={s.dcAttente}><Ic n="plume" t={12} e={2.4} />{`${aSigner} à signer`}</span>}
         </>
       ) : undefined}
-      action={<button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { nouveau: clientId })}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
+      action={confrere
+        ? <button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { delegation: clientId })}>+ Déléguer<span className={s.rpLong}> un mandat</span></button>
+        : <button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { nouveau: clientId })}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
       {liste.length ? (
         <div className={s.dcListe}>
           {montres.map(el => (
@@ -148,7 +157,9 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
           )}
         </div>
       ) : (
-        <div className={s.dcVide}>{`Aucun document pour ${prenom || 'ce client'} pour l’instant. Un mandat, un avenant, un bon de visite ou une offre rattaché à lui apparaîtra ici, avec son exemplaire signé.`}</div>
+        <div className={s.dcVide}>{confrere
+          ? `Aucune délégation à ${prenom || 'ce confrère'} pour l’instant. Confie-lui un de tes mandats signés avec « Déléguer un mandat » : ses coordonnées se remplissent toutes seules.`
+          : `Aucun document pour ${prenom || 'ce client'} pour l’instant. Un mandat, un avenant, un bon de visite ou une offre rattaché à lui apparaîtra ici, avec son exemplaire signé.`}</div>
       )}
     </BlocRepliable>
   );

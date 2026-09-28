@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MODELES, modele, type Contexte } from '@/lib/actes';
+import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
+import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
 import { Croix, Ic } from './ApercuActe';
 import { etapeDe, type BienVente } from '@/lib/biens-vente';
 import { creerDocument } from '@/components/biens/outils';
@@ -23,11 +25,15 @@ type BienMini = NonNullable<Contexte['bien']> & { recherche_id?: string | null; 
 type RechercheMini = Record<string, unknown> & { id: string; nom?: string | null; active?: boolean | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null };
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/* « Mandataire IAD · Agence du Parc », sous le nom d'un confrère. */
+const ligneConfrere = (c: ContactConfrere) => ligneContact({ types: ['confrere'], pro: c.pro }) || 'Confrère';
 
-export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }: {
+export default function NouveauDocument({ modeleId, clientId, confrereId, onFermer, onCree }: {
   modeleId?: string | null;
   /* Venu de la fiche d'un client : il est choisi d'avance (on peut changer). */
   clientId?: string | null;
+  /* Une délégation venue de la fiche d'un confrère : lui aussi (V3.19). */
+  confrereId?: string | null;
   onFermer: () => void;
   onCree: (d: DocumentRow) => void;
 }) {
@@ -51,6 +57,30 @@ export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }
   const [erreur, setErreur] = useState('');
   const [travail, setTravail] = useState(false);
   const m = choix ? modele(choix) : null;
+  /* Une délégation : le confrère, pris dans tes contacts (V3.19). Facultatif :
+     sinon, tout se saisit dans la délégation. */
+  const pourDeleguer = m?.id === 'delegation';
+  const [confreres, setConfreres] = useState<ContactConfrere[] | null>(null);
+  const [confrere, setConfrere] = useState<ContactConfrere | null>(null);
+  const [sansConfrere, setSansConfrere] = useState(false);
+  const [chercheC, setChercheC] = useState('');
+  useEffect(() => {
+    if (etape !== 2 || !pourDeleguer || confreres) return;
+    supabase.from('clients').select('id, civilite, prenom, nom, emails, telephones, types, pro, archive').order('created_at', { ascending: false }).limit(1000)
+      .then(({ data, error }) => {
+        /* Les types de contact pas encore installés : pas de choix, on saisit. */
+        if (error) { setConfreres([]); return; }
+        const l = ((data || []) as (ContactConfrere & { types?: unknown; archive?: unknown })[])
+          .filter(x => typesDe(x).includes('confrere') && (x.archive !== true || x.id === confrereId));
+        setConfreres(l);
+        if (confrereId) setConfrere(c => c || l.find(x => x.id === confrereId) || null);
+      });
+  }, [etape, pourDeleguer, confreres, confrereId]);
+  const trouvesC = useMemo(() => {
+    if (!confreres) return [];
+    const q = sansAccent(chercheC.trim());
+    return (q ? confreres.filter(x => sansAccent(`${x.prenom || ''} ${x.nom || ''} ${lirePro(x.pro).agence || ''} ${lirePro(x.pro).reseau || ''}`).includes(q)) : confreres).slice(0, 8);
+  }, [confreres, chercheC]);
 
   /* Les clients, une fois, pour chercher sans attendre. */
   useEffect(() => {
@@ -154,9 +184,10 @@ export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }
         visite = data?.[0] || null;
       }
       const avecMandat = lien === 'mandat' && !!mandat;
-      const donnees = avecMandat
+      let donnees = avecMandat
         ? await preparerDepuis(m, mandat!, identite)
         : m.defaut({ identite, client, bien, visite, recherche });
+      if (pourDeleguer && confrere) donnees = { ...donnees, ...depuisConfrere(confrere) };
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
         client_id: (avecMandat ? mandat!.client_id : null) || client?.id || null,
@@ -242,6 +273,48 @@ export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {pourDeleguer && (
+              <div className={s.champLigne}>
+                <label htmlFor="nd-confrere">Le confrère</label>
+                {confrere ? (
+                  <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
+                    <Ic n="agence" t={16} />
+                    <span className={s.resDeux}><b>{`${confrere.prenom || ''} ${confrere.nom || ''}`.trim() || 'Confrère'}</b><i>{ligneConfrere(confrere)}</i></span>
+                    <button type="button" className={s.btnLien} onClick={() => setConfrere(null)}>Changer</button>
+                  </div>
+                ) : sansConfrere ? (
+                  <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
+                    <Ic n="plume" t={16} /><span>Pas dans mes contacts : je le saisirai</span>
+                    <button type="button" className={s.btnLien} style={{ marginLeft: 'auto' }} onClick={() => setSansConfrere(false)}>Changer</button>
+                  </div>
+                ) : (
+                  <>
+                    <input id="nd-confrere" className={s.cherche} placeholder="Un nom, une agence, un réseau…" value={chercheC}
+                      onChange={e => setChercheC(e.target.value)} autoComplete="off" />
+                    {confreres === null ? <div className={s.chAide}>Chargement de tes confrères…</div> : (
+                      <div className={s.resultats}>
+                        {trouvesC.map(x => (
+                          <button key={x.id} type="button" className={s.resultat} onClick={() => setConfrere(x)}>
+                            <Ic n="agence" t={16} />
+                            <span className={s.resDeux}><b>{`${x.prenom || ''} ${x.nom || ''}`.trim() || 'Confrère'}</b><i>{ligneConfrere(x)}</i></span>
+                          </button>
+                        ))}
+                        {trouvesC.length === 0 && <div className={s.resultat} style={{ cursor: 'default', color: '#64748b' }}>{confreres.length ? 'Aucun confrère ne correspond.' : 'Aucun confrère dans tes contacts pour l’instant.'}</div>}
+                        <button type="button" className={s.resultat} onClick={() => setSansConfrere(true)}>
+                          <Ic n="plume" t={16} /><span>Pas dans mes contacts : je le saisirai</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className={s.chAide}>{confrere
+                  ? (lirePro(confrere.pro).juridique?.le
+                    ? 'Tout ce que sa fiche et sa dernière délégation savent de lui se remplit : coordonnées, société, carte, garanties.'
+                    : 'Son agence et ses coordonnées se remplissent depuis sa fiche. Sa société, sa carte et ses garanties seront gardées sur sa fiche pour la prochaine fois.')
+                  : 'Choisis-le dans tes contacts : ses coordonnées se remplissent toutes seules.'}</div>
               </div>
             )}
 

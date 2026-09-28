@@ -19,6 +19,9 @@ import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, lireIdentite, type IdentiteAgence } from '@/lib/agence';
 import { STATUTS, modele, pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
 import { inscrire, noterAnnulation, noterSignature } from '@/lib/registre';
+import { signalerEchec, verifie } from '@/lib/ecritures';
+import { lirePro } from '@/lib/contacts';
+import { juridiqueDepuis } from '@/lib/actes/delegation';
 
 export type DocumentRow = {
   id: string;
@@ -394,7 +397,22 @@ export async function finaliser(row: DocumentRow, m: Modele, dSaisi: Donnees, o:
     finalise_le: maintenant, updated_at: maintenant,
   }).eq('id', row.id).select().single();
   if (error) throw new Error('Le PDF est prêt mais le document n’a pas pu être mis à jour : ' + error.message);
+  /* Une délégation à un confrère de tes contacts : sa société, sa carte et
+     ses garanties restent sur sa fiche, pour la prochaine (V3.19). */
+  if (m.id === 'delegation') await retenirConfrere(d, maintenant.slice(0, 10));
   return data as DocumentRow;
+}
+
+async function retenirConfrere(d: Donnees, le: string) {
+  const id = typeof d.confrereId === 'string' ? d.confrereId : '';
+  if (!id) return;
+  const { data, error } = await supabase.from('clients').select('pro').eq('id', id).maybeSingle();
+  if (error || !data) { signalerEchec('La fiche du confrère', error?.message || 'contact introuvable'); return; }
+  const pro = lirePro((data as { pro?: unknown }).pro);
+  const agence = typeof d.confNom === 'string' ? d.confNom.trim() : '';
+  await verifie('La fiche du confrère', supabase.from('clients')
+    .update({ pro: { ...pro, agence: pro.agence || agence, juridique: juridiqueDepuis(d, le) }, updated_at: new Date().toISOString() })
+    .eq('id', id).select('id'), { ligne: true });
 }
 
 /* ── Signé : ce que le document écrit ailleurs ──

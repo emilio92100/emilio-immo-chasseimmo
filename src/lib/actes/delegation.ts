@@ -1,4 +1,4 @@
-/* ═══ La délégation de mandat (V3.18) ═════════════════════════════════════
+/* ═══ La délégation de mandat (V3.18, confrère des contacts en V3.19) ══════
    Alexandre confie tout ou partie d'un mandat signé à un confrère : un
    autre professionnel titulaire de la carte « Transactions sur immeubles et
    fonds de commerce ». C'est un contrat entre professionnels, signé par le
@@ -17,6 +17,12 @@
    · elle ne prend pas de numéro au registre des mandats : elle s'inscrit en
      observation sur la ligne du mandat, à sa signature.
 
+   Le confrère peut venir de tes contacts (sa fiche › « Déléguer un mandat »,
+   ou le choix dans Nouveau document) : ses coordonnées se remplissent, et
+   ce que la délégation dit de sa société est gardé sur sa fiche pour la
+   suivante (`depuisConfrere`, `juridiqueDepuis`). Elle est rangée sur la
+   fiche du mandant et listée sur celle du confrère (`donnees.confrereId`).
+
    Jamais montrée au client dans son espace (`interne`) : elle dit comment
    les honoraires se partagent.
 
@@ -34,6 +40,7 @@ import {
 } from './commun';
 import { TYPES as TYPES_VENTE, typeDe, argent as argentVente, registreVente, objetVente } from './mandat-vente';
 import { registreRecherche, objetRecherche, argentRecherche } from './mandat-recherche';
+import { lirePro, type Juridique } from '@/lib/contacts';
 
 /* Ce qu'on reprend du mandat, pour le décrire et rappeler ses conditions. */
 const REPRIS_VENTE = ['qui', 'situation', 'lien', 'vendeurs', 'sciNom', 'sciForme', 'sciSiege', 'sciRcs',
@@ -116,6 +123,16 @@ const ETAPES: Etape[] = [
   {
     id: 'confrere', titre: 'Le confrère', court: 'Le confrère', sous: 'L’agence à qui tu confies le mandat, sa carte et ses garanties.', vers: 'Entre les soussignés', ic: 'accord',
     champs: [
+      /* Choisi dans les contacts (V3.19) : d'où viennent les réponses. */
+      { t: 'guide', cle: 'g-fiche', si: d => !!txt(d, 'confrereId'), titre: d => `Repris de la fiche de ${txt(d, 'confrereNom') || 'ton contact'}`,
+        points: d => [
+          { ic: 'check', x: txt(d, 'confrereDe') ? `Sa société, sa carte et ses garanties viennent de la délégation du ${jourLong(txt(d, 'confrereDe'))} : vérifie qu’elles sont toujours à jour.` : 'Son agence, son adresse et ses coordonnées viennent de sa fiche. Complète le reste : ce sera gardé sur sa fiche pour la prochaine fois.' },
+        ] },
+      { t: 'guide', cle: 'g-mandataire', si: d => d.confStatut === 'mandataire', titre: () => 'Un mandataire n’a pas de carte à son nom',
+        points: () => [
+          { ic: 'carte', x: 'C’est son réseau (IAD, SAFTI, Capifrance…) qui détient la carte : mets la société du réseau, sa carte, sa garantie et son assurance.' },
+          { ic: 'plume', x: 'Lui signe comme agent commercial habilité par le réseau : demande-lui son attestation d’habilitation.' },
+        ] },
       { t: 'titre', cle: 't-ag', lib: 'Son agence', ic: 'agence' },
       { t: 'texte', cle: 'confNom', lib: 'Nom de l’agence', ic: 'agence', requis: true, exemple: 'Agence du Parc' },
       { t: 'texte', cle: 'confSociete', lib: 'Société', ic: 'immeuble', requis: true, exemple: 'PARC IMMOBILIER' },
@@ -381,6 +398,36 @@ function defaut(c: Contexte): Donnees {
     portee: 'totale', missions: [], fin: '', engagements: ENGAGEMENTS.map(e => e.v), publicite: 'non',
     partage: 50, encaisse: 'delegant',
     signature: 'en_ligne', faitA: c.identite.ville, date: aujourdhui(),
+  };
+}
+
+/* ── Le confrère, depuis sa fiche de contact (V3.19) ──
+   Son agence, son adresse, lui (nom, e-mail, téléphone) ; et ce qu'une
+   délégation précédente a gardé sur sa fiche (société, carte, garanties). */
+export type ContactConfrere = {
+  id: string; civilite?: string | null; prenom?: string | null; nom?: string | null;
+  emails?: string[] | null; telephones?: string[] | null; pro?: unknown;
+};
+export function depuisConfrere(c: ContactConfrere): Donnees {
+  const p = lirePro(c.pro);
+  const j: Juridique = p.juridique && typeof p.juridique === 'object' ? p.juridique : {};
+  const civ = c.civilite === 'Madame' || c.civilite === 'Monsieur' ? c.civilite : '';
+  const nom = [c.prenom, c.nom].filter(Boolean).join(' ').trim();
+  return {
+    confrereId: c.id, confrereNom: nom, confrereDe: j.le || '', confStatut: p.statutPro || '',
+    confNom: p.agence || '', confSiege: j.siege || p.adresseAgence || '',
+    confSociete: j.societe || '', confForme: j.forme || '', confCapital: j.capital || '', confRcs: j.rcs || '',
+    confCarte: j.carte || '', confCci: j.cci || '', confFonds: j.fonds === 'aucun' ? 'aucun' : 'garantie',
+    confGarant: j.garant || '', confRcp: j.rcp || '', confQualite: j.qualite || '',
+    delegataires: [{ ...PERSONNE_VIDE, civilite: civ, prenom: c.prenom || '', nom: c.nom || '', email: (c.emails?.[0] || '').toLowerCase(), telephone: c.telephones?.[0] || '' }],
+  };
+}
+/* Ce qu'on garde sur sa fiche, une fois la délégation finalisée. */
+export function juridiqueDepuis(d: Donnees, le: string): Juridique {
+  return {
+    societe: txt(d, 'confSociete'), forme: txt(d, 'confForme'), capital: txt(d, 'confCapital'), siege: txt(d, 'confSiege'),
+    rcs: txt(d, 'confRcs'), carte: txt(d, 'confCarte'), cci: txt(d, 'confCci'), fonds: d.confFonds === 'aucun' ? 'aucun' : 'garantie',
+    garant: txt(d, 'confGarant'), rcp: txt(d, 'confRcp'), qualite: txt(d, 'confQualite'), le,
   };
 }
 

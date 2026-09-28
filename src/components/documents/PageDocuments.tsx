@@ -435,8 +435,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
 /* Ce que la page doit faire en s'ouvrant, venue d'un autre écran. */
 /* Venu d'ailleurs : préparer un avenant, ouvrir un document (« r-<id> » :
    un mandat signé en ligne), en créer un pour un client (sa fiche), ou
-   descendre à un endroit de la page (le sous-menu Documents, V3.18). */
-export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste' };
+   descendre à un endroit de la page (le sous-menu Documents, V3.18), ou
+   déléguer un mandat à un confrère (sa fiche de contact, V3.19). */
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste'; delegation?: string };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -452,7 +453,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [cat, setCat] = useState<'tout' | Categorie>('tout');
   const [cherche, setCherche] = useState('');
   const [ouvert, setOuvert] = useState<string | null>(null);
-  const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string } | null>(null);
+  const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string; confrereId?: string } | null>(null);
   const [edition, setEdition] = useState<DocumentRow | null>(null);
   const refCreer = useRef<HTMLElement>(null);
   const refListe = useRef<HTMLDivElement>(null);
@@ -551,6 +552,14 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       if (r.statut === 'brouillon') setEdition(r); else setOuvert(r.id);
     })();
   }, [intention, onIntention, majDoc]);
+  /* « Déléguer un mandat » depuis la fiche d'un confrère : il est déjà choisi. */
+  useEffect(() => {
+    const cid = intention?.delegation;
+    if (!cid || faite.current === 'dl-' + cid) return;
+    faite.current = 'dl-' + cid;
+    onIntention?.();
+    setNouveau({ modele: 'delegation', confrereId: cid });
+  }, [intention, onIntention]);
   /* « + Nouveau document » depuis la fiche d'un client : il est déjà choisi. */
   useEffect(() => {
     const cid = intention?.nouveau;
@@ -709,7 +718,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           onFiche={ficheClient} />
       )}
       {nouveau && (
-        <NouveauDocument modeleId={nouveau.modele} clientId={nouveau.clientId} onFermer={() => setNouveau(null)}
+        <NouveauDocument modeleId={nouveau.modele} clientId={nouveau.clientId} confrereId={nouveau.confrereId} onFermer={() => setNouveau(null)}
           onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }} />
       )}
       {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }}
