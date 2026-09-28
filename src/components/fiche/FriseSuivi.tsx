@@ -151,9 +151,13 @@ type Props = {
   onSupprimer: (j: any) => void;
   onAjouter: () => void;
   onAppel: () => void;
+  /* La fiche d'un contact qui n'est pas acheteur (V3.23) : « Historique »,
+     et seulement les filtres qui ont un sens pour lui. */
+  titre?: string;
+  filtresVisibles?: string[];
 };
 
-export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel }: Props) {
+export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
   /* L'action d'où vient chaque relance : pour « Voir l'action ». */
   const actionDe = new Map<string, string>();
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
@@ -166,7 +170,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
     <div className={s.frise}>
       <div className={s.tete}>
         <div className={s.teteTitre}>
-          <b>Historique du dossier</b>
+          <b>{titreFrise}</b>
           <span>{`${comptes.tout || 0} élément${(comptes.tout || 0) > 1 ? 's' : ''}`}</span>
         </div>
         <div className={s.teteBoutons}>
@@ -176,7 +180,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
       </div>
 
       <div className={s.filtres}>
-        {FILTRES_SUIVI.map(f => {
+        {FILTRES_SUIVI.filter(f => !filtresVisibles || filtresVisibles.includes(f.id)).map(f => {
           const n = comptes[f.id] || 0;
           const fam = f.fam ? FAMILLES[f.fam] : null;
           return (
