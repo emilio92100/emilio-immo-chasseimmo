@@ -110,7 +110,7 @@ function visitesDe(det: DetailBien, clients: Record<string, ClientMini>): Visite
 const passee = (v: VisiteU) => v.statut === 'faite' || (!!v.ymd && `${v.ymd}T${v.heure || '23:59'}` < new Date().toISOString().slice(0, 16));
 
 /* ══ LE BANDEAU ═══════════════════════════════════════════════════════════ */
-function Bandeau({ bien, detail }: { bien: BienVente; detail: DetailBien | null }) {
+function Bandeau({ bien, detail, surCarte }: { bien: BienVente; detail: DetailBien | null; surCarte?: () => void }) {
   const d = bien.donnees || {};
   const photos = lirePhotos(d.photos);
   const a = argentBien(d);
@@ -132,7 +132,14 @@ function Bandeau({ bien, detail }: { bien: BienVente; detail: DetailBien | null 
           {bien.reference && <span className={b.ref}>{`Réf. ${bien.reference}`}</span>}
         </div>
         <h1 className={b.heroT}>{titreBien(d)}</h1>
-        {(adresse || txt(d, 'quartier')) && <div className={b.heroAdr}>{[adresse, txt(d, 'quartier')].filter(Boolean).join(' · ')}</div>}
+        {(adresse || txt(d, 'quartier')) && (
+          <div className={b.heroAdr}>
+            <span>{[adresse, txt(d, 'quartier')].filter(Boolean).join(' · ')}</span>
+            {surCarte && (!!txt(d, 'adresse') || (!!d.gps && typeof d.gps === 'object')) && (
+              <button type="button" className="bouton-carte bouton-carte-sombre" onClick={surCarte}><Ic n="carte" t={14} e={2} /><span>Voir sur la carte</span></button>
+            )}
+          </div>
+        )}
         <div className={b.heroPrix}>
           <b>{prix.t}</b>
           {avantMandat(bien.etape) && a.prix && (num(d, 'estimBasse') || num(d, 'estimHaute')) ? <span>{`prix conseillé ${euros(a.prix)}`}</span>
@@ -1227,7 +1234,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </div>
       </div>
 
-      <Bandeau bien={bien} detail={detail} />
+      <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })} />
 
       {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent. */}
       <nav className={`${b.onglets} ${b.ongletsCheval}`} aria-label="Rubriques du bien">

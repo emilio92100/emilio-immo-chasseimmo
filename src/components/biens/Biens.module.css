@@ -72,7 +72,7 @@
 .badgeOr i { font-style: normal; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: 0; }
 .ref { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.62); letter-spacing: .3px; }
 .heroT { margin: 2px 0 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 26px; font-weight: 800; line-height: 1.2; letter-spacing: -.3px; }
-.heroAdr { font-size: 13.5px; color: rgba(255,255,255,.72); }
+.heroAdr { font-size: 13.5px; color: rgba(255,255,255,.72); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .heroPrix { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 .heroPrix b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 30px; font-weight: 800; color: #d8b85c; letter-spacing: -.4px; }
 .heroPrix span { font-size: 13px; color: rgba(255,255,255,.7); }

@@ -584,7 +584,7 @@ function ChampAdresse({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     if (q.trim().length < 4) { setSug([]); return; }
     minuterie.current = setTimeout(async () => {
       try {
-        const r = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&autocomplete=1`);
+        const r = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(q)}&limit=5&autocomplete=1`);
         const j = await r.json();
         if (derniere.current === q) setSug(Array.isArray(j.features) ? j.features : []);
       } catch { setSug([]); }
