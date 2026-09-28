@@ -122,15 +122,21 @@
 /* Téléphone : une bande qu'on fait glisser, au-dessus de la barre du bas. */
 .bas { position: absolute; z-index: 3; left: 0; right: 0; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
 .bande {
-  display: flex; gap: 10px; overflow-x: auto; padding: 4px 16px 8px;
+  /* Le bas large laisse l'ombre des fiches s'éteindre avant le bord de la
+     bande, qui la coupait net : un liseré gris sous chaque fiche (V3.28).
+     La marge négative garde les fiches à leur place. */
+  display: flex; gap: 10px; overflow-x: auto; padding: 4px 16px 26px; margin-bottom: -18px;
   scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .bande::-webkit-scrollbar { display: none; }
 .fb {
   flex: 0 0 min(312px, calc(100vw - 58px)); scroll-snap-align: center;
   display: flex; background: #fff; border-radius: 18px; overflow: hidden; cursor: pointer;
-  border: 2px solid transparent; box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55);
-  transition: border-color .2s, transform .2s;
+  /* Pas de bordure transparente : elle dessinait un cadre blanc autour de la
+     photo. La fiche choisie prend un contour doré, posé par-dessus. */
+  box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55);
+  outline: 2px solid transparent; outline-offset: -2px;
+  transition: outline-color .2s, transform .2s;
   -webkit-tap-highlight-color: transparent;
 }
 .fb:active { transform: scale(.985); }
@@ -138,7 +144,7 @@
 .fb .corps { padding: 9px 11px 10px 12px; }
 .fb .actions { margin-top: 5px; }
 .fb .voir, .fb .itin { height: 30px; padding: 0 12px; font-size: 12px; }
-.fb.choisi { border-color: #c9a84c; }
+.fb.choisi { outline-color: #c9a84c; }
 
 .rien {
   margin: 0 16px; padding: 13px 16px; border-radius: 16px; background: #fff;
