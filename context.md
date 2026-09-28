@@ -437,6 +437,10 @@ signature » : un e-mail par signataire, suivi dans le panneau, relances, « Arr
 ou **sur place** (`SignatureSurPlace` : plein écran, chacun son tour avec son code, puis la
 timeline de finalisation dont chaque étape est un vrai appel). Voir V3.11. Un mandat signé affiche ses échéances L215-1 (fenêtre d'un à trois mois avant
 chaque reconduction). Pastille bleue dans le menu = documents « À faire signer ».
+Sur la fiche d'un client (acheteur ou contact vendeur), le bloc **« Ses documents »**
+(`DocumentsDuClient.tsx`) liste tout ce qui lui est rattaché (`documents.client_id`, et ses
+mandats de recherche signés en ligne), avec l'exemplaire signé ; « + Nouveau document » ouvre
+Documents avec ce client déjà choisi (intention `{ nouveau: clientId }`).
 - **Les textes sont écrits à partir de la loi, pas copiés** d'un éditeur (Juridoc, Modelo…) :
   à faire relire par l'avocat d'Alexandre avant le premier usage réel.
 - Les références de loi sont citées par leur nom (« Textes applicables »), sans annexe : le
@@ -622,10 +626,11 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
 
 ### Graves — perte ou corruption de données
 
-1. **`/veille/import` · `veilleMaj(url, champs)` filtre uniquement sur `url`**, sans
-   `recherche_id`. Une annonce proposée à deux clients voit **toutes ses lignes écrasées d'un coup**,
-   alors que tout le reste du flux est cloisonné par recherche.
-2. **Les écritures Supabase sans remontée d'erreur, partout.** `addJournal` ne vérifie jamais rien
+1. ✅ **Réglé (constaté le 28 septembre).** `/veille/import` · `veilleMaj(url, champs)` filtrait
+   uniquement sur `url`. Il prend maintenant `recherche_id` en troisième argument et **refuse** de
+   toucher une annonce proposée à plusieurs recherches sans lui : plus rien n'est écrasé d'un coup.
+2. ✅ **Réglé le 28 septembre (V3.17)** — voir §11. Ce qui était constaté :
+   **les écritures Supabase sans remontée d'erreur, partout.** `addJournal` ne vérifie jamais rien
    (dix-huit appels). `/api/espace/<action>` ne vérifie **aucune** de ses écritures et répond
    `{ ok: true }` même si toutes ont échoué. Idem dans `FicheClient` (une trentaine de points),
    `ParcoursBien`, `OngletBiens`, `OngletVeille`, `PageRelances`, `PageMail`, `send-mail`.
@@ -633,7 +638,9 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
    ni l'insert dans `envois`, ni l'update du bien, ni l'annulation.
    C'est la famille de bugs qui a rendu les relances muettes pendant des semaines : ça dit
    « enregistré », il n'y a pas d'erreur, et rien ne se passe.
-3. **`Clients.tsx` — l'insert de la recherche n'est pas vérifié** alors que celui du client l'est.
+3. ✅ **Réglé le 28 septembre (V3.17)** : « Le contact est créé, mais sa recherche : pas
+   enregistré » s'affiche. Ce qui était constaté : **`Clients.tsx` — l'insert de la recherche
+   n'était pas vérifié** alors que celui du client l'était.
    En cas d'échec, le client existe **sans aucune recherche** : sa fiche ne peut rien afficher.
 4. **`PageParametres` — les valeurs par défaut affichées ne sont jamais persistées** si le champ
    n'est pas touché : le bouton n'enregistre donc pas tout ce qu'on voit. ✅ Réglé le 27 septembre :
@@ -1300,7 +1307,48 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
-### V3.16 — 28 septembre 2026 · la visite sur place, sur tablette
+### V3.17 — 28 septembre 2026 · plus rien ne se perd sans le dire
+
+Rien à passer dans Supabase.
+
+**Les écritures vérifiées** (`src/lib/ecritures.ts`). Ce qui disait « enregistré » sans l'être
+(§6, anomalies 2 et 3) : chaque écriture lit maintenant sa réponse.
+- Côté CRM : `verifie(quoi, requete, { ligne })` affiche un message rouge en bas à droite
+  (`Avertissements`, monté dans `AppLayout` : « <quoi> : pas enregistré. » + la raison, trois au
+  plus, refermables) et rend `false` pour que l'appelant s'arrête. `ligne: true` (la requête finit
+  par `.select('id')`) attrape le refus muet de la base fermée : 0 ligne touchée = session expirée.
+  `verifieTout(quoi, [() => req, …])` enchaîne des écritures qui dépendent l'une de l'autre et
+  **s'arrête au premier échec** (supprimer une recherche : l'historique protégé est mis à l'abri
+  avant qu'on efface le reste). `signalerEchec(quoi, detail)` pour les cas faits à la main.
+  `addJournal` est vérifié ; un type refusé par la liste fermée de la base (code 23514) est gardé
+  sous `statut_change`, le type voulu dans `metadata.type_voulu`.
+- Côté serveur : `ecritServeur(quoi, requete, avertissements?)` note l'échec dans les journaux de
+  Vercel. L'écriture principale d'une route fait échouer la route (`500 { ok:false, error:
+  'enregistrement' }`) ; les secondaires (historique, suivi de l'espace, relances) sont notées.
+  `/api/send-mail` rend `avertissements[]` : le CRM dit « Le mail est parti, mais son suivi : … ».
+  Le cron des relances n'envoie plus l'alerte si la marque « déjà prévenu » ne s'écrit pas (sinon
+  elle repartirait chaque jour).
+- Dans l'espace acheteur, un envoi qui échoue laisse la fenêtre ouverte avec ce qu'il a saisi
+  (message, critères) et le dit sous le bouton (`EchecEnvoi`).
+- **Règle pour la suite** : plus d'écriture nue. `verifie` dans le navigateur, `ecritServeur` sur
+  le serveur, `const { error }` quand il faut faire autre chose de l'échec.
+
+**Documents.** « Nouveau mandat de vente » propose les biens que le client **vend** (`biens_vente`),
+et non plus ceux trouvés pour lui comme acheteur. Le noir `#1a2332` des Documents et du PDF devient le bleu
+Emilio (`--emilio-fond`, `#34496e`, texte `#2e4166`). Les statuts (brouillon, à faire signer, signé,
+annulé) sont en gras, plus francs, avec leur dessin (`Pastille`, dans `DocumentsDuClient.tsx`).
+Bloc « Ses documents » sur la fiche client (voir §3).
+
+**Mandat de vente** : le prix ne change que par avenant écrit (plus « un simple e-mail ») ;
+l'aide de la durée explique la mention de l'article 78 ; l'information précontractuelle peut être
+« jointe », « remise à part » ou **« ni jointe, ni mentionnée »** (le mandat seul) ; un encadré
+« Ce que le document contiendra » annonce les annexes (reconduction, formulaire de rétractation).
+Le mandat de **recherche** garde « un simple e-mail suffit » pour son prix (à aligner si Alexandre
+le veut).
+
+**Biens** : un affichage en lignes (photo réduite), au choix avec les cartes, retenu dans
+`localStorage` (`biens.vue`).
+
 
 Rien à passer dans Supabase : tout vit dans `biens_vente.donnees`.
 

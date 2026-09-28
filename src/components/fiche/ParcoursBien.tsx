@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 import { lienEspace, lienBienPublic } from '@/lib/jeton';
 import { HONORAIRES_TAUX } from '@/lib/mandat';
@@ -1917,11 +1918,11 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
     }).eq('id', bien.id);
     if (error) { setEnvoi(false); alert('Le bien n’a pas pu être remis en attente.\n\n' + error.message); return; }
     const mot = bien.retour_client && bien.retour_client !== actuel.label ? ` — « ${bien.retour_client} »` : '';
-    await supabase.from('journal').insert({
+    await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id,
       type: 'retour_client', titre: '⏳ Remis en attente de son retour · par le conseiller',
       description: `Réponse effacée : ${actuel.icone} ${actuel.label}${mot}`, metadata: { avant: bien.badge_retour },
-    });
+    }));
     if (bien.badge_retour === 'souhaite_visiter') {
       const debut = `Veut visiter — ${bien.titre || 'un bien'}`;
       let q = supabase.from('relances').select('id, note')
@@ -1929,7 +1930,7 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
       if (bien.recherche_id) q = q.eq('recherche_id', bien.recherche_id);
       const { data: rel } = await q;
       const ids = (rel || []).filter((r: { note?: string | null }) => String(r.note || '').startsWith(debut)).map((r: { id: string }) => r.id);
-      if (ids.length) await supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids);
+      if (ids.length) await verifie('La relance « Veut visiter »', supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids));
     }
     await programmerRelance(clientId, bien.recherche_id, 1);
     setEnvoi(false); onEnregistre(); onFerme();
@@ -1943,15 +1944,16 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
        et le saisit à sa place. L'espace acheteur le dira — « le commentaire de
        votre conseiller » — au lieu de faire croire au client qu'il a écrit
        quelque chose qu'il n'a jamais écrit. */
-    await supabase.from('biens').update({
+    /* Vérifié (V3.17) : pas enregistré, la fenêtre reste ouverte. */
+    if (!(await verifie('Le retour du client', supabase.from('biens').update({
       badge_retour: a.badge, retour_client: texte.trim() || a.label,
       retour_le: new Date().toISOString(), retour_par: 'conseiller',
-    }).eq('id', bien.id);
-    await supabase.from('journal').insert({
+    }).eq('id', bien.id).select('id'), { ligne: true }))) { setEnvoi(false); return; }
+    await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id,
       type: 'retour_client', titre: `${a.icone} ${a.label} · noté par le conseiller`,
       description: texte.trim() || null, metadata: {},
-    });
+    }));
     /* Le client a répondu : la relance automatique n'a plus d'objet. */
     await cloturerRelancesAuto(clientId, bien.recherche_id);
     setEnvoi(false); onEnregistre(); onFerme();
@@ -2061,16 +2063,16 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
     /* Avant la mise à jour : un bien déjà présenté qu'on renvoie n'est pas une
        nouvelle pour le client, il ne déclenche pas de notification. */
     const neuf = bien.etape !== 'presente';
-    await supabase.from('biens').update({
+    if (!(await verifie('Le bien « présenté »', supabase.from('biens').update({
       etape: 'presente', envoye_le: new Date().toISOString(), canal_envoi: canal,
       commission_type: type, commission_val: v, prix_acquereur: total, badge_retour: 'propose',
-    }).eq('id', bien.id);
-    await supabase.from('journal').insert({
+    }).eq('id', bien.id).select('id'), { ligne: true }))) { setEnvoi(false); return; }
+    await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id, type: 'envoi_bien',
       titre: `Envoyé au client · ${canal === 'mail' ? 'mail' : canal === 'whatsapp' ? 'WhatsApp' : 'lien'}`,
       description: `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de chasse`,
       metadata: {},
-    });
+    }));
     /* Présenté = en attente d'une réponse : la relance se programme ici. */
     await programmerRelance(clientId, bien.recherche_id, 1);
 
@@ -2091,9 +2093,9 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
      vient de fixer ; le passage en « Présenté » se fait à l'envoi réel. */
   async function enregistrerPrix() {
     setEnvoi(true);
-    await supabase.from('biens').update({
+    await verifie('Les honoraires du bien', supabase.from('biens').update({
       commission_type: type, commission_val: v, prix_acquereur: total,
-    }).eq('id', bien.id);
+    }).eq('id', bien.id).select('id'), { ligne: true });
     setEnvoi(false);
   }
 

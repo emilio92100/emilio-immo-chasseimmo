@@ -36,6 +36,7 @@ import { dateLongue, dateCourte, heureParis, masquerEmail, DELAI_COSIGNATURE } f
 import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
+import { ecritServeur } from './ecritures';
 
 export const BUCKET = 'mandats';
 export const SIGNATURE_AGENCE = 'agence/signature.png';
@@ -262,7 +263,7 @@ export async function validerSignature(sb: SupabaseClient, s: SigDoc, m: Modele,
   if (!s.code_expire_le || Date.parse(s.code_expire_le) < Date.now()) return { erreur: 'expire', statut: 410 };
   if (!egal(hacher(code, s.id), s.code_hash)) {
     const essais = s.code_essais + 1;
-    await sb.from('documents_signataires').update({ code_essais: essais }).eq('id', s.id);
+    await ecritServeur('Le compte des essais du code', sb.from('documents_signataires').update({ code_essais: essais }).eq('id', s.id));
     return { erreur: 'code', statut: 400, plus: { restants: Math.max(0, CODE_ESSAIS - essais) } };
   }
   const le = new Date().toISOString();

@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { modele, modeSignature, electronique, type CaseSignature } from '@/lib/actes';
 import { dateCourte, heureParis, DELAI_COSIGNATURE } from '@/lib/mandat';
 import { appareilDe } from '@/lib/mandat-serveur';
+import { ecritServeur } from '@/lib/ecritures';
 import {
   lireSignataires, casesDe, jetonSigner, envoyerLien, inviter, envoyerCode, validerSignature, sceller, assembler, envoyerExemplaire,
   classer, lireFichier, nomSig, actif, attendu, emailValide, nomDocument, ALERTES, envoyerMail, gabarit, echappe, lienCrmDocument,
@@ -68,9 +69,9 @@ export async function POST(req: NextRequest) {
     const m = modele(doc.modele);
     if (!m || !m.cases) return ko('modele');
     const d = doc.donnees;
-    const journal = (titre: string, description: string) => (doc.client_id ? sb.from('journal').insert({
+    const journal = (titre: string, description: string) => (doc.client_id ? ecritServeur('L’historique du client', sb.from('journal').insert({
       client_id: doc.client_id, type: 'mandat', titre, description, metadata: { document_id: doc.id },
-    }) : Promise.resolve({ error: null }));
+    })) : Promise.resolve(true));
     const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
     const appareil = appareilDe(req.headers.get('user-agent') || '');
 
@@ -116,7 +117,8 @@ export async function POST(req: NextRequest) {
       };
       const { error: e2 } = await sb.from('documents').update({ signature: sd, updated_at: le }).eq('id', doc.id);
       if (e2) {
-        await sb.from('documents_signataires').update({ statut: 'annule' }).eq('document_id', doc.id);
+        /* Les liens créés juste avant ne doivent pas rester valables. */
+        await ecritServeur('L’annulation des liens', sb.from('documents_signataires').update({ statut: 'annule', jeton: null }).eq('document_id', doc.id));
         return ko('enregistrement', 500, { detail: e2.message });
       }
       const echecs: string[] = [];

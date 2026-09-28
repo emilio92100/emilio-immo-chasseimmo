@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { signalerEchec, verifie } from './ecritures'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
@@ -171,13 +172,27 @@ export async function genererReference(): Promise<string> {
   return `EMI-${annee}-${String(Math.max(num, PREMIER_DOSSIER)).padStart(3, '0')}`
 }
 
+/* Une ligne dans l'historique du client. Vérifiée depuis la V3.17 : un échec
+   s'affiche (« L'historique du client : pas enregistré »), sans arrêter ce
+   qui vient d'être fait — l'action elle-même est déjà enregistrée.
+   Un type que la base ne connaît pas (sa liste fermée, code 23514) : la
+   ligne est gardée sous « statut_change », le type voulu en metadata —
+   comme le fait déjà la suppression d'une recherche. Mieux qu'une ligne
+   perdue, et pas d'alerte pour rien. */
 export async function addJournal(
   clientId: string, type: string, titre: string,
   description?: string, metadata?: Record<string, unknown>
-) {
-  await supabase.from('journal').insert({
-    client_id: clientId, type, titre, description, metadata: metadata || {}
-  })
+): Promise<boolean> {
+  const ligne = { client_id: clientId, type, titre, description, metadata: metadata || {} }
+  const { error } = await supabase.from('journal').insert(ligne)
+  if (!error) return true
+  if ((error as { code?: string }).code === '23514' && type !== 'statut_change') {
+    return verifie('L’historique du client', supabase.from('journal').insert({
+      ...ligne, type: 'statut_change', metadata: { ...ligne.metadata, type_voulu: type },
+    }))
+  }
+  signalerEchec('L’historique du client', error.message)
+  return false
 }
 
 export interface Relance {

@@ -309,7 +309,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         <div className={s.edTitre}>
           <b>{m.titreDoc(d)}</b>
           <div className={s.edEtat}>
-            <span className={`${s.statut} ${s['t_' + etat.ton]}`}>{etat.l}</span>
+            <span className={`${s.statut} ${s.statutFort} ${s['t_' + etat.ton]}`}>{etat.l}</span>
             <span className={typeof enreg === 'object' ? s.ko : enreg === 'ok' ? s.ok : undefined}>{texteEnreg}</span>
           </div>
         </div>

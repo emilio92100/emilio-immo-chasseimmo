@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { signalerEchec, verifie } from '@/lib/ecritures';
 import styles from './Page.module.css';
 
 const SIGNATURE = `Cordialement,
@@ -78,17 +79,18 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
         setSending(false);
         return;
       }
+      if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
 
       // Optionnel : SMS de notification (pas branché à un service SMS, juste journalisé)
       if (sms) {
         for (const client of selected) {
           if (client.telephones?.[0]) {
-            await supabase.from('journal').insert({
+            await verifie('L’historique du client', supabase.from('journal').insert({
               client_id: client.id,
               type: 'sms_notification',
               titre: `📱 SMS de notification`,
               description: `Notification envoyée à ${client.telephones[0]} (à intégrer avec service SMS)`,
-            });
+            }));
           }
         }
       }

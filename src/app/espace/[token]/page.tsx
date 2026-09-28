@@ -11,6 +11,7 @@ import { lireReserve } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 import { modele } from '@/lib/actes';
 import type { DocEspace } from '@/components/espace/SignatureMandat';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -108,7 +109,7 @@ export default async function PageEspace({ params, searchParams }: {
   let jetonRecherche = (recherche.token_espace as string | null) || null;
   if (!jetonRecherche) {
     jetonRecherche = jetonEspace(client.prenom, client.nom);
-    await supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id);
+    await ecritServeur('Le jeton de la recherche', supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id));
   }
 
   const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve] = await Promise.all([
@@ -443,9 +444,9 @@ export default async function PageEspace({ params, searchParams }: {
      l'aller-retour ; le journal est écrit exactement pareil. */
   after(async () => {
     try {
-      await supabase.from('recherches')
+      await ecritServeur('L’ouverture de l’espace', supabase.from('recherches')
         .update({ espace_ouvert_le: new Date().toISOString() })
-        .eq('id', recherche.id);
+        .eq('id', recherche.id));
 
       const { data: derniere } = await supabase.from('espace_evenements')
         .select('created_at').eq('recherche_id', recherche.id).eq('type', 'ouverture')
@@ -453,10 +454,10 @@ export default async function PageEspace({ params, searchParams }: {
 
       const recent = derniere && Date.now() - new Date(derniere.created_at).getTime() < 30 * 60 * 1000;
       if (!recent) {
-        await supabase.from('espace_evenements').insert({
+        await ecritServeur('L’événement « ouverture »', supabase.from('espace_evenements').insert({
           recherche_id: recherche.id, client_id: recherche.client_id,
           type: 'ouverture', detail: null,
-        });
+        }));
       }
     } catch { /* le journal ne doit jamais empêcher la page de s'afficher */ }
   });

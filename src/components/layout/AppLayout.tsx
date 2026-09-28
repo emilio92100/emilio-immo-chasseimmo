@@ -16,6 +16,7 @@ import PageDocuments, { type IntentionDocuments } from '@/components/documents/P
 import PageBiens from '@/components/biens/PageBiens';
 import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
+import Avertissements from '@/components/layout/Avertissements';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
@@ -228,6 +229,8 @@ export default function AppLayout() {
       <NouveauRdvPartout />
       {/* « Une nouvelle version est prête — Recharger », après une mise en ligne. */}
       <NouvelleVersion />
+      {/* « … : pas enregistré », quand une écriture échoue (V3.17). */}
+      <Avertissements />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { inviter, nomDe, lienValide, type Co, type LigneMandat } from '@/lib/cos
 import { envoyerMail, gabarit, echappe, ALERTES, CRM } from '@/lib/mandat-serveur';
 import { modele } from '@/lib/actes';
 import * as SD from '@/lib/signature-documents';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * Les rappels aux co-signataires qui n'ont pas encore signé.
@@ -59,17 +60,19 @@ export async function GET(req: NextRequest) {
 
       if (!lienValide(co)) {
         if (co.relances >= 3) continue;
-        await sb.from('mandats_cosignataires').update({ relances: 3 }).eq('id', co.id);
-        await sb.from('journal').insert({
+        /* La marque « déjà prévenu » d'abord : sans elle, l'alerte repartirait
+           chaque jour. Si elle ne s'écrit pas, on réessaiera demain. */
+        if (!(await ecritServeur('La marque de relance', sb.from('mandats_cosignataires').update({ relances: 3 }).eq('id', co.id)))) continue;
+        await ecritServeur('L’historique du client', sb.from('journal').insert({
           client_id: l.client_id, recherche_id: l.recherche_id, type: 'mandat',
           titre: `⏰ ${qui} n’a pas signé dans les 15 jours`,
           description: `Mandat n° ${l.numero}, signé par ${premier} le ${l.signe_le ? dateCourte(l.signe_le) : '—'}. Il continue avec ${premier}. Renvoie-lui un nouveau lien, ou clos l'invitation (fenêtre « Mandat de recherche »).`,
           metadata: { signature_id: l.id, cosignataire_id: co.id },
-        });
-        await sb.from('relances').insert({
+        }));
+        await ecritServeur('La relance', sb.from('relances').insert({
           client_id: l.client_id, recherche_id: l.recherche_id, type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
           note: `${qui} n'a pas signé le mandat n° ${l.numero} dans les 15 jours : nouveau lien ou invitation close ?`,
-        });
+        }));
         await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `⏰ ${qui} n'a pas signé le mandat de ${premier} (n° ${l.numero})`,
@@ -124,17 +127,17 @@ async function relancerDocuments(sb: SupabaseClient): Promise<string[]> {
       const lienCrm = SD.lienCrmDocument(doc);
       if (!SD.lienValide(s)) {
         if ((s.relances || 0) >= 3) continue;
-        await sb.from('documents_signataires').update({ relances: 3 }).eq('id', s.id);
+        if (!(await ecritServeur('La marque de relance', sb.from('documents_signataires').update({ relances: 3 }).eq('id', s.id)))) continue;
         if (doc.client_id) {
-          await sb.from('journal').insert({
+          await ecritServeur('L’historique du client', sb.from('journal').insert({
             client_id: doc.client_id, type: 'mandat', metadata: { document_id: doc.id, signataire_id: s.id },
             titre: `⏰ ${qui} n’a pas signé dans les 15 jours`,
             description: `${doc.titre || m.titre} : son lien a expiré. Renvoie-lui un lien, ou arrête la signature (Documents, fiche du document).`,
-          });
-          await sb.from('relances').insert({
+          }));
+          await ecritServeur('La relance', sb.from('relances').insert({
             client_id: doc.client_id, recherche_id: doc.recherche_id, type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
             note: `${qui} n'a pas signé ${nd.le} dans les 15 jours : nouveau lien, ou signature arrêtée ?`,
-          });
+          }));
         }
         await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',

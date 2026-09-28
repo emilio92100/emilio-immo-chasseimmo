@@ -40,8 +40,10 @@ const MARGE = { g: 58, d: 58, h: 92, b: 66 };
 const LARGEUR = A4.l - MARGE.g - MARGE.d;
 
 /* La palette Emilio */
-const BLEU = rgb(27 / 255, 54 / 255, 93 / 255);          // #1b365d, le bleu du logo
-const MARINE = rgb(26 / 255, 35 / 255, 50 / 255);        // #1a2332, le texte
+/* V3.17 : le bleu Emilio du CRM et du site, plutôt que le marine presque
+   noir d'avant (#1b365d pour les bandeaux, #1a2332 pour le texte). */
+const BLEU = rgb(52 / 255, 73 / 255, 110 / 255);         // #34496e, le bleu Emilio
+const MARINE = rgb(46 / 255, 65 / 255, 102 / 255);       // #2e4166, le texte, un bleu foncé
 const OR = rgb(201 / 255, 168 / 255, 76 / 255);          // #c9a84c
 const OR_FONCE = rgb(160 / 255, 124 / 255, 40 / 255);    // l'or lisible en petit sur blanc
 const GRIS = rgb(100 / 255, 116 / 255, 139 / 255);       // #64748b

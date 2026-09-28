@@ -1,3 +1,4 @@
+import { signalerEchec } from './ecritures';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -68,20 +69,24 @@ export async function programmerRelance(
       ? `${nbBiens} biens présentés, sans réponse du client`
       : 'Bien présenté, sans réponse du client';
 
+    /* Une relance qui ne se crée pas ne doit jamais faire échouer un envoi
+       qui, lui, est bien parti — mais elle doit se voir (V3.17) : un message
+       dans le CRM, une ligne dans les journaux du serveur. */
     const existante = await relanceAutoEnCours(clientId, rechercheId);
     if (existante) {
-      await supabase.from('relances')
+      const { error } = await supabase.from('relances')
         .update({ date_echeance: quand, note }).eq('id', existante);
+      if (error) signalerEchec('L’envoi est parti, mais la relance automatique', error.message);
       return;
     }
-    await supabase.from('relances').insert({
+    const { error } = await supabase.from('relances').insert({
       client_id: clientId, recherche_id: rechercheId,
       type: 'auto', statut: 'en_attente',
       date_echeance: quand, note,
     });
-  } catch {
-    /* Une relance qui ne se crée pas ne doit jamais faire échouer un envoi
-       qui, lui, est bien parti. */
+    if (error) signalerEchec('L’envoi est parti, mais la relance automatique', error.message);
+  } catch (e) {
+    signalerEchec('L’envoi est parti, mais la relance automatique', (e as Error)?.message || '');
   }
 }
 
@@ -101,8 +106,10 @@ export async function cloturerRelancesAuto(
       .eq('type', 'auto')
       .eq('statut', 'en_attente');
     if (rechercheId) q = q.eq('recherche_id', rechercheId);
-    await q;
-  } catch {
-    /* Sans effet : la relance restera à clôturer à la main. */
+    const { error } = await q;
+    /* Sans effet sur le reste : la relance restera à clôturer à la main, mais on le dit. */
+    if (error) signalerEchec('La clôture des relances automatiques', error.message);
+  } catch (e) {
+    signalerEchec('La clôture des relances automatiques', (e as Error)?.message || '');
   }
 }

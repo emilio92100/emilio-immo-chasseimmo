@@ -138,6 +138,7 @@ export const PICTOS: Record<string, readonly string[]> = {
   valise: ['M3.5 7.5h17v12h-17z', 'M9 7.5v-2a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2', 'M3.5 12.5h17'],
   separation: ['M12 21v-7.5', 'M12 13.5 6 6', 'M12 13.5l6-7.5', 'M6 10V6h4', 'M18 10V6h-4'],
   traversant: ['M7.5 4v16', 'M16.5 4v16', 'M2.5 12h19', 'm5 9.5-2.5 2.5L5 14.5', 'm19 9.5 2.5 2.5-2.5 2.5'],
+  cartes: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
   dirN: vers(0), dirNE: vers(45), dirE: vers(90), dirSE: vers(135),
   dirS: vers(180), dirSO: vers(225), dirO: vers(270), dirNO: vers(315),
 };

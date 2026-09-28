@@ -92,8 +92,9 @@ function Puce({ l, on, ic, onClick }: { l: string; on: boolean; ic?: string; onC
   );
 }
 
-export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total }: {
+export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total, vue, onVue }: {
   biens: BienVente[]; f: Filtres; onF: (f: Filtres) => void; tri: Tri; onTri: (t: Tri) => void; n: number; total: number;
+  vue: 'cartes' | 'lignes'; onVue: (v: 'cartes' | 'lignes') => void;
 }) {
   const [ouvert, setOuvert] = useState<Panneau>(null);
   useEffect(() => {
@@ -139,6 +140,11 @@ export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total }: {
           aria-expanded={ouvert === 'tri'} onClick={() => basculer('tri')}>
           <Ic n={triL.ic} t={15} /><span>{tri === 'etape' ? 'Trier' : triL.l.split(',')[0]}</span><Ic n={ouvert === 'tri' ? 'haut' : 'bas'} t={13} e={2.4} />
         </button>
+        {/* En cartes ou en lignes (V3.17). */}
+        <span className={b.affVue} role="group" aria-label="Affichage">
+          <button type="button" aria-pressed={vue === 'cartes'} title="En cartes" aria-label="En cartes" onClick={() => onVue('cartes')}><Ic n="cartes" t={16} /></button>
+          <button type="button" aria-pressed={vue === 'lignes'} title="En lignes" aria-label="En lignes" onClick={() => onVue('lignes')}><Ic n="lignes" t={16} /></button>
+        </span>
       </div>
 
       {/* Au téléphone, la ligne défile : le compte passe dessous. */}

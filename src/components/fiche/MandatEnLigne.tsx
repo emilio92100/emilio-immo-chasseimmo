@@ -33,6 +33,7 @@ import {
 } from '@/lib/mandat';
 import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
 import { contenuApresAvenants } from '@/lib/actes/avenant-recherche';
+import { signalerEchec } from '@/lib/ecritures';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -354,6 +355,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.success) throw new Error(j?.error || j?.results?.[0]?.error || `erreur ${r.status}`);
       setMsg({ t: `Mail envoyé à ${emails.join(', ')}.`, ok: true });
+      if (j.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', j.avertissements.join(' ; '));
     } catch (e) {
       setMsg({ t: 'Le mail n’est pas parti : ' + (e as Error).message, ok: false });
     }

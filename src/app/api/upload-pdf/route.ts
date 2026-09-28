@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * Dépôt d'une fiche PDF client.
@@ -47,9 +48,9 @@ export async function POST(req: NextRequest) {
       .upload(chemin, octets, { contentType: 'application/pdf', upsert: true });
 
     if (error) {
-      await supabase.from('biens')
+      await ecritServeur('L’état du PDF', supabase.from('biens')
         .update({ pdf_statut: 'echec', pdf_message: error.message })
-        .eq('id', bien_id);
+        .eq('id', bien_id));
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
 import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATION_JOURS, type Honoraires } from '@/lib/mandat';
+import { ecritServeur } from '@/lib/ecritures';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -792,6 +793,9 @@ function texteVisites(corps: string, lignes: LigneVisite[], token?: string | nul
 
 
 export async function POST(req: NextRequest) {
+  /* Ce qui n'a pas été noté après un envoi réussi (V3.17) : le mail est
+     parti, le CRM le dit quand même. */
+  const avertissements: string[] = [];
   try {
     const apiKey = process.env.MAILJET_API_KEY;
     const apiSecret = process.env.MAILJET_API_SECRET;
@@ -947,22 +951,22 @@ export async function POST(req: NextRequest) {
           const { error: eDate } = await supabase.from('visites')
             .update({ rappel_envoye_le: new Date().toISOString() }).in('id', lignes.map(l => l.id));
           if (eDate) avertissement = eDate.message;
-          await supabase.from('envois').insert({
+          await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
             client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
             objet, corps: corpsPerso, destinataires: emails, biens_ids: [], sms_envoye: false,
-          });
-          await supabase.from('journal').insert({
+          }), avertissements);
+          await ecritServeur('L’historique du client', supabase.from('journal').insert({
             client_id: client.id, type: 'mail_envoye',
             titre: `📅 Mail envoyé — ${objet}`,
             description: `À : ${emails.join(', ')}\n\n${corpsPerso}\n\n${lignes.map(l => `- ${quandMail(l, false)} : ${l.bien?.titre || 'Visite'}`).join('\n')}`,
-          });
+          }), avertissements);
           resultats.push({ client_id: client.id, success: true });
         } catch (e) {
           resultats.push({ client_id: client.id, success: false, error: (e as Error).message });
         }
       }
       const nbOk = resultats.filter(r => r.success).length;
-      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, avertissement });
+      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, avertissement, avertissements });
     }
 
     /* « Votre mandat de recherche est prêt » : un envoi par client, au taux
@@ -1003,22 +1007,22 @@ export async function POST(req: NextRequest) {
             resultats.push({ client_id: client.id, success: false, error: mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200) });
             continue;
           }
-          await supabase.from('envois').insert({
+          await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
             client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
             objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
-          });
-          await supabase.from('journal').insert({
+          }), avertissements);
+          await ecritServeur('L’historique du client', supabase.from('journal').insert({
             client_id: client.id, type: 'mail_envoye',
             titre: `✉️ Mail envoyé — ${sujet}`,
             description: `À : ${emails.join(', ')}\nMandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`,
-          });
+          }), avertissements);
           resultats.push({ client_id: client.id, success: true });
         } catch (e) {
           resultats.push({ client_id: client.id, success: false, error: (e as Error).message });
         }
       }
       const nbOk = resultats.filter(r => r.success).length;
-      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, error: nbOk ? undefined : resultats[0]?.error });
+      return NextResponse.json({ success: nbOk > 0, sent: nbOk, total: resultats.length, results: resultats, error: nbOk ? undefined : resultats[0]?.error, avertissements });
     }
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
@@ -1123,14 +1127,14 @@ export async function POST(req: NextRequest) {
              après l'envoi, jamais avant — un échec Mailjet ne doit pas
              condamner le bouton. */
           if (bienvenue) {
-            await supabase.from('recherches')
+            await ecritServeur('La date du mail de bienvenue', supabase.from('recherches')
               .update({ bienvenue_envoye_le: new Date().toISOString() })
-              .eq('id', recherche_id);
+              .eq('id', recherche_id), avertissements);
           }
           const typeEnvoi = bienvenue ? 'mail_libre'
             : biensClient.length === 0 ? 'mail_libre'
               : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
-          await supabase.from('envois').insert({
+          await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
             client_id: client.id,
             recherche_id: recherche_id || null,
             type: typeEnvoi,
@@ -1139,7 +1143,7 @@ export async function POST(req: NextRequest) {
             destinataires: emails,
             biens_ids: biensClient.map(b => b.id),
             sms_envoye: false,
-          });
+          }), avertissements);
           const titreJournal = bienvenue
             ? '👋 Mail de bienvenue envoyé'
             : biensClient.length === 0
@@ -1147,12 +1151,12 @@ export async function POST(req: NextRequest) {
             : biensClient.length === 1
               ? `📤 Bien envoyé — ${biensClient[0].titre || biensClient[0].ville || 'bien'}`
               : `📤 Sélection envoyée — ${biensClient.length} biens`;
-          await supabase.from('journal').insert({
+          await ecritServeur('L’historique du client', supabase.from('journal').insert({
             client_id: client.id,
             type: biensClient.length === 0 ? 'mail_envoye' : 'envoi_bien',
             titre: titreJournal,
             description: `À : ${emails.join(', ')}\n\n${corpsPerso}${biensClient.length > 0 ? `\n\nBiens joints : ${biensClient.length}` : ''}`,
-          });
+          }), avertissements);
           results.push({ client_id: client.id, success: true });
         } else {
           const errMsg = mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200);
@@ -1169,6 +1173,8 @@ export async function POST(req: NextRequest) {
       sent: okCount,
       total: results.length,
       results,
+      /* Le mail est parti, mais son suivi n'a pas été noté (V3.17). */
+      avertissements,
     });
 
   } catch (e) {

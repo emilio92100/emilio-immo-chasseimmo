@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
+import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
 import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
@@ -20,6 +21,7 @@ import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRec
 import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
+import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -916,6 +918,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         alert(`Le mail n'est pas parti : ${d?.results?.[0]?.error || d?.error || 'erreur inconnue'}`);
         return;
       }
+      if (d.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', d.avertissements.join(' ; '));
       /* On relit la recherche plutôt que de deviner : c'est le serveur qui a
          posé la date, et c'est elle qui fait foi. */
       const { data } = await supabase.from('recherches').select('*').eq('id', rechercheActive.id).single();
@@ -935,7 +938,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const nom = prompt('Renommer la recherche :', rechercheActive.nom);
     if (nom === null || !nom.trim()) return;
     const ancien = rechercheActive.nom;
-    const { data } = await supabase.from('recherches').update({ nom: nom.trim() }).eq('id', rechercheActive.id).select().single();
+    const { data, error } = await supabase.from('recherches').update({ nom: nom.trim() }).eq('id', rechercheActive.id).select().maybeSingle();
+    if (error || !data) { signalerEchec('Le nouveau nom de la recherche', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.'); return; }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
       await addJournal(client.id, 'recherche_renommee', `🔍 Recherche renommée — ${ancien} → ${nom.trim()}`);
@@ -1013,33 +1017,29 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
        lisible dans l'onglet Suivi. Tout le reste — biens envoyés, visites,
        critères modifiés, mails — part avec la recherche. */
     const PROTEGES = ['appel', 'rdv', 'note', 'message_client', 'demande_rappel'];
-    if (ids.length > 0) {
-      await supabase.from('journal')
-        .update({ bien_id: null, recherche_id: null }).in('bien_id', ids).in('type', PROTEGES);
-    }
-    await supabase.from('journal')
-      .update({ recherche_id: null }).eq('recherche_id', r.id).in('type', PROTEGES);
-
     /* L'ordre compte : on enlève d'abord ce qui pointe vers un bien, le bien
-       en dernier, la recherche tout à la fin. Sinon une clé étrangère bloque. */
-    if (ids.length > 0) await supabase.from('journal').delete().in('bien_id', ids);
-    await supabase.from('journal').delete().eq('recherche_id', r.id);
-
-    await supabase.from('visites').delete().eq('recherche_id', r.id);
-    await supabase.from('envois').delete().eq('recherche_id', r.id);
-    await supabase.from('transactions').delete().eq('recherche_id', r.id);
-    await supabase.from('relances').delete().eq('recherche_id', r.id);
-    await supabase.from('veille_propositions').delete().eq('recherche_id', r.id);
-    await supabase.from('veille_passages').delete().eq('recherche_id', r.id);
-    await supabase.from('espace_evenements').delete().eq('recherche_id', r.id);
-
-    /* Les notifications appartiennent au client, pas à la recherche : son
-       téléphone reste abonné, on le rattache simplement à ce qui reste. */
-    if (derniere) {
-      await supabase.from('push_abonnements').delete().eq('recherche_id', r.id);
-    } else {
-      await supabase.from('push_abonnements').update({ recherche_id: reste[0].id }).eq('recherche_id', r.id);
-    }
+       en dernier, la recherche tout à la fin. Sinon une clé étrangère bloque.
+       Chaque étape est vérifiée (V3.17) : au premier échec, on s'arrête avant
+       d'effacer les biens et la recherche, et on le dit. */
+    const nettoye = await verifieTout('La suppression de la recherche', [
+      ...(ids.length > 0 ? [() => supabase.from('journal').update({ bien_id: null, recherche_id: null }).in('bien_id', ids).in('type', PROTEGES)] : []),
+      () => supabase.from('journal').update({ recherche_id: null }).eq('recherche_id', r.id).in('type', PROTEGES),
+      ...(ids.length > 0 ? [() => supabase.from('journal').delete().in('bien_id', ids)] : []),
+      () => supabase.from('journal').delete().eq('recherche_id', r.id),
+      () => supabase.from('visites').delete().eq('recherche_id', r.id),
+      () => supabase.from('envois').delete().eq('recherche_id', r.id),
+      () => supabase.from('transactions').delete().eq('recherche_id', r.id),
+      () => supabase.from('relances').delete().eq('recherche_id', r.id),
+      () => supabase.from('veille_propositions').delete().eq('recherche_id', r.id),
+      () => supabase.from('veille_passages').delete().eq('recherche_id', r.id),
+      () => supabase.from('espace_evenements').delete().eq('recherche_id', r.id),
+      /* Les notifications appartiennent au client, pas à la recherche : son
+         téléphone reste abonné, on le rattache simplement à ce qui reste. */
+      derniere
+        ? () => supabase.from('push_abonnements').delete().eq('recherche_id', r.id)
+        : () => supabase.from('push_abonnements').update({ recherche_id: reste[0].id }).eq('recherche_id', r.id),
+    ]);
+    if (!nettoye) { load(); return; }
 
     await effacerPhotos(chemins);
 
@@ -1059,7 +1059,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       metadata: {},
     };
     const { error: eJournal } = await supabase.from('journal').insert({ ...ligne, type: 'recherche_supprimee' });
-    if (eJournal) await supabase.from('journal').insert({ ...ligne, type: 'statut_change' });
+    if (eJournal) await verifie('L’historique du client', supabase.from('journal').insert({ ...ligne, type: 'statut_change' }));
 
     setRecherches(reste);
     if (rechercheId === r.id) { setRechercheId(reste[0]?.id || ''); setTab('selection'); }
@@ -1120,21 +1120,24 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
 
       /* L'ordre compte : on enlève d'abord ce qui pointe vers un bien, le bien
          en dernier. Sinon une clé étrangère bloque la suppression. */
-      if (ids.length > 0) await supabase.from('journal').delete().in('bien_id', ids);
-      await supabase.from('journal').delete().eq('recherche_id', rechercheId).in('type', TYPES_SUIVI);
-      /* Les lignes de journal écrites avant qu'on note la recherche n'ont ni
-         bien ni recherche. Quand le client n'en a qu'une, elles ne peuvent
-         venir que d'elle — on peut les enlever sans risque. */
-      if (recherches.length === 1) {
-        await supabase.from('journal').delete().eq('client_id', client.id).is('recherche_id', null).is('bien_id', null).in('type', TYPES_SUIVI);
-      }
-
-      await supabase.from('visites').delete().eq('recherche_id', rechercheId);
-      await supabase.from('envois').delete().eq('recherche_id', rechercheId);
-      await supabase.from('transactions').delete().eq('recherche_id', rechercheId);
-      await supabase.from('relances').delete().eq('recherche_id', rechercheId);
-      await supabase.from('veille_propositions').delete().eq('recherche_id', rechercheId);
-      await supabase.from('veille_passages').delete().eq('recherche_id', rechercheId);
+      /* Chaque étape est vérifiée (V3.17) : au premier échec, on s'arrête
+         avant d'effacer les biens, et on le dit. */
+      const rid = rechercheId;
+      const nettoye = await verifieTout('La remise à zéro', [
+        ...(ids.length > 0 ? [() => supabase.from('journal').delete().in('bien_id', ids)] : []),
+        () => supabase.from('journal').delete().eq('recherche_id', rid).in('type', TYPES_SUIVI),
+        /* Les lignes de journal écrites avant qu'on note la recherche n'ont ni
+           bien ni recherche. Quand le client n'en a qu'une, elles ne peuvent
+           venir que d'elle — on peut les enlever sans risque. */
+        ...(recherches.length === 1 ? [() => supabase.from('journal').delete().eq('client_id', client.id).is('recherche_id', null).is('bien_id', null).in('type', TYPES_SUIVI)] : []),
+        () => supabase.from('visites').delete().eq('recherche_id', rid),
+        () => supabase.from('envois').delete().eq('recherche_id', rid),
+        () => supabase.from('transactions').delete().eq('recherche_id', rid),
+        () => supabase.from('relances').delete().eq('recherche_id', rid),
+        () => supabase.from('veille_propositions').delete().eq('recherche_id', rid),
+        () => supabase.from('veille_passages').delete().eq('recherche_id', rid),
+      ]);
+      if (!nettoye) { setReinitEnCours(false); load(); return; }
 
       await effacerPhotos(chemins);
 
@@ -1143,7 +1146,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
 
       /* Le compteur d'ouvertures de l'espace repart lui aussi : il comptait des
          visites sur des biens qui n'existent plus. Le lien, lui, ne bouge pas. */
-      await supabase.from('recherches').update({ espace_ouvert_le: null }).eq('id', rechercheId);
+      await verifie('Le compteur de l’espace', supabase.from('recherches').update({ espace_ouvert_le: null }).eq('id', rechercheId));
 
       /* On garde la trace de la remise à zéro elle-même, sinon le dossier
          semblerait n'avoir jamais rien contenu. */
@@ -1153,7 +1156,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         : 'Critères conservés.';
       const ligne = { client_id: client.id, recherche_id: rechercheId, titre, description: detail, metadata: {} };
       const { error: eJournal } = await supabase.from('journal').insert({ ...ligne, type: 'recherche_reinitialisee' });
-      if (eJournal) await supabase.from('journal').insert({ ...ligne, type: 'statut_change' });
+      if (eJournal) await verifie('L’historique du client', supabase.from('journal').insert({ ...ligne, type: 'statut_change' }));
 
       setShowReinit(false);
       setReinitEnCours(false);
@@ -1229,11 +1232,17 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         { quoi: 'passages de veille', faire: () => (rIds.length ? supabase.from('veille_passages').delete().in('recherche_id', rIds) : Promise.resolve({ error: null })) },
         { quoi: 'biens', faire: () => supabase.from('biens').delete().eq('client_id', client.id) },
         { quoi: 'recherches', faire: () => supabase.from('recherches').delete().eq('client_id', client.id) },
-        { quoi: 'client', faire: () => supabase.from('clients').delete().eq('id', client.id) },
+        { quoi: 'client', faire: () => supabase.from('clients').delete().eq('id', client.id).select('id') },
       ];
 
       for (const e of etapes) {
-        const { error } = await e.faire();
+        const { error, data } = await e.faire();
+        /* La base fermée refuse parfois sans erreur : la fiche n'a pas bougé. */
+        if (!error && e.quoi === 'client' && Array.isArray(data) && data.length === 0) {
+          alert('Le client n’a pas été supprimé : la base n’a rien effacé. La session a peut-être expiré : recharge la page, puis recommence.');
+          setSupprEnCours(false);
+          return;
+        }
         /* Une table absente de ce projet ne doit pas bloquer la suppression ;
            une vraie erreur sur le client ou ses biens, si. */
         if (error && !/does not exist|schema cache/i.test(error.message || '')) {
@@ -1411,11 +1420,11 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
            savoir quel critère a bougé depuis son dernier passage, et un client
            peut avoir deux recherches ouvertes. Sans elle, les deux se
            mélangeaient. */
-        await supabase.from('journal').insert({
+        await verifie('L’historique du client', supabase.from('journal').insert({
           client_id: client.id, recherche_id: cible,
           type: 'criteres_modifies', titre: '🎯 Critères modifiés',
           description: change, metadata: {},
-        });
+        }));
         load();
       }
     }
@@ -1433,7 +1442,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (!mandat.date_signature && !mandat.date_expiration) exp = '';
 
     const avaitMandat = !!(recherches.find(r => r.id === rechercheId) as any)?.mandat_date_signature;
-    const { data } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, sans_mandat: !mandat.date_signature && !exp, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().single();
+    const { data, error } = await supabase.from('recherches').update({ mandat_date_signature: mandat.date_signature||null, mandat_duree: mandat.duree ? parseInt(mandat.duree) : null, mandat_honoraires: mandat.honoraires||null, mandat_date_expiration: exp||null, sans_mandat: !mandat.date_signature && !exp, updated_at: new Date().toISOString() }).eq('id', rechercheId).select().maybeSingle();
+    /* Pas enregistré : la fenêtre reste ouverte (V3.17). */
+    if (error || !data) { signalerEchec('Le mandat', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.'); setSaving(false); return; }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
       const detail = [
@@ -1454,11 +1465,12 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (!rechercheId) return;
     if (!confirm('Supprimer le mandat de recherche de ce dossier ?\n\nLes dates, la durée et les honoraires seront effacés. Le dossier sera marqué « sans mandat ».')) return;
     setSaving(true);
-    const { data } = await supabase.from('recherches').update({
+    const { data, error } = await supabase.from('recherches').update({
       mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null,
       mandat_date_expiration: null, sans_mandat: true,
       updated_at: new Date().toISOString(),
-    }).eq('id', rechercheId).select().single();
+    }).eq('id', rechercheId).select().maybeSingle();
+    if (error || !data) { signalerEchec('La suppression du mandat', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.'); setSaving(false); return; }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
       setMandat({ date_signature: '', duree: '3', honoraires: '2,5% TTC', date_expiration: '' });
@@ -1476,10 +1488,12 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (!m) return;
     setSaving(true);
     const raison = cloture.note.trim() ? `${m.nom} — ${cloture.note.trim()}` : m.nom;
-    await supabase.from('clients').update({ statut: m.statut, raison_perte: raison }).eq('id', client.id);
-    await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
-    await supabase.from('relances').update({ statut: 'cloturee' })
-      .eq('client_id', client.id).eq('statut', 'en_attente');
+    /* Vérifié (V3.17) : au premier échec, on s'arrête — la fenêtre reste
+       ouverte, on peut recommencer. */
+    const ok = await verifie('La clôture du dossier', supabase.from('clients').update({ statut: m.statut, raison_perte: raison }).eq('id', client.id).select('id'), { ligne: true })
+      && await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id))
+      && await verifie('Les relances en attente', supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', client.id).eq('statut', 'en_attente'));
+    if (!ok) { setSaving(false); load(); return; }
     await addJournal(client.id, 'dossier_finalise', `🏁 Recherche clôturée — ${m.nom}`, cloture.note.trim() || undefined);
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
     if (data) setClient(data as Client);
@@ -1490,8 +1504,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function rouvrirDossier() {
     if (!confirm('Rouvrir ce dossier ?\n\nLe statut repasse à « Actif » et la veille reprend sur cette recherche.')) return;
     setSaving(true);
-    await supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id);
-    if (rechercheId) await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId);
+    const ok = await verifie('La réouverture du dossier', supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id).select('id'), { ligne: true })
+      && (!rechercheId || await verifie('La reprise de la veille', supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId).select('id'), { ligne: true }));
+    if (!ok) { setSaving(false); load(); return; }
     await addJournal(client.id, 'statut_change', '↩️ Dossier rouvert — la veille reprend');
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
     if (data) setClient(data as Client);
@@ -1508,15 +1523,15 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
 
   async function choisirBienTx(bienId: string) {
     if (showChoixTx === 'changer' && transaction) {
-      await supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id);
+      if (!(await verifie('Le changement de bien de la transaction', supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
       const b = biens.find(x => x.id === bienId);
       await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`);
     } else {
-      await supabase.from('transactions').insert({
+      if (!(await verifie('La transaction', supabase.from('transactions').insert({
         client_id: client.id, recherche_id: rechercheId,
         bien_id: bienId, etape_actuelle: 'offre',
-      });
-      await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId);
+      })))) return;
+      await verifie('Le bien « offre faite »', supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId));
       const b = biens.find(x => x.id === bienId);
       await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${b?.titre || b?.ville || 'bien'}`);
     }
@@ -1527,8 +1542,11 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function changeStatut(statut: string) {
     // Anti-doublon : ne rien faire si le statut est déjà le même
     if (client.statut === statut) return;
-    const { data } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().single();
-    if (!data) return;
+    const { data, error } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().maybeSingle();
+    if (error || !data) {
+      signalerEchec('Le changement de statut', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.');
+      return;
+    }
     setClient(data as Client);
 
     /* Le statut et la veille marchaient chacun de leur côté : la veille lit le
@@ -1537,9 +1555,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
        ensemble — seul « Actif » fait chercher. */
     const chercher = statut === 'actif';
     if (chercher) {
-      if (rechercheId) await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId);
+      if (rechercheId) await verifie('La reprise de la veille', supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', rechercheId));
     } else {
-      await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
+      await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id));
     }
     const nom = ETATS_CLIENT.find(x => x.cle === statut)?.nom || statut;
     await addJournal(client.id, 'statut_change', `Statut → ${nom}`,
@@ -1706,18 +1724,22 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   }
 
   async function demanderPdf(bienId: string) {
-    await supabase.from('biens').update({
+    await verifie('La demande de fiche PDF', supabase.from('biens').update({
       pdf_statut: 'demande',
       pdf_demande_le: new Date().toISOString(),
       pdf_url: null,
       pdf_message: null,
-    }).eq('id', bienId);
+    }).eq('id', bienId).select('id'), { ligne: true });
     load();
   }
 
   async function changeBadge(bienId: string, badge: string) {
-    await supabase.from('biens').update({ badge_retour: badge }).eq('id', bienId);
-    if (badge === 'offre_faite' && !transaction) { await supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: bienId, etape_actuelle: 'offre' }); await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte'); }
+    if (!(await verifie('L’avis du client sur le bien', supabase.from('biens').update({ badge_retour: badge }).eq('id', bienId).select('id'), { ligne: true }))) { load(); return; }
+    if (badge === 'offre_faite' && !transaction) {
+      if (await verifie('La transaction', supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: bienId, etape_actuelle: 'offre' }))) {
+        await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte');
+      }
+    }
     load();
   }
 
@@ -1737,7 +1759,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function doRemplacerVisite() {
     const visiteId = showConfirmVisite;
     const bienId = pendingBienId;
-    if (visiteId) await supabase.from('visites').delete().eq('id', visiteId);
+    if (visiteId && !(await verifie('Le remplacement de la visite', supabase.from('visites').delete().eq('id', visiteId).select('id'), { ligne: true }))) { setShowConfirmVisite(null); return; }
     setShowConfirmVisite(null);
     await load();
     setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], date: '', heure: '', contact: '', notes: '' });
@@ -1814,7 +1836,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const prixAcqEdit = editBienForm.commission_type === 'pourcentage'
       ? Math.round((parseFloat(editBienForm.prix_vendeur)||0) * (1 + (parseFloat(editBienForm.commission_val)||0) / 100))
       : (parseFloat(editBienForm.prix_vendeur)||0) + (parseFloat(editBienForm.commission_val)||0);
-    await supabase.from('biens').update({
+    const enregistre = await verifie('La fiche du bien', supabase.from('biens').update({
       photos: photosFinales,
       titre: editBienForm.titre,
       ville: editBienForm.ville,
@@ -1861,7 +1883,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       agence_nom: editBienForm.agence_nom,
       agence_tel: editBienForm.agence_tel,
       url: editBienForm.url||null,
-    }).eq('id', ficheBienId);
+    }).eq('id', ficheBienId).select('id'), { ligne: true });
+    /* Pas enregistrée : la fenêtre reste ouverte, rien n'est perdu. */
+    if (!enregistre) { setSaving(false); return; }
     await addJournal(client.id, 'bien_modifie', `🏠 Bien modifié — ${editBienForm.titre||editBienForm.ville||''}`);
     setSaving(false); setShowFicheBien(false); load();
   }
@@ -1873,8 +1897,12 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function doDeleteBien() {
     const bienId = pendingBienId;
     setShowConfirmDeleteBien(false);
-    // Récupérer les photos stockées dans Supabase Storage pour les supprimer
     const bien = biens.find(b => b.id === bienId);
+    /* La ligne d'abord, vérifiée (V3.17) : si la base refuse, les photos
+       restent, et on le dit. Avant, les photos partaient même quand le bien
+       restait. */
+    if (!(await verifie('La suppression du bien', supabase.from('biens').delete().eq('id', bienId).select('id'), { ligne: true }))) { load(); return; }
+    // Les photos stockées dans Supabase Storage partent avec lui.
     if (bien?.photos?.length > 0) {
       const photosStorage = bien.photos.filter((p: string) => p.includes('supabase.co/storage'));
       if (photosStorage.length > 0) {
@@ -1888,7 +1916,6 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         }
       }
     }
-    await supabase.from('biens').delete().eq('id', bienId);
     await addJournal(client.id, 'bien_supprime', `🗑️ Bien supprimé — ${bien?.titre || bien?.ville || ''}`);
     setShowFicheBien(false); load();
   }
@@ -2014,6 +2041,7 @@ Emilio Immobilier
         setEnvoiSending(false);
         return;
       }
+      if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
 
       /* C'est ici, et seulement ici, qu'un bien devient « Présenté » : le mail
          est parti pour de bon. Ouvrir la fenêtre puis annuler ne laisse plus
@@ -2026,20 +2054,22 @@ Emilio Immobilier
           const b = biens.find(x => x.id === id);
           const neuf = b?.etape !== 'presente';
           if (neuf) duNeuf = true;
-          await supabase.from('biens').update({
+          /* Le mail est parti : un échec ici ne l'annule pas, mais il faut le
+             savoir (V3.17) — sinon le bien reste « à présenter ». */
+          await verifie(`Mail parti, mais « ${b?.titre || b?.ville || 'le bien'} » marqué présenté`, supabase.from('biens').update({
             etape: 'presente', envoye_le: quand, canal_envoi: 'mail',
             ...(neuf ? { badge_retour: 'propose' } : {}),
-          }).eq('id', id);
+          }).eq('id', id).select('id'), { ligne: true });
           const prix = Number(b?.prix_acquereur) || Number(b?.prix_vendeur) || 0;
           const hono = prix - (Number(b?.prix_vendeur) || 0);
-          await supabase.from('journal').insert({
+          await verifie('L’historique du client', supabase.from('journal').insert({
             client_id: client.id, bien_id: id, recherche_id: rechercheId, type: 'envoi_bien',
             titre: neuf ? 'Envoyé au client · mail' : 'Renvoyé au client · mail',
             description: prix
               ? `Prix présenté ${prix.toLocaleString('fr-FR')} €${hono > 0 ? ` — dont ${hono.toLocaleString('fr-FR')} € d'honoraires de chasse` : ''}`
               : null,
             metadata: {},
-          });
+          }));
         }
         /* L'envoi vient de partir : la relance est programmée d'office. Elle
            se clôturera toute seule si le client répond avant l'échéance. */
@@ -2083,7 +2113,7 @@ Emilio Immobilier
       contact_agence: contact || null, commentaire: notes || null,
     })));
     if (errVis) { alert("La visite n'a pas pu être enregistrée.\n\n" + errVis.message); return; }
-    await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', bien_ids);
+    await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', bien_ids));
     /* S'il l'avait demandée depuis son espace, la demande est servie : la
        relance « Veut visiter » se solde, et la page Visites la range dans
        « À venir ». */
@@ -2147,37 +2177,41 @@ Emilio Immobilier
     const noteRelance = [titre, actionF.description.trim()].filter(Boolean).join(' — ').slice(0, 300);
 
     if (actionEdit) {
-      await supabase.from('journal').update({
+      /* Vérifié (V3.17) : pas enregistrée, la fenêtre reste ouverte. */
+      if (!(await verifie('L’action', supabase.from('journal').update({
         type: actionF.type, titre,
         description: actionF.description || null,
         bien_id: actionF.bien_id || null,
-      }).eq('id', actionEdit);
+      }).eq('id', actionEdit).select('id'), { ligne: true }))) return;
 
       const jour = actionF.relance;
       if (actionRelanceId && jour) {
         /* Déplacée : la relance suit la date. L'étiquette affichée sous
            l'action la lit directement, il n'y a rien d'autre à mettre à jour. */
-        await supabase.from('relances')
+        await verifie('La date de relance', supabase.from('relances')
           .update({ date_echeance: new Date(`${jour}T12:00:00`).toISOString(), note: noteRelance })
-          .eq('id', actionRelanceId).eq('statut', 'en_attente');
+          .eq('id', actionRelanceId).eq('statut', 'en_attente'));
 
       } else if (actionRelanceId && !jour) {
         /* Retirée : on efface la relance et son annonce au suivi. */
-        await supabase.from('relances').delete().eq('id', actionRelanceId).eq('statut', 'en_attente');
-        await supabase.from('journal').delete()
-          .eq('type', 'relance_manuelle').eq('metadata->>relance_id', actionRelanceId);
-        await supabase.from('journal').update({ metadata: {} }).eq('id', actionEdit);
+        const rid = actionRelanceId, aid = actionEdit;
+        await verifieTout('Le retrait de la relance', [
+          () => supabase.from('relances').delete().eq('id', rid).eq('statut', 'en_attente'),
+          () => supabase.from('journal').delete().eq('type', 'relance_manuelle').eq('metadata->>relance_id', rid),
+          () => supabase.from('journal').update({ metadata: {} }).eq('id', aid),
+        ]);
 
       } else if (!actionRelanceId && jour) {
         /* Ajoutée après coup : elle n'existait pas, on la crée et on la relie. */
-        const { data: rel } = await supabase.from('relances').insert({
+        const { data: rel, error: eRel } = await supabase.from('relances').insert({
           client_id: client.id, recherche_id: rechercheId,
           type: 'manuelle', statut: 'en_attente',
           date_echeance: new Date(`${jour}T12:00:00`).toISOString(),
           note: noteRelance,
         }).select('id').single();
+        if (eRel) signalerEchec('La relance', eRel.message);
         if (rel?.id) {
-          await supabase.from('journal').update({ metadata: { relance_id: rel.id } }).eq('id', actionEdit);
+          await verifie('Le lien entre l’action et sa relance', supabase.from('journal').update({ metadata: { relance_id: rel.id } }).eq('id', actionEdit));
         }
       }
 
@@ -2192,7 +2226,7 @@ Emilio Immobilier
        tard, de supprimer les deux ensemble. */
     let relanceId: string | null = null;
     if (actionF.relance) {
-      const { data: rel } = await supabase.from('relances').insert({
+      const { data: rel, error: eRel } = await supabase.from('relances').insert({
         client_id: client.id,
         recherche_id: rechercheId,
         type: 'manuelle',
@@ -2200,10 +2234,13 @@ Emilio Immobilier
         date_echeance: new Date(`${actionF.relance}T12:00:00`).toISOString(),
         note: noteRelance,
       }).select('id').single();
+      /* La relance n'est pas partie : on le dit, et on s'arrête — la fenêtre
+         reste ouverte avec ce qui a été tapé. */
+      if (eRel) { signalerEchec('La relance', eRel.message); return; }
       relanceId = rel?.id || null;
     }
 
-    await supabase.from('journal').insert({
+    const noteOk = await verifie('L’action', supabase.from('journal').insert({
       client_id: client.id,
       recherche_id: rechercheId,
       type: actionF.type,
@@ -2211,7 +2248,13 @@ Emilio Immobilier
       description: actionF.description || null,
       bien_id: actionF.bien_id || null,
       metadata: relanceId ? { relance_id: relanceId } : {},
-    });
+    }));
+    /* L'action n'est pas notée : on retire la relance créée juste avant, pour
+       qu'un nouvel essai n'en fasse pas une deuxième. La fenêtre reste ouverte. */
+    if (!noteOk) {
+      if (relanceId) await verifie('La relance créée avec l’action', supabase.from('relances').delete().eq('id', relanceId));
+      chargerRelances(); return;
+    }
 
     fermerAction(); load(); chargerRelances();
   }
@@ -2266,15 +2309,15 @@ Emilio Immobilier
     if (!confirm(texte)) return;
 
     if (relanceId) {
-      if (quand) await supabase.from('relances').delete().eq('id', relanceId).eq('statut', 'en_attente');
+      if (quand) await verifie('La suppression de la relance', supabase.from('relances').delete().eq('id', relanceId).eq('statut', 'en_attente'));
       chargerRelances();
       /* Une action avec relance laisse DEUX lignes au suivi : l'action, et le
          « 🔔 Relance prévue le… » qui l'accompagne. Les deux portent le même
          identifiant de relance — on les efface ensemble, sinon la seconde
          restait seule à annoncer une relance qui n'existe plus. */
-      await supabase.from('journal').delete().eq('client_id', client.id).eq('metadata->>relance_id', relanceId);
+      await verifie('La suppression de l’action', supabase.from('journal').delete().eq('client_id', client.id).eq('metadata->>relance_id', relanceId));
     }
-    await supabase.from('journal').delete().eq('id', j.id);
+    await verifie('La suppression de l’action', supabase.from('journal').delete().eq('id', j.id).select('id'), { ligne: !relanceId });
     load();
   }
 
@@ -2286,7 +2329,7 @@ Emilio Immobilier
     txPending.current = {};
     const id = txRef.current?.id;
     if (!id || Object.keys(lot).length === 0) return;
-    await supabase.from('transactions').update(lot).eq('id', id);
+    await verifie('La transaction', supabase.from('transactions').update(lot).eq('id', id).select('id'), { ligne: true });
   }
 
   function saveTxField(field: string, value: any) {
@@ -2305,8 +2348,8 @@ Emilio Immobilier
     /* `updated_at` n'est pas décoratif ici : l'espace du client s'en sert pour
        savoir si une déclaration de fin de recherche est encore d'actualité.
        Relancer la veille rallume sa pastille « Recherche en cours ». */
-    await supabase.from('recherches')
-      .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId);
+    if (!(await verifie(active ? 'La reprise de la veille' : 'La mise en pause de la veille', supabase.from('recherches')
+      .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId)))) return;
     setRecherches(rs => rs.map(r => r.id === rechercheId ? ({ ...r, active } as Recherche) : r));
     await addJournal(client.id, 'statut_change',
       active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi);
@@ -2316,7 +2359,7 @@ Emilio Immobilier
     if (!transaction) return;
     await flushTx();
     const e = ETAPES_TX.find(x => x.cle === prochaine);
-    await supabase.from('transactions').update({ etape_actuelle: prochaine }).eq('id', transaction.id);
+    if (!(await verifie('Le passage à l’étape suivante', supabase.from('transactions').update({ etape_actuelle: prochaine }).eq('id', transaction.id).select('id'), { ligne: true }))) { load(); return; }
     /* Un seul type au journal. Avant, l'identifiant de l'étape SERVAIT de type
        — « compromis », « acte »… des types que ni les filtres du suivi ni les
        icônes ne connaissaient, et qui s'allongeaient à chaque étape. */
@@ -2342,11 +2385,11 @@ Emilio Immobilier
        pouvait plus reculer. */
     const prec = cur === 'finalise' ? 'acte' : ORDRE_ETAPES[ORDRE_ETAPES.indexOf(cur) - 1];
     if (!prec) { setShowConfirmEtape(false); return; }
-    await supabase.from('transactions').update({ etape_actuelle: prec }).eq('id', transaction.id);
+    if (!(await verifie('Le retour à l’étape précédente', supabase.from('transactions').update({ etape_actuelle: prec }).eq('id', transaction.id).select('id'), { ligne: true }))) { setShowConfirmEtape(false); load(); return; }
     if (cur === 'finalise') {
       /* On défait la clôture : le dossier redevient un dossier en cours. La
          veille, elle, reste en pause — on est toujours à l'acte. */
-      await supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id);
+      await verifie('La réouverture du dossier', supabase.from('clients').update({ statut: 'actif', raison_perte: null }).eq('id', client.id));
       const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
       if (data) setClient(data as Client);
     }
@@ -2363,11 +2406,12 @@ Emilio Immobilier
     if (!transaction) return;
     await flushTx();
     setSaving(true);
-    await supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id);
-    await supabase.from('clients').update({ statut: 'bien_trouve', raison_perte: null }).eq('id', client.id);
-    await supabase.from('recherches').update({ active: false }).eq('client_id', client.id);
-    await supabase.from('relances').update({ statut: 'cloturee' })
-      .eq('client_id', client.id).eq('statut', 'en_attente');
+    /* Vérifié (V3.17) : au premier échec, on s'arrête et on le dit. */
+    const ok = await verifie('L’acte signé', supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id).select('id'), { ligne: true })
+      && await verifie('Le statut « bien trouvé »', supabase.from('clients').update({ statut: 'bien_trouve', raison_perte: null }).eq('id', client.id))
+      && await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id))
+      && await verifie('Les relances en attente', supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', client.id).eq('statut', 'en_attente'));
+    if (!ok) { setSaving(false); load(); return; }
     await addJournal(client.id, 'dossier_finalise', '🎉 Acte signé — bien trouvé !',
       "Le dossier est clos : la veille s'arrête et les relances en attente sont soldées.");
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
@@ -2385,14 +2429,14 @@ Emilio Immobilier
     await flushTx();
     setSaving(true);
     const bienId = transaction.bien_id;
-    await supabase.from('transactions').delete().eq('id', transaction.id);
-    if (bienId) await supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', bienId);
+    if (!(await verifie('L’abandon de la transaction', supabase.from('transactions').delete().eq('id', transaction.id).select('id'), { ligne: true }))) { setSaving(false); load(); return; }
+    if (bienId) await verifie('Le bien repassé « visité »', supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', bienId));
     /* « offre_ecrite » est un ancien statut : plus aucun menu ne le propose,
        mais d'anciens dossiers le portent encore en base. */
     const st = client.statut as string;
     if (st === 'actif' || st === 'offre_ecrite') {
       if (st === 'offre_ecrite') {
-        await supabase.from('clients').update({ statut: 'actif' }).eq('id', client.id);
+        await verifie('Le statut du client', supabase.from('clients').update({ statut: 'actif' }).eq('id', client.id));
         const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
         if (data) setClient(data as Client);
       }
@@ -2411,7 +2455,7 @@ Emilio Immobilier
     if (!m) { alert('Indiquez le montant de la contre-offre.'); return; }
     const liste = [...((transaction.contre_offres as any[]) || []),
       { partie: coForm.partie, montant: m, date: coForm.date || new Date().toISOString().slice(0, 10) }];
-    await supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id);
+    if (!(await verifie('La contre-offre', supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
     /* La balle est dans l'autre camp : on pré-sélectionne l'autre partie. */
     setCoForm({ partie: coForm.partie === 'vendeur' ? 'acheteur' : 'vendeur', montant: '', date: '' });
     load();
@@ -2420,7 +2464,7 @@ Emilio Immobilier
   async function supprimerContreOffre(i: number) {
     if (!transaction) return;
     const liste = ((transaction.contre_offres as any[]) || []).filter((_, k) => k !== i);
-    await supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id);
+    await verifie('La suppression de la contre-offre', supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id).select('id'), { ligne: true });
     load();
   }
 
@@ -2822,6 +2866,8 @@ Emilio Immobilier
       <div className={styles.contentWrap}>
         {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
         <div style={{ marginBottom: 16 }} className="fc-biens-vente"><BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} /></div>
+        {/* Ses documents : tout ce qui lui est rattaché, signé ou en cours, avec l'exemplaire signé (V3.17). */}
+        <div style={{ marginBottom: 16 }}><DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} /></div>
         {/* LE LIEN DE L'ESPACE CLIENT, tout en haut */}
         {rechercheActive && (
           <div style={{ marginBottom: 16 }}>

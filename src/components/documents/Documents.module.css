@@ -2,7 +2,8 @@
    La page (modèles, liste, fiche d'un document), l'éditeur plein écran
    (étapes, questions, aperçu en direct) et l'aperçu « papier ».
    Bleu Emilio (--emilio, celui des en-têtes), or #c9a84c : l'or pour ce qui compte,
-   rien d'autre. Le marine #1a2332 ne reste que sur les filtres et l'aperçu papier. */
+   rien d'autre. Depuis la V3.17, plus de marine presque noir : les filtres et l'aperçu papier
+   passent au bleu Emilio (#34496e), comme le reste du CRM et les PDF. */
 
 .page { padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 18px; }
 
@@ -38,7 +39,7 @@
 }
 .cat i { font-style: normal; font-size: 11.5px; font-weight: 800; color: #94a3b8; }
 .cat:hover { border-color: #cbd5e1; }
-.catOn { background: #1a2332; border-color: #1a2332; color: white; }
+.catOn { background: var(--emilio-fond); border-color: #34496e; color: white; }
 .catOn i { color: #c9a84c; }
 
 /* ── La liste ── */
@@ -69,6 +70,14 @@
 .t_bleu { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
 .t_vert { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
 .t_rouge { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+/* Les statuts des documents, bien visibles (V3.17) : mêmes couleurs, plus
+   franches, en gras, avec leur dessin. */
+.statutFort { gap: 6px; padding: 4px 11px 4px 9px; font-size: 12.5px; font-weight: 800; border-width: 1.5px; letter-spacing: .1px; }
+.statutFort::before { display: none; }
+.statutFort.t_gris { background: #e8edf3; color: #334155; border-color: #cbd5e1; }
+.statutFort.t_bleu { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.statutFort.t_vert { background: #dcfce7; color: #166534; border-color: #86efac; }
+.statutFort.t_rouge { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
 
 .vide { padding: 42px 24px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.6; }
 .vide b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; color: var(--emilio); margin-bottom: 4px; }
@@ -305,7 +314,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 /* ═══ L'APERÇU « PAPIER » ════════════════════════════════════════════════
    Les mêmes blocs que le PDF, dessinés de la même façon. */
 .papier { max-width: 760px; margin: 0 auto; background: white; border-radius: 6px; box-shadow: 0 10px 30px rgba(15,23,42,.10), 0 1px 3px rgba(15,23,42,.08); overflow: hidden; container-type: inline-size; color: #1f2a3a; }
-.papGarde { background: #1a2332; color: white; padding: 26px 34px 24px; position: relative; }
+.papGarde { background: var(--emilio-fond); color: white; padding: 26px 34px 24px; position: relative; }
 .papGarde img { display: block; height: 46px; width: auto; }
 .papGarde .filet { width: 38px; height: 3px; background: #c9a84c; border-radius: 2px; margin: 20px 0 10px; }
 .papGarde h2 { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 27px; font-weight: 800; letter-spacing: -.3px; line-height: 1.15; }
@@ -318,11 +327,11 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .papLettre .projet { position: absolute; top: 24px; right: 0; padding: 4px 10px; border-radius: 99px; border: 1px solid #ecdcb0; color: #a07c28; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; }
 .papPour { padding: 18px 34px 4px; }
 .papPour span { display: block; font-size: 10px; letter-spacing: 1.5px; font-weight: 800; color: #a07c28; }
-.papPour b { display: block; margin-top: 3px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 21px; font-weight: 800; color: #1a2332; }
+.papPour b { display: block; margin-top: 3px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 21px; font-weight: 800; color: #2e4166; }
 .papResume { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 34px 6px; }
 .papResume > div { position: relative; padding: 11px 12px 10px; border-radius: 10px; background: #f7f9fc; border: 1px solid #e8edf3; border-top: 2px solid #c9a84c; min-width: 0; }
 .papResume span { display: block; font-size: 9.5px; letter-spacing: 1.2px; font-weight: 800; color: #a07c28; text-transform: uppercase; }
-.papResume b { display: block; margin-top: 3px; font-size: 14px; color: #1a2332; overflow-wrap: anywhere; }
+.papResume b { display: block; margin-top: 3px; font-size: 14px; color: #2e4166; overflow-wrap: anywhere; }
 .papResume i { display: block; margin-top: 2px; font-style: normal; font-size: 11.5px; line-height: 1.45; color: #64748b; }
 .papCorps { padding: 6px 34px 30px; }
 
@@ -330,40 +339,40 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .saut { display: flex; align-items: center; gap: 10px; margin: 26px -34px 0; padding: 0 34px; color: #94a3b8; font-size: 10px; letter-spacing: 1.4px; font-weight: 800; text-transform: uppercase; }
 .saut::before, .saut::after { content: ''; flex: 1 1 auto; border-top: 1.5px dashed #d5dce6; }
 .partieT { display: flex; gap: 12px; align-items: flex-start; }
-.partieT .ic { flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: #1a2332; color: white; display: flex; align-items: center; justify-content: center; }
+.partieT .ic { flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: var(--emilio-fond); color: white; display: flex; align-items: center; justify-content: center; }
 .partieN { font-size: 9.5px; letter-spacing: 1.6px; font-weight: 800; color: #a07c28; text-transform: uppercase; }
-.partieT h3 { margin: 2px 0 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; line-height: 1.25; font-weight: 800; color: #1a2332; }
+.partieT h3 { margin: 2px 0 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; line-height: 1.25; font-weight: 800; color: #2e4166; }
 .partieT .s { margin-top: 2px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 13px; color: #64748b; }
-.secI { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-size: 10.5px; letter-spacing: 1.6px; font-weight: 800; color: #1a2332; text-transform: uppercase; }
+.secI { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-size: 10.5px; letter-spacing: 1.6px; font-weight: 800; color: #2e4166; text-transform: uppercase; }
 .secI::before, .secI::after { content: ''; flex: 1 1 auto; height: 1px; background: #e3e8f0; }
-.secIc { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-bottom: 7px; border-bottom: 1px solid #eef1f6; font-size: 14.5px; font-weight: 800; color: #1a2332; }
+.secIc { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-bottom: 7px; border-bottom: 1px solid #eef1f6; font-size: 14.5px; font-weight: 800; color: #2e4166; }
 .secIc .ic { flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: flex; align-items: center; justify-content: center; }
 .secIc em { margin-left: auto; font-style: normal; font-size: 11px; color: #c9a84c; font-weight: 800; }
 .papCorps p { margin: 8px 0 0; font-size: 13px; line-height: 1.62; color: #2b3647; }
 .papCorps p.petit { font-size: 12px; line-height: 1.55; color: #475569; }
-.papCorps p.enc { padding: 10px 13px; border-radius: 6px; background: #f3f6fa; border-left: 3px solid #c9a84c; font-weight: 700; color: #1a2332; }
+.papCorps p.enc { padding: 10px 13px; border-radius: 6px; background: #f3f6fa; border-left: 3px solid #c9a84c; font-weight: 700; color: #2e4166; }
 .papCorps ul { margin: 6px 0 0; padding-left: 4px; list-style: none; }
 .papCorps li { position: relative; padding-left: 16px; font-size: 13px; line-height: 1.55; color: #2b3647; margin-top: 4px; }
 .papCorps li::before { content: ''; position: absolute; left: 3px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: #c9a84c; }
 .coches { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 10px; }
 @container (min-width: 560px) { .coches { grid-template-columns: 1fr 1fr; } }
-.coches > div { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: #1a2332; }
+.coches > div { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: #2e4166; }
 .coches .k { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; background: #c9a84c; color: white; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
 .etapes { list-style: none; margin: 10px 0 0; padding: 0; }
 .etapes > li { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-top: 1px solid #f1f4f8; margin: 0; }
 .etapes > li::before { display: none; }
 .etapes > li:first-child { border-top: none; padding-top: 2px; }
 .etapes .n { flex-shrink: 0; width: 30px; height: 24px; border-radius: 7px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; font-size: 11.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.etapes b { display: block; font-size: 13.5px; color: #1a2332; }
+.etapes b { display: block; font-size: 13.5px; color: #2e4166; }
 .etapes .x { display: block; margin-top: 1px; font-size: 13px; line-height: 1.55; color: #2b3647; }
 .fiches { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
 @container (min-width: 560px) { .fiches { grid-template-columns: 1fr 1fr; } .ficheLarge { grid-column: 1 / -1; } }
 .fiche { padding: 12px 13px; border-radius: 10px; background: #f7f9fc; border: 1px solid #e8edf3; min-width: 0; }
 .ficheT { display: flex; align-items: center; gap: 9px; }
 .ficheT .ic { flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: flex; align-items: center; justify-content: center; }
-.ficheT b { font-size: 13.5px; color: #1a2332; line-height: 1.3; }
+.ficheT b { font-size: 13.5px; color: #2e4166; line-height: 1.3; }
 .papCorps .fiche p { font-size: 12.5px; line-height: 1.55; margin-top: 6px; overflow-wrap: anywhere; }
-.papCorps .fiche p.fNote { padding-left: 9px; border-left: 2px solid #c9a84c; font-weight: 700; color: #1a2332; }
+.papCorps .fiche p.fNote { padding-left: 9px; border-left: 2px solid #c9a84c; font-weight: 700; color: #2e4166; }
 .papCorps .fiche p.fPied { font-style: italic; font-size: 11.5px; color: #64748b; border-top: 1px solid #e8edf3; padding-top: 7px; }
 .caseP { display: flex; gap: 9px; }
 .caseP .bx { flex-shrink: 0; width: 13px; height: 13px; border: 1.5px solid #64748b; border-radius: 3px; margin-top: 4px; }
@@ -372,7 +381,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 @container (min-width: 460px) { .sigs { grid-template-columns: 1fr 1fr; } }
 .sigc { border: 1px solid #e3e8f0; border-top: 3px solid #c9a84c; border-radius: 8px; padding: 10px 12px 0; display: flex; flex-direction: column; min-height: 132px; }
 .sigc span { font-size: 9.5px; letter-spacing: 1.3px; font-weight: 800; color: #a07c28; text-transform: uppercase; }
-.sigc b { margin-top: 2px; font-size: 13px; color: #1a2332; }
+.sigc b { margin-top: 2px; font-size: 13px; color: #2e4166; }
 .sigc i { font-style: normal; font-size: 11.5px; color: #64748b; line-height: 1.4; }
 .sigc .zone { margin-top: auto; border-top: 1px dotted #cbd5e1; padding: 5px 0 8px; font-size: 10px; color: #b6c0cf; letter-spacing: .5px; }
 .papCorps p.mention { font-size: 11.5px; font-style: italic; color: #64748b; }
@@ -529,4 +538,49 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 @keyframes saisiePop { 0% { transform: scale(.93); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
   .saisieVive *, .saisieVive *::before, .saisieVive *::after { animation: none !important; transition: none !important; }
+}
+
+/* ── « Ses documents », sur la fiche d'un client (V3.17) ── */
+.dcBloc { background: white; border: 1px solid #e3e8f0; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; box-shadow: 0 1px 3px rgba(15,23,42,.03); }
+.dcTete { display: flex; align-items: center; gap: 9px; }
+.dcTete h3 { margin: 0; flex: 1 1 auto; min-width: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 800; color: var(--emilio); }
+.dcTete h3 i { font-style: normal; color: #94a3b8; font-weight: 700; }
+.dcIc { flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; }
+.dcLien { flex-shrink: 0; border: none; background: none; padding: 4px 0; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.dcLien:hover { text-decoration: underline; text-underline-offset: 3px; }
+.dcCompte { display: flex; flex-wrap: wrap; gap: 6px; }
+.dcCompte > span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font: 700 12px 'DM Sans', sans-serif; }
+.dcOk { background: #f0fdf4; color: #166534; }
+.dcAttente { background: #eff6ff; color: #1d4ed8; }
+.dcListe { display: flex; flex-direction: column; gap: 6px; }
+.dcLigne { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.dcOuvrir {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 12px;
+  border: 1px solid #eef1f6; background: #fbfcfe; cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif;
+  transition: border-color .15s, background .15s;
+}
+.dcOuvrir:hover { border-color: #ecdcb0; background: #fdfaf2; }
+.dcCat { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--emilio-fond); color: #c9a84c; }
+.dcCat_mandats_recherche { background: #e8eef8; color: #34496e; }
+.dcCat_offres { background: #fbeee8; color: #a4502d; }
+.dcCat_bons_visite { background: #e9f6ee; color: #1f7a45; }
+.dcCat_courriers { background: #f1f4f8; color: #64748b; }
+.dcTexte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dcTexte b, .dcTexte small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dcTexte b { font-size: 13.5px; font-weight: 700; color: var(--emilio); }
+.dcTexte small { font-size: 12px; color: #7b8799; }
+.dcSigne {
+  flex-shrink: 0; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 64px; padding: 6px 8px;
+  border-radius: 12px; border: 1px solid #bbf7d0; background: #f0fdf4; color: #166534; font: 700 11.5px 'DM Sans', sans-serif; cursor: pointer;
+}
+.dcSigne:hover { border-color: #86efac; background: #dcfce7; }
+.dcSigne:disabled { opacity: .6; cursor: wait; }
+.dcPlus { align-self: flex-start; border: none; background: none; padding: 4px 2px; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.dcVide { font-size: 12.5px; color: #94a3b8; line-height: 1.55; }
+@media (max-width: 640px) {
+  .dcBloc { padding: 14px 14px; }
+  .dcOuvrir { flex-wrap: wrap; row-gap: 6px; }
+  .dcTexte { flex-basis: calc(100% - 45px); }
+  .dcOuvrir > .statut { margin-left: 45px; }
+  .dcTexte b, .dcTexte small { white-space: normal; }
 }

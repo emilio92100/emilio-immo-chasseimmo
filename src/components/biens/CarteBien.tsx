@@ -49,10 +49,52 @@ export function Anneau({ note, t = 46 }: { note: number; t?: number }) {
   );
 }
 
-export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, proprio, onClick }: {
+type PropsCarte = {
   bien: BienVente; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbOffres: number;
   proprio?: string; onClick?: () => void;
-}) {
+};
+
+/* La liste en lignes (V3.17) : la même information qu'une carte, sur une
+   ligne, la photo en petit. Au téléphone, deux étages. */
+export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, proprio, onClick }: PropsCarte) {
+  const d = bien.donnees || {};
+  const e = etapeDe(bien.etape);
+  const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
+  const prix = prixCarte(bien);
+  const etat = ligneEtat(bien, suivi);
+  const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
+  const lieu = [bien.ville || txt(d, 'ville'), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
+  const qui = nomProprio(d) || proprio || '';
+  const enVente = !['vendu', 'retire'].includes(bien.etape);
+  return (
+    <button type="button" className={b.ligneB} onClick={onClick}>
+      <span className={b.ligneImg}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {photo ? <img src={photo} alt="" loading="lazy" /> : <Ic n="photo" t={20} />}
+      </span>
+      <span className={b.ligneTitre}>
+        <span className={b.ligneEtape}>
+          <span className={b.point} style={{ background: e.c }} />{e.court}
+          {mandat && <em className={mandat === 'exclusif' ? b.exclu : undefined}>{NOM_MANDAT[mandat]?.toUpperCase()}</em>}
+        </span>
+        <b className={prix.vide ? b.prixVide : undefined}>{prix.t}</b>
+        <small>{specsBien(d) || 'Caractéristiques à saisir'}</small>
+      </span>
+      <span className={b.ligneLieu}>
+        {lieu && <span><Ic n="lieu" t={14} />{lieu}</span>}
+        {qui && <span><Ic n="personne" t={14} />{qui}</span>}
+      </span>
+      <span className={b.ligneEtat}>
+        <span className={`${b.ligneEtatT} ${etat.ton === 'alerte' ? b.ligneAlerte : etat.ton === 'ok' ? b.ligneOk : ''}`}>{etat.t}</span>
+        {enVente && nbAcheteurs > 0 && <span className={b.chipOr}><Ic n="cible" t={13} />{`${nbAcheteurs} acheteur${nbAcheteurs > 1 ? 's' : ''}`}</span>}
+        {!avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0) && <span className={b.compteurs}>{`${nbVisites} visite${nbVisites > 1 ? 's' : ''} · ${nbOffres} offre${nbOffres > 1 ? 's' : ''}`}</span>}
+      </span>
+      <span className={b.ligneFleche}><Ic n="droite" t={16} e={2.4} /></span>
+    </button>
+  );
+}
+
+export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';

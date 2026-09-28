@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
-import { CATEGORIES, MODELES, STATUTS, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
+import { CATEGORIES, MODELES, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import EditeurDocument from './EditeurDocument';
 import NouveauDocument from './NouveauDocument';
 import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
+import { Pastille } from './DocumentsDuClient';
 import {
   apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
@@ -56,11 +57,6 @@ function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
     titre: `Mandat de recherche · ${nom}`, sous: [x.numero ? `N° ${x.numero}` : '', 'signé en ligne', x.statut === 'partiel' ? 'une signature attendue' : ''].filter(Boolean).join(' · '),
     badge: 'En ligne', date: x.retracte_le || x.signe_le || x.created_at, mandat: x,
   };
-}
-
-function Pastille({ statut, courrier = false }: { statut: Statut; courrier?: boolean }) {
-  const e = STATUTS[statut] || STATUTS.brouillon;
-  return <span className={`${s.statut} ${s['t_' + e.ton]}`}>{libStatut(statut, courrier)}</span>;
 }
 
 function Ligne({ it, on, onClick }: { it: Item; on: boolean; onClick: () => void }) {
@@ -408,7 +404,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
 }
 
 /* Ce que la page doit faire en s'ouvrant, venue d'un autre écran. */
-export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string };
+/* Venu d'ailleurs : préparer un avenant, ouvrir un document (« r-<id> » :
+   un mandat signé en ligne), ou en créer un pour un client (sa fiche). */
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -424,7 +422,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [cat, setCat] = useState<'tout' | Categorie>('tout');
   const [cherche, setCherche] = useState('');
   const [ouvert, setOuvert] = useState<string | null>(null);
-  const [nouveau, setNouveau] = useState<{ modele?: string } | null>(null);
+  const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string } | null>(null);
   const [edition, setEdition] = useState<DocumentRow | null>(null);
 
   const charger = useCallback(async () => {
@@ -510,6 +508,8 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     const id = intention?.ouvrir;
     if (!id || faite.current === 'o-' + id) return;
     faite.current = 'o-' + id;
+    /* Un mandat de recherche signé en ligne : sa fiche, dans la liste. */
+    if (id.startsWith('r-')) { onIntention?.(); setOuvert(id); return; }
     (async () => {
       const { data, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle();
       onIntention?.();
@@ -519,6 +519,14 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       if (r.statut === 'brouillon') setEdition(r); else setOuvert(r.id);
     })();
   }, [intention, onIntention, majDoc]);
+  /* « + Nouveau document » depuis la fiche d'un client : il est déjà choisi. */
+  useEffect(() => {
+    const cid = intention?.nouveau;
+    if (!cid || faite.current === 'n-' + cid) return;
+    faite.current = 'n-' + cid;
+    onIntention?.();
+    setNouveau({ clientId: cid });
+  }, [intention, onIntention]);
   useEffect(() => {
     const rid = intention?.avenantRecherche;
     if (!rid || faite.current === rid) return;
@@ -649,7 +657,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           onFiche={ficheClient} />
       )}
       {nouveau && (
-        <NouveauDocument modeleId={nouveau.modele} onFermer={() => setNouveau(null)}
+        <NouveauDocument modeleId={nouveau.modele} clientId={nouveau.clientId} onFermer={() => setNouveau(null)}
           onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }} />
       )}
       {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }}

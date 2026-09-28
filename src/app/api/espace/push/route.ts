@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * L'abonnement aux notifications, côté client.
@@ -45,8 +46,8 @@ export async function POST(req: NextRequest) {
     if (body?.retirer) {
       const endpoint = typeof body.endpoint === 'string' ? body.endpoint : '';
       if (endpoint) {
-        await supabase.from('push_abonnements').delete()
-          .eq('endpoint', endpoint).eq('recherche_id', recherche.id);
+        await ecritServeur('Le désabonnement aux notifications', supabase.from('push_abonnements').delete()
+          .eq('endpoint', endpoint).eq('recherche_id', recherche.id));
       }
       return NextResponse.json({ ok: true });
     }
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     /* Un appareil qui se réabonne ne doit pas créer une deuxième ligne : on
        écrase la précédente. L'unicité de l'endpoint garantit le reste. */
-    await supabase.from('push_abonnements').upsert({
+    const inscrit = await ecritServeur('L’abonnement aux notifications', supabase.from('push_abonnements').upsert({
       recherche_id: recherche.id,
       client_id: recherche.client_id,
       endpoint,
@@ -75,17 +76,18 @@ export async function POST(req: NextRequest) {
       auth: ab?.keys?.auth || null,
       appareil: String(req.headers.get('user-agent') || '').slice(0, 300),
       echecs: 0,
-    }, { onConflict: 'endpoint' });
+    }, { onConflict: 'endpoint' }));
+    /* Pas inscrit = pas de notification : l'espace doit le savoir. */
+    if (!inscrit) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
 
     /* Pour qu'Alexandre voie dans le dossier que le client a activé les
        notifications — c'est un signal d'engagement, pas un détail technique. */
     if (!deja) {
-      try {
-        await supabase.from('espace_evenements').insert({
-          recherche_id: recherche.id, client_id: recherche.client_id,
-          type: 'notifications', detail: 'Le client a activé les notifications',
-        });
-      } catch { /* le journal ne doit jamais faire échouer l'abonnement */ }
+      /* le journal ne doit jamais faire échouer l'abonnement : noté, sans plus */
+      await ecritServeur('Le suivi de l’espace', supabase.from('espace_evenements').insert({
+        recherche_id: recherche.id, client_id: recherche.client_id,
+        type: 'notifications', detail: 'Le client a activé les notifications',
+      }));
     }
 
     return NextResponse.json({ ok: true });

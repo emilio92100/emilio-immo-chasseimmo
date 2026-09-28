@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 import {
   Chip, BoutonLien, CARTE, Vignettes, Specs, BandeauMarche, ModaleScore,
   StylesEmilio, Icone, Action, NAVY, OR, BORD,
@@ -56,7 +57,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
     if (p.url) {
       const { data: deja } = await supabase.from('biens').select('id').eq('recherche_id', rechercheId).eq('url', p.url).maybeSingle();
       if (deja) {
-        await supabase.from('veille_propositions').update({ statut: 'retenu', bien_id: deja.id, decide_le: new Date().toISOString() }).eq('id', p.id);
+        await verifie('Le bien retenu', supabase.from('veille_propositions').update({ statut: 'retenu', bien_id: deja.id, decide_le: new Date().toISOString() }).eq('id', p.id));
         setEnTraitement(null); charger(); onChange?.(); return;
       }
     }
@@ -102,12 +103,12 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
     }
 
     if (error || !bien) { alert("Impossible d'ajouter ce bien : " + (error?.message || '')); setEnTraitement(null); return; }
-    await supabase.from('veille_propositions').update({ statut: 'retenu', bien_id: bien.id, decide_le: new Date().toISOString() }).eq('id', p.id);
-    await supabase.from('journal').insert({
+    await verifie('Le bien est ajouté, mais la veille', supabase.from('veille_propositions').update({ statut: 'retenu', bien_id: bien.id, decide_le: new Date().toISOString() }).eq('id', p.id));
+    await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: rechercheId,
       type: 'veille_trouve', titre: `Trouvé par la veille${p.score ? ` · score ${p.score}/100` : ''}`,
       description: p.points_forts?.join(' · ') || null, metadata: {},
-    });
+    }));
     await addJournal(clientId, 'bien_ajoute', `Retenu depuis la veille — ${p.titre || p.ville || ''}`, p.url || '');
     setEnTraitement(null); charger(); onChange?.();
   }
@@ -115,14 +116,14 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   async function ecarter(p: any) {
     if (enTraitement) return;
     setEnTraitement(p.id);
-    await supabase.from('veille_propositions').update({
+    if (!(await verifie('L’écart du bien', supabase.from('veille_propositions').update({
       statut: 'ecarte', motif_ecart: motif.trim() || null, decide_le: new Date().toISOString(),
-    }).eq('id', p.id);
+    }).eq('id', p.id).select('id'), { ligne: true }))) { setEnTraitement(null); return; }
     setEcartEnCours(null); setMotif(''); setEnTraitement(null); charger(); onChange?.();
   }
 
   async function restaurer(p: any) {
-    await supabase.from('veille_propositions').update({ statut: 'nouveau', motif_ecart: null, decide_le: null }).eq('id', p.id);
+    await verifie('La remise en proposition', supabase.from('veille_propositions').update({ statut: 'nouveau', motif_ecart: null, decide_le: null }).eq('id', p.id).select('id'), { ligne: true });
     charger(); onChange?.();
   }
 

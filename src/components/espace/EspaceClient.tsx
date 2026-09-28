@@ -923,6 +923,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   const montrer = (n: React.ReactNode, v = '') => { setFeuille(n); setVariante(v); setOuvert(true); };
   const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setVariante(''); }, 320); };
+  /* Ce n'est pas parti (V3.17) : on le dit, au lieu d'un « c'est noté » qui
+     ne serait pas vrai. */
+  const pasParti = (titre = 'Ce n’est pas parti') => montrer(<GrandOk titre={titre}
+    texte="Un souci de connexion, sans doute. Réessayez dans un instant, ou appelez directement votre conseiller."
+    rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
+    onFermer={fermer} />, 'pleine');
   const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   /* ── passer d'une recherche à l'autre ──
@@ -1270,6 +1276,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       ouvrirMandatPourVisite(b, avis, commentaire);
       return;
     }
+    if (!r?.ok) { pasParti('Votre réponse n’est pas partie'); return; }
     setBiens(l => l.map(x => x.id === b.id
       ? { ...x, avis, commentaire, etat: 'avis', retourLe: new Date().toISOString() } : x));
     /* Juste après la signature, l'écran « Mandat signé » dit déjà que la
@@ -1487,9 +1494,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const r = await envoyer('rappel', { creneau });
     const quand = creneau === 'matin' ? 'le matin'
       : creneau === 'apres_midi' ? "l'après-midi" : 'en fin de journée';
+    /* Pas passé (V3.17) : on le dit. Déjà demandé aujourd'hui : on ne fait pas
+       croire au client que c'est reparti une fois de plus. */
+    if (!r?.ok && r?.error !== 'demande déjà enregistrée') { pasParti('Votre demande n’est pas partie'); return; }
     if (r && r.ok === false) {
-      /* Déjà demandé aujourd'hui, ou envoi qui n'est pas passé : dans les deux
-         cas on ne fait pas croire au client que c'est reparti une fois de plus. */
       montrer(<GrandOk titre="Votre demande est déjà partie"
         texte="Votre conseiller en a déjà été prévenu : il vous rappelle. Inutile de redemander, votre demande n'est pas perdue."
         rappel={'Si c\'est urgent, vous pouvez l\'appeler directement au <b>' + AGENT.tel + '</b>.'}
@@ -1512,6 +1520,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   async function declarerFin(motif: string, mot: string) {
     const r = await envoyer('fin', { motif, mot });
+    /* Pas passé (V3.17) : rien n'est noté, il peut réessayer. */
+    if (!r?.ok && r?.error !== 'déjà signalé') { pasParti(); return; }
     /* Dans les deux cas la déclaration existe — celle de maintenant ou celle
        d'hier : on n'affiche plus « recherche en cours » à quelqu'un qui vient
        de nous dire le contraire. */
@@ -1545,27 +1555,36 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   function ouvrirModifCriteres() {
     montrer(<ModifCriteres crit={crit} onFermer={fermer} onEnregistrer={async (nv: Criteres, changements: string[], demandeNote: string) => {
+      const r = await envoyer('criteres', { criteres: nv });
+      /* Pas enregistrés (V3.17) : l'écran reste ouvert avec ce qu'il a choisi,
+         et le dit (voir ModifCriteres) ; rien n'a changé. */
+      if (!r?.ok) return false;
       setCrit(nv);
-      await envoyer('criteres', { criteres: nv });
       /* La note est celle du chasseur : le client ne la réécrit pas, il demande. */
-      if (demandeNote) await envoyer('message', { texte: 'Demande sur la note de la recherche : ' + demandeNote });
+      const demandePartie = demandeNote ? !!(await envoyer('message', { texte: 'Demande sur la note de la recherche : ' + demandeNote }))?.ok : false;
       montrer(<GrandOk titre="C'est enregistré, merci"
         texte="Merci d'avoir pris le temps de mettre à jour vos critères. Votre conseiller en est informé : il les intègre à votre recherche, et les biens qui vous seront proposés à partir de maintenant tiendront compte de ces changements. Si un point mérite d'être précisé de vive voix, il vous rappelle."
         rappel={[
           changements.length ? '<b>Ce qui a changé :</b><br>' + changements.join(' · ') : 'Votre conseiller est prévenu du changement.',
-          demandeNote ? 'Votre demande concernant ses précisions lui a également été transmise.' : '',
+          demandeNote ? (demandePartie
+            ? 'Votre demande concernant ses précisions lui a également été transmise.'
+            : 'Votre demande concernant ses précisions, elle, n’est pas partie : parlez-en directement à votre conseiller.') : '',
         ].filter(Boolean).join('<br><br>')}
         onFermer={fermer} />);
+      return true;
     }} />, 'pleine');
   }
 
   function ouvrirMessage() {
     montrer(<Message onFermer={fermer} onEnvoi={async (texte: string) => {
-      await envoyer('message', { texte });
+      const r = await envoyer('message', { texte });
+      /* Pas parti : la fenêtre reste ouverte avec son texte (voir Message). */
+      if (!r?.ok) return false;
       montrer(<GrandOk titre="Votre message est bien parti"
         texte="Votre conseiller vient d'en être informé. Il le lit et vous recontacte rapidement pour en parler avec vous."
         rappel="En attendant, la recherche se poursuit chaque jour sur vos critères actuels."
         onFermer={fermer} />);
+      return true;
     }} />);
   }
 
@@ -4074,6 +4093,7 @@ function ModalePartage({ b, client, onFermer, onEnvoyer }: any) {
    On peut sauter directement à la catégorie que l'on veut changer. */
 function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
   const [enr, setEnr] = useState(false);
+  const [rate, setRate] = useState(false);
   const [etape, setEtape] = useState(0);
   const [sens, setSens] = useState<1 | -1>(1);
   const [demandeNote, setDemandeNote] = useState('');
@@ -4337,8 +4357,8 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         : 'plus de contrainte de transport');
     }
     const nombre = (v: string) => (v.trim() === '' ? null : Number(v));
-    setEnr(true);
-    await onEnregistrer({
+    setEnr(true); setRate(false);
+    const ok = await onEnregistrer({
       ...crit, ...t,
       budgetMax, surfaceMin, piecesMin, chambresMin,
       budgetMin: t.budgetMin || null,
@@ -4351,6 +4371,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
       transportMinutes: t.transportMinutes || null,
       transportArrets: t.arrets,
     }, c, demandeNote.trim());
+    if (!ok) { setEnr(false); setRate(true); }
   }
 
   return (
@@ -4377,6 +4398,7 @@ function ModifCriteres({ crit, onFermer, onEnregistrer }: any) {
         </div>
       </div>
 
+      {rate && <div style={{ padding: '0 18px' }}><EchecEnvoi /></div>}
       <div className="nav-e">
         <button className="btn" onClick={() => (i === 0 ? onFermer() : aller(i - 1))}>{i === 0 ? 'Annuler' : '← Précédent'}</button>
         <span className="cpt">{i + 1} / {nb}</span>
@@ -4596,9 +4618,23 @@ function ChoixRecherche({ liste, courante, onChoisir, onFermer }: {
   );
 }
 
+/* Pas parti (V3.17) : dit sous le bouton, la fenêtre reste ouverte avec ce
+   qu'il a saisi — il n'a qu'à réessayer. */
+function EchecEnvoi() {
+  return (
+    <div role="alert" style={{
+      marginTop: 12, color: '#991b1b', background: 'var(--brique-fond)', border: '1px solid var(--brique-trait)',
+      borderRadius: 12, padding: '11px 13px', lineHeight: 1.55, fontSize: 14,
+    }}>
+      {`Ce n’est pas parti : un souci de connexion, sans doute. Ce que vous avez saisi est gardé, réessayez dans un instant. Sinon, votre conseiller : ${AGENT.tel}.`}
+    </div>
+  );
+}
+
 function Message({ onFermer, onEnvoi }: any) {
   const [txt, setTxt] = useState('');
   const [envoi, setEnvoi] = useState(false);
+  const [rate, setRate] = useState(false);
   return (
     <>
       <div className="tete-f">
@@ -4610,7 +4646,12 @@ function Message({ onFermer, onEnvoi }: any) {
         <textarea rows={5} value={txt} onChange={e => setTxt(e.target.value)} autoFocus
           placeholder="Ex : finalement on pourrait regarder un peu plus loin, et on peut monter si le bien est refait." />
         <BtnEnvoi enCours={envoi} classe="btn encre" libelle="Envoyer" style={{ marginTop: 12 }}
-          onClick={async () => { if (!txt.trim()) return; setEnvoi(true); await onEnvoi(txt.trim()); }} />
+          onClick={async () => {
+            if (!txt.trim()) return;
+            setEnvoi(true); setRate(false);
+            if (!(await onEnvoi(txt.trim()))) { setEnvoi(false); setRate(true); }
+          }} />
+        {rate && <EchecEnvoi />}
       </div>
     </>
   );

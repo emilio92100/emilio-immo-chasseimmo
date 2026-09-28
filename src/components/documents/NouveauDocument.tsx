@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MODELES, modele, type Contexte } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
+import { etapeDe, type BienVente } from '@/lib/biens-vente';
+import { creerDocument } from '@/components/biens/outils';
 import { cleRecherche, colonnesListe, identiteDuJour, mandatsPour, preparerDepuis, tableAbsente, type DocumentRow, type MandatChoix } from './outils';
 import s from './Documents.module.css';
 
@@ -22,8 +24,10 @@ type RechercheMini = Record<string, unknown> & { id: string; nom?: string | null
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-export default function NouveauDocument({ modeleId, onFermer, onCree }: {
+export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }: {
   modeleId?: string | null;
+  /* Venu de la fiche d'un client : il est choisi d'avance (on peut changer). */
+  clientId?: string | null;
   onFermer: () => void;
   onCree: (d: DocumentRow) => void;
 }) {
@@ -40,6 +44,10 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
   const [client, setClient] = useState<ClientMini | null>(null);
   const [biens, setBiens] = useState<BienMini[] | null>(null);
   const [bien, setBien] = useState<BienMini | null>(null);
+  /* Un mandat de vente part d'un bien que le client VEND (la rubrique
+     Biens), pas des biens trouvés pour lui comme acheteur (V3.17). */
+  const [enVente, setEnVente] = useState<BienVente[] | null>(null);
+  const [bienVente, setBienVente] = useState<BienVente | null>(null);
   const [erreur, setErreur] = useState('');
   const [travail, setTravail] = useState(false);
   const m = choix ? modele(choix) : null;
@@ -50,9 +58,11 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
     supabase.from('clients').select('id, prenom, nom, adresse, emails, telephones').order('created_at', { ascending: false }).limit(1000)
       .then(({ data, error }) => {
         if (error) { setErreur('Les clients n’ont pas pu être lus : ' + error.message); setClients([]); return; }
-        setClients((data || []) as ClientMini[]);
+        const l = (data || []) as ClientMini[];
+        setClients(l);
+        if (clientId) setClient(c => c || l.find(x => x.id === clientId) || null);
       });
-  }, [etape, clients]);
+  }, [etape, clients, clientId]);
 
   const lien = m?.lien || 'bien';
 
@@ -88,10 +98,24 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
     return (q ? listeM.filter(x => cleRecherche(x).includes(q)) : listeM).slice(0, 8);
   }, [listeM, chercheM]);
 
-  /* Les biens du client choisi. */
+  const pourVendre = m?.id === 'mandat_vente';
+  /* Les biens qu'il vend, pour un mandat de vente. */
+  useEffect(() => {
+    setBienVente(null); setEnVente(null);
+    if (!client || !pourVendre) return;
+    supabase.from('biens_vente').select('*').eq('client_id', client.id).order('updated_at', { ascending: false }).limit(30)
+      .then(({ data, error }) => {
+        if (error) { setErreur('Ses biens en vente n’ont pas pu être lus : ' + error.message); setEnVente([]); return; }
+        const l = ((data || []) as BienVente[]).filter(x => !x.archive);
+        setEnVente(l);
+        setBienVente(l[0] || null);
+      });
+  }, [client, pourVendre]);
+
+  /* Les biens du client choisi (côté acheteur : offre, bon de visite). */
   useEffect(() => {
     setBien(null); setBiens(null);
-    if (!client || lien !== 'bien') return;
+    if (!client || lien !== 'bien' || pourVendre) return;
     supabase.from('biens')
       .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id')
       .eq('client_id', client.id).order('created_at', { ascending: false }).limit(60)
@@ -99,7 +123,7 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
         if (error) { setErreur('Ses biens n’ont pas pu être lus : ' + error.message); setBiens([]); return; }
         setBiens((data || []) as BienMini[]);
       });
-  }, [client, lien]);
+  }, [client, lien, pourVendre]);
 
   const trouves = useMemo(() => {
     if (!clients) return [];
@@ -112,6 +136,15 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
     if (!m) return;
     setTravail(true); setErreur('');
     try {
+      /* Un bien en vente choisi : le même mandat prérempli que depuis sa
+         fiche (propriétaires, prix, honoraires), relié au bien. */
+      if (pourVendre && bienVente) {
+        const id = await creerDocument(bienVente, { modele: 'mandat_vente', clientId: client?.id });
+        const { data, error } = await supabase.from('documents').select('*').eq('id', id).single();
+        if (error || !data) throw new Error('Le mandat est créé, mais il n’a pas pu être ouvert : ' + (error?.message || 'introuvable') + '. Il est dans la liste des documents.');
+        onCree(data as DocumentRow);
+        return;
+      }
       const identite = await identiteDuJour();
       let visite: Contexte['visite'] = null;
       if (bien && m.id === 'bon_visite') {
@@ -269,7 +302,34 @@ export default function NouveauDocument({ modeleId, onFermer, onCree }: {
               </div>
             )}
 
-            {client && lien === 'bien' && (
+            {client && pourVendre && (
+              <div className={s.champLigne}>
+                <label>Le bien qu’il vend</label>
+                {enVente === null ? <div className={s.chAide}>Chargement de ses biens en vente…</div>
+                  : (
+                    <div className={s.resultats}>
+                      {enVente.map(x => (
+                        <button key={x.id} type="button" className={`${s.resultat} ${bienVente?.id === x.id ? s.resultatOn : ''}`} onClick={() => setBienVente(x)}>
+                          <Ic n="maison" t={16} />
+                          <span className={s.resDeux}>
+                            <b>{x.titre || [x.adresse, x.ville].filter(Boolean).join(', ') || 'Bien sans titre'}</b>
+                            <i>{[x.adresse, x.ville].filter(Boolean).join(', ') || etapeDe(x.etape).lib}</i>
+                          </span>
+                          <small>{etapeDe(x.etape).court}</small>
+                        </button>
+                      ))}
+                      <button type="button" className={`${s.resultat} ${!bienVente ? s.resultatOn : ''}`} onClick={() => setBienVente(null)}>
+                        <Ic n="doc" t={16} /><span>{enVente.length ? 'Aucun de ceux-là, je saisirai le bien' : 'Aucun bien en vente sur sa fiche : je saisirai le bien'}</span>
+                      </button>
+                    </div>
+                  )}
+                <div className={s.chAide}>{enVente && enVente.length
+                  ? 'Ses biens de la rubrique « Biens » : le mandat reprend les propriétaires, l’adresse, le prix et les honoraires.'
+                  : 'Astuce : crée d’abord le bien dans « Biens » ; son mandat se prépare alors tout seul, depuis sa fiche.'}</div>
+              </div>
+            )}
+
+            {client && lien === 'bien' && !pourVendre && (
               <div className={s.champLigne}>
                 <label>Le bien</label>
                 {biens === null ? <div className={s.chAide}>Chargement de ses biens…</div>

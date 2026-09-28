@@ -14,6 +14,7 @@ import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
 import { PDFDocument } from 'pdf-lib';
 import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
+import { ecritServeur } from '@/lib/ecritures';
 import { lireIdentiteAgence } from '@/lib/agence';
 
 /**
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
     if (!client) return ko('lien invalide', 401);
 
     const evt = (type: string, detail: string | null) =>
-      sb.from('espace_evenements').insert({ recherche_id: recherche.id, client_id: recherche.client_id, bien_id: null, type, detail });
+      ecritServeur('Le suivi de l’espace', sb.from('espace_evenements').insert({ recherche_id: recherche.id, client_id: recherche.client_id, bien_id: null, type, detail }));
     const nomClient = `${client.prenom || ''} ${client.nom || ''}`.trim() || 'Un client';
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(recherche.client_id)}`;
 
@@ -316,7 +317,7 @@ export async function POST(req: NextRequest) {
         if (!l.code_expire_le || Date.parse(l.code_expire_le) < Date.now()) return ko('expire', 410);
         if (!egal(hacher(code, l.id), l.code_hash)) {
           const essais = l.code_essais + 1;
-          await sb.from('mandats_signatures').update({ code_essais: essais }).eq('id', l.id);
+          await ecritServeur('Le compte des essais du code', sb.from('mandats_signatures').update({ code_essais: essais }).eq('id', l.id));
           return ko('code', 400, { restants: Math.max(0, CODE_ESSAIS - essais) });
         }
 
@@ -508,12 +509,12 @@ export async function POST(req: NextRequest) {
           ...(nomFiche && net(nomFiche) !== net(nom) ? [`Nom sur le mandat : ${nom} — sur ta fiche : ${nomFiche}`] : []),
           ...(mailsFiche.length && !mailsFiche.includes(net(m.email)) ? [`E-mail vérifié : ${m.email} — absent de ta fiche`] : []),
         ];
-        await sb.from('journal').insert({
+        await ecritServeur('L’historique du client', sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'mandat', titre: soc ? `✍️ Mandat signé en ligne par le client, pour la société ${soc.denomination}` : '✍️ Mandat signé en ligne par le client',
           description: `n° ${l.numero} · ${honorairesCourt(contenu)} · ${DUREE.mois} mois au plus, fin possible à tout moment · ${execution ? 'recherche lancée tout de suite' : 'recherche après les 14 jours'}${soc ? `\n🏢 ${soc.forme} ${soc.denomination} · SIREN ${soc.siren} · RCS ${soc.rcsVille} · ${soc.qualite}${l.kbis_chemin ? ' · Kbis joint' : ' · sans Kbis'}` : ''}${ecarts.length ? `\n⚠️ ${ecarts.join('\n⚠️ ')}` : ''}`,
           metadata: { signature_id: l.id, numero: l.numero, empreinte },
-        });
+        }));
         await evt('mandat', `Mandat n° ${l.numero} signé`);
 
         /* Les copies : au client (son exemplaire sur support durable), et à
@@ -608,20 +609,20 @@ export async function POST(req: NextRequest) {
           ...('mandat_taux' in recherche ? { mandat_taux: null } : {}),
           ...('mandat_forfait' in recherche ? { mandat_forfait: null } : {}),
         }).eq('id', recherche.id);
-        await sb.from('journal').insert({
+        await ecritServeur('L’historique du client', sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
           titre: '↩️ Le client a renoncé à son mandat (délai de rétractation)',
           description: `Mandat n° ${l.numero}, signé le ${dateCourte(l.signe_le)}, rétracté en ligne le ${dateCourte(le)} à ${heureParis(le)}.`,
           metadata: { signature_id: l.id, numero: l.numero },
-        });
+        }));
         await evt('mandat', `Renonciation au mandat n° ${l.numero}`);
         /* Une relance du jour : elle sort en rouge dans Relances et sur le
            tableau de bord. Colonnes réelles : date_echeance / note / statut. */
-        await sb.from('relances').insert({
+        await ecritServeur('La relance', sb.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente', date_echeance: le,
           note: `À rappeler : il a renoncé à son mandat de recherche n° ${l.numero} (délai de rétractation). Le noter dans le registre ImmoFacile.`,
-        });
+        }));
 
         const m = l.mandant;
         /* L'accusé de réception, sur un support durable : la loi l'exige. */
@@ -676,12 +677,12 @@ export async function POST(req: NextRequest) {
         const { data: neuf, error: eN } = await sb.from('mandats_cosignataires').update(maj).eq('id', co.id).select('*').single();
         if (eN || !neuf) return ko('enregistrement', 500, { detail: eN?.message });
         const eM = await envoyerLien(neuf as Co, lp);
-        await sb.from('journal').insert({
+        await ecritServeur('L’historique du client', sb.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
           titre: `✉️ Adresse de ${co.personne.prenom} corrigée par ${l.mandant.prenom}`,
           description: `${co.personne.email} → ${email}. Un nouveau lien est parti${eM ? ` — ⚠️ le mail n'est pas parti (${eM})` : ''}, l'ancien ne fonctionne plus.`,
           metadata: { signature_id: l.id, cosignataire_id: co.id },
-        });
+        }));
         if (eM) return ko('mail', 502);
         return NextResponse.json({ ok: true, email: masquerEmail(email), expire: (neuf as Co).lien_expire_le });
       }
@@ -714,11 +715,11 @@ export async function POST(req: NextRequest) {
         });
         if (eJ) return ko('enregistrement', 500, { detail: eJ.message });
         /* Colonnes réelles de la table : date_echeance / note / statut. */
-        await sb.from('relances').insert({
+        await ecritServeur('La relance', sb.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente', date_echeance: new Date().toISOString(),
           note: `Question sur le mandat ${quoi} — à rappeler (honoraires proposés : ${honorairesCourt(actuelle)})`.slice(0, 600),
-        });
+        }));
         await evt('mandat', 'Question sur le mandat : demande de rappel');
         if (await alerteMailActive(sb, 'mandat_question')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { signalerEchec } from '@/lib/ecritures';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
@@ -725,7 +726,10 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         /* « Ses critères plus tard » : une recherche vide, l'acheteur est
            « non filtré » tant qu'on ne l'a pas remplie. */
         const cr = form.critPlusTard ? CRIT_VIDE : crit;
-        await supabase.from('recherches').insert({
+        /* Vérifié (V3.17) : un contact sans recherche a une fiche vide et
+           aucune veille. Le contact existe déjà : on le dit, et comment
+           rattraper (les critères de sa fiche recréent la recherche). */
+        const { error: eRech } = await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
           /* L'adresse interne de la recherche. Elle ne s'envoie plus au
@@ -767,6 +771,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
           notes: cr.notes || null,
         });
+        if (eRech) signalerEchec('Le contact est créé, mais sa recherche', `${eRech.message}. Ouvre sa fiche et enregistre ses critères : la recherche se crée alors.`);
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}`);
       }
       setShowModal(false);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { reveiller, pushConfigure } from '@/lib/push';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * « Préviens le client, un bien vient de partir. »
@@ -70,14 +71,14 @@ export async function POST(req: NextRequest) {
        plutôt que de réessayer tous les jours. */
     const perimes = resultats.filter((r) => r.etat === 'perime').map((r) => r.id);
     if (perimes.length) {
-      await supabase.from('push_abonnements').delete().in('id', perimes);
+      await ecritServeur('Le ménage des appareils périmés', supabase.from('push_abonnements').delete().in('id', perimes));
     }
 
     const ok = resultats.filter((r) => r.etat === 'ok');
     if (ok.length) {
-      await supabase.from('push_abonnements')
+      await ecritServeur('La date du dernier envoi', supabase.from('push_abonnements')
         .update({ dernier_ok: new Date().toISOString(), echecs: 0 })
-        .in('id', ok.map((r) => r.id));
+        .in('id', ok.map((r) => r.id)));
     }
 
     return NextResponse.json({

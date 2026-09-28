@@ -1340,7 +1340,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
                       <button key={x.id} type="button" className={b.quiL} style={{ marginTop: 6 }} onClick={() => ouvrirDoc(x.id)}>
                         <span className={s.ligneIc}><Ic n={modele(x.modele)?.ic || 'doc'} t={17} /></span>
                         <div><b>{x.titre || modele(x.modele)?.titre || 'Document'}</b><small>{`Créé le ${dateCourte(x.created_at)}${x.signe_le ? ` · signé le ${dateCourte(x.signe_le)}` : ''}`}</small></div>
-                        <span className={`${s.statut} ${s['t_' + st.ton]}`}>{st.l}</span>
+                        <span className={`${s.statut} ${s.statutFort} ${s['t_' + st.ton]}`}>{st.l}</span>
                       </button>
                     );
                   })}

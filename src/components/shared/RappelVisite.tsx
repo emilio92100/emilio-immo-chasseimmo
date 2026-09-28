@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { signalerEchec } from '@/lib/ecritures';
 
 /*
  * Le rappel de visite envoyé au client.
@@ -73,6 +74,7 @@ export async function envoyerMailVisites(o: { clientId: string; rechercheId: str
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) return { erreur: data.error || (data.results || []).find((r: any) => !r.success)?.error || 'Erreur inconnue', avertissement: null };
+    if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
     return { erreur: null, avertissement: data.avertissement || null };
   } catch (e) {
     return { erreur: (e as Error).message, avertissement: null };

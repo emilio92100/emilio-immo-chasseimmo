@@ -283,7 +283,8 @@ const ETAPES: Etape[] = [
       ] },
       { t: 'euros', cle: 'semiMontant', lib: 'Honoraires réduits', unite: '€ TTC', si: d => d.type === 'semi' && d.semiDirect === 'reduits' },
       { t: 'titre', cle: 't-duree', lib: 'La durée', ic: 'calendrier' },
-      { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true },
+      { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true,
+        aide: 'La phrase « passé un délai de trois mois… » (art. 78 du décret de 1972) reste même pour un mandat plus court : la loi l’attache à l’exclusivité, à la clause pénale et à la clause « pas de vente en direct ». Elle ne joue que si le mandat dure plus de trois mois.' },
       { t: 'choix', cle: 'dureeMode', lib: 'À son terme', tuiles: true, options: [
         { v: 'fixe', l: 'Il prend fin', aide: 'Sans suite : on en signe un autre si besoin.', ic: 'drapeau' },
         { v: 'prorogation', l: 'Il se poursuit', aide: 'Par périodes, jusqu’à une limite totale.', ic: 'boucle' },
@@ -315,8 +316,22 @@ const ETAPES: Etape[] = [
       { t: 'choix', cle: 'memePrix', lib: 'Le même prix dans toutes les agences ?', si: d => d.type === 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
       { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type !== 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
         aide: 'S’il ne respecte pas l’exclusivité, il doit une indemnité égale aux honoraires. Elle est imprimée en caractères très apparents, comme la loi l’exige.' },
-      { t: 'choix', cle: 'infoJointe', lib: 'Joindre l’information précontractuelle', ic: 'info', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non, remise à part' }],
-        aide: 'Avec un particulier, elle est obligatoire avant la signature. Jointe, elle forme la 2e partie du document.' },
+      /* V3.17 : « ni jointe, ni mentionnée » — le mandat seul, sans la phrase
+         qui dit que l'information a été remise. */
+      { t: 'choix', cle: 'infoJointe', lib: 'L’information précontractuelle', ic: 'info', options: [
+        { v: 'oui', l: 'Jointe au mandat', ic: 'trombone' }, { v: 'non', l: 'Remise à part', ic: 'envoyer' }, { v: 'aucune', l: 'Ni jointe, ni mentionnée', ic: 'croix' },
+      ],
+        aide: 'Avec un particulier, elle est obligatoire avant la signature, et la phrase du mandat qui dit qu’elle a été remise en est la preuve. « Ni jointe, ni mentionnée » : le mandat seul, à réserver à un mandant qui n’est pas un particulier, ou à qui tu la remets autrement.' },
+      /* Ce que le document contiendra, et pourquoi (V3.17) : les annexes ne
+         dépendent pas de ce choix, et il faut le voir sans chercher. */
+      { t: 'guide', cle: 'g-contenu', titre: () => 'Ce que le document contiendra', points: d => [
+        { ic: 'doc', x: 'Le mandat de vente.' },
+        ...(d.infoJointe === 'oui' ? [{ ic: 'info', x: 'L’information précontractuelle, jointe.' }]
+          : d.infoJointe === 'aucune' ? [{ ic: 'croix', x: 'Pas d’information précontractuelle, et le mandat n’en parle pas.' }]
+            : [{ ic: 'info', x: 'Pas d’information précontractuelle jointe : le mandat dit seulement qu’elle a été remise.' }]),
+        ...(d.dureeMode === 'prorogation' ? [{ ic: 'boucle', x: 'L’annexe « la reconduction du mandat », parce qu’il se poursuit par périodes (la loi l’exige). Choisis « Il prend fin » dans la durée pour qu’elle parte.' }] : []),
+        ...(retractation(d) ? [{ ic: 'retour', x: 'Le formulaire de rétractation, parce qu’il est signé hors de l’agence ou à distance (obligatoire).' }] : []),
+      ] },
       { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, aide: 'Imprimée telle quelle, avant les signatures.' },
     ],
   },
@@ -422,7 +437,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     ? [
       P(`Prix de présentation : ${eurosLettres(a.prix)}${a.charge === 'acquereur' ? ', honoraires de l’Agence compris' : ''}.`, true),
       ...(a.charge === 'acquereur' && a.net ? [P(`Soit un prix net revenant au MANDANT de ${euros(a.net)}.`)] : []),
-      P('Le prix pourra être modifié à tout moment d’un commun accord, par écrit (un simple e-mail suffit).'),
+      P('Le prix ne peut être modifié que d’un commun accord, par avenant écrit signé des parties.'),
     ]
     : [P('Prix de présentation : à compléter.', true)];
 
@@ -529,7 +544,9 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   }
   sections.push({ titre: 'Informations', ic: 'info', blocs: [
     ...(numero ? [P(`Le présent mandat est inscrit sous le numéro ${numero} au registre des mandats de l’Agence.`)] : [P('Numéro au registre des mandats : ……………')]),
-    P(`Le MANDANT reconnaît avoir reçu, avant de signer, l’information précontractuelle prévue par le Code de la consommation${retr ? ' et le formulaire de rétractation' : ''}${vrai(d, 'infoJointe') ? ', qui forme' + (retr ? 'nt' : '') + ' la suite du présent document' : ''}.`),
+    ...(d.infoJointe === 'aucune'
+      ? (retr ? [P('Le MANDANT reconnaît avoir reçu, avant de signer, le formulaire de rétractation, qui forme la suite du présent document.')] : [])
+      : [P(`Le MANDANT reconnaît avoir reçu, avant de signer, l’information précontractuelle prévue par le Code de la consommation${retr ? ' et le formulaire de rétractation' : ''}${vrai(d, 'infoJointe') ? ', qui forme' + (retr ? 'nt' : '') + ' la suite du présent document' : ''}.`)]),
     ...blocsInformations(A, 'le MANDANT', {
       lcbft: 'Le MANDANT s’engage à lui fournir les justificatifs demandés à ce titre.',
       textes: [

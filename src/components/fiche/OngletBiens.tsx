@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 import {
   Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
@@ -189,15 +190,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
 
   async function demanderPdf(bienId: string) {
-    await supabase.from('biens').update({
+    await verifie('La demande de fiche PDF', supabase.from('biens').update({
       pdf_statut: 'demande', pdf_demande_le: new Date().toISOString(),
       pdf_url: null, pdf_message: null,
-    }).eq('id', bienId);
+    }).eq('id', bienId).select('id'), { ligne: true });
     recharge();
   }
 
   async function renvoyerEnSelection(bienId: string) {
-    await supabase.from('biens').update({ etape: 'selection', envoye_le: null, canal_envoi: null }).eq('id', bienId);
+    await verifie('Le retour en sélection', supabase.from('biens').update({ etape: 'selection', envoye_le: null, canal_envoi: null }).eq('id', bienId).select('id'), { ligne: true });
     recharge();
   }
 
@@ -236,11 +237,13 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     );
     if (saisi === null) return;
 
-    await supabase.from('veille_propositions').update({
+    /* Vérifié (V3.17) : si la veille n'a pas noté l'écart, on s'arrête —
+       sinon elle reproposerait le bien. */
+    if (!(await verifie('Le retrait du bien', supabase.from('veille_propositions').update({
       statut: 'ecarte', bien_id: null,
       motif_ecart: saisi.trim() || (mode === 'selection' ? 'Retiré de la sélection' : 'Retiré du dossier'),
       decide_le: new Date().toISOString(),
-    }).eq('bien_id', b.id);
+    }).eq('bien_id', b.id)))) return;
 
     const photos: string[] = [...(b.photos || []), ...(b.plans || [])].filter((p: string) => typeof p === 'string' && p.includes('supabase.co/storage'));
     if (photos.length > 0) {

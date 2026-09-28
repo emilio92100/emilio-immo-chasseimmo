@@ -4,6 +4,7 @@ import { lienBienPublic } from '@/lib/jeton';
 import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -356,10 +357,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       return NextResponse.json({ ok: false, error: 'lien invalide' }, { status: 401 });
     }
 
+    /* L'événement (ce que le client a fait) : secondaire, mais noté dans les
+       journaux du serveur s'il ne passe pas (V3.17). */
     const evt = (type: string, detail: string | null, bien_id?: string | null) =>
-      supabase.from('espace_evenements').insert({
+      ecritServeur(`[espace] événement ${type}`, supabase.from('espace_evenements').insert({
         recherche_id: recherche.id, client_id: recherche.client_id, bien_id: bien_id || null, type, detail,
-      });
+      }));
 
     // le bien doit appartenir à CETTE recherche
     async function bienDeLaRecherche(id: unknown) {
@@ -392,10 +395,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
         /* On compte CHAQUE ouverture. « vu_le » garde la toute première :
            c'est elle qui dit combien de temps il a mis à regarder. */
-        await supabase.from('biens').update({
+        await ecritServeur('[espace/vue] bien', supabase.from('biens').update({
           vu_le: bien.vu_le || new Date().toISOString(),
           nb_vues: (bien.nb_vues || 0) + 1,
-        }).eq('id', bien.id);
+        }).eq('id', bien.id));
 
         /* Le journal, lui, ne se répète pas : une ligne par bien et par
            demi-heure, comme pour l'ouverture de l'espace. */
@@ -466,9 +469,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         });
         if (eJ) console.error('[espace/visite] journal', eJ.message);
 
-        await supabase.from('relances').update({ statut: 'cloturee' })
+        await ecritServeur('[espace/visite] relances auto', supabase.from('relances').update({ statut: 'cloturee' })
           .eq('client_id', recherche.client_id).eq('recherche_id', recherche.id)
-          .eq('type', 'auto').eq('statut', 'en_attente');
+          .eq('type', 'auto').eq('statut', 'en_attente'));
 
         /* La relance : tout de suite pour une offre ou une 2e visite, à J+3
            quand il réfléchit, aucune quand ce n'est pas pour lui. Les notes
@@ -528,37 +531,39 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const dejaVisite = avant?.badge_retour === 'souhaite_visiter';
         const garde = avis === 'souhaite_visiter' && avant?.badge_retour === 'interesse' ? (avant?.retour_client || null) : null;
 
-        await supabase.from('biens').update({
+        /* L'écriture principale : vérifiée (V3.17). Pas enregistrée, le client
+           le voit et peut réessayer, au lieu d'un « c'est noté » qui ment. */
+        if (!(await ecritServeur('[espace/retour] bien', supabase.from('biens').update({
           badge_retour: avis, retour_client: com || garde || null,
           retour_le: new Date().toISOString(), retour_par: 'client',
-        }).eq('id', bien.id);
+        }).eq('id', bien.id)))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
 
-        await supabase.from('journal').insert({
+        await ecritServeur('[espace/retour] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, bien_id: bien.id, recherche_id: recherche.id,
           type: 'retour_client', titre: `${libelle} — depuis son espace`,
           description: com || null, metadata: {},
-        });
+        }));
         /* Le client vient de répondre : la relance automatique posée à
            l'envoi n'a plus d'objet. On ne touche pas aux relances manuelles,
            celles-là sont posées par Alexandre et lui seul les clôture. */
-        await supabase.from('relances')
+        await ecritServeur('[espace/retour] relances auto', supabase.from('relances')
           .update({ statut: 'cloturee' })
           .eq('client_id', recherche.client_id)
           .eq('recherche_id', recherche.id)
           .eq('type', 'auto')
-          .eq('statut', 'en_attente');
+          .eq('statut', 'en_attente'));
 
         /* Il veut visiter : Alexandre doit le savoir tout de suite. Une
            relance du jour (elle sort en rouge dans Relances et sur le tableau
            de bord ; « Veut visiter » ouvre la fiche sur Présentés), et un mail
            pour l'avoir même loin du CRM. Un échec du mail ne bloque rien. */
         if (avis === 'souhaite_visiter' && !dejaVisite) {
-          await supabase.from('relances').insert({
+          await ecritServeur('[espace/retour] relance « Veut visiter »', supabase.from('relances').insert({
             client_id: recherche.client_id, recherche_id: recherche.id,
             type: 'rappel_client', statut: 'en_attente',
             date_echeance: new Date().toISOString(),
             note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}${sansMandat ? ' · ⚠️ mandat non signé' : ''}`.slice(0, 600),
-          });
+          }));
           try { await prevenirVisite(supabase, recherche.client_id, bien, com, sansMandat); } catch { /* le CRM le montre déjà */ }
         }
 
@@ -725,11 +730,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         }
         if (changements) {
           const ligne = ligneChangements(changements).slice(0, 1500);
-          await supabase.from('journal').insert({
+          await ecritServeur('[espace/criteres] journal', supabase.from('journal').insert({
             client_id: recherche.client_id, recherche_id: recherche.id,
             type: 'criteres_modifies', titre: 'Critères modifiés par le client, depuis son espace',
             description: ligne || null, metadata: { changements },
-          });
+          }));
           await evt('criteres', ligne || null);
           return NextResponse.json({ ok: true });
         }
@@ -760,11 +765,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           maj.urgence ? `échéance ${maj.urgence}` : null,
         ].filter(Boolean).join(' · ');
 
-        await supabase.from('journal').insert({
+        await ecritServeur('[espace/criteres] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'criteres_modifies', titre: 'Critères modifiés par le client, depuis son espace',
           description: resume || null, metadata: {},
-        });
+        }));
         await evt('criteres', resume || null);
         return NextResponse.json({ ok: true });
       }
@@ -774,20 +779,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const texte = nettoie(body.texte, 1500);
         if (!texte) return NextResponse.json({ ok: false, error: 'message vide' }, { status: 400 });
 
-        await supabase.from('journal').insert({
+        /* Le message lui-même : vérifié (V3.17), sinon il se perdait sans un mot. */
+        if (!(await ecritServeur('[espace/message] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'message_client', titre: 'Message du client, depuis son espace',
           description: texte, metadata: {},
-        });
+        })))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
         /* Colonnes réelles de la table : date_echeance / note / statut « en_attente ».
            C'est ce que lisent le tableau de bord et la page Relances. */
         const demain = new Date(); demain.setDate(demain.getDate() + 1);
-        await supabase.from('relances').insert({
+        await ecritServeur('[espace/message] relance', supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'message_client', statut: 'en_attente',
           date_echeance: demain.toISOString(),
           note: 'Message depuis l’espace : ' + texte.slice(0, 180),
-        });
+        }));
         await evt('message', texte.slice(0, 300));
         return NextResponse.json({ ok: true });
       }
@@ -815,21 +821,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           return NextResponse.json({ ok: false, error: 'demande déjà enregistrée' }, { status: 429 });
         }
 
-        await supabase.from('journal').insert({
+        if (!(await ecritServeur('[espace/rappel] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'demande_rappel', titre: '📞 Demande de rappel, depuis son espace',
           description: `Souhaite être rappelé ${quand}.`, metadata: { creneau },
-        });
+        })))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
 
         /* Une demande de rappel n'attend pas demain : l'échéance est du jour,
            donc elle sort tout de suite sur le tableau de bord et dans Relances.
            Colonnes réelles : date_echeance / note / statut « en_attente ». */
-        await supabase.from('relances').insert({
+        await ecritServeur('[espace/rappel] relance', supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente',
           date_echeance: new Date().toISOString(),
           note: `Demande de rappel depuis l’espace — ${quand}.`,
-        });
+        }));
 
         /* Le type reste « message » côté espace_evenements : cette table a une
            liste de types fermée, et un rappel est bien un message du client. */
@@ -888,12 +894,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           return NextResponse.json({ ok: false, error: 'déjà signalé' }, { status: 429 });
         }
 
-        await supabase.from('journal').insert({
+        if (!(await ecritServeur('[espace/fin] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'fin_recherche',
           titre: `🏁 Le client ${quoi}, depuis son espace`,
           description: mot || null, metadata: { motif },
-        });
+        })))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
 
         /* Il a dit lui-même qu'il ne cherche plus : la veille s'arrête tout de
            suite et le dossier change de rubrique, sans attendre l'appel. Règle
@@ -927,12 +933,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
             bascule = ` ⚠️ Le dossier n'a pas pu changer de rubrique tout seul (${echec.message}) : à faire depuis la fiche.`;
           } else {
             bascule = ` Le dossier est passé en « ${cible.nom} » et la veille est arrêtée.`;
-            await supabase.from('journal').insert({
+            await ecritServeur('[espace/fin] journal statut', supabase.from('journal').insert({
               client_id: recherche.client_id, recherche_id: recherche.id,
               type: 'statut_change',
               titre: `Statut → ${cible.nom} (automatique)`,
               description: `Le client ${quoi}, depuis son espace. La veille est arrêtée sur ce dossier.`,
-            });
+            }));
           }
         }
 
@@ -945,12 +951,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           revente = !!cl?.bien_actuel_a_vendre;
         }
 
-        await supabase.from('relances').insert({
+        await ecritServeur('[espace/fin] relance', supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente',
           date_echeance: new Date().toISOString(),
           note: `Le client ${quoi}, depuis son espace.${bascule} À rappeler pour confirmer${motif === 'pause' ? ' et savoir quand reprendre' : ''}.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
-        });
+        }));
 
         /* Liste de types fermée côté espace_evenements : c'est un message. */
         await evt('message', `Fin de recherche — ${quoi}${mot ? ` : ${mot}` : ''}`);
@@ -1049,11 +1055,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
         await evt('partage', `${bien.titre || 'bien'} → ${dest}${ok ? '' : ' (échec)'}`, bien.id);
         if (ok) {
-          await supabase.from('journal').insert({
+          await ecritServeur('[espace/partage] journal', supabase.from('journal').insert({
             client_id: recherche.client_id, bien_id: bien.id, recherche_id: recherche.id,
             type: 'partage_client', titre: 'Le client a partagé cette fiche',
             description: `Envoyée à ${dest}`, metadata: {},
-          });
+          }));
         }
         return NextResponse.json({ ok });
       }

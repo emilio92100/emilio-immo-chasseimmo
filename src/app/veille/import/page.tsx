@@ -204,7 +204,7 @@ export default function PageImportVeille() {
         log(`Réception de ${propositions.length} proposition(s)…`);
 
         // Journal du passage
-        const { data: passageRow } = await supabase
+        const { data: passageRow, error: passageErr } = await supabase
           .from('veille_passages')
           .insert({
             recherche_id,
@@ -218,6 +218,9 @@ export default function PageImportVeille() {
           })
           .select()
           .single();
+        /* Le passage n'est pas noté : on continue (les propositions comptent
+           plus), mais on le dit (V3.17). */
+        if (passageErr) log('Le passage de veille n’a pas pu être noté : ' + passageErr.message, false);
 
         let inserees = 0;
         let ignorees = 0;
@@ -445,17 +448,22 @@ export default function PageImportVeille() {
           .from('photos-biens')
           .upload(chemin, blob, { contentType: 'application/pdf', upsert: true });
         if (upErr) {
-          await supabase.from('biens').update({ pdf_statut: 'echec', pdf_message: upErr.message }).eq('id', bienId);
-          log('Dépôt du PDF impossible : ' + upErr.message, false);
+          const { error: etatErr } = await supabase.from('biens').update({ pdf_statut: 'echec', pdf_message: upErr.message }).eq('id', bienId);
+          log('Dépôt du PDF impossible : ' + upErr.message + (etatErr ? ` (et l’état du bien n’a pas pu être noté : ${etatErr.message})` : ''), false);
           return { ok: false, error: upErr.message };
         }
         const { data: pub } = supabase.storage.from('photos-biens').getPublicUrl(chemin);
-        await supabase.from('biens').update({
+        const { error: majErr } = await supabase.from('biens').update({
           pdf_statut: 'pret',
           pdf_pret_le: new Date().toISOString(),
           pdf_url: pub.publicUrl,
           pdf_message: message || null,
         }).eq('id', bienId);
+        /* Vérifié (V3.17) : le PDF est déposé, mais la fiche ne le saurait pas. */
+        if (majErr) {
+          log('PDF déposé, mais le bien n’a pas pu être mis à jour : ' + majErr.message, false);
+          return { ok: false, error: majErr.message };
+        }
         delete morceaux[bienId];
         log(`PDF prêt : ${nomFichier}`);
         return { ok: true, url: pub.publicUrl };

@@ -10,6 +10,7 @@ import {
 import { Ic } from '@/components/documents/ApercuActe';
 import FicheClient from '@/components/fiche/FicheClient';
 import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne } from './ChampsContact';
+import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -240,6 +241,10 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           )}
           {(types.includes('vendeur') || types.includes('proprietaire')) && (
             <BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours />
+          )}
+          {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
+          {(!estPro(types) || types.includes('vendeur') || types.includes('proprietaire')) && (
+            <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} />
           )}
           {!estPro(types) || types.includes('vendeur') || types.includes('proprietaire') ? (
             <div className={c.aussi}>

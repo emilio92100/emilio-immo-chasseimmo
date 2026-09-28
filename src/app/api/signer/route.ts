@@ -10,6 +10,7 @@ import { envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe } from '@/lib/m
 import { alerteMailActive } from '@/lib/alertes';
 import { modele } from '@/lib/actes';
 import * as SD from '@/lib/signature-documents';
+import { ecritServeur } from '@/lib/ecritures';
 
 /**
  * La signature d'un co-signataire — le conjoint, un co-acquéreur — depuis
@@ -94,10 +95,10 @@ export async function POST(req: NextRequest) {
     const { co, l, cos } = x;
     const moi = nomDe(co.personne), premier = nomDe(l.mandant);
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(l.client_id || '')}`;
-    const evt = (detail: string) => sb.from('espace_evenements').insert({ recherche_id: l.recherche_id, client_id: l.client_id, bien_id: null, type: 'mandat', detail });
-    const journal = (titre: string, description: string) => sb.from('journal').insert({
+    const evt = (detail: string) => ecritServeur('Le suivi de l’espace', sb.from('espace_evenements').insert({ recherche_id: l.recherche_id, client_id: l.client_id, bien_id: null, type: 'mandat', detail }));
+    const journal = (titre: string, description: string) => ecritServeur('L’historique du client', sb.from('journal').insert({
       client_id: l.client_id, recherche_id: l.recherche_id, type: 'mandat', titre, description, metadata: { signature_id: l.id, cosignataire_id: co.id, numero: l.numero },
-    });
+    }));
     /* Le mandat est-il encore là pour lui ? Le premier signataire a pu y
        renoncer, Alexandre a pu clore l'invitation. */
     const ouvert = co.statut === 'invite' && l.statut === 'partiel';
@@ -107,9 +108,9 @@ export async function POST(req: NextRequest) {
       case 'afficher': {
         if (co.statut === 'invite' && !co.ouvert_le) {
           const le = new Date().toISOString();
-          await sb.from('mandats_cosignataires').update({
+          await ecritServeur('L’ouverture du lien', sb.from('mandats_cosignataires').update({
             ouvert_le: le, deroule: [...(co.deroule || []), { t: le, x: 'Lien personnel ouvert, mandat affiché' }],
-          }).eq('id', co.id);
+          }).eq('id', co.id));
         }
         return NextResponse.json({ ok: true });
       }
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
         if (!co.code_expire_le || Date.parse(co.code_expire_le) < Date.now()) return ko('expire', 410);
         if (!egal(hacher(code, co.id), co.code_hash)) {
           const essais = co.code_essais + 1;
-          await sb.from('mandats_cosignataires').update({ code_essais: essais }).eq('id', co.id);
+          await ecritServeur('Le compte des essais du code', sb.from('mandats_cosignataires').update({ code_essais: essais }).eq('id', co.id));
           return ko('code', 400, { restants: Math.max(0, CODE_ESSAIS - essais) });
         }
 
@@ -253,10 +254,10 @@ export async function POST(req: NextRequest) {
         if (error) return ko('enregistrement', 500, { detail: error.message });
         await journal(`↩️ ${moi} a renoncé au mandat (délai de rétractation)`, `n° ${l.numero} · le ${dateCourte(le)} à ${heureParis(le)}. Le mandat continue avec ${premier}.`);
         await evt(`${moi} a renoncé au mandat n° ${l.numero}`);
-        await sb.from('relances').insert({
+        await ecritServeur('La relance', sb.from('relances').insert({
           client_id: l.client_id, recherche_id: l.recherche_id, type: 'rappel_client', statut: 'en_attente', date_echeance: le,
           note: `${moi} a renoncé au mandat de recherche n° ${l.numero} ; il continue avec ${premier}. À rappeler.`,
-        });
+        }));
         await envoyerMail({
           a: co.personne.email, nomA: moi, repondreA: 'agence@emilio-immo.com',
           sujet: `Votre renonciation au mandat de recherche n° ${l.numero}`,
@@ -362,7 +363,7 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
     case 'afficher': {
       if (s.statut === 'invite' && !s.ouvert_le) {
         const le = new Date().toISOString();
-        await sb.from('documents_signataires').update({ ouvert_le: le, deroule: [...(s.deroule || []), { t: le, x: 'Lien personnel ouvert, document affiché' }] }).eq('id', s.id);
+        await ecritServeur('L’ouverture du lien', sb.from('documents_signataires').update({ ouvert_le: le, deroule: [...(s.deroule || []), { t: le, x: 'Lien personnel ouvert, document affiché' }] }).eq('id', s.id));
       }
       return NextResponse.json({ ok: true });
     }
@@ -406,11 +407,12 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
         if (e) echecs.push(`${moi} : ${e}`);
       }
       const le = r.s.signe_le || new Date().toISOString();
-      if (doc.client_id) await sb.from('journal').insert({
+      /* L'historique qui ne s'écrit pas : le mail d'alerte part quand même, et le dit. */
+      if (doc.client_id && !(await ecritServeur('L’historique du client', sb.from('journal').insert({
         client_id: doc.client_id, type: 'mandat', metadata: { document_id: doc.id, signataire_id: s.id },
         titre: `✍️ ${moi} a signé ${nd.court}${restants.length ? '' : ' — signé par tous'}`,
         description: `${doc.titre || m.titre} · signé avec son lien personnel le ${dateCourte(le)} à ${heureParis(le)}${restants.length ? `\nOn attend encore : ${restants.map(SD.nomSig).join(', ')}` : ''}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}`,
-      });
+      })))) echecs.push('la signature n’a pas été notée dans l’historique du client');
       if (echecs.length || await alerteMailActive(sb, 'document_signe')) {
         const titre = `✍️ ${moi} a signé ${nd.le}${restants.length ? '' : ' · signé par tous'}`;
         await envoyerMail({

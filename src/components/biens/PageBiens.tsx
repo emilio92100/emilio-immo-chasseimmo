@@ -6,7 +6,7 @@ import { EVT_NOUVEAU_BIEN, prendreNouveauBien, signalerMaj } from '@/lib/intenti
 import { EN_COURS, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
-import CarteBien, { honorairesVente } from './CarteBien';
+import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenNouveau } from './FenetresBien';
@@ -47,6 +47,11 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
   const [fins, setFins] = useState<Filtres>(FILTRES_VIDES);
   const [tri, setTri] = useState<Tri>('etape');
+  /* En cartes ou en lignes (V3.17) : gardé d'une visite à l'autre. */
+  const [vue, setVue] = useState<'cartes' | 'lignes'>(() => {
+    try { return localStorage.getItem('biens.vue') === 'lignes' ? 'lignes' : 'cartes'; } catch { return 'cartes'; }
+  });
+  const choisirVue = (x: 'cartes' | 'lignes') => { setVue(x); try { localStorage.setItem('biens.vue', x); } catch { /* sans mémoire */ } };
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean } | null>(null);
   const [cree, setCree] = useState(false);
@@ -204,7 +209,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       {erreur && !installer && <div className={s.erreur}>{erreur}</div>}
 
       {liste && !installer && biens.length > 0 && (
-        <FiltresBiens biens={filtre === 'archives' ? archives : actifs} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres} />
+        <FiltresBiens biens={filtre === 'archives' ? archives : actifs} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres}
+          vue={vue} onVue={choisirVue} />
       )}
 
       {!liste ? (
@@ -217,12 +223,15 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           </div>
         </div>
       ) : (
-        <div className={b.grille}>
-          {visibles.map(x => (
-            <CarteBien key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
-              nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbOffres={parBien[x.id]?.offres || 0}
-              onClick={() => ouvrir(x.id)} />
-          ))}
+        <div className={vue === 'lignes' ? b.lignesBiens : b.grille}>
+          {visibles.map(x => {
+            const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
+            return (
+              <Rendu key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
+                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbOffres={parBien[x.id]?.offres || 0}
+                onClick={() => ouvrir(x.id)} />
+            );
+          })}
         </div>
       ))}
       {editeur}

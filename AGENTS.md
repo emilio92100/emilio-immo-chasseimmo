@@ -150,14 +150,20 @@ l'autre fait disparaître l'historique du client. Voir `context.md` §6.17.
 // ✗ Le mode par défaut de ce dépôt, et la cause de ses bugs les plus coûteux
 await supabase.from('relances').insert({ … });
 
-// ✓
-const { error } = await supabase.from('relances').insert({ … });
-if (error) { alert("La relance n'a pas pu être créée.\n\n" + error.message); return; }
+// ✓ Depuis la V3.17 : src/lib/ecritures.ts
+if (!(await verifie('La relance', supabase.from('relances').insert({ … })))) return;
+// une modification qui DOIT toucher une ligne (la base fermée refuse sans erreur) :
+await verifie('Le report', supabase.from('relances').update({ … }).eq('id', id).select('id'), { ligne: true });
+// côté serveur (routes /api) :
+await ecritServeur('L’historique du client', sb.from('journal').insert({ … }));
 ```
 
+`verifie` affiche le message rouge (« <quoi> : pas enregistré. ») et rend `false` ;
+`verifieTout` enchaîne des écritures liées et s'arrête au premier échec.
+
 Les relances n'ont jamais fonctionné pendant des semaines parce qu'un `insert` écrivait dans des
-colonnes qui n'existaient pas, sans que personne ne voie rien. `context.md` §6.2 liste la
-cinquantaine de points encore concernés. **Ne pas en ajouter.**
+colonnes qui n'existaient pas, sans que personne ne voie rien. La V3.17 a vérifié toutes les
+écritures du dépôt (`context.md` §11). **Ne pas en ajouter de nues.**
 
 ### 3.3 Le lien de l'espace appartient au CLIENT, pas à la recherche
 

@@ -5,6 +5,7 @@ import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/compone
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
 import { prendreDemandeRendezVous, signalerMaj, EVT_NOUVEAU_RDV, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
+import { verifie, signalerEchec } from '@/lib/ecritures';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
 
 /**
@@ -1890,7 +1891,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     /* Si le rendez-vous échoue, le rappel qu'on vient de poser ne doit pas
        rester seul dans les Relances. */
     const echec = async (texte: string) => {
-      if (relanceNeuve) await supabase.from('relances').delete().eq('id', relanceNeuve);
+      if (relanceNeuve) await verifie('Le retrait du rappel', supabase.from('relances').delete().eq('id', relanceNeuve));
       setEnvoi(false); alert(texte);
     };
 
@@ -1957,6 +1958,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
           body: JSON.stringify({ client_ids: [dossier.clientId], recherche_id: dossier.rechercheId, objet: mail.objet, corps: mail.corps, mode: 'libre' }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success && data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
         if (!res.ok || !data.success) alert(`Le rendez-vous est bien enregistré, mais le mail n'est pas parti.\n\n${data.error || (data.results || []).find((r: any) => !r.success)?.error || 'Erreur inconnue'}`);
       } catch (e) {
         alert(`Le rendez-vous est bien enregistré, mais le mail n'est pas parti.\n\n${(e as Error).message}`);
