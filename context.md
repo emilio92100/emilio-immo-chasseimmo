@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.27 · 29 septembre 2026**
+**Version 3.28 · 29 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1406,6 +1406,17 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.28 — 29 septembre 2026 · la carte du CRM sur téléphone, plus de place
+
+- **La barre du haut du CRM s'efface sur la carte, au téléphone** (`.surCarte` dans
+  `AppLayout.module.css`) : la carte monte jusqu'en haut de l'écran. Sa propre recherche prend,
+  à gauche, le bouton du menu (☰, `onMenu` de `PageCarte`), qui ouvre le tiroir comme celui de la
+  barre.
+- **Les fiches qu'on fait glisser tiennent sur une ligne** (62 px au lieu d'environ 130) :
+  l'avatar (ou la vignette du bien), le nom, l'étiquette ou le prix et la rue ; à droite, appeler
+  (ou l'itinéraire, quand il n'y a pas de numéro) et la flèche qui ouvre la fiche. Le cadrage et le
+  centre des vols suivent (la bande est plus fine).
 
 ### V3.27 — 29 septembre 2026 · la carte de l'espace acheteur, la barre des fiches qu'on range
 
