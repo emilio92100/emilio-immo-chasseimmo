@@ -1402,6 +1402,45 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.25 — 28 septembre 2026 · le menu de gauche, et des listes qui arrivent en douceur
+
+- **Sous-menus Contacts et Biens**, comme Documents : Mes acheteurs, Mes vendeurs, Mes propriétaires ;
+  Mes biens à suivre, Mes estimations, Mes mandats en cours (l'étape `mandat`). Chaque entrée a sa
+  pastille à la couleur du type ou de l'étape ; celle qui est affichée s'allume (pastille pleine, une
+  onde qui s'en échappe). La rubrique elle-même ouvre « Tous ». Les rubriques ont leur pictogramme
+  dessiné sur ordinateur aussi (plus de symboles ⊞ ◎ ◇).
+- **Plié ou déplié** : ouvert par défaut sur ordinateur, tout plié sur téléphone ; l'état se retient
+  dans le navigateur (`menu.<rubrique>` sur ordinateur, `menu.tel.<rubrique>` sur téléphone).
+- **La vue d'une rubrique** (`src/lib/intentions.ts`) : la page annonce sa catégorie (`annoncerVue`,
+  dans l'adresse `?vue=` et dans la session), le menu l'écoute (`EVT_VUE`) ; à l'ouverture, la page
+  lit `vueDemandee`. Déjà sur la page, le menu change la catégorie sur place (`demanderVue`,
+  `EVT_DEMANDE_VUE`) : pas de rechargement, la page remonte doucement. Revenir d'une fiche retrouve
+  la catégorie qu'on avait.
+- **La flèche qui plie** ratait un clic sur deux : elle était centrée par `transform`, que la règle
+  générale des boutons efface au clic. Piège noté dans AGENTS.md §2.7.
+- **Listes** (`globals.css`) : `.cascade` fait arriver les éléments l'un après l'autre quand la
+  catégorie change (avec une `key` sur le conteneur) ; `.squelette` / `.sq-*` remplacent
+  « Chargement… » par la silhouette de la liste (Contacts, Biens). Les tuiles des en-têtes arrivent
+  aussi en douceur.
+- **Mes contacts** : on arrive sur « Tous ». Tuiles dans l'ordre Tous, Acheteurs, Vendeurs,
+  Propriétaires, puis le reste ; une tuile à zéro ne s'affiche pas, sauf si elle est allumée.
+  « Tous » est mis en avant (pastille dorée, trait de séparation), ici et dans Biens.
+
+### V3.23 — 28 septembre 2026 · le suivi pour tous les contacts, la source d'un contact
+
+- **Le suivi** (la frise des acheteurs) sur la fiche de tout contact qui n'est pas acheteur
+  (`FicheContact.tsx`, `FenetreAction.tsx`) : appels en un clic, notes, relances. Lignes du journal et
+  relances avec `recherche_id: null` (le journal est lu sur `client_id`, §6.17).
+- **D'où vient ce contact** (facultatif) : `clients.source` et `clients.source_detail`
+  (`outils/sql/source-contact.sql`, **à passer dans Supabase**), valeurs dans `src/lib/sources.ts`.
+  Sans le SQL, la création marche et un message dit de le lancer.
+- **« À savoir sur… »** (`CarteASavoir.tsx`) : la note tapée à la création (`clients.notes`)
+  s'affiche enfin en haut de la fiche d'un acheteur ; elle remplace « Notes » sur les autres fiches.
+- **Nouveau contact** : sections avec pictogramme, aperçu de la fiche, champs vides (plus de faux
+  exemples, plus de durée ni d'honoraires de mandat pré-remplis), 2e téléphone ou e-mail à la demande.
+- **Ses biens** d'un contact : replié par défaut ; déplié, chaque bien avec sa photo et ses infos,
+  un clic l'ouvre.
+
 ### V3.22 — 28 septembre 2026 · le certificat de signature dit ce qu'il prouve
 
 - Le certificat du mandat de recherche signé en ligne écrivait « Identité vérifiée par un code à usage

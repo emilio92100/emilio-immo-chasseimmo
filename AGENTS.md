@@ -122,6 +122,16 @@ nouvelle route publique doit être ajoutée là, sinon elle redirige vers `/logi
 Sur `espace.emilio-immo.com`, un chemin inconnu est réécrit en `/espace/…` :
 `/bien/` et `/signer/` sont exemptés à la main, dans le même fichier.
 
+### 2.7 Ne jamais centrer un bouton avec `transform`
+
+`globals.css` pose `button:active:not(:disabled) { transform: scale(.985) }` sur
+tous les boutons, et cette règle l'emporte sur une simple classe. Un bouton
+centré par `top: 50%; transform: translateY(-50%)` perd son centrage au moment
+du clic : il saute de la moitié de sa hauteur sous le curseur, le relâchement
+tombe à côté, et le clic est perdu une fois sur deux. C'est arrivé à la flèche
+qui plie les sous-menus (V3.25). Centrer par `top: 0; bottom: 0; margin: auto 0`
+(avec une hauteur fixe), ou par flex.
+
 ---
 
 ## 3. Deux règles de données qui ne se voient pas
