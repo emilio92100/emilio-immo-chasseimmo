@@ -2,13 +2,16 @@
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
-import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Donnees, type Etape, type Repere } from '@/lib/actes';
+import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import { ChampActe, manquesEtape } from './ChampsActe';
+import FilEtapes from './FilEtapes';
+import { lireDepart, prochainNumero, type Depart } from '@/lib/registre';
 import {
   colonnesListe, finaliser, identiteDuJour, lienFichier, montrerPdf, nomFichier, quand, type DocumentRow,
 } from './outils';
 import s from './Documents.module.css';
+import b from '@/components/biens/Biens.module.css';
 
 /* ═══ L'éditeur d'un document ═════════════════════════════════════════════
    Plein écran. À gauche les questions, étape par étape ; à droite le
@@ -22,29 +25,77 @@ import s from './Documents.module.css';
 
 type Enreg = 'ok' | 'attente' | 'encours' | { erreur: string };
 
-/* Une étape : son titre, ses questions, ses repères. */
-function BlocEtape({ e, i, d, maj, off, reperes }: {
-  e: Etape; i: number; d: Donnees; maj: (cle: string, v: unknown) => void; off: boolean; reperes: Repere[];
+/* Le registre des mandats démarré (V3.18) : le numéro n'est plus à saisir,
+   la finalisation le prend dans le registre. La question devient un encadré
+   qui le dit. */
+type EtatRegistre = { depart: Depart; prochain: number; ligne: number | null };
+function champNumeroRegistre(reg: EtatRegistre): Champ {
+  return {
+    t: 'guide', cle: 'g-numero',
+    titre: () => (reg.ligne ? `N° ${reg.ligne} au registre des mandats` : 'Le n° du registre : donné en finalisant'),
+    points: d => (reg.ligne
+      ? [{ ic: 'livre', x: 'Ce mandat est déjà inscrit au registre : il garde son numéro, même finalisé à nouveau.' }]
+      : [
+        { ic: 'livre', x: `Le registre le donnera au moment de finaliser, avant toute signature : ce sera le ${reg.prochain}, sauf si un autre mandat est finalisé avant.` },
+        ...(typeof d.numero === 'string' && d.numero.trim() ? [{ ic: 'info', x: `Le numéro saisi auparavant (${d.numero.trim()}) sera remplacé.` }] : []),
+      ]),
+  };
+}
+
+/* Les questions d'une étape, en blocs : un bloc par titre (V3.18, comme
+   l'éditeur des biens). Un titre masqué ne coupe pas : ses questions restent
+   sous le titre d'avant. */
+type Groupe = { titre: Extract<Champ, { t: 'titre' }> | null; champs: Champ[] };
+function groupes(champs: Champ[], d: Donnees): Groupe[] {
+  const out: Groupe[] = [];
+  for (const c of champs) {
+    if (c.t === 'titre') { if (!c.si || c.si(d)) out.push({ titre: c, champs: [] }); continue; }
+    if (!out.length) out.push({ titre: null, champs: [] });
+    out[out.length - 1].champs.push(c);
+  }
+  const vu = (c: Champ) => !c.si || c.si(d);
+  return out.filter(g => g.champs.some(vu));
+}
+
+/* Une étape : son en-tête (dessin, « Étape 3 sur 8 », la jauge), puis ses
+   blocs de questions, chaque question dans sa carte ; les repères suivent la
+   question qu'ils commentent. `anime` : en « étape par étape », elle glisse
+   en place. */
+function BlocEtape({ e, i, n, d, maj, off, reperes, anime = false }: {
+  e: Etape; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; off: boolean; reperes: Repere[]; anime?: boolean;
 }) {
+  const gs = groupes(e.champs, d);
+  const placees = gs.some(g => g.champs.some(c => c.cle === e.reperesApres));
   return (
-    <section className={s.etape} data-etape={e.id}>
+    <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
       <div className={s.etapeTete}>
-        <span className={s.etapeIc}>{e.ic ? <Ic n={e.ic} t={20} /> : i + 1}</span>
-        <div>
-          <div className={s.etapeN}>{`Étape ${i + 1}`}</div>
+        <span className={`${s.etapeIc} ${b.etapeIcVif}`}>{e.ic ? <Ic n={e.ic} t={22} /> : i + 1}</span>
+        <div className={b.etapeTeteTxt}>
+          <div className={s.etapeN}>{`Étape ${i + 1} sur ${n}`}</div>
           <h2 className={s.etapeT}>{e.titre}</h2>
           <p className={s.etapeS}>{e.sous}</p>
+          {anime && <span className={b.etapeJauge} aria-hidden="true"><i style={{ width: `${Math.round(((i + 1) / n) * 100)}%` }} /></span>}
         </div>
       </div>
-      <div className={s.grille}>
-        {e.champs.map(c => (
-          <Fragment key={c.cle}>
-            <ChampActe c={c} d={d} maj={maj} off={off} />
-            {c.cle === e.reperesApres && <Reperes l={reperes} />}
-          </Fragment>
-        ))}
-        {!e.champs.some(c => c.cle === e.reperesApres) && <Reperes l={reperes} />}
-      </div>
+      {gs.map((g, k) => (
+        <div key={g.titre?.cle || `g${k}`} className={b.sect}>
+          {g.titre && (
+            <div className={b.sectT}>
+              <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
+              <div><b>{g.titre.lib}</b>{g.titre.aide && <small>{g.titre.aide}</small>}</div>
+            </div>
+          )}
+          <div className={s.grille}>
+            {g.champs.map(c => (
+              <Fragment key={c.cle}>
+                <ChampActe c={c} d={d} maj={maj} off={off} bloc sansLib={c.t === 'personnes' && !!g.titre && g.titre.lib === c.lib} />
+                {c.cle === e.reperesApres && <Reperes l={reperes} />}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      ))}
+      {!placees && <Reperes l={reperes} />}
     </section>
   );
 }
@@ -94,6 +145,37 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const formRef = useRef<HTMLDivElement>(null);
   const apercuRef = useRef<HTMLDivElement>(null);
   const off = row.statut !== 'brouillon';
+
+  /* Le registre des mandats (V3.18) : démarré, il donne le numéro. */
+  /* `regLu` : l'état du registre est connu (démarré ou non) ; tant qu'il ne
+     l'est pas, ou s'il n'a pas pu être lu, un mandat ne se finalise pas —
+     sinon il prendrait un numéro hors du registre. Relu à chaque retour en
+     brouillon (« Modifier » un mandat finalisé). */
+  const [reg, setReg] = useState<EtatRegistre | null>(null);
+  /* L'état lu vaut pour ce document dans cet état-là (`cle`) : repassé en
+     brouillon, il est à relire. */
+  const cleReg = `${row.id}:${row.statut}`;
+  const [regLu, setRegLu] = useState<{ cle: string; ok: boolean; erreur?: string }>({ cle: '', ok: false });
+  const regPret = !m?.registre || row.statut !== 'brouillon' || (regLu.cle === cleReg && regLu.ok);
+  useEffect(() => {
+    if (!m?.registre || row.statut !== 'brouillon') return;
+    let vivant = true;
+    (async () => {
+      const { depart, erreur } = await lireDepart(supabase);
+      if (!vivant) return;
+      if (erreur) { setReg(null); setRegLu({ cle: cleReg, ok: false, erreur }); return; }
+      if (!depart) { setReg(null); setRegLu({ cle: cleReg, ok: true }); return; }
+      const [prochain, l] = await Promise.all([
+        prochainNumero(supabase, depart),
+        supabase.from('registre_mandats').select('numero').eq('document_id', row.id).order('numero').limit(1).maybeSingle(),
+      ]);
+      if (!vivant) return;
+      if (l.error) { setRegLu({ cle: cleReg, ok: false, erreur: l.error.message }); return; }
+      setReg({ depart, prochain, ligne: l.data ? Number((l.data as { numero: number }).numero) : null });
+      setRegLu({ cle: cleReg, ok: true });
+    })();
+    return () => { vivant = false; };
+  }, [m, row.id, row.statut, cleReg]);
 
   /* L'identité de l'agence du jour, pour l'aperçu. Un document figé garde
      la sienne. */
@@ -177,7 +259,13 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   }, [m, dd, identite]);
 
   /* L'aperçu suit l'étape : il montre la rubrique dont on parle. */
-  const vers = m?.etapes[etape]?.vers || '';
+  /* Les étapes telles qu'on les montre (le numéro remplacé quand le
+     registre le donne), et les réponses telles qu'on les contrôle (le
+     numéro compté comme présent). */
+  const etapes = useMemo(() => (!m ? [] : !reg ? m.etapes
+    : m.etapes.map(e => ({ ...e, champs: e.champs.map(c => (c.cle === 'numero' ? champNumeroRegistre(reg) : c)) }))), [m, reg]);
+  const dm = useMemo<Donnees>(() => (reg ? { ...d, numero: String(reg.ligne ?? reg.prochain) } : d), [reg, d]);
+  const vers = etapes[etape]?.vers || '';
   useEffect(() => {
     const zone = apercuRef.current;
     if (!zone) return;
@@ -192,8 +280,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     return () => clearTimeout(t);
   }, [vers, vue, etape]);
 
-  const manquesParEtape = useMemo(() => (m ? m.etapes.map(e => manquesEtape(e.champs, d)) : []), [m, d]);
-  const reperesParEtape: Repere[][] = useMemo(() => (m ? m.etapes.map(e => (m.reperes ? m.reperes(d, e.id) : [])) : []), [m, d]);
+  const manquesParEtape = useMemo(() => etapes.map(e => manquesEtape(e.champs, dm)), [etapes, dm]);
+  const reperesParEtape: Repere[][] = useMemo(() => (m ? etapes.map(e => (m.reperes ? m.reperes(dm, e.id) : [])) : []), [m, etapes, dm]);
 
   /* Tout sur une page : l'étape « en cours » est celle qu'on lit — le fil
      d'étapes et l'aperçu la suivent pendant qu'on fait défiler. */
@@ -220,13 +308,13 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   }
 
   const aller = (i: number) => {
-    const k = Math.max(0, Math.min(m.etapes.length - 1, i));
+    const k = Math.max(0, Math.min(etapes.length - 1, i));
     setEtape(k);
     setVue('form');
     if (mode === 'tout') {
       requestAnimationFrame(() => {
         const zone = formRef.current;
-        const b = zone?.querySelector<HTMLElement>(`[data-etape="${m.etapes[k].id}"]`);
+        const b = zone?.querySelector<HTMLElement>(`[data-etape="${etapes[k].id}"]`);
         if (zone && b) zone.scrollTo({ top: b.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 12, behavior: 'smooth' });
       });
     } else formRef.current?.scrollTo({ top: 0 });
@@ -253,14 +341,20 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   async function lancerFinalisation() {
     /* Signé en ligne ou sur place : pas de PDF à imprimer, la fiche du
        document s'ouvre sur l'envoi des liens (ou la signature sur place). */
+    if (!regPret) {
+      setMessage({ t: regLu.cle === cleReg && regLu.erreur ? `Le registre des mandats n’a pas pu être lu (${regLu.erreur}) : réessaie dans un instant.` : 'Le registre des mandats se lit encore : réessaie dans un instant.', ok: false });
+      return;
+    }
     const elec = electronique(d) && !!onFinalise;
     const onglet = elec ? null : window.open('', '_blank');
     setTravail('finaliser');
     setMessage(null);
     try {
       if (aEnregistrer.current) await enregistrer();
-      const r = await finaliser(row, m!, d);
+      const r = await finaliser(row, m!, d, { registre: !!reg });
       setRow(r); onMaj(r);
+      /* Le numéro donné par le registre est dans le document : l'écran le montre. */
+      if (r.donnees) { dernier.current = r.donnees; setD(r.donnees); }
       if (r.identite) setIdentite(r.identite);
       setFin(false);
       if (elec) { setTravail(''); onFinalise!(r); return; }
@@ -290,8 +384,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     setMessage(null);
   }
 
-  const manques = m.manques(d);
-  const alertes = m.reperes ? m.etapes.flatMap(e => m.reperes!(d, e.id).filter(r => r.ton === 'alerte').map(r => ({ ...r, etape: e.titre }))) : [];
+  const manques = m.manques(dm);
+  const alertes = m.reperes ? etapes.flatMap(e => m.reperes!(dm, e.id).filter(r => r.ton === 'alerte').map(r => ({ ...r, etape: e.titre }))) : [];
   const etat = STATUTS[row.statut] || STATUTS.brouillon;
 
   const texteEnreg = off
@@ -313,6 +407,14 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
             <span className={typeof enreg === 'object' ? s.ko : enreg === 'ok' ? s.ok : undefined}>{texteEnreg}</span>
           </div>
         </div>
+        <div className={`${s.modes} ${b.modesBarre}`} role="group" aria-label="Affichage des questions">
+          <button type="button" aria-pressed={mode === 'etapes'} onClick={() => choisirMode('etapes')} title="Une étape à la fois">
+            <Ic n="lignes" t={14} /><span>Étape par étape</span>
+          </button>
+          <button type="button" aria-pressed={mode === 'tout'} onClick={() => choisirMode('tout')} title="Toutes les questions à la suite, en blocs">
+            <Ic n="doc" t={14} /><span>Tout sur une page</span>
+          </button>
+        </div>
         <div className={s.edBoutons}>
           <button type="button" className={`${s.btn} ${s.btnMasque}`} disabled={travail === 'apercu'} onClick={apercuPdf}>
             <Ic n="doc" t={15} />{row.statut === 'brouillon' ? (travail === 'apercu' ? 'Préparation…' : 'Aperçu PDF') : 'Le PDF'}
@@ -323,28 +425,22 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         </div>
       </div>
 
-      {/* ── Le fil des étapes ── */}
-      <nav className={s.edPas} aria-label="Étapes">
-        {m.etapes.map((e, i) => {
+      {/* ── Le fil des étapes : le dessin de chacune, une coche verte quand
+          elle est complète (V3.18, comme l'éditeur des biens) ── */}
+      <FilEtapes actif={etape}>
+        {etapes.map((e, i) => {
           const n = manquesParEtape[i];
+          const ok = n === 0;
           return (
-            <button key={e.id} type="button" className={`${s.pas} ${i === etape ? s.pasOn : ''} ${n === 0 ? s.pasOk : ''}`}
-              aria-current={i === etape ? 'step' : undefined} onClick={() => aller(i)}>
-              <span className={s.pasN}>{n === 0 && i !== etape ? <Ic n="check" t={12} e={3} /> : i + 1}</span>
-              <span>{e.titre}</span>
+            <button key={e.id} type="button" className={`${s.pas} ${b.pas} ${i === etape ? s.pasOn : ''} ${ok ? s.pasOk : ''}`}
+              aria-current={i === etape ? 'step' : undefined} title={e.titre} onClick={() => aller(i)}>
+              <span className={`${s.pasN} ${b.pasIc}`}>{e.ic ? <Ic n={e.ic} t={15} /> : i + 1}{ok && i !== etape && <i className={b.pasCoche}><Ic n="check" t={8} e={3.6} /></i>}</span>
+              <span>{e.court || e.titre}</span>
               {n > 0 && <span className={s.pasManque} title={`${n} information${n > 1 ? 's' : ''} à compléter`}>{n}</span>}
             </button>
           );
         })}
-        <div className={s.modes} role="group" aria-label="Affichage des questions">
-          <button type="button" aria-pressed={mode === 'etapes'} onClick={() => choisirMode('etapes')} title="Une étape à la fois">
-            <Ic n="lignes" t={14} /><span>Étape par étape</span>
-          </button>
-          <button type="button" aria-pressed={mode === 'tout'} onClick={() => { choisirMode('tout'); }} title="Toutes les questions à la suite">
-            <Ic n="doc" t={14} /><span>Tout sur une page</span>
-          </button>
-        </div>
-      </nav>
+      </FilEtapes>
 
       {/* ── Téléphone : Questions / Aperçu ── */}
       <div className={s.edOnglets} role="group" aria-label="Affichage">
@@ -355,7 +451,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
       <div className={s.edCorps} data-vue={vue}>
         {/* ── Les questions ── */}
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
-          <div className={s.edFormIn}>
+          <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive} ${s.saisieDoc}`}>
             {row.statut === 'pret' && (
               <div className={s.lecture}>
                 <span>{`Document figé ${quand(row.finalise_le)} : c’est ce PDF qu’on ${m.courrier ? 'envoie' : 'fait signer'}. Pour changer quelque chose, repasse-le en brouillon.`}</span>
@@ -369,13 +465,13 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
             {erreurIdentite && <div className={s.erreur}>{`${erreurIdentite} L’aperçu utilise l’identité par défaut ; la finalisation la relira.`}</div>}
 
             {mode === 'tout'
-              ? m.etapes.map((e, i) => <BlocEtape key={e.id} e={e} i={i} d={d} maj={maj} off={off} reperes={reperesParEtape[i] || []} />)
-              : <BlocEtape e={m.etapes[etape]} i={etape} d={d} maj={maj} off={off} reperes={reperesParEtape[etape] || []} />}
+              ? etapes.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[i] || []} />)
+              : <BlocEtape key={etapes[etape].id} e={etapes[etape]} i={etape} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[etape] || []} anime />}
 
             <div className={s.suite}>
-              {mode === 'etapes' && etape > 0 ? <button type="button" className={s.btn} onClick={() => aller(etape - 1)}><Ic n="retour" t={15} />{m.etapes[etape - 1].titre}</button> : <span />}
-              {mode === 'etapes' && etape < m.etapes.length - 1
-                ? <button type="button" className={`${s.btn} ${s.btnNavy}`} onClick={() => aller(etape + 1)}>{`Étape suivante : ${m.etapes[etape + 1].titre}`}</button>
+              {mode === 'etapes' && etape > 0 ? <button type="button" className={s.btn} onClick={() => aller(etape - 1)}><Ic n="retour" t={15} />{etapes[etape - 1].court || etapes[etape - 1].titre}</button> : <span />}
+              {mode === 'etapes' && etape < etapes.length - 1
+                ? <button type="button" className={`${s.btn} ${s.btnNavy}`} onClick={() => aller(etape + 1)}>{`Étape suivante : ${etapes[etape + 1].court || etapes[etape + 1].titre}`}</button>
                 : row.statut === 'brouillon' && <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setFin(true)}><Ic n="check" t={15} e={2.4} />Vérifier et finaliser</button>}
             </div>
           </div>
@@ -397,7 +493,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
       {/* ── Téléphone : précédent / suivant sous le pouce ── */}
       <div className={s.edPied}>
         {mode === 'etapes' && <button type="button" className={s.btn} disabled={etape === 0} onClick={() => aller(etape - 1)}><Ic n="retour" t={15} />Précédent</button>}
-        {mode === 'etapes' && etape < m.etapes.length - 1
+        {mode === 'etapes' && etape < etapes.length - 1
           ? <button type="button" className={`${s.btn} ${s.btnNavy}`} onClick={() => aller(etape + 1)}>Suivant</button>
           : row.statut === 'brouillon'
             ? <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setFin(true)}>Finaliser</button>
@@ -430,7 +526,9 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
               {!manques.length && (
                 <ul className={s.liste2}>
                   <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Toutes les informations obligatoires sont remplies.`}</span></li>
-                  {m.numero && <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{`Numéro du registre : ${String(d.numero || '')}. Il sera vérifié : un numéro ne sert qu’une fois.`}</span></li>}
+                  {m.numero && <li><span className={`${s.k} ${s.kVert}`}><Ic n={reg ? 'livre' : 'check'} t={12} e={reg ? 2 : 3} /></span><span>{reg
+                    ? (reg.ligne ? `Registre des mandats : il garde son n° ${reg.ligne}.` : `Registre des mandats : le numéro est pris maintenant, avant toute signature (ce sera le ${reg.prochain}), et imprimé sur le mandat.`)
+                    : `Numéro du registre : ${String(d.numero || '')}. Il sera vérifié : un numéro ne sert qu’une fois.`}</span></li>}
                   <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{m.courrier ? m.signataires + '.' : `À signer : ${m.signataires.charAt(0).toLowerCase()}${m.signataires.slice(1)}.`}</span></li>
                   {!m.courrier && <li><span className={`${s.k} ${s.kOr}`}><Ic n={modeSignature(d) === 'en_ligne' ? 'mail' : modeSignature(d) === 'sur_place' ? 'tablette' : 'doc'} t={12} /></span><span>{modeSignature(d) === 'en_ligne' ? 'Signature en ligne : chacun avec son lien et un code reçu par e-mail.' : modeSignature(d) === 'sur_place' ? 'Signature sur place, sur ton écran : chacun à son tour, avec un code reçu sur son e-mail.' : 'Signature à la main : le PDF s’ouvre, prêt à imprimer.'}</span></li>}
                 </ul>

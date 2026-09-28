@@ -379,8 +379,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       case 'document': {
         const id = typeof body.id === 'string' ? body.id : '';
         if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ ok: false, error: 'document' }, { status: 400 });
+        /* Jamais une délégation à un confrère (un contrat entre professionnels,
+           voir src/lib/actes/delegation.ts), même rangée sur sa fiche. */
         const { data: doc } = await supabase.from('documents').select('id, client_id, statut, signe_chemin, signature, titre')
-          .eq('id', id).eq('client_id', recherche.client_id).maybeSingle();
+          .eq('id', id).eq('client_id', recherche.client_id).neq('modele', 'delegation').maybeSingle();
         if (!doc || doc.statut !== 'signe' || !doc.signature || !doc.signe_chemin) return NextResponse.json({ ok: false, error: 'aucun' }, { status: 404 });
         const nom = String(doc.titre || 'Document').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) + '.pdf';
         const { data, error } = await supabase.storage.from('mandats').createSignedUrl(doc.signe_chemin as string, 120, { download: nom });

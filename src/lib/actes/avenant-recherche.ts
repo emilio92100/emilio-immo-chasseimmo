@@ -32,7 +32,7 @@ import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, plusMois, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, ficheAgence, blocDonnees, PERSONNE_VIDE,
-  blocsSignature, manquesSignature, CHAMP_SIGNATURE,
+  blocsSignature, manquesSignature, CHAMP_SIGNATURE, HONO_MODES,
   type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Source, type CaseSignature,
 } from './commun';
 import { TYPES_BIEN, typesDepuis } from './mandat-recherche';
@@ -101,32 +101,37 @@ function argentApres(d: Donnees): Argent {
 /* ══ Les questions ══════════════════════════════════════════════════════ */
 const ETAPES: Etape[] = [
   {
-    id: 'mandat', titre: 'Le mandat', sous: 'Repris du mandat signé : vérifie, c’est tout.', vers: 'Entre les soussignés', ic: 'doc',
+    id: 'mandat', titre: 'Le mandat', court: 'Le mandat', sous: 'Repris du mandat signé : vérifie, c’est tout.', vers: 'Entre les soussignés', ic: 'doc',
     champs: [
       { t: 'texte', cle: 'mandatNumero', lib: 'N° du mandat', ic: 'livre', requis: true },
       { t: 'date', cle: 'mandatDate', lib: 'Signé le', ic: 'calendrier', requis: true },
-      { t: 'choix', cle: 'origine', lib: 'Il a été signé', options: [{ v: 'en_ligne', l: 'En ligne' }, { v: 'papier', l: 'Sur papier' }] },
-      { t: 'choix', cle: 'type', lib: 'Mandat', ic: 'cadenas', options: [{ v: 'simple', l: 'Simple' }, { v: 'exclusif', l: 'Exclusif' }] },
+      { t: 'choix', cle: 'origine', lib: 'Il a été signé', ic: 'plume', options: [{ v: 'en_ligne', l: 'En ligne', ic: 'mail' }, { v: 'papier', l: 'Sur papier', ic: 'doc' }] },
+      { t: 'choix', cle: 'type', lib: 'Mandat', ic: 'cadenas', options: [{ v: 'simple', l: 'Simple', ic: 'ouvert' }, { v: 'exclusif', l: 'Exclusif', ic: 'cadenas' }] },
       { t: 'nombre', cle: 'avenantNo', lib: 'Avenant n°', ic: 'plume', aide: 'Compté tout seul d’après les avenants déjà faits à ce mandat.' },
-      { t: 'titre', cle: 't-a', lib: 'Les acheteurs', ic: 'personne', aide: 'Les mêmes que sur le mandat : chacun signe l’avenant.' },
-      { t: 'choix', cle: 'qui', lib: 'Qui achète ?', options: [
-        { v: 'personne', l: 'Une personne' }, { v: 'couple', l: 'Un couple' }, { v: 'plusieurs', l: 'Plusieurs acheteurs' }, { v: 'sci', l: 'Une société' },
-      ] },
-      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', requis: true, si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciForme', lib: 'Forme', si: d => d.qui === 'sci', exemple: 'Société civile immobilière' },
-      { t: 'texte', cle: 'sciSiege', lib: 'Siège social', ic: 'lieu', large: true, si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789' },
-      { t: 'personnes', cle: 'acquereurs', lib: 'Les acheteurs', un: 'Acheteur', min: 1, max: 6, complet: d => d.qui !== 'sci',
-        bornes: d => (d.qui === 'couple' ? { min: 2, max: 2 } : d.qui === 'plusieurs' ? { min: 2, max: 6 } : { min: 1, max: 1 }),
-        nomCarte: (d, i) => (d.qui === 'sci' ? 'Celui qui signe pour la société' : d.qui === 'personne' ? 'L’acheteur' : `Acheteur ${i + 1}`),
-        ajouter: () => 'Ajouter un acheteur' },
-      { t: 'texte', cle: 'sciPouvoir', lib: 'Sa qualité', large: true, si: d => d.qui === 'sci', exemple: 'gérant' },
     ],
   },
   {
-    id: 'changements', titre: 'Ce qui change', sous: 'Ce qui a bougé dans sa recherche est déjà coché : relis, corrige, ajoute.', vers: 'Il a été convenu ce qui suit', reperesApres: 'nouveauPrixMax', ic: 'plume',
+    id: 'parties', titre: 'Les acheteurs', court: 'Les acheteurs', sous: 'Les mêmes que sur le mandat : chacun signe l’avenant.', vers: 'Entre les soussignés', ic: 'couple',
     champs: [
-      { t: 'cases', cle: 'objets', lib: 'L’avenant modifie', options: [
+      { t: 'titre', cle: 't-a', lib: 'Les acheteurs', ic: 'personne', aide: 'Les mêmes que sur le mandat : chacun signe l’avenant.' },
+      { t: 'choix', cle: 'qui', lib: 'Qui achète ?', ic: 'personne', options: [
+        { v: 'personne', l: 'Une personne', ic: 'personne' }, { v: 'couple', l: 'Un couple', ic: 'couple' }, { v: 'plusieurs', l: 'Plusieurs acheteurs', ic: 'groupe' }, { v: 'sci', l: 'Une société', ic: 'immeuble' },
+      ] },
+      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', ic: 'immeuble', requis: true, si: d => d.qui === 'sci' },
+      { t: 'texte', cle: 'sciForme', lib: 'Forme', ic: 'doc', si: d => d.qui === 'sci', exemple: 'Société civile immobilière' },
+      { t: 'texte', cle: 'sciSiege', lib: 'Siège social', ic: 'lieu', large: true, si: d => d.qui === 'sci' },
+      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', ic: 'livre', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789' },
+      { t: 'personnes', cle: 'acquereurs', lib: 'Les acheteurs', ic: 'personne', un: 'Acheteur', min: 1, max: 6, complet: d => d.qui !== 'sci',
+        bornes: d => (d.qui === 'couple' ? { min: 2, max: 2 } : d.qui === 'plusieurs' ? { min: 2, max: 6 } : { min: 1, max: 1 }),
+        nomCarte: (d, i) => (d.qui === 'sci' ? 'Celui qui signe pour la société' : d.qui === 'personne' ? 'L’acheteur' : `Acheteur ${i + 1}`),
+        ajouter: () => 'Ajouter un acheteur' },
+      { t: 'texte', cle: 'sciPouvoir', lib: 'Sa qualité', ic: 'plume', large: true, si: d => d.qui === 'sci', exemple: 'gérant' },
+    ],
+  },
+  {
+    id: 'changements', titre: 'Ce qui change', court: 'Ce qui change', sous: 'Ce qui a bougé dans sa recherche est déjà coché : relis, corrige, ajoute.', vers: 'Il a été convenu ce qui suit', reperesApres: 'nouveauPrixMax', ic: 'plume',
+    champs: [
+      { t: 'cases', cle: 'objets', lib: 'L’avenant modifie', ic: 'plume', options: [
         { v: 'prix', l: 'Le prix maximum', ic: 'etiquette' }, { v: 'bien', l: 'Le bien recherché', ic: 'maison' },
         { v: 'secteurs', l: 'Les secteurs', ic: 'lieu' }, { v: 'honoraires', l: 'Les honoraires', ic: 'euro' },
         { v: 'duree', l: 'La durée', ic: 'calendrier' }, { v: 'clause', l: 'Une clause particulière', ic: 'plume' },
@@ -136,14 +141,14 @@ const ETAPES: Etape[] = [
         { ic: 'calendrier', x: 'Un mandat déjà terminé ne se prolonge pas : il faut un nouveau mandat.' },
       ] },
       { t: 'titre', cle: 't-prix', lib: 'Le prix maximum', ic: 'etiquette', si: d => change(d, 'prix') },
-      { t: 'euros', cle: 'prixMax', lib: 'Prix maximum actuel', unite: '€ hors honoraires', si: d => change(d, 'prix'), aide: 'Celui du mandat, ou du dernier avenant signé.' },
+      { t: 'euros', cle: 'prixMax', lib: 'Prix maximum actuel', ic: 'etiquette', unite: '€ hors honoraires', si: d => change(d, 'prix'), aide: 'Celui du mandat, ou du dernier avenant signé.' },
       { t: 'euros', cle: 'nouveauPrixMax', lib: 'Nouveau prix maximum', ic: 'etiquette', unite: '€ hors honoraires', requis: true, si: d => change(d, 'prix'),
         aide: 'Hors honoraires : ils viennent en plus. Le repère ci-dessous donne son nouveau budget total.' },
       { t: 'titre', cle: 't-bien', lib: 'Le bien recherché', ic: 'maison', si: d => change(d, 'bien'), aide: 'La nouvelle description remplace celle du mandat : corrige ce qui change.' },
       { t: 'cases', cle: 'types2', lib: 'Il cherche', ic: 'maison', si: d => change(d, 'bien'), options: TYPES_BIEN },
-      { t: 'texte', cle: 'typeAutre2', lib: 'Précisez', large: true, si: d => change(d, 'bien') && liste(d, 'types2').includes('autre'), exemple: 'un loft, un local à transformer…' },
+      { t: 'texte', cle: 'typeAutre2', lib: 'Précisez', ic: 'plume', large: true, si: d => change(d, 'bien') && liste(d, 'types2').includes('autre'), exemple: 'un loft, un local à transformer…' },
       { t: 'nombre', cle: 'pieces2', lib: 'Pièces', ic: 'plan', unite: 'pièces environ', si: d => change(d, 'bien') },
-      { t: 'nombre', cle: 'chambres2', lib: 'Dont chambres', unite: 'chambres', si: d => change(d, 'bien') },
+      { t: 'nombre', cle: 'chambres2', lib: 'Dont chambres', ic: 'lit', unite: 'chambres', si: d => change(d, 'bien') },
       { t: 'nombre', cle: 'surface2', lib: 'Surface', ic: 'regle', unite: 'm² environ ou plus', si: d => change(d, 'bien') },
       { t: 'zone', cle: 'criteres2', lib: 'Ses critères essentiels', ic: 'etoile', large: true, si: d => change(d, 'bien'),
         exemple: 'un extérieur, pas de rez-de-chaussée', aide: 'Facultatif, imprimé tel quel.' },
@@ -151,20 +156,20 @@ const ETAPES: Etape[] = [
       { t: 'zone', cle: 'secteurs2', lib: 'Où il cherche désormais', ic: 'lieu', large: true, requis: true, si: d => change(d, 'secteurs'),
         exemple: 'Boulogne-Billancourt, Paris 16e, Issy-les-Moulineaux', aide: 'Tous les secteurs, anciens et nouveaux, séparés par des virgules : la liste remplace celle du mandat.' },
       { t: 'titre', cle: 't-hono', lib: 'Les honoraires', ic: 'euro', si: d => change(d, 'honoraires') },
-      { t: 'choix', cle: 'honoMode2', lib: 'Honoraires', si: d => change(d, 'honoraires'), options: [{ v: 'taux', l: 'Un pourcentage' }, { v: 'forfait', l: 'Un forfait' }] },
+      { t: 'choix', cle: 'honoMode2', lib: 'Honoraires', ic: 'euro', si: d => change(d, 'honoraires'), options: HONO_MODES },
       { t: 'nombre', cle: 'taux2', lib: 'Nouveau taux', ic: 'pourcent', unite: '% TTC', si: d => change(d, 'honoraires') && d.honoMode2 !== 'forfait',
         aide: `Ton barème : ${String(BAREME).replace('.', ',')} % TTC au plus.` },
-      { t: 'euros', cle: 'forfait2', lib: 'Nouveau forfait', unite: '€ TTC', si: d => change(d, 'honoraires') && d.honoMode2 === 'forfait' },
+      { t: 'euros', cle: 'forfait2', lib: 'Nouveau forfait', ic: 'euro', unite: '€ TTC', si: d => change(d, 'honoraires') && d.honoMode2 === 'forfait' },
       { t: 'titre', cle: 't-duree', lib: 'La durée', ic: 'calendrier', si: d => change(d, 'duree') },
-      { t: 'date', cle: 'finActuelle', lib: 'Il devait finir le', si: d => change(d, 'duree') },
+      { t: 'date', cle: 'finActuelle', lib: 'Il devait finir le', ic: 'calendrier', si: d => change(d, 'duree') },
       { t: 'date', cle: 'finNouvelle', lib: 'Il finira le', ic: 'chrono', requis: true, si: d => change(d, 'duree') },
       { t: 'titre', cle: 't-clause', lib: 'La clause particulière', ic: 'plume', si: d => change(d, 'clause') },
-      { t: 'zone', cle: 'clause', lib: 'Le texte', large: true, requis: true, si: d => change(d, 'clause'),
+      { t: 'zone', cle: 'clause', lib: 'Le texte', ic: 'plume', large: true, requis: true, si: d => change(d, 'clause'),
         exemple: 'La recherche est étendue aux biens nécessitant des travaux de rénovation.', aide: 'Une condition, une précision, toute autre modification : imprimée telle quelle.' },
     ],
   },
   {
-    id: 'signature', titre: 'Signature', sous: 'Comment, où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
+    id: 'signature', titre: 'Signature', court: 'Signature', sous: 'Comment, où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
     champs: [
       CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },

@@ -33,9 +33,9 @@ const DOCS: { v: string; l: string; x: string; ic: string }[] = [
 
 const ETAPES: Etape[] = [
   {
-    id: 'visite', titre: 'La visite', sous: 'Qui a visité, quoi et quand.', vers: 'Entre les soussignés', ic: 'calendrier',
+    id: 'visite', titre: 'Qui visite', court: 'Qui visite', sous: 'Pour qui tu interviens, et les visiteurs.', vers: 'Entre les soussignés', ic: 'groupe',
     champs: [
-      { t: 'choix', cle: 'role', lib: 'L’agence intervient pour…', tuiles: true, options: [
+      { t: 'choix', cle: 'role', lib: 'L’agence intervient pour…', ic: 'agence', tuiles: true, options: [
         { v: 'vendeur', l: 'Le vendeur', aide: 'Tu détiens le mandat de vente.', ic: 'maison' },
         { v: 'acquereur', l: 'L’acquéreur', aide: 'Tu cherches pour lui (mandat de recherche).', ic: 'loupe' },
       ] },
@@ -47,13 +47,18 @@ const ETAPES: Etape[] = [
           { ic: 'personne', x: 'L’identité des visiteurs (une pièce d’identité vérifiée) : le bon protège tes honoraires s’ils achètent ensuite en direct.' },
           { ic: 'bouclier', x: 'L’état des risques se remet dès la première visite ; coche-le à l’étape suivante.' },
         ]) },
-      { t: 'personnes', cle: 'visiteurs', lib: 'Les visiteurs', un: 'Visiteur', min: 1, max: 4 },
+      { t: 'personnes', cle: 'visiteurs', lib: 'Les visiteurs', ic: 'personne', un: 'Visiteur', min: 1, max: 4 },
+    ],
+  },
+  {
+    id: 'bien', titre: 'Le bien et le rendez-vous', court: 'Le bien et la date', sous: 'Ce qui a été visité, et quand.', vers: 'Le bien visité', ic: 'maison',
+    champs: [
       { t: 'titre', cle: 't-bien', lib: 'Le bien visité', ic: 'maison' },
       { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true },
-      { t: 'texte', cle: 'ville', lib: 'Ville', requis: true },
+      { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
       { t: 'texte', cle: 'description', lib: 'Le bien', ic: 'doc', large: true, exemple: 'appartement de 4 pièces, 92 m², 3e étage' },
       { t: 'euros', cle: 'prix', lib: 'Prix annoncé', ic: 'etiquette' },
-      { t: 'texte', cle: 'reference', lib: 'Référence de l’annonce' },
+      { t: 'texte', cle: 'reference', lib: 'Référence de l’annonce', ic: 'liste' },
       { t: 'texte', cle: 'agenceVendeur', lib: 'Agence du vendeur', ic: 'agence', si: d => d.role === 'acquereur', exemple: 'Agence du Parc, Boulogne', aide: 'Si le bien est proposé par une autre agence.' },
       { t: 'titre', cle: 't-quand', lib: 'Quand', ic: 'calendrier' },
       { t: 'date', cle: 'dateVisite', lib: 'Date de la visite', ic: 'calendrier', requis: true },
@@ -61,12 +66,17 @@ const ETAPES: Etape[] = [
     ],
   },
   {
-    id: 'remis', titre: 'Documents et engagements', sous: 'Ce qui a été remis, et ce que les visiteurs acceptent.', vers: 'La visite', ic: 'doc',
+    id: 'remis', titre: 'Documents et engagements', court: 'Documents remis', sous: 'Ce qui a été remis, et ce que les visiteurs acceptent.', vers: 'La visite', ic: 'doc',
     champs: [
       { t: 'cases', cle: 'docs', lib: 'Documents remis aux visiteurs', ic: 'doc', options: DOCS.map(x => ({ v: x.v, l: x.l, ic: x.ic })),
         aide: 'L’état des risques doit être remis dès la première visite ; l’audit énergétique aussi, pour une maison classée E, F ou G.' },
       { t: 'nombre', cle: 'duree', lib: 'Pas d’achat en direct pendant', ic: 'chrono', unite: 'mois', si: d => d.role !== 'acquereur' },
       { t: 'zone', cle: 'note', lib: 'Une remarque ?', ic: 'plume', large: true },
+    ],
+  },
+  {
+    id: 'signature', titre: 'La signature', court: 'Signature', sous: 'Comment, où et quand il sera signé.', vers: 'Date et signatures', ic: 'plume',
+    champs: [
       CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },

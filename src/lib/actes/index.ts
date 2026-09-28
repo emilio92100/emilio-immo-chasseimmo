@@ -13,8 +13,9 @@ import { MANDAT_RECHERCHE } from './mandat-recherche';
 import { AVENANT_VENTE } from './avenant-vente';
 import { AVENANT_RECHERCHE } from './avenant-recherche';
 import { COURRIER_RECONDUCTION } from './courrier-reconduction';
+import { DELEGATION } from './delegation';
 
-export const MODELES: Modele[] = [MANDAT_VENTE, AVENANT_VENTE, MANDAT_RECHERCHE, AVENANT_RECHERCHE, OFFRE_ACHAT, BON_VISITE, COURRIER_RECONDUCTION];
+export const MODELES: Modele[] = [MANDAT_VENTE, AVENANT_VENTE, MANDAT_RECHERCHE, AVENANT_RECHERCHE, OFFRE_ACHAT, BON_VISITE, COURRIER_RECONDUCTION, DELEGATION];
 export const modele = (id: string): Modele | null => MODELES.find(m => m.id === id) || null;
 
 /* Les rubriques de la page, dans l'ordre. Le mandat de recherche en ligne
@@ -26,6 +27,7 @@ export const CATEGORIES: { id: Categorie; titre: string; sous: string; ic: strin
   { id: 'offres', titre: 'Offres d’achat', sous: 'Faites par tes acheteurs, et la réponse du vendeur', ic: 'euro', couleur: 'brique' },
   { id: 'bons_visite', titre: 'Bons de visite', sous: 'La preuve de chaque visite', ic: 'calendrier', couleur: 'vert' },
   { id: 'courriers', titre: 'Courriers', sous: 'L’information avant chaque reconduction', ic: 'boucle', couleur: 'gris' },
+  { id: 'delegations', titre: 'Délégations', sous: 'Un mandat confié à un confrère', ic: 'accord', couleur: 'bleu' },
 ];
 
 export const STATUTS: Record<string, { l: string; ton: 'gris' | 'bleu' | 'vert' | 'rouge' }> = {

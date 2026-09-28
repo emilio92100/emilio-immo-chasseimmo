@@ -26,6 +26,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { etatMandat, horsMandat, rechercheDepuis, DUREE, type EtatMandat, type Contenu } from './mandat';
 import { contenuApresAvenants } from './actes/avenant-recherche';
 import { alerteMailActive } from './alertes';
+import { lireDepart } from './registre';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -35,12 +36,34 @@ export function lireNumeros(v: string | null | undefined): string[] {
   return String(v || '').split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
 }
 
-export async function lireReserve(sb: SupabaseClient): Promise<{ numeros: string[]; approuveLe: string | null; brut: string | null }> {
-  const { data, error } = await sb.from('parametres').select('cle, valeur').in('cle', [CLE_RESERVE, CLE_APPROBATION]);
-  if (error || !data) return { numeros: [], approuveLe: null, brut: null };
+/* `registre` (V3.18) : le registre des mandats du CRM est démarré. Il
+   remplace la réserve : chaque client qui signe seul y prend le numéro
+   suivant, sans limite ; l'approbation du mandat type reste exigée.
+   `premier` : son premier numéro (ceux d'avant viennent de l'ancien
+   registre). `registreKo` : il n'a pas pu être lu — on ne se rabat surtout
+   pas sur la réserve, on réessaie plus tard. */
+export type Reserve = { numeros: string[]; approuveLe: string | null; brut: string | null; registre: boolean; premier: number | null; registreKo?: string };
+export async function lireReserve(sb: SupabaseClient): Promise<Reserve> {
+  const [{ data, error }, reg] = await Promise.all([
+    sb.from('parametres').select('cle, valeur').in('cle', [CLE_RESERVE, CLE_APPROBATION]),
+    lireDepart(sb),
+  ]);
+  const registre = !!reg.depart;
+  const premier = reg.depart ? Number(reg.depart.premier_numero) : null;
+  const ko = reg.erreur ? { registreKo: reg.erreur } : {};
+  if (error || !data) return { numeros: [], approuveLe: null, brut: null, registre, premier, ...ko };
   const brut = (data.find(x => x.cle === CLE_RESERVE)?.valeur as string | null) ?? null;
   const approuveLe = (data.find(x => x.cle === CLE_APPROBATION)?.valeur as string | null) || null;
-  return { numeros: lireNumeros(brut), approuveLe, brut };
+  return { numeros: lireNumeros(brut), approuveLe, brut, registre, premier, ...ko };
+}
+
+
+/* Un client peut-il signer seul, sans numéro préparé ? Le mandat type
+   approuvé (ou ce mandat proposé), et un numéro à prendre : dans le
+   registre s'il est démarré, sinon dans la réserve. */
+export function signeSansNumero(r: Pick<Reserve, 'numeros' | 'approuveLe' | 'registre'>, proposeLe?: unknown): boolean {
+  const accord = !!r.approuveLe || (r.registre && typeof proposeLe === 'string' && !!proposeLe);
+  return accord && (r.registre || r.numeros.length > 0);
 }
 
 /* Prendre le premier numéro libre de la réserve. On réécrit la liste en
@@ -65,7 +88,7 @@ export async function etatServeur(sb: SupabaseClient, recherche: Record<string, 
   const e = etatMandat(recherche as Parameters<typeof etatMandat>[0]);
   if (e !== 'sans_numero') return e;
   const r = await lireReserve(sb);
-  return r.approuveLe && r.numeros.length ? 'a_signer' : 'sans_numero';
+  return signeSansNumero(r, recherche.mandat_propose_le) ? 'a_signer' : 'sans_numero';
 }
 
 /* ── Les mails ── */

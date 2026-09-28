@@ -34,6 +34,7 @@ import {
 import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
 import { contenuApresAvenants } from '@/lib/actes/avenant-recherche';
 import { signalerEchec } from '@/lib/ecritures';
+import { etatLigne, lireDepart, numeroAncien, prochainNumero, type ObsRegistre } from '@/lib/registre';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -119,6 +120,9 @@ const champ: React.CSSProperties = {
 /* Un avenant à ce mandat (Documents), pour la liste et pour les limites. */
 type AvenantMini = { id: string; statut: string; signe_le: string | null; donnees: Record<string, unknown> };
 
+/* Le numéro déjà sur la fiche, le registre démarré (voir charger). */
+type EtatNumero = 'ancien' | 'ouvert' | 'fini' | null;
+
 export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAvenant }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recherche: any;
@@ -144,6 +148,9 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
   const [copie, setCopie] = useState(false);
   const [voirReserve, setVoirReserve] = useState(false);
+  /* Le registre des mandats du CRM (V3.18) : démarré, il donne le numéro au
+     moment où le client demande son code ; plus de réserve à tenir. */
+  const [registre, setRegistre] = useState<{ prochain: number; premier: number; numero: EtatNumero } | null>(null);
   const [taux, setTaux] = useState<string>(ecrireTaux(tauxDe(recherche?.mandat_taux)));
   /* Pourcentage ou forfait : un forfait enregistré l'emporte. */
   const [mode, setMode] = useState<'taux' | 'forfait'>(forfaitDe(recherche?.mandat_forfait) ? 'forfait' : 'taux');
@@ -178,7 +185,25 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       setApprouveLe(a || null); setApprouve(!!a);
     }
     setASignature(f.error ? null : !!f.data?.some(x => x.name === 'signature.png'));
-  }, [recherche?.id]);
+    const reg = await lireDepart(supabase);
+    if (!reg.depart) { setRegistre(null); return; }
+    /* Le numéro déjà sur la fiche : d'avant le registre (il reste), celui
+       d'une signature commencée dans l'espace (le registre le rendra), ou
+       celui d'un mandat fini (le registre en donnera un nouveau) — comme le
+       fait /api/espace/mandat. */
+    const n = String(recherche?.mandat_numero || '').trim();
+    let etat: EtatNumero = null;
+    if (n && numeroAncien(n, reg.depart.premier_numero)) etat = 'ancien';
+    else if (/^\d+$/.test(n)) {
+      const { data: l } = await supabase.from('registre_mandats').select('id, source, recherche_id').eq('numero', Number(n)).maybeSingle();
+      const ligne = l as { id: string; source: string; recherche_id: string | null } | null;
+      if (ligne && ligne.source === 'espace' && ligne.recherche_id === recherche.id) {
+        const { data: o } = await supabase.from('registre_observations').select('*').eq('registre_id', ligne.id);
+        etat = etatLigne((o || []) as ObsRegistre[]).cle === 'reserve' ? 'ouvert' : 'fini';
+      } else etat = 'fini';
+    }
+    setRegistre({ prochain: await prochainNumero(supabase, reg.depart), premier: reg.depart.premier_numero, numero: etat });
+  }, [recherche?.id, recherche?.mandat_numero]);
 
   useEffect(() => { charger(); }, [charger]);
   useEffect(() => { setNumero(recherche?.mandat_numero || ''); }, [recherche?.mandat_numero]);
@@ -301,8 +326,10 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
 
   /* ── Proposer le mandat au client ── */
   async function proposer() {
-    const n = numero.trim();
-    if (!n) { setMsg({ t: 'Colle d’abord le numéro réservé dans ImmoFacile, ou prends le suivant de ta réserve.', ok: false }); return; }
+    /* Le registre démarré : on garde un numéro d'avant lui, ou celui d'une
+       signature commencée ; sinon, il donnera le suivant. */
+    const n = registre ? (registre.numero === 'ancien' || registre.numero === 'ouvert' ? (recherche?.mandat_numero || '').trim() : '') : numero.trim();
+    if (!n && !registre) { setMsg({ t: 'Colle d’abord le numéro réservé dans ImmoFacile, ou prends le suivant de ta réserve.', ok: false }); return; }
     if (!honoOk) {
       setMsg({ t: mode === 'forfait'
         ? `Le forfait ne peut pas dépasser ton barème (${ecrireTaux(BAREME)} % du prix maximum).`
@@ -319,7 +346,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     const le = new Date().toISOString();
     const { data, error } = await supabase.from('recherches')
       .update({
-        mandat_numero: n, mandat_type: 'simple', mandat_propose_le: le, updated_at: le,
+        mandat_numero: n || null, mandat_type: 'simple', mandat_propose_le: le, updated_at: le,
         ...(colonne ? { mandat_taux: mode === 'taux' ? tauxN : null } : {}),
         ...(colonneF ? { mandat_forfait: mode === 'forfait' ? forfaitN : null } : {}),
       })
@@ -328,7 +355,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     /* Un numéro pris dans la réserve en sort : il ne servira jamais deux fois. */
     const liste = numeros(reserve);
     let avertir = '';
-    if (liste.includes(n)) {
+    if (n && liste.includes(n)) {
       const reste = liste.filter(x => x !== n);
       const { error: eR } = await supabase.from('parametres')
         .upsert([{ cle: CLE_RESERVE, valeur: reste.join(', '), updated_at: le }], { onConflict: 'cle' });
@@ -337,7 +364,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     }
     setTravail('');
     onMaj(data);
-    await addJournal(client.id, 'mandat', `📋 Mandat proposé à la signature (n° ${n})`, `Mandat de recherche simple · honoraires ${honorairesCourt(honoChoisi)} · le client le voit dans son espace`);
+    await addJournal(client.id, 'mandat', n ? `📋 Mandat proposé à la signature (n° ${n})` : '📋 Mandat proposé à la signature (numéro donné par le registre à sa signature)', `Mandat de recherche simple · honoraires ${honorairesCourt(honoChoisi)} · le client le voit dans son espace`);
     setMsg({ t: `C’est prêt : ${client.prenom || 'le client'} voit « Votre mandat est prêt » dans son espace (honoraires : ${honorairesCourt(honoChoisi)}). Envoie-lui le mail pour qu’il le sache.${avertir}`, ok: !avertir });
   }
 
@@ -401,6 +428,23 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setMsg({ t: 'Proposition retirée.', ok: true });
   }
 
+  /* Un numéro noté sur la recherche avant le démarrage du registre (réservé
+     dans ImmoFacile) reste le sien ; on peut le laisser pour prendre, à la
+     signature, le prochain numéro du registre. */
+  async function prendreDuRegistre() {
+    const n = recherche?.mandat_numero;
+    if (!n || !confirm(`Laisser le n° ${n} et prendre le prochain numéro du registre ?\n\nLe n° ${n} ne servira plus : pense à le marquer « sans suite » dans ImmoFacile.`)) return;
+    setTravail('registre');
+    const { data, error } = await supabase.from('recherches')
+      .update({ mandat_numero: null, updated_at: new Date().toISOString() })
+      .eq('id', recherche.id).select().single();
+    setTravail('');
+    if (error || !data) { signalerEchec('Le numéro du mandat', error?.message || 'aucune ligne modifiée'); return; }
+    onMaj(data);
+    await addJournal(client.id, 'mandat', `📋 N° ${n} laissé : le numéro sera pris dans le registre des mandats`);
+    setMsg({ t: `Le n° ${n} est laissé : le registre donnera le numéro quand ${client.prenom || 'le client'} demandera son code.`, ok: true });
+  }
+
   async function copier() {
     try { await navigator.clipboard.writeText(lien); setCopie(true); setTimeout(() => setCopie(false), 1800); }
     catch { window.prompt('Copie ce lien :', lien); }
@@ -429,8 +473,8 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setApprouveLe(nouvelleApprobation || null);
     setReserve(liste.join(', '));
     setMsg({ t: approuve
-      ? `Réserve enregistrée : ${liste.length} numéro${liste.length > 1 ? 's' : ''} d’avance.`
-      : 'Réserve enregistrée, mais sans ton approbation du mandat type : les clients ne pourront pas signer seuls.', ok: approuve });
+      ? (registre ? 'Enregistré : les clients peuvent signer seuls, le registre donne les numéros.' : `Réserve enregistrée : ${liste.length} numéro${liste.length > 1 ? 's' : ''} d’avance.`)
+      : 'Enregistré, mais sans ton approbation du mandat type : les clients ne pourront pas signer seuls.', ok: approuve });
   }
 
   async function deposerSignature(f: File | undefined) {
@@ -527,7 +571,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       {sig?.statut === 'retracte' && (
         <div style={boite('#fef2f2', '#fecaca', '#991b1b')}>
           <b>{`↩️ Mandat n° ${sig.numero} rétracté`}</b>
-          <div>{`Le client a renoncé en ligne le ${sig.retracte_le ? quand(sig.retracte_le) : '—'}. Note-le dans le registre ImmoFacile.`}</div>
+          <div>{`Le client a renoncé en ligne le ${sig.retracte_le ? quand(sig.retracte_le) : '—'}. ${registre && Number(sig.numero) >= registre.premier ? 'C’est noté tout seul dans le registre des mandats.' : 'Note-le dans le registre ImmoFacile.'}`}</div>
           {sig.pdf_chemin && <button type="button" style={{ ...btn, marginTop: 10 }} onClick={voirPdf}>📄 Voir le mandat signé</button>}
         </div>
       )}
@@ -626,14 +670,32 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
           {recherche?.mandat_propose_le && honoOk && honorairesCourt(honoChoisi) !== honorairesCourt(honoEnregistre) && (
             <div style={{ ...boite('#fffbeb', '#fde68a', '#92400e'), marginTop: 8 }}>{`Le client voit encore : ${honorairesCourt(honoEnregistre)}. Clique « Mettre à jour », puis renvoie-lui le mail.`}</div>
           )}
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginTop: 12 }}>N° réservé dans le registre ImmoFacile</label>
-          <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
-            <input style={{ ...champ, maxWidth: 160 }} value={numero} onChange={e => setNumero(e.target.value)} placeholder="ex. 997" inputMode="numeric" />
+          {registre ? (
+            <div style={{ ...boite('#f4f7fb', '#dbe3ee', '#2e4166'), marginTop: 12 }}>
+              {recherche?.mandat_numero && registre.numero
+                ? (registre.numero === 'ouvert'
+                  ? `N° ${recherche.mandat_numero} au registre des mandats, réservé pour sa signature en cours.`
+                  : registre.numero === 'fini'
+                  ? `Le n° ${recherche.mandat_numero} est celui d’un mandat précédent : le registre en donnera un nouveau quand ${client.prenom || 'le client'} demandera son code (le prochain est le ${registre.prochain}).`
+                  : <>
+                      {`N° ${recherche.mandat_numero}, noté sur cette recherche avant le démarrage du registre : c’est lui qui figurera sur le mandat.`}
+                      <button type="button" onClick={prendreDuRegistre} disabled={travail === 'registre'}
+                        style={{ display: 'block', background: 'none', border: 'none', padding: '6px 0 0', color: '#a07c28', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
+                        {`Prendre plutôt le prochain numéro du registre (${registre.prochain})`}
+                      </button>
+                    </>)
+                : `Le numéro sera pris dans le registre des mandats quand ${client.prenom || 'le client'} demandera son code de signature (le prochain est le ${registre.prochain}) : il figurera sur son exemplaire avant qu’il signe.`}
+            </div>
+          ) : (
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginTop: 12 }}>N° réservé dans le registre ImmoFacile</label>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: registre ? 10 : 5, flexWrap: 'wrap' }}>
+            {!registre && <input style={{ ...champ, maxWidth: 160 }} value={numero} onChange={e => setNumero(e.target.value)} placeholder="ex. 997" inputMode="numeric" />}
             <button type="button" style={btnOr} disabled={travail === 'proposer' || !honoOk} onClick={proposer}>
               {travail === 'proposer' ? '…' : recherche?.mandat_propose_le ? 'Mettre à jour' : 'Proposer au client'}
             </button>
           </div>
-          {premierDeLaReserve && premierDeLaReserve !== numero.trim() && !recherche?.mandat_propose_le && (
+          {!registre && premierDeLaReserve && premierDeLaReserve !== numero.trim() && !recherche?.mandat_propose_le && (
             <button type="button" onClick={() => setNumero(premierDeLaReserve)}
               style={{ background: 'none', border: 'none', padding: '6px 0 0', color: '#a07c28', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
               {`Prendre le n° ${premierDeLaReserve} de ma réserve`}
@@ -665,21 +727,29 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
         <button type="button" onClick={() => setVoirReserve(v => !v)}
           style={{ ...titreBloc, background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', width: '100%', justifyContent: 'space-between' }}>
           <span>Pour les clients qui signent seuls</span>
-          <span style={{ color: reste > 2 && approuveLe ? '#15803d' : '#b45309' }}>
-            {approuveLe ? `${reste} numéro${reste > 1 ? 's' : ''} d’avance` : 'non activé'} {voirReserve ? '▴' : '▾'}
+          <span style={{ color: (registre || reste > 2) && approuveLe ? '#15803d' : '#b45309' }}>
+            {!approuveLe ? 'non activé' : registre ? 'numéros du registre' : `${reste} numéro${reste > 1 ? 's' : ''} d’avance`} {voirReserve ? '▴' : '▾'}
           </span>
         </button>
         {voirReserve && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.55 }}>
-              Réserve quelques numéros dans ImmoFacile et colle-les ici. Un client qui clique « Je souhaite le visiter » sans mandat préparé prend le premier libre, signe tout de suite, et tu reçois un mail pour reporter le nom dans le registre.
-            </div>
-            <input style={champ} value={reserve} onChange={e => setReserve(e.target.value)} placeholder="ex. 997, 998, 999" />
+            {registre ? (
+              <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.55 }}>
+                {'Le registre des mandats est démarré : un client qui clique « Je souhaite le visiter » sans mandat préparé prend le numéro suivant du registre et signe tout de suite. Plus de réserve à tenir, rien à reporter ailleurs. Il faut seulement ton approbation du mandat type, ci-dessous.'}
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.55 }}>
+                  Réserve quelques numéros dans ImmoFacile et colle-les ici. Un client qui clique « Je souhaite le visiter » sans mandat préparé prend le premier libre, signe tout de suite, et tu reçois un mail pour reporter le nom dans le registre.
+                </div>
+                <input style={champ} value={reserve} onChange={e => setReserve(e.target.value)} placeholder="ex. 997, 998, 999" />
+              </>
+            )}
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--emilio)', lineHeight: 1.5, cursor: 'pointer' }}>
               <input type="checkbox" checked={approuve} onChange={e => setApprouve(e.target.checked)} style={{ marginTop: 3 }} />
-              <span>J’approuve le mandat de recherche simple type et je signe l’offre au nom d’Emilio Immobilier pour ces numéros.{approuveLe ? ` (approuvé le ${quand(approuveLe)})` : ''}</span>
+              <span>{`J’approuve le mandat de recherche simple type et je signe l’offre au nom d’Emilio Immobilier pour ${registre ? 'les mandats signés seuls' : 'ces numéros'}.${approuveLe ? ` (approuvé le ${quand(approuveLe)})` : ''}`}</span>
             </label>
-            <div><button type="button" style={btnOr} disabled={travail === 'reserve'} onClick={enregistrerReserve}>{travail === 'reserve' ? '…' : 'Enregistrer la réserve'}</button></div>
+            <div><button type="button" style={btnOr} disabled={travail === 'reserve'} onClick={enregistrerReserve}>{travail === 'reserve' ? '…' : registre ? 'Enregistrer' : 'Enregistrer la réserve'}</button></div>
             <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 10, fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span>{aSignature === null ? 'Ta signature manuscrite : état inconnu.' : aSignature ? '✓ Ta signature manuscrite est déposée (dossier privé).' : 'Ta signature manuscrite n’est pas encore déposée.'}</span>
               <label style={{ ...btn, cursor: 'pointer' }}>

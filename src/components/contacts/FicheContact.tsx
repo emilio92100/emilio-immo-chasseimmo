@@ -240,7 +240,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             </section>
           )}
           {(types.includes('vendeur') || types.includes('proprietaire')) && (
-            <BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours />
+            <BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours ouvertAuDebut />
           )}
           {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
           {(!estPro(types) || types.includes('vendeur') || types.includes('proprietaire')) && (

@@ -30,7 +30,9 @@ const jour = (iso: string, annee = false) => new Date(iso).toLocaleDateString('f
   day: 'numeric', month: 'long', ...(annee ? { year: 'numeric' } : {}), timeZone: 'Europe/Paris',
 });
 
-export default function PointAuto({ clientId }: { clientId: string }) {
+/* `integre` : posé en pied du bloc de la recherche (V3.17), sans cadre à
+   lui, un simple filet au-dessus. */
+export default function PointAuto({ clientId, integre = false }: { clientId: string; integre?: boolean }) {
   const [etat, setEtat] = useState<Etat | null>(null);
   const [erreur, setErreur] = useState('');
   const [enCours, setEnCours] = useState(false);
@@ -86,7 +88,9 @@ export default function PointAuto({ clientId }: { clientId: string }) {
   const dernier = c.dernierMouvement ? `Dernier mouvement le ${jour(c.dernierMouvement, true)}` : 'Aucun mouvement depuis la création du dossier';
 
   return (
-    <div style={{ background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={integre
+      ? { background: '#fafbfd', borderTop: '1px solid #eef1f6', padding: '11px 16px', display: 'flex', flexDirection: 'column', gap: 10 }
+      : { background: 'white', border: '1px solid #e3e8f0', borderRadius: 14, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ width: 32, height: 32, borderRadius: 10, background: ton === 'or' ? '#fdf8ea' : '#f4f7fb', border: `1px solid ${ton === 'or' ? '#ecdcae' : '#e6ebf2'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ton === 'or' ? '#9a7d2e' : '#4a6b90'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 6.5 8.5 6 8.5-6" /></svg>

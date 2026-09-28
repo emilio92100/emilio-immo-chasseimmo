@@ -11,6 +11,7 @@ import { alerteMailActive } from '@/lib/alertes';
 import { modele } from '@/lib/actes';
 import * as SD from '@/lib/signature-documents';
 import { ecritServeur } from '@/lib/ecritures';
+import { observer } from '@/lib/registre';
 
 /**
  * La signature d'un co-signataire — le conjoint, un co-acquéreur — depuis
@@ -201,6 +202,10 @@ export async function POST(req: NextRequest) {
         const { error: eL } = await sb.from('mandats_signatures').update(sc.maj).eq('id', l.id);
         if (eL) console.error('[signer] ligne du mandat', eL.message);
 
+        /* Le registre des mandats (V3.18) : la co-signature, sur la ligne du mandat. */
+        const pbReg = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'note',
+          texte: `Co-signé en ligne par ${moi}, le ${dateCourte(le)} à ${heureParis(le)}${sc.complet ? ' : mandat complet' : ''}.` });
+        if (pbReg) console.error('[registre]', pbReg);
         const fin = finRetractationDe(l, cosN, co.id);
         const restants = cosN.filter(attendu);
         const echecs: string[] = [];
@@ -252,6 +257,9 @@ export async function POST(req: NextRequest) {
           statut: 'retracte', retracte_le: le, deroule: [...(co.deroule || []), { t: le, x: 'Rétractation exercée en ligne, depuis son lien personnel' }],
         }).eq('id', co.id);
         if (error) return ko('enregistrement', 500, { detail: error.message });
+        const pbRegR = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'note',
+          texte: `${moi} a renoncé au mandat (délai de rétractation), le ${dateCourte(le)} à ${heureParis(le)} ; il continue avec ${premier}.` });
+        if (pbRegR) console.error('[registre]', pbRegR);
         await journal(`↩️ ${moi} a renoncé au mandat (délai de rétractation)`, `n° ${l.numero} · le ${dateCourte(le)} à ${heureParis(le)}. Le mandat continue avec ${premier}.`);
         await evt(`${moi} a renoncé au mandat n° ${l.numero}`);
         await ecritServeur('La relance', sb.from('relances').insert({

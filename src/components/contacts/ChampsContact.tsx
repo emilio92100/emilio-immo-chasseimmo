@@ -10,6 +10,8 @@ import {
 } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
+import BlocRepliable from '@/components/documents/BlocRepliable';
+import sd from '@/components/documents/Documents.module.css';
 import c from './Contacts.module.css';
 
 /* ═══ Les morceaux des contacts ════════════════════════════════════════════
@@ -178,9 +180,11 @@ export function LigneBien({ b, onClick }: { b: BienDuContact; onClick: () => voi
 }
 
 /* « Ses biens » sur une fiche : lus dans la rubrique Biens, avec « Créer un
-   bien » qui ouvre la rubrique, ce contact déjà propriétaire. */
-export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false }: {
-  clientId: string; prenom: string; onNavigate: (page: string, data?: unknown) => void; toujours?: boolean;
+   bien » qui ouvre la rubrique, ce contact déjà propriétaire. Un bloc qui se
+   replie (V3.17) : replié sur la fiche d'un acheteur, ouvert sur celle d'un
+   vendeur (`ouvertAuDebut`). */
+export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false, ouvertAuDebut = false }: {
+  clientId: string; prenom: string; onNavigate: (page: string, data?: unknown) => void; toujours?: boolean; ouvertAuDebut?: boolean;
 }) {
   const [biens, setBiens] = useState<BienDuContact[] | null>(null);
   useEffect(() => {
@@ -191,18 +195,15 @@ export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false 
   }, [clientId]);
   if (!biens || (!biens.length && !toujours)) return null;
   return (
-    <section className={c.bloc}>
-      <div className={c.blocT}>
-        <span className={c.blocIc}><Ic n="maison" t={15} /></span>
-        <h3>{'Ses biens'}<i>{biens.length ? ` · ${biens.length}` : ''}</i></h3>
-        <button type="button" className={c.lien} onClick={() => { demanderNouveauBien(clientId); onNavigate('biens'); }}>+ Créer un bien</button>
-      </div>
+    <BlocRepliable ic="maison" titre="Ses biens" n={biens.length} ouvertAuDebut={ouvertAuDebut}
+      resume={biens.length ? biens.slice(0, 2).map(x => { const e = etapeDe(x.etape); return <span key={x.id} style={{ background: '#f4f7fb', color: e.c }}><span className={c.point} style={{ background: e.c }} />{e.court}</span>; }) : undefined}
+      action={<button type="button" className={c.lien} onClick={() => { demanderNouveauBien(clientId); onNavigate('biens'); }}>+ Créer<span className={sd.rpLong}> un bien</span></button>}>
       {biens.length ? (
         <div className={c.biensMini} style={{ borderTop: 'none', paddingTop: 0 }}>
           {biens.map(b => <LigneBien key={b.id} b={b} onClick={() => onNavigate('biens', { bien: b.id })} />)}
         </div>
       ) : <div className={c.pied}>{`Aucun bien pour l’instant. « Créer un bien » ouvre la rubrique Biens, ${prenom || 'ce contact'} déjà propriétaire : estimation, mandat, tout y est.`}</div>}
-    </section>
+    </BlocRepliable>
   );
 }
 

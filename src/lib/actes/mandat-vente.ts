@@ -31,6 +31,7 @@ import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, lignes, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence,
   PERSONNE_VIDE, plusMois, veille, annexeL215, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
+  ouiNon, IC_RYTHME, HONO_MODES, TANTIEMES_BASES, personneRegistre,
   type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance, type CaseSignature,
 } from './commun';
 
@@ -102,6 +103,25 @@ export function argent(d: Donnees): Argent {
 /* Le mandat est-il soumis au droit de rétractation ? Signé hors de
    l'agence ou à distance, avec un particulier : oui. */
 export const retractation = (d: Donnees) => lieuDe(d) === 'domicile' || lieuDe(d) === 'distance';
+
+/* Ce que le registre des mandats inscrit (V3.18). */
+export function registreVente(d: Donnees): { nature: 'vente'; type_mandat: string; mandants: string; objet: string } {
+  const vs = vendeursDe(d).filter(p => p.nom.trim() || p.prenom.trim());
+  const mandants = d.qui === 'sci'
+    ? [[txt(d, 'sciNom'), txt(d, 'sciForme')].filter(Boolean).join(', '), txt(d, 'sciSiege') ? `siège ${txt(d, 'sciSiege')}` : '', txt(d, 'sciRcs'),
+      vs[0] ? `représentée par ${nomComplet(vs[0])}` : ''].filter(Boolean).join(', ')
+    : vs.map(personneRegistre).join(' ; ');
+  const prix = num(d, 'prix');
+  const objet = [objetVente(d), prix ? `prix de présentation ${euros(prix)}` : ''].filter(Boolean).join(' · ');
+  return { nature: 'vente', type_mandat: typeDe(d), mandants, objet };
+}
+/* Le bien, en une ligne : adresse, description, lots (le registre, la
+   délégation). */
+export function objetVente(d: Donnees): string {
+  const lieu = [txt(d, 'adresse'), [txt(d, 'cp'), txt(d, 'ville')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const lots = estCopro(d) ? lignes(d, 'lots').map(l => l.numero).filter(Boolean) : [];
+  return [lieu, couper(txt(d, 'description'), 140), lots.length ? `lot${lots.length > 1 ? 's' : ''} n° ${lots.join(', ')}` : ''].filter(Boolean).join(' · ');
+}
 
 export function vendeursDe(d: Donnees): Personne[] {
   const l = lirePersonnes(d.vendeurs);
@@ -178,83 +198,83 @@ function guidePoints(d: Donnees): { ic?: string; x: string }[] {
   ];
 }
 
-/* ══ Les questions ══════════════════════════════════════════════════════ */
+/* ══ Les questions ══════════════════════════════════════════════════════
+   V3.18 : huit étapes courtes (qui vend, sa situation, le bien, la
+   copropriété, le mandat et sa durée, le prix et les honoraires, les
+   engagements, la signature), rangées en blocs ; chaque réponse a son
+   dessin. Les réponses, les clés et le texte n'ont pas changé. */
 const ETAPES: Etape[] = [
   {
-    id: 'qui', titre: 'Qui vend', sous: 'Ce que la fiche client connaissait est déjà rempli.', vers: 'Entre les soussignés', ic: 'personne',
+    id: 'qui', titre: 'Qui vend', court: 'Qui vend', sous: 'Ce que la fiche client connaissait est déjà rempli.', vers: 'Entre les soussignés', ic: 'personne',
     champs: [
-      { t: 'choix', cle: 'qui', lib: 'Qui vend ?', tuiles: true, options: [
+      { t: 'choix', cle: 'qui', lib: 'Qui vend ?', ic: 'personne', tuiles: true, options: [
         { v: 'personne', l: 'Une personne', aide: 'Seule propriétaire du bien.', ic: 'personne' },
         { v: 'couple', l: 'Un couple', aide: 'Mariés, pacsés, ou ni l’un ni l’autre.', ic: 'couple' },
         { v: 'indivision', l: 'Plusieurs propriétaires', aide: 'Une succession, des frères et sœurs…', ic: 'groupe' },
         { v: 'sci', l: 'Une société (SCI)', aide: 'Le gérant signe pour elle.', ic: 'immeuble' },
       ] },
       { t: 'guide', cle: 'g-qui', titre: guideTitre, points: guidePoints },
-      { t: 'choix', cle: 'situation', lib: 'Sa situation', ic: 'personne', si: d => d.qui === 'personne', options: [
-        { v: 'celibataire', l: 'Célibataire' }, { v: 'marie', l: 'Mariée ou marié' }, { v: 'pacse', l: 'Pacsée ou pacsé' },
-        { v: 'divorce', l: 'Divorcée ou divorcé' }, { v: 'veuf', l: 'Veuve ou veuf' },
-      ] },
-      { t: 'choix', cle: 'logementFamille', lib: 'Le bien est-il le logement de la famille ?', ic: 'maison', si: d => d.qui === 'personne' && d.situation === 'marie',
-        options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
-        aide: 'Même s’il n’appartient qu’à lui ou à elle, le conjoint doit donner son accord pour vendre le logement de la famille (article 215 du Code civil).' },
-      { t: 'texte', cle: 'conjoint', lib: 'Le conjoint, qui donne son accord', ic: 'couple', large: true, requis: true, exemple: 'Madame Claire MARTIN', si: aConjoint },
-      { t: 'choix', cle: 'lien', lib: 'Ils sont…', ic: 'couple', si: d => d.qui === 'couple', options: [
-        { v: 'maries', l: 'Mariés' }, { v: 'pacses', l: 'Pacsés' }, { v: 'aucun', l: 'Ni l’un ni l’autre' },
-      ] },
-      { t: 'choix', cle: 'regime', lib: 'Sous quel régime ?', ic: 'livre', si: d => d.qui === 'couple' && d.lien === 'maries', options: [
-        { v: 'communaute', l: 'Sans contrat (communauté légale)' }, { v: 'separation', l: 'Séparation de biens' },
-        { v: 'universelle', l: 'Communauté universelle' }, { v: 'participation', l: 'Participation aux acquêts' }, { v: 'autre', l: 'Autre' },
-      ], aide: 'Le régime est écrit dans le livret de famille (ou le contrat de mariage). Sans contrat, un bien acheté pendant le mariage appartient aux deux.' },
-      { t: 'texte', cle: 'regimeAutre', lib: 'Précisez le régime', large: true, si: d => d.qui === 'couple' && d.lien === 'maries' && d.regime === 'autre' },
       { t: 'titre', cle: 't-sci', lib: 'La société', ic: 'immeuble', si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', requis: true, si: d => d.qui === 'sci', exemple: 'SCI DES LILAS' },
-      { t: 'texte', cle: 'sciForme', lib: 'Forme et capital', si: d => d.qui === 'sci', exemple: 'Société civile immobilière au capital de 1 000 €' },
+      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', ic: 'immeuble', requis: true, si: d => d.qui === 'sci', exemple: 'SCI DES LILAS' },
+      { t: 'texte', cle: 'sciForme', lib: 'Forme et capital', ic: 'doc', si: d => d.qui === 'sci', exemple: 'Société civile immobilière au capital de 1 000 €' },
       { t: 'texte', cle: 'sciSiege', lib: 'Siège social', ic: 'lieu', large: true, requis: true, si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789', aide: 'Sur l’extrait Kbis.' },
-      { t: 'personnes', cle: 'vendeurs', lib: 'Les vendeurs', un: 'Vendeur', min: 1, max: 6, complet: d => d.qui !== 'sci',
+      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', ic: 'livre', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789', aide: 'Sur l’extrait Kbis.' },
+      { t: 'titre', cle: 't-vendeurs', lib: 'Les vendeurs', ic: 'couple', aide: 'Leur état civil, tel que l’acte le reprendra.' },
+      { t: 'personnes', cle: 'vendeurs', lib: 'Les vendeurs', ic: 'personne', un: 'Vendeur', min: 1, max: 6, complet: d => d.qui !== 'sci',
         bornes: d => (d.qui === 'couple' ? { min: 2, max: 2 } : d.qui === 'indivision' ? { min: 2, max: 6 } : { min: 1, max: 1 }),
         nomCarte: (d, i) => (d.qui === 'sci' ? 'Le gérant qui signe' : d.qui === 'personne' ? 'Le vendeur' : d.qui === 'indivision' ? `Propriétaire ${i + 1}` : `Vendeur ${i + 1}`),
         ajouter: d => (d.qui === 'indivision' ? 'Ajouter un propriétaire' : 'Ajouter un vendeur') },
-      { t: 'texte', cle: 'sciPouvoir', lib: 'Qualité du signataire', large: true, si: d => d.qui === 'sci', exemple: 'gérant, en vertu des statuts', aide: 'Si les statuts l’exigent, joins la décision des associés qui autorise la vente.' },
+      { t: 'texte', cle: 'sciPouvoir', lib: 'Qualité du signataire', ic: 'plume', large: true, si: d => d.qui === 'sci', exemple: 'gérant, en vertu des statuts', aide: 'Si les statuts l’exigent, joins la décision des associés qui autorise la vente.' },
+    ],
+  },
+  {
+    id: 'situation', titre: 'Sa situation', court: 'Situation', sous: 'Sa situation de famille, qui signe, et ce qu’il faut savoir en plus.', vers: 'Entre les soussignés', ic: 'couple',
+    champs: [
+      { t: 'titre', cle: 't-famille', lib: 'La famille', ic: 'couple', si: d => d.qui === 'personne' || d.qui === 'couple' },
+      { t: 'choix', cle: 'situation', lib: 'Sa situation', ic: 'personne', si: d => d.qui === 'personne', options: [
+        { v: 'celibataire', l: 'Célibataire', ic: 'personne' }, { v: 'marie', l: 'Mariée ou marié', ic: 'alliances' }, { v: 'pacse', l: 'Pacsée ou pacsé', ic: 'coeur' },
+        { v: 'divorce', l: 'Divorcée ou divorcé', ic: 'rompu' }, { v: 'veuf', l: 'Veuve ou veuf', ic: 'fleur' },
+      ] },
+      { t: 'choix', cle: 'logementFamille', lib: 'Le bien est-il le logement de la famille ?', ic: 'maison', si: d => d.qui === 'personne' && d.situation === 'marie',
+        options: ouiNon(),
+        aide: 'Même s’il n’appartient qu’à lui ou à elle, le conjoint doit donner son accord pour vendre le logement de la famille (article 215 du Code civil).' },
+      { t: 'texte', cle: 'conjoint', lib: 'Le conjoint, qui donne son accord', ic: 'couple', large: true, requis: true, exemple: 'Madame Claire MARTIN', si: aConjoint },
+      { t: 'choix', cle: 'lien', lib: 'Ils sont…', ic: 'couple', si: d => d.qui === 'couple', options: [
+        { v: 'maries', l: 'Mariés', ic: 'alliances' }, { v: 'pacses', l: 'Pacsés', ic: 'coeur' }, { v: 'aucun', l: 'Ni l’un ni l’autre', ic: 'couple' },
+      ] },
+      { t: 'choix', cle: 'regime', lib: 'Sous quel régime ?', ic: 'livre', si: d => d.qui === 'couple' && d.lien === 'maries', options: [
+        { v: 'communaute', l: 'Sans contrat (communauté légale)', ic: 'couple' }, { v: 'separation', l: 'Séparation de biens', ic: 'separation' },
+        { v: 'universelle', l: 'Communauté universelle', ic: 'globe' }, { v: 'participation', l: 'Participation aux acquêts', ic: 'balance' }, { v: 'autre', l: 'Autre', ic: 'points' },
+      ], aide: 'Le régime est écrit dans le livret de famille (ou le contrat de mariage). Sans contrat, un bien acheté pendant le mariage appartient aux deux.' },
+      { t: 'texte', cle: 'regimeAutre', lib: 'Précisez le régime', ic: 'plume', large: true, si: d => d.qui === 'couple' && d.lien === 'maries' && d.regime === 'autre' },
       { t: 'choix', cle: 'represente', lib: 'L’un représente l’autre ?', ic: 'plume', si: d => d.qui === 'couple', options: [
-        { v: 'non', l: 'Non, les deux signent' }, { v: '0', l: 'Le premier représente le second' }, { v: '1', l: 'Le second représente le premier' },
+        { v: 'non', l: 'Non, les deux signent', ic: 'couple' }, { v: '0', l: 'Le premier représente le second', ic: 'fleche' }, { v: '1', l: 'Le second représente le premier', ic: 'retour' },
       ], aide: 'Seulement avec une procuration écrite, jointe au mandat.' },
-      { t: 'titre', cle: 't-plus', lib: 'Pour finir', ic: 'info' },
-      { t: 'choix', cle: 'fiscal', lib: 'Résidence fiscale en France ?', ic: 'fiscal', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
+      { t: 'titre', cle: 't-plus', lib: 'À savoir aussi', ic: 'info' },
+      { t: 'choix', cle: 'fiscal', lib: 'Résidence fiscale en France ?', ic: 'fiscal', options: ouiNon() },
       { t: 'texte', cle: 'notaire', lib: 'Notaire du vendeur', ic: 'balance', large: true, exemple: 'Me Durand, notaire à Boulogne-Billancourt', aide: 'Facultatif. Pour une succession : le notaire qui la règle.' },
       { t: 'zone', cle: 'noteVendeurs', lib: 'Une précision ?', ic: 'plume', large: true, aide: 'Note libre, imprimée sous les vendeurs. Ex : « M. Martin est l’interlocuteur pour les visites. »' },
     ],
   },
   {
-    id: 'bien', titre: 'Le bien', sous: 'Ce qui sera vendu, tel que l’acte le décrira.', vers: 'Le bien', ic: 'maison',
+    id: 'bien', titre: 'Le bien', court: 'Le bien', sous: 'Ce qui sera vendu, tel que l’acte le décrira.', vers: 'Le bien', ic: 'maison',
     champs: [
-      { t: 'choix', cle: 'nature', lib: 'Nature', tuiles: true, options: [
+      { t: 'choix', cle: 'nature', lib: 'Nature', ic: 'maison', tuiles: true, options: [
         { v: 'appartement', l: 'Appartement', ic: 'immeuble' }, { v: 'maison', l: 'Maison', ic: 'maison' },
         { v: 'terrain', l: 'Terrain', ic: 'terrain' }, { v: 'autre', l: 'Autre', ic: 'plus' },
       ] },
+      { t: 'titre', cle: 't-adresse', lib: 'Où il se trouve', ic: 'lieu' },
       { t: 'texte', cle: 'adresse', lib: 'Adresse', ic: 'lieu', large: true, requis: true, exemple: '12 rue des Lilas' },
-      { t: 'texte', cle: 'cp', lib: 'Code postal', requis: true },
-      { t: 'texte', cle: 'ville', lib: 'Ville', requis: true },
+      { t: 'texte', cle: 'cp', lib: 'Code postal', ic: 'mail', requis: true },
+      { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
       { t: 'zone', cle: 'description', lib: 'Description', ic: 'doc', large: true, requis: true, exemple: 'un appartement de 4 pièces au 3e étage avec ascenseur : entrée, séjour, cuisine, deux chambres, salle de bains, WC' },
-      { t: 'choix', cle: 'copro', lib: 'En copropriété ?', ic: 'immeuble', si: d => d.nature !== 'terrain', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
-        aide: 'Une maison peut l’être aussi (maisons groupées autour de parties communes).' },
-      { t: 'titre', cle: 't-lots', lib: 'Les lots', ic: 'lots', si: estCopro },
-      { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', si: estCopro, options: [
-        { v: '1000', l: '1 000 (millièmes)' }, { v: '10000', l: '10 000' }, { v: '100000', l: '100 000' },
-      ], aide: 'C’est le règlement de copropriété qui le fixe : regarde sur le titre de propriété ou un appel de charges.' },
-      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', un: 'Lot', max: 12, large: true, si: estCopro, icone: iconeLot, colonnes: [
-        { cle: 'numero', lib: 'N° du lot', exemple: '12' },
-        { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
-        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}` },
-      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking…' },
-      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: estCopro, aide: 'Celle du lot principal, mesurée par un professionnel.' },
-      { t: 'texte', cle: 'carrezPar', lib: 'Mesurée par', si: estCopro, exemple: 'Diag Expert, le 3 septembre 2026' },
+      { t: 'titre', cle: 't-surf', lib: 'Surfaces et cadastre', ic: 'regle' },
       { t: 'nombre', cle: 'surfaceHab', lib: 'Surface habitable', ic: 'regle', unite: 'm²', si: d => d.nature !== 'terrain' && !estCopro(d),
         aide: 'Indicative : hors copropriété, la loi Carrez ne s’applique pas. Si tu l’indiques, elle doit rester exacte.' },
       { t: 'nombre', cle: 'terrain', lib: 'Surface du terrain', ic: 'terrain', unite: 'm²', si: d => d.nature === 'maison' || d.nature === 'terrain' },
       { t: 'texte', cle: 'cadastre', lib: 'Références cadastrales', ic: 'plan', large: true, exemple: 'section AB n° 123', aide: 'Sur l’avis de taxe foncière ou le titre de propriété. Indispensable pour une maison ou un terrain.' },
       { t: 'titre', cle: 't-occ', lib: 'Le jour de la vente', ic: 'cle' },
-      { t: 'choix', cle: 'occupation', lib: 'Le bien sera…', tuiles: true, options: [
+      { t: 'choix', cle: 'occupation', lib: 'Le bien sera…', ic: 'cle', tuiles: true, options: [
         { v: 'libre', l: 'Libre', ic: 'cle' }, { v: 'vendeur', l: 'Libéré par le vendeur', ic: 'sac' }, { v: 'loue', l: 'Loué', ic: 'bail' },
       ] },
       { t: 'zone', cle: 'bail', lib: 'Le bail', ic: 'bail', large: true, si: d => d.occupation === 'loue', exemple: 'bail d’habitation du 1er mars 2024, loyer de 1 450 € par mois hors charges' },
@@ -263,58 +283,75 @@ const ETAPES: Etape[] = [
     ],
   },
   {
-    id: 'prix', titre: 'Prix et mandat', sous: 'Le type de mandat, le prix, les honoraires, la durée.', vers: 'Prix', reperesApres: 'semiMontant', ic: 'euro',
+    id: 'copro', titre: 'La copropriété', court: 'Copropriété', sous: 'Les lots vendus, leurs tantièmes, la surface Carrez.', vers: 'Le bien', ic: 'immeuble',
     champs: [
-      { t: 'choix', cle: 'type', lib: 'Quel mandat ?', tuiles: true, options: [
+      { t: 'guide', cle: 'g-terrain', si: d => d.nature === 'terrain', titre: () => 'Un terrain : rien à remplir ici', points: () => [
+        { ic: 'terrain', x: 'Un terrain n’est pas en copropriété. Passe à l’étape suivante.' },
+      ] },
+      { t: 'choix', cle: 'copro', lib: 'En copropriété ?', ic: 'immeuble', si: d => d.nature !== 'terrain', options: [{ v: 'oui', l: 'Oui', ic: 'immeuble' }, { v: 'non', l: 'Non', ic: 'maison' }],
+        aide: 'Une maison peut l’être aussi (maisons groupées autour de parties communes).' },
+      { t: 'titre', cle: 't-lots', lib: 'Les lots', ic: 'lots', si: estCopro },
+      { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: estCopro, options: TANTIEMES_BASES,
+        aide: 'C’est le règlement de copropriété qui le fixe : regarde sur le titre de propriété ou un appel de charges.' },
+      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 12, large: true, si: estCopro, icone: iconeLot, colonnes: [
+        { cle: 'numero', lib: 'N° du lot', exemple: '12' },
+        { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
+        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}` },
+      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking…' },
+      { t: 'titre', cle: 't-carrez', lib: 'La surface Carrez', ic: 'regle', si: estCopro },
+      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: estCopro, aide: 'Celle du lot principal, mesurée par un professionnel.' },
+      { t: 'texte', cle: 'carrezPar', lib: 'Mesurée par', ic: 'personne', si: estCopro, exemple: 'Diag Expert, le 3 septembre 2026' },
+    ],
+  },
+  {
+    id: 'mandat', titre: 'Le mandat et sa durée', court: 'Mandat et durée', sous: 'Simple, semi-exclusif ou exclusif, et combien de temps.', vers: 'Durée', ic: 'cadenas',
+    champs: [
+      { t: 'choix', cle: 'type', lib: 'Quel mandat ?', ic: 'cadenas', tuiles: true, options: [
         { v: 'simple', l: 'Simple', aide: 'Le vendeur reste libre : il vend seul ou par d’autres agences.', ic: 'ouvert' },
         { v: 'semi', l: 'Semi-exclusif', aide: 'Aucune autre agence ; il peut encore vendre seul.', ic: 'bouclier' },
         { v: 'exclusif', l: 'Exclusif', aide: 'Toi seul, pendant la durée du mandat.', ic: 'cadenas' },
       ] },
-      { t: 'euros', cle: 'prix', lib: 'Prix de présentation', ic: 'etiquette', requis: true, aide: 'Le prix affiché dans les annonces.' },
-      { t: 'choix', cle: 'charge', lib: 'Les honoraires sont à la charge…', tuiles: true, options: [
-        { v: 'acquereur', l: 'De l’acquéreur', aide: 'Compris dans le prix affiché.', ic: 'cle' },
-        { v: 'vendeur', l: 'Du vendeur', aide: 'Déduits du prix de vente.', ic: 'maison' },
-      ] },
-      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', ic: 'euro', options: [{ v: 'taux', l: 'Un pourcentage' }, { v: 'forfait', l: 'Un forfait' }] },
-      { t: 'nombre', cle: 'taux', lib: 'Taux', ic: 'pourcent', unite: '% TTC', si: d => d.honoMode !== 'forfait', aide: `Ton barème : ${String(BAREME_VENTE).replace('.', ',')} % TTC au plus.` },
-      { t: 'euros', cle: 'forfait', lib: 'Forfait', ic: 'euro', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
-      { t: 'choix', cle: 'semiDirect', lib: 'S’il vend lui-même, sans intermédiaire', si: d => d.type === 'semi', options: [
-        { v: 'aucun', l: 'Aucun honoraire' }, { v: 'reduits', l: 'Des honoraires réduits' },
-      ] },
-      { t: 'euros', cle: 'semiMontant', lib: 'Honoraires réduits', unite: '€ TTC', si: d => d.type === 'semi' && d.semiDirect === 'reduits' },
       { t: 'titre', cle: 't-duree', lib: 'La durée', ic: 'calendrier' },
       { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true,
         aide: 'La phrase « passé un délai de trois mois… » (art. 78 du décret de 1972) reste même pour un mandat plus court : la loi l’attache à l’exclusivité, à la clause pénale et à la clause « pas de vente en direct ». Elle ne joue que si le mandat dure plus de trois mois.' },
-      { t: 'choix', cle: 'dureeMode', lib: 'À son terme', tuiles: true, options: [
+      { t: 'choix', cle: 'dureeMode', lib: 'À son terme', ic: 'drapeau', tuiles: true, options: [
         { v: 'fixe', l: 'Il prend fin', aide: 'Sans suite : on en signe un autre si besoin.', ic: 'drapeau' },
         { v: 'prorogation', l: 'Il se poursuit', aide: 'Par périodes, jusqu’à une limite totale.', ic: 'boucle' },
       ] },
-      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
-      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
-      { t: 'titre', cle: 't-sig', lib: 'La signature', ic: 'plume' },
-      CHAMP_SIGNATURE,
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
-        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez le vendeur', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
-      ], aide: 'Hors de l’agence ou à distance, le vendeur a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
-      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', si: d => retractation(d), options: [
-        { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera sur place' },
-      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
-      { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
-      { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
-      { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
+      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', ic: 'boucle', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
+      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', ic: 'drapeau', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
     ],
   },
   {
-    id: 'engagements', titre: 'Engagements', sous: 'Ce que tu fais pour vendre, et comment tu en rends compte.', vers: 'Engagements de l’Agence', ic: 'etoile',
+    id: 'prix', titre: 'Prix et honoraires', court: 'Prix et honoraires', sous: 'Le prix affiché, qui paie les honoraires, et combien.', vers: 'Prix', reperesApres: 'semiMontant', ic: 'euro',
+    champs: [
+      { t: 'euros', cle: 'prix', lib: 'Prix de présentation', ic: 'etiquette', requis: true, aide: 'Le prix affiché dans les annonces.' },
+      { t: 'choix', cle: 'charge', lib: 'Les honoraires sont à la charge…', ic: 'euro', tuiles: true, options: [
+        { v: 'acquereur', l: 'De l’acquéreur', aide: 'Compris dans le prix affiché.', ic: 'cle' },
+        { v: 'vendeur', l: 'Du vendeur', aide: 'Déduits du prix de vente.', ic: 'maison' },
+      ] },
+      { t: 'titre', cle: 't-hono', lib: 'Les honoraires', ic: 'euro' },
+      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', ic: 'euro', options: HONO_MODES },
+      { t: 'nombre', cle: 'taux', lib: 'Taux', ic: 'pourcent', unite: '% TTC', si: d => d.honoMode !== 'forfait', aide: `Ton barème : ${String(BAREME_VENTE).replace('.', ',')} % TTC au plus.` },
+      { t: 'euros', cle: 'forfait', lib: 'Forfait', ic: 'euro', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
+      { t: 'choix', cle: 'semiDirect', lib: 'S’il vend lui-même, sans intermédiaire', ic: 'bouclier', si: d => d.type === 'semi', options: [
+        { v: 'aucun', l: 'Aucun honoraire', ic: 'ouvert' }, { v: 'reduits', l: 'Des honoraires réduits', ic: 'pourcent' },
+      ] },
+      { t: 'euros', cle: 'semiMontant', lib: 'Honoraires réduits', ic: 'euro', unite: '€ TTC', si: d => d.type === 'semi' && d.semiDirect === 'reduits' },
+    ],
+  },
+  {
+    id: 'engagements', titre: 'Engagements', court: 'Engagements', sous: 'Ce que tu fais pour vendre, et comment tu en rends compte.', vers: 'Engagements de l’Agence', ic: 'etoile',
     champs: [
       { t: 'cases', cle: 'actions', lib: 'Ce que tu t’engages à faire', ic: 'etoile', options: ACTIONS.map(a => ({ v: a.v, l: a.l, ic: a.ic })) },
-      { t: 'choix', cle: 'rythme', lib: 'Comptes rendus', ic: 'horloge', options: Object.entries(RYTHMES).map(([v, l]) => ({ v, l: l.charAt(0).toUpperCase() + l.slice(1) })) },
+      { t: 'choix', cle: 'rythme', lib: 'Comptes rendus', ic: 'horloge', options: Object.entries(RYTHMES).map(([v, l]) => ({ v, l: l.charAt(0).toUpperCase() + l.slice(1), ic: IC_RYTHME[v] })) },
       { t: 'cases', cle: 'pouvoirs', lib: 'Pouvoirs donnés à l’agence', ic: 'cle', options: [
         { v: 'syndic', l: 'Demander les pièces au syndic', ic: 'immeuble' }, { v: 'cles', l: 'Détenir les clés', ic: 'cle' }, { v: 'delegation', l: 'Déléguer à un confrère', ic: 'accord' },
-      ] },
-      { t: 'nombre', cle: 'suite', lib: 'Pas de vente en direct à un acquéreur présenté, pendant le mandat et', unite: 'mois après', aide: '12 mois au plus. Au-delà, plus rien n’est dû.' },
-      { t: 'choix', cle: 'memePrix', lib: 'Le même prix dans toutes les agences ?', si: d => d.type === 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }] },
-      { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type !== 'simple', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
+      ], aide: '« Déléguer à un confrère » est coché d’office : tu pourras confier la vente à un confrère sans avenant.' },
+      { t: 'titre', cle: 't-clauses', lib: 'Les clauses', ic: 'balance' },
+      { t: 'nombre', cle: 'suite', lib: 'Pas de vente en direct à un acquéreur présenté, pendant le mandat et', ic: 'chrono', unite: 'mois après', aide: '12 mois au plus. Au-delà, plus rien n’est dû.' },
+      { t: 'choix', cle: 'memePrix', lib: 'Le même prix dans toutes les agences ?', ic: 'etiquette', si: d => d.type === 'simple', options: ouiNon() },
+      { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type !== 'simple', options: ouiNon(),
         aide: 'S’il ne respecte pas l’exclusivité, il doit une indemnité égale aux honoraires. Elle est imprimée en caractères très apparents, comme la loi l’exige.' },
       /* V3.17 : « ni jointe, ni mentionnée » — le mandat seul, sans la phrase
          qui dit que l'information a été remise. */
@@ -333,6 +370,22 @@ const ETAPES: Etape[] = [
         ...(retractation(d) ? [{ ic: 'retour', x: 'Le formulaire de rétractation, parce qu’il est signé hors de l’agence ou à distance (obligatoire).' }] : []),
       ] },
       { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, aide: 'Imprimée telle quelle, avant les signatures.' },
+    ],
+  },
+  {
+    id: 'signature', titre: 'La signature', court: 'Signature', sous: 'Comment, où, et le numéro du registre.', vers: 'Date et signatures', ic: 'plume',
+    champs: [
+      CHAMP_SIGNATURE,
+      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', ic: 'lieu', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
+        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez le vendeur', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
+      ], aide: 'Hors de l’agence ou à distance, le vendeur a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
+      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', ic: 'eclair', si: d => retractation(d), options: [
+        { v: 'oui', l: 'Oui, il le demande', ic: 'eclair' }, { v: 'non', l: 'Non, il attend', ic: 'horloge' }, { v: '', l: 'Il cochera sur place', ic: 'plume' },
+      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
+      { t: 'titre', cle: 't-registre', lib: 'Le registre et la date', ic: 'livre' },
+      { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
+      { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
+      { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
   },
 ];
@@ -505,7 +558,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     'faire toute publicité utile, avec les photographies et la description du bien ;',
     ...(pouvoirs.includes('syndic') ? ['demander au syndic de copropriété les documents nécessaires à la vente ;'] : []),
     ...(pouvoirs.includes('cles') ? ['détenir les clés du bien pour les visites, contre récépissé ;'] : []),
-    ...(pouvoirs.includes('delegation') ? ['se faire assister d’un autre professionnel habilité, sans frais supplémentaires pour le MANDANT et sous sa propre responsabilité ;'] : []),
+    ...(pouvoirs.includes('delegation') ? [`déléguer tout ou partie de sa mission à un autre professionnel titulaire de la carte « Transactions sur immeubles et fonds de commerce », pour vendre le bien dans les meilleures conditions, sans frais supplémentaires pour le MANDANT ; l’Agence reste responsable envers lui de la personne qu’elle se substitue (article 1994 du Code civil) et l’informe de toute délégation ;`] : []),
     'transmettre au MANDANT les offres reçues et l’accompagner dans la négociation.',
   ];
   const pouvoirsBlocs: Bloc[] = [
@@ -677,12 +730,17 @@ function reperes(d: Donnees, etape: string): Repere[] {
     if (a.net !== null && a.prix) out.push({ l: 'Net vendeur', v: euros(a.net), ton: 'ok' });
     if (!a.forfait && a.taux !== null && a.taux > BAREME_VENTE) out.push({ l: 'Au-dessus de ton barème', v: `Ton barème affiché est de ${pourcent(BAREME_VENTE)} TTC au plus : un taux supérieur ne peut pas être appliqué.`, ton: 'alerte' });
     if (a.forfait && a.prix && a.forfait > (a.prix * BAREME_VENTE) / 100) out.push({ l: 'Au-dessus de ton barème', v: `Ce forfait dépasse ${pourcent(BAREME_VENTE)} du prix.`, ton: 'alerte' });
+  }
+  /* V3.18 : chaque repère suit la question qu'il commente dans ses étapes. */
+  if (etape === 'mandat') {
     const duree = num(d, 'duree');
     if (duree !== null && d.dureeMode === 'prorogation' && (num(d, 'dureeMax') ?? 12) < duree) out.push({ l: 'Durée', v: 'La limite totale est plus courte que la première période.', ton: 'alerte' });
-    if (!txt(d, 'numero')) out.push({ l: 'Registre des mandats', v: 'Réserve le numéro avant de faire signer : il doit figurer sur le mandat.', ton: 'alerte' });
   }
+  if (etape === 'signature' && !txt(d, 'numero')) out.push({ l: 'Registre des mandats', v: 'Réserve le numéro avant de faire signer : il doit figurer sur le mandat.', ton: 'alerte' });
   if (etape === 'bien') {
     if ((d.nature === 'maison' || d.nature === 'terrain') && !txt(d, 'cadastre')) out.push({ l: 'Conseil', v: 'Pour une maison ou un terrain, les références cadastrales identifient le bien sans ambiguïté.', ton: 'alerte' });
+  }
+  if (etape === 'copro') {
     if (estCopro(d) && !lignes(d, 'lots').length) out.push({ l: 'Copropriété', v: 'Indique au moins le lot principal : c’est lui que l’acte vendra.', ton: 'alerte' });
     if (estCopro(d) && !num(d, 'carrez')) out.push({ l: 'Loi Carrez', v: 'La surface Carrez sera obligatoire dans l’avant-contrat : autant la demander dès maintenant.' });
   }
@@ -777,7 +835,7 @@ function defaut(c: Contexte): Donnees {
     semiDirect: 'aucun',
     duree: 3, dureeMode: 'prorogation', periode: 3, dureeMax: 12,
     signature: 'papier', lieu: 'agence', execution: '', numero: '', faitA: c.identite.ville, date: aujourdhui(),
-    actions: ACTIONS_DEFAUT, rythme: 'semaine', pouvoirs: ['syndic'], suite: 12, memePrix: 'non', penale: 'non', infoJointe: 'oui',
+    actions: ACTIONS_DEFAUT, rythme: 'semaine', pouvoirs: ['syndic', 'delegation'], suite: 12, memePrix: 'non', penale: 'non', infoJointe: 'oui',
   };
 }
 
@@ -808,6 +866,7 @@ export const MANDAT_VENTE: Modele = {
   entete: d => `Mandat de vente ${TYPES[typeDe(d)].nom}${txt(d, 'numero') ? ` n° ${txt(d, 'numero')}` : ''}`,
   manques,
   numero: true,
+  registre: registreVente,
   badge: d => TYPES[typeDe(d)].court,
   reperes,
   echeances,

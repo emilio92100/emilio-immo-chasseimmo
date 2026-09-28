@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { STATUTS, jourLong, modele, type Categorie, type Statut } from '@/lib/actes';
 import { Ic } from './ApercuActe';
+import BlocRepliable from './BlocRepliable';
 import { libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
 import s from './Documents.module.css';
 
@@ -22,7 +23,7 @@ export function Pastille({ statut, courrier = false }: { statut: Statut; courrie
   return <span className={`${s.statut} ${s.statutFort} ${s['t_' + e.ton]}`}><Ic n={PICTO_STATUT[statut] || 'crayon'} t={13} e={2.6} />{libStatut(statut, courrier)}</span>;
 }
 
-const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle' };
+const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle', delegations: 'accord' };
 const VISIBLES = 5;
 
 type Element = {
@@ -116,18 +117,14 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
   const montres = tout ? liste : liste.slice(0, VISIBLES);
 
   return (
-    <section className={s.dcBloc}>
-      <div className={s.dcTete}>
-        <span className={s.dcIc}><Ic n="doc" t={15} /></span>
-        <h3>{'Ses documents'}<i>{liste.length ? ` · ${liste.length}` : ''}</i></h3>
-        <button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { nouveau: clientId })}>+ Nouveau document</button>
-      </div>
-      {liste.length > 0 && (signes > 0 || aSigner > 0) && (
-        <div className={s.dcCompte}>
+    <BlocRepliable ic="doc" titre="Ses documents" n={liste.length}
+      resume={liste.length > 0 && (signes > 0 || aSigner > 0) ? (
+        <>
           {signes > 0 && <span className={s.dcOk}><Ic n="check" t={12} e={2.8} />{`${signes} signé${signes > 1 ? 's' : ''}`}</span>}
-          {aSigner > 0 && <span className={s.dcAttente}><Ic n="plume" t={12} e={2.4} />{`${aSigner} à faire signer ou à envoyer`}</span>}
-        </div>
-      )}
+          {aSigner > 0 && <span className={s.dcAttente}><Ic n="plume" t={12} e={2.4} />{`${aSigner} à signer`}</span>}
+        </>
+      ) : undefined}
+      action={<button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { nouveau: clientId })}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
       {liste.length ? (
         <div className={s.dcListe}>
           {montres.map(el => (
@@ -153,6 +150,6 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate }: {
       ) : (
         <div className={s.dcVide}>{`Aucun document pour ${prenom || 'ce client'} pour l’instant. Un mandat, un avenant, un bon de visite ou une offre rattaché à lui apparaîtra ici, avec son exemplaire signé.`}</div>
       )}
-    </section>
+    </BlocRepliable>
   );
 }

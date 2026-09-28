@@ -33,6 +33,7 @@ import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, plusMois, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence, formulaireType, annexeL215,
   PERSONNE_VIDE, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
+  ouiNon, IC_RYTHME, HONO_MODES, personneRegistre,
   type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type CaseSignature,
 } from './commun';
 import { echeances } from './mandat-vente';
@@ -89,6 +90,20 @@ function acquereursDe(d: Donnees): Personne[] {
   return out;
 }
 const plusieurs = (d: Donnees) => d.qui === 'couple' || d.qui === 'plusieurs';
+/* Ce que le registre des mandats inscrit (V3.18). */
+export function registreRecherche(d: Donnees): { nature: 'recherche'; type_mandat: string; mandants: string; objet: string } {
+  const as = acquereursDe(d).filter(p => p.nom.trim() || p.prenom.trim());
+  const mandants = d.qui === 'sci'
+    ? [[txt(d, 'sciNom'), txt(d, 'sciForme')].filter(Boolean).join(', '), txt(d, 'sciSiege') ? `siège ${txt(d, 'sciSiege')}` : '', txt(d, 'sciRcs'),
+      as[0] ? `représentée par ${nomComplet(as[0])}` : ''].filter(Boolean).join(', ')
+    : as.map(personneRegistre).join(' ; ');
+  const prix = num(d, 'prixMax');
+  const objet = [objetRecherche(d), prix ? `prix d’achat maximum ${euros(prix)} hors honoraires` : ''].filter(Boolean).join(' · ');
+  return { nature: 'recherche', type_mandat: typeDe(d), mandants, objet };
+}
+/* Le bien recherché, en une ligne (le registre, la délégation). */
+export const objetRecherche = (d: Donnees) => 'Recherche : ' + couper(decrireRecherche(rechercheDe(d)), 180);
+
 const nomMandant = (d: Donnees) => (d.qui === 'sci' ? txt(d, 'sciNom') || 'La société' : nomsCourts(acquereursDe(d)));
 
 function guideTitre(d: Donnees): string {
@@ -134,6 +149,8 @@ function argent(d: Donnees): Argent {
 }
 
 export const retractation = (d: Donnees) => lieuDe(d) === 'domicile' || lieuDe(d) === 'distance';
+/* Le prix maximum et les honoraires (la délégation les rappelle). */
+export const argentRecherche = (d: Donnees) => argent(d);
 
 /* La recherche telle que decrireRecherche() l'attend (la même phrase que
    le mandat en ligne). */
@@ -150,11 +167,15 @@ function rechercheDe(d: Donnees): Recherche {
 }
 
 /* ══ Les questions ══════════════════════════════════════════════════════ */
+/* V3.18 : six étapes courtes (qui achète, le bien recherché, le mandat et
+   sa durée, le prix et les honoraires, les engagements, la signature),
+   rangées en blocs ; chaque réponse a son dessin. Les réponses, les clés et
+   le texte n'ont pas changé. */
 const ETAPES: Etape[] = [
   {
-    id: 'qui', titre: 'Qui achète', sous: 'Ce que la fiche client connaissait est déjà rempli.', vers: 'Entre les soussignés', ic: 'personne',
+    id: 'qui', titre: 'Qui achète', court: 'Qui achète', sous: 'Ce que la fiche client connaissait est déjà rempli.', vers: 'Entre les soussignés', ic: 'personne',
     champs: [
-      { t: 'choix', cle: 'qui', lib: 'Qui achète ?', tuiles: true, options: [
+      { t: 'choix', cle: 'qui', lib: 'Qui achète ?', ic: 'personne', tuiles: true, options: [
         { v: 'personne', l: 'Une personne', aide: 'Elle achète seule.', ic: 'personne' },
         { v: 'couple', l: 'Un couple', aide: 'Mariés, pacsés, ou ni l’un ni l’autre.', ic: 'couple' },
         { v: 'plusieurs', l: 'Plusieurs acheteurs', aide: 'Une famille, des amis…', ic: 'groupe' },
@@ -162,86 +183,101 @@ const ETAPES: Etape[] = [
       ] },
       { t: 'guide', cle: 'g-qui', titre: guideTitre, points: guidePoints },
       { t: 'titre', cle: 't-sci', lib: 'La société', ic: 'immeuble', si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', requis: true, si: d => d.qui === 'sci', exemple: 'SCI DES LILAS' },
-      { t: 'texte', cle: 'sciForme', lib: 'Forme et capital', si: d => d.qui === 'sci', exemple: 'Société civile immobilière au capital de 1 000 €' },
+      { t: 'texte', cle: 'sciNom', lib: 'Nom de la société', ic: 'immeuble', requis: true, si: d => d.qui === 'sci', exemple: 'SCI DES LILAS' },
+      { t: 'texte', cle: 'sciForme', lib: 'Forme et capital', ic: 'doc', si: d => d.qui === 'sci', exemple: 'Société civile immobilière au capital de 1 000 €' },
       { t: 'texte', cle: 'sciSiege', lib: 'Siège social', ic: 'lieu', large: true, requis: true, si: d => d.qui === 'sci' },
-      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789', aide: 'Sur l’extrait Kbis.' },
-      { t: 'personnes', cle: 'acquereurs', lib: 'Les acheteurs', un: 'Acheteur', min: 1, max: 6, complet: d => d.qui !== 'sci',
+      { t: 'texte', cle: 'sciRcs', lib: 'Immatriculation', ic: 'livre', si: d => d.qui === 'sci', exemple: 'RCS de Nanterre n° 123 456 789', aide: 'Sur l’extrait Kbis.' },
+      { t: 'titre', cle: 't-acheteurs', lib: 'Les acheteurs', ic: 'couple', aide: 'Leur état civil, tel que le mandat le reprendra.' },
+      { t: 'personnes', cle: 'acquereurs', lib: 'Les acheteurs', ic: 'personne', un: 'Acheteur', min: 1, max: 6, complet: d => d.qui !== 'sci',
         bornes: d => (d.qui === 'couple' ? { min: 2, max: 2 } : d.qui === 'plusieurs' ? { min: 2, max: 6 } : { min: 1, max: 1 }),
         nomCarte: (d, i) => (d.qui === 'sci' ? 'Le gérant qui signe' : d.qui === 'personne' ? 'L’acheteur' : `Acheteur ${i + 1}`),
         ajouter: () => 'Ajouter un acheteur' },
-      { t: 'texte', cle: 'sciPouvoir', lib: 'Qualité du signataire', large: true, si: d => d.qui === 'sci', exemple: 'gérant, en vertu des statuts' },
+      { t: 'texte', cle: 'sciPouvoir', lib: 'Qualité du signataire', ic: 'plume', large: true, si: d => d.qui === 'sci', exemple: 'gérant, en vertu des statuts' },
       { t: 'choix', cle: 'represente', lib: 'L’un représente l’autre ?', ic: 'plume', si: d => d.qui === 'couple', options: [
-        { v: 'non', l: 'Non, les deux signent' }, { v: '0', l: 'Le premier représente le second' }, { v: '1', l: 'Le second représente le premier' },
+        { v: 'non', l: 'Non, les deux signent', ic: 'couple' }, { v: '0', l: 'Le premier représente le second', ic: 'fleche' }, { v: '1', l: 'Le second représente le premier', ic: 'retour' },
       ], aide: 'Seulement avec une procuration écrite, jointe au mandat.' },
       { t: 'zone', cle: 'noteAcquereurs', lib: 'Une précision ?', ic: 'plume', large: true, aide: 'Note libre, imprimée sous les acheteurs.' },
     ],
   },
   {
-    id: 'recherche', titre: 'Le bien recherché', sous: 'Repris de sa recherche : l’essentiel, sans l’enfermer.', vers: 'Le bien recherché', ic: 'loupe',
+    id: 'recherche', titre: 'Le bien recherché', court: 'Le bien recherché', sous: 'Repris de sa recherche : l’essentiel, sans l’enfermer.', vers: 'Le bien recherché', ic: 'loupe',
     champs: [
       { t: 'cases', cle: 'types', lib: 'Il cherche', ic: 'maison', options: TYPES_BIEN },
-      { t: 'texte', cle: 'typeAutre', lib: 'Précisez', large: true, si: d => liste(d, 'types').includes('autre'), exemple: 'un loft, un local à transformer…' },
+      { t: 'texte', cle: 'typeAutre', lib: 'Précisez', ic: 'plume', large: true, si: d => liste(d, 'types').includes('autre'), exemple: 'un loft, un local à transformer…' },
+      { t: 'titre', cle: 't-taille', lib: 'La taille', ic: 'regle' },
       { t: 'nombre', cle: 'pieces', lib: 'Pièces', ic: 'plan', unite: 'pièces environ' },
-      { t: 'nombre', cle: 'chambres', lib: 'Dont chambres', unite: 'chambres' },
+      { t: 'nombre', cle: 'chambres', lib: 'Dont chambres', ic: 'lit', unite: 'chambres' },
       { t: 'nombre', cle: 'surface', lib: 'Surface', ic: 'regle', unite: 'm² environ ou plus' },
+      { t: 'titre', cle: 't-ou', lib: 'Où, et pour quoi faire', ic: 'lieu' },
       { t: 'zone', cle: 'secteurs', lib: 'Où', ic: 'lieu', large: true, requis: true, exemple: 'Boulogne-Billancourt, Paris 16e', aide: 'Séparés par des virgules. Le mandat ajoute « ou à proximité ».' },
       { t: 'zone', cle: 'criteres', lib: 'Ses critères essentiels', ic: 'etoile', large: true, exemple: 'un extérieur, pas de rez-de-chaussée', aide: 'Facultatif, imprimé tel quel. Seulement l’essentiel : le reste vit dans son espace et peut évoluer.' },
       { t: 'choix', cle: 'usage', lib: 'Pour en faire', ic: 'cle', options: [
-        { v: 'principale', l: 'Sa résidence principale' }, { v: 'secondaire', l: 'Une résidence secondaire' }, { v: 'locatif', l: 'Un investissement locatif' }, { v: '', l: 'Ne pas le dire' },
+        { v: 'principale', l: 'Sa résidence principale', ic: 'maison' }, { v: 'secondaire', l: 'Une résidence secondaire', ic: 'soleil' }, { v: 'locatif', l: 'Un investissement locatif', ic: 'bail' }, { v: '', l: 'Ne pas le dire', ic: 'oeilBarre' },
       ] },
     ],
   },
   {
-    id: 'prix', titre: 'Prix et mandat', sous: 'Le type de mandat, le prix maximum, les honoraires, la durée.', vers: 'Prix', reperesApres: 'forfait', ic: 'euro',
+    id: 'mandat', titre: 'Le mandat et sa durée', court: 'Mandat et durée', sous: 'Simple ou exclusif, et combien de temps.', vers: 'Durée', ic: 'cadenas',
     champs: [
-      { t: 'choix', cle: 'type', lib: 'Quel mandat ?', tuiles: true, options: [
+      { t: 'choix', cle: 'type', lib: 'Quel mandat ?', ic: 'cadenas', tuiles: true, options: [
         { v: 'simple', l: 'Simple', aide: 'Il reste libre de chercher seul et par d’autres agences.', ic: 'ouvert' },
         { v: 'exclusif', l: 'Exclusif', aide: 'Toi seul cherches pour lui pendant le mandat.', ic: 'cadenas' },
       ] },
-      { t: 'euros', cle: 'prixMax', lib: 'Prix d’achat maximum', ic: 'etiquette', unite: '€ hors honoraires', requis: true, aide: 'Hors honoraires : ils viennent en plus. Le repère ci-dessous donne son budget total.' },
-      { t: 'choix', cle: 'financement', lib: 'Il achètera', ic: 'banque', options: [
-        { v: 'pret', l: 'Avec un prêt' }, { v: 'comptant', l: 'Sans prêt' }, { v: '', l: 'Ne pas le dire' },
-      ] },
-      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', ic: 'euro', options: [{ v: 'taux', l: 'Un pourcentage' }, { v: 'forfait', l: 'Un forfait' }] },
-      { t: 'nombre', cle: 'taux', lib: 'Taux', ic: 'pourcent', unite: '% TTC', si: d => d.honoMode !== 'forfait',
-        aide: `Ton taux habituel : ${String(HONORAIRES_TAUX).replace('.', ',')} % TTC. Ton barème : ${String(BAREME).replace('.', ',')} % TTC au plus.` },
-      { t: 'euros', cle: 'forfait', lib: 'Forfait', ic: 'euro', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
       { t: 'titre', cle: 't-duree', lib: 'La durée', ic: 'calendrier' },
       { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true },
-      { t: 'choix', cle: 'dureeMode', lib: 'À son terme', tuiles: true, options: [
+      { t: 'choix', cle: 'dureeMode', lib: 'À son terme', ic: 'drapeau', tuiles: true, options: [
         { v: 'fixe', l: 'Il prend fin', aide: 'Sans suite : on en signe un autre si besoin.', ic: 'drapeau' },
         { v: 'prorogation', l: 'Il se poursuit', aide: 'Par périodes, jusqu’à une limite totale.', ic: 'boucle' },
       ] },
-      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
-      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
-      { t: 'titre', cle: 't-sig', lib: 'La signature', ic: 'plume' },
-      CHAMP_SIGNATURE,
-      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
-        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez lui', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
-      ], aide: 'Hors de l’agence ou à distance, il a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
-      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', si: retractation, options: [
-        { v: 'oui', l: 'Oui, il le demande' }, { v: 'non', l: 'Non, il attend' }, { v: '', l: 'Il cochera sur place' },
-      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
-      { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
-      { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
-      { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
+      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', ic: 'boucle', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
+      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', ic: 'drapeau', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
     ],
   },
   {
-    id: 'engagements', titre: 'Engagements', sous: 'Ce que tu fais pour lui, et comment tu en rends compte.', vers: 'Engagements de l’Agence', ic: 'etoile',
+    id: 'prix', titre: 'Prix et honoraires', court: 'Prix et honoraires', sous: 'Le prix maximum, son financement, tes honoraires.', vers: 'Prix', reperesApres: 'forfait', ic: 'euro',
+    champs: [
+      { t: 'euros', cle: 'prixMax', lib: 'Prix d’achat maximum', ic: 'etiquette', unite: '€ hors honoraires', requis: true, aide: 'Hors honoraires : ils viennent en plus. Le repère ci-dessous donne son budget total.' },
+      { t: 'choix', cle: 'financement', lib: 'Il achètera', ic: 'banque', options: [
+        { v: 'pret', l: 'Avec un prêt', ic: 'banque' }, { v: 'comptant', l: 'Sans prêt', ic: 'euro' }, { v: '', l: 'Ne pas le dire', ic: 'oeilBarre' },
+      ] },
+      { t: 'titre', cle: 't-hono', lib: 'Tes honoraires', ic: 'euro' },
+      { t: 'choix', cle: 'honoMode', lib: 'Honoraires', ic: 'euro', options: HONO_MODES },
+      { t: 'nombre', cle: 'taux', lib: 'Taux', ic: 'pourcent', unite: '% TTC', si: d => d.honoMode !== 'forfait',
+        aide: `Ton taux habituel : ${String(HONORAIRES_TAUX).replace('.', ',')} % TTC. Ton barème : ${String(BAREME).replace('.', ',')} % TTC au plus.` },
+      { t: 'euros', cle: 'forfait', lib: 'Forfait', ic: 'euro', unite: '€ TTC', si: d => d.honoMode === 'forfait' },
+    ],
+  },
+  {
+    id: 'engagements', titre: 'Engagements', court: 'Engagements', sous: 'Ce que tu fais pour lui, et comment tu en rends compte.', vers: 'Engagements de l’Agence', ic: 'etoile',
     champs: [
       { t: 'cases', cle: 'actions', lib: 'Ce que tu t’engages à faire', ic: 'etoile', options: ACTIONS.map(a => ({ v: a.v, l: a.l, ic: a.ic })) },
-      { t: 'choix', cle: 'rythme', lib: 'Comptes rendus, en plus d’un après chaque visite', ic: 'horloge', options: Object.entries(RYTHMES).map(([v, l]) => ({ v, l: l.charAt(0).toUpperCase() + l.slice(1) })) },
-      { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type === 'exclusif', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non' }],
-        aide: 'S’il achète en chargeant une autre agence de sa recherche pendant le mandat, il doit une indemnité égale à tes honoraires. Elle ne joue que s’il achète réellement. Il reste libre d’acheter seul un bien trouvé par lui-même.' },
-      { t: 'nombre', cle: 'suite', lib: 'Pas d’achat sans toi d’un bien présenté, pendant le mandat et', unite: 'mois après', aide: 'Un bien que tu lui as présenté ou fait visiter. 12 mois au plus.' },
+      { t: 'choix', cle: 'rythme', lib: 'Comptes rendus, en plus d’un après chaque visite', ic: 'horloge', options: Object.entries(RYTHMES).map(([v, l]) => ({ v, l: l.charAt(0).toUpperCase() + l.slice(1), ic: IC_RYTHME[v] })) },
       { t: 'cases', cle: 'pouvoirs', lib: 'Pouvoirs donnés à l’agence', ic: 'cle', options: [
         { v: 'renseignements', l: 'Demander les documents aux vendeurs', ic: 'doc' }, { v: 'offres', l: 'Transmettre ses offres écrites', ic: 'accord' }, { v: 'delegation', l: 'Déléguer à un confrère', ic: 'groupe' },
-      ] },
-      { t: 'choix', cle: 'infoJointe', lib: 'Joindre l’information précontractuelle', ic: 'info', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non, remise à part' }],
+      ], aide: '« Déléguer à un confrère » est coché d’office : tu pourras confier la recherche à un confrère sans avenant.' },
+      { t: 'titre', cle: 't-clauses', lib: 'Les clauses', ic: 'balance' },
+      { t: 'choix', cle: 'penale', lib: 'Clause pénale', ic: 'balance', si: d => d.type === 'exclusif', options: ouiNon(),
+        aide: 'S’il achète en chargeant une autre agence de sa recherche pendant le mandat, il doit une indemnité égale à tes honoraires. Elle ne joue que s’il achète réellement. Il reste libre d’acheter seul un bien trouvé par lui-même.' },
+      { t: 'nombre', cle: 'suite', lib: 'Pas d’achat sans toi d’un bien présenté, pendant le mandat et', ic: 'chrono', unite: 'mois après', aide: 'Un bien que tu lui as présenté ou fait visiter. 12 mois au plus.' },
+      { t: 'choix', cle: 'infoJointe', lib: 'Joindre l’information précontractuelle', ic: 'info', options: [{ v: 'oui', l: 'Oui', ic: 'trombone' }, { v: 'non', l: 'Non, remise à part', ic: 'envoyer' }],
         aide: 'Avec un particulier, elle est obligatoire avant la signature. Jointe, elle forme la 2e partie du document.' },
       { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, aide: 'Imprimée telle quelle, avant les signatures.' },
+    ],
+  },
+  {
+    id: 'signature', titre: 'La signature', court: 'Signature', sous: 'Comment, où, et le numéro du registre.', vers: 'Date et signatures', ic: 'plume',
+    champs: [
+      CHAMP_SIGNATURE,
+      { t: 'choix', cle: 'lieu', lib: 'Où sera-t-il signé ?', ic: 'lieu', tuiles: true, si: d => modeSignature(d) !== 'en_ligne', options: [
+        { v: 'agence', l: 'À l’agence', ic: 'agence' }, { v: 'domicile', l: 'Chez lui', ic: 'maison' }, { v: 'distance', l: 'À distance', ic: 'ecran' },
+      ], aide: 'Hors de l’agence ou à distance, il a 14 jours pour se rétracter : le mandat le dit, avec le formulaire.' },
+      { t: 'choix', cle: 'execution', lib: 'Commencer avant la fin des 14 jours ?', ic: 'eclair', si: retractation, options: [
+        { v: 'oui', l: 'Oui, il le demande', ic: 'eclair' }, { v: 'non', l: 'Non, il attend', ic: 'horloge' }, { v: '', l: 'Il cochera sur place', ic: 'plume' },
+      ], aide: 'En ligne ou sur place, « Oui » lui fait cocher lui-même une case à part en signant : c’est sa demande expresse.' },
+      { t: 'titre', cle: 't-registre', lib: 'Le registre et la date', ic: 'livre' },
+      { t: 'texte', cle: 'numero', lib: 'N° du registre des mandats', ic: 'livre', requis: true, aide: 'Celui que tu réserves dans ton registre (ImmoFacile). Il doit figurer sur le mandat avant la signature.' },
+      { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
+      { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },
     ],
   },
 ];
@@ -370,7 +406,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     'rechercher des biens correspondant à la recherche du MANDANT, et les visiter ;',
     ...(pouvoirs.includes('renseignements') ? ['demander aux vendeurs, à leurs mandataires et aux syndics de copropriété les renseignements et documents utiles ;'] : []),
     ...(pouvoirs.includes('offres') ? ['transmettre aux vendeurs, ou à leurs mandataires, les offres d’achat écrites et signées du MANDANT ;'] : []),
-    ...(pouvoirs.includes('delegation') ? ['se faire assister d’un autre professionnel habilité, sans frais supplémentaires pour le MANDANT et sous sa propre responsabilité ;'] : []),
+    ...(pouvoirs.includes('delegation') ? [`déléguer tout ou partie de sa mission à un autre professionnel titulaire de la carte « Transactions sur immeubles et fonds de commerce », pour trouver le bien recherché dans les meilleures conditions, sans frais supplémentaires pour le MANDANT ; l’Agence reste responsable envers lui de la personne qu’elle se substitue (article 1994 du Code civil) et l’informe de toute délégation ;`] : []),
     'négocier pour son compte le prix et les conditions de l’acquisition.',
   ];
   const pouvoirsBlocs: Bloc[] = [
@@ -526,10 +562,13 @@ function reperes(d: Donnees, etape: string): Repere[] {
     if (a.total && budget && a.total > budget) out.push({ l: 'Au-dessus de sa fiche', v: `Son budget enregistré est de ${euros(budget)}, honoraires compris.`, ton: 'alerte' });
     if (!a.forfait && a.taux !== null && a.taux > BAREME) out.push({ l: 'Au-dessus de ton barème', v: `Ton barème affiché est de ${pourcent(BAREME)} TTC au plus : un taux supérieur ne peut pas être appliqué.`, ton: 'alerte' });
     if (a.forfait && a.prix && a.forfait > (a.prix * BAREME) / 100) out.push({ l: 'Au-dessus de ton barème', v: `Ce forfait dépasse ${pourcent(BAREME)} du prix maximum : le mandat le ramènera à ${pourcent(BAREME)} du prix.`, ton: 'alerte' });
+  }
+  /* V3.18 : chaque repère suit la question qu'il commente dans ses étapes. */
+  if (etape === 'mandat') {
     const duree = num(d, 'duree');
     if (duree !== null && d.dureeMode === 'prorogation' && (num(d, 'dureeMax') ?? 12) < duree) out.push({ l: 'Durée', v: 'La limite totale est plus courte que la première période.', ton: 'alerte' });
-    if (!txt(d, 'numero')) out.push({ l: 'Registre des mandats', v: 'Réserve le numéro avant de faire signer : il doit figurer sur le mandat.', ton: 'alerte' });
   }
+  if (etape === 'signature' && !txt(d, 'numero')) out.push({ l: 'Registre des mandats', v: 'Réserve le numéro avant de faire signer : il doit figurer sur le mandat.', ton: 'alerte' });
   if (etape === 'engagements' && typeDe(d) === 'exclusif' && !liste(d, 'actions').length) {
     out.push({ l: 'Mandat exclusif', v: 'La loi impose de dire ce que tu feras pour lui : coche au moins une action.', ton: 'alerte' });
   }
@@ -609,7 +648,7 @@ function defaut(c: Contexte): Donnees {
     duree: 12, dureeMode: 'fixe', periode: 3, dureeMax: 12,
     signature: 'papier', lieu: 'agence', execution: '', numero, faitA: c.identite.ville, date: aujourdhui(),
     actions: ACTIONS_DEFAUT, rythme: 'semaine', penale: 'non', suite: 12,
-    pouvoirs: ['renseignements', 'offres'], infoJointe: 'oui',
+    pouvoirs: ['renseignements', 'offres', 'delegation'], infoJointe: 'oui',
   };
 }
 
@@ -656,6 +695,7 @@ export const MANDAT_RECHERCHE: Modele = {
   entete: d => `Mandat de recherche ${TYPES[typeDe(d)].nom}${txt(d, 'numero') ? ` n° ${txt(d, 'numero')}` : ''}`,
   manques,
   numero: true,
+  registre: registreRecherche,
   badge: d => TYPES[typeDe(d)].court,
   reperes,
   echeances,

@@ -12,7 +12,10 @@
 .blocT { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .blocT h2 { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 800; color: var(--emilio); }
 .blocT span { font-size: 12.5px; color: #94a3b8; }
-.modeles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+/* Les deux endroits où descend le sous-menu Documents (V3.18). */
+.ancre { scroll-margin-top: 16px; }
+.listeT { margin: 6px 0 -6px; }
+.modeles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .modele {
   position: relative; display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px 16px 14px;
   background: white; border: 1px solid #e3e8f0; border-radius: 16px; cursor: pointer; font-family: inherit;
@@ -391,6 +394,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 /* ═══ LE TÉLÉPHONE ═══════════════════════════════════════════════════════ */
 @media (max-width: 1100px) {
   .modeles { grid-template-columns: 1fr 1fr; }
+  .modeles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .edCorps { grid-template-columns: 1fr; }
   .edApercu { border-left: none; }
   .edCorps[data-vue='form'] .edApercu { display: none; }
@@ -540,16 +544,66 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .saisieVive *, .saisieVive *::before, .saisieVive *::after { animation: none !important; transition: none !important; }
 }
 
+/* ── V3.18 · l'éditeur des documents, comme celui des biens ──
+   Portée par `.saisieDoc` (avec `.saisieVive`) : chaque question est une
+   carte — pastille, titre en gros, et la saisie dans le même cadre. Les
+   personnes gardent leur fiche ; leur en-tête grossit un peu. */
+.saisieDoc .chQ { padding: 14px 16px 16px; gap: 11px; }
+.saisieDoc .chQ > .chLib { font-size: 15px; line-height: 1.35; }
+.saisieDoc .chQ .input { background: white; font-size: 15px; padding: 11px 13px; border-radius: 12px; border-color: #dbe3ee; }
+.saisieDoc .chQ .input:focus { border-color: #c9a84c; }
+.saisieDoc .chQ textarea.input { min-height: 88px; }
+.saisieDoc .chQ .chAide { font-size: 12.5px; }
+.saisieDoc .chQ:focus-within { border-color: #e3cf8e; box-shadow: 0 0 0 3px rgba(201,168,76,.12); }
+.saisieDoc .chPers { gap: 10px; }
+.saisieDoc .chPers > .chLib { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 800; }
+.saisieDoc .perso { border-color: #e2e8f1; box-shadow: 0 2px 8px rgba(46,65,102,.05); }
+.saisieDoc .persoT { padding: 12px 14px; background: linear-gradient(180deg, #fafbfd 0%, #f3f6fa 100%); }
+.saisieDoc .persoT b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 800; }
+.saisieDoc .persoT .ligneIc { width: 32px; height: 32px; border-radius: 10px; background: var(--emilio-fond); color: #e3c872; border: none; }
+.saisieDoc .persoCorps .input { font-size: 14.5px; }
+.saisieDoc .guide { margin: 0; }
+.saisieDoc .reperes { margin-top: 2px; }
+@media (max-width: 760px) {
+  .saisieDoc .chQ { padding: 12px 12px 14px; }
+  .saisieDoc .grille { grid-template-columns: 1fr; }
+  .saisieDoc .persoCorps { grid-template-columns: 1fr; }
+}
+
+/* ── Un bloc qui se replie (BlocRepliable, V3.17) : « Ses biens »,
+   « Ses documents ». Replié, une ligne ; la flèche fait signe à l'arrivée. */
+.rpBloc { background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 1px 3px rgba(15,23,42,.03); min-width: 0; transition: box-shadow .2s, border-color .2s; }
+.rpBloc[data-ouvert='oui'] { border-color: #d9e1ec; box-shadow: 0 6px 18px rgba(46,65,102,.07); }
+.rpTete { display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 12px; }
+.rpBascule { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 2px 0; cursor: pointer; text-align: left; font-family: inherit; color: var(--emilio); }
+.rpIc { flex-shrink: 0; width: 32px; height: 32px; border-radius: 10px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; }
+.rpTitre { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; white-space: nowrap; }
+.rpN { flex-shrink: 0; min-width: 24px; height: 22px; padding: 0 7px; border-radius: 99px; background: var(--emilio-fond); color: #e3c872; font: 800 12px 'DM Sans', sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+.rpResume { display: inline-flex; gap: 6px; min-width: 0; overflow: hidden; }
+.rpResume > span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font: 700 12px 'DM Sans', sans-serif; white-space: nowrap; }
+.rpChevron { margin-left: auto; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #f1f4f8; color: var(--emilio); display: inline-flex; align-items: center; justify-content: center; transition: transform .3s cubic-bezier(.2,.8,.3,1), background .2s, color .2s; }
+.rpBascule:hover .rpChevron { background: #e6ecf4; }
+.rpBloc[data-ouvert='oui'] .rpChevron { transform: rotate(180deg); background: var(--emilio-fond); color: #e3c872; }
+.rpBloc[data-ouvert='non'] .rpChevron { animation: rpInvite 1.3s ease .9s 2; }
+@keyframes rpInvite { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(4px); } 55% { transform: translateY(-1px); } }
+.rpCorps { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s cubic-bezier(.2,.8,.3,1); }
+.rpBloc[data-ouvert='oui'] .rpCorps { grid-template-rows: 1fr; }
+.rpCorpsIn { min-height: 0; overflow: hidden; }
+.rpCorpsPad { padding: 2px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .rpChevron, .rpCorps { transition: none; }
+  .rpBloc[data-ouvert='non'] .rpChevron { animation: none; }
+}
+@media (max-width: 560px) {
+  .rpResume { display: none; }
+  .rpTitre { font-size: 15px; }
+  .rpTete { gap: 8px; padding: 9px 12px 9px 10px; }
+  .rpLong { display: none; }
+}
+
 /* ── « Ses documents », sur la fiche d'un client (V3.17) ── */
-.dcBloc { background: white; border: 1px solid #e3e8f0; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; box-shadow: 0 1px 3px rgba(15,23,42,.03); }
-.dcTete { display: flex; align-items: center; gap: 9px; }
-.dcTete h3 { margin: 0; flex: 1 1 auto; min-width: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 800; color: var(--emilio); }
-.dcTete h3 i { font-style: normal; color: #94a3b8; font-weight: 700; }
-.dcIc { flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; }
-.dcLien { flex-shrink: 0; border: none; background: none; padding: 4px 0; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.dcLien { flex-shrink: 0; border: none; background: none; padding: 4px 0; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
 .dcLien:hover { text-decoration: underline; text-underline-offset: 3px; }
-.dcCompte { display: flex; flex-wrap: wrap; gap: 6px; }
-.dcCompte > span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font: 700 12px 'DM Sans', sans-serif; }
 .dcOk { background: #f0fdf4; color: #166534; }
 .dcAttente { background: #eff6ff; color: #1d4ed8; }
 .dcListe { display: flex; flex-direction: column; gap: 6px; }
@@ -578,7 +632,6 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .dcPlus { align-self: flex-start; border: none; background: none; padding: 4px 2px; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
 .dcVide { font-size: 12.5px; color: #94a3b8; line-height: 1.55; }
 @media (max-width: 640px) {
-  .dcBloc { padding: 14px 14px; }
   .dcOuvrir { flex-wrap: wrap; row-gap: 6px; }
   .dcTexte { flex-basis: calc(100% - 45px); }
   .dcOuvrir > .statut { margin-left: 45px; }

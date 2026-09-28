@@ -246,7 +246,7 @@ export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }
             )}
 
             {lien === 'mandat' && mandat?.client_id ? (
-              <div className={s.chAide}>{`Le client est repris du mandat${mandat.client ? ` : ${mandat.client}` : ''}. Le document sera rangé sur sa fiche.`}</div>
+              <div className={s.chAide}>{`Le client est repris du mandat${mandat.client ? ` : ${mandat.client}` : ''}. Le document sera rangé sur sa fiche${m.interne ? ', sans jamais apparaître dans son espace' : ''}.`}</div>
             ) : (lien !== 'mandat' || mandat || sansMandat) && (
             <div className={s.champLigne}>
               <label htmlFor="nd-client">{lien === 'mandat' ? 'Le client (pour ranger le document sur sa fiche)' : 'Le client'}</label>
@@ -358,7 +358,7 @@ export default function NouveauDocument({ modeleId, clientId, onFermer, onCree }
           {etape === 2 && !modeleId && <button type="button" className={s.btn} disabled={travail} onClick={() => setEtape(1)}>Changer de modèle</button>}
           {etape === 2 && (
             <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail || (lien === 'mandat' && !mandat && !sansMandat)} onClick={creer}>
-              {travail ? 'Préparation…' : lien === 'mandat' && !mandat && !sansMandat ? 'Choisis un mandat' : lien === 'mandat' && mandat ? `Préparer ${m?.courrier ? 'le courrier' : 'l’avenant'}` : client ? 'Créer le document' : 'Créer un document vierge'}
+              {travail ? 'Préparation…' : lien === 'mandat' && !mandat && !sansMandat ? 'Choisis un mandat' : lien === 'mandat' && mandat ? `Préparer ${m?.courrier ? 'le courrier' : m?.id === 'delegation' ? 'la délégation' : 'l’avenant'}` : client ? 'Créer le document' : 'Créer un document vierge'}
             </button>
           )}
         </div>

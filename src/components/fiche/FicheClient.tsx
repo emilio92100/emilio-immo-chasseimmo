@@ -2864,24 +2864,19 @@ Emilio Immobilier
         );
       })()}
       <div className={styles.contentWrap}>
-        {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
-        <div style={{ marginBottom: 16 }} className="fc-biens-vente"><BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} /></div>
-        {/* Ses documents : tout ce qui lui est rattaché, signé ou en cours, avec l'exemplaire signé (V3.17). */}
-        <div style={{ marginBottom: 16 }}><DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} /></div>
-        {/* LE LIEN DE L'ESPACE CLIENT, tout en haut */}
+        {/* LE LIEN DE L'ESPACE CLIENT, juste sous le nom */}
         {rechercheActive && (
           <div style={{ marginBottom: 16 }}>
             <LienEspace recherche={rechercheActive} client={client} />
           </div>
         )}
 
-        {/* Le mail « Où en est votre recherche ? » : quand il partira, ce que
-            le client a répondu, et l'interrupteur pour l'exclure. */}
-        {client.id && (
-          <div style={{ marginBottom: 16 }}>
-            <PointAuto clientId={client.id} />
-          </div>
-        )}
+        {/* Il vend aussi (ses biens de la rubrique Biens, rien s'il n'en a
+            pas) et ses documents : deux blocs repliés, côte à côte (V3.17). */}
+        <div className={styles.replis}>
+          <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
+          <DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
+        </div>
 
         {/* LES CRITÈRES — sur toute la largeur depuis que le mandat est remonté */}
         <div className={styles.infoRow}>
@@ -3197,6 +3192,10 @@ Emilio Immobilier
                 </div>
               )}
             </div>
+            {/* Le mail « Où en est votre recherche ? » : quand il partira, ce que
+                le client a répondu, et l'interrupteur pour l'exclure. Dans le
+                bloc de la recherche, en pied (V3.17) : plus de blanc entre les deux. */}
+            {client.id && <PointAuto clientId={client.id} integre />}
           </div>
 
         </div>

@@ -7,7 +7,7 @@ import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 import { etatMandat, finRetractationPour, rechercheDepuis, masquerEmail, type Mandant, type Societe } from '@/lib/mandat';
-import { lireReserve } from '@/lib/mandat-serveur';
+import { lireReserve, signeSansNumero } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 import { modele } from '@/lib/actes';
 import type { DocEspace } from '@/components/espace/SignatureMandat';
@@ -341,7 +341,7 @@ export default async function PageEspace({ params, searchParams }: {
     mandat_date_signature: recherche.mandat_date_signature, mandat_date_expiration: recherche.mandat_date_expiration,
     mandat_numero: recherche.mandat_numero,
   });
-  if (etatM === 'sans_numero' && reserve.approuveLe && reserve.numeros.length) etatM = 'a_signer';
+  if (etatM === 'sans_numero' && signeSansNumero(reserve, recherche.mandat_propose_le)) etatM = 'a_signer';
   const coord = coordRes.data || null;
   const prefill: Mandant = derniereSig && derniereSig.statut === 'en_cours' && derniereSig.mandant
     ? derniereSig.mandant as Mandant
@@ -424,6 +424,8 @@ export default async function PageEspace({ params, searchParams }: {
       : { data: [] as { document_id: string; jeton: string | null; statut: string; personne: { email?: string } | null; lien_expire_le: string | null }[] };
     for (const x of elec) {
       const m = modele(x.modele as string);
+      /* Entre professionnels (la délégation à un confrère) : jamais ici. */
+      if (m?.interne) continue;
       const titre = m ? m.entete(x.donnees || {}) : (x.titre as string) || 'Document';
       if (x.statut === 'signe') documents.push({ id: x.id as string, titre, etat: 'signe', le: x.signe_le as string | null });
       else {

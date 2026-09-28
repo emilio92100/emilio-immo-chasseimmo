@@ -27,42 +27,49 @@ import {
 
 const ETAPES: Etape[] = [
   {
-    id: 'qui', titre: 'L’acquéreur et le bien', sous: 'Qui fait l’offre, et pour quel bien.', vers: 'Entre les soussignés', ic: 'personne',
+    id: 'qui', titre: 'L’acquéreur', court: 'L’acquéreur', sous: 'Qui fait l’offre : son état civil complet.', vers: 'Entre les soussignés', ic: 'personne',
     champs: [
-      { t: 'personnes', cle: 'acquereurs', lib: 'Les acquéreurs', un: 'Acquéreur', min: 1, max: 4, complet: true },
+      { t: 'personnes', cle: 'acquereurs', lib: 'Les acquéreurs', ic: 'personne', un: 'Acquéreur', min: 1, max: 4, complet: true },
+    ],
+  },
+  {
+    id: 'bien', titre: 'Le bien', court: 'Le bien', sous: 'Le bien visé, son vendeur, son prix annoncé.', vers: 'Le bien', ic: 'maison',
+    champs: [
       { t: 'titre', cle: 't-bien', lib: 'Le bien', ic: 'maison' },
       { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true },
-      { t: 'texte', cle: 'ville', lib: 'Ville', requis: true },
+      { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
       { t: 'zone', cle: 'description', lib: 'Le bien', ic: 'doc', large: true, exemple: 'un appartement de 4 pièces au 3e étage, avec une cave (lots n° 12 et 31)' },
+      { t: 'titre', cle: 't-vendeur', lib: 'Le vendeur', ic: 'personne' },
       { t: 'texte', cle: 'vendeurNom', lib: 'Le vendeur', ic: 'personne', exemple: 'M. et Mme Dubois', aide: 'Si tu le connais. Sinon, l’offre s’adresse « au propriétaire ».' },
       { t: 'texte', cle: 'agenceVendeur', lib: 'Agence du vendeur', ic: 'agence', exemple: 'Agence du Parc, Boulogne', aide: 'Si le bien est proposé par une autre agence : c’est elle qui transmet l’offre au vendeur.' },
       { t: 'euros', cle: 'prixAffiche', lib: 'Prix annoncé', ic: 'etiquette' },
     ],
   },
   {
-    id: 'prix', titre: 'Le prix et le financement', sous: 'Ce qu’il propose, et comment il paie.', vers: 'Le prix offert', reperesApres: 'honoRecherche', ic: 'euro',
+    id: 'prix', titre: 'Le prix et le financement', court: 'Prix et financement', sous: 'Ce qu’il propose, et comment il paie.', vers: 'Le prix offert', reperesApres: 'honoRecherche', ic: 'euro',
     champs: [
       { t: 'euros', cle: 'prix', lib: 'Prix offert', ic: 'euro', requis: true },
-      { t: 'choix', cle: 'forme', lib: 'Ce prix s’entend…', options: [
-        { v: 'fai', l: 'Honoraires de l’agence du vendeur compris' }, { v: 'net', l: 'Net vendeur (sans agence côté vendeur)' },
+      { t: 'choix', cle: 'forme', lib: 'Ce prix s’entend…', ic: 'etiquette', options: [
+        { v: 'fai', l: 'Honoraires de l’agence du vendeur compris', ic: 'agence' }, { v: 'net', l: 'Net vendeur (sans agence côté vendeur)', ic: 'maison' },
       ] },
-      { t: 'euros', cle: 'honoVendeur', lib: 'Dont honoraires de l’agence du vendeur', si: d => d.forme === 'fai' },
+      { t: 'euros', cle: 'honoVendeur', lib: 'Dont honoraires de l’agence du vendeur', ic: 'agence', si: d => d.forme === 'fai' },
       { t: 'euros', cle: 'honoRecherche', lib: 'Tes honoraires, en plus du prix', ic: 'loupe', aide: 'Ceux de son mandat de recherche, s’il y en a un. Laisse vide sinon.' },
       { t: 'titre', cle: 't-fin', lib: 'Le financement', ic: 'banque' },
       { t: 'euros', cle: 'apport', lib: 'Apport personnel', ic: 'euro' },
-      { t: 'choix', cle: 'pret', lib: 'Un prêt ?', ic: 'banque', options: [{ v: 'oui', l: 'Oui' }, { v: 'non', l: 'Non, sans prêt' }] },
-      { t: 'euros', cle: 'pretMontant', lib: 'Montant du prêt', si: d => d.pret === 'oui' },
+      { t: 'choix', cle: 'pret', lib: 'Un prêt ?', ic: 'banque', options: [{ v: 'oui', l: 'Oui', ic: 'banque' }, { v: 'non', l: 'Non, sans prêt', ic: 'euro' }] },
+      { t: 'euros', cle: 'pretMontant', lib: 'Montant du prêt', ic: 'banque', si: d => d.pret === 'oui' },
       { t: 'nombre', cle: 'pretDuree', lib: 'Durée', ic: 'chrono', unite: 'ans', si: d => d.pret === 'oui' },
       { t: 'nombre', cle: 'pretTaux', lib: 'Taux maximum', ic: 'pourcent', unite: '% hors assurance', si: d => d.pret === 'oui' },
+      { t: 'titre', cle: 't-cond', lib: 'Les conditions', ic: 'check' },
       { t: 'cases', cle: 'conditions', lib: 'Autres conditions', ic: 'check', options: [
         { v: 'vente', l: 'La vente de son bien actuel', ic: 'maison' }, { v: 'autre', l: 'Une autre condition', ic: 'plus' },
       ] },
-      { t: 'zone', cle: 'venteBien', lib: 'Son bien à vendre', large: true, si: d => Array.isArray(d.conditions) && (d.conditions as string[]).includes('vente'), exemple: 'appartement situé 3 rue Gallieni à Boulogne, au prix minimum de 480 000 €' },
-      { t: 'zone', cle: 'conditionAutre', lib: 'L’autre condition', large: true, si: d => Array.isArray(d.conditions) && (d.conditions as string[]).includes('autre') },
+      { t: 'zone', cle: 'venteBien', lib: 'Son bien à vendre', ic: 'maison', large: true, si: d => Array.isArray(d.conditions) && (d.conditions as string[]).includes('vente'), exemple: 'appartement situé 3 rue Gallieni à Boulogne, au prix minimum de 480 000 €' },
+      { t: 'zone', cle: 'conditionAutre', lib: 'L’autre condition', ic: 'plume', large: true, si: d => Array.isArray(d.conditions) && (d.conditions as string[]).includes('autre') },
     ],
   },
   {
-    id: 'delais', titre: 'Délais et signature', sous: 'Combien de temps l’offre tient, et la suite.', vers: 'Ce que l’offre engage', ic: 'calendrier',
+    id: 'delais', titre: 'Les délais', court: 'Délais', sous: 'Combien de temps l’offre tient, et la suite.', vers: 'Ce que l’offre engage', ic: 'calendrier',
     champs: [
       { t: 'guide', cle: 'g-offre', titre: () => 'Ce que l’offre engage', points: () => [
         { ic: 'euro', x: 'Aucune somme ne peut être versée avec une offre d’achat (article 1589-1 du Code civil).' },
@@ -74,6 +81,11 @@ const ETAPES: Etape[] = [
       { t: 'nombre', cle: 'delai', lib: 'Avant-contrat signé dans les', ic: 'chrono', unite: 'jours suivant l’acceptation' },
       { t: 'texte', cle: 'notaire', lib: 'Notaire de l’acquéreur', ic: 'balance', large: true, exemple: 'Me Leroy, notaire à Paris' },
       { t: 'zone', cle: 'note', lib: 'Une précision ?', ic: 'plume', large: true },
+    ],
+  },
+  {
+    id: 'signature', titre: 'La signature', court: 'Signature', sous: 'Comment, où et quand elle sera signée.', vers: 'Date et signatures', ic: 'plume',
+    champs: [
       CHAMP_SIGNATURE,
       { t: 'texte', cle: 'faitA', lib: 'Fait à', ic: 'lieu', requis: true },
       { t: 'date', cle: 'date', lib: 'Le', ic: 'calendrier', requis: true },

@@ -205,8 +205,18 @@ function ChampLignes({ c, d, v, onChange, off }: { c: Extract<Champ, { t: 'ligne
   );
 }
 
-/* ── Un champ, avec son libellé et son aide ── */
-export function ChampActe({ c, d, maj, off }: { c: Champ; d: Donnees; maj: Maj; off: boolean }) {
+/* Le dessin d'une question qui n'en a pas (V3.18, éditeur des documents). */
+const IC_TYPE: Record<string, string> = {
+  texte: 'plume', zone: 'doc', date: 'calendrier', heure: 'horloge', nombre: 'regle', euros: 'euro',
+  choix: 'info', cases: 'check', personnes: 'personne', lignes: 'lots',
+};
+
+/* ── Un champ, avec son libellé et son aide ──
+   `bloc` (V3.18, l'éditeur des documents) : chaque question devient une
+   carte — son dessin en pastille, son titre en gros, la saisie dans le même
+   cadre — et prend un dessin par défaut s'il n'en a pas. `sansLib` : le
+   libellé est déjà le titre du bloc (« Les vendeurs »). */
+export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c: Champ; d: Donnees; maj: Maj; off: boolean; bloc?: boolean; sansLib?: boolean }) {
   if (c.si && !c.si(d)) return null;
   if (c.t === 'titre') return <div className={s.secT}>{c.ic && <span className={s.secTic}><Ic n={c.ic} t={14} /></span>}{c.lib}</div>;
   if (c.t === 'guide') {
@@ -226,9 +236,10 @@ export function ChampActe({ c, d, maj, off }: { c: Champ; d: Donnees; maj: Maj; 
   const manque = !!c.requis && estVide(v);
   const large = c.large || c.t === 'personnes' || c.t === 'lignes' || c.t === 'cases' || c.t === 'zone'
     || (c.t === 'choix' && (c.tuiles || c.options.length > 3 || c.options.some(o => o.l.length > 24)));
+  const ic = c.ic || (bloc ? IC_TYPE[c.t] : '');
   const libelle = (
     <>
-      {c.ic && <span className={s.chIc}><Ic n={c.ic} t={14} /></span>}
+      {ic && <span className={s.chIc}><Ic n={ic} t={14} /></span>}
       <span>{c.lib}{c.requis && <em aria-hidden="true">*</em>}</span>
     </>
   );
@@ -260,9 +271,10 @@ export function ChampActe({ c, d, maj, off }: { c: Champ; d: Donnees; maj: Maj; 
     controle = <ChampLignes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   }
 
+  const carte = c.t === 'choix' || c.t === 'cases' || (bloc && c.t !== 'personnes');
   return (
-    <div className={`${s.ch} ${large ? s.large : ''} ${c.t === 'choix' || c.t === 'cases' ? s.chQ : ''}`}>
-      {saisie ? <label className={s.chLib} htmlFor={id}>{libelle}</label> : <div className={s.chLib}>{libelle}</div>}
+    <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && c.t === 'personnes' ? s.chPers : ''}`}>
+      {sansLib ? null : saisie ? <label className={s.chLib} htmlFor={id}>{libelle}</label> : <div className={s.chLib}>{libelle}</div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}
     </div>

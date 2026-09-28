@@ -19,7 +19,7 @@ import { chargerDemandesVisite } from '@/lib/demandes-visite';
  */
 export default function Sidebar({ activePage, onNavigate, ouvert = false, onFermer, reduit = false }: {
   activePage: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, data?: unknown) => void;
   ouvert?: boolean;
   onFermer?: () => void;
   /* Ordinateur seulement : la barre réduite à ses icônes (l'agenda). */
@@ -28,6 +28,16 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
+  /* Le sous-menu de Documents (V3.18) : ouvert par défaut ; s'il est replié,
+     il le reste d'une visite à l'autre. */
+  const [docsOuvert, setDocsOuvert] = useState(true);
+  useEffect(() => {
+    try { if (localStorage.getItem('menu.documents') === '0') setDocsOuvert(false); } catch { /* ouvert par défaut */ }
+  }, []);
+  const basculerDocs = () => setDocsOuvert(v => {
+    try { localStorage.setItem('menu.documents', v ? '0' : '1'); } catch { /* sans mémoire, tant pis */ }
+    return !v;
+  });
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
      relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
@@ -126,6 +136,13 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     }
   ];
 
+  /* Sous Documents : deux endroits de la page, et le registre des mandats. */
+  const sousDocs: { cle: string; label: string; picto: string; go: () => void; actif: boolean }[] = [
+    { cle: 'creer', label: 'Créer un document', picto: 'plus', go: () => onNavigate('documents', { ancre: 'creer' }), actif: false },
+    { cle: 'liste', label: 'Liste des documents', picto: 'lignes', go: () => onNavigate('documents', { ancre: 'liste' }), actif: false },
+    { cle: 'registre', label: 'Registre des mandats', picto: 'cadenas', go: () => onNavigate('registre'), actif: activePage === 'registre' },
+  ];
+
   /* La barre du bas : les quatre écrans du quotidien, et le geste le plus
      fréquent au milieu. Le reste (mail, activité, paramètres) est dans le
      tiroir, à un geste. */
@@ -158,26 +175,58 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           {navItems.map((group, gi) => (
             <div key={gi} className={styles.navGroup}>
               <div className={styles.navSection}>{group.section}</div>
-              {group.items.map(item => (
-                <button
-                  key={item.id}
-                  className={`${styles.navItem} ${courant === item.id ? styles.active : ''}`}
-                  onClick={() => onNavigate(item.id)}
-                  title={reduit ? item.label : undefined}
-                  aria-label={reduit ? item.label : undefined}
-                >
-                  <span className={styles.navIcon}>{item.icon}</span>
-                  <span className={styles.navPicto}><Icone nom={item.picto} taille={19} epaisseur={1.9} /></span>
-                  <span className={styles.navLabel}>{item.label}</span>
-                  {item.badge && (
-                    <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}
-                      title={item.badge.titre || (item.badge.suffixe ? `${item.badge.count} dossiers ${item.badge.suffixe}` : undefined)}>
-                      {item.badge.count}
-                      {item.badge.suffixe && <span className={styles.navBadgeMot}>{item.badge.suffixe}</span>}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {group.items.map(item => {
+                const docs = item.id === 'documents';
+                const bouton = (
+                  <button
+                    key={item.id}
+                    className={`${styles.navItem} ${courant === item.id ? styles.active : ''} ${docs ? styles.navItemBascule : ''} ${docs && activePage === 'registre' ? styles.navParent : ''}`}
+                    onClick={() => onNavigate(item.id)}
+                    title={reduit ? item.label : undefined}
+                    aria-label={reduit ? item.label : undefined}
+                  >
+                    <span className={styles.navIcon}>{item.icon}</span>
+                    <span className={styles.navPicto}><Icone nom={item.picto} taille={19} epaisseur={1.9} /></span>
+                    <span className={styles.navLabel}>{item.label}</span>
+                    {item.badge && (
+                      <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}
+                        title={item.badge.titre || (item.badge.suffixe ? `${item.badge.count} dossiers ${item.badge.suffixe}` : undefined)}>
+                        {item.badge.count}
+                        {item.badge.suffixe && <span className={styles.navBadgeMot}>{item.badge.suffixe}</span>}
+                      </span>
+                    )}
+                  </button>
+                );
+                if (!docs) return bouton;
+                /* Documents : la rubrique, sa flèche qui plie le sous-menu,
+                   et le sous-menu. Menu réduit : la rubrique seule. */
+                return (
+                  <div key={item.id} className={styles.navAvecSous}>
+                    <div className={styles.navLigne}>
+                      {bouton}
+                      <button type="button" className={`${styles.navBascule} ${docsOuvert ? styles.navBasculeOuvert : ''}`}
+                        onClick={basculerDocs} aria-expanded={docsOuvert} aria-controls="sous-menu-documents"
+                        aria-label={docsOuvert ? 'Replier le sous-menu Documents' : 'Déplier le sous-menu Documents'}
+                        title={docsOuvert ? 'Replier' : 'Déplier'}>
+                        <Icone nom="chevron" taille={15} epaisseur={2.2} />
+                      </button>
+                    </div>
+                    <div id="sous-menu-documents" className={`${styles.sousMenu} ${docsOuvert ? styles.sousMenuOuvert : ''}`} inert={!docsOuvert}>
+                      <div className={styles.sousMenuIn}>
+                        <div className={styles.sousListe}>
+                          {sousDocs.map(x => (
+                            <button key={x.cle} type="button" className={`${styles.sousItem} ${x.actif ? styles.sousActif : ''}`}
+                              onClick={x.go} aria-current={x.actif ? 'page' : undefined}>
+                              <Icone nom={x.picto} taille={15} epaisseur={2} />
+                              <span>{x.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
               {gi < navItems.length - 1 && <div className={styles.navSep} />}
             </div>
           ))}

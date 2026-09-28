@@ -139,6 +139,11 @@ export const PICTOS: Record<string, readonly string[]> = {
   separation: ['M12 21v-7.5', 'M12 13.5 6 6', 'M12 13.5l6-7.5', 'M6 10V6h4', 'M18 10V6h-4'],
   traversant: ['M7.5 4v16', 'M16.5 4v16', 'M2.5 12h19', 'm5 9.5-2.5 2.5L5 14.5', 'm19 9.5 2.5 2.5-2.5 2.5'],
   cartes: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
+  /* V3.18 · la situation d'une personne, dans les documents. */
+  alliances: [rond(9, 14.5, 5.2), rond(15, 14.5, 5.2), 'M10.5 5.5 12 3.2l1.5 2.3L12 7.6z'],
+  coeur: ['M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.5a4.3 4.3 0 0 1 7.5 2.8c0 5.6-7.5 10.2-7.5 10.2z'],
+  rompu: ['M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.5a4.3 4.3 0 0 1 7.5 2.8c0 5.6-7.5 10.2-7.5 10.2z', 'M12 7.5l-1.6 3.6 3 2.2-1.9 3.4'],
+  fleur: ['M12 21v-8', 'M12 17.5c-1.8-2.2-4-2.6-6-2 1 2.4 3.4 3.2 6 2', 'M8 4.5c0 4.6 1.6 7 4 8.5 2.4-1.5 4-3.9 4-8.5l-2 1.8L12 3.5l-2 2.8z'],
   dirN: vers(0), dirNE: vers(45), dirE: vers(90), dirSE: vers(135),
   dirS: vers(180), dirSO: vers(225), dirO: vers(270), dirNO: vers(315),
 };

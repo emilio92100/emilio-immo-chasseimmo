@@ -10,6 +10,7 @@ import NouveauDocument from './NouveauDocument';
 import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
 import { Pastille } from './DocumentsDuClient';
+import { noterAnnulation, registreAbsent } from '@/lib/registre';
 import {
   apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
@@ -39,7 +40,7 @@ type Item = {
   courrier?: boolean;
 };
 
-const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle' };
+const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle', delegations: 'accord' };
 
 function itemDoc(d: DocumentRow): Item {
   return {
@@ -236,9 +237,27 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   }
 
   async function supprimer() {
-    if (!d || !confirm('Supprimer ce brouillon ?\n\nIl disparaît pour de bon, avec ses réponses.')) return;
+    if (!d) return;
+    /* Un mandat qui a déjà son numéro au registre (finalisé, puis repassé en
+       brouillon) : la ligne reste, le registre la note « sans suite ». */
+    let ligne: number | null = null;
+    if (m?.registre) {
+      const { data, error } = await supabase.from('registre_mandats').select('numero').eq('document_id', d.id).order('numero').limit(1).maybeSingle();
+      if (error && !registreAbsent(error)) { setErreur('Le registre des mandats n’a pas pu être lu : ' + error.message); return; }
+      ligne = data ? Number((data as { numero: number }).numero) : null;
+    }
+    if (!confirm(ligne
+      ? `Supprimer ce brouillon ?\n\nIl a déjà le n° ${ligne} au registre des mandats : cette ligne reste, notée « sans suite ».`
+      : 'Supprimer ce brouillon ?\n\nIl disparaît pour de bon, avec ses réponses.')) return;
     setTravail('supprimer'); setErreur('');
     try {
+      if (ligne) {
+        const pb = await noterAnnulation(supabase, {
+          modele: d.modele, document_id: d.id, titre: d.titre || m?.titre || 'Mandat', etaitSigne: false,
+          quand: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()),
+        });
+        if (pb) throw new Error(pb);
+      }
       await retirerFichiers(d.id);
       const { error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon');
       if (error) throw new Error(error.message);
@@ -304,6 +323,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                   <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>budget, recherche, durée</small>
                 </button>
               )}
+              {d.statut === 'signe' && (d.modele === 'mandat_vente' || d.modele === 'mandat_recherche') && (
+                <button type="button" className={s.btn} onClick={() => onDeriver('d-' + d.id, 'delegation')}>
+                  <Ic n="accord" t={16} /><span>Déléguer à un confrère</span><small>délégation de mandat</small>
+                </button>
+              )}
               {d.statut === 'signe' && d.signature && <BlocSignature doc={d} onMaj={onMaj} onSurPlace={() => {}} />}
               {(d.statut === 'signe' || d.statut === 'annule') && d.pdf_chemin && (
                 <button type="button" className={s.btn} disabled={!!travail} onClick={() => ouvrirFichier(d.pdf_chemin, nomFichier(d))}><Ic n="doc" t={16} /><span>Le PDF d’origine</span></button>
@@ -339,6 +363,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
               {(x.statut === 'signe' || x.statut === 'partiel') && !x.retracte_le && (
                 <button type="button" className={s.btn} onClick={() => onDeriver('r-' + x.id, 'avenant_recherche')}>
                   <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>budget, recherche, durée</small>
+                </button>
+              )}
+              {(x.statut === 'signe' || x.statut === 'partiel') && !x.retracte_le && (
+                <button type="button" className={s.btn} onClick={() => onDeriver('r-' + x.id, 'delegation')}>
+                  <Ic n="accord" t={16} /><span>Déléguer à un confrère</span><small>délégation de mandat</small>
                 </button>
               )}
               <div className={s.note}>Le mandat de recherche se prépare et se fait signer depuis la fiche du client (bloc Mandat) : il se signe en ligne, dans son espace.</div>
@@ -405,8 +434,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
 
 /* Ce que la page doit faire en s'ouvrant, venue d'un autre écran. */
 /* Venu d'ailleurs : préparer un avenant, ouvrir un document (« r-<id> » :
-   un mandat signé en ligne), ou en créer un pour un client (sa fiche). */
-export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string };
+   un mandat signé en ligne), en créer un pour un client (sa fiche), ou
+   descendre à un endroit de la page (le sous-menu Documents, V3.18). */
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste' };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -424,6 +454,8 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string } | null>(null);
   const [edition, setEdition] = useState<DocumentRow | null>(null);
+  const refCreer = useRef<HTMLElement>(null);
+  const refListe = useRef<HTMLDivElement>(null);
 
   const charger = useCallback(async () => {
     const [a, b] = await Promise.all([
@@ -559,6 +591,20 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     })();
   }, [intention, onIntention, deriver, majDoc]);
 
+  /* « Créer un document » ou « Liste des documents », depuis le menu : la
+     page s'ouvre en haut (AppLayout la remonte), puis descend à l'endroit
+     demandé — la liste, une fois lue, pour que la hauteur soit la bonne. */
+  const ancre = intention?.ancre;
+  const pret = docs !== null;
+  useEffect(() => {
+    if (!ancre || (ancre === 'liste' && !pret)) return;
+    const t = setTimeout(() => {
+      onIntention?.();
+      (ancre === 'creer' ? refCreer.current : refListe.current)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [ancre, pret, onIntention]);
+
   async function ficheClient(id: string) {
     const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
     if (error || !data) { alert('La fiche du client n’a pas pu être ouverte.' + (error ? `\n\n${error.message}` : '')); return; }
@@ -595,7 +641,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
 
       {/* ── Les modèles ── */}
       {!absente && (
-        <section className={s.bloc}>
+        <section className={`${s.bloc} ${s.ancre}`} ref={refCreer}>
           <div className={s.blocT}><h2>Créer un document</h2><span>Le texte s’écrit à partir de tes réponses</span></div>
           <div className={s.modeles}>
             {MODELES.map(m => (
@@ -621,6 +667,12 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       )}
 
       {/* ── Les documents ── */}
+      {!absente && (
+        <div className={`${s.blocT} ${s.listeT} ${s.ancre}`} ref={refListe}>
+          <h2>Liste des documents</h2>
+          <span>{docs === null ? '' : items.length === 0 ? 'Aucun pour l’instant' : `${items.length} document${items.length > 1 ? 's' : ''}`}</span>
+        </div>
+      )}
       {items.length > 0 && (
         <nav className={s.cats} aria-label="Sortes de documents">
           <button type="button" className={`${s.cat} ${cat === 'tout' ? s.catOn : ''}`} onClick={() => setCat('tout')}>Tout <i>{cherches.length}</i></button>

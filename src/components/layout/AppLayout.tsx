@@ -13,6 +13,7 @@ import PageMail from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
 import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
+import PageRegistre from '@/components/documents/PageRegistre';
 import PageBiens from '@/components/biens/PageBiens';
 import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
@@ -32,7 +33,7 @@ import type { Client } from '@/lib/supabase';
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
 const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'agenda', 'visites',
-  'relances', 'documents', 'mail', 'activite', 'parametres'];
+  'relances', 'documents', 'registre', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
   if (typeof window === 'undefined') return { page: 'dashboard', clientId: null };
@@ -204,6 +205,7 @@ export default function AppLayout() {
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
       case 'documents':  return <PageDocuments onNavigate={handleNavigate} intention={intention} onIntention={() => setIntention(null)} />;
+      case 'registre':   return <PageRegistre onNavigate={handleNavigate} />;
       case 'mail':       return <PageMail onNavigate={handleNavigate} />;
       case 'activite':   return <PageActivite />;
       case 'parametres': return <PageParametres />;

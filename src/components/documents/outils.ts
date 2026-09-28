@@ -17,7 +17,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, lireIdentite, type IdentiteAgence } from '@/lib/agence';
-import { STATUTS, pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
+import { STATUTS, modele, pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
+import { inscrire, noterAnnulation, noterSignature } from '@/lib/registre';
 
 export type DocumentRow = {
   id: string;
@@ -265,7 +266,8 @@ export async function mandatsPour(m: Modele): Promise<MandatChoix[]> {
       };
     }),
   ];
-  return out.sort((p, q) => (q.statut === 'signe' ? 1 : 0) - (p.statut === 'signe' ? 1 : 0)
+  /* Une délégation ne part que d'un mandat signé. */
+  return out.filter(x => m.id !== 'delegation' || x.statut === 'signe').sort((p, q) => (q.statut === 'signe' ? 1 : 0) - (p.statut === 'signe' ? 1 : 0)
     || String(q.signe_le || q.finalise_le || '').localeCompare(String(p.signe_le || p.finalise_le || '')));
 }
 
@@ -329,6 +331,17 @@ export async function preparerDepuis(m: Modele, x: MandatChoix, identite: Identi
     if (m.enchainer) for (const a of avant.filter(a => a.statut === 'signe')) d = m.enchainer(d, a.donnees || {});
     d.avenantNo = avant.reduce((n, a) => Math.max(n, Number(a.donnees?.avenantNo) || 0), 0) + 1;
   }
+  /* La délégation (V3.18) : le mandat tel que ses avenants signés l'ont
+     laissé (prix, honoraires, fin). */
+  const av = m.avenantsDe ? modele(m.avenantsDe(d) || '') : null;
+  if (av?.enchainer && numero) {
+    const { data, error } = await supabase.from('documents').select('donnees')
+      .eq('modele', av.id).eq('statut', 'signe').eq('donnees->>mandatNumero', numero);
+    if (error) throw new Error('Les avenants signés à ce mandat n’ont pas pu être lus : ' + error.message);
+    const signes = ((data || []) as Pick<DocumentRow, 'donnees'>[])
+      .sort((p, q) => (Number(p.donnees?.avenantNo) || 0) - (Number(q.donnees?.avenantNo) || 0));
+    for (const a of signes) d = av.enchainer(d, a.donnees || {});
+  }
   return m.preparer ? m.preparer(d) : d;
 }
 
@@ -353,9 +366,22 @@ export async function numeroDejaPris(numero: string, id: string, rechercheId?: s
 }
 
 /* ── La finalisation : le PDF figé, l'identité du jour, « À faire signer » ── */
-export async function finaliser(row: DocumentRow, m: Modele, d: Donnees): Promise<DocumentRow> {
+/* `registre` (V3.18) : le registre des mandats est démarré. Le numéro est
+   alors pris par lui, maintenant, avant que le PDF soit figé : il figure
+   sur le mandat avant toute signature. Refinalisé (repassé en brouillon),
+   le mandat garde le sien. */
+export async function finaliser(row: DocumentRow, m: Modele, dSaisi: Donnees, o: { registre?: boolean } = {}): Promise<DocumentRow> {
+  let d = dSaisi;
+  if (o.registre && m.registre) {
+    const l = await inscrire(supabase, {
+      ...m.registre(d), source: 'document', document_id: row.id, client_id: row.client_id, recherche_id: row.recherche_id,
+      bien_vente_id: typeof d.bienVenteId === 'string' && d.bienVenteId ? d.bienVenteId : null,
+    });
+    d = { ...d, numero: String(l.numero) };
+  }
   const numero = typeof d.numero === 'string' ? d.numero.trim() : '';
-  if (m.numero && numero) {
+  /* Donné par le registre, il est unique par construction : pas de contrôle. */
+  if (m.numero && numero && !(o.registre && m.registre)) {
     const pris = await numeroDejaPris(numero, row.id, m.surRecherche ? row.recherche_id : null);
     if (pris) throw new Error(`Le numéro ${numero} est déjà utilisé par ${pris}. Un numéro du registre ne sert qu’une fois.`);
   }
@@ -376,30 +402,43 @@ export async function finaliser(row: DocumentRow, m: Modele, d: Donnees): Promis
    (comme une signature en ligne), et laisse une ligne dans le suivi du
    client. Rend un message d'erreur, ou null. */
 export async function apresSignature(row: DocumentRow, m: Modele, jour: string): Promise<string | null> {
-  if (!m.surRecherche || !row.recherche_id) return null;
+  /* Le registre des mandats (V3.18) : « Signé » sur la ligne du mandat, ou
+     l'avenant sur celle de son mandat. */
+  const pbRegistre = await noterSignature(supabase, {
+    modele: row.modele, document_id: row.id, titre: row.titre || m.titre, comment: 'à la main',
+    mandatNumero: typeof row.donnees?.mandatNumero === 'string' ? row.donnees.mandatNumero : undefined, quand: jour.split('-').reverse().join('/'),
+  });
+  if (!m.surRecherche || !row.recherche_id) return pbRegistre;
   const { error } = await supabase.from('recherches').update(m.surRecherche(row.donnees, jour)).eq('id', row.recherche_id);
-  if (error) return 'Le document est bien marqué signé, mais le bloc Mandat de sa recherche n’a pas pu être rempli : ' + error.message + '. Saisis-le à la main dans la fiche client.';
+  /* Le souci du registre, s'il y en a un, n'est jamais masqué par un autre. */
+  const et = (x: string) => [x, pbRegistre].filter(Boolean).join(' ');
+  if (error) return et('Le document est bien marqué signé, mais le bloc Mandat de sa recherche n’a pas pu être rempli : ' + error.message + '. Saisis-le à la main dans la fiche client.');
   if (row.client_id) {
     const { error: e2 } = await supabase.from('journal').insert({
       client_id: row.client_id, type: 'mandat', titre: `📋 ${m.titre} signé (papier)`,
       description: [row.numero ? `n° ${row.numero}` : '', row.badge || '', `signé le ${jour.split('-').reverse().join('/')}`].filter(Boolean).join(' · '),
       metadata: { document_id: row.id },
     });
-    if (e2) return `Le document est signé et le bloc Mandat ${m.numero ? 'rempli' : 'mis à jour'}, mais la ligne du suivi client n’a pas pu être ajoutée : ` + e2.message;
+    if (e2) return et(`Le document est signé et le bloc Mandat ${m.numero ? 'rempli' : 'mis à jour'}, mais la ligne du suivi client n’a pas pu être ajoutée : ` + e2.message);
   }
-  return null;
+  return pbRegistre;
 }
 
 /* Annulé après signature : le bloc Mandat de sa recherche se vide, s'il
    porte encore ce mandat (même numéro). Un avenant, lui, n'a pas de numéro
    à lui : l'annuler ne vide rien. */
 export async function apresAnnulation(row: DocumentRow, m: Modele): Promise<string | null> {
-  if (!m.surRecherche || !m.numero || !row.recherche_id || !row.numero || row.statut !== 'signe') return null;
+  const pbRegistre = await noterAnnulation(supabase, {
+    modele: row.modele, document_id: row.id, titre: row.titre || m.titre, etaitSigne: row.statut === 'signe',
+    mandatNumero: typeof row.donnees?.mandatNumero === 'string' ? row.donnees.mandatNumero : undefined,
+    quand: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()),
+  });
+  if (!m.surRecherche || !m.numero || !row.recherche_id || !row.numero || row.statut !== 'signe') return pbRegistre;
   const { error } = await supabase.from('recherches').update({
     mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null, mandat_date_expiration: null,
     sans_mandat: true, mandat_numero: null, updated_at: new Date().toISOString(),
   }).eq('id', row.recherche_id).eq('mandat_numero', row.numero);
-  return error ? 'Le document est annulé, mais le bloc Mandat de sa recherche n’a pas pu être vidé : ' + error.message : null;
+  return error ? ['Le document est annulé, mais le bloc Mandat de sa recherche n’a pas pu être vidé : ' + error.message, pbRegistre].filter(Boolean).join(' ') : pbRegistre;
 }
 
 /* Le libellé d'un état : un courrier est « À envoyer », puis « Envoyé ». */

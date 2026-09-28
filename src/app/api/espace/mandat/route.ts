@@ -4,7 +4,7 @@ import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import {
   redigerMandat, resumeMandat, figerContenu, etatMandat, finRetractation, masquerEmail, validerMandant, validerPersonne, validerSociete,
   dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS, COSIGNATAIRES_MAX,
-  rechercheDepuis, versionMandat, type Mandant, type Contenu, type Societe,
+  rechercheDepuis, versionMandat, decrireRecherche, type Mandant, type Contenu, type Societe,
 } from '@/lib/mandat';
 import {
   lireCos, lienNeuf, envoyerLien, inviter, sceller, rangerGriffe, envoyerExemplaire, finRetractationDe, nomDe,
@@ -16,6 +16,7 @@ import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM
 import { alerteMailActive } from '@/lib/alertes';
 import { ecritServeur } from '@/lib/ecritures';
 import { lireIdentiteAgence } from '@/lib/agence';
+import { inscrire, numeroAncien, observer, type LigneRegistre } from '@/lib/registre';
 
 /**
  * La signature du mandat de recherche, depuis l'espace client.
@@ -98,6 +99,27 @@ function lireKbis(v: unknown): { octets: Uint8Array; ext: string; type: string }
   const octets = new Uint8Array(Buffer.from(v.slice(m[0].length), 'base64'));
   if (octets.length < 500) return null;
   return { octets, ext: m[1] === 'application/pdf' ? 'pdf' : m[1] === 'image/png' ? 'png' : 'jpg', type: m[1] };
+}
+
+/* Les mandants tels que le registre des mandats les inscrit (V3.18) : lui,
+   ceux qui signent avec lui, ou la société qu'il représente. */
+function mandantsRegistre(m: Mandant, cos: Mandant[], soc: Societe | null): string {
+  const p = (x: Mandant) => [[x.civilite, x.prenom, (x.nom || '').toUpperCase()].filter(Boolean).join(' '), x.adresse].filter(Boolean).join(', ');
+  if (soc) return [`${soc.forme} ${soc.denomination}`.trim(), `SIREN ${soc.siren}`, soc.rcsVille ? `RCS ${soc.rcsVille}` : '', `représentée par ${p(m)}`].filter(Boolean).join(', ');
+  return [m, ...cos].map(p).join(' ; ');
+}
+
+/* Le registre n'a pas pu noter (V3.18) : Alexandre le sait, et l'ajoute à
+   la main (Documents › Registre des mandats › Ajouter une observation). */
+async function alerteRegistre(pb: string | null, numero: string, quoi: string) {
+  if (!pb) return;
+  console.error('[registre]', pb);
+  await envoyerMail({
+    a: ALERTES(), deLaPartDe: 'crm',
+    sujet: `Registre des mandats : « ${quoi} » à noter sur le n° ${numero}`,
+    texte: `Le registre des mandats n'a pas pu noter « ${quoi} » sur le mandat n° ${numero} (${pb}). Ajoute l'observation à la main : Documents › Registre des mandats.\n\n${CRM()}/?page=registre`,
+    html: gabarit('Une observation à ajouter au registre', `<p>Le registre des mandats n’a pas pu noter « ${echappe(quoi)} » sur le mandat <b>n° ${echappe(numero)}</b>.</p><p style="color:#b91c1c">${echappe(pb)}</p><p>Ajoute l’observation à la main : Documents › Registre des mandats.</p>`),
+  });
 }
 
 async function derniere(sb: SupabaseClient, rechercheId: string): Promise<Ligne | null> {
@@ -188,6 +210,75 @@ export async function POST(req: NextRequest) {
         let agenceLe: string | null = reprise?.contenu?.agenceLe
           ?? (recherche.mandat_numero ? (recherche.mandat_propose_le || reserve.approuveLe || null) : null);
         let source = reprise?.contenu?.source || (recherche.mandat_numero ? 'prepare' : '');
+        let idLigne: string = reprise?.id || randomUUID();
+        /* Le registre démarré mais illisible : on ne se rabat pas sur la
+           réserve (deux numérotations), il réessaiera dans un instant. */
+        if (!reprise && reserve.registreKo) {
+          console.error('[registre] lecture impossible', reserve.registreKo);
+          return ko('numero', 409);
+        }
+        /* Le registre des mandats du CRM (V3.18) : le numéro est pris
+           maintenant, avant la signature — il figure sur son exemplaire.
+           Seul un numéro d'avant le registre (réservé dans l'ancien) reste
+           tel quel ; un numéro déjà sur la fiche est celui d'une signature
+           commencée (le registre rend alors la même ligne) ou d'un mandat
+           fini (il en donne un nouveau). */
+        if (!reprise && reserve.registre && !(numero && numeroAncien(numero, reserve.premier))) {
+          const accordLe = (typeof recherche.mandat_propose_le === 'string' && recherche.mandat_propose_le) || reserve.approuveLe;
+          if (!accordLe) return ko('numero', 409);
+          const entree = {
+            nature: 'recherche' as const, type_mandat: 'simple', source: 'espace' as const,
+            mandants: mandantsRegistre(mandant, cosV, societe), objet: `Recherche : ${decrireRecherche(actuelle)}`,
+            client_id: recherche.client_id, recherche_id: recherche.id,
+          };
+          let lr: LigneRegistre;
+          try {
+            lr = await inscrire(sb, { ...entree, signature_id: idLigne });
+            /* Une signature commencée plus tôt (la ligne de mandat n'avait pas
+               pu être écrite) : on reprend son identifiant, pour que « Signé »
+               et « Rétracté » retrouvent la ligne du registre. S'il est déjà
+               pris par une autre ligne de mandat, cette réservation est close
+               « sans suite » et un nouveau numéro est pris. */
+            if (lr.signature_id && lr.signature_id !== idLigne) {
+              const { data: pris, error: ePris } = await sb.from('mandats_signatures').select('id, statut').eq('id', lr.signature_id).maybeSingle();
+              if (ePris) throw new Error(ePris.message);
+              /* Deux demandes au même instant (deux onglets) : la première
+                 est en cours d'écriture ; celle-ci attend et la reprendra. */
+              if (pris?.statut === 'en_cours') return ko('attendre', 429, { secondes: ECART_ENVOIS_S });
+              if (!pris) idLigne = lr.signature_id;
+              else {
+                const pb = await observer(sb, { registre_id: lr.id, type: 'sans_suite', texte: `Signature commencée dans l’espace le ${dateCourte(lr.inscrit_le)}, jamais menée à son terme : numéro laissé, un nouveau est pris.` });
+                if (pb) throw new Error(pb);
+                lr = await inscrire(sb, { ...entree, signature_id: idLigne });
+                if (lr.signature_id !== idLigne) throw new Error('la ligne du registre ne correspond pas');
+              }
+            }
+          } catch (e) {
+            console.error('[registre] inscription depuis l’espace', (e as Error).message);
+            return ko('numero', 409);
+          }
+          const nouveau = String(lr.numero) !== numero;
+          numero = String(lr.numero); agenceLe = accordLe; source = 'registre';
+          if (nouveau) {
+          const { error: eNum } = await sb.from('recherches').update({ mandat_numero: numero, mandat_type: 'simple' }).eq('id', recherche.id);
+          await ecritServeur('L’historique du client', sb.from('journal').insert({
+            client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
+            titre: `🔢 N° ${numero} inscrit au registre, signature en cours`,
+            description: 'Pris dans le registre des mandats du CRM quand il a demandé son code. S’il ne va pas au bout, marque-le « sans suite » dans le registre.',
+            metadata: { numero },
+          }));
+          if (eNum || await alerteMailActive(sb, 'mandat_numero')) await envoyerMail({
+            a: ALERTES(), deLaPartDe: 'crm',
+            sujet: `N° ${numero} inscrit au registre pour ${nomClient} (signature en cours)`,
+            texte: `Le numéro ${numero} du registre des mandats vient d'être inscrit pour le mandat de recherche de ${nomClient}, qui est en train de le signer depuis son espace. Rien à reporter ailleurs. S'il ne signe pas, marque-le « sans suite » dans Documents › Registre des mandats.${eNum ? `\n\n⚠️ La fiche n'a pas pu garder le numéro : ${eNum.message}` : ''}\n\n${lienCrm}`,
+            html: gabarit(`N° ${numero} inscrit au registre`,
+              `<p>Le numéro <b>${echappe(numero)}</b> du registre des mandats vient d'être inscrit pour le mandat de recherche de <b>${echappe(nomClient)}</b>, qui est en train de le signer depuis son espace.</p>
+               <p>Rien à reporter ailleurs. S'il ne signe pas, marque-le « sans suite » dans Documents › Registre des mandats.</p>
+               ${eNum ? `<p style="color:#b91c1c">⚠️ La fiche n'a pas pu garder le numéro : ${echappe(eNum.message)}</p>` : ''}
+               <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+          });
+          }
+        }
         if (!numero) {
           const pris = await prendreNumero(sb);
           if (!pris) return ko('numero', 409);
@@ -226,7 +317,7 @@ export async function POST(req: NextRequest) {
         if (!agenceLe) return ko('numero', 409);
 
         const maintenant = new Date().toISOString();
-        const id = reprise?.id || randomUUID();
+        const id = idLigne;
         const deroule = [...(reprise?.deroule || [])];
         if (!reprise) {
           const { data: vu } = await sb.from('espace_evenements').select('created_at')
@@ -367,6 +458,10 @@ export async function POST(req: NextRequest) {
             code_hash: null, code_essais: l.code_essais + 1, deroule, griffe_chemin: griffeChemin, ...sc.maj,
           }).eq('id', l.id);
           if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
+          /* Le registre (V3.18) : signé, et qui doit encore signer. */
+          const pbRegP = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'signe',
+            texte: `Signé en ligne depuis son espace par ${nomDe(m)}, le ${dateCourte(le)} à ${heureParis(le)} ; co-signature attendue de ${cos.map(c => nomDe(c.personne)).join(', ')}.` });
+          await alerteRegistre(pbRegP, l.numero, 'Signé (co-signature attendue)');
           const echecs: string[] = [];
           for (const c of prets) {
             const { error: eC } = await sb.from('mandats_cosignataires').update({
@@ -488,6 +583,9 @@ export async function POST(req: NextRequest) {
           contenu: { ...contenu, identite },
         }).eq('id', l.id);
         if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
+        /* Le registre (V3.18) : « Signé » sur sa ligne. */
+        const pbReg = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'signe', texte: `Signé en ligne depuis son espace par ${nomDe(m)}, le ${dateCourte(le)} à ${heureParis(le)}.` });
+        await alerteRegistre(pbReg, l.numero, 'Signé');
 
         /* La fiche du CRM se remplit toute seule : le bloc Mandat affiche la
            signature, et l'espace ne redemandera plus rien. */
@@ -579,6 +677,8 @@ export async function POST(req: NextRequest) {
           deroule: [...(l.deroule || []), { t: le, x: 'Rétractation exercée en ligne depuis son espace personnel' }],
         }).eq('id', l.id);
         if (error) return ko('enregistrement', 500, { detail: error.message });
+        const pbRegR = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'retracte', texte: `Rétractation exercée en ligne depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.` });
+        await alerteRegistre(pbRegR, l.numero, 'Rétracté');
         /* Le premier signataire renonce : le mandat prend fin pour tous (le
            texte le prévoit). Ceux qu'on attendait ne le sont plus ; ceux qui
            avaient signé sont prévenus. */

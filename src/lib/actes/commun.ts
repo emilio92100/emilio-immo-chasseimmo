@@ -79,6 +79,12 @@ export function lignesPersonne(p: Personne): string[] {
     [p.telephone, p.email].filter(Boolean).join(' · '),
   ].filter(Boolean);
 }
+/* « Monsieur Paul MARTIN, 3 rue de la Paix, 75002 Paris » : une personne
+   telle que le registre des mandats l'inscrit (V3.18). */
+export function personneRegistre(p: Personne): string {
+  return [nomComplet(p), p.adresse.trim()].filter(Boolean).join(', ');
+}
+
 export function fichePersonne(p: Personne, ic: Icone = 'personne', pied?: string): Fiche {
   const l = lignesPersonne(p);
   return { ic, titre: nomComplet(p), lignes: l.length ? l : ['Identité, naissance, adresse : à compléter.'], ...(pied ? { pied } : {}) };
@@ -116,7 +122,16 @@ export type Champ =
   | { t: 'guide'; cle: string; si?: (d: Donnees) => boolean; titre: (d: Donnees) => string; points: (d: Donnees) => { ic?: string; x: string }[] };
 /* `vers` : la rubrique du document que l'aperçu montre pendant l'étape ;
    `reperesApres` : le champ après lequel l'éditeur place les repères. */
-export type Etape = { id: string; titre: string; sous: string; champs: Champ[]; vers?: string; reperesApres?: string; ic?: string };
+/* `court` : le libellé du fil des étapes, quand le titre est long (V3.18). */
+export type Etape = { id: string; titre: string; court?: string; sous: string; champs: Champ[]; vers?: string; reperesApres?: string; ic?: string };
+
+/* Les réponses qui reviennent partout, avec leur dessin (V3.18). */
+export const ouiNon = (oui = 'Oui', non = 'Non'): Option[] => [{ v: 'oui', l: oui, ic: 'check' }, { v: 'non', l: non, ic: 'croix' }];
+export const IC_RYTHME: Record<string, string> = { visite: 'cle', semaine: 'chrono', quinzaine: 'calendrier', mois: 'lune' };
+export const HONO_MODES: Option[] = [{ v: 'taux', l: 'Un pourcentage', ic: 'pourcent' }, { v: 'forfait', l: 'Un forfait', ic: 'euro' }];
+export const TANTIEMES_BASES: Option[] = [
+  { v: '1000', l: '1 000 (millièmes)', ic: 'lots' }, { v: '10000', l: '10 000', ic: 'lots' }, { v: '100000', l: '100 000', ic: 'lots' },
+];
 
 /* Ce que le CRM connaît déjà au moment de créer un document. */
 export type Contexte = {
@@ -137,7 +152,7 @@ export type Contexte = {
    courrier de reconduction). */
 export type Source = { id: string; modele: string; donnees: Donnees; numero: string | null; signe_le: string | null; finalise_le: string | null };
 
-export type Categorie = 'mandats_vente' | 'mandats_recherche' | 'offres' | 'bons_visite' | 'courriers';
+export type Categorie = 'mandats_vente' | 'mandats_recherche' | 'offres' | 'bons_visite' | 'courriers' | 'delegations';
 export type Statut = 'brouillon' | 'pret' | 'signe' | 'annule';
 
 /* `lettre` : un courrier, sans page de garde ni résumé (l'en-tête de
@@ -172,6 +187,9 @@ export type Modele = {
   manques: (d: Donnees) => string[];
   /* Le numéro du registre des mandats est-il exigé ? */
   numero?: boolean;
+  /* Ce que le registre des mandats inscrit pour ce mandat (V3.18) : sa
+     nature, son type, les mandants (noms et adresses) et son objet. */
+  registre?: (d: Donnees) => { nature: 'vente' | 'recherche'; type_mandat: string; mandants: string; objet: string };
   /* Pour la liste : le type (« Exclusif »), s'il y a lieu. */
   badge?: (d: Donnees) => string | null;
   /* Les repères de l'éditeur pour une étape (voir Repere). */
@@ -195,6 +213,13 @@ export type Modele = {
   /* Une fois tout repris (mandat, avenants signés, client, recherche du
      moment) : ce qui s'en déduit — ce qui a changé, coché d'avance. */
   preparer?: (d: Donnees) => Donnees;
+  /* Un document qui part d'un mandat sans en être l'avenant (la délégation,
+     V3.18) : le modèle d'avenant dont les exemplaires signés à ce mandat
+     s'appliquent, pour partir du prix, des honoraires et de la fin à jour. */
+  avenantsDe?: (d: Donnees) => string | null;
+  /* Entre professionnels (la délégation) : jamais montré au client dans son
+     espace, même s'il est rangé sur sa fiche. */
+  interne?: boolean;
   /* Un courrier qu'on envoie (pas un contrat qu'on fait signer) : la liste
      dit « À envoyer » et « Envoyé », et la preuve d'envoi remplace
      l'exemplaire signé. */
@@ -223,7 +248,7 @@ export const electronique = (d: Donnees) => modeSignature(d) !== 'papier';
 export const lieuDe = (d: Donnees): string => (modeSignature(d) === 'en_ligne' ? 'distance' : typeof d.lieu === 'string' ? d.lieu : '');
 
 export const CHAMP_SIGNATURE: Champ = {
-  t: 'choix', cle: 'signature', lib: 'Comment sera-t-il signé ?', tuiles: true, options: [
+  t: 'choix', cle: 'signature', lib: 'Comment sera-t-il signé ?', ic: 'plume', tuiles: true, options: [
     { v: 'papier', l: 'À la main', aide: 'Imprimé, signé sur papier, puis scanné.', ic: 'plume' },
     { v: 'en_ligne', l: 'En ligne', aide: 'Chacun reçoit son lien par e-mail et signe avec un code.', ic: 'mail' },
     { v: 'sur_place', l: 'Sur place', aide: 'Sur ton écran, chacun son tour, avec un code reçu sur son e-mail.', ic: 'tablette' },

@@ -31,36 +31,37 @@ const ENVOIS: Record<string, string> = {
 /* ══ Les questions ══════════════════════════════════════════════════════ */
 const ETAPES: Etape[] = [
   {
-    id: 'mandat', titre: 'Le mandat', sous: 'Repris du mandat signé : vérifie, c’est tout.', ic: 'doc',
+    id: 'mandat', titre: 'Le mandat', court: 'Le mandat', sous: 'Repris du mandat signé : vérifie, c’est tout.', ic: 'doc',
     champs: [
-      { t: 'choix', cle: 'quoi', lib: 'Un mandat', tuiles: true, options: [
+      { t: 'choix', cle: 'quoi', lib: 'Un mandat', ic: 'doc', tuiles: true, options: [
         { v: 'vente', l: 'De vente', ic: 'maison' }, { v: 'recherche', l: 'De recherche', ic: 'loupe' },
       ] },
-      { t: 'texte', cle: 'mandatNom', lib: 'Le mandat, en toutes lettres', large: true, exemple: 'un mandat de vente exclusif', aide: 'Tel qu’il apparaît dans la phrase « vous nous avez confié … ».' },
+      { t: 'texte', cle: 'mandatNom', lib: 'Le mandat, en toutes lettres', ic: 'plume', large: true, exemple: 'un mandat de vente exclusif', aide: 'Tel qu’il apparaît dans la phrase « vous nous avez confié … ».' },
       { t: 'texte', cle: 'mandatNumero', lib: 'N° du mandat', ic: 'livre', requis: true },
       { t: 'date', cle: 'mandatDate', lib: 'Signé le', ic: 'calendrier', requis: true },
       { t: 'texte', cle: 'bien', lib: 'Le bien', ic: 'lieu', large: true, si: d => d.quoi !== 'recherche', exemple: '12 rue des Lilas, 92100 Boulogne-Billancourt' },
-      { t: 'nombre', cle: 'periode', lib: 'Il se poursuit par périodes de', unite: 'mois', requis: true },
-      { t: 'date', cle: 'finMax', lib: 'Au plus tard jusqu’au', aide: 'La limite totale prévue au mandat.' },
-      { t: 'choix', cle: 'resiliation', lib: 'Le mandat peut être arrêté', options: [
-        { v: 'art78', l: 'Par recommandé, 15 jours de préavis' }, { v: 'libre', l: 'Par recommandé ou e-mail, 15 jours de préavis' },
+      { t: 'titre', cle: 't-duree', lib: 'Sa durée', ic: 'calendrier' },
+      { t: 'nombre', cle: 'periode', lib: 'Il se poursuit par périodes de', ic: 'boucle', unite: 'mois', requis: true },
+      { t: 'date', cle: 'finMax', lib: 'Au plus tard jusqu’au', ic: 'drapeau', aide: 'La limite totale prévue au mandat.' },
+      { t: 'choix', cle: 'resiliation', lib: 'Le mandat peut être arrêté', ic: 'balance', options: [
+        { v: 'art78', l: 'Par recommandé, 15 jours de préavis', ic: 'doc' }, { v: 'libre', l: 'Par recommandé ou e-mail, 15 jours de préavis', ic: 'mail' },
       ], aide: 'Rappelé dans le courrier. Mandat de vente, ou de recherche exclusif : le recommandé (article 78 du décret de 1972).' },
     ],
   },
   {
-    id: 'dest', titre: 'Le destinataire', sous: 'À qui il part, et comment.', ic: 'personne',
+    id: 'dest', titre: 'Le destinataire', court: 'Destinataire', sous: 'À qui il part, et comment.', ic: 'personne',
     champs: [
       { t: 'texte', cle: 'destNom', lib: 'Nom', ic: 'personne', large: true, requis: true, exemple: 'Madame Claire MARTIN et Monsieur Paul MARTIN' },
       { t: 'zone', cle: 'destAdresse', lib: 'Adresse', ic: 'lieu', large: true, exemple: '12 rue des Lilas\n92100 Boulogne-Billancourt' },
-      { t: 'texte', cle: 'destEmail', lib: 'E-mail', large: true },
-      { t: 'texte', cle: 'appel', lib: 'Formule d’appel', exemple: 'Madame, Monsieur,' },
-      { t: 'choix', cle: 'envoi', lib: 'Envoyé par', tuiles: true, options: [
+      { t: 'texte', cle: 'destEmail', lib: 'E-mail', ic: 'mail', large: true },
+      { t: 'texte', cle: 'appel', lib: 'Formule d’appel', ic: 'bulle', exemple: 'Madame, Monsieur,' },
+      { t: 'choix', cle: 'envoi', lib: 'Envoyé par', ic: 'envoyer', tuiles: true, options: [
         { v: 'email', l: 'E-mail dédié', ic: 'ecran' }, { v: 'lrar', l: 'Recommandé', ic: 'doc' }, { v: 'lettre', l: 'Lettre simple', ic: 'plume' },
       ], aide: 'La loi accepte une lettre ou un e-mail, à condition qu’ils ne servent qu’à ça. Garde la preuve de l’envoi : un e-mail envoyé ou un recommandé, c’est plus sûr qu’une lettre simple.' },
     ],
   },
   {
-    id: 'dates', titre: 'Les dates', sous: 'L’échéance, et la date limite pour dire non.', ic: 'calendrier', reperesApres: 'date',
+    id: 'dates', titre: 'Les dates', court: 'Les dates', sous: 'L’échéance, et la date limite pour dire non.', ic: 'calendrier', reperesApres: 'date',
     champs: [
       { t: 'date', cle: 'echeance', lib: 'Prochaine échéance', ic: 'chrono', requis: true, aide: 'Le jour où le mandat se prolonge s’il ne dit rien.' },
       { t: 'date', cle: 'dateLimite', lib: 'Date limite pour refuser', ic: 'drapeau', requis: true, aide: 'Imprimée dans l’encadré. Par défaut la veille de l’échéance : il peut dire non jusque-là.' },

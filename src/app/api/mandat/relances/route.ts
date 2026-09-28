@@ -6,6 +6,7 @@ import { envoyerMail, gabarit, echappe, ALERTES, CRM } from '@/lib/mandat-serveu
 import { modele } from '@/lib/actes';
 import * as SD from '@/lib/signature-documents';
 import { ecritServeur } from '@/lib/ecritures';
+import { archiverRegistre, premierDuMois, type Archive } from '@/lib/registre-archive';
 
 /**
  * Les rappels aux co-signataires qui n'ont pas encore signé.
@@ -40,9 +41,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'non autorisé' }, { status: 401 });
   }
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  /* Le 1er du mois : l'archive du registre des mandats (V3.18), une fois. */
+  let archive: Archive | null = null;
+  if (premierDuMois()) {
+    try { archive = await archiverRegistre(sb, { mensuelle: true }); } catch (e) { archive = { ok: false, erreur: (e as Error).message }; }
+    if (archive && !archive.ok) console.error('[registre] archive mensuelle', archive.erreur);
+  }
   const { data, error } = await sb.from('mandats_cosignataires').select('*').eq('statut', 'invite');
   /* Table absente (SQL pas encore lancé) : rien à faire. */
-  if (error) return NextResponse.json({ ok: true, rien: error.message });
+  if (error) return NextResponse.json({ ok: true, rien: error.message, archive });
 
   const bilan: string[] = [];
   const lignes = new Map<string, LigneMandat | null>();
@@ -104,7 +111,7 @@ export async function GET(req: NextRequest) {
     }
   }
   bilan.push(...await relancerDocuments(sb));
-  return NextResponse.json({ ok: true, bilan });
+  return NextResponse.json({ ok: true, bilan, archive });
 }
 
 async function relancerDocuments(sb: SupabaseClient): Promise<string[]> {

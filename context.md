@@ -581,7 +581,8 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/signer` | **publique** | Le co-signataire, depuis son lien : `afficher`, `code`, `signer`, `pdf`, `renoncer`, `decliner`. Un jeton de `documents_signataires` passe par `signerDocument()` (`afficher`, `code`, `signer`, `pdf`). La serrure est son jeton | Supabase, Mailjet |
 | `GET /signer/<jeton>` | **publique** | Sa page (aussi sur `espace.emilio-immo.com/signer/…`) : lire, vérifier ses informations, signer au doigt | Supabase |
 | `POST /api/mandat/cosignataire` | portail | Depuis la fiche : `renvoyer` son lien, `relancer` (lien neuf), `clore` l'invitation | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
-| `GET /api/mandat/relances` | **publique** (`CRON_SECRET`) | Chaque matin à 9 h UTC : rappels à 2 et 7 jours, alerte à Alexandre à 7 jours et à l'expiration du lien | `CRON_SECRET` |
+| `GET /api/mandat/relances` | **publique** (`CRON_SECRET`) | Chaque matin à 9 h UTC : rappels à 2 et 7 jours, alerte à Alexandre à 7 jours et à l'expiration du lien ; le 1er du mois, l'archive du registre des mandats | `CRON_SECRET` |
+| `POST /api/registre/archive` | portail | L'archive du registre des mandats, à la demande : le PDF rangé dans `mandats/registre/` et envoyé par mail | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `POST /api/documents/signature` | portail | Signature en ligne ou sur place d'un document : `lancer`, `renvoyer`, `annuler`, `code` et `signer` (sur place), `finaliser` (étapes `verifier` · `assembler` · `sceller` · `envoyer` · `classer`) | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `POST /api/biens-vente` | portail | Fichiers privés d'un bien en vente : `depot` (sous `biens-vente/<id>/`), `lien` (5 minutes), `retirer`, `tout` (le bien est supprimé) | `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
@@ -1306,6 +1307,85 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.18 — 28 septembre 2026 · le registre des mandats, la délégation, l'éditeur repensé
+
+⚠️ **À passer dans Supabase avant de déployer** : `outils/sql/registre-mandats.sql` (tables,
+déclencheurs, fonctions ; relançable sans risque). Sans lui, tout marche comme avant : le registre
+se lit « pas démarré » (`registreAbsent`, par le code de l'erreur), numéro saisi à la main et
+réserve de l'espace inchangés.
+
+**Le registre des mandats** (Documents › Registre des mandats, `components/documents/PageRegistre.tsx`,
+`lib/registre.ts`). Article 72 du décret de 1972 : chaque mandat, dans l'ordre, sous un numéro
+qui se suit sans trou, reporté sur le mandat AVANT sa signature.
+- **Alexandre le démarre** (bouton « Démarrer le registre ») : le dernier numéro de son registre
+  ImmoFacile, la mention de reprise, une case « j'ai exporté mon ancien registre ». Un départ qui
+  retombe sur un numéro que le CRM connaît déjà (documents, recherches, mandats en ligne, réserve)
+  demande une confirmation de plus. Le départ ne se change plus.
+- **Le numéro est pris par la base**, sous verrou (`registre_inscrire`, `pg_advisory_xact_lock`) :
+  en finalisant un mandat dans Documents (`finaliser(…, { registre })`, avant que le PDF soit
+  figé), ou quand un acheteur demande son code pour signer seul dans son espace
+  (`/api/espace/mandat`, étape `code`). Idempotent : même document, même numéro ; même signature
+  en ligne, même numéro ; une signature commencée dans l'espace pour cette recherche et jamais
+  close, même numéro. Un numéro d'avant le registre (`numeroAncien` : plus petit que le premier)
+  reste celui de son mandat ; un numéro de mandat fini ne resert pas.
+- **Rien ne se modifie, rien ne s'efface** : déclencheurs sur UPDATE, DELETE et TRUNCATE des trois
+  tables. Ce qui arrive ensuite s'ajoute en **observations** (`registre_observer`) : « Signé »
+  (à la main, en ligne, sur place, dans l'espace, co-signatures en note), « Sans suite »
+  (document annulé ou brouillon numéroté supprimé), « Rétracté », « Annulé », avenant signé,
+  délégation signée ; à la main depuis la page : signé, sans suite, fin, vente, annulé,
+  délégation, observation.
+- **Empreintes chaînées** (SHA-256, heure en UTC au format fixe) : chaque ligne et chaque
+  observation porte l'empreinte de son contenu et de la précédente. `registre_verifier()` dit si
+  un numéro manque ou si une ligne a été retouchée ; la page le vérifie à chaque ouverture.
+- **La page** : une frise de haut en bas (pastilles numérotées reliées par un trait, couleur =
+  état, groupées par mois, le prochain numéro en haut et le départ en bas ; « Plus récents en
+  haut » / « Dans l'ordre »), recherche, tuiles d'état, « Inscrire à la main » (un mandat fait
+  hors du CRM), « Exporter en PDF » (`lib/registre-pdf.ts`), « M'envoyer l'archive ».
+- **L'archive** (`lib/registre-archive.ts`) : le PDF complet, rangé dans `mandats/registre/` et
+  envoyé par mail à Alexandre ; chaque 1er du mois par le cron des relances (pas de cron de plus),
+  ou à la demande (`POST /api/registre/archive`). Lecture par pages de 1 000 (`toutLire`).
+- **Ailleurs** : l'éditeur remplace le champ du numéro par un guide (« ce sera le 4336 ») et
+  refuse de finaliser tant que l'état du registre n'est pas lu ; le bloc Mandat de la fiche
+  (`MandatEnLigne`) ne demande plus de numéro ni de réserve, dit d'où viendra le numéro, et
+  propose de laisser un numéro d'avant le registre ; un « Signé » ou « Rétracté » que le registre
+  n'a pas pu noter part en alerte mail.
+- Les bons de visite, offres et courriers ne vont pas au registre. Les avenants et les
+  délégations n'ont pas de ligne à eux : une observation sur celle de leur mandat.
+
+**Le menu** : sous « Documents », un sous-menu ouvert par défaut (sa flèche le replie, retenu
+dans `localStorage`, `menu.documents`) : « Créer un document » et « Liste des documents »
+(`IntentionDocuments.ancre` : la page descend à l'endroit), « Registre des mandats »
+(`?page=registre`). Menu réduit : la rubrique seule.
+
+**La délégation de mandat** (`lib/actes/delegation.ts`, rubrique « Délégations »). Confier un
+mandat signé à un confrère : « Déléguer à un confrère » sur la fiche d'un mandat signé (papier ou
+en ligne), ou Nouveau document › Délégation (mandats signés seulement). Elle reprend le mandat,
+avenants signés compris (`Modele.avenantsDe`, appliqué par `preparerDepuis`) ; on saisit le
+confrère (agence, société, siège, RCS, carte et CCI, garantie ou non-détention de fonds, RCP,
+signataire), la mission (toute ou une partie), sa fin (au plus tard celle du mandat), ses
+engagements, les annonces, le partage des honoraires (part du confrère, qui encaisse). Signée
+par le confrère puis l'agence, à la main, en ligne ou sur place. Refusée si le mandat ne
+l'autorise pas (un avenant d'abord). `Modele.interne` : jamais dans l'espace du client, ni en
+lecture ni en téléchargement.
+
+**La clause de délégation** : cochée d'office dans les pouvoirs du mandat de vente et du mandat
+de recherche, réécrite (« déléguer tout ou partie de sa mission à un autre professionnel
+titulaire de la carte… ; l'Agence reste responsable… (article 1994 du Code civil) et l'informe
+de toute délégation »). Seul changement dans les textes des modèles.
+
+**L'éditeur repensé** : plus d'étapes (mandat de vente : 8 ; de recherche : 6), chaque question
+dans sa carte avec un grand libellé et son pictogramme, des pictogrammes sur tous les choix, le
+fil des étapes et la bascule « Étape par étape / Tout sur une page » en haut, comme l'éditeur
+d'un bien (`FilEtapes.tsx`, partagé). L'aperçu ne change pas. Grille des modèles : trois
+colonnes.
+
+**La fiche client** : « Ses documents » et « Ses biens » repliés d'office, côte à côte, avec leur
+nombre et une flèche qui invite à déplier (`BlocRepliable.tsx`) ; le lien de l'espace juste sous
+le bloc du nom ; « Où en est votre recherche ? » au pied du bloc de la recherche.
+
+**À faire relire par l'avocat** avant le premier usage réel : le texte de la délégation, la
+clause des pouvoirs, la tenue électronique du registre (mentions de l'en-tête du PDF).
 
 ### V3.17 — 28 septembre 2026 · plus rien ne se perd sans le dire
 

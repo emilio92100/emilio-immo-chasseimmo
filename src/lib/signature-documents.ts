@@ -37,6 +37,7 @@ import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { ecritServeur } from './ecritures';
+import { noterSignature } from './registre';
 
 export const BUCKET = 'mandats';
 export const SIGNATURE_AGENCE = 'agence/signature.png';
@@ -465,6 +466,14 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
     statut: 'signe', signe_le: le, signe_chemin: sd.scelle_chemin || null, signature: { ...sd, classe_le: new Date().toISOString() }, updated_at: new Date().toISOString(),
   }).eq('id', doc.id);
   if (error) { pbs.push('document : ' + error.message); return pbs; }
+  /* Le registre des mandats (V3.18) : « Signé » sur la ligne du mandat,
+     ou l'avenant sur celle de son mandat. */
+  const pbR = await noterSignature(sb, {
+    modele: doc.modele, document_id: doc.id, titre: doc.titre || m?.titre || 'Document',
+    mandatNumero: typeof doc.donnees?.mandatNumero === 'string' ? doc.donnees.mandatNumero : undefined,
+    comment: sd.mode === 'sur_place' ? 'sur place' : 'en ligne', quand: `${dateCourte(le)} à ${heureParis(le)}`,
+  });
+  if (pbR) pbs.push(pbR);
   if (m?.surRecherche && doc.recherche_id) {
     const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(le));
     const { error: e2 } = await sb.from('recherches').update(m.surRecherche(doc.donnees, jour)).eq('id', doc.recherche_id);
