@@ -20,6 +20,9 @@ import {
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
+import ChoixSource from '@/components/contacts/ChoixSource';
+import { Ic } from '@/components/documents/ApercuActe';
+import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
 import cc from '@/components/contacts/Contacts.module.css';
 
 const STATUTS = [
@@ -51,7 +54,6 @@ const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
 ];
 /* L'emoji des blocs propres à un type, dans la fenêtre de création (les
    autres blocs en ont un). */
-const EMOJI_PRO: Record<string, string> = { 'Son agence': '🏢', 'Son étude': '⚖️', 'L’immeuble': '🏢', 'Son activité': '🧰' };
 
 /* La « chaleur du client » a été retirée : elle se remplissait à la création
    et n'était plus jamais lue — ni affichée dans la liste, ni dans la fiche,
@@ -90,7 +92,8 @@ const initForm = {
   bien_actuel_valeur: '', bien_actuel_a_vendre: false, bien_actuel_notes: '',
   bien_actuel_adresse: '', bien_actuel_meme_adresse: true,
   sans_mandat: false,
-  mandat_date_signature: '', mandat_duree: '3', mandat_honoraires: '2,5% TTC',
+  /* Vides : un champ pré-rempli se confondait avec un champ déjà saisi (V3.23). */
+  mandat_date_signature: '', mandat_duree: '', mandat_honoraires: '',
   notes: '',
   /* V3.14 : qui est ce contact, ce qui est propre à son métier, et la suite. */
   types: [] as TypeContact[],
@@ -99,6 +102,8 @@ const initForm = {
   critPlusTard: false,
   /* Un vendeur, un propriétaire : ouvrir tout de suite « Nouveau bien ». */
   creerBien: true,
+  /* D'où il vient (V3.23) : facultatif, voir src/lib/sources.ts. */
+  source: '', source_detail: '',
 };
 
 /* Monsieur ou Madame, pour une personne du couple. */
@@ -112,15 +117,26 @@ function Civilite({ v, onV }: { v: string; onV: (c: 'Monsieur' | 'Madame') => vo
   );
 }
 
-// Carte de section pour le formulaire en étapes
-function Bloc({ titre, children }: { titre: string; children: React.ReactNode }) {
+/* Une section du formulaire (V3.23) : une icône dessinée dans la couleur du
+   type de contact, un titre, une précision. Les émoji des titres rendaient
+   différemment d'un téléphone à l'autre. */
+type Teinte = { c: string; fond: string };
+const MARINE: Teinte = { c: '#34496e', fond: '#eef2f8' };
+const OR: Teinte = { c: '#a07c28', fond: '#fbf6e9' };
+function Bloc({ ic, titre, petit, teinte = MARINE, children }: { ic: string; titre: string; petit?: string; teinte?: Teinte; children: React.ReactNode }) {
   return (
-    <div className="nc-bloc" style={{ background: '#fafbfd', border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px' }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--emilio)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 14 }}>{titre}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
-    </div>
+    <section className="nc-bloc">
+      <div className="nc-bloc-t">
+        <span className="nc-bloc-ic" style={{ background: teinte.fond, color: teinte.c }}><Ic n={ic} t={17} /></span>
+        <b>{titre}</b>
+        {petit && <small>{petit}</small>}
+      </div>
+      <div className="nc-bloc-corps">{children}</div>
+    </section>
   );
 }
+/* L'icône de la section propre à un métier (ChampsPro). */
+const IC_PRO: Record<string, string> = { 'Son agence': 'agence', 'Son étude': 'balance', 'L’immeuble': 'immeuble', 'Son activité': 'outil' };
 
 // Style d'une pastille toggle (active/inactive)
 function pill(active: boolean, borderActive: string, bgActive: string, colorActive: string): React.CSSProperties {
@@ -432,13 +448,15 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [etapeCrit, setEtapeCrit] = useState(0);
   const [sensCrit, setSensCrit] = useState<1 | -1>(1);
   const [adrSug, setAdrSug] = useState<any[]>([]);
+  /* Le 2e téléphone et le 2e e-mail : cachés tant qu'on ne les demande pas. */
+  const [autresCoord, setAutresCoord] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   function openModal() {
     setForm(initForm); setCrit(CRIT_VIDE);
     setStep(0); setEtapeCrit(0); setSensCrit(1);
-    setError(''); setAdrSug([]); setShowModal(true);
+    setError(''); setAdrSug([]); setAutresCoord(false); setShowModal(true);
   }
 
   useEffect(() => { setModeCrit(lireModeCrit()); }, []);
@@ -707,7 +725,16 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         est_vendeur: form.types.includes('vendeur'),
       };
       const pro = Object.fromEntries(Object.entries(form.pro).filter(([, v]) => typeof v === 'string' && v.trim()));
-      let r = await supabase.from('clients').insert({ ...ligne, types: form.types, pro }).select().single();
+      /* La source n'est écrite que si elle a été choisie : avant le SQL
+         « source-contact », la colonne n'existe pas. On crée alors le contact
+         sans elle, et on le dit. */
+      const src = form.source ? { source: form.source, source_detail: form.source_detail.trim() || null } : {};
+      const libSrc = libelleSource(form.source, form.source_detail);
+      let r = await supabase.from('clients').insert({ ...ligne, ...src, types: form.types, pro }).select().single();
+      if (r.error && form.source && colonneSourceAbsente(r.error.message)) {
+        r = await supabase.from('clients').insert({ ...ligne, types: form.types, pro }).select().single();
+        if (!r.error) signalerEchec('La source du contact', 'lancez d’abord outils/sql/source-contact.sql dans Supabase, puis choisissez-la depuis sa fiche (« Modifier »).');
+      }
       if (r.error && colonneContactAbsente(r.error.message)) {
         /* Le SQL des types de contact n'est pas encore passé : un acheteur
            se crée comme avant ; les autres attendent le SQL. */
@@ -718,7 +745,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
       if (err) throw err;
       if (data && !acheteur) {
-        await addJournal(data.id, 'creation', 'Contact créé', `${form.types.map(k => typeDe(k).lib).join(', ')} · ${reference}`);
+        await addJournal(data.id, 'creation', 'Contact créé', `${form.types.map(k => typeDe(k).lib).join(', ')} · ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
       if (data && acheteur) {
         // Créer la 1ère recherche du client avec tous les critères
@@ -774,7 +801,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           notes: cr.notes || null,
         });
         if (eRech) signalerEchec('Le contact est créé, mais sa recherche', `${eRech.message}. Ouvre sa fiche et enregistre ses critères : la recherche se crée alors.`);
-        await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}`);
+        await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
       setShowModal(false);
       const versBien = !!data && !acheteur && form.creerBien && (form.types.includes('vendeur') || form.types.includes('proprietaire'));
@@ -1164,19 +1191,51 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
            que « qui » et « comment le joindre ». */
         const acheteur = form.types.includes('acheteur');
         const pro = estPro(form.types);
+        /* La couleur du formulaire : celle de son type principal (le premier
+           qui n'est pas « acheteur », sinon acheteur). */
+        const typeP = typeDe(form.types.find(k => k !== 'acheteur') || form.types[0] || 'acheteur');
+        const teinte: Teinte = { c: typeP.c, fond: typeP.fond };
+        const nomTape = nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } });
+        const quiC = form.prenom.trim() || (form.couple && !pro ? 'eux' : form.civilite === 'Madame' ? 'elle' : 'lui');
+        /* La fiche qui se dessine pendant qu'on tape (à gauche ; une bande en
+           haut sur téléphone). Elle ne montre que ce qui est saisi. */
+        const lieuPro = form.pro.immeuble || form.pro.adresseEtude || form.pro.adresseAgence || form.pro.etude || form.pro.agence || form.pro.societe || '';
+        const adresseTapee = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        const srcChoisie = sourceDe(form.source);
+        const apercu = (
+          <aside className="nc-apercu" aria-label="Aperçu de la fiche">
+            <div className="nc-ap-h">
+              <AvatarContact c={{ prenom: form.prenom, nom: form.nom, civilite: form.civilite, couple: form.couple && !pro, conjoint: { civilite: form.c2_civilite, prenom: form.c2_prenom }, types: form.types }}
+                teinte={{ bg: typeP.fond, fg: typeP.c, trait: 'rgba(255,255,255,.18)' }} taille={62} />
+              <div className="nc-ap-txt">
+                <div className={`nc-ap-nom${nomTape ? '' : ' vide'}`}>{nomTape || 'Prénom Nom'}</div>
+                <div className="nc-ap-types">{form.types.map(k => <Puce key={k} k={k} />)}</div>
+              </div>
+            </div>
+            <div className="nc-ap-b">
+              <div className={`nc-ap-l${form.tel1 ? '' : ' vide'}`}><Ic n="telephone" t={15} /><span>{form.tel1 || 'Téléphone'}</span></div>
+              <div className={`nc-ap-l${form.email1 ? '' : ' vide'}`}><Ic n="mail" t={15} /><span>{form.email1 || 'E-mail'}</span></div>
+              {pro
+                ? <div className={`nc-ap-l${lieuPro ? '' : ' vide'}`}><Ic n={IC_PRO[form.types.includes('gardien') ? 'L’immeuble' : form.types.includes('notaire') ? 'Son étude' : form.types.includes('confrere') ? 'Son agence' : 'Son activité']} t={15} /><span>{lieuPro || (form.types.includes('gardien') ? 'Immeuble' : form.types.includes('notaire') ? 'Étude' : form.types.includes('confrere') ? 'Agence' : 'Société')}</span></div>
+                : <div className={`nc-ap-l${adresseTapee ? '' : ' vide'}`}><Ic n="lieu" t={15} /><span>{adresseTapee || 'Adresse'}</span></div>}
+              {srcChoisie && <div className="nc-ap-src"><Ic n={srcChoisie.ic} t={14} /><span>{libelleSource(form.source, form.source_detail)}</span></div>}
+              <div className="nc-aide" style={{ textAlign: 'center' }}>La fiche se dessine au fur et à mesure.</div>
+            </div>
+          </aside>
+        );
         /* Ce qui est propre au type : l'agence d'un confrère, l'étude d'un
            notaire… Juste après l'identité pour un professionnel (c'est ce
            qui compte), après les coordonnées pour un particulier. */
         const champsPro = (
           <ChampsPro types={form.types} pro={form.pro} onChange={x => setForm({ ...form, pro: x })}
-            cls={{ row: styles.formRow, group: styles.formGroup, label: styles.label, input: styles.input, bloc: (titre, enfants) => <Bloc key={titre} titre={`${EMOJI_PRO[titre] || '🗂️'} ${titre}`}>{enfants}</Bloc> }} />
+            cls={{ row: styles.formRow, group: styles.formGroup, label: styles.label, input: styles.input, bloc: (titre, enfants) => <Bloc key={titre} ic={IC_PRO[titre] || 'dossier'} titre={titre} petit={`ce qui est propre à un ${typeDe(form.types.find(k => k !== 'acheteur') || form.types[0]).lib.toLowerCase()}`} teinte={teinte}>{enfants}</Bloc> }} />
         );
         const GRANDES: { cle: 'type' | 'contact' | 'recherche' | 'mandat'; ico: string; nom: string; sous: string }[] = [
           { cle: 'type', ico: '🏷️', nom: 'Qui est-ce', sous: 'Acheteur, vendeur, notaire, confrère… plusieurs à la fois si besoin' },
           { cle: 'contact', ico: '👤', nom: pro ? 'Ses coordonnées' : 'Le contact', sous: pro ? 'Qui il est, où il travaille, comment le joindre' : 'Qui il est, comment le joindre' },
           ...(acheteur ? [
             { cle: 'recherche' as const, ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
-            { cle: 'mandat' as const, ico: '📋', nom: 'Le mandat', sous: 'Ce qui vous lie, vos notes' },
+            { cle: 'mandat' as const, ico: '📋', nom: 'Le mandat', sous: 'Ce qui vous lie' },
           ] : []),
         ];
         const pas = GRANDES[Math.min(step, GRANDES.length - 1)].cle;
@@ -1257,6 +1316,47 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
               .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
               .nc-civ button[data-on="true"] { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
               .nc-note { font-size: 12px; line-height: 1.55; border-radius: 10px; padding: 9px 12px; background: #f8fafc; border: 1px solid #eef1f6; color: #64748b; }
+
+              /* V3.23 — les sections, les champs, l'aperçu */
+              .nc-bloc { background: #fff; border: 1px solid #e6ebf2; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(15,23,42,.02); min-width: 0; }
+              .nc-bloc-t { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; flex-wrap: wrap; }
+              .nc-bloc-ic { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+              .nc-bloc-t b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; color: var(--emilio); }
+              .nc-bloc-t small { font-size: 12.5px; font-weight: 600; color: #94a3b8; }
+              .nc-bloc-corps { display: flex; flex-direction: column; gap: 12px; }
+              .nc-fenetre .${styles.input}, .nc-fenetre .${styles.textarea} { background: #fff; border: 1.5px solid #dfe5ee; border-radius: 11px; padding: 11px 13px; font-size: 14px; }
+              .nc-fenetre .${styles.input}:focus, .nc-fenetre .${styles.textarea}:focus { border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.16); }
+              .nc-fenetre .${styles.label} { font-size: 12.5px; font-weight: 700; color: #3b4a60; }
+              .nc-fenetre .${styles.formRow} { gap: 12px; }
+              .nc-fenetre .${styles.formGroup} { gap: 6px; }
+              .nc-aide { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+              .nc-lien { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 0; font: 700 13px 'DM Sans', sans-serif; color: #a07c28; cursor: pointer; }
+              .nc-lien:hover { text-decoration: underline; text-underline-offset: 3px; }
+              .nc-deux { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px; align-items: start; }
+              .nc-champs { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+              .nc-apercu { position: sticky; top: 0; border-radius: 18px; overflow: hidden; border: 1px solid #e3e8f0; background: #fff; box-shadow: 0 14px 30px -24px rgba(26,35,50,.6); }
+              .nc-ap-h { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 18px 14px 16px; color: #fff; background: linear-gradient(152deg, #3a5178 0%, #27395a 60%, #2e4166 100%); }
+              .nc-ap-txt { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
+              .nc-ap-nom { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+              .nc-ap-nom.vide { color: rgba(255,255,255,.45); font-weight: 700; }
+              .nc-ap-types { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+              .nc-ap-b { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+              .nc-ap-l { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #3b4a60; min-width: 0; }
+              .nc-ap-l svg { color: #a3b0c2; flex-shrink: 0; }
+              .nc-ap-l span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              .nc-ap-l.vide { color: #b4bfcd; }
+              .nc-ap-src { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #fdf8ec; border: 1px solid #efdfb4; font-size: 12.5px; font-weight: 700; color: #7a5d1c; min-width: 0; }
+              .nc-ap-src span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              @media (max-width: 900px) {
+                .nc-deux { grid-template-columns: 1fr; gap: 12px; }
+                .nc-apercu { position: static; border: none; box-shadow: none; background: none; }
+                .nc-ap-h { flex-direction: row; text-align: left; align-items: center; padding: 12px; border-radius: 16px; }
+                .nc-ap-h > span:first-child { width: 46px !important; height: 46px !important; }
+                .nc-ap-h > span:first-child svg { width: 46px; height: 46px; }
+                .nc-ap-txt { align-items: flex-start; }
+                .nc-ap-types { justify-content: flex-start; }
+                .nc-ap-b { display: none; }
+              }
             `}</style>
 
             <div className={`${styles.modal} nc-fenetre`} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
@@ -1282,13 +1382,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       disabled={i > step && (i > 1 ? !nomRempli : !form.types.length)}
                       onClick={() => allerGrande(i)}>
                       <div className="nc-barre" />
-                      <div className="nc-lig"><b>{g.ico} {g.nom}</b>{i === step && <i>{`${i + 1}/${GRANDES.length}`}</i>}</div>
+                      <div className="nc-lig"><b>{g.nom}</b>{i === step && <i>{`${i + 1}/${GRANDES.length}`}</i>}</div>
                     </button>
                   ))}
                 </div>
                 {/* Au téléphone, les libellés du rail sont masqués : l'étape en
                     cours tient sur une ligne. */}
-                <div className="nc-ou">{`${GRANDES[Math.min(step, GRANDES.length - 1)].ico} ${GRANDES[Math.min(step, GRANDES.length - 1)].nom} · ${Math.min(step, GRANDES.length - 1) + 1}/${GRANDES.length}`}</div>
+                <div className="nc-ou">{`${GRANDES[Math.min(step, GRANDES.length - 1)].nom} · ${Math.min(step, GRANDES.length - 1) + 1}/${GRANDES.length}`}</div>
 
                 {/* La frise porte son propre retrait : on annule celui du bloc. */}
                 {surCriteres && <div className="nc-frise" style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
@@ -1303,20 +1403,33 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   {/* ═══ 0 · QUI EST-CE ═══ */}
                   {pas === 'type' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <ChoixTypes v={form.types} onChange={x => { setError(''); setForm({ ...form, types: x }); }} />
-                      <div className="nc-note">
-                        {form.types.length === 0 ? 'Coche un ou plusieurs types : un propriétaire qui vend et rachète est « vendeur » et « acheteur ».'
-                          : form.types.includes('acheteur') ? 'Acheteur : sa recherche et son mandat viennent ensuite. S’il n’a pas encore donné ses critères, il sera « acheteur non filtré ».'
-                            : form.types.includes('vendeur') || form.types.includes('proprietaire') ? 'Vendeur ou propriétaire : après ses coordonnées, « Nouveau bien » s’ouvre, lui déjà propriétaire.'
-                              : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
-                      </div>
+                      <Bloc ic="personne" titre="Ce contact est…" petit="un ou plusieurs types">
+                        <ChoixTypes v={form.types} onChange={x => { setError(''); setForm({ ...form, types: x }); }} />
+                        <div className="nc-note">
+                          {form.types.length === 0 ? 'Coche un ou plusieurs types : un propriétaire qui vend et rachète est « vendeur » et « acheteur ».'
+                            : form.types.includes('acheteur') ? 'Acheteur : sa recherche et son mandat viennent ensuite. S’il n’a pas encore donné ses critères, il sera « acheteur non filtré ».'
+                              : form.types.includes('vendeur') || form.types.includes('proprietaire') ? 'Vendeur ou propriétaire : après ses coordonnées, « Nouveau bien » s’ouvre, lui déjà propriétaire.'
+                                : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
+                        </div>
+                      </Bloc>
+                      {/* D'où il vient (V3.23) : facultatif, rien de choisi = rien d'enregistré. */}
+                      <Bloc ic="drapeau" titre="D’où vient ce contact ?" petit="facultatif · pour vous rappeler comment vous l’avez eu" teinte={OR}>
+                        <ChoixSource source={form.source} detail={form.source_detail} onChange={(so, de) => setForm({ ...form, source: so, source_detail: de })}
+                          noms={clients.map(x => nomFoyer(x)).filter(Boolean)} />
+                      </Bloc>
                     </div>
                   )}
 
-                  {/* ═══ 1 · LE CONTACT ═══ */}
+                  {/* ═══ 1 · LE CONTACT ═══
+                      V3.23 : une section par sujet, chacune avec son icône à la
+                      couleur du type ; à gauche, la fiche qui se dessine pendant
+                      qu'on tape. Aucun champ ne porte d'exemple : un « Sophie »
+                      ou un « 06 12 34 56 78 » grisé passait pour déjà rempli. */}
                   {pas === 'contact' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      <Bloc titre="👤 Identité">
+                    <div className="nc-deux">
+                      {apercu}
+                      <div className="nc-champs">
+                      <Bloc ic="personne" titre="Qui est-ce" teinte={teinte}>
                         {!pro && <div className="nc-qui">
                           {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
                             <button type="button" key={k} className="nc-etat nc-qui-b"
@@ -1329,8 +1442,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                         {pro && <Civilite v={form.civilite} onV={v => setForm({ ...form, couple: false, civilite: v })} />}
                         {!form.couple || pro ? (
                           <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Sophie" autoFocus /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
                           </div>
                         ) : (
                           <>
@@ -1339,38 +1452,63 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                                 <div className="nc-pers-t">Personne 1 · contact principal</div>
                                 <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
                                 <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} placeholder="Paul" autoFocus /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} placeholder="Martin" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
                                 </div>
                                 {/* Ses coordonnées ici, comme pour la personne 2 : elles
                                     étaient plus bas, dans « Contact », et on les cherchait. */}
                                 <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>✉️ Email</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="paul@gmail.com" /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
                                 </div>
                               </div>
                               <div className="nc-pers">
                                 <div className="nc-pers-t">Personne 2</div>
                                 <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
                                 <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} placeholder="Claire" /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} placeholder="Martin" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} /></div>
                                 </div>
                                 <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>✉️ Email</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} placeholder="claire@gmail.com" /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone</label><input className={styles.input} value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} placeholder="facultatif" /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>{'Téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} /></div>
                                 </div>
                               </div>
                             </div>
-                            <div className="nc-note">{'✍️ Le mandat en ligne sera préparé à leurs deux noms. La personne 1 reçoit les mails et a l’espace client ; la personne 2 reçoit son propre lien et son propre code pour signer.'}</div>
+                            <div className="nc-note">{'Le mandat en ligne sera préparé à leurs deux noms. La personne 1 reçoit les mails et a l’espace client ; la personne 2 reçoit son propre lien et son propre code pour signer.'}</div>
                           </>
                         )}
-                        {/* Un professionnel se joint à son agence, son étude, son
-                           immeuble : son adresse est dans le bloc qui suit. */}
-                        {!pro && <>
+                      </Bloc>
+
+                      {/* Le joindre. Un couple a déjà les coordonnées de chacun
+                          au-dessus : ici, seulement un numéro commun ou un autre
+                          e-mail, à la demande. */}
+                      <Bloc ic="telephone" titre="Le joindre" teinte={teinte}>
+                        {!(form.couple && !pro) && (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
+                          </div>
+                        )}
+                        {autresCoord || form.tel2 || form.email2 ? (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>{'Autre téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>{'Autre e-mail · facultatif'}</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} /></div>
+                          </div>
+                        ) : (
+                          <button type="button" className="nc-lien" onClick={() => setAutresCoord(true)}>
+                            <Ic n="plus" t={14} e={2.4} />{form.couple && !pro ? 'Un numéro commun ou un autre e-mail' : 'Un autre téléphone ou e-mail'}
+                          </button>
+                        )}
+                      </Bloc>
+
+                      {/* Un professionnel se joint à son agence, son étude, son
+                         immeuble : son adresse est dans la section de son métier. */}
+                      {pro ? champsPro : (
+                        <Bloc ic="lieu" titre="Son adresse" teinte={teinte}>
                           <div className={styles.formGroup} style={{ position: 'relative' }}>
-                            <label className={styles.label}>📍 Adresse actuelle</label>
-                            <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} placeholder="12 rue de la Paix…" autoComplete="off" />
+                            <label className={styles.label}>Adresse</label>
+                            <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} autoComplete="off" />
                             {adrSug.length > 0 && (
                               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
                                 {adrSug.map((f: any, i: number) => (
@@ -1380,35 +1518,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                                 ))}
                               </div>
                             )}
+                            <span className="nc-aide">{'Tapez l’adresse : elle se complète toute seule.'}</span>
                           </div>
                           <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} placeholder="75002" /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} placeholder="Paris" /></div>
-                          </div>
-                        </>}
-                      </Bloc>
-
-                      {pro && champsPro}
-
-                      {form.couple && !pro ? (
-                        /* Un couple : chacun a déjà son e-mail et son téléphone
-                           ci-dessus. Ici, seulement un numéro commun ou un autre
-                           e-mail, s'il y en a. */
-                        <Bloc titre="📞 Autres coordonnées (facultatif)">
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>✉️ Autre e-mail</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="martin.famille@gmail.com" /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>☎️ Autre téléphone</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
-                          </div>
-                        </Bloc>
-                      ) : (
-                        <Bloc titre="📞 Contact">
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>✉️ Email principal</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} placeholder="sophie@gmail.com" /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>✉️ Email secondaire</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} placeholder="s.martin@travail.fr" /></div>
-                          </div>
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>📱 Téléphone principal</label><input className={styles.input} value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} placeholder="06 12 34 56 78" /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>☎️ Téléphone secondaire</label><input className={styles.input} value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} placeholder="01 98 76 54 32" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} /></div>
                           </div>
                         </Bloc>
                       )}
@@ -1416,24 +1530,15 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       {!pro && champsPro}
 
                       {!acheteur && (form.types.includes('vendeur') || form.types.includes('proprietaire')) && (
-                        <Bloc titre="🏡 Son bien">
+                        <Bloc ic="maison" titre="Son bien" teinte={teinte}>
                           <button type="button" onClick={() => setForm({ ...form, creerBien: !form.creerBien })} style={{ ...pill(form.creerBien, '#c9a84c', '#fbf6e9', '#8a6a1f'), alignSelf: 'flex-start' }}>
                             {form.creerBien ? '✓ ' : ''}Créer son bien juste après (rubrique Biens)
                           </button>
-                          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>« Nouveau bien » s’ouvre, lui déjà propriétaire : à suivre, estimation ou mandat signé.</div>
+                          <div className="nc-aide">« Nouveau bien » s’ouvre, lui déjà propriétaire : à suivre, estimation ou mandat signé.</div>
                         </Bloc>
                       )}
 
-                      {!acheteur && (
-                        <Bloc titre="🗒️ Notes">
-                          <div className={styles.formGroup}>
-                            <label className={styles.label}>Pour vous seul</label>
-                            <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} placeholder="Comment vous vous êtes connus, ce qu’il faut retenir…" />
-                          </div>
-                        </Bloc>
-                      )}
-
-                      {acheteur && <Bloc titre="🎚️ Où en est ce dossier">
+                      {acheteur && <Bloc ic="drapeau" titre="Où en est ce dossier" teinte={teinte}>
                         <div className="nc-etats">
                           {ETATS_NOUVEAU.map(e => (
                             <button type="button" key={e.cle} className="nc-etat" data-on={form.statut === e.cle}
@@ -1451,42 +1556,50 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                           border: `1px solid ${form.statut === 'actif' ? '#bbf7d0' : '#eef1f6'}`,
                           color: form.statut === 'actif' ? '#15803d' : '#64748b' }}>
                           {form.statut === 'actif'
-                            ? '🔍 La veille cherchera pour ce client dès la création du dossier.'
-                            : '⏸️ Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
+                            ? 'La veille cherchera pour ce client dès la création du dossier.'
+                            : 'Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
                         </div>
                       </Bloc>}
 
-                      {acheteur && <Bloc titre="🏠 Sa situation aujourd'hui">
+                      {acheteur && <Bloc ic="maison" titre="Sa situation aujourd’hui" teinte={teinte}>
                         <div className={styles.formGroup}>
                           <label className={styles.label}>Statut d&apos;occupation</label>
                           <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
                             <option value="">Non précisé</option>
-                            <option value="proprietaire">🔑 Propriétaire</option>
-                            <option value="locataire">🏠 Locataire</option>
-                            <option value="heberge">👨‍👩‍👧 Hébergé</option>
+                            <option value="proprietaire">Propriétaire</option>
+                            <option value="locataire">Locataire</option>
+                            <option value="heberge">Hébergé</option>
                             <option value="autre">Autre</option>
                           </select>
                         </div>
                         <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
-                          {form.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Revente possible après l&apos;achat (mandat vendeur potentiel)
+                          {form.bien_actuel_a_vendre ? '✓ ' : ''}Revente possible après l&apos;achat (mandat vendeur potentiel)
                         </button>
                         {form.bien_actuel_a_vendre && (
                           <>
                             <div className={styles.formRow}>
-                              <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} placeholder="Appartement 3P" /></div>
-                              <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} placeholder="65" /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} /></div>
                             </div>
-                            <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} placeholder="450000" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} /></div>
                             <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={{ ...pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9'), alignSelf: 'flex-start' }}>
-                              {form.bien_actuel_meme_adresse ? '✓ ' : ''}📍 À la même adresse que le contact
+                              {form.bien_actuel_meme_adresse ? '✓ ' : ''}À la même adresse que le contact
                             </button>
                             {!form.bien_actuel_meme_adresse && (
-                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à revendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à revendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} /></div>
                             )}
-                            <div className={styles.formGroup}><label className={styles.label}>Précisions</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} placeholder="État, étage, contexte de vente…" rows={2} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>{'Précisions · facultatif'}</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} rows={2} /></div>
                           </>
                         )}
                       </Bloc>}
+
+                      <Bloc ic="crayon" titre={`À savoir sur ${quiC}`} petit="pour vous seul" teinte={OR}>
+                        <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} />
+                        <span className="nc-aide">{acheteur
+                          ? 'Son projet, ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ». Les précisions que le client verra se remplissent à l’étape « Sa recherche ».'
+                          : 'Ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ».'}</span>
+                      </Bloc>
+                      </div>
                     </div>
                   )}
 
@@ -1510,30 +1623,21 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   {/* ═══ 3 · LE MANDAT ═══ */}
                   {pas === 'mandat' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      <Bloc titre="📋 Mandat de recherche">
+                      <Bloc ic="doc" titre="Mandat de recherche" teinte={teinte}>
                         <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), alignSelf: 'flex-start' }}>
                           {form.sans_mandat ? '✓ ' : ''}Recherche sans mandat signé
                         </button>
                         {!form.sans_mandat && (
                           <>
                             <div className={styles.formRow}>
-                              <div className={styles.formGroup}><label className={styles.label}>📅 Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
-                              <div className={styles.formGroup}><label className={styles.label}>⏳ Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} placeholder="3" /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} /></div>
                             </div>
-                            <div className={styles.formGroup}><label className={styles.label}>💶 Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} placeholder="2,5% TTC" /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} /></div>
                           </>
                         )}
                       </Bloc>
 
-                      <Bloc titre="🗒️ Notes internes">
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Pour vous seul — le client ne les voit pas</label>
-                          <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={4} placeholder="Comment il est arrivé, ce qu'il a dit au téléphone, ce qu'il ne faut pas oublier…" />
-                        </div>
-                        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>
-                          Les notes <b>visibles par le client</b>{' '}se remplissent à l&apos;étape « Sa recherche », tout en bas.
-                        </div>
-                      </Bloc>
                     </div>
                   )}
                 </div>
