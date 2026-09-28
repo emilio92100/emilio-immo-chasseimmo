@@ -14,7 +14,7 @@ import {
   etapesCriteres, FriseCriteres, lireModeCrit,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
-import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
+import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, EVT_DEMANDE_VUE, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
 import {
   TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, typeDe, typesDe,
   type InfosPro, type TypeContact,
@@ -56,6 +56,12 @@ const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
   { cle: 'non_filtre', lib: 'Acheteurs non filtrés', couleur: '#94a3b8' },
   ...TYPES_CONTACT.filter(t => !PRINCIPAUX.includes(t.k)).map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
 ];
+/* Les catégories d'une vue (« vendeur », « acheteur+proprietaire »…) ; rien de
+   reconnu : « Tous ». */
+function lireCats(v: string | null): Categorie[] {
+  const l = (v || '').split('+').filter((k): k is Categorie => k === 'archives' || CATEGORIES.some(x => x.cle === k));
+  return l.length ? l : ['tous'];
+}
 /* L'emoji des blocs propres à un type, dans la fenêtre de création (les
    autres blocs en ont un). */
 
@@ -429,12 +435,18 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
      V3.24 : on arrive sur « Tous », ou sur la catégorie demandée par le menu
      de gauche (« Mes vendeurs »…), ou sur celle qu'on avait en quittant la
      liste pour une fiche. Le menu allume l'entrée de ce qui est affiché. */
-  const [cats, setCats] = useState<Categorie[]>(() => {
-    const v = (vueDemandee('clients') || '').split('+')
-      .filter((k): k is Categorie => k === 'archives' || CATEGORIES.some(x => x.cle === k));
-    return v.length ? v : ['tous'];
-  });
+  const [cats, setCats] = useState<Categorie[]>(() => lireCats(vueDemandee('clients')));
   useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
+  /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
+     place, sans recharger (V3.25). */
+  useEffect(() => {
+    const demande = (e: Event) => {
+      const d = (e as CustomEvent<{ page: string; vue: string }>).detail;
+      if (d?.page === 'clients') setCats(lireCats(d.vue));
+    };
+    window.addEventListener(EVT_DEMANDE_VUE, demande);
+    return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
+  }, []);
   const choisirCat = (k: Categorie) => setCats(l => {
     if (k === 'tous' || k === 'archives') return [k];
     /* « Acheteurs non filtrés » est une partie des acheteurs : l'un remplace
@@ -882,7 +894,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
       {/* LE DOSSIER DES ACHETEURS — leur statut, puis leur situation */}
-      {avecAcheteurs && <div className={styles.situations}>
+      {avecAcheteurs && <div className={`${styles.situations} ligne-entre`}>
         <span className={styles.situationsTitre}>Dossier</span>
         {STATUTS.map(s => {
           const actif = filtre === s.key;
@@ -895,7 +907,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
           );
         })}
       </div>}
-      {avecAcheteurs && <div className={styles.situations}>
+      {avecAcheteurs && <div className={`${styles.situations} ligne-entre`} style={{ animationDelay: '40ms' }}>
         <span className={styles.situationsTitre}>Son logement</span>
         {SITUATIONS.map(s => {
           const actif = filtreSit === s.key;
@@ -914,7 +926,20 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       {/* LISTE — les acheteurs dans leur tableau détaillé ; « Tous » et les
           autres types, une ligne par contact. */}
       {loading ? (
-        <div className={styles.loading}>Chargement...</div>
+        /* Pendant la lecture : la silhouette de la liste, plutôt qu'un mot
+           seul qui laissait place d'un coup à tout le tableau (V3.25). */
+        <div className="squelette" aria-busy="true" aria-label="Chargement des contacts">
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="sq-ligne" style={{ animationDelay: `${i * 45}ms` }}>
+              <span className="sq-rond" />
+              <span className="sq-txt">
+                <span className="sq-barre" style={{ width: `${38 + ((i * 17) % 30)}%` }} />
+                <span className="sq-barre sq-fine" style={{ width: `${22 + ((i * 23) % 26)}%` }} />
+              </span>
+              <span className="sq-barre sq-bout" />
+            </div>
+          ))}
+        </div>
       ) : (
         <>
           {avecAcheteurs && (
@@ -929,7 +954,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
                   l'œil sans transformer la page en tableur. */}
-              <div className={styles.entete}>
+              <div className={`${styles.entete} ligne-entre`}>
                 <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
                   Client
                   {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
@@ -977,7 +1002,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                 <span className={styles.colSig}>Signal</span>
               </div>
 
-              <div className={styles.list} key={`${filtre}:${filtreSit}:${search}`}>
+              <div className={styles.list} key={`${cats.join('+')}:${filtre}:${filtreSit}:${search}`}>
                 {ordonne.map((client, rang) => {
                   const st = stats[client.id];
                   const sig = signalDe(client, st);
@@ -1089,7 +1114,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
             </div>
           )}
           {!avecAcheteurs && (autres.length ? (
-            <div className={cc.liste}>
+            /* Une autre catégorie : les lignes arrivent l'une après l'autre. */
+            <div className={`${cc.liste} cascade`} key={cats.join('+')}>
               {cats.length > 1 && (
                 <div className={cc.cumul}>
                   <span>{cats.map(k => CATEGORIES.find(x => x.cle === k)?.lib).filter(Boolean).join(' + ')}</span>
