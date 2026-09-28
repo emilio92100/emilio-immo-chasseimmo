@@ -24,6 +24,10 @@ export type Tuile = {
   /* Une tuile qui demande une action (ex. « Compte rendu à faire ») : elle
      ressort tant qu'elle n'est pas à zéro. */
   alerte?: boolean;
+  /* « Tous », en tête de rangée (V3.24) : sa petite icône dorée, un trait
+     qui la sépare des catégories. */
+  tete?: boolean;
+  ic?: ReactNode;
 };
 
 export default function EnteteRubrique({
@@ -76,7 +80,8 @@ export default function EnteteRubrique({
           const alerte = !!t.alerte && t.n > 0 && !on;
           return (
             <button key={t.cle} type="button" aria-pressed={on} onClick={() => onChoisir(t.cle)}
-              className={`${styles.tuile} ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''}`}>
+              className={`${styles.tuile} ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''}`}>
+              {t.tete && t.ic && <span className={styles.teteIc} aria-hidden="true">{t.ic}</span>}
               <span className={styles.n}>{t.n}</span>
               <span className={styles.lib}>
                 {t.couleur && <span className={styles.point} style={{ background: t.couleur }} />}

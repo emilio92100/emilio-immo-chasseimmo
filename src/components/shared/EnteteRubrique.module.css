@@ -98,6 +98,15 @@
   .alerte { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.38); }
   .alerte .n { color: #fbbf24; }
   .alerte .lib { color: #fde2a7; }
+  /* « Tous » : en tête, sa pastille dorée, un léger fond d'or, et un trait
+     qui la sépare des catégories. */
+  .tete { padding-left: 6px; gap: 9px; margin-right: 9px; background: rgba(201, 168, 76, 0.12); border-color: rgba(201, 168, 76, 0.42); }
+  .tete:hover { background: rgba(201, 168, 76, 0.2); border-color: rgba(201, 168, 76, 0.6); }
+  .tete::after { content: ''; position: absolute; right: -10px; top: 8px; bottom: 8px; width: 1px; background: rgba(255, 255, 255, 0.2); }
+  .tete .lib { color: #fff; font-weight: 700; }
+  .teteIc { width: 24px; height: 24px; border-radius: 7px; background: #c9a84c; color: #1a2332; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .tete.on, .tete.on:hover { background: #fff; border-color: #fff; }
+  .tete.on .lib { color: #1a2332; }
 }
 
 /* ── Téléphone : la carte blanche, compacte ────────────────────────── */
@@ -147,4 +156,9 @@
   .vide .lib { color: #a0aabb; }
   .alerte { background: #fffaf2; }
   .alerte .n { color: #b45309; }
+  /* « Tous » : un fond d'or pâle, le mot en gras. */
+  .teteIc { display: none; }
+  .tete { background: #fdf8ec; }
+  .tete .lib { color: #7a5d1c; font-weight: 800; }
+  .tete.on { background: #fff; }
 }
