@@ -42,9 +42,15 @@ const CLE_VU = 'emilio_carte_vu';
 /* Sous ce zoom, les étiquettes de prix se replient en simples points. */
 const ZOOM_PRIX = 12.9;
 
-export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onListe }: {
+export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onListe, titre = 'Vos biens', sansFiltres = false, vide }: {
   token: string;
   biens: BienCarte[];
+  /* « Vos biens » (tout) ou « Vos nouveautés » (V3.28). */
+  titre?: string;
+  /* Les nouveautés n'ont qu'une couleur (elles attendent un avis) : pas de filtres. */
+  sansFiltres?: boolean;
+  /* Ce qu'on dit quand il ne reste plus rien à montrer. */
+  vide?: string;
   /* Le bien d'où l'on vient (« Voir sur la carte » sur sa fiche). */
   focus: string | null;
   ville: string;
@@ -342,7 +348,8 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
   };
   const rienIci = (
     <div className={s.rien}>
-      {charge ? 'Placement de vos biens…' : places.length ? 'Aucun bien dans cette partie de la carte.' : 'Vos biens n’ont pas encore d’adresse assez précise pour la carte.'}
+      {charge ? 'Placement de vos biens…' : places.length ? 'Aucun bien dans cette partie de la carte.'
+        : !biens.length && vide ? vide : 'Vos biens n’ont pas encore d’adresse assez précise pour la carte.'}
       {!charge && visibles.length > 0 && <button type="button" onClick={toutVoir}>Tout voir</button>}
     </div>
   );
@@ -353,21 +360,21 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
         <div className={s.bandeau}>
           <div className={s.ligne1}>
             {/* Le titre en petit, à côté de la ville : une ligne de gagnée pour la carte. */}
-            <span className={s.titreT}><b>Vos biens</b>{ville && <span>{` · ${ville}`}</span>}</span>
+            <span className={s.titreT}><b>{titre}</b>{ville && <span>{` · ${ville}`}</span>}</span>
             {bascule}
           </div>
-          {puces}
+          {!sansFiltres && puces}
         </div>
       ) : (
         <div className={s.tetePc}>
           <div>
-            <h2>Vos biens sur la carte</h2>
+            <h2>{`${titre} sur la carte`}</h2>
             <p>{ville ? `${ville} · ` : ''}chaque bien dans une petite zone&nbsp;; l’adresse exacte vient avec la visite.</p>
           </div>
           {bascule}
         </div>
       )}
-      {!tel && puces}
+      {!tel && !sansFiltres && puces}
 
       <div className={s.corpsCarte}>
         <div className={s.cadre}>

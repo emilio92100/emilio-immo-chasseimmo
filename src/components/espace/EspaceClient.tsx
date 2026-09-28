@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { lienBienPublic } from '@/lib/jeton';
@@ -988,10 +988,17 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     texte="Un souci de connexion, sans doute. Réessayez dans un instant, ou appelez directement votre conseiller."
     rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
     onFermer={fermer} />, 'pleine');
-  const aller = (v: string) => { if (v === 'carte') setFocusCarte(null); setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const aller = (v: string) => { if (v === 'carte') { setFocusCarte(null); setCarteNeufs(false); } setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   /* La carte, posée sur un bien (« Voir sur la carte » de sa fiche). */
   const [focusCarte, setFocusCarte] = useState<string | null>(null);
-  const allerCarte = (id: string) => { setFocusCarte(id); setVue('carte'); window.scrollTo({ top: 0 }); };
+  const allerCarte = (id: string) => { setFocusCarte(id); setCarteNeufs(false); setVue('carte'); window.scrollTo({ top: 0 }); };
+  /* La carte des nouveautés (V3.28) : « Liste | Carte » de « Nouveautés ».
+     Elle garde les biens arrivés nouveaux tant qu'ils n'ont pas d'avis :
+     un bien seulement regardé y reste ; dès qu'il reçoit un avis depuis sa
+     fiche, il en sort au retour sur la carte. */
+  const [carteNeufs, setCarteNeufs] = useState(false);
+  const [idsNouveaux] = useState(() => new Set(biensInit.filter(b => b.etat === 'neuf').map(b => b.id)));
+  const allerCarteNeufs = () => { setFocusCarte(null); setCarteNeufs(true); setVue('carte'); window.scrollTo({ top: 0 }); };
 
   /* ── passer d'une recherche à l'autre ──
      On recharge la page avec « ?r=<recherche> » plutôt que de rejouer le
@@ -1076,6 +1083,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
+  /* Les biens tels que la carte les montre (voir CarteEspace.tsx). */
+  const biensCarte = useMemo(() => biens.map(pourCarte), [biens]);
+  const nouveautesCarte = useMemo(() => biensCarte.filter(b => idsNouveaux.has(b.id) && b.cat === 'attente'), [biensCarte, idsNouveaux]);
   const [filtreC, setFiltreC] = useState('tout');   // filtre de « Mes derniers biens consultés »
   /* Les filtres de « Consultés » sont repliés d'office : la place va aux biens. */
   const [filtresOuverts, setFiltresOuverts] = useState(false);
@@ -1676,7 +1686,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             <nav className="nav-haut" aria-label="Menu">
               {ONGLETS.map(o => {
                 const n = compte[o.id] || 0;
-                const actif = vue === o.id;
+                /* La carte des nouveautés allume « Nouveautés », pas « La carte ». */
+                const actif = vue === 'carte' && carteNeufs ? o.id === 'neufs' : vue === o.id;
                 return (
                   <button key={o.id} type="button" className={'nh' + (actif ? ' on' : '')}
                     aria-current={actif ? 'page' : undefined} onClick={() => aller(o.id)}>
@@ -1777,11 +1788,25 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           )}
           {vue === 'neufs' && (
             <Vue icone="etoile" titre="Nouveaux biens pour vous" aller={aller}
+              droite={neufs.length > 0 ? (
+                /* Liste | Carte, comme dans « Consultés » (V3.28). */
+                <div className="lc" role="group" aria-label="Affichage">
+                  <button type="button" className="lc-b on" aria-pressed="true"><Ico n="liste" t={15} />Liste</button>
+                  <button type="button" className="lc-b" onClick={allerCarteNeufs}><Ico n="carte" t={15} />Carte</button>
+                </div>
+              ) : null}
+              /* Sans nouveauté, pas de phrase ici : le cadre juste dessous le
+                 dit déjà (deux fois la même chose, V3.28). */
               sous={neufs.length
                 ? `${neufs.length} bien${neufs.length > 1 ? 's' : ''} retenu${neufs.length > 1 ? 's' : ''} pour vous depuis votre dernière visite, du plus récent au plus ancien. Ouvrez-les, puis dites-moi ce que vous en pensez.`
-                : 'Rien de nouveau depuis votre dernière visite. Votre dossier est repris chaque jour, vous n\'êtes pas en attente.'}>
-              <Liste biens={neufs} onOuvrir={ouvrirBien} crit={crit}
-                vide="Rien de nouveau pour le moment.<br>Nous cherchons pour vous tous les jours : dès qu'un bien correspond à ce que vous voulez, il s'affiche ici." />
+                : undefined}>
+              {neufs.length ? <Liste biens={neufs} onOuvrir={ouvrirBien} crit={crit} vide="" /> : (
+                <div className="vide-neuf">
+                  <span className="vn-ic"><Ico n="loupe" t={22} /></span>
+                  <b>Rien de nouveau pour le moment</b>
+                  <span>{'Nous cherchons pour vous tous les jours : dès qu’un bien correspond à ce que vous voulez, il s’affiche ici. Vous n’êtes pas en attente.'}</span>
+                </div>
+              )}
               {/* Le détail du travail de la veille n'a de sens que s'il a donné
                   quelque chose. Sinon on dit l'inverse, mais on le dit. */}
               {neufs.length > 0 && !!passage?.lues && (
@@ -1881,9 +1906,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             );
           })()}
           {vue === 'carte' && (
-            <CarteEspace token={token} biens={biens.map(pourCarte)} focus={focusCarte} ville={villeDeCarte(biens)}
+            <CarteEspace key={carteNeufs ? 'neufs' : 'tout'} token={token}
+              biens={carteNeufs ? nouveautesCarte : biensCarte} focus={focusCarte} ville={villeDeCarte(biens)}
+              titre={carteNeufs ? 'Vos nouveautés' : 'Vos biens'} sansFiltres={carteNeufs}
+              vide={carteNeufs ? 'Vous avez donné votre avis sur toutes les nouveautés : merci ! Elles vous attendent dans « Consultés ».' : undefined}
               onOuvrir={id => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
-              onListe={() => aller('consultes')} />
+              onListe={() => aller(carteNeufs ? 'neufs' : 'consultes')} />
           )}
           {vue === 'marche' && (
             <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} biens={biens} crit={crit}
@@ -1924,7 +1952,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         {ONGLETS.filter(o => !o.pc).map(o => {
           const n = compte[o.id] || 0;
           /* La carte est une façon de voir « Consultés » : l'onglet reste allumé. */
-          const actif = vue === o.id || (vue === 'carte' && o.id === 'consultes');
+          const actif = vue === o.id || (vue === 'carte' && o.id === (carteNeufs ? 'neufs' : 'consultes'));
           return (
             <button key={o.id} type="button" className={'bb' + (actif ? ' on' : '')} data-o={o.id}
               aria-current={actif ? 'page' : undefined}
@@ -7276,6 +7304,17 @@ button.auj-c:active{transform:scale(.96)}
 @media (prefers-reduced-motion:reduce){
   .bb-n, .nh-n, .bb-ic.lueur, .vc-d, .calme-ic, .chapeau::after, .cn, .cn-jb i{animation:none !important}
 }
+
+/* « Rien de nouveau pour le moment » (V3.28) : un seul message, avec sa loupe
+   qui cherche doucement. */
+.vide-neuf{display:flex; flex-direction:column; align-items:center; gap:6px; padding:24px 18px 22px; text-align:center;
+  background:var(--carte); border:1px dashed var(--trait-fort); border-radius:18px; color:var(--plume); font-size:14px; line-height:1.6}
+.vide-neuf b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; color:var(--encre)}
+.vide-neuf > span:last-child{max-width:440px}
+.vn-ic{width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-bottom:4px;
+  background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait); animation:vn-cherche 3.2s ease-in-out infinite}
+@keyframes vn-cherche{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(3px,-2px) rotate(-8deg)}50%{transform:translate(0,-3px) rotate(0)}75%{transform:translate(-3px,-2px) rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){ .vn-ic{animation:none} }
 
 /* ═══ La carte des biens (V3.27) — voir CarteEspace.tsx ═══ */
 /* Le menu de l'ordinateur compte un onglet de plus (« La carte ») : chaque
