@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
-import { EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
+import { EVT_DEMANDE_VUE, EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
 import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -39,15 +39,16 @@ function ecrireBienUrl(id: string | null) {
   if (url !== window.location.pathname + window.location.search) window.history.pushState(null, '', url);
 }
 
+/* La catégorie d'une vue (« estimation »…) ; rien de reconnu : « Tous ». */
+const lireFiltre = (v: string | null): Filtre =>
+  v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'tout';
+
 export default function PageBiens({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [liste, setListe] = useState<ListeBiens | null>(null);
   const [erreur, setErreur] = useState('');
   /* La catégorie : « Tous », ou celle demandée par le menu de gauche (« Mes
      estimations »…), ou celle qu'on avait en quittant la liste (V3.24). */
-  const [filtre, setFiltre] = useState<Filtre>(() => {
-    const v = vueDemandee('biens');
-    return v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'tout';
-  });
+  const [filtre, setFiltre] = useState<Filtre>(() => lireFiltre(vueDemandee('biens')));
   useEffect(() => { annoncerVue('biens', filtre); }, [filtre]);
   const [cherche, setCherche] = useState('');
   /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
@@ -59,6 +60,18 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   });
   const choisirVue = (x: 'cartes' | 'lignes') => { setVue(x); try { localStorage.setItem('biens.vue', x); } catch { /* sans mémoire */ } };
   const [ouvert, setOuvert] = useState<string | null>(null);
+  /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
+     place, sans recharger ; une fiche de bien ouverte se referme (V3.25). */
+  useEffect(() => {
+    const demande = (e: Event) => {
+      const d = (e as CustomEvent<{ page: string; vue: string }>).detail;
+      if (d?.page !== 'biens') return;
+      setOuvert(null); ecrireBienUrl(null);
+      setFiltre(lireFiltre(d.vue));
+    };
+    window.addEventListener(EVT_DEMANDE_VUE, demande);
+    return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
+  }, []);
   const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean } | null>(null);
   const [cree, setCree] = useState(false);
   const [choixDepart, setChoixDepart] = useState(false);
@@ -220,7 +233,12 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       )}
 
       {!liste ? (
-        <div className={s.liste}><div className={s.vide}>Chargement…</div></div>
+        /* Pendant la lecture : la silhouette des cartes (ou des lignes). */
+        <div className={`${vue === 'lignes' ? b.lignesBiens : b.grille} squelette`} aria-busy="true" aria-label="Chargement des biens">
+          {[0, 1, 2].map(i => vue === 'lignes'
+            ? <div key={i} className="sq-ligne" style={{ animationDelay: `${i * 45}ms` }}><span className="sq-rond" /><span className="sq-txt"><span className="sq-barre" style={{ width: '46%' }} /><span className="sq-barre sq-fine" style={{ width: '30%' }} /></span></div>
+            : <div key={i} className="sq-carte" style={{ animationDelay: `${i * 60}ms` }}><span className="sq-photo" /><span className="sq-txt"><span className="sq-barre" style={{ width: '52%' }} /><span className="sq-barre sq-fine" style={{ width: '70%' }} /><span className="sq-barre sq-fine" style={{ width: '40%' }} /></span></div>)}
+        </div>
       ) : !installer && (visibles.length === 0 ? (
         <div className={s.liste}>
           <div className={s.vide}>
@@ -229,7 +247,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           </div>
         </div>
       ) : (
-        <div className={vue === 'lignes' ? b.lignesBiens : b.grille}>
+        <div className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`} key={`${filtre}:${vue}`}>
           {visibles.map(x => {
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
             return (
