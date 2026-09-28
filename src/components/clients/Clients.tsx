@@ -6,6 +6,7 @@ import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
 import styles from './Clients.module.css';
+import AvatarContact from '@/components/contacts/AvatarContact';
 import { nomFoyer } from '@/lib/foyer';
 import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
 import {
@@ -952,9 +953,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       onMouseLeave={sortir}
                     >
                       <span className={styles.colClient}>
-                        <span className={styles.avatar} style={{ background: t.bg, color: t.fg, boxShadow: `inset 0 0 0 2px ${t.trait}` }}>
-                          {(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}
-                        </span>
+                        {/* Un petit personnage plutôt qu'une initiale (deux pour un couple). */}
+                        <AvatarContact c={client as never} teinte={t} className={styles.avatar} />
                         <span style={{ minWidth: 0 }}>
                           <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
                           <span className={styles.ref}>
