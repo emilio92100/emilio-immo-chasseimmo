@@ -64,11 +64,17 @@
 .on .croix { color: rgba(255, 255, 255, .55); }
 .on .croix:hover { background: rgba(255, 255, 255, .12); color: white; }
 
+/* « Tout fermer » (V3.28) : un petit bloc avec son icône, qu'on voit. */
 .tout {
-  flex-shrink: 0; border: none; background: none; cursor: pointer; padding: 8px 6px;
-  font: 700 12.5px 'DM Sans', sans-serif; color: #8896a8;
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px 0 10px;
+  border-radius: 11px; border: 1px solid #e3e8f0; background: white; cursor: pointer;
+  font: 700 12.5px 'DM Sans', sans-serif; color: #64748b;
+  box-shadow: 0 4px 12px -8px rgba(26, 35, 50, .4);
+  transition: background .15s, border-color .15s, color .15s;
 }
-.tout:hover { color: var(--emilio, #2e4166); text-decoration: underline; }
+.tout svg { color: #94a3b8; transition: color .15s; }
+.tout:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.tout:hover svg { color: #dc2626; }
 
 @media (max-width: 900px) {
   /* Une bande qui flotte juste au-dessus des onglets du bas, assez haut

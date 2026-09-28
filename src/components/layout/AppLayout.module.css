@@ -19,6 +19,10 @@
   overflow-x: hidden;
 }
 
+/* La carte (V3.28) : l'écran ne défile pas, seule la carte bouge — la
+   molette hors de la carte ne fait plus glisser la page. */
+.surCarte .content { overflow: hidden; }
+
 /* Sur téléphone : la hauteur réelle de l'écran (100vh compte la barre
    d'adresse de Safari, et la barre du bas passait dessous), un défilement
    souple, et de la place en bas pour la barre d'onglets. */

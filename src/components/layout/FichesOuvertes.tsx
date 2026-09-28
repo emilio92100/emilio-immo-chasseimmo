@@ -260,7 +260,12 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
         </button>
       )}
-      {fiches.length > 1 && <button type="button" className={styles.tout} onClick={onToutFermer}>Tout fermer</button>}
+      {fiches.length > 1 && (
+        <button type="button" className={styles.tout} onClick={onToutFermer} title="Fermer toutes les fiches de la barre">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><path d="m9 9 6 6M15 9l-6 6" /></svg>
+          <span>Tout fermer</span>
+        </button>
+      )}
     </nav>
   );
 }
