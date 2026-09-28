@@ -1449,6 +1449,12 @@ les cases à cocher, la réponse du vendeur, le certificat.
   du cercle et on touchait la zone sans que rien ne s'ouvre : toucher la zone choisit désormais le
   bien, comme toucher le prix (la plus proche quand deux zones se chevauchent) ; au survol, la main
   et la zone s'éclaire. L'étiquette d'une visite calée reste sur son point exact.
+- **Espace acheteur, la carte dit quand un bien n'y est pas** : un bandeau posé en haut de la
+  carte, juste sous les filtres (au téléphone, sous la mention OpenFreeMap), « 1 bien n'est pas sur la carte — son secteur n'est pas encore
+  assez précis pour le placer », avec « Voir le bien » (un seul) ou « Les voir dans la liste ». Il
+  suit le filtre, se ferme d'une croix, et n'apparaît pas quand aucun bien n'est placé (la carte le
+  dit déjà). Remplace la petite ligne sous la liste de l'ordinateur, trop discrète ; au téléphone
+  il n'y avait rien. Jamais d'emplacement au hasard : le client le prendrait pour le vrai.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
