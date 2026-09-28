@@ -327,6 +327,10 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     d'un acheteur y efface les photos. Pièces du dossier et offres signées : bucket privé
     `mandats`, sous `biens-vente/<id>/`, via `/api/biens-vente`.
   - Documents créés depuis la fiche : `documents.donnees.bienVenteId` = l'id du bien.
+- **`geocodes`** (`outils/sql/carte.sql`, V3.26) : la position de chaque adresse déjà cherchée, pour
+  la carte — `cle` (l'adresse sans accents ni ponctuation), `adresse`, `lat`, `lng`, `precision`
+  (`housenumber` · `street` · `locality` · `municipality` · `aucun`), `score`, `libelle`,
+  `cherche_le`. RLS + `crm_authentifie`. Voir `src/lib/carte.ts`.
 - **`partenaires`** : déclarée, pas utilisée par le code actuel
 
 ### Colonnes écrites mais jamais relues
@@ -356,6 +360,7 @@ sans typage, en `select('*')`.
 
 Navigation (`Sidebar.tsx`), en trois sections :
 **Principal** — Dashboard · **Contacts** (« Clients » jusqu'à la V3.14) · **Biens** (V3.12, renommée en V3.13) ·
+**Carte** (V3.26) ·
 **Suivi** — Agenda · Visites · Relances · Documents (sous-menu ouvert par défaut : Créer un document ·
 Liste des documents · Registre des mandats, V3.18) · Nouveau mail ·
 **Analyse** — Mon activité · Paramètres.
@@ -1401,6 +1406,41 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.26 — 28 septembre 2026 · la carte du CRM
+
+- **Rubrique Carte** (`src/components/carte/PageCarte.tsx`, entrée « Carte » sous Biens) : les
+  contacts et les biens en vente, là où ils sont. Fond OpenFreeMap « Bright » (tiré
+  d'OpenStreetMap, gratuit, sans clé, usage commercial permis ; mention due, en petit gris) dessiné
+  par MapLibre GL 5.24 (`maplibre-gl`, chargé seulement à l'ouverture d'une carte :
+  `FondCarte.tsx`). Commerces et numéros de rue masqués.
+- **Ordinateur** : à gauche les filtres (types de contact, « Reventes possibles » =
+  `bien_actuel_a_vendre`, étapes des biens ; vendus et retirés éteints d'office), à droite « Dans
+  cette zone » (la liste suit la carte, recherche par nom ou adresse, « Aller à … » pour une adresse
+  tapée). Chaque panneau se replie (pastille « Filtres », onglet à droite), l'état se retient
+  (`carte.filtres`, `carte.panneaux`, et la dernière vue `carte.vue`). Un repère ouvre sa carte de
+  visite : ouvrir la fiche, itinéraire (Google Maps), « Voir son bien » / « Voir son domicile ».
+  Les repères proches se regroupent en amas jusqu'au zoom 14 ; plusieurs à la même adresse
+  s'écartent en couronne.
+- **Téléphone** : recherche et filtres en bande en haut ; en bas, les fiches de la zone qu'on fait
+  glisser — la carte suit la fiche, la liste suit la carte. Autour de moi, tout voir, appeler.
+- **Où est un contact** : un professionnel à son étude, son agence ou son immeuble
+  (`pro.adresseEtude`, `adresseAgence`, `immeuble`), un particulier chez lui (`adresse`) ; un
+  propriétaire dont le bien est ailleurs (`bien_actuel_adresse`) a un second repère, « Son bien ».
+  Un bien en vente : `donnees.gps` quand l'adresse a été choisie dans la liste, sinon son adresse.
+- **Seuls les contacts et biens dont l'adresse est connue sont sur la carte** : la carte le dit, avec
+  le nombre qui manque et leur liste (clic → la fiche, pour compléter). Une adresse trouvée à la
+  ville seule n'est pas posée.
+- **Géocodage** (`src/lib/carte.ts`) : la Géoplateforme de l'IGN (`data.geopf.fr/geocodage`, qui a
+  repris l'API Adresse de data.gouv.fr ; l'ancien domaine ne devait tenir que jusqu'en janvier
+  2026). Une adresse cherchée une fois est gardée dans **`geocodes`** (`outils/sql/carte.sql` :
+  `cle` normalisée, `lat`, `lng`, `precision`, `libelle`, `cherche_le`) ; introuvable, elle se
+  recherche au bout de deux mois. Sans la table, la carte marche mais recherche tout à chaque
+  ouverture (elle le signale).
+- **« Voir sur la carte »** (`BoutonCarte.tsx`) à côté de l'adresse : fiche d'un acheteur, fiche
+  d'un contact, fiche d'un bien en vente. La carte s'ouvre en glissant, vole jusqu'au repère et
+  ouvre sa carte de visite (`?page=carte&focus=c:<id>` ou `b:<id>`).
+- L'autocomplétion d'adresse (nouveau contact, éditeur de bien) passe aussi par la Géoplateforme.
 
 ### V3.25 — 28 septembre 2026 · le menu de gauche, et des listes qui arrivent en douceur
 
