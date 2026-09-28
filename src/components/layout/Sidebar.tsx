@@ -144,6 +144,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
            pastille « actifs » ne voulait plus rien dire ici : partie. */
         { id: 'clients', label: 'Contacts', picto: 'clients', badge: null },
         { id: 'biens', label: 'Biens', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
+        /* Les contacts et les biens, là où ils sont (V3.26). */
+        { id: 'carte', label: 'Carte', picto: 'carteplan', badge: null },
       ]
     },
     {

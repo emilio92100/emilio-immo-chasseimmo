@@ -15,6 +15,7 @@ import PageParametres from '@/components/pages/PageParametres';
 import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
 import PageRegistre from '@/components/documents/PageRegistre';
 import PageBiens from '@/components/biens/PageBiens';
+import PageCarte from '@/components/carte/PageCarte';
 import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import Avertissements from '@/components/layout/Avertissements';
@@ -37,7 +38,7 @@ import { signalerMaj } from '@/lib/intentions';
  * L'URL reste volontairement une query string (`/?page=fiche&client=<id>`) :
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
-const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'agenda', 'visites',
+const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'carte', 'agenda', 'visites',
   'relances', 'documents', 'registre', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
@@ -190,7 +191,8 @@ export default function AppLayout() {
     setIntention(page === 'documents' && data && typeof data === 'object' ? (data as IntentionDocuments) : null);
     /* Entrer dans une fiche pousse l'écran vers le haut, en sortir le fait
        redescendre : le mouvement dit d'où l'on vient. */
-    setSens(page === 'fiche' ? 'avant' : 'arriere');
+    const focusCarte = page === 'carte' && data && typeof data === 'object' ? (data as { focus?: string }).focus : undefined;
+    setSens(page === 'fiche' || focusCarte ? 'avant' : 'arriere');
     if (page === 'fiche' && data) {
       const c = data as Client;
       setFicheClient(c);
@@ -212,6 +214,9 @@ export default function AppLayout() {
        dans l'URL en s'ouvrant. */
     const bienId = page === 'biens' && data && typeof data === 'object' ? (data as { bien?: string }).bien : undefined;
     if (bienId) window.history.replaceState(null, '', `${window.location.pathname}?page=biens&bien=${encodeURIComponent(bienId)}`);
+    /* « Voir sur la carte » depuis une fiche (V3.26) : la carte s'ouvre sur
+       ce contact ou ce bien (« c:<id> », « b:<id> »). */
+    if (focusCarte) window.history.replaceState(null, '', `${window.location.pathname}?page=carte&focus=${encodeURIComponent(focusCarte)}`);
   }, []);
 
   /* Rouvrir une fiche de la barre du bas. Un contact se relit (la barre ne
@@ -256,6 +261,7 @@ export default function AppLayout() {
       case 'dashboard':  return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
       case 'biens':      return <PageBiens onNavigate={handleNavigate} />;
+      case 'carte':      return <PageCarte onNavigate={handleNavigate} />;
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
