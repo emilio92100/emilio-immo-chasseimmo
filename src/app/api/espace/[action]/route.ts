@@ -5,6 +5,7 @@ import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
 import { ecritServeur } from '@/lib/ecritures';
+import { colonneSuspensionAbsente } from '@/lib/suspension';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -926,11 +927,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const { data: avant } = await supabase.from('clients')
           .select('statut').eq('id', recherche.client_id).maybeSingle();
         if (avant && avant.statut !== 'bien_trouve' && avant.statut !== 'perdu') {
-          const { error: eClient } = await supabase.from('clients')
-            .update(cible.raison
-              ? { statut: cible.statut, raison_perte: `${cible.raison} — déclaré par le client depuis son espace` }
-              : { statut: cible.statut })
-            .eq('id', recherche.client_id);
+          /* Une date de reprise posée avant (« Suspendu jusqu'au… ») s'efface :
+             c'est le client qui vient de parler (src/lib/suspension.ts). */
+          const majClient: Record<string, unknown> = cible.raison
+            ? { statut: cible.statut, raison_perte: `${cible.raison} — déclaré par le client depuis son espace` }
+            : { statut: cible.statut };
+          let { error: eClient } = await supabase.from('clients')
+            .update({ ...majClient, suspension: null }).eq('id', recherche.client_id);
+          if (eClient && colonneSuspensionAbsente(eClient.message)) {
+            ({ error: eClient } = await supabase.from('clients').update(majClient).eq('id', recherche.client_id));
+          }
           const { error: eVeille } = eClient ? { error: null } : await supabase.from('recherches')
             .update({ active: false }).eq('client_id', recherche.client_id);
           const echec = eClient || eVeille;
