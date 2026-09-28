@@ -62,12 +62,16 @@
   transform: translateY(-50%);
   width: 3px; height: 20px; background: #c9a84c; border-radius: 0 3px 3px 0;
 }
-.navIcon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
 .navLabel { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Le pictogramme dessiné de la rubrique (V3.24 : aussi sur ordinateur, à la
+   place des symboles ⊞ ◎ ◇, pour aller avec les icônes des sous-menus). */
+.navPicto { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #94a3b8; transition: color .15s; }
+.navItem:hover .navPicto, .navItem.active .navPicto, .navParent .navPicto { color: var(--emilio); }
 
-/* ── Le sous-menu de Documents (V3.18) ──
+/* ── Les sous-menus : Documents (V3.18), Contacts et Biens (V3.24) ──
    La rubrique garde son geste (elle ouvre la page) ; la petite flèche à
-   droite plie ou déplie le sous-menu, qui descend le long d'un filet. */
+   droite plie ou déplie le sous-menu. Chaque entrée a sa pastille : l'icône
+   sur un fond à la couleur du type de contact ou de l'étape du bien. */
 .navLigne { position: relative; }
 .navItemBascule { padding-right: 40px; }
 .navParent { color: var(--emilio); font-weight: 600; }
@@ -84,27 +88,50 @@
 .sousMenuOuvert { grid-template-rows: 1fr; }
 .sousMenuIn { overflow: hidden; min-height: 0; }
 .sousListe {
-  position: relative; margin: 0 0 6px 23px; padding: 2px 0 2px 11px;
-  border-left: 1.5px solid #e8edf4;
+  position: relative; margin: 1px 0 8px 16px; padding: 0;
   opacity: 0; transform: translateY(-4px); transition: opacity .22s ease, transform .28s ease;
 }
 .sousMenuOuvert .sousListe { opacity: 1; transform: none; }
 .sousItem {
-  position: relative; display: flex; align-items: center; gap: 9px;
-  width: 100%; padding: 7px 10px; margin: 1px 0; border: none; border-radius: 8px;
-  background: transparent; color: #64748b; cursor: pointer; text-align: left;
-  font: 500 12.5px 'DM Sans', sans-serif; letter-spacing: -0.1px; transition: background .15s, color .15s;
+  position: relative; display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 4px 10px 4px 5px; margin: 2px 0; border: none; border-radius: 10px;
+  background: transparent; color: #3b4a60; cursor: pointer; text-align: left;
+  font: 600 13px 'DM Sans', sans-serif; letter-spacing: -0.1px; transition: background .15s, color .15s;
 }
-.sousItem svg { color: #a3b0c2; transition: color .15s; }
-.sousItem span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sousItem:hover { background: #f8fafc; color: var(--emilio); }
-.sousItem:hover svg { color: var(--emilio); }
-.sousActif { background: #f1f5f9; color: var(--emilio); font-weight: 700; }
-.sousActif svg { color: #c9a84c; }
-/* Sur le filet, un repère doré en face de l'entrée ouverte. */
-.sousActif::before {
-  content: ''; position: absolute; left: -12.75px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 16px; border-radius: 3px; background: #c9a84c;
+.sousIc {
+  position: relative; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sf, #f1f5f9); color: var(--sc, #64748b); transition: background .2s, color .2s;
+}
+.sousMot { position: relative; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sousItem:hover { background: #f5f7fa; color: var(--emilio); }
+
+/* L'entrée ouverte s'illumine : la carte blanche, un halo à sa couleur qui
+   respire, la pastille pleine, et de temps en temps un reflet qui la traverse. */
+.sousActif, .sousActif:hover {
+  background: #fff; color: var(--emilio); font-weight: 700;
+  box-shadow: 0 0 0 1px var(--sa), 0 6px 16px -10px var(--sb);
+  animation: sousRespire 2.8s ease-in-out infinite;
+}
+.sousActif .sousIc { background: var(--sc); color: #fff; animation: sousPastille 2.8s ease-in-out infinite; }
+.sousLueur { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.sousLueur::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 42%;
+  background: linear-gradient(100deg, transparent 0%, var(--sa) 35%, var(--sb) 50%, var(--sa) 65%, transparent 100%); opacity: .55;
+  transform: skewX(-18deg); animation: sousReflet 4.6s ease-in-out infinite;
+}
+@keyframes sousRespire {
+  0%, 100% { box-shadow: 0 0 0 1px var(--sa), 0 6px 16px -10px var(--sb); }
+  50% { box-shadow: 0 0 0 1.5px var(--sb), 0 0 18px 1px var(--sa); }
+}
+@keyframes sousPastille {
+  0%, 100% { box-shadow: 0 0 0 0 var(--sa); }
+  50% { box-shadow: 0 0 0 4px var(--sa); }
+}
+@keyframes sousReflet { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
+@media (prefers-reduced-motion: reduce) {
+  .sousActif, .sousActif .sousIc { animation: none; }
+  .sousLueur { display: none; }
 }
 
 /* Le chiffre était trop timide pour une alerte : on le pose en Jakarta,
@@ -159,7 +186,7 @@
   .reduit .nav { padding: 10px 11px; }
   .reduit .navSection { height: 10px; padding: 8px 0 0; overflow: hidden; color: transparent; }
   .reduit .navItem { justify-content: center; padding: 11px 0; gap: 0; }
-  .reduit .navIcon, .reduit .navLabel, .reduit .navBadgeMot { display: none; }
+  .reduit .navLabel, .reduit .navBadgeMot { display: none; }
   .reduit .navPicto { display: inline-flex; }
   .reduit .navBascule, .reduit .sousMenu { display: none; }
   .reduit .navItemBascule { padding-right: 0; }
@@ -178,7 +205,7 @@
    le bouton de fermeture, le voile et la barre du bas sont masqués.
    ═══════════════════════════════════════════════════════════════════════ */
 
-.navPicto, .fermer, .voile, .barreBas { display: none; }
+.fermer, .voile, .barreBas { display: none; }
 
 @media (max-width: 900px) {
   /* Le tiroir : la barre de gauche sort de la page et glisse par-dessus. */
@@ -212,7 +239,6 @@
   .nav { padding: 6px 12px 12px; }
   .navSection { padding: 14px 10px 6px; }
   .navItem { padding: 12px 14px; font-size: 15px; gap: 13px; border-radius: 12px; margin-bottom: 3px; }
-  .navIcon { display: none; }
   .navPicto {
     display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
@@ -222,9 +248,9 @@
   .navParent .navPicto { background: #e8edf5; color: var(--emilio); }
   .navItemBascule { padding-right: 50px; }
   .navBascule { right: 8px; width: 36px; height: 36px; border-radius: 10px; }
-  .sousListe { margin: 0 0 8px 30px; padding-left: 12px; }
-  .sousItem { padding: 10px 12px; font-size: 14px; gap: 11px; border-radius: 10px; }
-  .sousActif::before { left: -13.75px; height: 18px; }
+  .sousListe { margin: 0 0 8px 22px; }
+  .sousItem { padding: 6px 10px 6px 6px; font-size: 14.5px; gap: 12px; border-radius: 12px; }
+  .sousIc { width: 32px; height: 32px; border-radius: 9px; }
   .navItem.active::before { display: none; }
   .userArea { padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
 

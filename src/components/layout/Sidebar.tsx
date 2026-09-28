@@ -1,10 +1,17 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
-import { EVT_MAJ, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
+import { EVT_MAJ, EVT_VUE, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv, vueDemandee } from '@/lib/intentions';
+import { Ic } from '@/components/documents/ApercuActe';
+import { typeDe } from '@/lib/contacts';
+import { etapeDe } from '@/lib/biens-vente';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
+
+/* Où se retient l'état plié ou déplié d'un sous-menu : une mémoire pour
+   l'ordinateur (« menu.documents » depuis la V3.18), une pour le téléphone. */
+const cleMenu = (k: string, telephone: boolean) => (telephone ? `menu.tel.${k}` : `menu.${k}`);
 
 /**
  * La navigation du CRM.
@@ -16,6 +23,11 @@ import { chargerDemandesVisite } from '@/lib/demandes-visite';
  * se pose en bas de l'écran, sous le pouce : Accueil, Clients, le « + » du
  * nouveau client, Visites, Relances. Les compteurs sont les mêmes des deux
  * côtés — ils ne sont lus qu'une fois, ici.
+ *
+ * Contacts, Biens et Documents ont un sous-menu (V3.24) : la rubrique ouvre
+ * sa page sur « Tous », chaque entrée ouvre directement sa catégorie (« Mes
+ * vendeurs », « Mes estimations »), et l'entrée de ce qui est affiché
+ * s'illumine.
  */
 export default function Sidebar({ activePage, onNavigate, ouvert = false, onFermer, reduit = false }: {
   activePage: string;
@@ -28,16 +40,39 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
-  /* Le sous-menu de Documents (V3.18) : ouvert par défaut ; s'il est replié,
-     il le reste d'une visite à l'autre. */
-  const [docsOuvert, setDocsOuvert] = useState(true);
+  /* Les sous-menus (Documents en V3.18 ; Contacts et Biens en V3.24).
+     Sur ordinateur, ouverts par défaut ; sur téléphone, tous pliés (le tiroir
+     resterait trop long) : c'est la petite flèche qui les ouvre. Dans les
+     deux cas, ce qu'on plie ou déplie le reste, d'une visite à l'autre, dans
+     ce navigateur — le téléphone et l'ordinateur ont chacun leur mémoire. */
+  const [ouverts, setOuverts] = useState<Record<string, boolean>>({ clients: true, biens: true, documents: true });
+  const telephone = useRef(false);
   useEffect(() => {
-    try { if (localStorage.getItem('menu.documents') === '0') setDocsOuvert(false); } catch { /* ouvert par défaut */ }
+    telephone.current = window.matchMedia('(max-width: 900px)').matches;
+    try {
+      setOuverts(o => Object.fromEntries(Object.keys(o).map(k => {
+        const v = localStorage.getItem(cleMenu(k, telephone.current));
+        return [k, v === null ? !telephone.current : v === '1'];
+      })));
+    } catch { if (telephone.current) setOuverts({ clients: false, biens: false, documents: false }); }
   }, []);
-  const basculerDocs = () => setDocsOuvert(v => {
-    try { localStorage.setItem('menu.documents', v ? '0' : '1'); } catch { /* sans mémoire, tant pis */ }
-    return !v;
+  const basculer = (k: string) => setOuverts(o => {
+    const v = !o[k];
+    try { localStorage.setItem(cleMenu(k, telephone.current), v ? '1' : '0'); } catch { /* sans mémoire, tant pis */ }
+    return { ...o, [k]: v };
   });
+  /* La catégorie affichée par Contacts et par Biens : la page l'annonce, le
+     menu allume l'entrée qui lui correspond. */
+  const [vues, setVues] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setVues({ clients: vueDemandee('clients') || 'tous', biens: vueDemandee('biens') || 'tout' });
+    const ecoute = (e: Event) => {
+      const d = (e as CustomEvent<{ page: string; vue: string }>).detail;
+      if (d) setVues(v => ({ ...v, [d.page]: d.vue }));
+    };
+    window.addEventListener(EVT_VUE, ecoute);
+    return () => window.removeEventListener(EVT_VUE, ecoute);
+  }, []);
 
   /* Les compteurs ne se recalculaient qu'en changeant de page : clôturer une
      relance depuis une fiche laissait l'ancien chiffre affiché. Ils écoutent
@@ -100,47 +135,64 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   /* Un seul type pour toutes les pastilles : sans lui, TypeScript déduit un
      type différent par entrée et refuse les champs absents des autres. */
   type Badge = { count: number; type: string; suffixe?: string; pulse?: boolean; titre?: string };
-  const navItems: { section: string; items: { id: string; label: string; icon: string; picto: string; badge: Badge | null }[] }[] = [
+  const navItems: { section: string; items: { id: string; label: string; picto: string; badge: Badge | null }[] }[] = [
     {
       section: 'PRINCIPAL',
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: '⊞', picto: 'accueil', badge: null },
+        { id: 'dashboard', label: 'Dashboard', picto: 'accueil', badge: null },
         /* « Contacts » : acheteurs, vendeurs, notaires, confrères… (V3.14). La
            pastille « actifs » ne voulait plus rien dire ici : partie. */
-        { id: 'clients', label: 'Contacts', icon: '◎', picto: 'clients', badge: null },
-        { id: 'biens', label: 'Biens', icon: '◇', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
+        { id: 'clients', label: 'Contacts', picto: 'clients', badge: null },
+        { id: 'biens', label: 'Biens', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
       ]
     },
     {
       section: 'SUIVI',
       items: [
-        { id: 'agenda', label: 'Agenda', icon: '▦', picto: 'calendrier', badge: null },
+        { id: 'agenda', label: 'Agenda', picto: 'calendrier', badge: null },
         /* Une demande de visite à caler passe avant tout : pastille rouge,
            comme une relance. Sinon, le nombre de visites à venir, en bleu. */
-        { id: 'visites', label: 'Visites', icon: '◷', picto: 'cle', badge: counts.demandes > 0
+        { id: 'visites', label: 'Visites', picto: 'cle', badge: counts.demandes > 0
           ? { count: counts.demandes, type: 'red', pulse: true, titre: `${counts.demandes} demande${counts.demandes > 1 ? 's' : ''} de visite à caler` }
           : counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
-        { id: 'relances', label: 'Relances', icon: '◉', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
-        { id: 'documents', label: 'Documents', icon: '▤', picto: 'note', badge: counts.aSigner > 0
+        { id: 'relances', label: 'Relances', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
+        { id: 'documents', label: 'Documents', picto: 'note', badge: counts.aSigner > 0
           ? { count: counts.aSigner, type: 'blue', titre: `${counts.aSigner} document${counts.aSigner > 1 ? 's' : ''} à faire signer` } : null },
-        { id: 'mail', label: 'Nouveau mail', icon: '◻', picto: 'mail', badge: null },
+        { id: 'mail', label: 'Nouveau mail', picto: 'mail', badge: null },
       ]
     },
     {
       section: 'ANALYSE',
       items: [
-        { id: 'activite', label: 'Mon activité', icon: '◈', picto: 'activite', badge: null },
-        { id: 'parametres', label: 'Paramètres', icon: '◌', picto: 'reglages', badge: null },
+        { id: 'activite', label: 'Mon activité', picto: 'activite', badge: null },
+        { id: 'parametres', label: 'Paramètres', picto: 'reglages', badge: null },
       ]
     }
   ];
 
-  /* Sous Documents : deux endroits de la page, et le registre des mandats. */
-  const sousDocs: { cle: string; label: string; picto: string; go: () => void; actif: boolean }[] = [
-    { cle: 'creer', label: 'Créer un document', picto: 'plus', go: () => onNavigate('documents', { ancre: 'creer' }), actif: false },
-    { cle: 'liste', label: 'Liste des documents', picto: 'lignes', go: () => onNavigate('documents', { ancre: 'liste' }), actif: false },
-    { cle: 'registre', label: 'Registre des mandats', picto: 'cadenas', go: () => onNavigate('registre'), actif: activePage === 'registre' },
-  ];
+  /* Les sous-menus. Contacts : trois types de contact, dans leur couleur ;
+     « Contacts » lui-même ouvre « Tous ». Biens : trois étapes ; « Biens »
+     ouvre « Tous ». Documents : deux endroits de la page, et le registre. */
+  type Sous = { cle: string; label: string; ic: string; c: string; fond: string; go: () => void; actif: boolean };
+  const sousMenus: Record<string, Sous[]> = {
+    clients: (['acheteur', 'vendeur', 'proprietaire'] as const).map(k => {
+      const t = typeDe(k);
+      return { cle: k, label: `Mes ${t.pluriel.toLowerCase()}`, ic: t.ic, c: t.c, fond: t.fond,
+        go: () => onNavigate('clients', { vue: k }), actif: activePage === 'clients' && vues.clients === k };
+    }),
+    biens: ([['a_suivre', 'Mes biens à suivre', 'oeil'], ['estimation', 'Mes estimations', 'euro'], ['mandat', 'Mes mandats en cours', 'panneau']] as const).map(([k, label, ic]) => {
+      const e = etapeDe(k);
+      return { cle: k, label, ic, c: e.c, fond: `${e.c}17`,
+        go: () => onNavigate('biens', { vue: k }), actif: activePage === 'biens' && vues.biens === k };
+    }),
+    documents: [
+      { cle: 'creer', label: 'Créer un document', ic: 'plus', c: '#34496e', fond: '#eef2f8', go: () => onNavigate('documents', { ancre: 'creer' }), actif: false },
+      { cle: 'liste', label: 'Liste des documents', ic: 'lignes', c: '#34496e', fond: '#eef2f8', go: () => onNavigate('documents', { ancre: 'liste' }), actif: false },
+      { cle: 'registre', label: 'Registre des mandats', ic: 'cadenas', c: '#34496e', fond: '#eef2f8', go: () => onNavigate('registre'), actif: activePage === 'registre' },
+    ],
+  };
+  /* Ce que la rubrique elle-même ouvre : « Tous ». */
+  const allerRubrique = (id: string) => onNavigate(id, id === 'clients' || id === 'biens' ? { vue: id === 'clients' ? 'tous' : 'tout' } : undefined);
 
   /* La barre du bas : les quatre écrans du quotidien, et le geste le plus
      fréquent au milieu. Le reste (mail, activité, paramètres) est dans le
@@ -175,16 +227,18 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
             <div key={gi} className={styles.navGroup}>
               <div className={styles.navSection}>{group.section}</div>
               {group.items.map(item => {
-                const docs = item.id === 'documents';
+                const sous = sousMenus[item.id];
+                /* Une entrée du sous-menu allumée : la rubrique s'efface
+                   derrière elle (elle reste marquée, en plus léger). */
+                const sousActif = !!sous?.some(x => x.actif);
                 const bouton = (
                   <button
                     key={item.id}
-                    className={`${styles.navItem} ${courant === item.id ? styles.active : ''} ${docs ? styles.navItemBascule : ''} ${docs && activePage === 'registre' ? styles.navParent : ''}`}
-                    onClick={() => onNavigate(item.id)}
+                    className={`${styles.navItem} ${courant === item.id && !sousActif ? styles.active : ''} ${sous ? styles.navItemBascule : ''} ${sousActif ? styles.navParent : ''}`}
+                    onClick={() => allerRubrique(item.id)}
                     title={reduit ? item.label : undefined}
                     aria-label={reduit ? item.label : undefined}
                   >
-                    <span className={styles.navIcon}>{item.icon}</span>
                     <span className={styles.navPicto}><Icone nom={item.picto} taille={19} epaisseur={1.9} /></span>
                     <span className={styles.navLabel}>{item.label}</span>
                     {item.badge && (
@@ -196,28 +250,33 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                     )}
                   </button>
                 );
-                if (!docs) return bouton;
-                /* Documents : la rubrique, sa flèche qui plie le sous-menu,
-                   et le sous-menu. Menu réduit : la rubrique seule. */
+                if (!sous) return bouton;
+                /* La rubrique, sa flèche qui plie le sous-menu, et le
+                   sous-menu. Menu réduit : la rubrique seule. */
+                const deplie = ouverts[item.id] !== false;
                 return (
                   <div key={item.id} className={styles.navAvecSous}>
                     <div className={styles.navLigne}>
                       {bouton}
-                      <button type="button" className={`${styles.navBascule} ${docsOuvert ? styles.navBasculeOuvert : ''}`}
-                        onClick={basculerDocs} aria-expanded={docsOuvert} aria-controls="sous-menu-documents"
-                        aria-label={docsOuvert ? 'Replier le sous-menu Documents' : 'Déplier le sous-menu Documents'}
-                        title={docsOuvert ? 'Replier' : 'Déplier'}>
+                      <button type="button" className={`${styles.navBascule} ${deplie ? styles.navBasculeOuvert : ''}`}
+                        onClick={() => basculer(item.id)} aria-expanded={deplie} aria-controls={`sous-menu-${item.id}`}
+                        aria-label={`${deplie ? 'Replier' : 'Déplier'} le sous-menu ${item.label}`}
+                        title={deplie ? 'Replier' : 'Déplier'}>
                         <Icone nom="chevron" taille={15} epaisseur={2.2} />
                       </button>
                     </div>
-                    <div id="sous-menu-documents" className={`${styles.sousMenu} ${docsOuvert ? styles.sousMenuOuvert : ''}`} inert={!docsOuvert}>
+                    <div id={`sous-menu-${item.id}`} className={`${styles.sousMenu} ${deplie ? styles.sousMenuOuvert : ''}`} inert={!deplie}>
                       <div className={styles.sousMenuIn}>
                         <div className={styles.sousListe}>
-                          {sousDocs.map(x => (
+                          {sous.map(x => (
                             <button key={x.cle} type="button" className={`${styles.sousItem} ${x.actif ? styles.sousActif : ''}`}
-                              onClick={x.go} aria-current={x.actif ? 'page' : undefined}>
-                              <Icone nom={x.picto} taille={15} epaisseur={2} />
-                              <span>{x.label}</span>
+                              onClick={x.go} aria-current={x.actif ? 'page' : undefined}
+                              style={{ '--sc': x.c, '--sf': x.fond, '--sa': `${x.c}38`, '--sb': `${x.c}70` } as React.CSSProperties}>
+                              {/* L'entrée ouverte s'illumine : un halo à sa couleur qui
+                                  respire, et un reflet qui la traverse de temps en temps. */}
+                              {x.actif && <span className={styles.sousLueur} aria-hidden="true" />}
+                              <span className={styles.sousIc}><Ic n={x.ic} t={15} e={2} /></span>
+                              <span className={styles.sousMot}>{x.label}</span>
                             </button>
                           ))}
                         </div>
@@ -261,7 +320,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           const actif = courant === o.id;
           return (
             <button key={o.id} type="button" className={`${styles.onglet} ${actif ? styles.ongletActif : ''}`}
-              onClick={() => onNavigate(o.id)} aria-current={actif ? 'page' : undefined}>
+              onClick={() => allerRubrique(o.id)} aria-current={actif ? 'page' : undefined}>
               <span className={styles.ongletPicto}>
                 <Icone nom={o.picto} taille={23} epaisseur={actif ? 2.1 : 1.8} />
                 {!!o.pastille && o.pastille > 0 && (

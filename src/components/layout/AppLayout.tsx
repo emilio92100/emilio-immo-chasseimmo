@@ -204,6 +204,10 @@ export default function AppLayout() {
     setActivePage(page);
     setNavN(n => n + 1);
     ecrireUrl(page, null);
+    /* « Mes vendeurs », « Mes estimations »… (le menu de gauche, V3.24) : la
+       rubrique s'ouvre sur cette catégorie. */
+    const vue = (page === 'clients' || page === 'biens') && data && typeof data === 'object' ? (data as { vue?: string }).vue : undefined;
+    if (vue) window.history.replaceState(null, '', `${window.location.pathname}?page=${page}&vue=${encodeURIComponent(vue)}`);
     /* Un bien en vente précis (« Voir le bien ») : Biens en vente le lit
        dans l'URL en s'ouvrant. */
     const bienId = page === 'biens' && data && typeof data === 'object' ? (data as { bien?: string }).bien : undefined;
