@@ -15,6 +15,7 @@ import { Ic } from '@/components/documents/ApercuActe';
 import AvatarContact, { type Teinte } from '@/components/contacts/AvatarContact';
 import { createRoot, type Root } from 'react-dom/client';
 import { Icone } from '@/components/fiche/ParcoursBien';
+import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import s from './Carte.module.css';
 
 /* ═══ La rubrique Carte du CRM (V3.26) ═════════════════════════════════════
@@ -92,6 +93,7 @@ const TEINTE_STATUT: Record<string, Teinte> = {
 };
 const EUR = (n?: number | null) => (n ? `${Math.round(n).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €` : '');
 const normer = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const CLE_RETOUR = 'carte.retour';
 const rue = (a: string) => a.replace(/,?\s*\d{5}\b.*$/, '').trim() || a;
 /* Où tombe le repère choisi : un peu plus bas que le milieu sur ordinateur
    (sa carte de visite s'ouvre au-dessus), un peu plus haut sur téléphone
@@ -259,6 +261,8 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
   const parCarrousel = useRef(false);
   const focus = useRef<string | null>(null);
   const cadre = useRef(false);
+  /* Le repère à rallumer au retour d'une fiche (voir quitterPour). */
+  const retourSel = useRef<string | null>(null);
   const monPoint = useRef<Marker | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
@@ -278,10 +282,14 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
     };
     maj();
     const t = setTimeout(maj, 480); // après l'entrée de l'écran, qui le fait glisser
+    /* Et à la fin de ce glissement, quelle que soit sa durée : mesurée pendant,
+       la carte dépassait du bas de l'écran de la hauteur du décalage. */
+    const finGlissement = (e: AnimationEvent) => { if ((e.target as Element)?.contains?.(el)) maj(); };
+    document.addEventListener('animationend', finGlissement);
     window.addEventListener('resize', maj);
     const mo = main ? new MutationObserver(maj) : null;
     if (main) mo?.observe(main, { attributes: true, attributeFilter: ['class'] });
-    return () => { clearTimeout(t); window.removeEventListener('resize', maj); mo?.disconnect(); };
+    return () => { clearTimeout(t); document.removeEventListener('animationend', finGlissement); window.removeEventListener('resize', maj); mo?.disconnect(); };
   }, [tel]);
 
   /* Téléphone ou ordinateur ; les filtres et les panneaux d'une visite à
@@ -298,6 +306,17 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
       if (o && typeof o === 'object') setOuverts(x => ({ ...x, ...o }));
     } catch { /* mémoire illisible : les réglages d'origine */ }
     focus.current = new URLSearchParams(window.location.search).get('focus');
+    /* De retour d'une fiche ouverte depuis la carte (le bloc « Carte » de la
+       barre du bas) : le repère choisi et la recherche d'alors. La vue, elle,
+       est déjà dans carte.vue. */
+    try {
+      const r = JSON.parse(sessionStorage.getItem(CLE_RETOUR) || 'null');
+      sessionStorage.removeItem(CLE_RETOUR);
+      if (r && typeof r === 'object' && !focus.current) {
+        if (typeof r.sel === 'string') retourSel.current = r.sel;
+        if (typeof r.recherche === 'string') setRecherche(r.recherche);
+      }
+    } catch { /* sans mémoire : la carte s'ouvre sur sa dernière vue */ }
     return () => mq.removeEventListener('change', maj);
   }, []);
   const basculerCat = (k: string) => setActifs(a => { const n = { ...a, [k]: !a[k] }; ecrire('carte.filtres', JSON.stringify(n)); return n; });
@@ -530,6 +549,15 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
     m.fitBounds(b, { padding: tel ? 60 : { top: 80, bottom: 60, left: ouverts.filtres ? 420 : 80, right: ouverts.liste ? 360 : 80 }, maxZoom: 15, duration: 900 });
   }, [cartePrete, charge, places, parId, fini, tel, ouverts, calculerZone]);
 
+  /* Au retour d'une fiche : le repère d'où l'on était parti se rallume, dès
+     que sa position est connue (la mémoire des adresses la donne vite). */
+  useEffect(() => {
+    const id = retourSel.current;
+    if (!id || !cadre.current) return;
+    if (parId.has(id)) { retourSel.current = null; setSel(id); }
+    else if (fini) retourSel.current = null;
+  }, [parId, fini, cartePrete, charge]);
+
   /* Le repère choisi et celui qu'on survole s'allument. */
   useEffect(() => {
     for (const r of reperes.current.values()) {
@@ -630,14 +658,25 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
 
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(null), 6000); return () => clearTimeout(t); }, [message]);
 
-  const ouvrirFiche = (p: Point) => {
+  /* Ouvrir une fiche depuis la carte : la carte prend place dans la barre
+     des fiches ouvertes, et un clic sur ce bloc la rouvre là où on l'a
+     laissée — même vue, même repère choisi, même recherche. */
+  const quitterPour = (suite: () => void) => {
+    const m = carte.current;
+    if (m) { const c = m.getCenter(); ecrire('carte.vue', JSON.stringify({ c: [c.lng, c.lat], z: m.getZoom() })); }
+    try { sessionStorage.setItem(CLE_RETOUR, JSON.stringify({ sel, recherche })); } catch { /* sans mémoire */ }
+    const p = sel ? parId.get(sel) : null;
+    signalerFicheOuverte({ k: 'carte', id: 'carte', titre: 'Carte', sous: p ? `près de ${rue(p.adresse)}` : undefined });
+    suite();
+  };
+  const ouvrirFiche = (p: Point) => quitterPour(() => {
     if (p.genre === 'bien') onNavigate('biens', { bien: p.ref });
     else if (p.client) onNavigate('fiche', p.client);
-  };
+  });
   const ouvrirSans = async (id: string) => {
-    if (id.startsWith('b:')) { onNavigate('biens', { bien: id.slice(2) }); return; }
+    if (id.startsWith('b:')) { quitterPour(() => onNavigate('biens', { bien: id.slice(2) })); return; }
     const { data } = await supabase.from('clients').select('*').eq('id', id.slice(2)).maybeSingle();
-    if (data) onNavigate('fiche', data);
+    if (data) quitterPour(() => onNavigate('fiche', data));
   };
 
   const pSel = sel ? parId.get(sel) || null : null;
