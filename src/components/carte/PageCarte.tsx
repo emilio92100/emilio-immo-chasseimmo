@@ -65,20 +65,22 @@ type Place = Point & { lat: number; lng: number };
 /* Les filtres, dans l'ordre des panneaux. Les vendus et les retirés sont
    éteints d'office : ils encombreraient la carte de ce qui ne se travaille
    plus. */
-type Cat = { k: string; lib: string; c: string; etapes?: string[]; eteint?: boolean };
+/* `ic` : l'icône de la pastille (V3.28), la même que dans le menu et les
+   fiches quand elle existe. */
+type Cat = { k: string; lib: string; c: string; ic: string; etapes?: string[]; eteint?: boolean };
 const CATS_CONTACTS: Cat[] = [
-  ...(['acheteur', 'vendeur', 'proprietaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c })),
-  { k: 'vente_possible', lib: 'Reventes possibles', c: '#a07c28' },
-  ...(['notaire', 'confrere', 'gardien', 'partenaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c })),
+  ...(['acheteur', 'vendeur', 'proprietaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
+  { k: 'vente_possible', lib: 'Reventes possibles', c: '#a07c28', ic: 'maison' },
+  ...(['notaire', 'confrere', 'gardien', 'partenaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
 ];
 const CATS_BIENS: Cat[] = [
-  { k: 'b:a_suivre', lib: 'À suivre', c: etapeDe('a_suivre').c, etapes: ['a_suivre'] },
-  { k: 'b:estimation', lib: 'Estimations', c: etapeDe('estimation').c, etapes: ['estimation'] },
-  { k: 'b:mandat', lib: 'Mandats en cours', c: etapeDe('mandat').c, etapes: ['mandat'] },
-  { k: 'b:offre', lib: 'Sous offre ou compromis', c: etapeDe('offre').c, etapes: ['offre', 'compromis'] },
-  { k: 'b:suspendu', lib: 'En pause', c: etapeDe('suspendu').c, etapes: ['suspendu'] },
-  { k: 'b:vendu', lib: 'Vendus', c: etapeDe('vendu').c, etapes: ['vendu'], eteint: true },
-  { k: 'b:retire', lib: 'Retirés', c: etapeDe('retire').c, etapes: ['retire'], eteint: true },
+  { k: 'b:a_suivre', lib: 'À suivre', c: etapeDe('a_suivre').c, ic: 'oeil', etapes: ['a_suivre'] },
+  { k: 'b:estimation', lib: 'Estimations', c: etapeDe('estimation').c, ic: 'euro', etapes: ['estimation'] },
+  { k: 'b:mandat', lib: 'Mandats en cours', c: etapeDe('mandat').c, ic: 'panneau', etapes: ['mandat'] },
+  { k: 'b:offre', lib: 'Sous offre ou compromis', c: etapeDe('offre').c, ic: 'accord', etapes: ['offre', 'compromis'] },
+  { k: 'b:suspendu', lib: 'En pause', c: etapeDe('suspendu').c, ic: 'pause', etapes: ['suspendu'] },
+  { k: 'b:vendu', lib: 'Vendus', c: etapeDe('vendu').c, ic: 'cle', etapes: ['vendu'], eteint: true },
+  { k: 'b:retire', lib: 'Retirés', c: etapeDe('retire').c, ic: 'croix', etapes: ['retire'], eteint: true },
 ];
 const TOUTES = [...CATS_CONTACTS, ...CATS_BIENS];
 const actifsParDefaut = () => Object.fromEntries(TOUTES.map(c => [c.k, !c.eteint]));
@@ -106,9 +108,9 @@ const lire = (k: string) => { try { return localStorage.getItem(k); } catch { re
 const ecrire = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sans mémoire, tant pis */ } };
 
 /* ── Les contacts et les biens, devenus des points à placer ── */
-function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[]; sansAdresse: Record<string, unknown>[] } {
+function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[]; sansAdresse: { c: Record<string, unknown>; cats: string[] }[] } {
   const points: Point[] = [];
-  const sansAdresse: Record<string, unknown>[] = [];
+  const sansAdresse: { c: Record<string, unknown>; cats: string[] }[] = [];
   for (const c of clients) {
     if (estArchive(c)) continue;
     const t = typesDe(c);
@@ -142,7 +144,7 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
       catsPrincipal = cats.filter(k => k !== 'vente_possible' && (k !== 'proprietaire' || t.includes('proprietaire')));
       if (!catsPrincipal.length) catsPrincipal = ['proprietaire'];
     }
-    if (!adresseUtile(adresse)) { if (!bienAilleurs) sansAdresse.push(c); continue; }
+    if (!adresseUtile(adresse)) { if (!bienAilleurs) sansAdresse.push({ c, cats: catsPrincipal }); continue; }
     points.push({
       id: `c:${c.id}`, genre: 'contact', ref: String(c.id), cats: catsPrincipal,
       couleur: principal.c, fond: principal.fond, teinte, titre: nom,
@@ -158,16 +160,16 @@ type LigneBien = {
   adresse: string | null; code_postal: string | null; ville: string | null; prix: number | null; photo: string | null;
   gps: { lat?: number; lon?: number } | null; proprietaires: unknown; qui: unknown; sciNom: unknown;
 };
-function pointsDesBiens(biens: LigneBien[], clients: Map<string, Record<string, unknown>>): { points: Point[]; sansAdresse: LigneBien[] } {
+function pointsDesBiens(biens: LigneBien[], clients: Map<string, Record<string, unknown>>): { points: Point[]; sansAdresse: { b: LigneBien; cats: string[] }[] } {
   const points: Point[] = [];
-  const sansAdresse: LigneBien[] = [];
+  const sansAdresse: { b: LigneBien; cats: string[] }[] = [];
   for (const b of biens) {
     if (b.archive) continue;
     const e = etapeDe(b.etape);
     const cat = CATS_BIENS.find(c => c.etapes?.includes(e.k))?.k || 'b:a_suivre';
     const adresse = composerAdresse(b.adresse, b.code_postal, b.ville);
     const exact = b.gps && typeof b.gps.lat === 'number' && typeof b.gps.lon === 'number' ? { lat: b.gps.lat, lng: b.gps.lon } : undefined;
-    if (!exact && !adresseUtile(b.adresse)) { sansAdresse.push(b); continue; }
+    if (!exact && !adresseUtile(b.adresse)) { sansAdresse.push({ b, cats: [cat] }); continue; }
     const cl = b.client_id ? clients.get(b.client_id) : undefined;
     const proprio = (cl ? nomFoyer(cl as never) : '') || nomProprio({ proprietaires: b.proprietaires, qui: b.qui, sciNom: b.sciNom } as Donnees);
     points.push({
@@ -243,7 +245,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
   const [charge, setCharge] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
-  const [sansAdresse, setSansAdresse] = useState<{ id: string; nom: string; genre: Genre; raison: string }[]>([]);
+  const [sansAdresse, setSansAdresse] = useState<{ id: string; nom: string; genre: Genre; raison: string; cats: string[] }[]>([]);
   const positions = useRef(new Map<string, Position | null>());
   const [posV, setPosV] = useState(0);
   const [progres, setProgres] = useState<{ fait: number; total: number } | null>(null);
@@ -255,6 +257,9 @@ export default function PageCarte({ onNavigate, onMenu }: {
   const [zone, setZone] = useState<string[]>([]);
   const [ouverts, setOuverts] = useState({ filtres: true, liste: true });
   const [voirSans, setVoirSans] = useState(false);
+  /* Téléphone (V3.28) : les filtres rangés sous deux boutons, « Contacts » et
+     « Biens » ; un seul panneau ouvert à la fois. */
+  const [pliTel, setPliTel] = useState<null | 'contacts' | 'biens'>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [cartePrete, setCartePrete] = useState(false);
   /* Toutes les adresses ont été cherchées (ou lues dans la mémoire). */
@@ -354,8 +359,8 @@ export default function PageCarte({ onNavigate, onMenu }: {
       const tous = [...pb.points, ...pc.points];
       setPoints(tous);
       setSansAdresse([
-        ...pc.sansAdresse.map(c => ({ id: `c:${c.id}`, nom: nomFoyer(c as never) || 'Contact', genre: 'contact' as Genre, raison: 'pas d’adresse' })),
-        ...pb.sansAdresse.map(b => ({ id: `b:${b.id}`, nom: b.titre || 'Bien', genre: 'bien' as Genre, raison: 'pas d’adresse' })),
+        ...pc.sansAdresse.map(({ c, cats }) => ({ id: `c:${c.id}`, nom: nomFoyer(c as never) || 'Contact', genre: 'contact' as Genre, raison: 'pas d’adresse', cats })),
+        ...pb.sansAdresse.map(({ b, cats }) => ({ id: `b:${b.id}`, nom: b.titre || 'Bien', genre: 'bien' as Genre, raison: 'pas d’adresse', cats })),
       ]);
       setCharge(false);
       /* Rafraîchir l'écran par vagues, pas à chaque adresse trouvée. */
@@ -419,6 +424,16 @@ export default function PageCarte({ onNavigate, onMenu }: {
     for (const p of places) for (const k of p.cats) n[k] = (n[k] || 0) + 1;
     return n;
   }, [places]);
+  /* Ce que le CRM contient, placé ou non (V3.28) : un filtre s'affiche dès
+     que sa catégorie existe, même si aucun n'a d'adresse — il montre alors
+     « 0 », en pâle, et un appui dit pourquoi. Avant, les mandats sans
+     adresse faisaient disparaître toute la section « Biens ». */
+  const nbCrm = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const p of points) for (const k of p.cats) n[k] = (n[k] || 0) + 1;
+    for (const x of sansAdresse) for (const k of x.cats) n[k] = (n[k] || 0) + 1;
+    return n;
+  }, [points, sansAdresse]);
 
   /* ── La carte ── */
   const visiblesRef = useRef(visibles);
@@ -503,7 +518,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
       const c = m.getCenter();
       ecrire('carte.vue', JSON.stringify({ c: [c.lng, c.lat], z: m.getZoom() }));
     });
-    m.on('click', () => setSel(null));
+    m.on('click', () => { setSel(null); setPliTel(null); });
     setCartePrete(true);
     return () => { cancelAnimationFrame(attente); for (const r of reperes.current.values()) retirerRepere(r); reperes.current.clear(); carte.current = null; };
   }, [majReperes, calculerZone]);
@@ -698,12 +713,22 @@ export default function PageCarte({ onNavigate, onMenu }: {
   const manquent = sansAdresse.length + introuvables.length;
 
   /* ── Les morceaux de l'écran ── */
-  const puces = (cats: Cat[]) => cats.filter(c => (nbCat[c.k] || 0) > 0).map(c => (
-    <button key={c.k} type="button" className={`${s.puce} ${actifs[c.k] ? s.puceOn : ''}`} onClick={() => basculerCat(c.k)}
-      aria-pressed={!!actifs[c.k]} style={{ '--c': c.c } as React.CSSProperties}>
-      <i />{c.lib}<b>{nbCat[c.k]}</b>
-    </button>
-  ));
+  const puces = (cats: Cat[]) => cats.filter(c => (nbCrm[c.k] || 0) > 0).map(c => {
+    /* Des biens ou des contacts de ce type existent, mais aucun n'a d'adresse
+       que la carte sache placer : la pastille le dit, et l'appui explique. */
+    const vide = fini && !nbCat[c.k];
+    return (
+      <button key={c.k} type="button" className={`${s.puce} ${actifs[c.k] && !vide ? s.puceOn : ''} ${vide ? s.puceVide : ''}`}
+        onClick={() => {
+          if (!vide) { basculerCat(c.k); return; }
+          setVoirSans(true);
+          setMessage(`${c.lib} : aucun n’a d’adresse que la carte sache placer. Complète leur fiche pour les voir ici.`);
+        }}
+        aria-pressed={!!actifs[c.k] && !vide} style={{ '--c': c.c } as React.CSSProperties}>
+        <span className={s.puceIc}><Ic n={c.ic} t={12} e={2.2} /></span>{c.lib}<b>{nbCat[c.k] || 0}</b>
+      </button>
+    );
+  });
   const rappelAdresses = (
     <div className={s.rappel}>
       <Ic n="lieu" t={15} />
@@ -823,7 +848,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
                 <div className={s.squelettes}>{[0, 1, 2, 3, 4].map(i => <span key={i} className="sq-barre" style={{ width: `${60 + (i * 17) % 40}%` }} />)}</div>
               ) : erreur ? <div className={s.erreur}>{erreur}</div> : (
                 <>
-                  {CATS_CONTACTS.some(c => nbCat[c.k]) && <div className={s.section}>
+                  {CATS_CONTACTS.some(c => nbCrm[c.k]) && <div className={s.section}>
                     <div className={s.sectionTete}><span>Contacts</span>
                       <button type="button" onClick={() => toutSection(CATS_CONTACTS, !CATS_CONTACTS.every(c => !nbCat[c.k] || actifs[c.k]))}>
                         {CATS_CONTACTS.every(c => !nbCat[c.k] || actifs[c.k]) ? 'Aucun' : 'Tous'}
@@ -831,7 +856,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
                     </div>
                     <div className={s.puces}>{puces(CATS_CONTACTS)}</div>
                   </div>}
-                  {CATS_BIENS.some(c => nbCat[c.k]) && <div className={s.section}>
+                  {CATS_BIENS.some(c => nbCrm[c.k]) && <div className={s.section}>
                     <div className={s.sectionTete}><span>Biens</span>
                       <button type="button" onClick={() => toutSection(CATS_BIENS, !CATS_BIENS.every(c => !nbCat[c.k] || actifs[c.k]))}>
                         {CATS_BIENS.every(c => !nbCat[c.k] || actifs[c.k]) ? 'Aucun' : 'Tous'}
@@ -918,15 +943,42 @@ export default function PageCarte({ onNavigate, onMenu }: {
                   enterKeyHint="search" onKeyDown={e => { if (e.key === 'Enter' && q && !visibles.length) allerA(); }} />
                 {recherche && <button type="button" onClick={() => setRecherche('')} aria-label="Effacer">×</button>}
               </label>
+              {/* Qui est sur la carte, et qui n'y est pas : un appui (V3.28). */}
+              <button type="button" className={`${s.infoTel} ${voirSans ? s.infoTelOn : ''}`} onClick={() => { setPliTel(null); setVoirSans(v => !v); }}
+                aria-expanded={voirSans} aria-label="Qui est sur la carte">
+                <Icone nom="info" taille={19} epaisseur={1.9} />
+              </button>
             </div>
-            <div className={s.bandeTel}>
-              {puces([...CATS_CONTACTS, ...CATS_BIENS])}
-              {manquent > 0 && (
-                <button type="button" className={`${s.puce} ${s.puceInfo}`} onClick={() => setVoirSans(v => !v)}>
-                  <Ic n="lieu" t={13} />{`${manquent} sans adresse`}
-                </button>
-              )}
+            {/* Deux boutons plutôt qu'une bande à faire défiler : chacun
+                déplie ses filtres, rangés sur plusieurs lignes. */}
+            <div className={s.groupesTel}>
+              {([['contacts', 'Mes contacts', 'groupe', CATS_CONTACTS], ['biens', 'Mes biens', 'maison', CATS_BIENS]] as const)
+                .filter(([, , , cats]) => cats.some(c => nbCrm[c.k]))
+                .map(([k, lib, ico]) => {
+                  const n = visibles.filter(p => (k === 'biens') === (p.genre === 'bien')).length;
+                  return (
+                    <button key={k} type="button" className={`${s.groupeTel} ${k === 'biens' ? s.groupeBiens : ''} ${pliTel === k ? s.groupeTelOn : ''}`}
+                      aria-expanded={pliTel === k} onClick={() => { setVoirSans(false); setPliTel(x => (x === k ? null : k)); }}>
+                      <span className={s.groupeIc}><Ic n={ico} t={17} e={2} /></span>
+                      <span className={s.groupeLib}>{lib}<small>{`${n} sur la carte`}</small></span>
+                      <span className={s.groupeCv}><Icone nom="chevron" taille={14} epaisseur={2.1} /></span>
+                    </button>
+                  );
+                })}
             </div>
+            {pliTel && (() => {
+              const cats = pliTel === 'contacts' ? CATS_CONTACTS : CATS_BIENS;
+              const tous = cats.every(c => !nbCat[c.k] || actifs[c.k]);
+              return (
+                <div className={s.pliTel} key={pliTel}>
+                  <div className={s.sectionTete}>
+                    <span>{pliTel === 'contacts' ? 'Quels contacts voir' : 'Quels biens voir'}</span>
+                    <button type="button" onClick={() => toutSection(cats, !tous)}>{tous ? 'Aucun' : 'Tous'}</button>
+                  </div>
+                  <div className={s.puces}>{puces(cats)}</div>
+                </div>
+              );
+            })()}
             {voirSans && <div className={s.sansTel}>{rappelAdresses}</div>}
           </div>
 

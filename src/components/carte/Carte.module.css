@@ -74,6 +74,14 @@
   transition: background .18s, border-color .18s, color .18s, transform .12s;
 }
 .puce i { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; transition: background .18s; }
+/* L'icône de la catégorie, dans un petit rond à sa couleur (V3.28). */
+.puceIc {
+  width: 20px; height: 20px; border-radius: 50%; flex: 0 0 auto; margin-left: -3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #eef1f6; color: #94a3b8; transition: background .18s, color .18s;
+}
+.puceOn .puceIc { background: var(--c); color: white; }
+.puceVide .puceIc { background: #eef1f6; color: #b4bfcd; }
 .puce b { font: 800 12px 'Plus Jakarta Sans', sans-serif; color: inherit; }
 .puceOn { color: var(--navy); border-color: color-mix(in srgb, var(--c) 45%, white); background: color-mix(in srgb, var(--c) 9%, white); }
 .puceOn i { background: var(--c); }
@@ -310,6 +318,50 @@
 .bandeTel .puce { flex-shrink: 0; height: 32px; box-shadow: 0 6px 14px -10px rgba(15, 23, 42, .5); border-color: white; }
 .bandeTel .puceOn { border-color: color-mix(in srgb, var(--c) 45%, white); }
 .puceInfo { color: #7a5d1c !important; background: #fdf8ec !important; border-color: #ecd9a4 !important; }
+/* Une catégorie qui existe, mais dont aucun n'a d'adresse placée (V3.28). */
+.puceVide { opacity: .55; }
+.puceVide i { background: #cbd5e1; }
+/* Le point d'information, à droite de la recherche (V3.28). */
+.infoTel {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 13px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: white; color: var(--emilio); box-shadow: 0 10px 24px -14px rgba(15, 23, 42, .55);
+  transition: background .2s, color .2s;
+}
+.infoTelOn { background: #fdf8ec; color: #7a5d1c; }
+/* Les filtres du téléphone (V3.28) : « Mes contacts » et « Mes biens », côte
+   à côte au milieu, sous la recherche ; chacun déplie ses pastilles. */
+.groupesTel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 12px; }
+.groupesTel:has(> :only-child) { grid-template-columns: 1fr; }
+.groupeTel {
+  --g: #34496e;
+  min-width: 0; display: flex; align-items: center; gap: 9px; height: 48px; padding: 0 10px 0 7px;
+  border-radius: 14px; border: 1.5px solid white; background: white; color: var(--navy); cursor: pointer; text-align: left;
+  box-shadow: 0 10px 24px -14px rgba(15, 23, 42, .55);
+  transition: border-color .2s, background .2s, transform .15s;
+}
+.groupeTel:active { transform: scale(.97); }
+.groupeBiens { --g: #a07c28; }
+.groupeIc {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--g) 12%, white); color: var(--g);
+  transition: background .2s, color .2s;
+}
+.groupeLib { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; font: 800 13.5px 'Plus Jakarta Sans', sans-serif; white-space: nowrap; }
+.groupeLib small { font: 600 11px 'DM Sans', sans-serif; color: #94a3b8; margin-top: 2px; }
+.groupeCv { flex: 0 0 auto; display: inline-flex; color: #94a3b8; transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+.groupeTelOn { border-color: var(--g); }
+.groupeTelOn .groupeIc { background: var(--g); color: white; }
+.groupeTelOn .groupeCv { transform: rotate(180deg); color: var(--g); }
+.pliTel {
+  margin: 0 12px; padding: 10px 12px 12px; border-radius: 14px; background: white;
+  box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55);
+  animation: pliEntre .26s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes pliEntre { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.pliTel .puces { gap: 6px; }
+.pliTel .puce { height: 32px; }
 .sansTel { margin: 0 12px; padding: 4px 12px 12px; border-radius: 14px; background: white; box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55); max-height: 45vh; overflow-y: auto; }
 .sansTel .rappel { border-top: none; margin-top: 8px; }
 .outilsTel { position: absolute; z-index: 3; right: 12px; bottom: 90px; display: flex; flex-direction: column; gap: 8px; }
