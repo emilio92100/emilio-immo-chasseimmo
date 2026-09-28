@@ -75,6 +75,8 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
   const [dansVue, setDansVue] = useState<string[]>([]);
   const [cartePrete, setCartePrete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  /* Le bandeau « N biens ne sont pas sur la carte », fermé par le client. */
+  const [horsFerme, setHorsFerme] = useState(false);
 
   const carte = useRef<CarteML | null>(null);
   const ml = useRef<MapLibre | null>(null);
@@ -133,7 +135,9 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
     for (const p of places) n[p.cat] = (n[p.cat] || 0) + 1;
     return n;
   }, [places]);
-  const horsCarte = useMemo(() => biens.filter(b => sans.includes(b.id)), [biens, sans]);
+  /* Les biens sans zone (secteur trop imprécis), selon le filtre choisi :
+     le bandeau du haut de la carte les compte (V3.28). */
+  const horsCarte = useMemo(() => biens.filter(b => sans.includes(b.id) && (filtre === 'tout' || b.cat === filtre)), [biens, sans, filtre]);
 
   /* Les refs que lisent les écouteurs de la carte. */
   const visiblesRef = useRef(visibles); visiblesRef.current = visibles;
@@ -372,6 +376,27 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
       </div>
     );
   };
+  /* Posé en haut de la carte, juste sous les filtres (V3.28). Avant, une
+     petite ligne sous la liste de l'ordinateur, trop discrète, et rien du
+     tout au téléphone. Jamais un emplacement au hasard : le client le
+     prendrait pour le vrai. */
+  const nbHors = horsCarte.length;
+  const alerteHors = nbHors > 0 && places.length > 0 && !horsFerme && !charge ? (
+    <div className={s.hors} role="note">
+      <span className={s.horsIc}><Pic d={ATTENTION} t={15} /></span>
+      <div className={s.horsTxt}>
+        <b>{nbHors === 1 ? '1 bien n’est pas sur la carte' : `${nbHors} biens ne sont pas sur la carte`}</b>
+        <span>
+          {nbHors === 1 ? 'Son secteur n’est pas encore assez précis pour le placer.' : 'Leur secteur n’est pas encore assez précis pour les placer.'}
+          {' '}
+          <button type="button" onClick={() => (nbHors === 1 ? onOuvrir(horsCarte[0].id) : onListe())}>
+            {nbHors === 1 ? 'Voir le bien' : 'Les voir dans la liste'}
+          </button>
+        </span>
+      </div>
+      <button type="button" className={s.horsFermer} onClick={() => setHorsFerme(true)} aria-label="Fermer">×</button>
+    </div>
+  ) : null;
   const rienIci = (
     <div className={s.rien}>
       {charge ? 'Placement de vos biens…' : places.length ? 'Aucun bien dans cette partie de la carte.'
@@ -421,6 +446,9 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
               <button type="button" onClick={() => carte.current?.zoomOut()} aria-label="Dézoomer"><Pic d={MOINS} t={18} /></button>
             </>}
           </div>
+          {/* En haut de la carte, juste sous les filtres ; pas en même temps
+              que le message, qui prend la même place. */}
+          {!message && !erreur && alerteHors}
           {tel && (
             <div className={s.bas}>
               {vue.length ? (
@@ -441,15 +469,6 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
             <div className={s.coteListe} ref={liste}>
               {vue.length ? vue.map(p => carteBien(p, false)) : rienIci}
             </div>
-            {horsCarte.length > 0 && (
-              <div className={s.horsCarte}>
-                {`${horsCarte.length} bien${horsCarte.length > 1 ? 's' : ''} sans adresse assez précise pour la carte : `}
-                {horsCarte.slice(0, 4).map((b, i) => (
-                  <span key={b.id}>{i ? ', ' : ''}<button type="button" onClick={() => onOuvrir(b.id)}>{b.titre}</button></span>
-                ))}
-                {horsCarte.length > 4 ? '…' : ''}
-              </div>
-            )}
           </aside>
         )}
       </div>
@@ -463,6 +482,7 @@ const CARTE = ['M3 6l6-2.5 6 2.5 6-2.5v14.5l-6 2.5-6-2.5-6 2.5z', 'M9 3.5v14.5',
 const CADRE = ['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5'];
 const PLUS = ['M12 5v14', 'M5 12h14'];
 const MOINS = ['M5 12h14'];
+const ATTENTION = ['M12 4l8.5 15h-17z', 'M12 10v4', 'M12 16.8h.01'];
 const PHOTO = ['M3.5 7.5h3l1.6-2.2h7.8l1.6 2.2h3v11h-17z', 'M12 16.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z'];
 function Pic({ d, t = 15 }: { d: string[]; t?: number }) {
   return (

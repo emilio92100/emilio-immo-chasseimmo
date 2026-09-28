@@ -158,6 +158,30 @@
 .outils button:hover { background: #f5f7fb; }
 .outils button:active { transform: scale(.92); }
 
+/* « N biens ne sont pas sur la carte » (V3.28) : posé en haut de la carte,
+   juste sous les filtres. */
+.hors {
+  position: absolute; z-index: 4; left: 14px; top: 14px; max-width: min(430px, calc(100% - 28px));
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 8px 11px 11px; border-radius: 16px;
+  background: #fff; box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55), 0 0 0 1px rgba(201, 168, 76, .28);
+  font-size: 12.5px; line-height: 1.45; color: #64748b;
+  animation: entre .35s cubic-bezier(.16, 1, .3, 1) backwards;
+}
+/* Au téléphone, sous la mention OpenFreeMap (en haut à droite), qui doit rester lisible. */
+.tel .hors { left: 12px; right: 12px; top: 30px; max-width: none; }
+.horsIc {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: #fdf3d8; color: #a07c28;
+}
+.horsTxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding-top: 1px; }
+.horsTxt b { font: 800 13.5px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.horsTxt button { padding: 0; font: 700 12.5px 'DM Sans', sans-serif; color: #8a6a1f; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.horsFermer {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  background: transparent; color: #94a3b8; font-size: 17px; line-height: 1;
+}
+.horsFermer:hover { background: #f1f5f9; color: #1a2332; }
+
 .charge {
   position: absolute; z-index: 4; top: 14px; left: 0; right: 0; margin: 0 auto; width: fit-content;
   display: flex; align-items: center; gap: 9px; padding: 8px 14px; border-radius: 99px;
@@ -215,8 +239,6 @@
 .fl .photo { width: 92px; height: 72px; border-radius: 12px; }
 .fl.choisi { background: #fff; border-color: #c9a84c; box-shadow: 0 12px 26px -18px rgba(36, 56, 92, .6); }
 .pc .rien { box-shadow: none; background: #f8fafc; margin: 0; }
-.horsCarte { padding: 10px 14px 12px; border-top: 1px solid #eef1f6; font-size: 12px; line-height: 1.5; color: #64748b; }
-.horsCarte button { padding: 0; font: 600 12px 'DM Sans', sans-serif; color: #24385c; text-decoration: underline; text-underline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .pastille, .fl, .point, .message { animation: none !important; }
