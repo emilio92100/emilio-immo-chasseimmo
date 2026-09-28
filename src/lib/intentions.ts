@@ -160,6 +160,19 @@ export function annoncerVue(page: string, vue: string) {
   window.dispatchEvent(new CustomEvent(EVT_VUE, { detail: { page, vue } }));
 }
 
+/* Le menu demande une autre catégorie à la page déjà affichée (« Mes
+   vendeurs » alors qu'on est sur Contacts) : elle change sur place, sans
+   recharger la liste ni remonter tout l'écran (V3.25), et la page revient
+   doucement en haut. */
+export const EVT_DEMANDE_VUE = 'emilio:demande-vue';
+
+export function demanderVue(page: string, vue: string) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(EVT_DEMANDE_VUE, { detail: { page, vue } }));
+  document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+  document.querySelector('.crm-app > div')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 /* La vue à l'ouverture de la rubrique : celle de l'adresse (le menu vient de
    la demander), sinon la dernière de la session. */
 export function vueDemandee(page: string): string | null {
