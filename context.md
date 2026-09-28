@@ -1429,6 +1429,11 @@ les cases à cocher, la réponse du vendeur, le certificat.
   pas. Un appui sur la carte replie les filtres.
 - **Fiches ouvertes** : quand des fiches dépassent d'un côté, la bande s'y estompe (masque en
   dégradé) au lieu d'être tranchée net ; sur téléphone, elle va jusqu'au bord arrondi.
+  « Tout fermer » devient un petit bloc avec son icône (rouge au survol).
+- **Carte du CRM sur ordinateur** : elle s'arrête au-dessus de la barre des fiches ouvertes (sa
+  hauteur se mesure jusqu'au bas de la zone qui défile, remesurée quand la barre apparaît) — le
+  bouton « − » n'est plus mangé ; et l'écran ne défile plus sur la carte (`.surCarte .content`),
+  seule la carte bouge. Cadre un peu remonté.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
