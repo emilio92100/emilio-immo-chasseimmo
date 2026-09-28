@@ -7,6 +7,7 @@ import { modele } from '@/lib/actes';
 import * as SD from '@/lib/signature-documents';
 import { ecritServeur } from '@/lib/ecritures';
 import { archiverRegistre, premierDuMois, type Archive } from '@/lib/registre-archive';
+import { reprendreSuspendus } from '@/lib/suspension';
 
 /**
  * Les rappels aux co-signataires qui n'ont pas encore signé.
@@ -41,6 +42,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'non autorisé' }, { status: 401 });
   }
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  /* « Suspendu jusqu'au… » : les dossiers dont la date de reprise est
+     arrivée repassent en « Actif » (src/lib/suspension.ts). La veille et
+     l'ouverture du CRM le font aussi ; ici, c'est le filet du matin. */
+  const reprise = await reprendreSuspendus(sb);
+  for (const e of reprise.erreurs) console.error('[suspension] reprise', e);
   /* Le 1er du mois : l'archive du registre des mandats (V3.18), une fois. */
   let archive: Archive | null = null;
   if (premierDuMois()) {
@@ -49,7 +55,7 @@ export async function GET(req: NextRequest) {
   }
   const { data, error } = await sb.from('mandats_cosignataires').select('*').eq('statut', 'invite');
   /* Table absente (SQL pas encore lancé) : rien à faire. */
-  if (error) return NextResponse.json({ ok: true, rien: error.message, archive });
+  if (error) return NextResponse.json({ ok: true, rien: error.message, archive, reprise });
 
   const bilan: string[] = [];
   const lignes = new Map<string, LigneMandat | null>();
@@ -111,7 +117,7 @@ export async function GET(req: NextRequest) {
     }
   }
   bilan.push(...await relancerDocuments(sb));
-  return NextResponse.json({ ok: true, bilan, archive });
+  return NextResponse.json({ ok: true, bilan, archive, reprise });
 }
 
 async function relancerDocuments(sb: SupabaseClient): Promise<string[]> {
