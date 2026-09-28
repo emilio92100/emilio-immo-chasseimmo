@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
-import { EVT_NOUVEAU_BIEN, prendreNouveauBien, signalerMaj } from '@/lib/intentions';
-import { EN_COURS, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
+import { EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
+import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
 import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
@@ -42,7 +42,13 @@ function ecrireBienUrl(id: string | null) {
 export default function PageBiens({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [liste, setListe] = useState<ListeBiens | null>(null);
   const [erreur, setErreur] = useState('');
-  const [filtre, setFiltre] = useState<Filtre>('tout');
+  /* La catégorie : « Tous », ou celle demandée par le menu de gauche (« Mes
+     estimations »…), ou celle qu'on avait en quittant la liste (V3.24). */
+  const [filtre, setFiltre] = useState<Filtre>(() => {
+    const v = vueDemandee('biens');
+    return v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'tout';
+  });
+  useEffect(() => { annoncerVue('biens', filtre); }, [filtre]);
   const [cherche, setCherche] = useState('');
   /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
   const [fins, setFins] = useState<Filtres>(FILTRES_VIDES);
@@ -197,7 +203,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
         label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
         tuiles={biens.length === 0 ? [] : [
-          { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length },
+          { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, ic: <Ic n="maison" t={14} e={2.1} /> },
           ...[...CATEGORIES, 'suspendu' as const, 'retire' as const].map(k => etapeDe(k)).filter(e => CATEGORIES.includes(e.k) || n(e.k) > 0)
             .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => x.etape === e.k).length : n(e.k), couleur: e.c })),
           ...(archives.length ? [{ cle: 'archives', lib: 'Archivés', n: archives.length, couleur: '#cbd5e1' }] : []),
