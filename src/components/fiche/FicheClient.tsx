@@ -22,6 +22,7 @@ import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
+import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -611,6 +612,13 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     return () => { vivant = false; };
   }, [client.id, client.token_espace, client.prenom, client.nom]);
   const [suiviFiltre, setSuiviFiltre] = useState<string>(ouverture?.onglet === 'suivi' ? (ouverture.filtre || 'tout') : 'appel');
+  /* Un client à plusieurs recherches : le Suivi montre celle qu'on regarde
+     (et ce qui concerne le client entier). Les lignes des autres se
+     rajoutent d'un clic, marquées de leur recherche (§6.17). */
+  const [suiviToutesPour, setSuiviToutesPour] = useState<string | null>(null);
+  /* Venu d'une relance : la ligne visée reste visible, même notée sur une
+     autre recherche que celle ouverte. */
+  const [ligneVisee, setLigneVisee] = useState<string | null>(null);
   /* La ligne du Suivi à surligner : l'action qui a créé la relance. */
   const [surligne, setSurligne] = useState<string | null>(null);
   const ouvertureFaite = useRef(false);
@@ -633,6 +641,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (ouverture.onglet === 'suivi' && j) {
       setSuiviFiltre(filtreDuSuivi(j.type));
       setSurligne(j.id);
+      /* L'action notée sur une autre recherche que celle ouverte : on la
+         montre quand même, c'est elle qu'on vient voir. */
+      setLigneVisee(j.id);
     }
     const t1 = setTimeout(() => {
       const cible = (j && ouverture.onglet === 'suivi' && document.getElementById(`suivi-${j.id}`)) || document.querySelector('.fiche-suivi');
@@ -792,7 +803,17 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      et Présentés, qui chargent leurs biens eux-mêmes, se rechargent. */
   const [versionBiens, setVersionBiens] = useState(0);
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
-  const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '', sms: false });
+  const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '' });
+  /* La signature et le modèle « Sélection de biens » des Paramètres (V3.20) :
+     ils étaient recopiés en dur, et ce qu'Alexandre y écrivait ne servait à
+     rien. Lus une fois, à l'ouverture de la fiche. */
+  const reglagesMail = useRef<Record<string, string>>({});
+  useEffect(() => {
+    supabase.from('parametres').select('cle, valeur').in('cle', CLES_MAIL).then(({ data }) => {
+      reglagesMail.current = Object.fromEntries((data || []).map((r: { cle: string; valeur: string | null }) => [r.cle, r.valeur || '']));
+    });
+  }, []);
+  const signatureMail = () => signatureDe(reglagesMail.current);
   const [envoiSending, setEnvoiSending] = useState(false);
   /* La visite dont on fait le compte rendu (null = fenêtre fermée). */
   const [crVisite, setCrVisite] = useState<any>(null);
@@ -846,8 +867,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const { data } = await supabase.from('recherches').select('*').eq('client_id', client.id).order('created_at', { ascending: true });
     const list = (data || []) as Recherche[];
     setRecherches(list);
-    // garder la recherche active si elle existe encore, sinon la première
-    setRechercheId(prev => (prev && list.some(r => r.id === prev)) ? prev : (list[0]?.id || ''));
+    /* garder la recherche affichée si elle existe encore ; sinon la première
+       dont la veille tourne, sinon la première tout court — la même règle que
+       la liste des contacts et /api/send-mail (V3.20) */
+    setRechercheId(prev => (prev && list.some(r => r.id === prev)) ? prev : ((list.find(r => r.active !== false) || list[0])?.id || ''));
   }
 
   async function creerRecherche() {
@@ -874,7 +897,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       setRecherches(rs => [...rs, data as Recherche]);
       setRechercheId((data as Recherche).id);
       setTab('selection');
-      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(data as Recherche).nom}`);
+      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(data as Recherche).nom}`, undefined, undefined, { rechercheId: (data as Recherche).id });
     }
   }
 
@@ -925,7 +948,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       if (data) setRecherches(rs => rs.map(x => x.id === (data as Recherche).id ? (data as Recherche) : x));
       await addJournal(client.id, 'mail_envoye', dejaAccueilli
         ? `✉️ Nouvelle recherche annoncée — ${rechercheActive.nom}`
-        : '👋 Mail de bienvenue envoyé');
+        : '👋 Mail de bienvenue envoyé', undefined, undefined, { rechercheId: rechercheActive.id });
     } catch (e) {
       alert(`Le mail n'est pas parti : ${(e as Error).message}`);
     } finally {
@@ -942,7 +965,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (error || !data) { signalerEchec('Le nouveau nom de la recherche', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.'); return; }
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheActive.id ? (data as Recherche) : r));
-      await addJournal(client.id, 'recherche_renommee', `🔍 Recherche renommée — ${ancien} → ${nom.trim()}`);
+      await addJournal(client.id, 'recherche_renommee', `🔍 Recherche renommée — ${ancien} → ${nom.trim()}`, undefined, undefined, { rechercheId: rechercheActive.id });
     }
   }
 
@@ -1367,7 +1390,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       cible = (neuve as Recherche).id;
       setRecherches(rs => [...rs, neuve as Recherche]);
       setRechercheId(cible);
-      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(neuve as Recherche).nom}`);
+      await addJournal(client.id, 'recherche_creee', `🔍 Nouvelle recherche — ${(neuve as Recherche).nom}`, undefined, undefined, { rechercheId: (neuve as Recherche).id });
     }
 
     const avant = recherches.find(r => r.id === cible) as unknown as Record<string, unknown> | undefined;
@@ -1453,7 +1476,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         mandat.honoraires || null,
         exp ? `jusqu'au ${new Date(exp).toLocaleDateString('fr-FR')}` : null,
       ].filter(Boolean).join(' · ');
-      await addJournal(client.id, 'mandat', avaitMandat ? '📋 Mandat mis à jour' : '📋 Mandat enregistré', detail || undefined);
+      await addJournal(client.id, 'mandat', avaitMandat ? '📋 Mandat mis à jour' : '📋 Mandat enregistré', detail || undefined, undefined, { rechercheId });
       load();
     }
     setSaving(false); setShowMandat(false);
@@ -1474,7 +1497,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (data) {
       setRecherches(rs => rs.map(r => r.id === rechercheId ? (data as Recherche) : r));
       setMandat({ date_signature: '', duree: '3', honoraires: '2,5% TTC', date_expiration: '' });
-      await addJournal(client.id, 'mandat', '📋 Mandat supprimé');
+      await addJournal(client.id, 'mandat', '📋 Mandat supprimé', undefined, undefined, { rechercheId });
       load();
     }
     setSaving(false); setShowMandat(false);
@@ -1525,7 +1548,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (showChoixTx === 'changer' && transaction) {
       if (!(await verifie('Le changement de bien de la transaction', supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
       const b = biens.find(x => x.id === bienId);
-      await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`);
+      await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`, undefined, undefined, { rechercheId });
     } else {
       if (!(await verifie('La transaction', supabase.from('transactions').insert({
         client_id: client.id, recherche_id: rechercheId,
@@ -1533,7 +1556,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       })))) return;
       await verifie('Le bien « offre faite »', supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId));
       const b = biens.find(x => x.id === bienId);
-      await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${b?.titre || b?.ville || 'bien'}`);
+      await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${b?.titre || b?.ville || 'bien'}`, undefined, undefined, { rechercheId });
     }
     setShowChoixTx(null);
     load();
@@ -1719,7 +1742,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       setSaving(false);
       return;
     }
-    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'');
+    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'', undefined, { rechercheId });
     setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
   }
 
@@ -1737,7 +1760,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (!(await verifie('L’avis du client sur le bien', supabase.from('biens').update({ badge_retour: badge }).eq('id', bienId).select('id'), { ligne: true }))) { load(); return; }
     if (badge === 'offre_faite' && !transaction) {
       if (await verifie('La transaction', supabase.from('transactions').insert({ client_id: client.id, recherche_id: rechercheId, bien_id: bienId, etape_actuelle: 'offre' }))) {
-        await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte');
+        await addJournal(client.id, 'offre_faite', 'Offre faite — Transaction ouverte', undefined, undefined, { rechercheId });
       }
     }
     load();
@@ -1886,7 +1909,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     }).eq('id', ficheBienId).select('id'), { ligne: true });
     /* Pas enregistrée : la fenêtre reste ouverte, rien n'est perdu. */
     if (!enregistre) { setSaving(false); return; }
-    await addJournal(client.id, 'bien_modifie', `🏠 Bien modifié — ${editBienForm.titre||editBienForm.ville||''}`);
+    await addJournal(client.id, 'bien_modifie', `🏠 Bien modifié — ${editBienForm.titre||editBienForm.ville||''}`, undefined, undefined, { rechercheId });
     setSaving(false); setShowFicheBien(false); load();
   }
 
@@ -1916,7 +1939,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
         }
       }
     }
-    await addJournal(client.id, 'bien_supprime', `🗑️ Bien supprimé — ${bien?.titre || bien?.ville || ''}`);
+    await addJournal(client.id, 'bien_supprime', `🗑️ Bien supprimé — ${bien?.titre || bien?.ville || ''}`, undefined, undefined, { rechercheId });
     setShowFicheBien(false); load();
   }
 
@@ -1943,11 +1966,7 @@ Vous trouverez ci-dessous l'aperçu et le bouton pour consulter la fiche complè
 
 N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez la moindre question, ou à me faire un retour afin d'affiner votre recherche si certains points ne vous conviennent pas.
 
-Cordialement,
-Alexandre ROGELET
-Emilio Immobilier
-06 58 95 76 32`,
-      sms: false,
+${signatureMail()}`,
     });
     setShowEnvoiBien(true);
   }
@@ -1972,10 +1991,19 @@ Emilio Immobilier
     const phraseDetail = nb > BIENS_PAR_MAIL
       ? `Vous trouverez les ${BIENS_PAR_MAIL} premiers ci-dessous, avec un bouton pour consulter chaque fiche. Les ${nb - BIENS_PAR_MAIL} autres vous attendent dans votre espace.`
       : `Vous trouverez le détail de chacun ci-dessous, avec un bouton pour consulter la fiche complète.`;
+    /* Le modèle « Sélection de biens » des Paramètres, s'il est rempli : ses
+       variables sont remplacées tout de suite, pour qu'Alexandre relise le
+       mail tel qu'il partira. */
+    const rg = reglagesMail.current;
+    const modele = (rg.template_email_corps || '').trim();
+    const pourLui = (t: string) => personnaliser(t, client, conseillerDe(rg));
+    /* Le modèle sans signature la reçoit, comme les autres mails. */
+    const sig = signatureMail();
+    const avecSignature = (t: string) => (t.includes(sig) ? t : `${t.trimEnd()}\n\n${sig}`);
     setEnvoiForm({
       destinataires: emails.join(', '),
-      objet: `Sélection de biens — Vos recherches immobilières`,
-      corps: `Bonjour ${client.prenom},
+      objet: (rg.template_email_objet || '').trim() ? pourLui(rg.template_email_objet) : `Sélection de biens — Vos recherches immobilières`,
+      corps: modele ? avecSignature(pourLui(modele)) : `Bonjour ${client.prenom},
 
 Suite à votre projet de recherche, je suis heureux de vous présenter une sélection de biens susceptibles de répondre à vos critères.
 
@@ -1983,11 +2011,7 @@ ${phraseDetail}
 
 N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez des questions, ou à me faire un retour afin d'affiner votre recherche si certains biens ne vous conviennent pas.
 
-Cordialement,
-Alexandre ROGELET
-Emilio Immobilier
-06 58 95 76 32`,
-      sms: false,
+${signatureMail()}`,
     });
     setShowEnvoiBien(true);
   }
@@ -2003,11 +2027,7 @@ Emilio Immobilier
       objet: '',
       corps: `Bonjour ${client.prenom},
 
-Cordialement,
-Alexandre ROGELET
-Emilio Immobilier
-06 58 95 76 32`,
-      sms: false,
+${signatureMail()}`,
     });
     setShowEnvoiBien(true);
   }
@@ -2126,7 +2146,7 @@ Emilio Immobilier
     const desc = [date ? `Le ${new Date(date).toLocaleDateString('fr-FR')}` : '', heure ? `à ${heure}` : '', contact ? `· Contact : ${contact}` : ''].filter(Boolean).join(' ');
     await addJournal(client.id, 'visite_planifiee',
       bien_ids.length > 1 ? `📅 Visite planifiée — ${bien_ids.length} biens : ${noms}` : `📅 Visite planifiée — ${noms}`,
-      desc);
+      desc, undefined, { rechercheId });
     setShowPlanVisite(false); load();
   }
 
@@ -2153,7 +2173,7 @@ Emilio Immobilier
     if (!confirm(`Annuler la visite${quand} — ${nom} ?\n\nElle sort de ton agenda et le rappel disparaît de l'espace du client.`)) return;
     const { error } = await supabase.from('visites').update({ statut: 'annulee' }).eq('id', v.id);
     if (error) { alert("Impossible d'annuler cette visite : " + error.message); return; }
-    await addJournal(client.id, 'visite_planifiee', `📅 Visite annulée${quand} — ${nom}`);
+    await addJournal(client.id, 'visite_planifiee', `📅 Visite annulée${quand} — ${nom}`, undefined, undefined, { rechercheId });
     load();
   }
 
@@ -2352,7 +2372,7 @@ Emilio Immobilier
       .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId)))) return;
     setRecherches(rs => rs.map(r => r.id === rechercheId ? ({ ...r, active } as Recherche) : r));
     await addJournal(client.id, 'statut_change',
-      active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi);
+      active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi, undefined, { rechercheId });
   }
 
   async function avancerEtape(prochaine: string) {
@@ -2364,7 +2384,7 @@ Emilio Immobilier
        — « compromis », « acte »… des types que ni les filtres du suivi ni les
        icônes ne connaissaient, et qui s'allongeaient à chaque étape. */
     await addJournal(client.id, 'etape_transaction',
-      `${e?.icone || '💼'} Transaction → ${e?.nom || prochaine}`, e?.quoi);
+      `${e?.icone || '💼'} Transaction → ${e?.nom || prochaine}`, e?.quoi, undefined, { rechercheId });
     if (prochaine === 'compromis') {
       await veilleTx(false, "Compromis signé : inutile de continuer à proposer des biens. La veille repart d'un clic si le compromis tombe.");
     }
@@ -2394,7 +2414,7 @@ Emilio Immobilier
       if (data) setClient(data as Client);
     }
     if (cur === 'compromis') await veilleTx(true, 'Retour avant le compromis — la recherche reprend.');
-    await addJournal(client.id, 'retour_etape', `↩️ Retour → ${ETAPES_LABELS[prec] || prec}`);
+    await addJournal(client.id, 'retour_etape', `↩️ Retour → ${ETAPES_LABELS[prec] || prec}`, undefined, undefined, { rechercheId });
     setShowConfirmEtape(false); setVueEtape(null); setTxData({});
     load();
   }
@@ -2404,16 +2424,21 @@ Emilio Immobilier
      tourner et les relances tombaient sur un client qui avait ses clés. */
   async function finaliserTransaction() {
     if (!transaction) return;
+    /* Sans date d'acte saisie, c'est aujourd'hui : le chiffre d'affaires du
+       mois se range sur cette date (src/lib/activite.ts, V3.20). */
+    const dateActe = ({ ...transaction, ...txData } as { acte_date_prevue?: string | null }).acte_date_prevue;
+    const auj = new Date();
+    const jourActe = `${auj.getFullYear()}-${String(auj.getMonth() + 1).padStart(2, '0')}-${String(auj.getDate()).padStart(2, '0')}`;
     await flushTx();
     setSaving(true);
     /* Vérifié (V3.17) : au premier échec, on s'arrête et on le dit. */
-    const ok = await verifie('L’acte signé', supabase.from('transactions').update({ etape_actuelle: 'finalise' }).eq('id', transaction.id).select('id'), { ligne: true })
+    const ok = await verifie('L’acte signé', supabase.from('transactions').update({ etape_actuelle: 'finalise', ...(dateActe ? {} : { acte_date_prevue: jourActe }) }).eq('id', transaction.id).select('id'), { ligne: true })
       && await verifie('Le statut « bien trouvé »', supabase.from('clients').update({ statut: 'bien_trouve', raison_perte: null }).eq('id', client.id))
       && await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id))
       && await verifie('Les relances en attente', supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', client.id).eq('statut', 'en_attente'));
     if (!ok) { setSaving(false); load(); return; }
     await addJournal(client.id, 'dossier_finalise', '🎉 Acte signé — bien trouvé !',
-      "Le dossier est clos : la veille s'arrête et les relances en attente sont soldées.");
+      "Le dossier est clos : la veille s'arrête et les relances en attente sont soldées.", undefined, { rechercheId });
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
     if (data) setClient(data as Client);
     setRecherches(rs => rs.map(r => ({ ...r, active: false } as Recherche)));
@@ -2442,7 +2467,7 @@ Emilio Immobilier
       }
       await veilleTx(true, 'Transaction abandonnée — la recherche repart.');
     }
-    await addJournal(client.id, 'etape_transaction', '❌ Transaction abandonnée');
+    await addJournal(client.id, 'etape_transaction', '❌ Transaction abandonnée', undefined, undefined, { rechercheId });
     setTransaction(null); setTxData({}); setVueEtape(null);
     setSaving(false); refresh(); load();
   }
@@ -2475,8 +2500,18 @@ Emilio Immobilier
   // On exclut du journal les types qui font doublon avec les communications (envois)
   const COMM_JOURNAL_TYPES = ['mail_envoye', 'envoi_bien', 'visite_effectuee'];
   const suiviComms = envois.map(e => ({ kind: 'comm' as const, ts: e.created_at, data: e }));
+  /* Le journal était lu sur le client seul : les recherches d'un même client
+     se mélangeaient. Une ligne sans recherche (le contact, le statut, les
+     anciennes lignes) reste visible partout ; une ligne d'une autre recherche
+     ne l'est plus que sur demande. */
+  const autreRecherche = (j: { recherche_id?: string | null }) => recherches.length > 1 && !!j.recherche_id && j.recherche_id !== rechercheId;
+  /* « Toutes les recherches » vaut pour la recherche où on l'a demandé :
+     changer de recherche revient à la vue simple. */
+  const suiviToutes = !!rechercheId && suiviToutesPour === rechercheId;
+  const nbAutresRecherches = journal.filter(j => !COMM_JOURNAL_TYPES.includes(j.type) && autreRecherche(j) && j.id !== ligneVisee).length;
   const suiviEvents = journal
     .filter(j => !COMM_JOURNAL_TYPES.includes(j.type))
+    .filter(j => suiviToutes || !autreRecherche(j) || j.id === ligneVisee)
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
   // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
   const COMM_EVENT_TYPES = ['email_libre', 'envoi_externe'];
@@ -2538,7 +2573,7 @@ Emilio Immobilier
       statut: 'en_attente', date_echeance: echeanceDans(jours), note: 'Relance manuelle',
     });
     if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; }
-    await addJournal(client.id, 'relance_manuelle', `🔔 Relance créée pour J+${jours}`);
+    await addJournal(client.id, 'relance_manuelle', `🔔 Relance créée pour J+${jours}`, undefined, undefined, { rechercheId });
     chargerRelances();
     load();
     alert(`Relance créée pour dans ${jours} jours.`);
@@ -3887,6 +3922,13 @@ Emilio Immobilier
                     {f.label}{f.count ? ` (${f.count})` : ''}
                   </button>
                 ))}
+                {nbAutresRecherches > 0 && (
+                  <button type="button" onClick={() => setSuiviToutesPour(suiviToutes ? null : rechercheId)}
+                    title={suiviToutes ? 'Ne montrer que cette recherche' : 'Montrer aussi ce qui a été noté sur ses autres recherches'}
+                    style={{ padding: '7px 14px', borderRadius: 20, border: '1px dashed #c9a84c', background: suiviToutes ? '#fbf6e9' : 'white', color: '#8a6d22', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {suiviToutes ? 'Cette recherche seulement' : `+ ${nbAutresRecherches} d’une autre recherche`}
+                  </button>
+                )}
               </div>
               <button className={`${styles.btn} ${styles.btnPrimary} fc-suivi-ajout`} onClick={nouvelleAction}>+ Ajouter une action</button>
             </div>
@@ -3945,6 +3987,11 @@ Emilio Immobilier
                         </span>
                       )}
                     </div>
+                    {autreRecherche(j) && (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 4, padding: '2px 9px', borderRadius: 8, background: '#f1f5f9', fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
+                        {`🔍 ${recherches.find(r => r.id === j.recherche_id)?.nom || 'Une autre recherche'}`}
+                      </div>
+                    )}
                     {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
                     {/* La relance née de cette action se dit ici, sous elle —
                         plutôt que sur une deuxième ligne du suivi qui répétait
@@ -4212,7 +4259,7 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody}>
               <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
-                Sur quel bien porte cette transaction&nbsp;? Seuls les biens <b>visités</b> par le client
+                Sur quel bien porte cette transaction&nbsp;? Seuls les biens <b>visités</b>{' '}par le client
                 sont proposés — c'est là que se joue une offre.
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -4450,7 +4497,7 @@ Emilio Immobilier
               </div>
               {transaction.etape_actuelle === 'compromis' && (
                 <div style={{ background: '#eef4fb', border: '1px solid #d6e3f5', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#2d5c8f', lineHeight: 1.55 }}>
-                  🔍 La veille, mise en pause à la signature du compromis, <b>repartira</b> sur cette recherche.
+                  🔍 La veille, mise en pause à la signature du compromis, <b>repartira</b>{' '}sur cette recherche.
                 </div>
               )}
               {transaction.etape_actuelle === 'finalise' && (
@@ -4510,7 +4557,7 @@ Emilio Immobilier
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 8 }}>
-                  Écris <b style={{ color: '#dc2626', textTransform: 'none', letterSpacing: 0 }}>{client.prenom} {client.nom}</b> pour confirmer
+                  Écris <b style={{ color: '#dc2626', textTransform: 'none', letterSpacing: 0 }}>{client.prenom} {client.nom}</b>{' '}pour confirmer
                 </label>
                 <input value={supprNom} onChange={e => setSupprNom(e.target.value)} disabled={supprEnCours}
                   placeholder={`${client.prenom} ${client.nom}`} autoFocus
@@ -4546,7 +4593,7 @@ Emilio Immobilier
             </div>
             <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <p style={{ fontSize: 14, color: 'var(--emilio)', margin: 0, lineHeight: 1.6 }}>
-                Tout le travail fait sur <b>{rechercheActive?.nom || 'cette recherche'}</b> sera effacé.
+                Tout le travail fait sur <b>{rechercheActive?.nom || 'cette recherche'}</b>{' '}sera effacé.
                 La recherche repart comme si tu venais de la créer, et la prochaine veille rouvrira
                 tout le marché.
               </p>
@@ -4999,11 +5046,6 @@ Emilio Immobilier
               </div>
               <div><label className={styles.lbl}>Corps du message</label>
                 <textarea className={styles.inp} rows={8} value={envoiForm.corps} onChange={e => setEnvoiForm(f => ({ ...f, corps: e.target.value }))} style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6 }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e3e8f0' }}>
-                <input type="checkbox" id="sms_envoi" checked={envoiForm.sms} onChange={e => setEnvoiForm(f => ({ ...f, sms: e.target.checked }))} style={{ accentColor: '#34496e', width: 16, height: 16 }} />
-                <label htmlFor="sms_envoi" style={{ fontSize: 13, fontWeight: 600, color: 'var(--emilio)', cursor: 'pointer' }}>📱 Envoyer aussi un SMS de notification</label>
-                {client.telephones?.[0] && <span style={{ fontSize: 12, color: '#94a3b8' }}>→ {client.telephones[0]}</span>}
               </div>
 
               {envoiMode !== 'libre' && envoiBienIds.length > 0 && (

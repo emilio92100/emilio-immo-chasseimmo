@@ -27,7 +27,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 }) {
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [counts, setCounts] = useState({ actifs: 0, relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
+  const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
   /* Le sous-menu de Documents (V3.18) : ouvert par défaut ; s'il est replié,
      il le reste d'une visite à l'autre. */
   const [docsOuvert, setDocsOuvert] = useState(true);
@@ -73,10 +73,9 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        dans la page Relances, mais elle ne doit pas peser sur le menu.
        Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-    const [{ count: cl }, { count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }] = await Promise.all([
-      /* Le total des clients ne dit rien : un dossier clos il y a deux ans pèse
-         autant qu'une recherche en cours. On compte ce sur quoi on travaille. */
-      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
+    /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
+       l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
+    const [{ count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }] = await Promise.all([
       supabase.from('relances').select('*', { count: 'exact', head: true })
         .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
@@ -91,7 +90,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
          compromis. Sans la table (outils/sql/biens-vente.sql), pas de pastille. */
       supabase.from('biens_vente').select('*', { count: 'exact', head: true }).in('etape', ['mandat', 'offre', 'compromis']).eq('archive', false),
     ]);
-    setCounts({ actifs: cl || 0, relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0 });
+    setCounts({ relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste

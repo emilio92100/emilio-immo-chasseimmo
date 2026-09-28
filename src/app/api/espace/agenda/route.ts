@@ -108,14 +108,21 @@ export async function GET(req: NextRequest) {
     'END:VCALENDAR',
   ].filter(Boolean).join('\r\n');
 
-  /* La norme veut des lignes de 75 octets maximum, repliées par un espace.
-     La plupart des agendas tolèrent plus long, Outlook non : on replie. */
+  /* La norme veut des lignes de 75 OCTETS maximum, repliées par un espace.
+     La plupart des agendas tolèrent plus long, Outlook non : on replie.
+     On comptait les caractères : « é » ou « — » pèsent deux ou trois octets
+     en UTF-8, et une adresse accentuée débordait (§6.18). On compte
+     maintenant les octets, sans jamais couper un caractère en deux. */
+  const octets = new TextEncoder();
   const replie = ics.split('\r\n').map((l) => {
-    if (l.length <= 74) return l;
-    const bouts: string[] = [l.slice(0, 74)];
-    let reste = l.slice(74);
-    while (reste.length > 73) { bouts.push(' ' + reste.slice(0, 73)); reste = reste.slice(73); }
-    if (reste) bouts.push(' ' + reste);
+    const bouts: string[] = [];
+    let cur = '', n = 0;
+    for (const ch of l) {
+      const o = octets.encode(ch).length;
+      if (n + o > 75) { bouts.push(cur); cur = ' '; n = 1; }
+      cur += ch; n += o;
+    }
+    bouts.push(cur);
     return bouts.join('\r\n');
   }).join('\r\n');
 

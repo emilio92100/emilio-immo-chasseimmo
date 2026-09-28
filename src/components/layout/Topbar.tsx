@@ -152,9 +152,16 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     return () => clearTimeout(timer);
   }, [query]);
 
+  /* « offre_ecrite » est un ancien statut (§6.16) : encore présent sur des
+     fiches, il n'avait ni couleur ni libellé ici, et la pastille s'affichait
+     sans fond, avec « offre_ecrite » écrit tel quel. */
   const statutColor: Record<string, string> = {
     prospect: '#8b5cf6', actif: '#10b981', suspendu: '#f59e0b',
-    bien_trouve: '#3b82f6', perdu: '#ef4444',
+    bien_trouve: '#3b82f6', perdu: '#ef4444', offre_ecrite: '#f59e0b',
+  };
+  const STATUT_LIB: Record<string, string> = {
+    prospect: '🟣 prospect', actif: '🟢 actif', suspendu: '⏸️ suspendu',
+    bien_trouve: '✅ bien trouvé', perdu: '🔴 perdu', offre_ecrite: '✍️ offre écrite',
   };
 
   function selectClient(client: any) {
@@ -212,8 +219,8 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                       {raison && <div className={styles.searchRaison}>{raison}</div>}
                     </div>
                     {estAcheteur(c) ? (
-                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${statutColor[c.statut]}15`, color: statutColor[c.statut], fontWeight: 600, border: `1px solid ${statutColor[c.statut]}30` }}>
-                        {c.statut === 'prospect' ? '🟣' : c.statut === 'actif' ? '🟢' : c.statut === 'suspendu' ? '⏸️' : c.statut === 'bien_trouve' ? '✅' : '🔴'} {c.statut}
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${statutColor[c.statut] || '#94a3b8'}15`, color: statutColor[c.statut] || '#64748b', fontWeight: 600, border: `1px solid ${statutColor[c.statut] || '#94a3b8'}30`, whiteSpace: 'nowrap' }}>
+                        {STATUT_LIB[c.statut] || c.statut}
                       </span>
                     ) : (
                       /* Un vendeur, un notaire… : son type, pas un statut d'acheteur. */

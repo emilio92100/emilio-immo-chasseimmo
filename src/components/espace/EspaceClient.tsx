@@ -4861,7 +4861,7 @@ function Bienvenue({ client, onFermer }: any) {
 const ECHECS: Record<string, React.ReactNode> = {
   bloque: <>Votre téléphone a refusé sans rien afficher. Deux causes possibles&nbsp;:
     <br /><br />
-    <b>1.</b> Vous avez ouvert cette page depuis un mail ou un message. Le petit navigateur
+    <b>1.</b>{' '}Vous avez ouvert cette page depuis un mail ou un message. Le petit navigateur
     de ces applications ne sait pas gérer les alertes. Ouvrez plutôt cette page dans
     <b> Chrome</b> ou <b>Safari</b> — c&apos;est le cas le plus fréquent.
     <br /><br />

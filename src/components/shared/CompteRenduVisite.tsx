@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { signalerEchec } from '@/lib/ecritures';
 import {
   ISSUES, RAISONS, AIME, issueDe, AVIS_HERITE, badgeApresVisite, resumeIssue, type Issue,
 } from '@/lib/visites';
@@ -67,7 +68,7 @@ export async function enregistrerCompteRendu(
   if (v.bien_id) {
     const { error: eB } = await supabase.from('biens')
       .update({ badge_retour: badgeApresVisite(x.issue, ctx.badgeActuel) }).eq('id', v.bien_id);
-    if (eB) console.error('[compte rendu] bien', eB.message);
+    if (eB) signalerEchec('Le compte rendu est noté, mais l’avis sur le bien', eB.message);
   }
   const etoiles = x.etoiles > 0 ? '⭐'.repeat(x.etoiles) : '';
   const corps = [
@@ -83,7 +84,7 @@ export async function enregistrerCompteRendu(
     objet: `Visite — ${ctx.bienTitre}`,
     corps, destinataires: [], sms_envoye: false,
   });
-  if (eE) console.error('[compte rendu] envoi', eE.message);
+  if (eE) signalerEchec('Le compte rendu est noté, mais sa ligne dans le suivi', eE.message);
   const { error: eJ } = await supabase.from('journal').insert({
     client_id: ctx.clientId,
     ...(ctx.rechercheId ? { recherche_id: ctx.rechercheId } : {}),
@@ -93,7 +94,7 @@ export async function enregistrerCompteRendu(
     description: x.commentaire || null,
     metadata: { visite_id: v.id, issue: x.issue, motifs: x.motifs, aime: x.aime },
   });
-  if (eJ) console.error('[compte rendu] journal', eJ.message);
+  if (eJ) signalerEchec('Le compte rendu est noté, mais l’historique du client', eJ.message);
   return null;
 }
 

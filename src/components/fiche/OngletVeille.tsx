@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, addJournal } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { verifie } from '@/lib/ecritures';
 import {
   Chip, BoutonLien, CARTE, Vignettes, Specs, BandeauMarche, ModaleScore,
@@ -85,7 +85,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
       etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
       // infos marché — elles suivent le bien dans la Sélection
-      date_publication: p.date_publication || null, prix_initial: p.prix_initial || null,
+      // les anciennes propositions n'ont que `date_annonce` (§6.14)
+      date_publication: p.date_publication || p.date_annonce || null, prix_initial: p.prix_initial || null,
       nb_baisses: p.nb_baisses || null, nb_agences: p.nb_agences || null,
       historique_prix: p.historique_prix || [], date_derniere_baisse: p.date_derniere_baisse || null,
       score: p.score ?? null, points_forts: p.points_forts || null, points_attention: p.points_attention || null,
@@ -109,7 +110,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       type: 'veille_trouve', titre: `Trouvé par la veille${p.score ? ` · score ${p.score}/100` : ''}`,
       description: p.points_forts?.join(' · ') || null, metadata: {},
     }));
-    await addJournal(clientId, 'bien_ajoute', `Retenu depuis la veille — ${p.titre || p.ville || ''}`, p.url || '');
+    /* Une seule ligne au journal : un `addJournal('bien_ajoute')` la doublait
+       à chaque « Retenir », sans recherche ni bien (§6.14). */
     setEnTraitement(null); charger(); onChange?.();
   }
 
@@ -137,6 +139,11 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
     return memeJour ? `aujourd'hui à ${h}` : `le ${d.toLocaleDateString('fr-FR')} à ${h}`;
   };
 
+  /* Sans recherche, rien à charger : l'onglet restait sur « Chargement… »
+     pour toujours (§6.14). */
+  if (!rechercheId) {
+    return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8', fontSize: 14, minHeight: 200 }}>{'Pas encore de recherche sur ce dossier : la veille démarre dès qu’une recherche est ouverte.'}</div>;
+  }
   if (chargement) {
     return <div style={{ padding: 48, textAlign: 'center', color: '#b6c1d1', fontSize: 14, minHeight: 200 }}>Chargement de la veille…</div>;
   }

@@ -414,7 +414,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
       const r = await supabase.from('relances').update({ statut: 'cloturee' }).eq('id', ev.relanceId);
       if (r.error) alert("C'est annulé, mais son rappel est resté dans tes Relances : clos-le à la main.\n\n" + r.error.message);
     }
-    if (ev.clientId) await addJournal(ev.clientId, ev.source === 'visite' ? 'visite_annulee' : 'rdv_annule', `✕ ${ev.titre} — annulé`, `${maj(jourLong(ev.debut))} à ${hhmm(ev.debut)}`);
+    if (ev.clientId) await addJournal(ev.clientId, ev.source === 'visite' ? 'visite_annulee' : 'rdv_annule', `✕ ${ev.titre} — annulé`, `${maj(jourLong(ev.debut))} à ${hhmm(ev.debut)}`, undefined, { rechercheId: ev.rechercheId });
     setSelCle(null); charger();
   }
 
@@ -1926,7 +1926,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
         await addJournal(dossier!.clientId, 'visite_planifiee',
           choisis.length > 1 ? `📅 Visite planifiée — ${choisis.length} biens : ${choisis.map(b => b.titre || b.ville).join(' · ')}` : `📅 Visite planifiée — ${choisis[0].titre || choisis[0].ville || ''}`,
-          `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${contact ? ` · Contact : ${contact}` : ''}`);
+          `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${contact ? ` · Contact : ${contact}` : ''}`, undefined, { rechercheId: dossier!.rechercheId });
       }
     } else {
       const ligne = {
@@ -1939,7 +1939,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         ? await supabase.from('rendez_vous').update(ligne).in('id', ev.ids)
         : await supabase.from('rendez_vous').insert(ligne);
       if (error) { await echec("Le rendez-vous n'a pas pu être enregistré.\n\n" + error.message); return; }
-      if (!ev && avecDossier && dossier) await addJournal(dossier.clientId, 'rdv_planifie', `📅 ${titre.trim()}`, `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${lieu ? ` · ${lieu}` : ''}`);
+      if (!ev && avecDossier && dossier) await addJournal(dossier.clientId, 'rdv_planifie', `📅 ${titre.trim()}`, `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${lieu ? ` · ${lieu}` : ''}`, undefined, { rechercheId: dossier.rechercheId });
     }
 
     /* 3. Le mail au client. Le rendez-vous est déjà enregistré : un échec ici

@@ -139,10 +139,11 @@ C'est ce qui a tué le bouton Emilio pendant quatre mois — il disait « enregi
 n'existait nulle part à l'écran. Avant d'écrire un `insert` sur `biens`, `visites`, `envois`,
 `relances` ou `transactions` : vérifier qu'il porte `recherche_id`.
 
-⚠️ **Deux exceptions subies**, à connaître avant de « corriger » quoi que ce soit : le `journal`
-est chargé sur `client_id` (et `addJournal()` n'écrit pas `recherche_id`), et les `relances` ne
-sont filtrées sur `recherche_id` nulle part. Les deux erreurs se compensent : corriger l'une sans
-l'autre fait disparaître l'historique du client. Voir `context.md` §6.17.
+⚠️ **Le journal, une exception voulue** (V3.20) : il est chargé sur `client_id`, et l'onglet Suivi
+montre la recherche ouverte **plus les lignes sans `recherche_id`** (le contact, le statut, tout
+l'historique d'avant la V3.20). Une ligne qui parle d'une recherche se note avec elle :
+`addJournal(clientId, type, titre, description, metadata, { rechercheId })`. Ne jamais filtrer le
+journal sur `recherche_id` seul : les anciennes lignes disparaîtraient. Voir `context.md` §6.17.
 
 ### 3.2 Une écriture Supabase dont l'erreur n'est pas remontée est un bug en attente
 
@@ -318,11 +319,11 @@ de fond, pas de style.
 python3 outils/espaces-jsx.py $(find src -name '*.tsx' -o -name '*.ts')
 ```
 
-Il sort une vingtaine de lignes sur le dépôt, dont **une bonne moitié de faux
-positifs** : des commentaires JSX sur plusieurs lignes, et du HTML dans les
-gabarits de `send-mail/route.ts` (là, les espaces sont dans une chaîne, donc
-intactes). Il n'est pas branchable en pré-commit tel quel : on le lit à l'œil,
-et **on ne regarde que les lignes qu'on vient d'écrire**.
+Depuis la V3.20, il **sort en code 0** sur le dépôt : il ne lit que les `.tsx`,
+ignore les commentaires, les fins d'import, les attributs nus et les ternaires.
+**Il doit rester à 0 avant chaque livraison** : un signalement nouveau se règle
+avec `{' '}` (ou en gardant la phrase sur une ligne), même quand le code compilé
+montre l'espace gardée — ça ne coûte rien.
 
 Un signalement n'est un vrai bug que si le code compilé le confirme (§2.1).
 Quatre l'ont été le 23 septembre, tous corrigés le jour même.
@@ -331,6 +332,6 @@ Quatre l'ont été le 23 septembre, tous corrigés le jour même.
 
 ## 8. Où regarder quand quelque chose ne marche pas
 
-`context.md` §6 tient la liste des **anomalies connues et non corrigées**, classées par gravité.
-Avant de conclure qu'un écran est cassé « sans raison », la regarder : le Dashboard affiche des
-zéros codés en dur, et la recherche globale lit des colonnes mortes depuis la V3.0.
+`context.md` §6 tient la liste des **anomalies connues**, classées par gravité. Au 28 septembre
+(V3.20), les vingt-deux relevées sont réglées ou sans objet ; une nouvelle s'y ajoute, datée, avant
+d'être corrigée. Avant de conclure qu'un écran est cassé « sans raison », la regarder.

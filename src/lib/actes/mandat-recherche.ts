@@ -348,7 +348,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     : [P('Prix d’achat maximum, hors honoraires : à compléter.', true)];
   if (d.financement === 'pret') prix.push(P('Le MANDANT prévoit de financer cette acquisition, en tout ou partie, au moyen d’un prêt.'));
   if (d.financement === 'comptant') prix.push(P('Le MANDANT prévoit de financer cette acquisition sans recourir à un prêt.'));
-  prix.push(P('Le MANDANT peut modifier ce prix à tout moment par écrit (un simple e-mail suffit).'));
+  prix.push(P('Ce prix maximum ne peut être modifié que d’un commun accord, par avenant écrit signé des parties.'));
 
   /* ── Les honoraires ── */
   const hono: Bloc[] = [];

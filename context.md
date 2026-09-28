@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.19 · 28 septembre 2026**
+**Version 3.20 · 28 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -103,10 +103,11 @@ d'un type est coché.
 enregistrements inséré sans `recherche_id` existe en base et n'apparaît nulle part — c'est le bug
 qui a tué le bouton Emilio pendant quatre mois.
 
-**Deux exceptions, subies et non voulues** : l'onglet Suivi charge le `journal` sur `client_id`
-(il mélange donc les recherches d'un même client), et les `relances` ne sont filtrées sur
-`recherche_id` nulle part — la colonne est écrite et jamais lue. Voir §6.17, où les deux se
-compensent.
+**Le journal, depuis la V3.20** : il est toujours chargé sur `client_id`, mais `addJournal()` écrit
+`recherche_id` quand la ligne parle d'une recherche, et l'onglet Suivi ne montre que la recherche
+ouverte **plus** les lignes sans recherche (le contact, le statut, tout l'historique d'avant). Les
+lignes d'une autre recherche se rajoutent d'un clic. Voir §6.17. Les `relances` gardent leur
+`recherche_id`, lu pour ouvrir la fiche sur la bonne recherche.
 
 ### `clients`
 
@@ -131,8 +132,7 @@ Occupation : `statut_occupation` (proprietaire / locataire / heberge / autre) et
 ⚠️ **Colonnes de critères mortes.** `type_bien`, `budget_min`, `budget_max`, `secteurs`,
 `surface_*`, `chambres_min`, `parking`, `cave`, `mandat_*` et consorts existent encore sur
 `clients` mais **ne sont plus écrites depuis la V3.0** — la source de vérité est `recherches`.
-`Clients.tsx` compense en fusionnant en mémoire ; `Topbar.tsx` non, et affiche donc des critères
-périmés dans la recherche globale (voir §6).
+`Clients.tsx` compense en fusionnant en mémoire ; `Topbar.tsx` ne les lit plus (§6.11).
 
 ### `recherches` — le pivot
 
@@ -241,6 +241,15 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
   n'est simplement jamais créée.
 - **`transactions`** : 5 étapes, offre, contre-offres, compromis, SRU, prêt, acte, honoraires
 - **`parametres`** : couples `cle` / `valeur`
+  - **Les mails** (Paramètres › Templates email, `src/lib/mail-variables.ts`, V3.20) :
+    `signature_email` (sinon une signature bâtie sur `conseiller_prenom`, `conseiller_nom`,
+    `agence_nom`, `conseiller_telephone`), lue par « Nouveau mail » et les envois de la fiche ;
+    `conseiller_prenom` + `conseiller_nom` = `{{conseiller}}` ; `template_email_objet` /
+    `template_email_corps` pré-remplissent « Envoyer la sélection ». `delai_relance_jours` (Paramètres ›
+    Relances) : le délai de la relance posée après un envoi.
+  - Plus aucun secret : les clés Mailjet, `login` et `nouveau_mdp` ne s'écrivent plus (V3.20) ;
+    `outils/sql/parametres-secrets.sql` efface les anciennes lignes. Restent, sans usage :
+    `sms_sender`, `template_sms`, `template_relance_*`, `conseiller_email`, `site_web`.
   - **L'identité de l'agence** (Paramètres › Agence, `src/lib/agence.ts`) : `agence_identite` (JSON :
     société, carte pro et sa date de fin, argent des clients, assurance, médiateur, signataire,
     coordonnées, autres mentions) et `agence_identite_historique` (chaque modification, datée, avec
@@ -634,7 +643,11 @@ LeBonCoin, PAP, Orpi passent. Le DPE en image SVG est récupéré par regex, sin
 
 Relevé du 20 septembre 2026, vérifié ligne par ligne dans le code, puis **recontrôlé par une
 seconde lecture indépendante** qui a trouvé quinze erreurs dans la première version de ce
-chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
+chapitre.
+
+**Au 28 septembre (V3.20), les vingt-deux sont réglés ou sans objet** : chacun a été revérifié dans
+le code avant d'être marqué ✅. On garde la liste pour ce qu'elle apprend (les mêmes pièges peuvent
+revenir). Une anomalie nouvelle s'ajoute à la suite, avec sa date.
 
 ### Graves — perte ou corruption de données
 
@@ -668,78 +681,88 @@ chapitre. Sauf mention contraire, **rien de ceci n'est corrigé**.
    vider le fichier clients. Voir la V3.6 au §11 pour ce qui a été fait.
    État vérifié après coup, depuis l'extérieur, avec la clé publique tirée de la page de
    connexion : `clients`, `biens` et `journal` renvoient `[]`.
-6. **`PageParametres` écrit des secrets en clair** dans `parametres.valeur` : le mot de passe
-   (`login`, `nouveau_mdp`) **et les clés Mailjet** (`mailjet_api_key`, `mailjet_secret_key`).
-   Aucun n'est utilisé — l'authentification repose depuis le 23 septembre sur un compte Supabase
-   (voir §11, V3.6), et l'envoi de mails sur les variables d'environnement. Ces champs sont donc
-   morts et trompeurs. Ils ne sont plus lisibles de l'extérieur depuis que le RLS est actif, mais
-   **ils restent à supprimer** : un secret en clair dans une table n'a aucune raison d'exister.
-7. **La recherche globale de `Topbar`** injecte la saisie telle quelle dans un filtre
-   `.or(...ilike...)` sans échapper les virgules ni les parenthèses.
+6. ✅ **Réglé le 28 septembre (V3.20).** Les champs sont partis de l'écran : les clés Mailjet (avec
+   toute la carte « SMS Mailjet », jamais branchée), l'identifiant et le « nouveau mot de passe ».
+   `outils/sql/parametres-secrets.sql` efface ce qui avait été enregistré (à lancer une fois ; le
+   CRM fonctionne sans). Ce qui était constaté : `PageParametres` écrivait ces secrets **en clair**
+   dans `parametres.valeur`, et aucun ne servait (connexion par Supabase, mails par Vercel).
+7. ✅ **Réglé (constaté le 28 septembre).** La recherche du haut cherche dans le navigateur, sur le
+   fichier des contacts ; son filet `.or(ilike)` retire virgules, parenthèses, guillemets, `%` et
+   `*`. Ce qui était constaté : la saisie partait telle quelle dans le filtre.
 
 ### Écrans morts ou trompeurs
 
-8. **Dashboard** : « Sélections ce mois », « Visites effectuées » et « CA mois en cours » affichent
-   `0` en dur, sans aucune requête. Les cartes « Transactions en cours », « Visites à venir » et
-   « Activité récente » sont des blocs vides permanents — alors que les données existent et sont
-   déjà requêtées ailleurs.
-9. **Mon activité** : « CA total HT » est `0 €` en dur. « Envois réalisés » compte **toutes** les
-   lignes de `envois`, y compris les comptes rendus de visite qui ne sont jamais envoyés — le
-   chiffre est gonflé.
-10. **Relances** : le bouton « Voir fiche » ouvre la **liste** des clients, jamais la fiche du
-    client concerné. Et « Reporter +5j » repart d'aujourd'hui, pas de l'échéance existante.
-11. **Topbar** : lit `clients.type_bien`, `budget_min`, `budget_max`, `secteurs` — colonnes mortes
-    depuis la V3.0. Affiche donc des critères périmés dans la recherche globale.
-12. **Sidebar et page « Recherche en cours »** : le badge compte les **clients actifs**, pas les
-    recherches. Les compteurs ne se rafraîchissent qu'au changement de page, jamais après une
-    action. Et la page elle-même n'affiche **qu'une recherche par client** (l'active, sinon la
-    première) : les recherches secondaires y sont invisibles, sans le moindre indice.
-13. **Les variables de personnalisation des mails ne fonctionnent pas.** `/api/send-mail` ne
-    remplace que **`{{prénom}}`, avec l'accent**. Or la page Paramètres annonce `{{prenom}}`,
-    `{{nom}}`, `{{reference}}` et `{{conseiller}}` — **aucune de ces quatre n'est jamais
-    substituée**. Un mail bâti sur un modèle des Paramètres part chez le client avec
-    `{{prenom}}` écrit en toutes lettres.
-    Par ailleurs `PageMail` code sa signature en dur et ignore le paramètre `signature_email` de la
-    base ; et la case « SMS » n'envoie rien, elle écrit seulement une trace dans le journal.
-14. **`OngletVeille`** : si `rechercheId` est vide, l'onglet reste bloqué sur « Chargement… »
-    indéfiniment. Double journalisation à chaque « Retenir » (un insert direct **plus** un
-    `addJournal`). Et `date_annonce` est perdu au passage proposition → bien
-    (`charges_trimestrielles` et `taxe_fonciere` sont recopiés depuis le 24 septembre 2026).
-15. **`PageVisites`** : l'insert d'un `compte_rendu_visite` dans `envois` n'envoie rien mais pollue
-    le compteur d'envois. Les visites `annulee` ne s'affichent nulle part tout en comptant dans le
-    total, donc l'état vide ne s'affiche pas si la seule visite est annulée.
-16. **Incohérences de type** : le statut `offre_ecrite` est écrit par `FicheClient` et filtré par
-    `PageMail`, mais absent du type `StatutClient` et de la table de couleurs de `Topbar`.
-    `Client.raison_perte`, `Relance.bien_id` et `Relance.resultat` sont déclarés et jamais utilisés.
+8. ✅ **Réglé le 28 septembre (V3.20).** Les quatre chiffres lisent les dossiers : clients actifs,
+   biens présentés ce mois (`biens.envoye_le`), visites faites ce mois, CA HT du mois
+   (`src/lib/activite.ts`, voir §11). Les trois cartes aussi : transactions en cours (étape, prix,
+   acte prévu ; un clic ouvre l'onglet Transaction de la fiche), les cinq prochaines visites, les
+   sept dernières lignes du journal. Ce qui était constaté : `0` en dur et trois blocs vides.
+9. ✅ **Réglé le 28 septembre (V3.20).** « CA total HT » additionne les transactions clôturées
+   (honoraires HT de l'étape Acte) et les biens « Vendu » (honoraires encaissés TTC ÷ 1,2), avec
+   l'année en cours et la part chasse / vente. « Mails envoyés aux clients » ne compte plus les
+   comptes rendus de visite ; « Clients acheteurs » ne compte plus les notaires ni les confrères.
+   Ce qui était constaté : `0 €` en dur, et des envois gonflés.
+10. ✅ **Réglé (constaté le 28 septembre).** « Ouvrir la fiche » ouvre la fiche du client, au bon
+    onglet ; « Reporter » fait choisir la date, proposée à aujourd'hui + le délai des Paramètres
+    (voulu : une relance en retard revient dans le délai normal).
+11. ✅ **Réglé (constaté le 28 septembre).** `Topbar` ne lit plus aucune colonne de critères : nom,
+    référence, et ce qui a été trouvé (adresse, mail, téléphone).
+12. ✅ **Réglé (constaté le 28 septembre, et V3.20).** La page « Recherche en cours » n'existe plus ;
+    la pastille « clients actifs » est partie en V3.14 (sa requête, restée, est retirée en V3.20) ;
+    les compteurs se rafraîchissent après chaque action (`EVT_MAJ`), au retour sur l'onglet et
+    toutes les 20 s.
+13. ✅ **Réglé le 28 septembre (V3.20).** `src/lib/mail-variables.ts` : `{{prénom}}` (ou `{{prenom}}`),
+    `{{nom}}`, `{{reference}}`, `{{conseiller}}` — accent, casse et espaces libres, l'objet compris,
+    dans les mails libres, de biens et de visites ; une variable inconnue reste visible. La signature
+    se lit dans les Paramètres (« Nouveau mail » et les envois de la fiche) ; le modèle « Sélection
+    de biens » pré-remplit « Envoyer la sélection » ; « Email de relance J+5 », lu par personne, est
+    retiré. La case SMS (fiche et Nouveau mail) est retirée : elle n'envoyait rien. Le message
+    pré-rédigé « Sélection de biens » de Nouveau mail aussi : il annonçait des biens qu'un mail libre
+    ne contient pas. La version texte des mails ne double plus « Bonjour » ni la signature.
+    Ce qui était constaté : seul `{{prénom}}` avec l'accent était remplacé.
+14. ✅ **Réglé le 28 septembre (V3.20).** Sans recherche, l'onglet Veille le dit au lieu de charger
+    pour toujours ; « Retenir » n'écrit plus qu'une ligne au journal (avec la recherche et le bien) ;
+    le `date_annonce` des anciennes propositions sert de `date_publication`.
+15. ✅ **Réglé (constaté le 28 septembre, et V3.20).** Les visites annulées ont leur groupe
+    « Annulées » ; le compte rendu reste dans `envois` (le Suivi l'affiche comme une communication)
+    mais ne compte plus comme un mail dans Mon activité, et ses écritures secondaires (avis sur le
+    bien, ligne du suivi, journal) disent leur échec en rouge.
+16. ✅ **Réglé le 28 septembre (V3.20).** `offre_ecrite` est dans le type `StatutClient` (ancien
+    statut, encore présent sur des fiches) et dans la recherche du haut, qui écrit aussi « bien
+    trouvé » sans tiret bas. `raison_perte` sert désormais (clôture). Restent déclarés sans usage,
+    sans danger : `Relance.bien_id`, `Relance.resultat`.
 
-17. **Le journal et les relances échappent à `recherche_id`, et les deux erreurs se compensent.**
-    `addJournal()` n'écrit **ni** `recherche_id` **ni** `bien_id` (ses dix-huit appels produisent
-    donc des lignes orphelines), et l'onglet Suivi charge le journal sur `client_id` — ce qui les
-    rattrape par accident, au prix de mélanger toutes les recherches d'un même client.
-    ⚠️ **Corriger l'un sans l'autre fait disparaître l'historique.** Les relances, elles, portent un
-    `recherche_id` qui n'est jamais relu.
+17. ✅ **Réglé le 28 septembre (V3.20), les deux ensemble.** `addJournal(…, lien)` écrit
+    `recherche_id` (et `bien_id`) quand la ligne parle d'une recherche : les appels de la fiche, du
+    mandat en ligne et de l'agenda, et `/api/send-mail`. L'onglet Suivi montre la recherche ouverte
+    et les lignes sans recherche ; celles d'une autre recherche se rajoutent d'un clic (« + N d'une
+    autre recherche »), marquées de son nom. **Rien ne disparaît.** Venu d'une relance, la ligne visée
+    s'affiche même si elle est sur une autre recherche. Ce qui était constaté : `addJournal()`
+    n'écrivait ni recherche ni bien, et le Suivi mélangeait les recherches d'un même client.
 
-18. **Le repli des lignes du `.ics` compte les caractères, pas les octets.** Un titre ou une adresse
-    chargés en accents peut donc produire une ligne de plus de 75 octets — exactement ce
-    qu'Outlook refuse, et la raison pour laquelle ce repli a été écrit.
+18. ✅ **Réglé le 28 septembre (V3.20).** Le `.ics` se replie par octets UTF-8, sans couper un
+    caractère (75 octets par ligne, espace de reprise compris). Ce qui était constaté : le repli
+    comptait les caractères.
 
-19. **Des envois partent sans `recherche_id`** depuis `PageMail`, qui n'en envoie jamais. Ces
-    lignes n'apparaîtront dans aucun onglet Suivi. (Le compte rendu de visite de `PageVisites`
-    porte le dossier depuis le 26 septembre.)
+19. ✅ **Réglé le 28 septembre (V3.20).** Un mail parti sans recherche (« Nouveau mail ») est rangé,
+    envoi et journal, dans la recherche que la fiche du client ouvre d'office : la première dont la
+    veille tourne, sinon la première tout court (la fiche suit désormais cette règle, comme la liste
+    des contacts). Ce qui était constaté : ces envois n'apparaissaient dans aucun onglet Suivi.
 
-20. **Plusieurs recherches peuvent être `active` en même temps.** `creerRecherche()` insère
-    `active: true` sans passer les autres à `false` (et sans vérifier son erreur). Les écrans qui
-    font `find(r => r.active)` prennent alors la première venue, et `/veille/import` renvoie
-    **toutes** les recherches actives — donc la veille peut tourner deux fois sur le même client.
+20. ✅ **Sans objet (vérifié le 28 septembre).** `recherches.active` est devenu le drapeau de la
+    veille **par recherche** : deux recherches actives d'un même client, ce sont deux veilles voulues.
+    `creerRecherche()` vérifie son erreur depuis le 23 septembre. Les écrans qui n'en montrent qu'une
+    prennent l'active, sinon la première (liste des contacts, point automatique) : c'est voulu.
 
-21. **L'espace acheteur peut désynchroniser `interphone` et `digicode`.** Ces deux clés sont
-    acceptées dans `exigences` par l'API mais absentes de la table `BOOLEENS` : les colonnes
-    booléennes restent figées sur ce que le CRM avait écrit, et divergent du jsonb.
+21. ✅ **Réglé le 28 septembre (V3.20).** `interphone` et `digicode` sont dans `BOOLEENS` : les
+    colonnes suivent ce que le client règle dans son espace.
 
-22. **`outils/espaces-jsx.py` ne sort jamais en code 0** sur ce dépôt : quatre faux positifs connus
-    subsistent (`FicheClient.tsx:1498`, `ParcoursBien.tsx:295`, `send-mail/route.ts:244` et `:317`
-    — des `>` de comparaison et un attribut de balise). Inutilisable tel quel en pré-commit ; à
-    lire à l'œil.
+22. ✅ **Réglé le 28 septembre (V3.20).** `outils/espaces-jsx.py` ne lit plus que les `.tsx`, et
+    ignore les commentaires sur plusieurs lignes, les fins d'import, les attributs nus et les
+    ternaires : de 71 signalements à 5, tous de vrais textes après une balise sur deux lignes, qui
+    portent maintenant `{' '}`. **Il sort en code 0** : il peut servir de barrière avant de livrer.
+    (Le code compilé montrait ces cinq espaces bien gardées par le SWC actuel ; `{' '}` ne coûte
+    rien.)
 
 ---
 
@@ -828,8 +851,37 @@ iPhone, avertissement Play Protect) sont abandonnées à la demande d'Alexandre.
 
 ### À décider
 
-- **Le mandat de recherche papier** dit encore que son prix se change « par écrit (un simple e-mail
-  suffit) » (`mandat-recherche.ts`), quand le mandat de vente exige un avenant depuis la V3.17.
+- **Le mandat de recherche signé en ligne** dit que le budget se modifie « depuis son espace
+  personnel » (`src/lib/mandat.ts`) ; le CRM prévient Alexandre quand la recherche dépasse le mandat,
+  pour qu'il propose un avenant. Le mandat papier, lui, exige désormais un avenant (V3.20). À
+  trancher avec l'avocat, à la relecture des modèles : on ne touche pas au texte en ligne sans lui
+  (il change la version du modèle approuvé).
+
+Réglé le 28 septembre (V3.20) : le mandat de recherche **papier** ne dit plus que le prix se change
+« par un simple e-mail » ; comme le mandat de vente, il ne change que d'un commun accord, par
+avenant écrit signé des parties (l'avenant au mandat de recherche existe depuis la V3.10).
+
+### Les grands chantiers (liste d'Alexandre, 28 septembre)
+
+Chacun est un projet en soi, à ouvrir quand Alexandre le décide :
+
+1. **Diffuser les annonces depuis le CRM** (SeLoger, Leboncoin… et le site emilio-immo.com), à la
+   place d'Immofacile. Les faits réunis sont juste en dessous (« À l'étude »). Première étape : poser
+   la question aux portails (acceptent-ils un logiciel développé en interne ?), ou choisir un
+   multidiffuseur.
+2. **Les prix de vente réels dans le CRM** (DVF, data.gouv.fr) : décidé, voir « Décidé, pas encore
+   construit » point 1. Dans le CRM seulement, jamais dans l'espace client.
+3. **L'atelier d'estimation et l'avis de valeur en PDF** : comparables (DVF + biens suivis), prix au
+   m², plus et moins du bien, fourchette, et un avis de valeur signé à remettre au vendeur.
+   Gardé de côté depuis la V3.16 ; s'appuie sur le chantier 2.
+4. **Le PDF d'une sélection de biens** : jsPDF + html2canvas (⚠️ pas encore dans `package.json`),
+   page de garde, une fiche par bien, la note du conseiller, dépôt dans le Storage, pièce jointe
+   Mailjet.
+5. **Le scoring de compatibilité bien ↔ recherche.** Couche 1 : critères durs, pondération des
+   champs structurés, faisable tout de suite et gratuit. Couche 2 : envoyer les critères, **les
+   notes libres de la recherche** et la description de l'annonce à Claude pour repérer ce qui ne se
+   met pas en colonne (calme, travaux, exposition, état), seulement sur les biens ayant passé un
+   seuil en couche 1. Les notes libres sont une consigne de matching en langage naturel.
 
 ### À l'étude — diffuser les annonces depuis le CRM, plus depuis Immofacile (28 septembre)
 
@@ -852,18 +904,10 @@ iPhone, avertissement Play Protect) sont abandonnées à la demande d'Alexandre.
 - **SMS à chaque dépôt de bien** (API SMS d'OVH, un SMS groupé par client et par fenêtre de 2 h) :
   pas utile pour le moment (Alexandre, 28 septembre). WhatsApp écarté (vérification Meta, modèles
   approuvés).
-- **Atelier d'estimation** (comparables, prix au m², plus et moins) et **avis de valeur en PDF** :
-  gardés de côté en V3.16.
-- **PDF d'une sélection de biens** : jsPDF + html2canvas (⚠️ pas encore dans `package.json`),
-  page de garde, fiche par bien, note du conseiller, dépôt dans le Storage, pièce jointe Mailjet.
-- **Scoring de compatibilité bien ↔ recherche.** Couche 1 : critères durs, pondération des champs
-  structurés, faisable tout de suite et gratuit. Couche 2 : envoyer les critères, **les notes libres
-  de la recherche** et la description de l'annonce à Claude pour repérer ce qui ne se met pas en
-  colonne (calme, travaux, exposition, état), seulement sur les biens ayant passé un seuil en
-  couche 1. Les notes libres sont une consigne de matching en langage naturel.
-- Relances automatiques après envoi · Dashboard réellement branché · Export Excel ·
-  Corbeille avec archivage à J+30 · Multi-utilisateur. (L'extension aux vendeurs est faite :
-  V3.12 à V3.14.)
+- Un **mail de relance automatique** après un envoi (aujourd'hui, la relance est une tâche pour
+  Alexandre ; le modèle « Email de relance J+5 », lu par personne, a été retiré en V3.20) ·
+  Export Excel · Corbeille avec archivage à J+30 · Multi-utilisateur. (L'extension aux vendeurs
+  est faite : V3.12 à V3.14 ; le tableau de bord est branché : V3.20.)
 
 ### Sourcing automatique d'annonces — comparatif de mai 2026
 
@@ -1338,6 +1382,36 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.20 — 28 septembre 2026 · les anomalies connues, toutes revues
+
+Les vingt-deux anomalies du §6 ont été revérifiées une à une dans le code : dix étaient déjà
+réglées par les versions précédentes (marquées « constaté »), une est sans objet (§6.20), les
+autres sont corrigées ici.
+
+**SQL à lancer une fois** (le CRM fonctionne sans) : `outils/sql/parametres-secrets.sql`, qui
+efface les clés Mailjet et le mot de passe gardés en clair dans `parametres`.
+
+- **Le mandat de recherche papier** : le prix maximum ne change plus « par un simple e-mail » mais,
+  comme pour le mandat de vente, d'un commun accord, par avenant écrit signé des parties. Seul son
+  texte change (dumps de régression : une ligne, `mandat_recherche`).
+- **Tableau de bord** : chiffres et cartes branchés (§6.8). **Mon activité** : le vrai CA (§6.9).
+  Le CA se lit dans `src/lib/activite.ts` (`honorairesEncaisses`) : transactions clôturées, date de
+  l'acte (`acte_date_prevue` ; « Acte signé — clôturer » la pose au jour même quand elle n'a pas été
+  saisie) ; biens vendus, date `vendu_le`, honoraires de la dernière ligne « Vendu » de leur
+  historique. Mon activité lit les contacts page par page (au-delà de 1 000, rien ne se perd).
+- **La fiche d'un client à plusieurs recherches** s'ouvre sur la première dont la veille tourne
+  (avant : la plus ancienne, même close), comme la liste des contacts et les documents.
+- **Les mails** : variables, signature et modèle lus dans les Paramètres, case SMS retirée, version
+  texte sans doublon, mails de « Nouveau mail » rangés dans une recherche (§6.13, §6.19).
+- **Paramètres** : plus aucun secret à l'écran ; « SMS & Relances » devient « Relances » ;
+  « Sécurité » dit où se gère le mot de passe (Supabase › Authentication › Users).
+- **Le Suivi d'un client à plusieurs recherches** (§6.17) ; **la veille sans recherche** (§6.14) ;
+  **le `.ics`** (§6.18) ; **interphone et digicode** (§6.21) ; **la recherche du haut** et
+  `offre_ecrite` (§6.16) ; **l'outil des espaces JSX**, qui sort en code 0 (§6.22).
+- **Écritures silencieuses rattrapées** : `src/components/biens/outils.ts` (onze `console.error` sur
+  des écritures : rendez-vous, photos, journal, badges, relance du propriétaire, lien du mandat) et
+  le compte rendu de visite (trois) passent par `signalerEchec` : un échec s'affiche en rouge.
 
 ### V3.19 — 28 septembre 2026 · déléguer un mandat depuis la fiche d'un confrère
 

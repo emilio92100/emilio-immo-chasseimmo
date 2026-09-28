@@ -664,7 +664,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
         const CLES_EXIGENCES = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur',
           'gardien', 'interphone', 'digicode', 'exterieur', 'cuisine'];
-        const BOOLEENS = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur', 'gardien'];
+        /* interphone et digicode ont aussi leur colonne (le CRM les écrit) :
+           absentes d'ici, elles restaient figées quand le client les changeait
+           (§6.21). */
+        const BOOLEENS = ['parking', 'cave', 'balcon', 'terrasse', 'jardin', 'ascenseur', 'gardien', 'interphone', 'digicode'];
         if (c.exigences && typeof c.exigences === 'object' && !Array.isArray(c.exigences)) {
           /* Le client règle lui-même « souhaité » / « indispensable » : c'est lui qui fait foi,
              et les anciennes colonnes booléennes suivent. */

@@ -1,21 +1,24 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { signalerEchec, verifie } from '@/lib/ecritures';
+import { signalerEchec } from '@/lib/ecritures';
+import { CLES_MAIL, signatureDe, VARIABLES_MAIL } from '@/lib/mail-variables';
 import styles from './Page.module.css';
 
-const SIGNATURE = `Cordialement,
-Alexandre ROGELET
-Emilio Immobilier
-06 58 95 76 32`;
+/* La signature vient des Paramètres (Templates email › Signature
+   automatique) : elle était recopiée en dur ici, et ignorait ce qu'Alexandre
+   y avait écrit. En attendant qu'elle soit lue, celle par défaut. */
+const SIGNATURE_DEFAUT = signatureDe({});
 
-const MESSAGES_PRE = [
-  { label: '📅 Proposition de visite', corps: `Bonjour {{prénom}},\n\nSuite à notre échange, je souhaiterais vous proposer une visite du bien qui correspond à vos critères.\n\nSeriez-vous disponible prochainement ? Je reste à votre disposition pour organiser cela dans les meilleurs délais.\n\n` + SIGNATURE },
-  { label: '🔄 Suivi de recherche', corps: `Bonjour {{prénom}},\n\nJe vous contacte pour faire un point sur votre recherche immobilière. J'ai plusieurs biens en cours d'analyse qui pourraient correspondre à vos critères.\n\nPuis-je vous appeler dans la semaine pour en discuter ?\n\n` + SIGNATURE },
-  { label: '📋 Compte-rendu d\'activité', corps: `Bonjour {{prénom}},\n\nJe souhaitais vous faire un bilan de nos recherches en cours. Nous avons analysé plusieurs biens sur vos secteurs prioritaires et je travaille activement à vous trouver la perle rare.\n\nN'hésitez pas à me faire part de vos remarques ou nouvelles priorités.\n\n` + SIGNATURE },
-  { label: '✅ Confirmation de rendez-vous', corps: `Bonjour {{prénom}},\n\nJe vous confirme notre rendez-vous. N'oubliez pas de vous munir de vos documents (pièce d'identité, justificatifs de revenus) si vous souhaitez avancer rapidement sur un bien.\n\nÀ très bientôt !\n\n` + SIGNATURE },
-  { label: '💌 Message personnalisé', corps: `Bonjour {{prénom}},\n\n` + SIGNATURE },
-  { label: '🏠 Sélection de biens', corps: `Bonjour {{prénom}},\n\nSuite à votre projet de recherche, je suis heureux de vous présenter une sélection de biens susceptibles de répondre à vos critères.\n\nVous trouverez le détail de chacun ci-dessous, avec un bouton pour consulter la fiche complète. N'hésitez pas à me solliciter pour organiser une visite, à m'appeler si vous avez des questions, ou à me faire un retour afin d'affiner votre recherche si certains biens ne vous conviennent pas.\n\n` + SIGNATURE },
+/* « Sélection de biens » est parti de cette liste : un mail écrit ici part
+   sans aucun bien (mode libre), alors que le texte annonçait « le détail de
+   chacun ci-dessous ». Une sélection s'envoie depuis la fiche du client. */
+const messagesPre = (sig: string) => [
+  { label: '📅 Proposition de visite', corps: `Bonjour {{prénom}},\n\nSuite à notre échange, je souhaiterais vous proposer une visite du bien qui correspond à vos critères.\n\nSeriez-vous disponible prochainement ? Je reste à votre disposition pour organiser cela dans les meilleurs délais.\n\n` + sig },
+  { label: '🔄 Suivi de recherche', corps: `Bonjour {{prénom}},\n\nJe vous contacte pour faire un point sur votre recherche immobilière. J'ai plusieurs biens en cours d'analyse qui pourraient correspondre à vos critères.\n\nPuis-je vous appeler dans la semaine pour en discuter ?\n\n` + sig },
+  { label: '📋 Compte-rendu d\'activité', corps: `Bonjour {{prénom}},\n\nJe souhaitais vous faire un bilan de nos recherches en cours. Nous avons analysé plusieurs biens sur vos secteurs prioritaires et je travaille activement à vous trouver la perle rare.\n\nN'hésitez pas à me faire part de vos remarques ou nouvelles priorités.\n\n` + sig },
+  { label: '✅ Confirmation de rendez-vous', corps: `Bonjour {{prénom}},\n\nJe vous confirme notre rendez-vous. N'oubliez pas de vous munir de vos documents (pièce d'identité, justificatifs de revenus) si vous souhaitez avancer rapidement sur un bien.\n\nÀ très bientôt !\n\n` + sig },
+  { label: '💌 Message personnalisé', corps: `Bonjour {{prénom}},\n\n` + sig },
 ];
 
 export default function PageMail({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -23,8 +26,8 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<any[]>([]);
   const [objet, setObjet] = useState('');
-  const [corps, setCorps] = useState(`Bonjour {{prénom}},\n\n` + SIGNATURE);
-  const [sms, setSms] = useState(false);
+  const [signature, setSignature] = useState(SIGNATURE_DEFAUT);
+  const [corps, setCorps] = useState(`Bonjour {{prénom}},\n\n` + SIGNATURE_DEFAUT);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [showPre, setShowPre] = useState(false);
@@ -35,7 +38,15 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
       .in('statut', ['actif', 'prospect', 'suspendu', 'offre_ecrite', 'bien_trouve'])
       .order('nom')
       .then(({ data }) => setClients(data || []));
+    supabase.from('parametres').select('cle, valeur').in('cle', CLES_MAIL).then(({ data }) => {
+      const sig = signatureDe(Object.fromEntries((data || []).map((r: { cle: string; valeur: string | null }) => [r.cle, r.valeur || ''])));
+      setSignature(sig);
+      /* Le message encore vierge prend la bonne signature ; un texte déjà
+         commencé n'est pas touché. */
+      setCorps(c => c === `Bonjour {{prénom}},\n\n` + SIGNATURE_DEFAUT ? `Bonjour {{prénom}},\n\n` + sig : c);
+    });
   }, []);
+  const MESSAGES_PRE = messagesPre(signature);
 
   const filtered = clients.filter(c =>
     !selected.find(s => s.id === c.id) &&
@@ -80,20 +91,8 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
         return;
       }
       if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
-
-      // Optionnel : SMS de notification (pas branché à un service SMS, juste journalisé)
-      if (sms) {
-        for (const client of selected) {
-          if (client.telephones?.[0]) {
-            await verifie('L’historique du client', supabase.from('journal').insert({
-              client_id: client.id,
-              type: 'sms_notification',
-              titre: `📱 SMS de notification`,
-              description: `Notification envoyée à ${client.telephones[0]} (à intégrer avec service SMS)`,
-            }));
-          }
-        }
-      }
+      /* La case « SMS de notification » est partie : elle n'envoyait rien,
+         et notait pourtant au journal « Notification envoyée ». */
 
       setSending(false);
       setSent(true);
@@ -101,7 +100,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
         setSent(false);
         setSelected([]);
         setObjet('');
-        setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE);
+        setCorps(`Bonjour {{prénom}},\n\n` + signature);
       }, 3500);
     } catch (e) {
       setErrorMsg(`Erreur réseau : ${(e as Error).message}`);
@@ -178,7 +177,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             {/* MESSAGE */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
-                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>— utilisez {'{{prénom}}'} pour personnaliser</span></label>
+                <label className={styles.label}>MESSAGE <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>{`— ${VARIABLES_MAIL.join(', ')} se remplacent pour chaque client`}</span></label>
                 <div style={{ position: 'relative' }}>
                   <button onClick={() => setShowPre(!showPre)} style={{ fontSize: 12, fontWeight: 600, color: '#3b82f6', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
                     💬 Messages pré-rédigés ▾
@@ -208,13 +207,9 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
 
             {/* FOOTER */}
             <div className={styles.piedForm} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a5568', cursor: 'pointer' }}>
-                <input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} style={{ accentColor: '#34496e' }} />
-                📱 Envoyer aussi un SMS de notification
-                {selected.length > 0 && selected[0].telephones?.[0] && <span style={{ fontSize: 11, color: '#94a3b8' }}>→ {selected[0].telephones[0]}</span>}
-              </label>
+              <span style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>{'Chaque client reçoit son propre mail, rangé dans le suivi de sa recherche en cours.'}</span>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button className={styles.btn} onClick={() => { setSelected([]); setObjet(''); setCorps(`Bonjour {{prénom}},\n\n` + SIGNATURE); setErrorMsg(null); }}>Annuler</button>
+                <button className={styles.btn} onClick={() => { setSelected([]); setObjet(''); setCorps(`Bonjour {{prénom}},\n\n` + signature); setErrorMsg(null); }}>Annuler</button>
                 <button className={`${styles.btn} ${styles.btnDark}`} onClick={handleSend} disabled={sending || selected.length === 0}>
                   {sending ? '⏳ Envoi...' : `✈️ Envoyer${selected.length > 0 ? ` (${selected.length} destinataire${selected.length > 1 ? 's' : ''})` : ''}`}
                 </button>

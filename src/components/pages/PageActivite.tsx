@@ -1,26 +1,61 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { estAcheteur } from '@/lib/contacts';
+import { honorairesEncaisses, moisDe, eurosRonds, type Encaisse } from '@/lib/activite';
 import styles from './Page.module.css';
 
+/* « Mon activité » (V3.20) :
+   · le CA n'est plus `0 €` en dur : il se lit dans les transactions clôturées
+     et les biens vendus (src/lib/activite.ts) ;
+   · « Envois réalisés » ne compte plus les comptes rendus de visite, rangés
+     dans la même table mais jamais envoyés à personne (§6.9) ;
+   · « Clients » ne compte que les acheteurs : depuis la V3.14, un notaire ou
+     un confrère est aussi un contact. */
 export default function PageActivite() {
-  const [stats, setStats] = useState({ clients: 0, actifs: 0, visites: 0, envois: 0, finalisés: 0 });
+  const [stats, setStats] = useState({ clients: 0, actifs: 0, visites: 0, envois: 0, finalises: 0 });
+  const [encaisse, setEncaisse] = useState<Encaisse[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetch() {
-      const [{ count: cl }, { count: act }, { count: vis }, { count: env }, { count: fin }] = await Promise.all([
-        supabase.from('clients').select('*', { count: 'exact', head: true }),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'actif'),
+    async function lire() {
+      /* Page par page : une requête s'arrête à 1 000 lignes. */
+      type Ligne = { statut: string; types?: string[] | null };
+      const lireTout = async (cols: string) => {
+        const tout: Ligne[] = [];
+        for (let de = 0; ; de += 1000) {
+          const { data, error } = await supabase.from('clients').select(cols).order('id').range(de, de + 999);
+          if (error) return { data: null, error };
+          tout.push(...((data || []) as unknown as Ligne[]));
+          if (!data || data.length < 1000) return { data: tout, error: null };
+        }
+      };
+      let cl = await lireTout('id, statut, types');
+      if (cl.error) cl = await lireTout('id, statut');
+      const [{ count: vis }, { count: env }, ca] = await Promise.all([
         supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'effectuee'),
-        supabase.from('envois').select('*', { count: 'exact', head: true }),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('statut', 'bien_trouve'),
+        supabase.from('envois').select('*', { count: 'exact', head: true }).neq('type', 'compte_rendu_visite'),
+        honorairesEncaisses().catch(() => [] as Encaisse[]),
       ]);
-      setStats({ clients: cl || 0, actifs: act || 0, visites: vis || 0, envois: env || 0, finalisés: fin || 0 });
+      const acheteurs = (cl.data || []).filter(c => estAcheteur(c));
+      setStats({
+        clients: acheteurs.length,
+        actifs: acheteurs.filter(c => c.statut === 'actif').length,
+        visites: vis || 0,
+        envois: env || 0,
+        finalises: acheteurs.filter(c => c.statut === 'bien_trouve').length,
+      });
+      setEncaisse(ca);
       setLoading(false);
     }
-    fetch();
+    lire();
   }, []);
+
+  const total = encaisse.reduce((t, e) => t + e.ht, 0);
+  const annee = String(new Date().getFullYear());
+  const cetteAnnee = encaisse.filter(e => moisDe(e.quand).startsWith(annee)).reduce((t, e) => t + e.ht, 0);
+  const chasse = encaisse.filter(e => e.source === 'chasse').reduce((t, e) => t + e.ht, 0);
+  const vente = total - chasse;
 
   return (
     <div className={styles.page}>
@@ -37,7 +72,7 @@ export default function PageActivite() {
           <div className={styles.statCard}>
             <div style={{ fontSize: 28 }}>👥</div>
             <div className={styles.statVal}>{stats.clients}</div>
-            <div className={styles.statLabel}>Clients total</div>
+            <div className={styles.statLabel}>Clients acheteurs</div>
           </div>
           <div className={styles.statCard}>
             <div style={{ fontSize: 28 }}>🟢</div>
@@ -52,20 +87,29 @@ export default function PageActivite() {
           <div className={styles.statCard}>
             <div style={{ fontSize: 28 }}>📄</div>
             <div className={styles.statVal}>{stats.envois}</div>
-            <div className={styles.statLabel}>Envois réalisés</div>
+            <div className={styles.statLabel}>Mails envoyés aux clients</div>
           </div>
           <div className={styles.statCard}>
             <div style={{ fontSize: 28 }}>✅</div>
-            <div className={styles.statVal}>{stats.finalisés}</div>
+            <div className={styles.statVal}>{stats.finalises}</div>
             <div className={styles.statLabel}>Dossiers finalisés</div>
           </div>
           <div className={styles.statCard} style={{ background: 'var(--emilio-fond)', borderColor: 'var(--emilio)' }}>
             <div style={{ fontSize: 28 }}>💰</div>
-            <div className={styles.statVal} style={{ color: '#c9a84c' }}>0€</div>
-            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.45)' }}>CA total HT</div>
+            <div className={styles.statVal} style={{ color: '#c9a84c' }}>{eurosRonds(total)}</div>
+            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.6)' }}>CA total HT</div>
+            {total > 0 && (
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)', marginTop: 6, lineHeight: 1.5 }}>
+                {`Dont ${eurosRonds(cetteAnnee)} en ${annee}`}<br />
+                {`Chasse ${eurosRonds(chasse)} · Vente ${eurosRonds(vente)}`}
+              </div>
+            )}
           </div>
         </div>
       )}
+      <p style={{ fontSize: 12, color: '#94a3b8', margin: '14px 2px 0', lineHeight: 1.6, maxWidth: 720 }}>
+        {'Le CA additionne les honoraires HT saisis à l’étape « Acte » des transactions clôturées, et les honoraires encaissés des biens passés « Vendu » (ramenés en HT). Un honoraire non saisi ne compte pas.'}
+      </p>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import { supabase, genererReference } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import { programmerRelance } from '@/lib/relances';
+import { signalerEchec } from '@/lib/ecritures';
 import { modele, aujourdhui, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import { correspondance, criteresDepuisRecherche, type Correspondance } from '@/lib/correspondance';
 import { conjointDe } from '@/lib/foyer';
@@ -123,7 +124,7 @@ export async function annulerVisiteLibre(v: SuiviVente): Promise<void> {
   const rdv = (v.donnees || {}).rdv_id;
   if (typeof rdv === 'string' && rdv) {
     const { error } = await supabase.from('rendez_vous').update({ statut: 'annule' }).eq('id', rdv);
-    if (error) console.error('[biens-vente] rendez-vous', error.message);
+    if (error) signalerEchec('La visite est annulée, mais son rendez-vous dans l’agenda', error.message);
   }
 }
 export async function ficheClient(id: string): Promise<Record<string, unknown>> {
@@ -196,9 +197,9 @@ export async function supprimerBien(b: BienVente): Promise<void> {
   const chemins = lirePhotos(b.donnees?.photos).map(p => p.chemin).filter(Boolean);
   if (chemins.length) {
     const { error } = await supabase.storage.from('photos-vente').remove(chemins);
-    if (error) console.error('[biens-vente] photos', error.message);
+    if (error) signalerEchec('La suppression des photos du bien', error.message);
   }
-  try { await api({ action: 'tout', id: b.id }); } catch (e) { console.error('[biens-vente] dossier', (e as Error).message); }
+  try { await api({ action: 'tout', id: b.id }); } catch (e) { signalerEchec('La suppression des pièces du dossier du bien', (e as Error).message); }
   const { error } = await supabase.from('biens_vente').delete().eq('id', b.id);
   if (error) lever('Le bien n’a pas pu être supprimé', error.message);
 }
@@ -270,7 +271,7 @@ export async function envoyerDansEspace(b: BienVente, l: Acheteur[]): Promise<{ 
         description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${a.corr.note} %`,
         metadata: { bien_vente_id: b.id },
       });
-      if (eJ) console.error('[biens-vente] journal', eJ.message);
+      if (eJ) signalerEchec('Le bien est présenté, mais l’historique du client', eJ.message);
       await programmerRelance(a.client.id, a.recherche.id, 1);
       fetch('/api/notifier', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -298,7 +299,7 @@ export async function visiteAcheteur(b: BienVente, clientId: string, rechercheId
   if (error) lever('La visite n’a pas pu être enregistrée', error.message);
   if (!['visite', 'offre_faite'].includes(String(copie.badge_retour || ''))) {
     const r = await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).eq('id', copie.id);
-    if (r.error) console.error('[biens-vente] badge', r.error.message);
+    if (r.error) signalerEchec('La visite est notée, mais le bien « souhaite visiter »', r.error.message);
   }
   const { error: eJ } = await supabase.from('journal').insert({
     client_id: clientId, recherche_id: rechercheId, bien_id: copie.id, type: 'visite_planifiee',
@@ -306,7 +307,7 @@ export async function visiteAcheteur(b: BienVente, clientId: string, rechercheId
     description: [x.date ? `Le ${new Date(`${x.date}T12:00:00`).toLocaleDateString('fr-FR')}` : '', x.heure ? `à ${x.heure}` : ''].filter(Boolean).join(' ') || null,
     metadata: { bien_vente_id: b.id },
   });
-  if (eJ) console.error('[biens-vente] journal', eJ.message);
+  if (eJ) signalerEchec('La visite est notée, mais l’historique du client', eJ.message);
 }
 
 /* Avec quelqu'un hors du CRM (un appel sur une annonce) : une ligne de
@@ -356,7 +357,7 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
     const copieId = cop?.[0]?.id as string | undefined;
     if (copieId) {
       const r = await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', copieId);
-      if (r.error) console.error('[biens-vente] badge', r.error.message);
+      if (r.error) signalerEchec('L’offre est notée, mais le bien « offre faite » chez l’acheteur', r.error.message);
     }
     const { error: eJ } = await supabase.from('journal').insert({
       client_id: o.clientId, recherche_id: o.rechercheId, ...(copieId ? { bien_id: copieId } : {}), type: 'offre',
@@ -364,7 +365,7 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
       description: o.jusquau ? `Valable jusqu’au ${new Date(`${o.jusquau}T12:00:00`).toLocaleDateString('fr-FR')}` : null,
       metadata: { bien_vente_id: b.id, suivi_id: ligne.id },
     });
-    if (eJ) console.error('[biens-vente] journal', eJ.message);
+    if (eJ) signalerEchec('L’offre est notée, mais l’historique de l’acheteur', eJ.message);
   }
   /* Le propriétaire : une relance le jour où l'offre expire. */
   if (proprio && o.jusquau) {
@@ -373,7 +374,7 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
       date_echeance: new Date(`${o.jusquau}T09:00:00`).toISOString(),
       note: `Offre de ${o.qui} à ${o.montant.toLocaleString('fr-FR')} € sur ${b.titre || 'son bien'} : réponse à donner aujourd’hui.`,
     });
-    if (error) console.error('[biens-vente] relance', error.message);
+    if (error) signalerEchec('L’offre est notée, mais la relance du propriétaire', error.message);
   }
   return ligne;
 }
@@ -480,7 +481,7 @@ export async function marquerVendeur(clientId: string): Promise<void> {
   const t = typesDe(data);
   if (t.includes('vendeur')) return;
   const { error: e2 } = await supabase.from('clients').update({ types: [...t, 'vendeur'] }).eq('id', clientId);
-  if (e2 && !colonneContactAbsente(e2.message)) console.error('[contacts] vendeur', e2.message);
+  if (e2 && !colonneContactAbsente(e2.message)) signalerEchec('Le type « vendeur » du contact', e2.message);
 }
 
 /* Les réponses « propriétaire » d'un bien, tirées de sa fiche : la personne
@@ -548,7 +549,7 @@ export async function creerDocument(b: BienVente, x: PourDocument): Promise<stri
   const id = (data as { id: string }).id;
   if (x.modele === 'mandat_vente' && !b.document_id) {
     const r = await supabase.from('biens_vente').update({ document_id: id }).eq('id', b.id);
-    if (r.error) console.error('[biens-vente] mandat', r.error.message);
+    if (r.error) signalerEchec('Le mandat est créé, mais son lien avec le bien', r.error.message);
   }
   return id;
 }

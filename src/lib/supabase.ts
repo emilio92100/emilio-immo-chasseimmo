@@ -6,7 +6,9 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
-export type StatutClient = 'prospect' | 'actif' | 'suspendu' | 'bien_trouve' | 'perdu'
+/* « offre_ecrite » : ancien statut, plus proposé par aucun menu mais encore
+   présent sur des fiches (FicheClient le ramène à « actif »). */
+export type StatutClient = 'prospect' | 'actif' | 'suspendu' | 'bien_trouve' | 'perdu' | 'offre_ecrite'
 export type ChaleurClient = 'tres_chaud' | 'interesse' | 'tiede' | 'froid'
 
 export interface Recherche {
@@ -179,11 +181,19 @@ export async function genererReference(): Promise<string> {
    ligne est gardée sous « statut_change », le type voulu en metadata —
    comme le fait déjà la suppression d'une recherche. Mieux qu'une ligne
    perdue, et pas d'alerte pour rien. */
+/* `lien` (V3.20) : la recherche et le bien dont parle la ligne. Sans eux, la
+   ligne appartient au client entier et s'affiche dans le Suivi de toutes ses
+   recherches ; avec, dans celui de sa recherche seulement (§6.17). */
 export async function addJournal(
   clientId: string, type: string, titre: string,
-  description?: string, metadata?: Record<string, unknown>
+  description?: string, metadata?: Record<string, unknown>,
+  lien?: { rechercheId?: string | null; bienId?: string | null }
 ): Promise<boolean> {
-  const ligne = { client_id: clientId, type, titre, description, metadata: metadata || {} }
+  const ligne = {
+    client_id: clientId, type, titre, description, metadata: metadata || {},
+    ...(lien?.rechercheId ? { recherche_id: lien.rechercheId } : {}),
+    ...(lien?.bienId ? { bien_id: lien.bienId } : {}),
+  }
   const { error } = await supabase.from('journal').insert(ligne)
   if (!error) return true
   if ((error as { code?: string }).code === '23514' && type !== 'statut_change') {

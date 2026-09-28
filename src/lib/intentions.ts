@@ -64,7 +64,7 @@ export function prendreDemandeRendezVous(): string | null {
    changer d'écran, valable une minute, lu par la fiche de ce client-là. */
 export type OuvertureFiche = {
   clientId: string;
-  onglet: 'suivi' | 'presentes' | 'selection' | 'visites';
+  onglet: 'suivi' | 'presentes' | 'selection' | 'visites' | 'transaction';
   filtre?: 'tout' | 'appel' | 'rdv' | 'note' | 'message' | 'communications' | 'systeme';
   relanceId?: string;
   rechercheId?: string | null;

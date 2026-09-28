@@ -5,10 +5,14 @@ import styles from './Page.module.css';
 import ParamPointAuto from './ParamPointAuto';
 import ParamAlertes from './ParamAlertes';
 import ParamAgence from './ParamAgence';
+import { signatureDe, VARIABLES_MAIL } from '@/lib/mail-variables';
+
+const CODE: React.CSSProperties = { background: '#f8fafc', padding: '1px 6px', borderRadius: 4 };
 
 /* Les rubriques qui s'enregistrent seules, avec leur propre bouton ou à
-   chaque clic : le « Sauvegarder tout » n'y est pas affiché. */
-const AUTONOMES = ['agence', 'point', 'alertes'];
+   chaque clic, ou qui n'ont rien à enregistrer (Sécurité) : le
+   « Sauvegarder tout » n'y est pas affiché. */
+const AUTONOMES = ['agence', 'point', 'alertes', 'securite'];
 
 export default function PageParametres() {
   const [params, setParams] = useState<Record<string, string>>({});
@@ -49,7 +53,7 @@ export default function PageParametres() {
   const sections = [
     { id: 'agence', label: '🏢 Agence', icon: '🏢' },
     { id: 'emails', label: '✉️ Templates email', icon: '✉️' },
-    { id: 'sms', label: '📱 SMS & Relances', icon: '📱' },
+    { id: 'relances', label: '🔔 Relances', icon: '🔔' },
     { id: 'point', label: '📨 Point automatique', icon: '📨' },
     { id: 'alertes', label: '🔔 Alertes mail', icon: '🔔' },
     { id: 'securite', label: '🔒 Sécurité', icon: '🔒' },
@@ -104,57 +108,42 @@ export default function PageParametres() {
                 </div>
                 <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', borderRadius: 12, border: '1px solid #e3e8f0' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--emilio)', marginBottom: 4 }}>📋 Signature automatique</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Ajoutée automatiquement à la fin de chaque email envoyé</div>
-                  <textarea className={styles.input} rows={4} value={params.signature_email||`Cordialement,\n${params.conseiller_prenom||'Alexandre'} ${params.conseiller_nom||'ROGELET'}\n${params.agence_nom||'Emilio Immobilier'}\n${params.conseiller_telephone||'06 58 95 76 32'}`}
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{'Placée à la fin de chaque mail que tu écris depuis le CRM (Nouveau mail, envoi de biens) : tu peux la retoucher avant d’envoyer.'}</div>
+                  <textarea className={styles.input} rows={4} value={params.signature_email || signatureDe(params)}
                     onChange={e=>set('signature_email',e.target.value)} />
                 </div>
               </div>
               <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
                 <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--emilio)', marginBottom: 6 }}>✉️ Templates email</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Variables disponibles : <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{prenom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{nom}}'}</code> <code style={{background:'#f8fafc',padding:'1px 6px',borderRadius:4}}>{'{{reference}}'}</code></div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20, lineHeight: 1.6 }}>
+                  {'Variables, remplacées pour chaque client : '}
+                  {VARIABLES_MAIL.map((v, i) => <span key={v}>{i > 0 ? ' ' : ''}<code style={CODE}>{v}</code></span>)}
+                  {' — la dernière donne ton prénom et ton nom, ci-dessus.'}
+                </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>📄 Sélection de biens</div>
-                    <div><label className={styles.label}>Objet</label><input className={styles.input} value={params.template_email_objet||''} onChange={e=>set('template_email_objet',e.target.value)} /></div>
-                    <div style={{marginTop:10}}><label className={styles.label}>Corps</label><textarea className={styles.input} rows={6} value={params.template_email_corps||''} onChange={e=>set('template_email_corps',e.target.value)} /></div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>🔔 Email de relance J+5</div>
-                    <div><label className={styles.label}>Objet relance</label><input className={styles.input} value={params.template_relance_objet||`Avez-vous eu le temps de consulter ma sélection ?`} onChange={e=>set('template_relance_objet',e.target.value)} /></div>
-                    <div style={{marginTop:10}}><label className={styles.label}>Corps relance</label><textarea className={styles.input} rows={5} value={params.template_relance_corps||`Bonjour {{prenom}},\n\nJe me permets de revenir vers vous suite à ma sélection de biens.\nAvez-vous eu le temps de la consulter ?\n\nJe suis disponible pour en discuter ou organiser des visites.\n\nCordialement,\n{{conseiller}}`} onChange={e=>set('template_relance_corps',e.target.value)} /></div>
-                  </div>
+                {/* « Email de relance J+5 » est parti : aucun mail de relance ne
+                    part tout seul, le modèle n'était lu par personne. Une
+                    relance est une tâche pour toi (rubrique Relances). */}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)', marginBottom: 4, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>📄 Sélection de biens</div>
+                  <div style={{ fontSize: 12, color: '#64748b', margin: '8px 0 12px', lineHeight: 1.5 }}>{'Pré-remplit « Envoyer la sélection » sur la fiche d’un client. Laissé vide, le texte habituel.'}</div>
+                  <div><label className={styles.label}>Objet</label><input className={styles.input} value={params.template_email_objet||''} onChange={e=>set('template_email_objet',e.target.value)} placeholder="Vide : « Sélection de biens — Vos recherches immobilières »" /></div>
+                  <div style={{marginTop:10}}><label className={styles.label}>Corps</label><textarea className={styles.input} rows={6} value={params.template_email_corps||''} onChange={e=>set('template_email_corps',e.target.value)} placeholder={'Vide : le texte habituel, qui commence par « Bonjour {{prénom}}, suite à votre projet de recherche… »'} /></div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* SMS & RELANCES */}
-          {activeSection === 'sms' && (
+          {/* RELANCES — la carte « SMS Mailjet » est partie (V3.20) : elle
+              demandait les clés Mailjet, gardées en clair dans la base, pour un
+              envoi de SMS qui n'a jamais été branché. */}
+          {activeSection === 'relances' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
-                <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--emilio)', marginBottom: 16 }}>📱 SMS Mailjet</div>
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
-                  💡 Pour activer l'envoi SMS, renseignez vos clés Mailjet dans les paramètres ci-dessous.
-                  Coût : 0,04€ par SMS.
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div><label className={styles.label}>Clé API Mailjet</label><input className={styles.input} type="password" value={params.mailjet_api_key||''} onChange={e=>set('mailjet_api_key',e.target.value)} placeholder="Votre clé API publique Mailjet" /></div>
-                  <div><label className={styles.label}>Clé secrète Mailjet</label><input className={styles.input} type="password" value={params.mailjet_secret_key||''} onChange={e=>set('mailjet_secret_key',e.target.value)} placeholder="Votre clé secrète Mailjet" /></div>
-                  <div><label className={styles.label}>Nom expéditeur SMS <span style={{fontWeight:400,color:'#94a3b8'}}>(11 car. max, sans espace)</span></label><input className={styles.input} value={params.sms_sender||'EmilioImmo'} onChange={e=>set('sms_sender',e.target.value)} maxLength={11} placeholder="EmilioImmo" /></div>
-                  <div>
-                    <label className={styles.label}>Template SMS sélection <span style={{fontWeight:400,color:'#94a3b8'}}>(160 car. max)</span></label>
-                    <textarea className={styles.input} rows={3} value={params.template_sms||''} onChange={e=>set('template_sms',e.target.value)} />
-                    <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>{(params.template_sms||'').length}/160 caractères</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
-                <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--emilio)', marginBottom: 16 }}>🔔 Relances automatiques</div>
+                <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--emilio)', marginBottom: 6 }}>🔔 Relances automatiques</div>
+                <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>{'Après chaque envoi de biens, une relance se programme d’office à ce délai. Elle se clôt toute seule si le client répond avant.'}</div>
                 <div>
-                  <label className={styles.label}>Délai relance après envoi PDF</label>
+                  <label className={styles.label}>Délai de la relance après un envoi</label>
                   <select className={styles.input} value={params.delai_relance_jours||'5'} onChange={e=>set('delai_relance_jours',e.target.value)}>
                     <option value="3">J+3 (3 jours après envoi)</option>
                     <option value="5">J+5 (défaut recommandé)</option>
@@ -177,9 +166,11 @@ export default function PageParametres() {
           {activeSection === 'securite' && (
             <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24 }}>
               <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--emilio)', marginBottom: 16 }}>🔒 Sécurité & Accès</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div><label className={styles.label}>Identifiant de connexion</label><input className={styles.input} value={params.login||'alexandre.rogelet'} onChange={e=>set('login',e.target.value)} /></div>
-                <div><label className={styles.label}>Nouveau mot de passe</label><input className={styles.input} type="password" placeholder="Laisser vide pour ne pas changer" onChange={e=>set('nouveau_mdp',e.target.value)} /></div>
+              {/* L'identifiant et le « nouveau mot de passe » sont partis
+                  (V3.20) : ils s'écrivaient en clair dans la base, et ne
+                  changeaient rien — la connexion passe par Supabase. */}
+              <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>
+                {'La connexion au CRM passe par ton compte Supabase : l’adresse et le mot de passe que tu tapes sur la page de connexion. Le mot de passe se gère dans Supabase (Authentication › Users), plus ici.'}
               </div>
               <div style={{ marginTop: 20, padding: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, color: '#166534', marginBottom: 6 }}>✅ À propos de la sécurité</div>

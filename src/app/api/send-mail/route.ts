@@ -4,6 +4,7 @@ import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
 import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATION_JOURS, type Honoraires } from '@/lib/mandat';
 import { ecritServeur } from '@/lib/ecritures';
+import { personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -831,12 +832,33 @@ export async function POST(req: NextRequest) {
     // Récupère clients
     const { data: clients } = await supabase
       .from('clients')
-      .select('id, prenom, nom, emails, token_espace')
+      .select('id, prenom, nom, reference, emails, token_espace')
       .in('id', client_ids);
 
     if (!clients || clients.length === 0) {
       return NextResponse.json({ error: 'Clients introuvables' }, { status: 404 });
     }
+
+    /* {{conseiller}} : le nom posé dans les Paramètres (V3.20). Les autres
+       variables viennent de la fiche de chaque client. */
+    const { data: reglages } = await supabase.from('parametres').select('cle, valeur')
+      .in('cle', ['conseiller_prenom', 'conseiller_nom']);
+    const conseiller = conseillerDe(Object.fromEntries((reglages || []).map((r: { cle: string; valeur: string | null }) => [r.cle, r.valeur || ''])));
+
+    /* Un mail écrit depuis « Nouveau mail » ne dit pas de quel dossier il
+       parle : sans recherche, son envoi n'apparaissait dans aucun onglet
+       Suivi (§6.19). On le range dans la recherche que sa fiche ouvre d'office :
+       la première dont la veille tourne, sinon la première tout court. */
+    const dossierDuClient: Record<string, string | null> = {};
+    if (!recherche_id) {
+      const { data: rs } = await supabase.from('recherches').select('id, client_id, active, created_at')
+        .in('client_id', client_ids).order('created_at', { ascending: true });
+      for (const id of client_ids) {
+        const siennes = (rs || []).filter((r: { client_id: string }) => r.client_id === id) as { id: string; active: boolean | null }[];
+        dossierDuClient[id] = (siennes.find(r => r.active !== false) || siennes[0])?.id || null;
+      }
+    }
+    const dossierDe = (clientId: string) => recherche_id || dossierDuClient[clientId] || null;
 
     /* Le jeton de l'espace acheteur, pour que chaque bouton du mail ouvre la
        bonne fiche. S'il manque, les liens retombent sur la page publique :
@@ -921,7 +943,8 @@ export async function POST(req: NextRequest) {
         if (lignes.length === 0) { resultats.push({ client_id: client.id, success: false, error: 'Aucune visite pour ce client' }); continue; }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const jeton = ((client as any).token_espace as string) || tokenEspace;
-        const corpsPerso = (corps || '').replace(/\{\{prénom\}\}/g, client.prenom);
+        const corpsPerso = personnaliser(corps || '', client, conseiller);
+        const sujetV = personnaliser(objet, client, conseiller);
         try {
           const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
             method: 'POST',
@@ -930,7 +953,7 @@ export async function POST(req: NextRequest) {
               Messages: [{
                 From: { Email: FROM_EMAIL, Name: FROM_NAME },
                 To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
-                Subject: objet,
+                Subject: sujetV,
                 TextPart: texteVisites(corpsPerso, lignes, jeton),
                 HTMLPart: buildVisites({ corps: corpsPerso, lignes, token: jeton, recherche: recherche_id || null }),
                 CustomID: `chasse-visites-${client.id}-${Date.now()}`,
@@ -952,12 +975,12 @@ export async function POST(req: NextRequest) {
             .update({ rappel_envoye_le: new Date().toISOString() }).in('id', lignes.map(l => l.id));
           if (eDate) avertissement = eDate.message;
           await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
-            client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
-            objet, corps: corpsPerso, destinataires: emails, biens_ids: [], sms_envoye: false,
+            client_id: client.id, recherche_id: dossierDe(client.id), type: 'mail_libre',
+            objet: sujetV, corps: corpsPerso, destinataires: emails, biens_ids: [], sms_envoye: false,
           }), avertissements);
           await ecritServeur('L’historique du client', supabase.from('journal').insert({
-            client_id: client.id, type: 'mail_envoye',
-            titre: `📅 Mail envoyé — ${objet}`,
+            client_id: client.id, recherche_id: dossierDe(client.id), type: 'mail_envoye',
+            titre: `📅 Mail envoyé — ${sujetV}`,
             description: `À : ${emails.join(', ')}\n\n${corpsPerso}\n\n${lignes.map(l => `- ${quandMail(l, false)} : ${l.bien?.titre || 'Visite'}`).join('\n')}`,
           }), avertissements);
           resultats.push({ client_id: client.id, success: true });
@@ -1012,7 +1035,7 @@ export async function POST(req: NextRequest) {
             objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
           }), avertissements);
           await ecritServeur('L’historique du client', supabase.from('journal').insert({
-            client_id: client.id, type: 'mail_envoye',
+            client_id: client.id, recherche_id: dossierDe(client.id), type: 'mail_envoye',
             titre: `✉️ Mail envoyé — ${sujet}`,
             description: `À : ${emails.join(', ')}\nMandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`,
           }), avertissements);
@@ -1070,10 +1093,10 @@ export async function POST(req: NextRequest) {
         ? (nouvelleRecherche
           ? texteNouvelle(client.prenom, nomRecherche, jeton, totalRecherches)
           : texteBienvenue(client.prenom, jeton))
-        : corps.replace(/\{\{prénom\}\}/g, client.prenom);
+        : personnaliser(corps || '', client, conseiller);
       const objetFinal = bienvenue
         ? (nouvelleRecherche ? 'Votre nouvelle recherche est ouverte' : 'Votre espace de recherche est ouvert')
-        : objet;
+        : personnaliser(objet, client, conseiller);
       const html = bienvenue
         ? (nouvelleRecherche
           ? buildNouvelle({ prenom: client.prenom, recherche: nomRecherche, token: jeton, total: totalRecherches })
@@ -1093,9 +1116,13 @@ export async function POST(req: NextRequest) {
             : ''
         }\n\n`
         : '';
-      const text = `Bonjour ${client.prenom},\n\n${corpsPerso}\n\n${listeTexte}Cordialement,\nAlexandre ROGELET — Emilio Immobilier\n06 58 95 76 32${
-        lienFin(jeton) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(jeton)}` : ''
-      }`;
+      /* La version texte suit la version illustrée : le message tel
+         qu'Alexandre l'a écrit (il porte déjà « Bonjour » et la signature),
+         puis les biens. Elle ajoutait un second « Bonjour » et une seconde
+         signature, codée en dur. */
+      const text = `${corpsPerso.trim()}\n\n${listeTexte}${
+        lienFin(jeton) ? `---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(jeton)}` : ''
+      }`.trim();
 
       try {
         const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
@@ -1136,7 +1163,7 @@ export async function POST(req: NextRequest) {
               : biensClient.length === 1 ? 'envoi_bien' : 'selection_biens';
           await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
             client_id: client.id,
-            recherche_id: recherche_id || null,
+            recherche_id: dossierDe(client.id),
             type: typeEnvoi,
             objet: objetFinal,
             corps: corpsPerso,
@@ -1147,12 +1174,13 @@ export async function POST(req: NextRequest) {
           const titreJournal = bienvenue
             ? '👋 Mail de bienvenue envoyé'
             : biensClient.length === 0
-            ? `✉️ Mail envoyé — ${objet}`
+            ? `✉️ Mail envoyé — ${objetFinal}`
             : biensClient.length === 1
               ? `📤 Bien envoyé — ${biensClient[0].titre || biensClient[0].ville || 'bien'}`
               : `📤 Sélection envoyée — ${biensClient.length} biens`;
           await ecritServeur('L’historique du client', supabase.from('journal').insert({
             client_id: client.id,
+            recherche_id: dossierDe(client.id),
             type: biensClient.length === 0 ? 'mail_envoye' : 'envoi_bien',
             titre: titreJournal,
             description: `À : ${emails.join(', ')}\n\n${corpsPerso}${biensClient.length > 0 ? `\n\nBiens joints : ${biensClient.length}` : ''}`,

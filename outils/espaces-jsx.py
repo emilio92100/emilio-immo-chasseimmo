@@ -63,8 +63,17 @@ SUSPECT = re.compile(r'(?<![=!<>-])([}>])( +)(?=[A-Za-zÀ-ÖØ-öø-ÿ0-9«&])')
 COMMENTAIRE = re.compile(r'^\s*(//|/\*|\*)')
 
 # `import { x } from 'y'` ressemble à s'y méprendre à du texte JSX : une
-# accolade fermante, une espace, un mot. Ce n'en est pas.
-MODULE = re.compile(r'^\s*(import|export)\b')
+# accolade fermante, une espace, un mot. Ce n'en est pas. Pas plus que la
+# dernière ligne d'un import sur plusieurs lignes (`} from '…'`) ou un
+# `} as const` (V3.20).
+MODULE = re.compile(r'^\s*(import|export)\b|^\s*\}\s*(from|as)\b')
+
+# Des noms d'attributs nus puis la fin de la balise : `premier />`,
+# `autoFocus />`. On est dans la balise, pas dans du texte (V3.20).
+ATTRIBUTS = re.compile(r'^\s*[A-Za-z][\w-]*(\s+[A-Za-z][\w-]*)*\s*/?>[\s})\]:;,]*$')
+
+# Un ternaire (`a > 0 ? 'x' : 'y'`, `n > 15 ? undefined : …`) ou un `} as T`.
+TERNAIRE = re.compile(r"\?\s*['\"]|\s\?\s[\w.'\"]+\s:\s|^\s*as\b")
 
 # Les entités HTML portent un point-virgule qui n'est pas de la ponctuation
 # française : on les retire avant de juger si la suite est du code.
@@ -107,7 +116,18 @@ def examine(chemin: str):
         return []
 
     trouves = []
+    commentaire = False            # dans un /* … */ ouvert plus haut
     for n, ligne in enumerate(lignes, 1):
+        # Les commentaires sur plusieurs lignes (V3.20) : leur texte n'est pas
+        # du JSX, même quand il en cite.
+        if commentaire:
+            if '*/' in ligne:
+                commentaire = False
+            continue
+        ouvre = ligne.rfind('/*')
+        if ouvre != -1 and '*/' not in ligne[ouvre:] and hors_chaine(ligne, ouvre):
+            commentaire = True
+            ligne = ligne[:ouvre]
         if COMMENTAIRE.match(ligne) or MODULE.match(ligne):
             continue
 
@@ -123,7 +143,7 @@ def examine(chemin: str):
 
             # Ce qui suit doit ressembler à une phrase, pas à du code.
             reste_net = ENTITE.sub('', reste)
-            if CODE.search(reste_net):
+            if CODE.search(reste_net) or TERNAIRE.search(reste_net) or ATTRIBUTS.match(reste_net):
                 continue
             if len(reste_net.split()) < 2:
                 continue
@@ -150,8 +170,10 @@ def examine(chemin: str):
 
 
 def main(argv):
-    fichiers = argv[1:]
-    if not fichiers:
+    # Le JSX n'existe que dans les .tsx / .jsx : un .ts qui porte du HTML dans
+    # une chaîne (les gabarits de mail) n'est pas concerné (V3.20).
+    fichiers = [f for f in argv[1:] if f.endswith(('.tsx', '.jsx'))]
+    if not argv[1:]:
         print(__doc__)
         return 2
 

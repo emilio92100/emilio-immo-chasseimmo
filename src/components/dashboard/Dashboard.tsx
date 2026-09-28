@@ -5,23 +5,124 @@ import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
 import { estAcheteur } from '@/lib/contacts';
+import { honorairesEncaisses, moisDe, moisCourant, eurosRonds, type Encaisse } from '@/lib/activite';
+
+/* Les étapes d'une transaction, dans l'ordre de la fiche client. */
+const ETAPES_TX: { cle: string; nom: string }[] = [
+  { cle: 'offre', nom: 'Offre' }, { cle: 'negociation', nom: 'Négociation' },
+  { cle: 'offre_acceptee', nom: 'Offre acceptée' }, { cle: 'compromis', nom: 'Compromis' }, { cle: 'acte', nom: 'Acte' },
+];
+type Tx = {
+  id: string; client_id: string | null; recherche_id: string | null; bien_id: string | null; etape_actuelle: string;
+  prix_final?: number | string | null; offre_montant?: number | string | null; acte_date_prevue?: string | null;
+};
+type VisiteAVenir = { id: string; client_id: string | null; recherche_id: string | null; date_visite: string; heure: string | null; biens: { titre: string | null; ville: string | null } | null };
+type LigneJournal = { id: string; client_id: string | null; recherche_id: string | null; bien_id?: string | null; type: string | null; titre: string | null; created_at: string };
+
+/* Le fil du journal, sans ses doublons : un envoi de biens écrit une ligne
+   par bien en plus de la ligne du mail, et le mail de bienvenue est noté par
+   le serveur et par la fiche. On garde la ligne qui résume. */
+function sansDoublons(l: LigneJournal[]): LigneJournal[] {
+  const vus: LigneJournal[] = [];
+  for (const j of l) {
+    if (j.type === 'envoi_bien' && j.bien_id && /^(Envoyé|Renvoyé) au client · mail/.test(j.titre || '')) continue;
+    const t = new Date(j.created_at).getTime();
+    if (vus.some(v => v.client_id === j.client_id && (v.titre || '') === (j.titre || '') && Math.abs(new Date(v.created_at).getTime() - t) < 5 * 60000)) continue;
+    vus.push(j);
+  }
+  return vus;
+}
+
+const MOIS_COURT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+/* « il y a 5 min », « hier à 14 h 10 », « le 12 sept. » */
+function ilYa(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const min = Math.round((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return 'à l’instant';
+  if (min < 60) return `il y a ${min} min`;
+  const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  const jour = new Date(d); jour.setHours(0, 0, 0, 0);
+  const ecart = Math.round((auj.getTime() - jour.getTime()) / 86400000);
+  if (ecart === 0) return `aujourd’hui à ${h}`;
+  if (ecart === 1) return `hier à ${h}`;
+  return `le ${d.getDate()} ${MOIS_COURT[d.getMonth()]}`;
+}
+
+/* La couleur du point, selon ce qui s'est passé. */
+function teinteJournal(type: string): string {
+  if (/mail|envoi/.test(type)) return '#c9a84c';
+  if (/visite|rdv/.test(type)) return '#3b82f6';
+  if (/offre|transaction|finalise|mandat/.test(type)) return '#10b981';
+  if (/message|rappel/.test(type)) return '#8b5cf6';
+  return '#94a3b8';
+}
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [relances, setRelances] = useState<Relance[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => { fetchData(); }, []);
+  /* Les quatre chiffres et les trois cartes affichaient des zéros et des
+     blocs vides codés en dur (§6.8). Ils lisent maintenant les dossiers. */
+  const [chiffres, setChiffres] = useState({ presentes: 0, visitesFaites: 0 });
+  const [transactions, setTransactions] = useState<Tx[]>([]);
+  const [titresBiens, setTitresBiens] = useState<Record<string, string>>({});
+  const [aVenir, setAVenir] = useState<VisiteAVenir[]>([]);
+  const [activite, setActivite] = useState<LigneJournal[]>([]);
+  const [encaisse, setEncaisse] = useState<Encaisse[]>([]);
 
   async function fetchData() {
-    const [{ data: c }, { data: r }] = await Promise.all([
+    const maintenant = new Date();
+    const jour = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+    const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+    const debutMoisJour = jour.slice(0, 8) + '01';
+    const [{ data: c }, { data: r }, tx, pres, faites, venir, jr, ca] = await Promise.all([
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
       supabase.from('relances').select('*').eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
+      supabase.from('transactions').select('*').neq('etape_actuelle', 'finalise'),
+      /* Les biens déposés dans l'espace d'un client ce mois-ci, par mail ou
+         par lien : c'est ce qu'il a reçu, sélection par sélection. */
+      supabase.from('biens').select('id', { count: 'exact', head: true }).eq('etape', 'presente').gte('envoye_le', debutMois.toISOString()),
+      supabase.from('visites').select('id', { count: 'exact', head: true }).eq('statut', 'effectuee').gte('date_visite', debutMoisJour).lte('date_visite', `${jour}T23:59:59`),
+      supabase.from('visites').select('id, client_id, recherche_id, date_visite, heure, biens(titre, ville)')
+        .eq('statut', 'a_venir').gte('date_visite', jour).order('date_visite').order('heure').limit(5),
+      supabase.from('journal').select('id, client_id, recherche_id, bien_id, type, titre, created_at').order('created_at', { ascending: false }).limit(25),
+      honorairesEncaisses().catch(() => [] as Encaisse[]),
     ]);
     setClients(c || []);
     setRelances(r || []);
+    setChiffres({ presentes: pres.count || 0, visitesFaites: faites.count || 0 });
+    const enCours = ((tx.data || []) as Tx[])
+      .sort((a, b) => ETAPES_TX.findIndex(e => e.cle === b.etape_actuelle) - ETAPES_TX.findIndex(e => e.cle === a.etape_actuelle));
+    setTransactions(enCours);
+    setAVenir((venir.data || []) as unknown as VisiteAVenir[]);
+    setActivite(sansDoublons((jr.data || []) as LigneJournal[]).slice(0, 7));
+    setEncaisse(ca);
     setLoading(false);
+    /* Le bien de chaque transaction, pour dire sur quoi elle porte. */
+    const ids = enCours.map(t => t.bien_id).filter((x): x is string => !!x);
+    if (ids.length) {
+      const { data: bs } = await supabase.from('biens').select('id, titre, ville').in('id', ids);
+      setTitresBiens(Object.fromEntries((bs || []).map((b: { id: string; titre: string | null; ville: string | null }) => [b.id, b.titre || b.ville || 'Bien'])));
+    }
   }
+  useEffect(() => { fetchData(); }, []);
+
+  const nomDe = (id: string | null) => {
+    const cl = clients.find(x => x.id === id);
+    return cl ? `${cl.prenom} ${cl.nom}`.trim() : 'Client';
+  };
+  const ouvrir = (clientId: string | null, onglet: 'suivi' | 'visites' | 'transaction', rechercheId?: string | null) => {
+    const cl = clients.find(x => x.id === clientId);
+    if (!cl) return;
+    demanderOuvertureFiche({ clientId: cl.id, onglet, rechercheId: rechercheId || null });
+    onNavigate('fiche', cl);
+  };
+  const mois = moisCourant();
+  const caMois = encaisse.filter(e => moisDe(e.quand) === mois);
+  const totalMois = caMois.reduce((t, e) => t + e.ht, 0);
 
   /* Des acheteurs : un notaire ou un vendeur n'est ni actif ni prospect. */
   const actifs    = clients.filter(c => estAcheteur(c) && c.statut === 'actif').length;
@@ -122,25 +223,26 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconGold}`}>📄</div>
           </div>
-          <div className={styles.statVal}>0</div>
-          <div className={styles.statLabel}>Sélections ce mois</div>
+          <div className={styles.statVal}>{chiffres.presentes}</div>
+          <div className={styles.statLabel}>Biens présentés ce mois</div>
         </div>
 
         <div className={styles.statCard} onClick={() => onNavigate('visites')}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconBlue}`}>📅</div>
           </div>
-          <div className={styles.statVal}>0</div>
-          <div className={styles.statLabel}>Visites effectuées</div>
+          <div className={styles.statVal}>{chiffres.visitesFaites}</div>
+          <div className={styles.statLabel}>Visites faites ce mois</div>
         </div>
 
-        <div className={`${styles.statCard} ${styles.statDark}`}>
+        <div className={`${styles.statCard} ${styles.statDark}`} onClick={() => onNavigate('activite')}>
           <div className={styles.statTop}>
             <div className={`${styles.statIcon} ${styles.iconDark}`}>💰</div>
             <span className={`${styles.statBadge} ${styles.badgeGoldDark}`}>HT</span>
           </div>
-          <div className={`${styles.statVal} ${styles.statValWhite}`}>0€</div>
+          <div className={`${styles.statVal} ${styles.statValWhite}`}>{eurosRonds(totalMois)}</div>
           <div className={`${styles.statLabel} ${styles.statLabelDark}`}>CA mois en cours</div>
+          {caMois.length > 0 && <div className={styles.statSub}>{caMois.length > 1 ? `${caMois.length} actes signés` : '1 acte signé'}</div>}
         </div>
       </div>
 
@@ -192,11 +294,37 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
         {/* TRANSACTIONS */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <div className={styles.cardTitle}>🏠 Transactions en cours</div>
+            <div className={styles.cardTitle}>🏠 Transactions en cours
+              {transactions.length > 0 && <span className={`${styles.pastille} ${styles.pastilleAmbre}`}>{transactions.length}</span>}
+            </div>
           </div>
-          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-            Aucune transaction en cours
-          </div>
+          {transactions.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+              Aucune transaction en cours
+            </div>
+          ) : (
+            <div className={styles.txList}>
+              {transactions.slice(0, 4).map(t => {
+                const i = ETAPES_TX.findIndex(e => e.cle === t.etape_actuelle);
+                const prix = Number(t.prix_final) || Number(t.offre_montant) || 0;
+                const quoi = [(t.bien_id && titresBiens[t.bien_id]) || '', i >= 0 ? ETAPES_TX[i].nom : ''].filter(Boolean).join(' · ');
+                return (
+                  <div key={t.id} className={styles.txItem} onClick={() => ouvrir(t.client_id, 'transaction', t.recherche_id)}>
+                    <div className={styles.txTop}>
+                      <span className={styles.txName}>{nomDe(t.client_id)}</span>
+                      {prix > 0 && <span className={styles.txPrice}>{eurosRonds(prix)}</span>}
+                    </div>
+                    <div className={styles.txSub}>{quoi || 'Transaction'}</div>
+                    <div className={styles.progBar}>
+                      {ETAPES_TX.map((e, k) => <div key={e.cle} className={`${styles.progStep} ${k < i ? styles.done : k === i ? styles.active : ''}`} />)}
+                    </div>
+                    {t.acte_date_prevue && <div className={styles.txHint}>{`Acte prévu le ${new Date(`${String(t.acte_date_prevue).slice(0, 10)}T12:00:00`).toLocaleDateString('fr-FR')}`}</div>}
+                  </div>
+                );
+              })}
+              {transactions.length > 4 && <div className={styles.txHint} style={{ textAlign: 'center' }}>{`Et ${transactions.length - 4} autre${transactions.length - 4 > 1 ? 's' : ''}, sur la fiche de chaque client.`}</div>}
+            </div>
+          )}
         </div>
 
         {/* RIGHT COL */}
@@ -206,21 +334,57 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
               <div className={styles.cardTitle}>📅 Visites à venir</div>
               <button className={styles.cardLink} onClick={() => onNavigate('visites')}>Tout →</button>
             </div>
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-              Aucune visite planifiée
-            </div>
+            {aVenir.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                Aucune visite planifiée
+              </div>
+            ) : (
+              <div className={styles.visiteList}>
+                {aVenir.map((v, k) => {
+                  const d = new Date(`${String(v.date_visite).slice(0, 10)}T12:00:00`);
+                  const lieu = v.biens?.titre || v.biens?.ville || '';
+                  return (
+                    <div key={v.id} className={styles.visiteRow} onClick={() => ouvrir(v.client_id, 'visites', v.recherche_id)}>
+                      <div className={`${styles.vdate} ${k === 0 ? styles.vdateDark : styles.vdateLight}`}>
+                        <div className={styles.vday}>{d.getDate()}</div>
+                        <div className={styles.vmon}>{MOIS_COURT[d.getMonth()]}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className={styles.vname}>{nomDe(v.client_id)}</div>
+                        {lieu && <div className={styles.vlieu} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lieu}</div>}
+                      </div>
+                      {v.heure && <div className={styles.vheure}>{String(v.heure).slice(0, 5).replace(':', ' h ')}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className={styles.card} style={{ flex: 1 }}>
             <div className={styles.cardHeader}>
               <div className={styles.cardTitle}>🕐 Activité récente</div>
             </div>
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-              {clients.length === 0
-                ? 'Créez votre premier client pour commencer'
-                : 'Aucune activité récente'
-              }
-            </div>
+            {activite.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                {clients.length === 0
+                  ? 'Créez votre premier client pour commencer'
+                  : 'Aucune activité récente'
+                }
+              </div>
+            ) : (
+              <div className={styles.actList}>
+                {activite.map(j => (
+                  <div key={j.id} className={styles.actRow} style={{ cursor: 'pointer' }} onClick={() => ouvrir(j.client_id, 'suivi', j.recherche_id)}>
+                    <span className={styles.actDot} style={{ background: teinteJournal(String(j.type || '')) }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div className={styles.actText}><strong>{nomDe(j.client_id)}</strong>{` · ${j.titre || ''}`}</div>
+                      <div className={styles.actTime}>{ilYa(j.created_at)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {clients.length === 0 && (

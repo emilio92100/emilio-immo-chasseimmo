@@ -320,7 +320,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setTravail('');
     if (error || !data) { setMsg({ t: 'La fiche n’a pas pu être mise à jour : ' + (error?.message || 'aucune ligne modifiée'), ok: false }); return; }
     onClient?.(data);
-    await addJournal(client.id, 'mandat', '✏️ Fiche mise à jour d’après le mandat', faits.join('\n'));
+    await addJournal(client.id, 'mandat', '✏️ Fiche mise à jour d’après le mandat', faits.join('\n'), undefined, { rechercheId: recherche.id });
     setMsg({ t: 'Fiche mise à jour.', ok: true });
   }
 
@@ -364,7 +364,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     }
     setTravail('');
     onMaj(data);
-    await addJournal(client.id, 'mandat', n ? `📋 Mandat proposé à la signature (n° ${n})` : '📋 Mandat proposé à la signature (numéro donné par le registre à sa signature)', `Mandat de recherche simple · honoraires ${honorairesCourt(honoChoisi)} · le client le voit dans son espace`);
+    await addJournal(client.id, 'mandat', n ? `📋 Mandat proposé à la signature (n° ${n})` : '📋 Mandat proposé à la signature (numéro donné par le registre à sa signature)', `Mandat de recherche simple · honoraires ${honorairesCourt(honoChoisi)} · le client le voit dans son espace`, undefined, { rechercheId: recherche.id });
     setMsg({ t: `C’est prêt : ${client.prenom || 'le client'} voit « Votre mandat est prêt » dans son espace (honoraires : ${honorairesCourt(honoChoisi)}). Envoie-lui le mail pour qu’il le sache.${avertir}`, ok: !avertir });
   }
 
@@ -424,7 +424,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setTravail('');
     if (error) { setMsg({ t: 'Impossible de retirer la proposition : ' + error.message, ok: false }); return; }
     onMaj(data); setNumero('');
-    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée');
+    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée', undefined, undefined, { rechercheId: recherche.id });
     setMsg({ t: 'Proposition retirée.', ok: true });
   }
 
@@ -441,7 +441,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setTravail('');
     if (error || !data) { signalerEchec('Le numéro du mandat', error?.message || 'aucune ligne modifiée'); return; }
     onMaj(data);
-    await addJournal(client.id, 'mandat', `📋 N° ${n} laissé : le numéro sera pris dans le registre des mandats`);
+    await addJournal(client.id, 'mandat', `📋 N° ${n} laissé : le numéro sera pris dans le registre des mandats`, undefined, undefined, { rechercheId: recherche.id });
     setMsg({ t: `Le n° ${n} est laissé : le registre donnera le numéro quand ${client.prenom || 'le client'} demandera son code.`, ok: true });
   }
 
