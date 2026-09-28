@@ -15,6 +15,7 @@ import FriseSuivi from '@/components/fiche/FriseSuivi';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import FenetreAction, { supprimerActionContact } from './FenetreAction';
 import CarteASavoir from './CarteASavoir';
+import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
 import c from './Contacts.module.css';
 
@@ -178,6 +179,10 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const tels = (x.telephones || []).filter(Boolean), mails = (x.emails || []).filter(Boolean);
   const j2 = x.couple ? conjointDe(x.conjoint) : null;
   const ligne = ligneContact(x);
+  /* Une adresse que la carte peut placer : chez lui, son étude, son agence,
+     son immeuble, ou le bien qu'il possède. */
+  const aUneAdresse = [x.adresse, pro.adresseEtude, pro.adresseAgence, pro.immeuble, (x as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse]
+    .some(v => typeof v === 'string' && v.trim().length > 4);
   const cls = { row: c.g2, group: c.ch, label: '', input: c.in };
 
   return (
@@ -211,6 +216,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             {mails.map(m => <a key={m} href={`mailto:${m}`}><Ic n="mail" t={14} />{m}</a>)}
             {!j2 && x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}
             {!tels.length && !mails.length && !x.adresse && !j2 && <span>Pas encore de coordonnées</span>}
+            {!j2 && aUneAdresse && <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} sombre />}
           </div>
           {/* Un couple : les coordonnées de la personne 2, sous son prénom. */}
           {j2 && (
@@ -221,7 +227,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
               {!j2.telephone && !j2.email && <span>Pas encore de coordonnées</span>}
             </div>
           )}
-          {j2 && x.adresse && <div className={c.heroCoord}><span><Ic n="lieu" t={14} />{x.adresse}</span></div>}
+          {j2 && (x.adresse || aUneAdresse) && <div className={c.heroCoord}>{x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}{aUneAdresse && <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} sombre />}</div>}
         </div>
       </div>
 
