@@ -22,6 +22,8 @@ import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
+import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
+import { jourParis } from '@/lib/mandat';
 import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
@@ -735,6 +737,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     visites: number; envois: number; passages: number; lues: number;
   } | null>(null);
   const [showCloture, setShowCloture] = useState(false);
+  /* La petite fenêtre de « Suspendu » : avec ou sans date de reprise. */
+  const [suspendre, setSuspendre] = useState<{ choix: 'sans' | '1' | '3' | '6' | 'date'; date: string } | null>(null);
   /* Choisir le bien d'une transaction : à la création, ou pour la corriger. */
   const [showChoixTx, setShowChoixTx] = useState<'creer' | 'changer' | null>(null);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
@@ -1564,7 +1568,14 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function changeStatut(statut: string) {
     // Anti-doublon : ne rien faire si le statut est déjà le même
     if (client.statut === statut) return;
-    const { data, error } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().maybeSingle();
+    /* Un statut choisi ici efface la date de reprise d'une suspension : une
+       vieille date restée en base réveillerait plus tard un dossier suspendu
+       « sans date » (voir src/lib/suspension.ts). Base sans la colonne : on
+       écrit le statut seul. */
+    let { data, error } = await supabase.from('clients').update({ statut, suspension: null }).eq('id', client.id).select().maybeSingle();
+    if (error && colonneSuspensionAbsente(error.message)) {
+      ({ data, error } = await supabase.from('clients').update({ statut }).eq('id', client.id).select().maybeSingle());
+    }
     if (error || !data) {
       signalerEchec('Le changement de statut', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.');
       return;
@@ -1584,6 +1595,57 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const nom = ETATS_CLIENT.find(x => x.cle === statut)?.nom || statut;
     await addJournal(client.id, 'statut_change', `Statut → ${nom}`,
       chercher ? 'La veille reprend sur cette recherche.' : 'La veille est arrêtée sur ce dossier.');
+    load();
+  }
+
+  /* « Suspendu », avec ou sans date de reprise. La veille s'arrête sur toutes
+     ses recherches ; celles qui tournaient sont notées, pour que la reprise
+     automatique rallume exactement celles-là (src/lib/suspension.ts). Déjà
+     suspendu : la même fenêtre change ou retire la date. */
+  async function confirmerSuspension() {
+    if (!suspendre) return;
+    const { choix, date } = suspendre;
+    const jusqu = choix === 'sans' ? null : choix === 'date' ? date : dansMois(Number(choix));
+    if (choix === 'date' && (!date || date <= jourParis())) {
+      alert('Choisis une date de reprise à venir, ou « Sans date ».');
+      return;
+    }
+    const dejaSuspendu = client.statut === 'suspendu';
+    const aReprendre = dejaSuspendu
+      ? (lireSuspension(client)?.recherches || [])
+      : recherches.filter(r => r.active).map(r => r.id);
+    const suspension = jusqu ? { jusqu_au: jusqu, recherches: aReprendre, le: new Date().toISOString() } : null;
+
+    setSaving(true);
+    let { data, error } = await supabase.from('clients').update({ statut: 'suspendu', suspension }).eq('id', client.id).select().maybeSingle();
+    let dateNonNotee = false;
+    if (error && colonneSuspensionAbsente(error.message)) {
+      ({ data, error } = await supabase.from('clients').update({ statut: 'suspendu' }).eq('id', client.id).select().maybeSingle());
+      dateNonNotee = !!jusqu;
+    }
+    if (error || !data) {
+      setSaving(false);
+      signalerEchec('La suspension du dossier', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.');
+      return;
+    }
+    setClient(data as Client);
+    if (!dejaSuspendu) {
+      await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id));
+    }
+    const avecDate = !!jusqu && !dateNonNotee;
+    const le = jusqu ? jourLisible(jusqu) : '';
+    await addJournal(client.id, 'statut_change',
+      dejaSuspendu
+        ? (avecDate ? `⏸️ Reprise prévue le ${le}` : '⏸️ Date de reprise retirée')
+        : `Statut → Suspendu${avecDate ? ` jusqu'au ${le}` : ''}`,
+      avecDate
+        ? `La veille est arrêtée. Le ${le}, le dossier repassera tout seul en « Actif », la veille repartira et une relance rappellera d'appeler le client.`
+        : 'La veille est arrêtée sur ce dossier.');
+    setSaving(false);
+    setSuspendre(null);
+    if (dateNonNotee) {
+      alert("Le dossier est suspendu, mais la date de reprise n'a pas pu être notée : la base n'a pas encore la colonne.\n\nLance outils/sql/suspension.sql dans Supabase (SQL Editor), puis remets la date depuis « État du dossier ».");
+    }
     load();
   }
 
@@ -2745,7 +2807,7 @@ ${signatureMail()}`,
                         }}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: menuStatut ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', outline: 'none', transition: 'background .15s' }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: teinte, flexShrink: 0 }} />
-                          {ETATS_CLIENT.find(x => x.cle === st)?.nom || st}
+                          {`${ETATS_CLIENT.find(x => x.cle === st)?.nom || st}${st === 'suspendu' && lireSuspension(client) ? ` jusqu'au ${jourLisible(lireSuspension(client)!.jusqu_au)}` : ''}`}
                           <span style={{ fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
                         </button>
                         {menuStatut && (
@@ -2758,7 +2820,13 @@ ${signatureMail()}`,
                               {ETATS_CLIENT.map(e => {
                                 const courant = e.cle === st;
                                 return (
-                                  <button key={e.cle} onClick={() => { setMenuStatut(null); changeStatut(e.cle); }}
+                                  <button key={e.cle} onClick={() => {
+                                    setMenuStatut(null);
+                                    if (e.cle === 'suspendu') {
+                                      const s = lireSuspension(client);
+                                      setSuspendre(s ? { choix: 'date', date: s.jusqu_au } : { choix: 'sans', date: '' });
+                                    } else changeStatut(e.cle);
+                                  }}
                                     style={{ display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%', textAlign: 'left', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
                                     <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5, boxShadow: courant ? `0 0 0 3px ${e.point}26` : 'none' }} />
                                     <span style={{ flexGrow: 1, minWidth: 0 }}>
@@ -4354,6 +4422,62 @@ ${signatureMail()}`,
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={() => setShowCloture(false)}>Annuler</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={cloturerDossier} disabled={saving}>{saving ? '...' : '🏁 Clôturer'}</button>
+            </div>
+          </div>
+        </div>
+        </Portail>
+      )}
+
+      {suspendre && (
+        <Portail>
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 480 }}>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>⏸️ Suspendre le dossier</h2><button className={styles.modalClose} onClick={() => setSuspendre(null)}>✕</button></div>
+            <div className={styles.modalBody}>
+              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
+                La veille s'arrête sur ses recherches. Avec une date de reprise, ce jour-là le dossier repasse tout seul en « Actif », la veille repart et une relance vous rappelle d'appeler le client.
+              </div>
+              <div>
+                <label className={styles.lbl}>Date de reprise <span style={{ fontWeight: 400, color: '#94a3b8' }}>(facultative)</span></label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {([
+                    { k: 'sans', l: 'Sans date' },
+                    { k: '1', l: 'Dans 1 mois' },
+                    { k: '3', l: 'Dans 3 mois' },
+                    { k: '6', l: 'Dans 6 mois' },
+                    { k: 'date', l: 'Choisir une date' },
+                  ] as const).map(o => {
+                    const actif = suspendre.choix === o.k;
+                    return (
+                      <button type="button" key={o.k} onClick={() => setSuspendre(v => v && ({ ...v, choix: o.k }))}
+                        style={{ padding: '8px 13px', borderRadius: 99, border: `1.5px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#faf6ee' : 'white', color: actif ? '#8a6a1f' : '#55647a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {o.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {suspendre.choix === 'date' && (
+                <div>
+                  <ChoixDate valeur={suspendre.date} min={jourParis(new Date(Date.now() + 86_400_000))}
+                    onChange={v => setSuspendre(x => x && ({ ...x, date: v }))} placeholder="Choisir le jour de reprise" />
+                </div>
+              )}
+              <div style={{ fontSize: 13, color: 'var(--emilio)', fontWeight: 600 }}>
+                {(() => {
+                  const j = suspendre.choix === 'sans' ? '' : suspendre.choix === 'date' ? suspendre.date : dansMois(Number(suspendre.choix));
+                  if (suspendre.choix === 'date' && !j) return 'Choisissez le jour de reprise.';
+                  return j
+                    ? `Reprise le ${jourLisible(j)} : le dossier repassera en «\u00a0Actif\u00a0» ce jour-là.`
+                    : 'Sans date : le dossier reste suspendu jusqu\u2019à ce que vous le repassiez en «\u00a0Actif\u00a0».';
+                })()}
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btn} onClick={() => setSuspendre(null)}>Annuler</button>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={confirmerSuspension} disabled={saving}>
+                {saving ? '...' : client.statut === 'suspendu' ? 'Enregistrer' : '⏸️ Suspendre'}
+              </button>
             </div>
           </div>
         </div>
