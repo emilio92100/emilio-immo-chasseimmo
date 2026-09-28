@@ -73,11 +73,15 @@
    droite plie ou déplie le sous-menu. Chaque entrée a sa pastille : l'icône
    sur un fond à la couleur du type de contact ou de l'étape du bien. */
 .navLigne { position: relative; }
-.navItemBascule { padding-right: 40px; }
+.navItemBascule { padding-right: 42px; }
 .navParent { color: var(--emilio); font-weight: 600; }
+/* La flèche est centrée par des marges, pas par « transform » : la règle
+   générale « button:active { transform: scale(.985) } » effaçait le
+   translateY(-50%) au moment du clic, la flèche sautait de 14 px sous le
+   doigt, et le clic se perdait une fois sur deux (V3.25). */
 .navBascule {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  width: 28px; height: 28px; border-radius: 8px; border: none; background: transparent;
+  position: absolute; right: 5px; top: 0; bottom: 0; margin: auto 0;
+  width: 32px; height: 32px; border-radius: 9px; border: none; background: transparent;
   display: inline-flex; align-items: center; justify-content: center;
   color: #94a3b8; cursor: pointer; transition: background .15s, color .15s;
 }
@@ -88,7 +92,7 @@
 .sousMenuOuvert { grid-template-rows: 1fr; }
 .sousMenuIn { overflow: hidden; min-height: 0; }
 .sousListe {
-  position: relative; margin: 1px 0 8px 16px; padding: 0;
+  position: relative; margin: 0 0 6px 16px; padding: 3px 0;
   opacity: 0; transform: translateY(-4px); transition: opacity .22s ease, transform .28s ease;
 }
 .sousMenuOuvert .sousListe { opacity: 1; transform: none; }
@@ -106,32 +110,26 @@
 .sousMot { position: relative; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sousItem:hover { background: #f5f7fa; color: var(--emilio); }
 
-/* L'entrée ouverte s'illumine : la carte blanche, un halo à sa couleur qui
-   respire, la pastille pleine, et de temps en temps un reflet qui la traverse. */
-.sousActif, .sousActif:hover {
-  background: #fff; color: var(--emilio); font-weight: 700;
-  box-shadow: 0 0 0 1px var(--sa), 0 6px 16px -10px var(--sb);
-  animation: sousRespire 2.8s ease-in-out infinite;
+/* L'entrée ouverte : le mot en gras, et sa pastille qui s'allume — pleine,
+   à sa couleur, avec une onde qui s'en échappe doucement, sans fin. Pas de
+   cadre autour de la ligne : il se coupait contre la barre de défilement. */
+.sousActif, .sousActif:hover { color: var(--emilio); font-weight: 700; background: transparent; }
+.sousActif .sousIc { background: var(--sc); color: #fff; animation: sousAllume 2.4s ease-in-out infinite; }
+.sousActif .sousIc::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 10px;
+  border: 2px solid var(--sc); opacity: 0; pointer-events: none;
+  animation: sousOnde 2.4s cubic-bezier(.22,.9,.3,1) infinite;
 }
-.sousActif .sousIc { background: var(--sc); color: #fff; animation: sousPastille 2.8s ease-in-out infinite; }
-.sousLueur { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
-.sousLueur::after {
-  content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 42%;
-  background: linear-gradient(100deg, transparent 0%, var(--sa) 35%, var(--sb) 50%, var(--sa) 65%, transparent 100%); opacity: .55;
-  transform: skewX(-18deg); animation: sousReflet 4.6s ease-in-out infinite;
+@keyframes sousAllume {
+  0%, 100% { box-shadow: 0 3px 8px -4px var(--sb); }
+  50% { box-shadow: 0 0 12px 1px var(--sb); }
 }
-@keyframes sousRespire {
-  0%, 100% { box-shadow: 0 0 0 1px var(--sa), 0 6px 16px -10px var(--sb); }
-  50% { box-shadow: 0 0 0 1.5px var(--sb), 0 0 18px 1px var(--sa); }
+@keyframes sousOnde {
+  0% { transform: scale(.9); opacity: .75; }
+  75%, 100% { transform: scale(1.38); opacity: 0; }
 }
-@keyframes sousPastille {
-  0%, 100% { box-shadow: 0 0 0 0 var(--sa); }
-  50% { box-shadow: 0 0 0 4px var(--sa); }
-}
-@keyframes sousReflet { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
 @media (prefers-reduced-motion: reduce) {
-  .sousActif, .sousActif .sousIc { animation: none; }
-  .sousLueur { display: none; }
+  .sousActif .sousIc, .sousActif .sousIc::after { animation: none; }
 }
 
 /* Le chiffre était trop timide pour une alerte : on le pose en Jakarta,

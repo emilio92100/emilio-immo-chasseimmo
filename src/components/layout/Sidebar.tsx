@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
-import { EVT_MAJ, EVT_VUE, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv, vueDemandee } from '@/lib/intentions';
+import { EVT_MAJ, EVT_VUE, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv, demanderVue, vueDemandee } from '@/lib/intentions';
 import { Ic } from '@/components/documents/ApercuActe';
 import { typeDe } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
@@ -170,6 +170,13 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     }
   ];
 
+  /* Ouvrir une catégorie. Déjà sur la page : elle change sur place, en
+     douceur (la liste n'est pas rechargée) ; sinon, on y va. */
+  const allerVue = (page: string, vue: string) => {
+    if (activePage === page) { demanderVue(page, vue); onFermer?.(); }
+    else onNavigate(page, { vue });
+  };
+
   /* Les sous-menus. Contacts : trois types de contact, dans leur couleur ;
      « Contacts » lui-même ouvre « Tous ». Biens : trois étapes ; « Biens »
      ouvre « Tous ». Documents : deux endroits de la page, et le registre. */
@@ -178,12 +185,12 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     clients: (['acheteur', 'vendeur', 'proprietaire'] as const).map(k => {
       const t = typeDe(k);
       return { cle: k, label: `Mes ${t.pluriel.toLowerCase()}`, ic: t.ic, c: t.c, fond: t.fond,
-        go: () => onNavigate('clients', { vue: k }), actif: activePage === 'clients' && vues.clients === k };
+        go: () => allerVue('clients', k), actif: activePage === 'clients' && vues.clients === k };
     }),
     biens: ([['a_suivre', 'Mes biens à suivre', 'oeil'], ['estimation', 'Mes estimations', 'euro'], ['mandat', 'Mes mandats en cours', 'panneau']] as const).map(([k, label, ic]) => {
       const e = etapeDe(k);
       return { cle: k, label, ic, c: e.c, fond: `${e.c}17`,
-        go: () => onNavigate('biens', { vue: k }), actif: activePage === 'biens' && vues.biens === k };
+        go: () => allerVue('biens', k), actif: activePage === 'biens' && vues.biens === k };
     }),
     documents: [
       { cle: 'creer', label: 'Créer un document', ic: 'plus', c: '#34496e', fond: '#eef2f8', go: () => onNavigate('documents', { ancre: 'creer' }), actif: false },
@@ -192,7 +199,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     ],
   };
   /* Ce que la rubrique elle-même ouvre : « Tous ». */
-  const allerRubrique = (id: string) => onNavigate(id, id === 'clients' || id === 'biens' ? { vue: id === 'clients' ? 'tous' : 'tout' } : undefined);
+  const allerRubrique = (id: string) => (id === 'clients' || id === 'biens' ? allerVue(id, id === 'clients' ? 'tous' : 'tout') : onNavigate(id));
 
   /* La barre du bas : les quatre écrans du quotidien, et le geste le plus
      fréquent au milieu. Le reste (mail, activité, paramètres) est dans le
@@ -272,9 +279,6 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                             <button key={x.cle} type="button" className={`${styles.sousItem} ${x.actif ? styles.sousActif : ''}`}
                               onClick={x.go} aria-current={x.actif ? 'page' : undefined}
                               style={{ '--sc': x.c, '--sf': x.fond, '--sa': `${x.c}38`, '--sb': `${x.c}70` } as React.CSSProperties}>
-                              {/* L'entrée ouverte s'illumine : un halo à sa couleur qui
-                                  respire, et un reflet qui la traverse de temps en temps. */}
-                              {x.actif && <span className={styles.sousLueur} aria-hidden="true" />}
                               <span className={styles.sousIc}><Ic n={x.ic} t={15} e={2} /></span>
                               <span className={styles.sousMot}>{x.label}</span>
                             </button>
