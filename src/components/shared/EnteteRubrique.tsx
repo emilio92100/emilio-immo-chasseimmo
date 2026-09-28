@@ -74,13 +74,16 @@ export default function EnteteRubrique({
       </div>
 
       {tuiles.length > 0 && <div className={styles.rangee} role="group" aria-label={label}>
-        {tuiles.map(t => {
+        {tuiles.map((t, i) => {
           const on = Array.isArray(actif) ? actif.includes(t.cle) : t.cle === actif;
           const vide = t.n === 0 && !on;
           const alerte = !!t.alerte && t.n > 0 && !on;
           return (
+            /* Une tuile qui apparaît (la liste vient d'être lue) arrive en
+               douceur, à la suite des autres (V3.25). */
             <button key={t.cle} type="button" aria-pressed={on} onClick={() => onChoisir(t.cle)}
-              className={`${styles.tuile} ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''}`}>
+              style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
+              className={`${styles.tuile} ligne-entre ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''}`}>
               {t.tete && t.ic && <span className={styles.teteIc} aria-hidden="true">{t.ic}</span>}
               <span className={styles.n}>{t.n}</span>
               <span className={styles.lib}>
