@@ -242,6 +242,9 @@ import OngletVisites from './OngletVisites';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
+import CarteASavoir from '@/components/contacts/CarteASavoir';
+import ChoixSource from '@/components/contacts/ChoixSource';
+import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -575,6 +578,8 @@ function cfDe(client: any) {
     couple: !!client.couple,
     c2_civilite: (j?.civilite === 'Monsieur' || j?.civilite === 'Madame' ? j.civilite : '') as '' | 'Monsieur' | 'Madame',
     c2_prenom: j?.prenom || '', c2_nom: j?.nom || '', c2_email: j?.email || '', c2_tel: j?.telephone || '',
+    /* D'où vient le contact (V3.23, outils/sql/source-contact.sql). */
+    source: (client.source || '') as string, source_detail: (client.source_detail || '') as string,
   };
 }
 
@@ -1367,6 +1372,15 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (data) {
       setClient(data as Client);
       if (changes.length) await addJournal(client.id, 'contact', '✏️ Contact modifié', changes.join('\n'));
+    }
+    /* La source s'écrit à part, seulement si elle a changé : avant le SQL
+       « source-contact », la colonne n'existe pas et le reste doit passer. */
+    const avantSrc = client as unknown as { source?: string | null; source_detail?: string | null };
+    if ((avantSrc.source || '') !== cf.source || (avantSrc.source_detail || '') !== cf.source_detail.trim()) {
+      const src = { source: cf.source || null, source_detail: cf.source ? (cf.source_detail.trim() || null) : null };
+      const { error: eSrc } = await supabase.from('clients').update(src).eq('id', client.id);
+      if (eSrc) { setSaving(false); alert(colonneSourceAbsente(eSrc.message) ? MESSAGE_SQL_SOURCE : `La source n’a pas été enregistrée.\n\n${eSrc.message}`); return; }
+      setClient(c0 => ({ ...(data || c0), ...src } as Client));
     }
     setSaving(false); setShowContact(false);
   }
@@ -2892,6 +2906,11 @@ ${signatureMail()}`,
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
                         {client.reference} · suivi depuis {jours}{' '}jours
                       </span>
+                      {libelleSource((client as unknown as { source?: string }).source, (client as unknown as { source_detail?: string }).source_detail) && (
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', fontWeight: 500 }}>
+                          {'Source : '}<b style={{ color: '#e2c979', fontWeight: 700 }}>{libelleSource((client as unknown as { source?: string }).source, (client as unknown as { source_detail?: string }).source_detail)}</b>
+                        </span>
+                      )}
                       <button onClick={() => { setCf(cfDe(client)); setShowContact(true); }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.42)', cursor: 'pointer', fontFamily: 'inherit' }}>
                         <Icone nom="crayon" taille={12} />{' '}Modifier
@@ -2987,6 +3006,16 @@ ${signatureMail()}`,
 
         {/* Il vend aussi (ses biens de la rubrique Biens, rien s'il n'en a
             pas) et ses documents : deux blocs repliés, côte à côte (V3.17). */}
+        {/* Ce qu'Alexandre a noté sur lui (V3.23) : tapé à la création, il
+            n'apparaissait nulle part sur la fiche d'un acheteur. */}
+        <div style={{ marginBottom: 16 }}>
+          <CarteASavoir prenom={client.prenom || ''} texte={(client as unknown as { notes?: string | null }).notes}
+            onEnregistrer={async t => {
+              const ok = await verifie('Les infos sur le client', supabase.from('clients').update({ notes: t || null }).eq('id', client.id).select('id'), { ligne: true });
+              if (ok) setClient(c0 => ({ ...c0, notes: t || null } as Client));
+              return ok;
+            }} />
+        </div>
         <div className={styles.replis}>
           <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
           <DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
@@ -4054,7 +4083,7 @@ ${signatureMail()}`,
                     ))}
                   </div>
                   <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.c2_prenom} onChange={e => setCf(f => ({ ...f, c2_prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.c2_nom} onChange={e => setCf(f => ({ ...f, c2_nom: e.target.value }))} /></div></div>
-                  <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.c2_email} onChange={e => setCf(f => ({ ...f, c2_email: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.c2_tel} onChange={e => setCf(f => ({ ...f, c2_tel: e.target.value }))} placeholder="facultatif" /></div></div>
+                  <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.c2_email} onChange={e => setCf(f => ({ ...f, c2_email: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.c2_tel} onChange={e => setCf(f => ({ ...f, c2_tel: e.target.value }))}  /></div></div>
                 </div>
               )}
               <div><label className={styles.lbl}>Adresse</label><input className={styles.inp} value={cf.adresse} onChange={e => setCf(f => ({ ...f, adresse: e.target.value }))} /></div>
@@ -4083,17 +4112,21 @@ ${signatureMail()}`,
               {cf.bien_actuel_a_vendre && (
                 <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div className={styles.formRow}>
-                    <div><label className={styles.lbl}>Type de bien</label><input className={styles.inp} value={cf.bien_actuel_type} onChange={e => setCf(f => ({ ...f, bien_actuel_type: e.target.value }))} placeholder="Appartement 3P" /></div>
-                    <div><label className={styles.lbl}>Surface (m²)</label><input className={styles.inp} type="number" value={cf.bien_actuel_surface} onChange={e => setCf(f => ({ ...f, bien_actuel_surface: e.target.value }))} placeholder="65" /></div>
+                    <div><label className={styles.lbl}>Type de bien</label><input className={styles.inp} value={cf.bien_actuel_type} onChange={e => setCf(f => ({ ...f, bien_actuel_type: e.target.value }))} /></div>
+                    <div><label className={styles.lbl}>Surface (m²)</label><input className={styles.inp} type="number" value={cf.bien_actuel_surface} onChange={e => setCf(f => ({ ...f, bien_actuel_surface: e.target.value }))} /></div>
                   </div>
-                  <div><label className={styles.lbl}>Valeur estimée (€)</label><input className={styles.inp} type="number" value={cf.bien_actuel_valeur} onChange={e => setCf(f => ({ ...f, bien_actuel_valeur: e.target.value }))} placeholder="450000" /></div>
+                  <div><label className={styles.lbl}>Valeur estimée (€)</label><input className={styles.inp} type="number" value={cf.bien_actuel_valeur} onChange={e => setCf(f => ({ ...f, bien_actuel_valeur: e.target.value }))} /></div>
                   <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_meme_adresse: !f.bien_actuel_meme_adresse }))} style={{ alignSelf: 'flex-start', padding: '7px 13px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#e2e8f0'}`, background: cf.bien_actuel_meme_adresse ? '#f0f9ff' : 'white', color: cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_meme_adresse ? '✓ ' : ''}📍 Bien à la même adresse que le contact</button>
                   {!cf.bien_actuel_meme_adresse && (
-                    <div><label className={styles.lbl}>Adresse du bien à revendre</label><input className={styles.inp} value={cf.bien_actuel_adresse} onChange={e => setCf(f => ({ ...f, bien_actuel_adresse: e.target.value }))} placeholder="12 rue de la Paix, 75002 Paris" /></div>
+                    <div><label className={styles.lbl}>Adresse du bien à revendre</label><input className={styles.inp} value={cf.bien_actuel_adresse} onChange={e => setCf(f => ({ ...f, bien_actuel_adresse: e.target.value }))} /></div>
                   )}
-                  <div><label className={styles.lbl}>Précisions sur le bien à revendre</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} placeholder="État, étage, contexte de vente..." /></div>
+                  <div><label className={styles.lbl}>Précisions sur le bien à revendre</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} /></div>
                 </div>
               )}
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 8, paddingTop: 12 }}>
+                <label className={styles.lbl}>{'D’où vient ce contact ? · facultatif'}</label>
+                <ChoixSource source={cf.source} detail={cf.source_detail} onChange={(so, de) => setCf(f => ({ ...f, source: so, source_detail: de }))} />
+              </div>
             </div>
             <div className={styles.modalFooter}><button className={styles.btn} onClick={() => setShowContact(false)}>Annuler</button><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveContact} disabled={saving}>{saving ? '...' : '✓ Sauvegarder'}</button></div>
           </div>
