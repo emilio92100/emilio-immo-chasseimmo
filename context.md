@@ -1444,6 +1444,11 @@ les cases à cocher, la réponse du vendeur, le certificat.
   `left/right: 0; margin: auto; width: fit-content`. Une icône, un titre et une phrase ; sur une
   pastille pâle : « En pause : 0 sur la carte » et pourquoi. Au téléphone, toute la largeur,
   au-dessus des fiches ; les deux boutons ronds s'effacent le temps qu'il est là.
+- **Espace acheteur, la carte : le prix au milieu de sa zone, en court** (« 995 k€ », « 1,25 M€ »,
+  `PRIX_COURT`) — le prix entier reste sur la fiche du bas. Avant, l'étiquette était au bord haut
+  du cercle et on touchait la zone sans que rien ne s'ouvre : toucher la zone choisit désormais le
+  bien, comme toucher le prix (la plus proche quand deux zones se chevauchent) ; au survol, la main
+  et la zone s'éclaire. L'étiquette d'une visite calée reste sur son point exact.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
