@@ -1804,7 +1804,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                 <div className="vide-neuf">
                   <span className="vn-ic"><Ico n="loupe" t={22} /></span>
                   <b>Rien de nouveau pour le moment</b>
-                  <span>{'Nous cherchons pour vous tous les jours : dès qu’un bien correspond à ce que vous voulez, il s’affiche ici. Vous n’êtes pas en attente.'}</span>
+                  <span>{'Nous cherchons pour vous tous les jours : dès qu’un bien correspond à ce que vous voulez, il s’affiche ici.'}<br />{'Vous n’êtes pas en attente.'}</span>
                 </div>
               )}
               {/* Le détail du travail de la veille n'a de sens que s'il a donné
@@ -1818,7 +1818,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                   si le dernier passage en a retenu, ils sont simplement déjà ouverts.
                   Dire le contraire serait faux, et le client le verrait tout de suite. */}
               {neufs.length === 0 && !!passage?.lues && (
-                <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
+                /* Centré, comme le cadre juste au-dessus (V3.28). */
+                <div className="relance relance-centre" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
                   {/* « passage » est un mot du CRM : jamais devant le client (AGENTS.md §5). */}
                   {passage.proposees ? (
                     <span suppressHydrationWarning>{`${debutRecherche(passage.quand, passage.lues)} et ${passage.proposees} bien${passage.proposees > 1 ? 's ont été retenus' : ' a été retenu'} pour vous. Vous ${passage.proposees > 1 ? 'les avez déjà ouverts\u00a0: ils vous attendent' : 'l\u2019avez déjà ouvert\u00a0: il vous attend'} dans «\u00a0Mes derniers biens consultés\u00a0».`}</span>
@@ -7306,7 +7307,15 @@ button.auj-c:active{transform:scale(.96)}
 }
 
 /* « Rien de nouveau pour le moment » (V3.28) : un seul message, avec sa loupe
-   qui cherche doucement. */
+   qui cherche doucement ; la dernière recherche, dessous, centrée pareil. */
+.relance-centre{flex-direction:column; align-items:center; text-align:center; gap:8px; padding:16px 18px}
+/* Sur téléphone, un titre de rubrique tient sur une ligne (« Nouveaux biens
+   pour vous » laissait « vous » seul dessous). */
+@media(max-width:560px){
+  .tete-vue{gap:11px}
+  .tete-vue .ico{width:40px; height:40px; border-radius:13px}
+  .tete-vue h2{font-size:20px; letter-spacing:-.4px}
+}
 .vide-neuf{display:flex; flex-direction:column; align-items:center; gap:6px; padding:24px 18px 22px; text-align:center;
   background:var(--carte); border:1px dashed var(--trait-fort); border-radius:18px; color:var(--plume); font-size:14px; line-height:1.6}
 .vide-neuf b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; color:var(--encre)}
