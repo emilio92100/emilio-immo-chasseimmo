@@ -52,15 +52,14 @@ function Portail({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
-/* Un budget se lit en entier sous le million — « 380 000 € », pas
-   « 380 k€ » — et en millions au-delà : « 1,25 M€ ». */
+/* Un budget se lit toujours en entier, séparateurs compris : « 380 000 € »,
+   « 1 500 000 € » — jamais « 380 k€ » ni « 1,5 M€ » (Alexandre, V3.21 :
+   le chiffre complet se voit mieux). */
 function budgetLisible(n: number): string {
-  if (n >= 1000000) return `${String(Math.round(n / 10000) / 100).replace('.', ',')} M€`;
   return `${Math.round(n).toLocaleString('fr-FR')} €`;
 }
 function fourchetteBudget(min: number, max: number): string {
-  if (max < 1000000) return `${Math.round(min).toLocaleString('fr-FR')} – ${budgetLisible(max)}`;
-  return `${budgetLisible(min)} – ${budgetLisible(max)}`;
+  return `${Math.round(min).toLocaleString('fr-FR')} – ${budgetLisible(max)}`;
 }
 
 /* Ce qui change dans une recherche mérite d'être raconté : « Budget maxi :

@@ -217,7 +217,8 @@ type ContactListe = {
   types?: unknown; pro?: unknown; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null; archive?: boolean | null;
   type_bien?: string | null; nb_pieces_min?: number | null; surface_min?: number | null; budget_max?: number | null; secteurs?: string[] | null;
 };
-const court = (n: number) => n >= 1e6 ? `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M€` : `${Math.round(n / 1000)} k€`;
+/* Le montant en entier, jamais « 1,5 M€ » ni « 380 k€ » (V3.21). */
+const court = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} €`;
 /* « aujourd'hui », « hier », « il y a 3 j », « il y a 2 sem. », « il y a 4 mois ». */
 export function depuis(iso?: string | null): string {
   if (!iso) return '';
@@ -231,7 +232,7 @@ export function depuis(iso?: string | null): string {
   const a = Math.floor(j / 365);
   return `il y a ${a} an${a > 1 ? 's' : ''}`;
 }
-/* Sa recherche en une ligne : « Appartement · 4 p. · 85 m² · 1 M€ · Boulogne +1 ». */
+/* Sa recherche en une ligne : « Appartement · 4 p. · 85 m² · 1 000 000 € · Boulogne +1 ». */
 function resumeRecherche(x: ContactListe): string {
   const sect = (x.secteurs || []).filter(Boolean);
   return [

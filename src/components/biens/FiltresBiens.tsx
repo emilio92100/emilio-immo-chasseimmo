@@ -77,7 +77,8 @@ export function trier(l: BienVente[], tri: Tri, parEtape: (p: BienVente, r: Bien
 }
 
 /* ── Ce que chaque bouton dit, une fois choisi ── */
-const k = (n: number) => (n >= 1_000_000 ? `${String(Math.round(n / 100_000) / 10).replace('.', ',')} M` : `${Math.round(n / 1000)} k`);
+/* Les montants en entier : « 500 000 – 800 000 € », jamais « 500 k » ni « 1,2 M » (V3.21). */
+const k = (n: number) => Math.round(n).toLocaleString('fr-FR');
 const entre = (a: number | null, z: number | null, u: string, f: (n: number) => string = String) =>
   a && z ? `${f(a)} – ${f(z)} ${u}` : a ? `dès ${f(a)} ${u}` : z ? `jusqu’à ${f(z)} ${u}` : '';
 const nomType = (v: string) => TYPES_BIEN.find(t => t.v === v)?.l || v;

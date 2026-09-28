@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.20 · 28 septembre 2026**
+**Version 3.21 · 28 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -972,6 +972,11 @@ plusieurs biens = liste photo à gauche.
   tri « dernière modif », « Tout » des Documents, pastilles des en-têtes) et sur l'aperçu papier des
   documents, qui imite le PDF. L'espace client, l'écran de connexion et les mails gardent leur
   marine. Tout nouvel écran du CRM prend `var(--emilio)`, jamais `#1a2332`.
+- **Les montants s'écrivent en entier** (demande d'Alexandre, 28 septembre) : `1 500 000 €`,
+  `380 000 €`, avec les séparateurs de milliers — **jamais** `1,5 M€`, `1,5 M` ni `380 k€`. Le chiffre
+  complet se voit mieux. Forme : `Math.round(n).toLocaleString('fr-FR')` suivi de ` €`. Vaut pour tout
+  le CRM (budgets, prix, filtres, graphiques) ; les textes des documents juridiques étaient déjà en
+  entier.
 
 ---
 
@@ -1382,6 +1387,15 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.21 — 28 septembre 2026 · les montants en entier
+
+Plus aucun montant abrégé dans le CRM (règle au §9) : le budget de la fiche client (`budgetLisible`,
+`fourchetteBudget` dans `FicheClient.tsx`), la colonne « Budget max » de la liste des contacts
+(`budgetCourt`, `Clients.tsx`), le résumé de la recherche sur une fiche contact (`court`,
+`ChampsContact.tsx`), les filtres de budget de la page Biens (`FiltresBiens.tsx`) et les étiquettes du
+graphique des prix d'un bien (`GraphePrix`, `ParcoursBien.tsx`, tenues un peu plus loin des bords).
+Rien à passer dans Supabase.
 
 ### V3.20 — 28 septembre 2026 · les anomalies connues, toutes revues
 

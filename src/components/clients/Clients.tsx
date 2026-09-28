@@ -335,7 +335,8 @@ function phraseRecherche(c: any) {
 }
 
 function budgetCourt(c: any) {
-  const k = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1).replace('.', ',')} M€` : `${Math.round(n / 1000)} k€`;
+  /* Le montant en entier, jamais « 1,5 M€ » ni « 380 k€ » (V3.21). */
+  const k = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} €`;
   if (c.budget_min && c.budget_max) return k(c.budget_max);
   if (c.budget_max) return k(c.budget_max);
   if (c.budget_min) return `dès ${k(c.budget_min)}`;

@@ -1213,13 +1213,15 @@ export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hau
           </g>
         );
       })}
-      <text x={Math.min(Math.max(X(points[0].date), 40), L - 40)} y={Y(points[0].prix) - 12} textAnchor="middle"
+      {/* Le prix en entier, jamais « 380 k€ » (V3.21) : l'étiquette est plus
+          longue, on la garde un peu plus loin des bords. */}
+      <text x={Math.min(Math.max(X(points[0].date), 52), L - 52)} y={Y(points[0].prix) - 12} textAnchor="middle"
         fontSize="12" fontWeight="800" fill="#94a3b8" fontFamily="inherit">
-        {Math.round(points[0].prix / 1000)} k€
+        {`${Math.round(points[0].prix).toLocaleString('fr-FR')} €`}
       </text>
-      <text x={Math.min(Math.max(X(dernier.date), 40), L - 40)} y={Y(dernier.prix) + 20} textAnchor="middle"
+      <text x={Math.min(Math.max(X(dernier.date), 52), L - 52)} y={Y(dernier.prix) + 20} textAnchor="middle"
         fontSize="12.5" fontWeight="800" fill={NAVY} fontFamily="inherit">
-        {Math.round(dernier.prix / 1000)} k€
+        {`${Math.round(dernier.prix).toLocaleString('fr-FR')} €`}
       </text>
     </svg>
     </div>
