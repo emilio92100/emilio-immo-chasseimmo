@@ -223,6 +223,9 @@ export default function AppLayout() {
      garde que son nom) ; un contact supprimé depuis sort de la barre. */
   const ouvrirFiche = useCallback(async (f: FicheOuverte) => {
     if (f.k === 'bien') { handleNavigate('biens', { bien: f.id }); return; }
+    /* La carte (V3.27) : elle se rouvre là où on l'avait laissée (PageCarte
+       relit sa vue et le repère choisi). */
+    if (f.k === 'carte') { handleNavigate('carte'); return; }
     const { data, error } = await supabase.from('clients').select('*').eq('id', f.id).maybeSingle();
     if (error) { signalerEchec('L’ouverture de la fiche', error.message); return; }
     if (!data) { setFiches(l => l.filter(x => !(x.k === 'contact' && x.id === f.id))); return; }
@@ -288,8 +291,9 @@ export default function AppLayout() {
         </main>
         {/* Les fiches ouvertes : on passe d'un contact ou d'un bien à l'autre. */}
         <FichesOuvertes fiches={fiches}
-          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : null}
+          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : null}
           onOuvrir={ouvrirFiche}
+          onRanger={setFiches}
           onFermer={f => setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)))}
           onToutFermer={() => setFiches([])} />
       </div>
