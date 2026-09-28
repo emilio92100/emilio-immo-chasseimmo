@@ -241,6 +241,13 @@ import PointAuto from './PointAuto';
 import OngletVisites from './OngletVisites';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
+import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
+
+/* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
+   type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
+   à la main, lui, n'est jamais écrasé par un changement de type. */
+const TITRES_AUTO = new Set<string>(['Appel passé', 'RDV physique', 'Note libre', 'Relance manuelle', 'Envoi externe', 'Email envoyé', ...ISSUES_APPEL.map(x => x.titre)]);
+const titreAuto = (t: string) => !t.trim() || TITRES_AUTO.has(t.trim());
 
 const lienEntete: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600,
@@ -612,7 +619,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     })();
     return () => { vivant = false; };
   }, [client.id, client.token_espace, client.prenom, client.nom]);
-  const [suiviFiltre, setSuiviFiltre] = useState<string>(ouverture?.onglet === 'suivi' ? (ouverture.filtre || 'tout') : 'appel');
+  const [suiviFiltre, setSuiviFiltre] = useState<string>(ouverture?.onglet === 'suivi' ? (ouverture.filtre || 'tout') : 'tout');
   /* Un client à plusieurs recherches : le Suivi montre celle qu'on regarde
      (et ce qui concerne le client entier). Les lignes des autres se
      rajoutent d'un clic, marquées de leur recherche (§6.17). */
@@ -743,7 +750,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [showChoixTx, setShowChoixTx] = useState<'creer' | 'changer' | null>(null);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
   const [showBien, setShowBien] = useState(false);
-  const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null }[]>([]);
+  const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null; recherche_id?: string | null }[]>([]);
   const [delaiJours, setDelaiJours] = useState(5);
   const [showAction, setShowAction] = useState(false);
 
@@ -758,13 +765,18 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      déplacera, supprimera — ou qu'on créera si elle manquait. */
   const [actionRelanceId, setActionRelanceId] = useState<string | null>(null);
 
-  function nouvelleAction() {
-    setActionEdit(null); setActionRelanceId(null);
-    setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
+  /* « Noter un appel » (onglet Suivi) ouvre la même fenêtre, l'appel déjà
+     choisi et sans le bloc « Créer un rendez-vous » : il ne reste qu'à dire
+     comment ça s'est passé. */
+  const [appelDirect, setAppelDirect] = useState(false);
+  const notesAction = useRef<HTMLTextAreaElement>(null);
+  function nouvelleAction(type: 'note' | 'appel' = 'note') {
+    setActionEdit(null); setActionRelanceId(null); setAppelDirect(type === 'appel');
+    setActionF({ type, titre: type === 'appel' ? 'Appel passé' : '', description: '', bien_id: '', relance: '' });
     setShowAction(true);
   }
   function fermerAction() {
-    setShowAction(false); setActionEdit(null); setActionRelanceId(null);
+    setShowAction(false); setActionEdit(null); setActionRelanceId(null); setAppelDirect(false);
     setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
   }
   const [url, setUrl] = useState('');
@@ -2643,7 +2655,7 @@ ${signatureMail()}`,
   /* Les relances en attente de ce client, pour l'étiquette de l'entête. */
   const chargerRelances = useCallback(async () => {
     const { data } = await supabase.from('relances')
-      .select('id, date_echeance, note')
+      .select('id, date_echeance, note, recherche_id')
       .eq('client_id', client.id).eq('statut', 'en_attente')
       .order('date_echeance', { ascending: true });
     setRelancesAtt(data || []);
@@ -2712,7 +2724,7 @@ ${signatureMail()}`,
             <span className={styles.surBureau}>🔔 Relance J+{delaiJours}</span>
             <span className={styles.surMobile}><Icone nom="cloche" taille={20} epaisseur={1.9} /><span>{`Relance J+${delaiJours}`}</span></span>
           </button>
-          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={nouvelleAction}>
+          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => nouvelleAction()}>
             <span className={styles.surBureau}>+ Action</span>
             <span className={styles.surMobile}><Icone nom="note" taille={20} epaisseur={1.9} /><span>Action</span></span>
           </button>
@@ -3964,134 +3976,35 @@ ${signatureMail()}`,
           </div>
         )}
 
-        {/* TAB SUIVI (fusion Historique + Journal) */}
+        {/* TAB SUIVI (fusion Historique + Journal) — en frise depuis la V3.23 :
+            le rendu vit dans FriseSuivi, les données restent préparées ici. */}
         {tab === 'suivi' && (
           <div className={`${styles.card} fc-suivi-carte`} style={{ padding: 22 }}>
-
-            {/* Barre de filtres + ajouter une action */}
-            <div className="fc-suivi-barre" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-              <div className="fc-suivi-filtres" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[
-                  { id: 'tout', label: 'Tout', count: suiviCount },
-                  { id: 'appel', label: suiviGroupes.appel.label, count: suiviGroupes.appel.items.length },
-                  { id: 'rdv', label: suiviGroupes.rdv.label, count: suiviGroupes.rdv.items.length },
-                  { id: 'note', label: suiviGroupes.note.label, count: suiviGroupes.note.items.length },
-                  { id: 'message', label: suiviGroupes.message.label, count: suiviGroupes.message.items.length },
-                  { id: 'communications', label: suiviGroupes.communications.label, count: suiviGroupes.communications.items.length },
-                  { id: 'mandat', label: suiviGroupes.mandat.label, count: suiviGroupes.mandat.items.length },
-                  { id: 'systeme', label: suiviGroupes.systeme.label, count: suiviGroupes.systeme.items.length },
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => setSuiviFiltre(f.id)}
-                    style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid', borderColor: suiviFiltre === f.id ? '#1a2332' : '#e3e8f0', background: suiviFiltre === f.id ? '#1a2332' : 'white', color: suiviFiltre === f.id ? 'white' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-                  >
-                    {f.label}{f.count ? ` (${f.count})` : ''}
-                  </button>
-                ))}
-                {nbAutresRecherches > 0 && (
-                  <button type="button" onClick={() => setSuiviToutesPour(suiviToutes ? null : rechercheId)}
-                    title={suiviToutes ? 'Ne montrer que cette recherche' : 'Montrer aussi ce qui a été noté sur ses autres recherches'}
-                    style={{ padding: '7px 14px', borderRadius: 20, border: '1px dashed #c9a84c', background: suiviToutes ? '#fbf6e9' : 'white', color: '#8a6d22', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {suiviToutes ? 'Cette recherche seulement' : `+ ${nbAutresRecherches} d’une autre recherche`}
-                  </button>
-                )}
-              </div>
-              <button className={`${styles.btn} ${styles.btnPrimary} fc-suivi-ajout`} onClick={nouvelleAction}>+ Ajouter une action</button>
-            </div>
-
-            {suiviItems.length === 0 ? (
-              <div className={styles.emptyTab}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>🗂️</div>
-                <div style={{ fontWeight: 700, color: 'var(--emilio)' }}>Rien à afficher</div>
-                {suiviFiltre !== 'tout' && <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Aucun élément dans « {suiviGroupes[suiviFiltre]?.label} ». Clique sur « Tout » pour l'historique complet.</div>}
-              </div>
-            ) : suiviItems.map((it, i) => {
-              const last = i === suiviItems.length - 1;
-              if (it.kind === 'comm') {
-                const e = it.data;
-                const isCR = e.type === 'compte_rendu_visite';
-                const icon = isCR ? '📋' : e.type === 'selection_biens' ? '📄' : '✉️';
-                const bg = isCR ? '#f0fdf4' : '#fef9c3';
-                const parts = isCR && e.corps ? e.corps.split(' | ') : [];
-                return (
-                  <div key={`c-${e.id}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{icon}</div>
-                      {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
-                    </div>
-                    <div style={{ flex: 1, paddingTop: 2 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--emilio)' }}>{e.objet || e.type}</div>
-                      {isCR && parts.length > 0 && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 3 }}>{parts.slice(0, 2).join(' · ')}</div>}
-                      {isCR && parts.length > 2 && <div style={{ fontSize: 13, color: '#64748b', background: '#f0fdf4', borderRadius: 8, padding: '6px 10px', marginTop: 6, borderLeft: '3px solid #10b981' }}>{parts[2]}</div>}
-                      {!isCR && e.destinataires?.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{e.destinataires.join(', ')}</div>}
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(e.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
-                    </div>
-                  </div>
-                );
-              }
-              const j = it.data;
-              const evIcon = j.type === 'bien_ajoute' ? '🏠' : j.type === 'visite_planifiee' ? '📅' : j.type === 'dossier_finalise' ? '🎉' : j.type === 'creation' ? '✨' : (j.type === 'offre_ecrite' || j.type === 'offre_faite') ? '✍️' : j.type === 'statut_change' ? '🔄' : j.type === 'bien_supprime' ? '🗑️' : j.type === 'relance_manuelle' ? '🔔' : j.type === 'retour_etape' ? '↩️' : j.type === 'etape_transaction' ? '💼' : '📝';
-              return (
-                <div key={`e-${j.id}`} id={`suivi-${j.id}`} className={`suivi-ligne${surligne === j.id ? ' suivi-surligne' : ''}`} style={{ display: 'flex', gap: 14, paddingBottom: 18 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f8fafc', border: '1px solid #e3e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{evIcon}</div>
-                    {!last && <div style={{ width: 1, flex: 1, background: '#f1f5f9', marginTop: 4 }} />}
-                  </div>
-                  <div style={{ flex: 1, paddingTop: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ flexGrow: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: 'var(--emilio)' }}>{j.titre}</div>
-                      {TYPES_MODIFIABLES.has(j.type) && (
-                        <span className="suivi-actions" style={{ display: 'inline-flex', gap: 4, flexShrink: 0 }}>
-                          <button onClick={() => modifierAction(j)} title="Modifier cette ligne"
-                            style={{ border: '1px solid #e3e8f0', background: 'white', borderRadius: 8, padding: '3px 9px', fontSize: 11.5, fontWeight: 700, color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>
-                            ✏️ Modifier
-                          </button>
-                          <button onClick={() => supprimerAction(j)} title="Supprimer cette ligne"
-                            style={{ border: '1px solid #e3e8f0', background: 'white', borderRadius: 8, padding: '3px 9px', fontSize: 11.5, fontWeight: 700, color: '#b91c1c', cursor: 'pointer', fontFamily: 'inherit' }}>
-                            🗑️
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                    {autreRecherche(j) && (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 4, padding: '2px 9px', borderRadius: 8, background: '#f1f5f9', fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
-                        {`🔍 ${recherches.find(r => r.id === j.recherche_id)?.nom || 'Une autre recherche'}`}
-                      </div>
-                    )}
-                    {j.description && <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>{j.description}</div>}
-                    {/* La relance née de cette action se dit ici, sous elle —
-                        plutôt que sur une deuxième ligne du suivi qui répétait
-                        la même chose sans rien apprendre de plus. */}
-                    {(() => {
-                      const rid = j.metadata?.relance_id as string | undefined;
-                      const rel = rid ? relancesAtt.find(x => x.id === rid) : null;
-                      if (!rel) return null;
-                      const d = new Date(rel.date_echeance); d.setHours(12, 0, 0, 0);
-                      const a = new Date(); a.setHours(12, 0, 0, 0);
-                      const jours = Math.round((d.getTime() - a.getTime()) / 86400000);
-                      const due = jours <= 0;
-                      return (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 6,
-                          padding: '3px 11px', borderRadius: 99, fontSize: 12, fontWeight: 700,
-                          background: due ? '#fff1f2' : '#fffbeb',
-                          border: `1px solid ${due ? '#fbd0d6' : '#fde68a'}`,
-                          color: due ? '#be123c' : '#b45309' }}>
-                          🔔 Relance programmée le {d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                          <span style={{ fontWeight: 600, opacity: .75 }}>
-                            {jours < 0 ? `· en retard de ${-jours} j` : jours === 0 ? "· aujourd'hui" : `· dans ${jours} j`}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                    {j.bien_id && (() => { const b = biens.find(x => x.id === j.bien_id); return b ? (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '3px 10px', borderRadius: 8, background: '#faf6ee', border: '1px solid #e8dcc0', fontSize: 12, color: '#92702a', fontWeight: 600 }}>🏠 {b.titre || `${b.type_bien||'Bien'} — ${b.ville||''}`}</div>
-                    ) : null; })()}
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{new Date(j.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
-                  </div>
-                </div>
-              );
-            })}
+            {/* « À venir », en haut de la frise : les relances en attente de CETTE
+                recherche, et celles du client qui n'en ont pas. */}
+            <FriseSuivi
+              items={suiviItems}
+              filtre={suiviFiltre}
+              comptes={{ tout: suiviCount, ...Object.fromEntries(Object.entries(suiviGroupes).map(([k, g]) => [k, g.items.length])) }}
+              onFiltre={setSuiviFiltre}
+              enPlus={nbAutresRecherches > 0 ? (
+                <button type="button" onClick={() => setSuiviToutesPour(suiviToutes ? null : rechercheId)}
+                  title={suiviToutes ? 'Ne montrer que cette recherche' : 'Montrer aussi ce qui a été noté sur ses autres recherches'}
+                  style={{ height: 34, padding: '0 13px', borderRadius: 99, border: '1px dashed #c9a84c', background: suiviToutes ? '#fbf6e9' : 'white', color: '#8a6d22', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {suiviToutes ? 'Cette recherche seulement' : `+ ${nbAutresRecherches} d’une autre recherche`}
+                </button>
+              ) : null}
+              aVenir={relancesAtt.filter(r => suiviToutes || !r.recherche_id || r.recherche_id === rechercheId)}
+              relancesAtt={relancesAtt}
+              biens={biens}
+              nomAutreRecherche={(j) => (autreRecherche(j) ? (recherches.find(r => r.id === j.recherche_id)?.nom || 'Une autre recherche') : null)}
+              surligne={surligne}
+              modifiable={(j) => TYPES_MODIFIABLES.has(j.type)}
+              onModifier={modifierAction}
+              onSupprimer={supprimerAction}
+              onAjouter={() => nouvelleAction()}
+              onAppel={() => nouvelleAction('appel')}
+            />
           </div>
         )}
         </div>
@@ -5302,11 +5215,11 @@ ${signatureMail()}`,
         <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={fermerAction}>✕</button></div>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>{actionEdit ? '✏️ Modifier l\'action' : appelDirect ? '📞 Noter un appel' : '+ Ajouter une action'}</h2><button className={styles.modalClose} onClick={fermerAction}>✕</button></div>
             <div className={styles.modalBody}>
               {/* Le rendez-vous se prend dans l'agenda : ce bouton y mène, la
                   fenêtre « Nouveau rendez-vous » ouverte et ce dossier choisi. */}
-              {!actionEdit && rechercheActive && (
+              {!actionEdit && !appelDirect && rechercheActive && (
                 <button type="button" className="fc-rdv-agenda"
                   onClick={() => { demanderRendezVous(rechercheActive.id); fermerAction(); onNavigate('agenda'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #ecdcae', background: 'linear-gradient(135deg, #fffaf0 0%, #fbf1d8 100%)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--emilio)' }}>
@@ -5320,7 +5233,7 @@ ${signatureMail()}`,
                   <span style={{ color: '#8a6a1f', display: 'flex', flexShrink: 0 }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></span>
                 </button>
               )}
-              {!actionEdit && rechercheActive && (
+              {!actionEdit && !appelDirect && rechercheActive && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#94a3b8', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
                   <span style={{ flex: 1, height: 1, background: '#eef1f6' }} /><span>ou noter une action</span><span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
                 </div>
@@ -5328,11 +5241,38 @@ ${signatureMail()}`,
               <div>
                 <label className={styles.lbl}>Type d'action</label>
                 <div className="fc-types-action" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: f.titre || o.l.split(' ').slice(1).join(' ') }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? 'var(--emilio)' : '#e2e8f0'}`, background: actionF.type === o.v ? 'var(--emilio)' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
+                  {[{v:'appel',l:'📞 Appel passé'},{v:'rdv',l:'🤝 RDV physique'},{v:'note',l:'📝 Note libre'},{v:'relance_manuelle',l:'🔔 Relance manuelle'},{v:'envoi_externe',l:'📤 Envoi externe'},{v:'email_libre',l:'✉️ Email envoyé'}].map(o => (<button key={o.v} onClick={() => setActionF(f => ({ ...f, type: o.v, titre: titreAuto(f.titre) ? o.l.split(' ').slice(1).join(' ') : f.titre }))} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${actionF.type === o.v ? 'var(--emilio)' : '#e2e8f0'}`, background: actionF.type === o.v ? 'var(--emilio)' : 'white', color: actionF.type === o.v ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s' }}>{o.l}</button>))}
                 </div>
               </div>
+              {actionF.type === 'appel' && (() => {
+                /* Un clic au lieu de taper « messagerie » dans le titre. « A
+                   répondu » envoie droit aux notes ; les autres n'en demandent
+                   pas : une relance, et « Ajouter au journal ». */
+                const choisir = (x: typeof ISSUES_APPEL[number]) => {
+                  const deja = actionF.titre.trim() === x.titre;
+                  setActionF(f => ({ ...f, titre: deja ? 'Appel passé' : x.titre }));
+                  if (!deja && x.k === 'repondu') setTimeout(() => notesAction.current?.focus(), 30);
+                };
+                return (
+                  <div>
+                    <label className={styles.lbl}>Comment ça s&apos;est passé ?</label>
+                    <div className="fc-issues" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8 }}>
+                      {ISSUES_APPEL.map(x => {
+                        const on = actionF.titre.trim() === x.titre;
+                        return (
+                          <button type="button" key={x.k} onClick={() => choisir(x)} aria-pressed={on}
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 8px', borderRadius: 11, border: `1.5px solid ${on ? x.c : '#e3e8f0'}`, background: on ? x.bg : 'white', color: on ? x.c : '#52607a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', transition: 'all .12s' }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: x.c, flexShrink: 0 }} />{x.lib}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
-              <div><label className={styles.lbl}>Notes / Détails</label><textarea className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))} placeholder="Ce dont on a discuté, ce qui a été convenu..." /></div>
+              <div><label className={styles.lbl}>Notes / Détails</label><textarea ref={notesAction} className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))}
+                placeholder={actionF.type === 'appel' && (actionF.titre === 'Appel — messagerie' || actionF.titre === 'Appel — pas de réponse') ? 'Facultatif — ex. : message laissé, rappeler après 18 h' : 'Ce dont on a discuté, ce qui a été convenu...'} /></div>
               {(() => {
                 /* Une date, et rien d'autre : le reste — qui, pourquoi — est déjà
                    au-dessus. Les raccourcis évitent de compter les jours de tête.
@@ -5350,6 +5290,10 @@ ${signatureMail()}`,
                       🔔 Prochaine relance <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span>
                     </label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 9 }}>
+                      <button type="button" onClick={() => setActionF(f => ({ ...f, relance: '' }))}
+                        style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${!pose ? '#94a3b8' : '#e3e8f0'}`, background: !pose ? '#f1f4f8' : 'white', color: !pose ? 'var(--emilio)' : '#64748b', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Aucune
+                      </button>
                       {RACCOURCIS.map(([lib, j]) => {
                         const d = jourPlus(j);
                         const actif = actionF.relance === d;
@@ -5434,7 +5378,13 @@ ${signatureMail()}`,
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} onClick={fermerAction}>Annuler</button>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>{actionEdit ? '✓ Enregistrer' : '✓ Ajouter au journal'}</button>
+              {/* Une seule chaîne : le bouton est en flex, deux morceaux s'y
+                  mettaient côte à côte en deux colonnes sur téléphone. */}
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveAction}>
+                {actionEdit ? '✓ Enregistrer'
+                  : actionF.relance ? `✓ Ajouter au journal · relance le ${new Date(`${actionF.relance}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+                  : '✓ Ajouter au journal'}
+              </button>
             </div>
           </div>
         </div>

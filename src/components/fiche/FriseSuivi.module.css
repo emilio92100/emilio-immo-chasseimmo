@@ -1,0 +1,164 @@
+/* Le suivi du dossier, en frise — voir FriseSuivi.tsx. */
+
+.frise { display: flex; flex-direction: column; gap: 14px; font-family: 'DM Sans', sans-serif; }
+
+/* ── L'en-tête : le titre, et les deux boutons ── */
+.tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.teteTitre { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.teteTitre b { font: 800 17px 'Plus Jakarta Sans', sans-serif; color: var(--emilio, #2e4166); letter-spacing: -.2px; }
+.teteTitre span { font-size: 12.5px; color: #94a3b8; font-weight: 600; }
+.teteBoutons { display: flex; gap: 8px; flex-wrap: wrap; }
+.btnAppel, .btnAjout {
+  display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px; border-radius: 12px;
+  font: 700 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.btnAppel { border: 1px solid #c9dcf1; background: #f3f8fd; color: #2d5c8f; }
+.btnAppel:hover { background: #e9f1fb; border-color: #a9c7e8; }
+.btnAjout { border: none; background: var(--emilio-fond, #2e4166); color: white; box-shadow: 0 8px 18px -12px rgba(26, 35, 50, .8); }
+.btnAjout:hover { filter: brightness(1.08); }
+
+/* ── Les filtres ── */
+.filtres { display: flex; gap: 7px; flex-wrap: wrap; }
+.filtre {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 99px;
+  border: 1px solid #e3e8f0; background: white; color: #52607a; cursor: pointer;
+  font: 700 13px 'DM Sans', sans-serif; white-space: nowrap; transition: background .15s, border-color .15s, color .15s;
+}
+.filtre:hover { border-color: #cdd6e3; color: var(--emilio, #2e4166); }
+.filtre i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.filtre b {
+  min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 99px; margin-right: -5px;
+  display: inline-flex; align-items: center; justify-content: center; background: #eef2f7; color: #52607a; font-size: 11.5px; font-weight: 800;
+}
+.filtre[data-vide='oui'] { color: #a3b0c2; }
+.filtre[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: white; }
+.filtre[data-on='oui'] b { background: rgba(255, 255, 255, .16); color: #f0dc9c; }
+
+/* ── La frise : un trait continu, du futur vers le passé ── */
+.liste { list-style: none; margin: 4px 0 0; padding: 0; position: relative; display: flex; flex-direction: column; gap: 12px; }
+.liste::before {
+  content: ''; position: absolute; left: 19px; top: 14px; bottom: 14px; width: 2px; border-radius: 2px;
+  background: linear-gradient(to bottom, #dfe6ef, #e7ecf3 85%, rgba(231, 236, 243, 0));
+}
+.ligne { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 14px; align-items: start; border-radius: 14px; }
+
+/* Le rond sur le trait : l'icône de la famille, dans sa couleur. */
+.noeud {
+  position: relative; z-index: 1; width: 40px; height: 40px; border-radius: 50%; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 3px solid #fff; box-shadow: 0 0 0 1px #e3e8f0, 0 6px 14px -10px rgba(26, 35, 50, .6);
+}
+.noeud[data-bord='oui'] { border-width: 1.5px; box-shadow: 0 0 0 3px #fff, 0 6px 14px -10px rgba(26, 35, 50, .6); }
+
+/* La carte : ce qu'Alexandre a fait lui-même. */
+.carte {
+  min-width: 0; background: white; border: 1px solid #e6ebf2; border-radius: 14px; padding: 12px 15px 13px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .03), 0 10px 24px -22px rgba(26, 35, 50, .5);
+  transition: border-color .15s, box-shadow .15s;
+}
+.ligne:hover .carte { border-color: #d8e0eb; box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 14px 28px -20px rgba(26, 35, 50, .45); }
+.carteTete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 26px; }
+.titre { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: var(--emilio, #2e4166); letter-spacing: -.1px; min-width: 0; }
+.pastille {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 99px; border: 1px solid;
+  font-size: 11.5px; font-weight: 800; white-space: nowrap;
+}
+.heure { margin-left: auto; font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap; }
+.texte { margin: 6px 0 0; font-size: 13.5px; line-height: 1.6; color: #3d4a5c; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sous { margin: 4px 0 0; font-size: 12.5px; color: #8593a8; overflow-wrap: anywhere; }
+/* Un message du client : on le lit comme une citation. */
+.citation { background: #f8f5fd; border-left: 3px solid #c3b1e3; border-radius: 0 10px 10px 0; padding: 8px 12px; }
+
+/* Modifier / supprimer : discrets, ils apparaissent au survol. */
+.actions { display: inline-flex; gap: 2px; margin-right: -6px; opacity: 0; transition: opacity .15s; }
+.actions[data-vide='oui'] { width: 58px; height: 28px; }
+@media (max-width: 720px) { .actions[data-vide='oui'] { display: none; } }
+.ligne:hover .actions, .actions:focus-within { opacity: 1; }
+@media (hover: none) { .actions { opacity: 1; } }
+.actions button {
+  width: 28px; height: 28px; border-radius: 8px; border: none; background: none; cursor: pointer; color: #8593a8;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.actions button:hover { background: #f1f4f8; color: var(--emilio, #2e4166); }
+.actions button[data-rouge='oui']:hover { background: #fef2f2; color: #b91c1c; }
+
+/* Les étiquettes sous le texte : le bien, la relance, l'autre recherche. */
+.etiquettes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.etiquettes > span {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 10px; border-radius: 9px; border: 1px solid;
+  font-size: 12px; font-weight: 700; line-height: 1.3; max-width: 100%; box-sizing: border-box;
+}
+.etBien { background: #fbf6ea; border-color: #eadcb8 !important; color: #8a6a1f; }
+.etRelance { background: #fffbeb; border-color: #fde2a4 !important; color: #b45309; }
+.etRelance[data-retard='oui'] { background: #fff1f2; border-color: #fbd0d6 !important; color: #be123c; }
+.etAutre { background: #f1f5f9; border-color: #e2e8f0 !important; color: #475569; }
+
+/* Ce que le CRM a noté tout seul : une ligne, pas une carte. */
+.discrete { align-items: center; }
+.discrete .noeudPetit { justify-self: center; }
+.noeudPetit {
+  position: relative; z-index: 1; width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px #fff;
+}
+.discreteCorps { min-width: 0; padding: 2px 0; }
+.discreteTete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.discreteTitre { font-size: 13px; font-weight: 600; color: #64748b; min-width: 0; }
+.discrete[data-famille='visite'] .discreteTitre, .discrete[data-famille='affaire'] .discreteTitre { color: var(--emilio, #2e4166); font-weight: 700; }
+.discreteTexte { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: #8593a8; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.discrete .heure { margin-left: 0; font-weight: 500; }
+.discrete .heure::before { content: '·'; margin-right: 8px; color: #cbd5e1; }
+.discrete .etiquettes { margin-top: 5px; }
+.discrete .actions { margin-left: auto; }
+
+/* Les repères sur le trait : « À venir », « Aujourd'hui », chaque mois. */
+.repere { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 14px; align-items: center; margin: 4px 0 -2px; }
+.repereRond { justify-self: center; position: relative; z-index: 1; width: 11px; height: 11px; border-radius: 50%; background: #c8d2df; box-shadow: 0 0 0 4px #fff; }
+.repereTexte { font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #94a3b8; }
+.repere[data-sorte='avenir'] .repereRond { background: #c9a84c; }
+.repere[data-sorte='avenir'] .repereTexte { color: #a07c28; }
+.repere[data-sorte='aujourdhui'] .repereRond { background: var(--emilio-fond, #2e4166); width: 13px; height: 13px; }
+.repere[data-sorte='aujourdhui'] .repereTexte {
+  justify-self: start; color: white; background: var(--emilio-fond, #2e4166); padding: 4px 11px; border-radius: 99px; letter-spacing: 1px;
+}
+
+/* Le futur : le trait se fait pointillé, les cartes dorées. */
+.ligne[data-sorte='avenir']::before {
+  content: ''; position: absolute; left: 19px; top: -12px; bottom: -12px; width: 2px; z-index: 0;
+  background: repeating-linear-gradient(to bottom, #e3cf92 0 5px, #fff 5px 10px);
+}
+.carteRelance { background: #fffcf4; border-color: #f1e3bd; }
+.carteRelance[data-retard='oui'] { background: #fffafa; border-color: #fbd5db; }
+.carteRelance .texte { margin-top: 4px; color: #5b6678; }
+.voir {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 2px 0; cursor: pointer;
+  font: 700 12.5px 'DM Sans', sans-serif; color: #8a6a1f;
+}
+.voir:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Rien à afficher */
+.vide { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 16px; text-align: center; color: #94a3b8; font-size: 13px; }
+.vide b { color: var(--emilio, #2e4166); font-size: 14.5px; }
+.videIc { width: 48px; height: 48px; border-radius: 14px; background: #f1f4f8; color: #8593a8; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+
+@media (max-width: 720px) {
+  .tete { flex-direction: column; align-items: stretch; }
+  .teteBoutons { display: grid; grid-template-columns: 1fr 1fr; }
+  .btnAppel, .btnAjout { justify-content: center; padding: 0 10px; height: 44px; }
+  .filtres { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
+  .filtres::-webkit-scrollbar { display: none; }
+  .filtre { flex-shrink: 0; }
+  .liste::before, .ligne[data-sorte='avenir']::before { left: 15px; }
+  .ligne, .repere { grid-template-columns: 32px minmax(0, 1fr); column-gap: 10px; }
+  .noeud { width: 32px; height: 32px; border-width: 2px; }
+  .noeud svg { width: 14px; height: 14px; }
+  .carte { padding: 11px 12px 12px; }
+  .titre { font-size: 14px; }
+  /* L'heure passe sous le titre : le titre garde toute la largeur. */
+  .carteTete .heure { order: 5; flex-basis: 100%; margin-left: 0; font-size: 11.5px; }
+  .carteTete .actions { margin-left: auto; }
+  .voir { order: 6; margin-left: 0; }
+  .discrete .heure { font-size: 11.5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carte, .actions { transition: none; }
+}
