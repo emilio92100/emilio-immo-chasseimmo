@@ -264,7 +264,7 @@ export default function AppLayout() {
       case 'dashboard':  return <Dashboard onNavigate={handleNavigate} />;
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
       case 'biens':      return <PageBiens onNavigate={handleNavigate} />;
-      case 'carte':      return <PageCarte onNavigate={handleNavigate} />;
+      case 'carte':      return <PageCarte onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} />;
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;
@@ -280,7 +280,9 @@ export default function AppLayout() {
   return (
     <div className={`${styles.appLayout} crm-app`}>
       <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} reduit={menuReduit} />
-      <div className={styles.mainArea} ref={zoneBarre}>
+      {/* Sur la carte, au téléphone, la barre du haut s'efface (V3.28) : la
+          carte a sa propre recherche et son bouton de menu. */}
+      <div className={`${styles.mainArea} ${activePage === 'carte' ? styles.surCarte : ''}`} ref={zoneBarre}>
         <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={() => setMenuReduit(r => !r)} />
         <main className={`${styles.content} ${fiches.length ? styles.contentAvecFiches : ''}`} ref={contenu}>
           {/* La carte professionnelle à renouveler (Paramètres › Agence). */}

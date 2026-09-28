@@ -45,6 +45,8 @@
   /* La bande des fiches ouvertes se pose au-dessus des onglets : on garde
      de quoi voir le bas de la page derrière elle. */
   .contentAvecFiches { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+  /* La carte (V3.28) : pas de barre du haut, la carte monte jusqu'en haut. */
+  .surCarte > header { display: none; }
 }
 
 /* ═══ « Une nouvelle version du CRM est prête » (NouvelleVersion.tsx) ═══ */
