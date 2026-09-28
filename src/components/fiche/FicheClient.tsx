@@ -245,6 +245,7 @@ import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
+import BoutonCarte from '@/components/carte/BoutonCarte';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -2951,6 +2952,7 @@ ${signatureMail()}`,
                           <Icone nom="lieu" taille={14} /> {client.adresse}
                         </span>
                       )}
+                      {(client.adresse || (client as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse) && <BoutonCarte focus={`c:${client.id}`} onNavigate={onNavigate} sombre />}
                       {!tels.length && !mails.length && !deux && <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)' }}>Aucun contact renseigné</span>}
                     </div>
                   </div>
