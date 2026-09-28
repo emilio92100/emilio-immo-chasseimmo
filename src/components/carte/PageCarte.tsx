@@ -29,9 +29,8 @@ import s from './Carte.module.css';
    défile ; en bas, les fiches de la zone, qu'on fait glisser du doigt — la
    carte suit la fiche, et la liste suit la carte.
 
-   Seuls les contacts et les biens dont l'adresse est connue y figurent : la
-   carte le rappelle, avec le nombre de ceux qui manquent, et la liste pour
-   les compléter.
+   Seuls les contacts et les biens dont l'adresse est connue y figurent : le
+   ⓘ le rappelle d'une phrase (pas de liste de ceux qui manquent, V3.28).
 
    On y arrive aussi d'une fiche (« Voir sur la carte ») : la carte s'ouvre
    sur le contact ou le bien, sa carte de visite ouverte. */
@@ -68,8 +67,8 @@ type Place = Point & { lat: number; lng: number };
 /* `ic` : l'icône de la pastille (V3.28), la même que dans le menu et les
    fiches quand elle existe. */
 type Cat = { k: string; lib: string; c: string; ic: string; etapes?: string[]; eteint?: boolean };
-/* Le petit message du bas de la carte. `voir` : la catégorie que « Voir lesquels » ouvre derrière le ⓘ. */
-type Msg = string | { titre?: string; texte: string; voir?: string };
+/* Le petit message du bas de la carte : une phrase, ou un titre et une phrase. */
+type Msg = string | { titre?: string; texte: string };
 const CATS_CONTACTS: Cat[] = [
   ...(['acheteur', 'vendeur', 'proprietaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
   { k: 'vente_possible', lib: 'Reventes possibles', c: '#a07c28', ic: 'maison' },
@@ -258,16 +257,13 @@ export default function PageCarte({ onNavigate, onMenu }: {
   const [survol, setSurvol] = useState<string | null>(null);
   const [zone, setZone] = useState<string[]>([]);
   const [ouverts, setOuverts] = useState({ filtres: true, liste: true });
-  /* Qui n'est pas sur la carte : derrière le ⓘ, au téléphone comme sur
-     ordinateur (V3.28). `infoCat` resserre la liste sur une catégorie,
-     quand on y vient depuis une pastille pâle. */
+  /* « Qui est sur la carte ? » : une phrase derrière le ⓘ, au téléphone
+     comme sur ordinateur (V3.28). */
   const [voirSans, setVoirSans] = useState(false);
-  const [infoCat, setInfoCat] = useState<string | null>(null);
   /* Téléphone (V3.28) : les filtres rangés sous deux boutons, « Contacts » et
      « Biens » ; un seul panneau ouvert à la fois. */
   const [pliTel, setPliTel] = useState<null | 'contacts' | 'biens'>(null);
-  /* Le petit message du bas : une phrase, ou un titre, une phrase et, au
-     besoin, « Voir lesquels » (la catégorie à montrer derrière le ⓘ). */
+  /* Le petit message du bas : une phrase, ou un titre et une phrase. */
   const [message, setMessage] = useState<Msg | null>(null);
   const [cartePrete, setCartePrete] = useState(false);
   /* Toutes les adresses ont été cherchées (ou lues dans la mémoire). */
@@ -430,9 +426,6 @@ export default function PageCarte({ onNavigate, onMenu }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [points, posV]);
   const parId = useMemo(() => new Map(places.map(p => [p.id, p])), [places]);
-  const introuvables = useMemo(() => points.filter(p => !p.exact && positions.current.has(p.cle) && !assezPrecis(positions.current.get(p.cle))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [points, posV]);
 
   const q = normer(recherche.trim());
   const visibles = useMemo(() => places.filter(p => p.cats.some(k => actifs[k])
@@ -701,7 +694,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
     const t = setTimeout(() => setMessage(null), typeof message === 'string' ? 6000 : 9000);
     return () => clearTimeout(t);
   }, [message]);
-  const ouvrirInfo = (cat: string | null) => { setPliTel(null); setInfoCat(cat); setVoirSans(true); };
+  const basculerInfo = () => { setPliTel(null); setVoirSans(v => !v); };
 
   /* Ouvrir une fiche depuis la carte : la carte prend place dans la barre
      des fiches ouvertes, et un clic sur ce bloc la rouvre là où on l'a
@@ -718,11 +711,6 @@ export default function PageCarte({ onNavigate, onMenu }: {
     if (p.genre === 'bien') onNavigate('biens', { bien: p.ref });
     else if (p.client) onNavigate('fiche', p.client);
   });
-  const ouvrirSans = async (id: string) => {
-    if (id.startsWith('b:')) { quitterPour(() => onNavigate('biens', { bien: id.slice(2) })); return; }
-    const { data } = await supabase.from('clients').select('*').eq('id', id.slice(2)).maybeSingle();
-    if (data) quitterPour(() => onNavigate('fiche', data));
-  };
 
   const pSel = sel ? parId.get(sel) || null : null;
   /* La première position de la carte de visite, avant que la carte bouge. */
@@ -733,7 +721,6 @@ export default function PageCarte({ onNavigate, onMenu }: {
   const listeIds = q ? visibles.map(p => p.id) : zone;
   const liste = listeIds.map(id => parId.get(id)).filter((p): p is Place => !!p);
   const nbPlaces = new Set(places.map(p => p.ref)).size;
-  const manquent = sansAdresse.length + introuvables.length;
 
   /* ── Les morceaux de l'écran ── */
   const puces = (cats: Cat[]) => cats.filter(c => (nbCrm[c.k] || 0) > 0).map(c => {
@@ -744,48 +731,21 @@ export default function PageCarte({ onNavigate, onMenu }: {
       <button key={c.k} type="button" className={`${s.puce} ${actifs[c.k] && !vide ? s.puceOn : ''} ${vide ? s.puceVide : ''}`}
         onClick={() => {
           if (!vide) { basculerCat(c.k); return; }
-          setMessage({ titre: `${c.lib} : 0 sur la carte`, texte: 'Leur adresse manque, ou n’a pas été trouvée. Complète leur fiche pour les voir ici.', voir: c.k });
+          setMessage({ titre: `${c.lib} : 0 sur la carte`, texte: 'Leur adresse manque, ou n’a pas été trouvée. Complète leur fiche pour les voir ici.' });
         }}
         aria-pressed={!!actifs[c.k] && !vide} style={{ '--c': c.c } as React.CSSProperties}>
         <span className={s.puceIc}><Ic n={c.ic} t={12} e={2.2} /></span>{c.lib}<b>{nbCat[c.k] || 0}</b>
       </button>
     );
   });
-  /* Qui n'est pas sur la carte, et pourquoi : s'ouvre au ⓘ (V3.28). Avant,
-     ce bloc restait affiché en entier sous les filtres de l'ordinateur. */
-  const tousSans = [
-    ...sansAdresse,
-    ...introuvables.map(p => ({ id: p.id.replace(/:bien$/, ''), nom: p.titre, genre: p.genre, raison: 'adresse introuvable', cats: p.cats })),
-  ];
-  const catInfo = infoCat ? TOUTES.find(c => c.k === infoCat) || null : null;
-  const listeSans = catInfo ? tousSans.filter(x => x.cats.includes(catInfo.k)) : tousSans;
+  /* Qui est sur la carte : une phrase, au ⓘ (V3.28). Avant, un bloc avec
+     le nombre et la liste de ceux qui manquent restait affiché sous les
+     filtres de l'ordinateur — Alexandre n'en voyait pas l'intérêt. */
   const rappelAdresses = (
     <div className={s.rappel}>
-      <div className={s.rappelTete}>
-        <span className={s.rappelIc}><Icone nom="info" taille={15} epaisseur={2} /></span>
-        <b>{catInfo ? `${catInfo.lib} : 0 sur la carte` : 'Qui est sur la carte ?'}</b>
-        <button type="button" className={s.rappelFermer} onClick={() => { setVoirSans(false); setInfoCat(null); }} aria-label="Fermer">×</button>
-      </div>
-      <p className={s.rappelTxt}>{catInfo
-        ? 'Leur adresse manque, ou n’a pas été trouvée. Complète leur fiche pour les voir ici.'
-        : 'Seuls les contacts et les biens dont l’adresse est connue y sont.'}</p>
-      {listeSans.length > 0 && (
-        <>
-          <span className={s.rappelSous}>{catInfo ? `${listeSans.length} sans adresse placée` : `${listeSans.length} n’y ${listeSans.length > 1 ? 'sont' : 'est'} pas`}</span>
-          <ul className={s.sansListe}>
-            {listeSans.slice(0, 40).map((x, i) => (
-              <li key={`${x.id}${x.raison}${i}`}>
-                <button type="button" onClick={() => ouvrirSans(x.id)}>
-                  <b>{x.nom}</b><span>{x.raison}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {catInfo && tousSans.length > listeSans.length && (
-        <button type="button" className={s.rappelLien} onClick={() => setInfoCat(null)}>{`Voir les ${tousSans.length} qui manquent`}</button>
-      )}
+      <span className={s.rappelIc}><Icone nom="info" taille={15} epaisseur={2} /></span>
+      <p className={s.rappelTxt}>Seuls les contacts et les biens dont l’adresse est connue sont sur la carte.</p>
+      <button type="button" className={s.rappelFermer} onClick={() => setVoirSans(false)} aria-label="Fermer">×</button>
       {tableAbsente && <small className={s.sql}>Les adresses sont recherchées à chaque ouverture tant que le fichier outils/sql/carte.sql n’a pas été passé dans Supabase.</small>}
     </div>
   );
@@ -870,9 +830,6 @@ export default function PageCarte({ onNavigate, onMenu }: {
             <span className={s.messageTxt}>
               {m.titre && <b>{m.titre}</b>}
               <span>{m.texte}</span>
-              {m.voir && (
-                <button type="button" className={s.messageVoir} onClick={() => { const k = m.voir || null; setMessage(null); ouvrirInfo(k); }}>Voir lesquels</button>
-              )}
             </span>
             <button type="button" className={s.messageFermer} onClick={() => setMessage(null)} aria-label="Fermer">×</button>
           </div>
@@ -892,7 +849,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
                 </div>
                 {!charge && (
                   <button type="button" className={`${s.replier} ${voirSans ? s.replierOn : ''}`} aria-expanded={voirSans}
-                    onClick={() => (voirSans ? (setVoirSans(false), setInfoCat(null)) : ouvrirInfo(null))} aria-label="Qui est sur la carte" title="Qui est sur la carte ?">
+                    onClick={basculerInfo} aria-label="Qui est sur la carte" title="Qui est sur la carte ?">
                     <Icone nom="info" taille={16} epaisseur={2} />
                   </button>
                 )}
@@ -900,7 +857,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
                   <Ic n="gauche" t={16} e={2.2} />
                 </button>
               </div>
-              {voirSans && !charge && <div className={s.infoPc} key={infoCat || 'tout'}>{rappelAdresses}</div>}
+              {voirSans && !charge && <div className={s.infoPc}>{rappelAdresses}</div>}
               {charge ? (
                 <div className={s.squelettes}>{[0, 1, 2, 3, 4].map(i => <span key={i} className="sq-barre" style={{ width: `${60 + (i * 17) % 40}%` }} />)}</div>
               ) : erreur ? <div className={s.erreur}>{erreur}</div> : (
@@ -1000,7 +957,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
                 {recherche && <button type="button" onClick={() => setRecherche('')} aria-label="Effacer">×</button>}
               </label>
               {/* Qui est sur la carte, et qui n'y est pas : un appui (V3.28). */}
-              <button type="button" className={`${s.infoTel} ${voirSans ? s.infoTelOn : ''}`} onClick={() => (voirSans ? (setVoirSans(false), setInfoCat(null)) : ouvrirInfo(null))}
+              <button type="button" className={`${s.infoTel} ${voirSans ? s.infoTelOn : ''}`} onClick={basculerInfo}
                 aria-expanded={voirSans} aria-label="Qui est sur la carte">
                 <Icone nom="info" taille={19} epaisseur={1.9} />
               </button>
