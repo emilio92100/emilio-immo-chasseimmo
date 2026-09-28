@@ -22,6 +22,9 @@ import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
 import type { Client } from '@/lib/supabase';
+import { reprendreSuspendus } from '@/lib/suspension';
+import { signalerEchec } from '@/lib/ecritures';
+import { signalerMaj } from '@/lib/intentions';
 
 /**
  * L'écran affiché, et le client ouvert, vivent dans l'URL — pas seulement en
@@ -113,6 +116,16 @@ export default function AppLayout() {
     });
 
     return () => { vivant = false; ecoute.subscription.unsubscribe(); };
+  }, []);
+
+  /* « Suspendu jusqu'au… » : à l'ouverture du CRM, les dossiers dont la date
+     de reprise est arrivée repassent en « Actif » (src/lib/suspension.ts).
+     Une fois par ouverture ; un échec s'affiche en rouge comme les autres. */
+  useEffect(() => {
+    reprendreSuspendus(supabase).then(({ repris, erreurs }) => {
+      for (const e of erreurs) signalerEchec('La reprise automatique d’un dossier suspendu', e);
+      if (repris.length) signalerMaj();
+    });
   }, []);
 
   /* Le serveur rend la page sans connaître l'URL du navigateur : on la lit
