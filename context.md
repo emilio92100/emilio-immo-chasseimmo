@@ -1455,6 +1455,12 @@ les cases à cocher, la réponse du vendeur, le certificat.
   suit le filtre, se ferme d'une croix, et n'apparaît pas quand aucun bien n'est placé (la carte le
   dit déjà). Remplace la petite ligne sous la liste de l'ordinateur, trop discrète ; au téléphone
   il n'y avait rien. Jamais d'emplacement au hasard : le client le prendrait pour le vrai.
+- **Les fiches qu'on fait glisser sous les cartes (espace acheteur et CRM, téléphone)** : leur ombre
+  était coupée net par le bas de la bande qui défile (`overflow-x: auto` coupe aussi en hauteur),
+  d'où un liseré gris sous chaque fiche. La bande a un bas plus large, repris par une marge
+  négative : les fiches ne bougent pas. Dans l'espace, plus de bordure transparente autour de la
+  fiche (elle dessinait un cadre blanc autour de la photo) : la fiche choisie a un contour doré
+  (`outline`) posé par-dessus.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
