@@ -1417,6 +1417,18 @@ les cases à cocher, la réponse du vendeur, le certificat.
   l'avatar (ou la vignette du bien), le nom, l'étiquette ou le prix et la rue ; à droite, appeler
   (ou l'itinéraire, quand il n'y a pas de numéro) et la flèche qui ouvre la fiche. Le cadrage et le
   centre des vols suivent (la bande est plus fine).
+- **Carte du CRM, les filtres** : une catégorie s'affiche dès qu'elle existe dans le CRM (`nbCrm`),
+  même si aucun n'a d'adresse placée — « Mandats en cours 0 », en pâle ; un appui dit pourquoi et
+  ouvre la liste de ceux qui manquent. Avant, des mandats sans adresse faisaient disparaître toute
+  la section « Biens ». Chaque pastille a son icône (celle du type de contact, ou de l'étape du
+  bien : œil, euro, panneau, poignée de main, pause, clé, croix).
+- **Carte du CRM sur téléphone** : sous la recherche, deux boutons côte à côte, « Mes contacts » et
+  « Mes biens » (« N sur la carte ») ; chacun déplie ses pastilles sur plusieurs lignes, avec
+  « Tous / Aucun ». Plus de bande à faire défiler, plus de pastille « N sans adresse » : un point
+  d'information (ⓘ), à droite de la recherche, dit qui est sur la carte et liste ceux qui n'y sont
+  pas. Un appui sur la carte replie les filtres.
+- **Fiches ouvertes** : quand des fiches dépassent d'un côté, la bande s'y estompe (masque en
+  dégradé) au lieu d'être tranchée net ; sur téléphone, elle va jusqu'au bord arrondi.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
