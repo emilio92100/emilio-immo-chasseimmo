@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { apprisDe } from '@/lib/visites';
+import { reprendreSuspendus } from '@/lib/suspension';
 
 /**
  * Page d'import de la veille — /veille/import
@@ -66,6 +67,13 @@ export default function PageImportVeille() {
      *     vient de s'ouvrir, et donc où rouvrir le stock.
      */
     async function veilleLire() {
+      /* Les dossiers « Suspendu jusqu'au… » dont la date est arrivée repassent
+         d'abord en « Actif » : un client repris ce matin est cherché ce
+         matin (src/lib/suspension.ts). */
+      const reprise = await reprendreSuspendus(supabase);
+      if (reprise.repris.length) log(`Reprise automatique : ${reprise.repris.join(', ')}`);
+      for (const e of reprise.erreurs) log(`Reprise automatique : ${e}`, false);
+
       const { data: recherches, error } = await supabase
         .from('recherches')
         .select('*, clients(id, prenom, nom, reference, statut)')
@@ -190,7 +198,7 @@ export default function PageImportVeille() {
           appris_visites: apprisDe(visitesR as any[], (r as any).appris_masques || []),
         });
       }
-      return { ok: true, recherches: resultat, hors_actifs: horsActifs };
+      return { ok: true, recherches: resultat, hors_actifs: horsActifs, repris_ce_matin: reprise.repris, erreurs_reprise: reprise.erreurs };
     }
 
     // ─── Écriture : dépôt des propositions ───
