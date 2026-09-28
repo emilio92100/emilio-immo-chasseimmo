@@ -387,7 +387,10 @@
 }
 .basTel { position: absolute; z-index: 3; left: 0; right: 0; bottom: 10px; }
 .carrousel {
-  display: flex; gap: 10px; overflow-x: auto; padding: 4px 14px 6px;
+  /* Le bas large laisse l'ombre des fiches s'éteindre avant le bord de la
+     bande, qui la coupait net en liseré gris (V3.28) ; la marge négative
+     garde les fiches à leur place. */
+  display: flex; gap: 10px; overflow-x: auto; padding: 4px 14px 22px; margin-bottom: -16px;
   scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .carrousel::-webkit-scrollbar { display: none; }
