@@ -98,8 +98,10 @@ const rue = (a: string) => a.replace(/,?\s*\d{5}\b.*$/, '').trim() || a;
 /* Où tombe le repère choisi : un peu plus bas que le milieu sur ordinateur
    (sa carte de visite s'ouvre au-dessus), un peu plus haut sur téléphone
    (les fiches du bas le cacheraient). */
+/* Téléphone : le centre utile est entre la recherche (en haut) et la bande
+   des fiches (en bas), presque au milieu de l'écran depuis qu'elle est fine. */
 const DECALAGE = (tel: boolean, o?: { filtres: boolean; liste: boolean }): [number, number] =>
-  (tel ? [0, -70] : [Math.round(((o?.filtres ? 410 : 0) - (o?.liste ? 350 : 0)) / 2), 120]);
+  (tel ? [0, 8] : [Math.round(((o?.filtres ? 410 : 0) - (o?.liste ? 350 : 0)) / 2), 120]);
 const lire = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const ecrire = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sans mémoire, tant pis */ } };
 
@@ -231,7 +233,12 @@ function elementAmas(n: number): HTMLElement {
   return envelopper(el);
 }
 
-export default function PageCarte({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+export default function PageCarte({ onNavigate, onMenu }: {
+  onNavigate: (page: string, data?: unknown) => void;
+  /* Téléphone : la barre du haut du CRM est masquée sur la carte, le menu
+     s'ouvre depuis la recherche de la carte (V3.28). */
+  onMenu?: () => void;
+}) {
   const [tel, setTel] = useState(false);
   const [charge, setCharge] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -546,7 +553,7 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
     cadre.current = true;
     const b = new ml.current.LngLatBounds();
     for (const p of places) b.extend([p.lng, p.lat]);
-    m.fitBounds(b, { padding: tel ? 60 : { top: 80, bottom: 60, left: ouverts.filtres ? 420 : 80, right: ouverts.liste ? 360 : 80 }, maxZoom: 15, duration: 900 });
+    m.fitBounds(b, { padding: tel ? { top: 130, bottom: 110, left: 44, right: 44 } : { top: 80, bottom: 60, left: ouverts.filtres ? 420 : 80, right: ouverts.liste ? 360 : 80 }, maxZoom: 15, duration: 900 });
   }, [cartePrete, charge, places, parId, fini, tel, ouverts, calculerZone]);
 
   /* Au retour d'une fiche : le repère d'où l'on était parti se rallume, dès
@@ -638,7 +645,7 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
     if (!m || !lib || !visibles.length) return;
     const b = new lib.LngLatBounds();
     for (const p of visibles) b.extend([p.lng, p.lat]);
-    m.fitBounds(b, { padding: tel ? 60 : { top: 80, bottom: 60, left: ouverts.filtres ? 420 : 80, right: ouverts.liste ? 360 : 80 }, maxZoom: 15.5, duration: 900 });
+    m.fitBounds(b, { padding: tel ? { top: 130, bottom: 110, left: 44, right: 44 } : { top: 80, bottom: 60, left: ouverts.filtres ? 420 : 80, right: ouverts.liste ? 360 : 80 }, maxZoom: 15.5, duration: 900 });
   };
 
   /* Une adresse tapée dans la recherche, qui ne correspond à personne : on y va. */
@@ -898,12 +905,20 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
         <>
           {/* ── Téléphone : en haut, la recherche et les filtres ── */}
           <div className={s.hautTel}>
-            <label className={`${s.cherche} ${s.chercheTel}`}>
-              <Ic n="loupe" t={15} />
-              <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="Un nom, une adresse…"
-                enterKeyHint="search" onKeyDown={e => { if (e.key === 'Enter' && q && !visibles.length) allerA(); }} />
-              {recherche && <button type="button" onClick={() => setRecherche('')} aria-label="Effacer">×</button>}
-            </label>
+            {/* La barre du haut du CRM est masquée ici : le menu s'ouvre d'ici. */}
+            <div className={s.rangTel}>
+              {onMenu && (
+                <button type="button" className={s.menuTel} onClick={onMenu} aria-label="Ouvrir le menu">
+                  <Icone nom="menu" taille={20} epaisseur={2} />
+                </button>
+              )}
+              <label className={`${s.cherche} ${s.chercheTel}`}>
+                <Ic n="loupe" t={15} />
+                <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="Un nom, une adresse…"
+                  enterKeyHint="search" onKeyDown={e => { if (e.key === 'Enter' && q && !visibles.length) allerA(); }} />
+                {recherche && <button type="button" onClick={() => setRecherche('')} aria-label="Effacer">×</button>}
+              </label>
+            </div>
             <div className={s.bandeTel}>
               {puces([...CATS_CONTACTS, ...CATS_BIENS])}
               {manquent > 0 && (
@@ -924,11 +939,29 @@ export default function PageCarte({ onNavigate }: { onNavigate: (page: string, d
           <div className={s.basTel}>
             {liste.length ? (
               <div className={s.carrousel} ref={carrousel} onScroll={surGlisse}>
+                {/* Des fiches d'une ligne (V3.28) : qui ou quoi, son étiquette et
+                    sa rue ; à droite, appeler (ou l'itinéraire) et la fiche. La
+                    carte garde presque tout l'écran. */}
                 {liste.slice(0, 60).map(p => (
                   <div key={p.id} data-id={p.id} className={`${s.carteTel} ${sel === p.id ? s.carteTelSel : ''}`}
+                    style={{ '--c': p.couleur } as React.CSSProperties}
                     onClick={() => { if (sel !== p.id) choisir(p.id, { voler: true }); }}>
-                    {p.genre === 'bien' && <div className={s.carteTelImg} style={p.photo ? { backgroundImage: `url(${p.photo})` } : undefined}>{!p.photo && <Ic n="maison" t={20} />}</div>}
-                    <div className={s.carteTelCorps}>{carteDeVisite(p, true)}</div>
+                    {p.genre === 'bien'
+                      ? <span className={s.telVign} style={p.photo ? { backgroundImage: `url(${p.photo})` } : undefined}>{!p.photo && <Ic n="maison" t={17} e={2.1} />}</span>
+                      : p.perso
+                        ? <span className={`${s.telVign} ${s.telVignCle}`}><Ic n="cle" t={16} e={2.1} /></span>
+                        : <AvatarContact c={(p.client || {}) as never} teinte={p.teinte || { bg: p.fond, fg: p.couleur }} taille={40} />}
+                    <span className={s.telTxt}>
+                      <b>{p.titre}</b>
+                      <span><i>{p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette}</i>{` · ${rue(p.adresse)}`}</span>
+                    </span>
+                    <span className={s.telAct}>
+                      {p.tel
+                        ? <a href={`tel:${p.tel.replace(/\s/g, '')}`} aria-label={`Appeler ${p.titre}`} onClick={e => e.stopPropagation()}><Icone nom="tel" taille={16} epaisseur={1.9} /></a>
+                        : <a href={lienItineraire(p.lat, p.lng)} target="_blank" rel="noopener noreferrer" aria-label="Itinéraire" onClick={e => e.stopPropagation()}><Icone nom="envoyer" taille={16} epaisseur={1.9} /></a>}
+                      <button type="button" className={s.telFiche} aria-label={`Ouvrir la fiche de ${p.titre}`}
+                        onClick={e => { e.stopPropagation(); ouvrirFiche(p); }}><Ic n="droite" t={17} e={2.3} /></button>
+                    </span>
                   </div>
                 ))}
               </div>

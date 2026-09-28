@@ -294,8 +294,17 @@
 /* ═══ Téléphone ═══ */
 .pageTel { height: auto; min-height: 0; }
 .pageTel .fond { inset: 0; border-radius: 0; border: none; box-shadow: none; }
-.hautTel { position: absolute; z-index: 3; top: 10px; left: 0; right: 0; display: flex; flex-direction: column; gap: 7px; }
-.chercheTel { margin: 0 12px; height: 42px; box-shadow: 0 10px 24px -14px rgba(15, 23, 42, .55); border-color: white; }
+.hautTel { position: absolute; z-index: 3; top: calc(10px + env(safe-area-inset-top, 0px)); left: 0; right: 0; display: flex; flex-direction: column; gap: 7px; }
+/* Le menu et la recherche, sur une ligne (V3.28 : la barre du haut du CRM
+   est masquée sur la carte du téléphone). */
+.rangTel { display: flex; gap: 8px; margin: 0 12px; }
+.menuTel {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 13px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--emilio-fond, #2e4166); color: #f0dc9c;
+  box-shadow: 0 10px 24px -14px rgba(15, 23, 42, .6);
+}
+.chercheTel { flex: 1; min-width: 0; margin: 0; height: 42px; box-shadow: 0 10px 24px -14px rgba(15, 23, 42, .55); border-color: white; }
 .bandeTel { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 4px; scrollbar-width: none; }
 .bandeTel::-webkit-scrollbar { display: none; }
 .bandeTel .puce { flex-shrink: 0; height: 32px; box-shadow: 0 6px 14px -10px rgba(15, 23, 42, .5); border-color: white; }
@@ -303,7 +312,7 @@
 .puceInfo { color: #7a5d1c !important; background: #fdf8ec !important; border-color: #ecd9a4 !important; }
 .sansTel { margin: 0 12px; padding: 4px 12px 12px; border-radius: 14px; background: white; box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55); max-height: 45vh; overflow-y: auto; }
 .sansTel .rappel { border-top: none; margin-top: 8px; }
-.outilsTel { position: absolute; z-index: 3; right: 12px; bottom: 196px; display: flex; flex-direction: column; gap: 8px; }
+.outilsTel { position: absolute; z-index: 3; right: 12px; bottom: 90px; display: flex; flex-direction: column; gap: 8px; }
 .outilsTel button {
   width: 42px; height: 42px; border-radius: 14px; border: none; background: white; color: var(--emilio);
   display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 24px -12px rgba(15, 23, 42, .55);
@@ -315,24 +324,31 @@
 }
 .carrousel::-webkit-scrollbar { display: none; }
 .carteTel {
-  flex: 0 0 min(300px, calc(100vw - 56px)); scroll-snap-align: center;
-  display: flex; background: white; border-radius: 18px; overflow: hidden; border: 2px solid transparent;
-  box-shadow: 0 14px 30px -18px rgba(15, 23, 42, .6);
+  flex: 0 0 min(300px, calc(100vw - 64px)); scroll-snap-align: center;
+  display: flex; align-items: center; gap: 10px; height: 62px; padding: 0 8px 0 9px; box-sizing: border-box;
+  background: white; border-radius: 16px; border: 2px solid transparent;
+  box-shadow: 0 12px 26px -16px rgba(15, 23, 42, .6);
   transition: border-color .2s, transform .2s;
+  -webkit-tap-highlight-color: transparent;
 }
+.carteTel:active { transform: scale(.985); }
 .carteTelSel { border-color: #c9a84c; }
-.carteTelImg { width: 88px; flex-shrink: 0; background: linear-gradient(135deg, #dfe6f0, #c9d5e4 60%, #b7c6d9) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: #8da0b8; }
-.carteTelCorps { flex: 1; min-width: 0; }
-.carteTelCorps .ficheCorps { padding: 10px 12px 11px; gap: 3px; }
-.carteTelCorps .ficheTitre { font-size: 14px; padding-right: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.carteTelCorps .fichePrix { font-size: 15px; }
-.carteTelCorps .ficheLigne { font-size: 12px; }
-.carteTelCorps .ficheLigne > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.carteTelCorps .ficheBoutons { margin-top: 5px; }
-.carteTelCorps .btnPlein, .carteTelCorps .btn { height: 33px; font-size: 12.5px; }
-.carteTelCorps .btn:last-child:not(:nth-child(2)) { flex: 0 0 38px; }
-.carteTelCorps .ficheQui { padding-right: 0; }
-.carteTelCorps .ficheQui b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.telVign {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 11px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: white;
+  background: var(--c) center / cover no-repeat;
+}
+.telVignCle { border-radius: 50%; }
+.telTxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
+.telTxt b { font: 700 13.5px 'Plus Jakarta Sans', sans-serif; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.telTxt > span { font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.telTxt i { font-style: normal; font-weight: 700; color: color-mix(in srgb, var(--c) 80%, black); }
+.telAct { flex: 0 0 auto; display: flex; gap: 6px; }
+.telAct a, .telAct button {
+  width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid #e3e8f0; background: white; color: var(--emilio); text-decoration: none; cursor: pointer; padding: 0;
+}
+.telAct .telFiche { border: none; background: var(--emilio); color: white; }
 .videTel { margin: 0 14px; padding: 13px 16px; border-radius: 16px; background: white; font-size: 13px; color: #64748b; text-align: center; box-shadow: 0 14px 30px -18px rgba(15, 23, 42, .6); }
-.pageTel .progres { top: 108px; }
-.pageTel .message { bottom: 200px; }
+.pageTel .progres { top: calc(112px + env(safe-area-inset-top, 0px)); }
+.pageTel .message { bottom: 96px; }
