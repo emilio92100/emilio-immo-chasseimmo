@@ -209,4 +209,5 @@ button:active:not(:disabled) { transform: scale(.985); }
 .bouton-carte-sombre { background: rgba(255,255,255,.08); border-color: rgba(201,168,76,.45); color: #e3c872; }
 .bouton-carte-sombre:hover { background: rgba(201,168,76,.16); border-color: #c9a84c; color: #f1d98a; }
 /* Sur le téléphone de la rubrique Carte : sous la recherche et les filtres. */
-.carte-mention-sous-filtres { right: 10px; top: 102px; }
+/* V3.28 : sous « Mes contacts » et « Mes biens ». */
+.carte-mention-sous-filtres { right: 12px; top: calc(114px + env(safe-area-inset-top, 0px)); }
