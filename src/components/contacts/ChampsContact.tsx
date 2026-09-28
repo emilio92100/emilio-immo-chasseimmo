@@ -8,7 +8,7 @@ import {
   METIERS, STATUTS_PRO, TYPES_CONTACT, colonneContactAbsente, ligneContact, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
-import { etapeDe } from '@/lib/biens-vente';
+import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import BlocRepliable from '@/components/documents/BlocRepliable';
 import sd from '@/components/documents/Documents.module.css';
@@ -120,32 +120,32 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
             ))}
           </div>
           <div className={cls.row}>
-            <Champ cls={cls} lib={pro.statutPro === 'mandataire' ? 'Son nom commercial ou son agence' : 'L’agence'} v={pro.agence} onV={set('agence')} ph="Ex : Agence du Parc" />
+            <Champ cls={cls} lib={pro.statutPro === 'mandataire' ? 'Son nom commercial ou son agence' : 'L’agence'} v={pro.agence} onV={set('agence')} />
             {pro.statutPro === 'mandataire'
-              ? <Champ cls={cls} lib="Son réseau" v={pro.reseau} onV={set('reseau')} ph="IAD, SAFTI, Capifrance…" />
-              : <Champ cls={cls} lib="Site internet" v={pro.siteWeb} onV={set('siteWeb')} ph="facultatif" />}
+              ? <Champ cls={cls} lib="Son réseau" v={pro.reseau} onV={set('reseau')} />
+              : <Champ cls={cls} lib="Site internet · facultatif" v={pro.siteWeb} onV={set('siteWeb')} />}
           </div>
-          <Champ cls={cls} lib="Adresse de l’agence" v={pro.adresseAgence} onV={set('adresseAgence')} ph="12 avenue Victor Hugo, 92100 Boulogne-Billancourt" />
+          <Champ cls={cls} lib="Adresse de l’agence" v={pro.adresseAgence} onV={set('adresseAgence')} />
         </div>
       ))}
       {types.includes('notaire') && bloc('Son étude', (
         <div className={c.pro}>
           <div className={cls.row}>
-            <Champ cls={cls} lib="L’étude" v={pro.etude} onV={set('etude')} ph="Ex : Étude Durand & associés" />
-            <Champ cls={cls} lib="Adresse de l’étude" v={pro.adresseEtude} onV={set('adresseEtude')} ph="3 rue de Paris, 92100 Boulogne" />
+            <Champ cls={cls} lib="L’étude" v={pro.etude} onV={set('etude')} />
+            <Champ cls={cls} lib="Adresse de l’étude" v={pro.adresseEtude} onV={set('adresseEtude')} />
           </div>
           <div className={cls.row}>
-            <Champ cls={cls} lib="Son clerc ou assistant(e)" v={pro.clerc} onV={set('clerc')} ph="facultatif" />
-            <Champ cls={cls} lib="Son téléphone" v={pro.clercTel} onV={set('clercTel')} ph="facultatif" />
+            <Champ cls={cls} lib="Son clerc ou assistant(e) · facultatif" v={pro.clerc} onV={set('clerc')} />
+            <Champ cls={cls} lib="Son téléphone · facultatif" v={pro.clercTel} onV={set('clercTel')} />
           </div>
         </div>
       ))}
       {types.includes('gardien') && bloc('L’immeuble', (
         <div className={c.pro}>
-          <Champ cls={cls} lib="L’immeuble" v={pro.immeuble} onV={set('immeuble')} ph="Ex : 12 rue de Silly, 92100 Boulogne" />
+          <Champ cls={cls} lib="Adresse de l’immeuble" v={pro.immeuble} onV={set('immeuble')} />
           <div className={cls.row}>
-            <Champ cls={cls} lib="Horaires de la loge" v={pro.horaires} onV={set('horaires')} ph="Ex : 8 h – 12 h, 15 h – 19 h" />
-            <Champ cls={cls} lib="Accès, clés" v={pro.acces} onV={set('acces')} ph="Ex : loge au fond de la cour" />
+            <Champ cls={cls} lib="Horaires de la loge · facultatif" v={pro.horaires} onV={set('horaires')} />
+            <Champ cls={cls} lib="Accès, clés · facultatif" v={pro.acces} onV={set('acces')} />
           </div>
         </div>
       ))}
@@ -157,8 +157,8 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
             ))}
           </div>
           <div className={cls.row}>
-            <Champ cls={cls} lib="Son métier" v={pro.metier} onV={set('metier')} ph="Ou écris-le" />
-            <Champ cls={cls} lib="Sa société" v={pro.societe} onV={set('societe')} ph="facultatif" />
+            <Champ cls={cls} lib="Son métier" v={pro.metier} onV={set('metier')} />
+            <Champ cls={cls} lib="Sa société · facultatif" v={pro.societe} onV={set('societe')} />
           </div>
         </div>
       ))}
@@ -167,14 +167,34 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
 }
 
 /* ── Les biens d'un contact (rubrique Biens) ── */
-export type BienDuContact = { id: string; client_id: string | null; etape: string; titre: string | null; ville: string | null; prix: number | null; archive?: boolean | null };
+export type BienDuContact = {
+  id: string; client_id: string | null; etape: string; titre: string | null; ville: string | null; prix: number | null; archive?: boolean | null;
+  /* Lus par « Ses biens » seulement (la liste des contacts n'en a pas besoin). */
+  photo?: string | null; donnees?: Record<string, unknown> | null;
+};
+/* Un bien, déplié sous « Ses biens » : sa photo, de quoi le reconnaître
+   (pièces, surface, ville, prix) et son étape. Un clic ouvre sa fiche. */
 export function LigneBien({ b, onClick }: { b: BienDuContact; onClick: () => void }) {
   const e = etapeDe(b.etape);
+  const d = (b.donnees || {}) as Parameters<typeof specsBien>[0];
+  const photo = b.photo || lirePhotos((d as Record<string, unknown>).photos)[0]?.url || '';
+  const titre = b.titre || titreBien(d);
+  /* Les pièces et la surface, si le titre ne les dit pas déjà. */
+  const surf = (d as Record<string, unknown>).surface;
+  const specs = surf && titre.includes(String(surf)) ? '' : specsBien(d);
+  const infos = [specs, b.ville, b.prix ? euros(b.prix) : ''].filter(Boolean).join(' · ');
   return (
-    <button type="button" className={c.bienMini} onClick={ev => { ev.stopPropagation(); onClick(); }}>
-      <Ic n="maison" t={14} />
-      <span><b>{b.titre || 'Bien'}</b>{(b.ville || b.prix) && <small>{[b.ville, b.prix ? euros(b.prix) : ''].filter(Boolean).join(' · ')}</small>}</span>
-      <span className={c.etapeB} style={{ color: e.c }}><span className={c.point} style={{ background: e.c, display: 'inline-block', marginRight: 5 }} />{e.court}</span>
+    <button type="button" className={c.bienCarte} onClick={ev => { ev.stopPropagation(); onClick(); }} title="Ouvrir la fiche du bien">
+      <span className={c.bienPhoto}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {photo ? <img src={photo} alt="" /> : <Ic n="maison" t={18} />}
+      </span>
+      <span className={c.bienTxt}>
+        <b>{titre || 'Bien'}</b>
+        {infos && <small>{infos}</small>}
+        <em style={{ color: e.c }}><i style={{ background: e.c }} />{e.court}</em>
+      </span>
+      <span className={c.bienVoir}><Ic n="droite" t={15} e={2.2} /></span>
     </button>
   );
 }
@@ -189,7 +209,7 @@ export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false,
   const [biens, setBiens] = useState<BienDuContact[] | null>(null);
   useEffect(() => {
     let vivant = true;
-    supabase.from('biens_vente').select('id, client_id, etape, titre, ville, prix, archive').eq('client_id', clientId).order('updated_at', { ascending: false })
+    supabase.from('biens_vente').select('*').eq('client_id', clientId).order('updated_at', { ascending: false })
       .then(({ data, error }) => { if (vivant) setBiens(error ? [] : (data || []) as BienDuContact[]); });
     return () => { vivant = false; };
   }, [clientId]);

@@ -11,6 +11,11 @@ import { Ic } from '@/components/documents/ApercuActe';
 import FicheClient from '@/components/fiche/FicheClient';
 import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne } from './ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
+import FriseSuivi from '@/components/fiche/FriseSuivi';
+import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
+import FenetreAction, { supprimerActionContact } from './FenetreAction';
+import CarteASavoir from './CarteASavoir';
+import ChoixSource from './ChoixSource';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -49,7 +54,10 @@ type Form = {
   types: TypeContact[]; civilite: string; prenom: string; nom: string;
   tel1: string; tel2: string; email1: string; email2: string; adresse: string; pro: InfosPro;
   couple: boolean; c2_civilite: string; c2_prenom: string; c2_nom: string; c2_email: string; c2_tel: string;
+  source: string; source_detail: string;
 };
+/* D'où vient le contact (V3.23, outils/sql/source-contact.sql). */
+type AvecSource = { source?: string | null; source_detail?: string | null };
 const formDe = (x: Client): Form => {
   const j = conjointDe(x.conjoint);
   return {
@@ -57,6 +65,7 @@ const formDe = (x: Client): Form => {
     tel1: x.telephones?.[0] || '', tel2: x.telephones?.[1] || '', email1: x.emails?.[0] || '', email2: x.emails?.[1] || '',
     adresse: x.adresse || '', pro: lirePro(x.pro),
     couple: !!x.couple, c2_civilite: j?.civilite || '', c2_prenom: j?.prenom || '', c2_nom: j?.nom || '', c2_email: j?.email || '', c2_tel: j?.telephone || '',
+    source: (x as AvecSource).source || '', source_detail: (x as AvecSource).source_detail || '',
   };
 };
 
@@ -68,10 +77,18 @@ function Li({ ic, l, v }: { ic: string; l: string; v?: string | null }) {
 function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
   const [x, setX] = useState<Client>(depart);
   const [edit, setEdit] = useState<Form | null>(null);
-  const [notes, setNotes] = useState(depart.notes || '');
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
-  const [journal, setJournal] = useState<{ id: string; titre: string; created_at: string }[]>([]);
+  /* Le suivi (V3.23) : tout le journal du contact, et ses relances en attente.
+     Un contact qui n'est pas acheteur n'a pas de recherche : tout est sur
+     `client_id`, `recherche_id` vide. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [journal, setJournal] = useState<any[]>([]);
+  const [relances, setRelances] = useState<{ id: string; date_echeance: string; note: string | null; recherche_id?: string | null }[]>([]);
+  const [filtre, setFiltre] = useState('tout');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [action, setAction] = useState<{ edition: any | null; type: 'note' | 'appel' } | null>(null);
+  const [tour, setTour] = useState(0);
   const types = typesDe(x);
   const pro = lirePro(x.pro);
   const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
@@ -80,10 +97,14 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
 
   useEffect(() => {
     let vivant = true;
-    supabase.from('journal').select('id, titre, created_at').eq('client_id', depart.id).order('created_at', { ascending: false }).limit(8)
-      .then(({ data }) => { if (vivant) setJournal((data || []) as { id: string; titre: string; created_at: string }[]); });
+    supabase.from('journal').select('*').eq('client_id', depart.id).order('created_at', { ascending: false })
+      .then(({ data }) => { if (vivant) setJournal(data || []); });
+    supabase.from('relances').select('id, date_echeance, note, recherche_id').eq('client_id', depart.id).eq('statut', 'en_attente')
+      .order('date_echeance', { ascending: true })
+      .then(({ data }) => { if (vivant) setRelances(data || []); });
     return () => { vivant = false; };
-  }, [depart.id]);
+  }, [depart.id, tour]);
+  const recharger = () => setTour(t => t + 1);
 
   async function ecrire(patch: Record<string, unknown>, quoi: string): Promise<Client | null> {
     setErreur('');
@@ -118,8 +139,17 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       telephones: [edit.tel1, edit.tel2].map(s => s.trim()).filter(Boolean), emails: [edit.email1, edit.email2].map(s => s.trim().toLowerCase()).filter(Boolean),
       adresse: edit.adresse.trim() || null, pro: edit.pro, ...foyer,
     }, 'La fiche n’a pas pu être enregistrée');
+    if (!r) { setOccupe(false); return; }
+    /* La source s'écrit à part, et seulement si elle a changé : avant le SQL
+       « source-contact », la colonne n'existe pas et le reste doit passer. */
+    const avant = x as AvecSource;
+    if ((avant.source || '') !== edit.source || (avant.source_detail || '') !== edit.source_detail.trim()) {
+      const src = { source: edit.source || null, source_detail: edit.source ? (edit.source_detail.trim() || null) : null };
+      const { error: eSrc } = await supabase.from('clients').update(src).eq('id', x.id);
+      if (eSrc) { setOccupe(false); setErreur(colonneSourceAbsente(eSrc.message) ? MESSAGE_SQL_SOURCE : `La source : ${eSrc.message}`); return; }
+      setX({ ...r, ...src } as Client);
+    }
     setOccupe(false);
-    if (!r) return;
     setEdit(null);
     /* Devenu acheteur : il passe sur la fiche d'acheteur. */
     if (estAcheteur(r)) onNavigate('fiche', r);
@@ -172,6 +202,9 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           <h1 className={c.heroNom}>{nomFoyer(x) || 'Sans nom'}</h1>
           <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />
           {ligne && <div className={c.heroLigne}>{ligne}</div>}
+          {libelleSource((x as AvecSource).source, (x as AvecSource).source_detail) && (
+            <div className={c.heroSource}><Ic n="drapeau" t={13} /><span>{'Source : '}<b>{libelleSource((x as AvecSource).source, (x as AvecSource).source_detail)}</b></span></div>
+          )}
           <div className={c.heroCoord}>
             {j2 && <em>{x.prenom || 'Personne 1'}</em>}
             {tels.map(t => <a key={t} href={`tel:${t.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />{t}</a>)}
@@ -274,21 +307,48 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           ) : null}
         </div>
         <div className={c.col}>
-          <section className={c.bloc}>
-            <div className={c.blocT}><span className={c.blocIc}><Ic n="cadenas" t={15} /></span><h3>Notes</h3></div>
-            <textarea className={c.notes} value={notes} placeholder={`Ce qu’il faut retenir sur ${x.prenom || 'ce contact'} : comment vous vous êtes connus, ce qu’il a dit, ce qu’il ne faut pas oublier…`}
-              onChange={e => setNotes(e.target.value)} onBlur={() => { if (notes !== (x.notes || '')) void ecrire({ notes: notes.trim() || null }, 'Les notes n’ont pas pu être enregistrées'); }} />
-            <div className={c.pied}>Visibles par toi seul. Enregistrées quand tu cliques ailleurs.</div>
-          </section>
-          <section className={c.bloc}>
-            <div className={c.blocT}><span className={c.blocIc}><Ic n="historique" t={15} /></span><h3>Historique</h3></div>
-            {journal.length ? journal.map(j => (
-              <div key={j.id} className={c.evt}><span>{j.titre}</span><small>{new Date(j.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</small></div>
-            )) : <div className={c.pied}>{`Contact ajouté le ${new Date(x.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}.`}</div>}
-          </section>
+          {/* Ce qu'il faut retenir sur lui (V3.23) : la même carte que sur la
+              fiche d'un acheteur. L'ancien « Historique » est devenu le suivi,
+              en dessous, sur toute la largeur. */}
+          <CarteASavoir prenom={x.prenom || ''} texte={x.notes}
+            onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
           <div className={c.pied} style={{ textAlign: 'right' }}>{`${principal.lib} · ${x.reference}`}</div>
         </div>
       </div>
+
+      {(() => {
+        /* Le suivi (V3.23) : la frise des acheteurs, sans Veille ni Sélection.
+           Appels, rendez-vous, notes, envois ; le reste (contact créé, types
+           changés…) en lignes discrètes. */
+        const GR: Record<string, string[]> = { appel: ['appel'], rdv: ['rdv', 'rdv_planifie'], note: ['note'], communications: ['email_libre', 'envoi_externe', 'mail_envoye'] };
+        const manuels = Object.values(GR).flat();
+        const items = journal.map(j => ({ kind: 'event' as const, ts: j.created_at as string, data: j }));
+        const vus = filtre === 'tout' ? items
+          : filtre === 'systeme' ? items.filter(i => !manuels.includes(i.data.type))
+            : items.filter(i => (GR[filtre] || []).includes(i.data.type));
+        const comptes: Record<string, number> = { tout: items.length, systeme: items.filter(i => !manuels.includes(i.data.type)).length };
+        for (const [k, t] of Object.entries(GR)) comptes[k] = items.filter(i => t.includes(i.data.type)).length;
+        return (
+          <section className={c.suiviBande}>
+            <div className={c.suiviTete}><b>Le suivi</b><span>{`tout ce qui s’est passé avec ${x.prenom || 'ce contact'}`}</span></div>
+            <div className={c.suiviCorps}>
+              <FriseSuivi titre="Historique" filtresVisibles={['tout', 'appel', 'rdv', 'note', 'communications', 'systeme']}
+                items={vus} filtre={filtre} comptes={comptes} onFiltre={setFiltre}
+                aVenir={relances} relancesAtt={relances} biens={[]} nomAutreRecherche={() => null} surligne={null}
+                modifiable={j => ['appel', 'rdv', 'note', 'email_libre', 'envoi_externe', 'relance_manuelle'].includes(j.type)}
+                onModifier={j => setAction({ edition: j, type: 'note' })}
+                onSupprimer={async j => { if (await supprimerActionContact(j, x.id)) recharger(); }}
+                onAjouter={() => setAction({ edition: null, type: 'note' })}
+                onAppel={() => setAction({ edition: null, type: 'appel' })} />
+            </div>
+          </section>
+        );
+      })()}
+
+      {action && (
+        <FenetreAction clientId={x.id} prenom={x.prenom || ''} edition={action.edition} typeInitial={action.type}
+          onFermer={() => setAction(null)} onFait={() => { setAction(null); recharger(); }} />
+      )}
 
       {edit && (
         <div className={c.fen} onClick={e => { if (e.target === e.currentTarget && !occupe) setEdit(null); }}>
@@ -335,6 +395,10 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 </div>
               )}
               <ChampsPro types={edit.types} pro={edit.pro} onChange={p => setEdit({ ...edit, pro: p })} cls={cls} />
+              <div className={c.groupe}>
+                <div className={c.groupeT}>{'D’où vient ce contact ?'}<em className={c.facult} style={{ textTransform: 'none', letterSpacing: 0 }}>{' · facultatif'}</em></div>
+                <ChoixSource source={edit.source} detail={edit.source_detail} onChange={(so, de) => setEdit({ ...edit, source: so, source_detail: de })} />
+              </div>
               {erreur && <div className={c.erreur}>{erreur}</div>}
             </div>
             <div className={c.fenPied}>

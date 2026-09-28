@@ -87,7 +87,7 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 @media (max-width: 1180px) {
   .lJoindre { display: none; }
 }
-.biensMini { display: flex; flex-direction: column; gap: 5px; padding-top: 9px; border-top: 1px solid #f1f4f8; }
+.biensMini { display: flex; flex-direction: column; gap: 8px; padding-top: 9px; border-top: 1px solid #f1f4f8; }
 .bienMini { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border-radius: 10px; border: 1px solid #eef1f6; background: #fbfcfe; font: 600 12.5px 'DM Sans', sans-serif; color: var(--emilio); cursor: pointer; text-align: left; }
 .bienMini:hover { border-color: #ecdcb0; background: #fdfaf2; }
 .bienMini > span:nth-child(2) { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -95,6 +95,19 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .bienMini > span:nth-child(2) > b { font-weight: 700; }
 .bienMini > span:nth-child(2) > small { font-size: 11.5px; font-weight: 500; color: #8593a8; }
 .point { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+/* « Ses biens », déplié : une carte par bien, photo à gauche, un clic l'ouvre. */
+.bienCarte { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px 8px 8px; border-radius: 13px; border: 1px solid #e9eef4; background: white; cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif; color: var(--emilio); transition: border-color .15s, box-shadow .15s, background .15s; }
+.bienCarte:hover { border-color: #ecdcb0; background: #fdfaf2; box-shadow: 0 8px 18px -14px rgba(26,35,50,.5); }
+.bienPhoto { flex-shrink: 0; width: 74px; height: 56px; border-radius: 10px; overflow: hidden; background: #fbf6e9; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; }
+.bienPhoto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bienTxt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bienTxt b { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bienTxt small { font-size: 12.5px; color: #7b8799; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bienTxt em { font-style: normal; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; margin-top: 1px; }
+.bienTxt em i { width: 7px; height: 7px; border-radius: 50%; }
+.bienVoir { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #f4f6f9; color: #8593a8; display: inline-flex; align-items: center; justify-content: center; }
+.bienCarte:hover .bienVoir { background: var(--emilio-fond); color: #e3c872; }
+@media (max-width: 560px) { .bienPhoto { width: 60px; height: 48px; } .bienTxt small { white-space: normal; } }
 .etapeB { font-size: 11.5px; font-weight: 800; white-space: nowrap; }
 .vide { padding: 30px 20px; text-align: center; border: 1.5px dashed #e3e8f0; border-radius: 16px; color: #94a3b8; font-size: 13.5px; line-height: 1.55; background: white; }
 .vide b { display: block; font-size: 15px; color: var(--emilio); margin-bottom: 3px; }
@@ -192,3 +205,63 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
   .actions .masquable { display: none; }
   .in { font-size: 16px; }
 }
+
+/* ── V3.23 — « D'où vient ce contact ? » (ChoixSource) ── */
+.src { display: flex; flex-direction: column; gap: 12px; }
+.srcGrille { display: flex; flex-direction: column; gap: 10px; }
+.srcFam { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; align-items: start; }
+.srcFamT { font: 800 10.5px 'DM Sans', sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: #94a3b8; padding-top: 11px; }
+.srcChips { display: flex; flex-wrap: wrap; gap: 7px; }
+.srcChip { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 13px 0 7px; border-radius: 11px; border: 1.5px solid #e6ebf2; background: white; font: 700 13.5px 'DM Sans', sans-serif; color: #465569; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.srcChip:hover { border-color: #d5dde8; color: var(--emilio); }
+.srcIc { width: 26px; height: 26px; border-radius: 8px; background: #f1f4f8; color: #64748b; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.srcChipOn { border-color: #c9a84c; background: #fdf8ec; color: #7a5d1c; }
+.srcChipOn .srcIc { background: #c9a84c; color: white; }
+.srcDetail { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; padding: 12px 14px; border-radius: 12px; background: #fdf8ec; border: 1px solid #efdfb4; }
+.facult { font-style: normal; font-weight: 600; color: #94a3b8; }
+.pillOr { border-color: #c9a84c; background: var(--emilio-fond, #2e4166); color: #f2dfa6; }
+@media (max-width: 640px) {
+  .srcFam { grid-template-columns: 1fr; gap: 6px; }
+  .srcFamT { padding-top: 0; }
+  .srcFamT:empty { display: none; }
+  .srcChip { height: 36px; font-size: 13px; }
+}
+
+/* ── V3.23 — « À savoir sur… » (CarteASavoir) ── */
+.asv { display: flex; gap: 14px; align-items: flex-start; background: white; border: 1px solid #ecdcb0; border-left: 4px solid #c9a84c; border-radius: 16px; padding: 14px 18px; box-shadow: 0 1px 3px rgba(15,23,42,.03); min-width: 0; }
+.asvIc { flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; }
+.asvCorps { flex: 1 1 auto; min-width: 0; }
+.asvTete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.asvTete b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.asvTete > span { font-size: 12px; font-weight: 600; color: #94a3b8; }
+.asvModif { margin-left: auto; border: none; background: none; padding: 0; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.asvModif:hover { text-decoration: underline; text-underline-offset: 3px; }
+.asvTexte { margin: 6px 0 0; font-size: 14px; line-height: 1.65; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; }
+.asvBoutons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.asvVide { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; border-radius: 14px; border: 1.5px dashed #e3d4a8; background: #fffdf8; cursor: pointer; font: 700 13.5px 'DM Sans', sans-serif; color: #8a6a1f; text-align: left; }
+.asvVide em { font-style: normal; font-weight: 600; color: #b3a07a; }
+.asvVide .asvIc { width: 30px; height: 30px; border-radius: 9px; }
+.asvVide:hover { background: #fdf8ec; border-color: #d9c48c; }
+
+/* ── V3.23 — noter une action (FenetreAction) ── */
+.actTypes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.actType { display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 11px; border: 1.5px solid #e6ebf2; background: white; font: 700 13px 'DM Sans', sans-serif; color: #52607a; cursor: pointer; text-align: left; }
+.actType svg { color: #94a3b8; }
+.actTypeOn { background: var(--emilio-fond, #2e4166); border-color: var(--emilio-fond, #2e4166); color: white; }
+.actTypeOn svg { color: #e3c872; }
+.actIssues { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
+.actIssue { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 8px; border-radius: 11px; border: 1.5px solid #e3e8f0; background: white; font: 700 13px 'DM Sans', sans-serif; color: #52607a; cursor: pointer; white-space: nowrap; }
+.actIssue i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.actRelance { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 12px; background: #fbfcfe; border: 1px solid #eef2f7; }
+.actRelance[data-pose='oui'] { background: #fffbf4; border-color: #ecdcb4; }
+.actRelanceT { display: inline-flex; align-items: center; gap: 7px; font: 800 11.5px 'DM Sans', sans-serif; letter-spacing: .6px; text-transform: uppercase; color: #8593a8; }
+
+/* ── V3.23 — le suivi d'un contact (FicheContact) ── */
+.suiviBande { border-radius: 16px; overflow: hidden; border: 1px solid #e3e8f0; background: #f7f9fc; }
+.suiviTete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px 18px; background: linear-gradient(105deg, #3d5878 0%, #4d6f95 100%); }
+.suiviTete b { font: 800 13px 'DM Sans', sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: #e3c872; }
+.suiviTete span { font-size: 13px; color: rgba(255,255,255,.72); }
+.suiviCorps { padding: 18px; background: white; margin: 14px; border-radius: 14px; border: 1px solid #e3e8f0; }
+@media (max-width: 720px) { .suiviCorps { margin: 10px; padding: 14px 12px; } }
+.heroSource { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,.7); }
+.heroSource b { color: #e3c872; font-weight: 700; }
