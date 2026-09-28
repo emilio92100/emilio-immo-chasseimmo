@@ -24,6 +24,7 @@ import {
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
+import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
@@ -993,6 +994,18 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 }) {
   const [bien, setBien] = useState<BienVente>(depart);
   useEffect(() => { setBien(depart); }, [depart]);
+  /* La barre des fiches ouvertes (en bas de l'écran) : ce bien y prend
+     place, et s'y allume tant qu'il est à l'écran. */
+  const titreBarre = titreBien(bien.donnees || {});
+  const villeBarre = txt(bien.donnees || {}, 'ville') || bien.ville || '';
+  const photoBarre = lirePhotos((bien.donnees || {}).photos)[0]?.url || null;
+  useEffect(() => {
+    signalerFicheOuverte({ k: 'bien', id: bien.id, titre: titreBarre, sous: villeBarre || bien.reference || undefined, photo: photoBarre });
+  }, [bien.id, titreBarre, villeBarre, photoBarre, bien.reference]);
+  useEffect(() => {
+    signalerBienActif(bien.id);
+    return () => signalerBienActif(null);
+  }, [bien.id]);
   const [detail, setDetail] = useState<DetailBien | null>(null);
   const [erreur, setErreur] = useState('');
   const [onglet, setOnglet] = useState<Onglet>('apercu');
@@ -1182,8 +1195,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           {avant && <button type="button" className={`${s.btn} ${b.btnVisite}`} onClick={() => setVisite(true)}><Ic n="tablette" t={16} /><span className={b.etLong}>Visite sur place</span><span className={b.etCourt}>Visite</span></button>}
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => onModifier()}><Ic n="crayon" t={15} />Modifier</button>
           {!avant && <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'visite' })}><Ic n="plus" t={15} e={2.4} />Visite</button>}
+          {/* La note, en un clic : elle était cachée dans « ⋯ ». */}
+          <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'note' })}><Ic n="bulle" t={15} />Note</button>
           <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}>
-            <span className={b.point} style={{ background: et.c, boxShadow: '0 0 0 3px rgba(255,255,255,.18)' }} /><span className={b.etLong}>{et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
+            <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
           </button>
           <button type="button" className={s.btn} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
           {menu && <div className={b.voileMenu} onClick={() => setMenu(null)} />}
@@ -1214,16 +1229,17 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       <Bandeau bien={bien} detail={detail} />
 
-      {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
-      {erreur && <div className={s.erreur}>{erreur}</div>}
-
-      <nav className={b.onglets} aria-label="Rubriques du bien">
+      {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent. */}
+      <nav className={`${b.onglets} ${b.ongletsCheval}`} aria-label="Rubriques du bien">
         {ONGLETS.map(o => (
           <button key={o.k} type="button" className={`${b.onglet} ${onglet === o.k ? b.ongletOn : ''}`} aria-pressed={onglet === o.k} onClick={() => setOnglet(o.k)}>
             <Ic n={o.ic} t={15} />{o.l}{o.n ? <i>{o.n}</i> : null}
           </button>
         ))}
       </nav>
+
+      {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
+      {erreur && <div className={s.erreur}>{erreur}</div>}
 
       {onglet === 'apercu' && (
         <div className={b.col}>
