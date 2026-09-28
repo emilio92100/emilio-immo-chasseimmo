@@ -1424,6 +1424,9 @@ les cases à cocher, la réponse du vendeur, le certificat.
   nouveautés » ; l'onglet « Nouveautés » reste allumé. Quand tout a reçu un avis, la carte le dit.
 - **« Nouveautés » vide** : un seul message (« Rien de nouveau pour le moment », avec une loupe qui
   cherche doucement) au lieu de la phrase sous le titre plus le cadre, qui disaient la même chose.
+  « Vous n'êtes pas en attente » passe à la ligne ; le cadre de la dernière recherche, dessous, est
+  centré lui aussi. Sur téléphone, les titres de rubrique passent à 20 px (icône 40 px) : « Nouveaux
+  biens pour vous » tient sur une ligne.
 
 ### V3.27 — 29 septembre 2026 · la carte de l'espace acheteur, la barre des fiches qu'on range
 
