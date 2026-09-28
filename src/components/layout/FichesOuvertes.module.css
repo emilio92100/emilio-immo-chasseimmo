@@ -105,3 +105,17 @@
 }
 .tenu .ouvrir { cursor: grabbing; }
 .pose .fiche { transition: none !important; }
+
+/* Les fiches qui dépassent s'estompent au bord, sans coupure nette (V3.28). */
+.fonduD { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent); }
+.fonduG { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent); }
+.fonduD.fonduG {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent);
+}
+@media (max-width: 900px) {
+  /* Sur téléphone, la bande va jusqu'au bord arrondi : ce qui dépasse passe
+     sous l'arrondi, et s'y efface. */
+  .barre { overflow: hidden; }
+  .liste { margin: 0 -6px; padding: 2px 6px; }
+}

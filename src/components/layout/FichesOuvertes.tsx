@@ -218,7 +218,9 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
           <b>{cache.gauche}</b>
         </button>
       )}
-      <div className={`${styles.liste} ${glisse?.actif ? styles.enGlisse : ''} ${pose ? styles.pose : ''}`} ref={liste}>
+      {/* Quand des fiches dépassent d'un côté, la bande s'y estompe en douceur
+          au lieu d'être tranchée net (V3.28). */}
+      <div className={`${styles.liste} ${glisse?.actif ? styles.enGlisse : ''} ${pose ? styles.pose : ''} ${cache.droite ? styles.fonduD : ''} ${cache.gauche ? styles.fonduG : ''}`} ref={liste}>
         {fiches.map((f, j) => {
           const on = !!active && active.k === f.k && active.id === f.id;
           const tenu = !!glisse?.actif && glisse.de === j;
