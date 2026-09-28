@@ -1434,6 +1434,17 @@ les cases à cocher, la réponse du vendeur, le certificat.
   hauteur se mesure jusqu'au bas de la zone qui défile, remesurée quand la barre apparaît) — le
   bouton « − » n'est plus mangé ; et l'écran ne défile plus sur la carte (`.surCarte .content`),
   seule la carte bouge. Cadre un peu remonté.
+- **Carte du CRM sur ordinateur, « qui n'est pas sur la carte »** : le bloc (phrase, « N n'y sont
+  pas », liste) ne reste plus affiché sous les filtres. Il s'ouvre au ⓘ de l'en-tête, à côté du
+  bouton qui replie, comme au téléphone : « Qui est sur la carte ? », une phrase, et la liste de
+  ceux qui manquent (un clic ouvre la fiche). Le sous-titre n'est plus que « N adresses sur la
+  carte » (« la liste suit la carte » est déjà dit au pied de la liste).
+- **Le petit message du bas de la carte** apparaissait à droite puis sautait au milieu : il était
+  centré par `transform`, que son animation d'entrée écrasait. Centré désormais par
+  `left/right: 0; margin: auto; width: fit-content`. Il a une icône, un titre et une phrase ; sur
+  une pastille pâle : « En pause : 0 sur la carte », pourquoi, et « Voir lesquels », qui ouvre le ⓘ
+  resserré sur cette catégorie (« Voir les N qui manquent » pour élargir). Au téléphone, toute la
+  largeur, au-dessus des fiches, par-dessus les deux boutons ronds.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
