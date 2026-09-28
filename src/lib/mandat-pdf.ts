@@ -1158,34 +1158,41 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   const faits = sgn ? sgn.filter(x => x.le) : [];
   const attendus = sgn ? sgn.filter(x => !x.le && !x.refus) : [];
   const dernier = faits.map(x => x.le as string).sort().pop() || c.signeLe;
-  const bx = MARGE.g + diam + 20, bw = A4.l - MARGE.d - bx, bh = sgn ? 150 : 138, by = y - bh;
-  dessinerTampon(p, k, MARGE.g + diam / 2, by + bh / 2, diam, { quand: sgn ? dernier : c.signeLe, numero: c.numero, ...(c.doc ? { objet: c.doc.tampon } : {}) });
-  rond(p, bx, by, bw, bh, 10, { color: VERT_FOND, borderColor: VERT_TRAIT, borderWidth: 1 });
-  p.drawCircle({ x: bx + 23, y: by + bh - 23, size: 10, color: VERT });
-  icone(p, 'check', bx + 16, by + bh - 16, 14, BLANC, 2.6);
-  p.drawText(propre(!sgn || !attendus.length ? (c.doc ? 'Document signé et scellé' : 'Mandat signé et scellé') : 'Signatures enregistrées et scellées'), { x: bx + 42, y: by + bh - 27.5, size: 12.5, font: k.g, color: VERT });
+  const bx = MARGE.g + diam + 20, bw = A4.l - MARGE.d - bx;
   const qui = (x: SignataireCertif) => `${x.nom} le ${dateLongue(x.le!)} à ${heureParis(x.le!)}`;
   const phrase = !sgn
     ? `Signé par les deux parties. Le client, ${c.mandant.nom}, a signé le ${dateLongue(c.signeLe)} à ${heureParis(c.signeLe, true)} (heure de Paris).`
     : `Signé par ${faits.map(qui).join(', puis par ')} (heure de Paris).${attendus.length ? ` En attente de la signature de ${attendus.map(x => x.nom).join(' et de ')}.` : ''}`;
-  let yb = texteLibre(p, phrase, bx + 16, by + bh - 50, bw - 30, 9, k.r, VERT, 12);
-  yb -= 4;
   const preuves = c.doc ? [
     'Adresse e-mail de chaque signataire vérifiée par un code à usage unique, reçu sur sa propre adresse',
     c.agenceLe ? `Signé pour l’agence le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Signé pour l’agence par ${id.signataireNom}`,
     'Document scellé : son empreinte, relevée à la signature, révèle toute modification',
     'Un exemplaire est adressé à chaque signataire par e-mail',
   ] : sgn ? [
-    'Identité de chaque signataire vérifiée par un code à usage unique envoyé à sa propre adresse e-mail',
+    /* « Adresse e-mail vérifiée », pas « identité vérifiée » (V3.22) : le code
+       prouve l'accès à la boîte mail, pas l'identité de la personne. */
+    'Adresse e-mail de chaque signataire vérifiée par un code à usage unique, reçu sur sa propre adresse',
     c.agenceLe ? `Offre de l’agence signée le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Mandat signé pour l’agence par ${id.signataireNom}`,
     'Document scellé à chaque signature : toute modification serait détectable',
     'Exemplaire envoyé à chaque signataire par e-mail',
   ] : [
-    'Identité vérifiée par un code à usage unique envoyé par e-mail',
+    'Adresse e-mail du mandant vérifiée par un code à usage unique, reçu sur sa propre adresse',
     c.agenceLe ? `Offre de l’agence signée le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Mandat signé pour l’agence par ${id.signataireNom}`,
     'Document scellé : toute modification serait détectable',
     'Exemplaire complet envoyé au client par e-mail',
   ];
+  /* La hauteur de l'encadré suit ce qu'il contient (V3.22) : avec deux
+     signataires, la phrase et les preuves débordaient sous son bord. */
+  const hPhrase = couper(phrase, k.r, 9, bw - 30).length * 12;
+  const hPreuves = preuves.reduce((t, x) => t + couper(x, k.g, 8.6, bw - 44).length * 11.2 + 2.2, 0);
+  const bh = Math.max(sgn ? 150 : 138, Math.round(50 + hPhrase + 4 + hPreuves - 4.8)), by = y - bh;
+  dessinerTampon(p, k, MARGE.g + diam / 2, by + bh / 2, diam, { quand: sgn ? dernier : c.signeLe, numero: c.numero, ...(c.doc ? { objet: c.doc.tampon } : {}) });
+  rond(p, bx, by, bw, bh, 10, { color: VERT_FOND, borderColor: VERT_TRAIT, borderWidth: 1 });
+  p.drawCircle({ x: bx + 23, y: by + bh - 23, size: 10, color: VERT });
+  icone(p, 'check', bx + 16, by + bh - 16, 14, BLANC, 2.6);
+  p.drawText(propre(!sgn || !attendus.length ? (c.doc ? 'Document signé et scellé' : 'Mandat signé et scellé') : 'Signatures enregistrées et scellées'), { x: bx + 42, y: by + bh - 27.5, size: 12.5, font: k.g, color: VERT });
+  let yb = texteLibre(p, phrase, bx + 16, by + bh - 50, bw - 30, 9, k.r, VERT, 12);
+  yb -= 4;
   for (const t of preuves) {
     icone(p, 'check', bx + 15, yb + 8.4, 9.5, VERT, 2.4);
     yb = texteLibre(p, t, bx + 30, yb, bw - 44, 8.6, k.g, VERT, 11.2) - 2.2;

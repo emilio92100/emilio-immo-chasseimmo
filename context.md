@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.21 · 28 septembre 2026**
+**Version 3.22 · 28 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -857,6 +857,20 @@ iPhone, avertissement Play Protect) sont abandonnées à la demande d'Alexandre.
   trancher avec l'avocat, à la relecture des modèles : on ne touche pas au texte en ligne sans lui
   (il change la version du modèle approuvé).
 
+- **Renforcer la preuve des signatures en ligne** (discuté le 28 septembre). Aujourd'hui : signature
+  électronique **simple** (code à usage unique par e-mail, signature tracée, IP, appareil, heure du
+  serveur, empreinte SHA-256, certificat en dernière page, exemplaire envoyé à chacun). Valable, mais
+  sans présomption de fiabilité : en cas de contestation, c'est à l'agence de la prouver (Cass. 3e civ.,
+  5 mars 2026, n° 24-21.034). Points faibles : l'agence garde seule les preuves, l'heure vient de son
+  serveur, le PDF ne porte pas de sceau cryptographique (le tampon dessiné n'est qu'une image). Pistes,
+  par rapport coût / sécurité : (1) **horodatage qualifié eIDAS** de l'empreinte par un tiers (RFC 3161 ;
+  on n'envoie que l'empreinte ; ex. Datasure : 199 € de mise en place, 49 €/mois, 0,15 € le jeton) —
+  prouve la date **et** l'intégrité ; (2) code SMS en plus du mail ; (3) **cachet électronique** dans le
+  PDF avec un certificat d'autorité (Certigna RGS* logiciel, à partir de 307 € HT/an ; qualifié à partir
+  de 1 303 € HT/an, sur support dédié) — un certificat fabriqué maison serait « identité inconnue »
+  dans Adobe ; (4) Yousign (avancée) pour les documents les plus sensibles. À faire relire par l'avocat
+  avec les modèles.
+
 Réglé le 28 septembre (V3.20) : le mandat de recherche **papier** ne dit plus que le prix se change
 « par un simple e-mail » ; comme le mandat de vente, il ne change que d'un commun accord, par
 avenant écrit signé des parties (l'avenant au mandat de recherche existe depuis la V3.10).
@@ -1387,6 +1401,16 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.22 — 28 septembre 2026 · le certificat de signature dit ce qu'il prouve
+
+- Le certificat du mandat de recherche signé en ligne écrivait « Identité vérifiée par un code à usage
+  unique » : c'était trop fort, le code prouve l'accès à la boîte mail, pas l'identité. Il dit
+  maintenant « Adresse e-mail (du mandant / de chaque signataire) vérifiée par un code à usage unique,
+  reçu sur sa propre adresse », comme les autres documents. Ne vaut que pour les signatures à venir.
+- L'encadré vert du certificat grandit avec son contenu : avec deux signataires, la dernière preuve
+  débordait sous son bord (`pdfSigne`, `mandat-pdf.ts`).
+- Les pistes pour renforcer la preuve (horodatage qualifié, cachet, SMS) sont au §7, « À décider ».
 
 ### V3.21 — 28 septembre 2026 · les montants en entier
 
