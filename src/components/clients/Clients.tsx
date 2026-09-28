@@ -14,7 +14,7 @@ import {
   etapesCriteres, FriseCriteres, lireModeCrit,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
-import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien } from '@/lib/intentions';
+import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
 import {
   TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, typeDe, typesDe,
   type InfosPro, type TypeContact,
@@ -46,11 +46,15 @@ const TEINTE_BANDEAU: Record<TypeContact, string> = {
   acheteur: '#34d399', vendeur: '#e0c57a', proprietaire: '#fb923c', notaire: '#a9bce0',
   confrere: '#b79cff', gardien: '#5fd4e8', partenaire: '#cbd5e1',
 };
+/* L'ordre des tuiles (V3.24) : « Tous », puis les trois du menu de gauche
+   (acheteurs, vendeurs, propriétaires), puis le reste. Une tuile à zéro ne
+   s'affiche pas, sauf si c'est elle qu'on regarde (voir plus bas). */
+const PRINCIPAUX: TypeContact[] = ['acheteur', 'vendeur', 'proprietaire'];
 const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
   { cle: 'tous', lib: 'Tous' },
-  { cle: 'acheteur', lib: 'Acheteurs', couleur: TEINTE_BANDEAU.acheteur },
+  ...PRINCIPAUX.map(k => ({ cle: k as Categorie, lib: typeDe(k).pluriel, couleur: TEINTE_BANDEAU[k] })),
   { cle: 'non_filtre', lib: 'Acheteurs non filtrés', couleur: '#94a3b8' },
-  ...TYPES_CONTACT.filter(t => t.k !== 'acheteur').map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
+  ...TYPES_CONTACT.filter(t => !PRINCIPAUX.includes(t.k)).map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
 ];
 /* L'emoji des blocs propres à un type, dans la fenêtre de création (les
    autres blocs en ont un). */
@@ -421,8 +425,16 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [filtre, setFiltre] = useState('actif');
   /* Les catégories (types de contact) allumées, au-dessus du statut des
      acheteurs. Elles se cumulent : « Acheteurs » + « Propriétaires » montre
-     les deux. « Tous » et « Archivés » sont seuls. */
-  const [cats, setCats] = useState<Categorie[]>(['acheteur']);
+     les deux. « Tous » et « Archivés » sont seuls.
+     V3.24 : on arrive sur « Tous », ou sur la catégorie demandée par le menu
+     de gauche (« Mes vendeurs »…), ou sur celle qu'on avait en quittant la
+     liste pour une fiche. Le menu allume l'entrée de ce qui est affiché. */
+  const [cats, setCats] = useState<Categorie[]>(() => {
+    const v = (vueDemandee('clients') || '').split('+')
+      .filter((k): k is Categorie => k === 'archives' || CATEGORIES.some(x => x.cle === k));
+    return v.length ? v : ['tous'];
+  });
+  useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
   const choisirCat = (k: Categorie) => setCats(l => {
     if (k === 'tous' || k === 'archives') return [k];
     /* « Acheteurs non filtrés » est une partie des acheteurs : l'un remplace
@@ -862,7 +874,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         phrase="Clique plusieurs types pour les voir ensemble."
         label="Filtrer par type de contact" actif={cats} onChoisir={k => choisirCat(k as Categorie)}
         tuiles={[...CATEGORIES, ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
-          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur }))} />
+          /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
+             quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
+             depuis le menu, alors qu'il n'y en a pas encore). */
+          .filter(x => x.cle === 'tous' || nbCat(x.cle) > 0 || cats.includes(x.cle))
+          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur,
+            ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
       {/* LE DOSSIER DES ACHETEURS — leur statut, puis leur situation */}
       {avecAcheteurs && <div className={styles.situations}>
