@@ -62,7 +62,7 @@
 .tel .cadre { position: absolute; inset: 0; }
 .fond { position: absolute !important; inset: 0; }
 
-/* ── Les étiquettes de prix, posées au bord haut de chaque zone ── */
+/* ── Les étiquettes de prix, au milieu de chaque zone ── */
 .env { display: flex; flex-direction: column; align-items: center; cursor: pointer; }
 .pastille {
   display: inline-flex; align-items: center; gap: 6px;

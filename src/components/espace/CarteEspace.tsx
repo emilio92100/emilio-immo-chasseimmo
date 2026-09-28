@@ -38,6 +38,14 @@ type Zone = { id: string; lng: number; lat: number; r: number; niveau: string; e
 type Place = BienCarte & { z: Zone };
 
 const EUR = (n?: number | null) => (n == null ? '' : n.toLocaleString('fr-FR').replace(/[  ]/g, ' ') + ' €');
+/* Le prix court des étiquettes (V3.28) : « 995 k€ », « 1,25 M€ ». Plus de
+   place sur la carte ; le prix entier est sur la fiche, en bas. */
+const PRIX_COURT = (n?: number | null) => {
+  if (!n) return '';
+  if (n >= 1e6) return `${(Math.round(n / 1e4) / 100).toLocaleString('fr-FR')} M€`;
+  if (n >= 1e3) return `${(Math.round(n / 100) / 10).toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, ' ')} k€`;
+  return EUR(n);
+};
 const CLE_VU = 'emilio_carte_vu';
 /* Sous ce zoom, les étiquettes de prix se replient en simples points. */
 const ZOOM_PRIX = 12.9;
@@ -173,10 +181,28 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
       if (parBande.current) { parBande.current = false; return; }
       calculerVue();
     });
-    m.on('click', () => setSel(null));
+    /* Toucher la zone choisit le bien, comme toucher son prix (V3.28). Quand
+       des zones se chevauchent, celle dont le centre est le plus près. */
+    m.on('click', e => {
+      let id: string | null = null, dmin = Infinity;
+      for (const f of m.queryRenderedFeatures(e.point, { layers: ['zones-f'] })) {
+        const p = parIdRef.current.get(String(f.properties?.id));
+        if (!p) continue;
+        const q = m.project([p.z.lng, p.z.lat]);
+        const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
+        if (d < dmin) { dmin = d; id = p.id; }
+      }
+      if (id) choisir(id, true); else setSel(null);
+    });
+    m.on('mousemove', 'zones-f', e => {
+      m.getCanvas().style.cursor = 'pointer';
+      const id = e.features?.[0]?.properties?.id;
+      if (id) setSurvol(String(id));
+    });
+    m.on('mouseleave', 'zones-f', () => { m.getCanvas().style.cursor = ''; setSurvol(null); });
     setCartePrete(true);
     return () => { for (const r of reperes.current.values()) r.remove(); reperes.current.clear(); carte.current = null; };
-  }, [calculerVue]);
+  }, [calculerVue, choisir]);
 
   /* Les zones et leurs étiquettes suivent le filtre, le choix et le survol. */
   useEffect(() => {
@@ -206,17 +232,17 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
         b.setAttribute('aria-label', `${p.titre}${p.prix ? `, ${EUR(p.prix)}` : ''}`);
         const pt = document.createElement('i');
         const t = document.createElement('b');
-        t.textContent = p.z.exact ? p.etiquette : (EUR(p.prix) || p.titre);
+        t.textContent = p.z.exact ? p.etiquette : (PRIX_COURT(p.prix) || p.titre);
         b.append(pt, t);
         env.append(b);
         if (p.z.exact) { const d = document.createElement('span'); d.className = s.point; env.append(d); }
         b.addEventListener('click', ev => { ev.stopPropagation(); choisir(p.id, true); });
         b.addEventListener('mouseenter', () => setSurvol(p.id));
         b.addEventListener('mouseleave', () => setSurvol(x => (x === p.id ? null : x)));
-        /* L'étiquette se pose au bord haut de la zone ; celle d'une visite,
-           sur le point exact. */
-        const lat = p.z.exact ? p.z.lat : p.z.lat + (p.z.r * 0.72) / 111_320;
-        r = new lib.Marker({ element: env, anchor: 'bottom' }).setLngLat([p.z.lng, lat]).addTo(m);
+        /* Le prix se pose au milieu de sa zone (V3.28 : au bord haut, on
+           touchait la zone et rien ne s'ouvrait) ; celui d'une visite, sur
+           le point exact. */
+        r = new lib.Marker({ element: env, anchor: p.z.exact ? 'bottom' : 'center' }).setLngLat([p.z.lng, p.z.lat]).addTo(m);
         reperes.current.set(p.id, r);
       }
       const env = r.getElement();
