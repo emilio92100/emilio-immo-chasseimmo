@@ -495,12 +495,12 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     return () => window.removeEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
   }, []);
 
-  // Autocomplétion d'adresse via l'API officielle adresse.data.gouv.fr
+  // Autocomplétion d'adresse : la Géoplateforme de l'IGN, qui a repris l'API Adresse de data.gouv.fr (V3.26)
   async function searchAdresse(q: string) {
     setForm(f => ({ ...f, adresse_rue: q }));
     if (q.trim().length < 4) { setAdrSug([]); return; }
     try {
-      const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&type=housenumber`);
+      const res = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(q)}&limit=5&type=housenumber`);
       const data = await res.json();
       setAdrSug(data.features || []);
     } catch { setAdrSug([]); }
