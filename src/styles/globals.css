@@ -177,3 +177,36 @@ button:active:not(:disabled) { transform: scale(.985); }
     transition-duration: .01ms !important;
   }
 }
+
+/* ═══ Les cartes (V3.26, src/components/carte/FondCarte.tsx) ═══
+   Avant les premières rues : un fond doux qui respire, jamais un carré
+   gris. La mention d'OpenFreeMap, due, toute petite et grise, dans un coin. */
+.carte-attente {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 90% at 30% 20%, rgba(255,255,255,.55), transparent 60%),
+    linear-gradient(115deg, #e9eef5 20%, #f4f6fa 38%, #e9eef5 56%);
+  background-size: 100% 100%, 240% 100%;
+  animation: sqMiroir 1.4s ease-in-out infinite;
+}
+.carte-mention {
+  position: absolute; z-index: 2; pointer-events: none;
+  font: 500 8.5px 'DM Sans', sans-serif; letter-spacing: .2px; color: #94a3b8;
+  background: rgba(255,255,255,.6); padding: 1px 5px; border-radius: 5px;
+}
+.carte-mention-bas-gauche { left: 8px; bottom: 6px; }
+.carte-mention-bas-droite { right: 8px; bottom: 6px; }
+.carte-mention-haut-droite { right: 8px; top: 6px; }
+.maplibregl-canvas { outline: none; }
+/* « Voir sur la carte », à côté d'une adresse (BoutonCarte). */
+.bouton-carte {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px;
+  border-radius: 99px; border: 1px solid #e3e8f0; background: white; color: #34496e; cursor: pointer;
+  font: 700 12.5px 'DM Sans', sans-serif; white-space: nowrap; vertical-align: middle;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.bouton-carte:hover { background: #f5f7fb; border-color: #c9a84c; }
+.bouton-carte-sombre { background: rgba(255,255,255,.08); border-color: rgba(201,168,76,.45); color: #e3c872; }
+.bouton-carte-sombre:hover { background: rgba(201,168,76,.16); border-color: #c9a84c; color: #f1d98a; }
+/* Sur le téléphone de la rubrique Carte : sous la recherche et les filtres. */
+.carte-mention-sous-filtres { right: 10px; top: 102px; }
