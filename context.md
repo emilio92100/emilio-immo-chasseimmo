@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.22 · 28 septembre 2026**
+**Version 3.27 · 29 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1406,6 +1406,44 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.27 — 29 septembre 2026 · la carte de l'espace acheteur, la barre des fiches qu'on range
+
+- **Espace acheteur : ses biens sur la carte** (`src/components/espace/CarteEspace.tsx`, vue
+  `carte` d'`EspaceClient`). Chaque bien présenté est une **petite zone ronde** à la couleur de son
+  avis (vert « Ça me plaît », bleu « Visités », violet « À visiter », or « En attente », brique
+  atténuée « Pas pour moi »), avec son prix ; de loin, les prix se replient en points. Filtres par
+  avis en pastilles. **Téléphone** : bandeau bleu Emilio d'une ligne (« Vos biens · <ville> » +
+  « Liste | Carte »), la carte en plein écran sous la barre du bas, et en bas les biens de la zone
+  qu'on fait glisser — la carte suit la fiche qu'on glisse, la bande suit la carte qu'on déplace.
+  **Ordinateur** : la carte et, à côté, « Dans cette zone ». Première ouverture : un mot dit que
+  l'adresse exacte vient avec la visite.
+- **Les zones sont fabriquées par le serveur** (`/api/espace/carte?token=`, jeton de la recherche) :
+  adresse, puis adresse probable, puis quartier, jusqu'à une précision utile (numéro → rayon
+  115 m, rue → 170 m, quartier → 340 m ; la ville seule n'est pas dessinée). Le centre est décalé
+  d'une distance fixe dans une direction tirée de l'id du bien (`decaler`, toujours la même : on ne
+  peut pas moyenner en rechargeant) ; l'immeuble est dans la zone, jamais au centre. **Seule une
+  visite calée et pas encore passée donne le point exact** (étiquette « Visite jeu. 10 h »,
+  itinéraire). Un bien en vente de l'agence (`bien_vente_id`) prend son `donnees.gps`. Positions
+  gardées dans `geocodes` (la clé du serveur y écrit).
+- **Où l'ouvrir** (pas de sixième onglet sur téléphone) : « Liste | Carte » en tête de
+  « Consultés » (l'onglet reste allumé sur la carte), « Voir sur la carte » sur la fiche d'un bien
+  (la carte se pose sur lui), l'aperçu « Vos biens sur la carte » de l'accueil (un dessin, pas une
+  vraie carte : la bibliothèque ne se charge qu'à l'ouverture), « La carte » dans le menu de
+  l'ordinateur (qui se resserre entre 1024 et 1440 px pour tenir sur une ligne).
+- **« Consultés » : « Visite prévue » et « À visiter » ne font plus qu'un filtre** (« À visiter »),
+  les deux cadres restent dessous. Les filtres sont **repliés d'office** : « Tout » (ou le filtre
+  choisi, avec sa croix pour revenir à tout) et « Filtrer mes biens », qui déplie en douceur les
+  pastilles — leur icône, à la couleur de chaque avis. Plus de grand cadre à deux colonnes.
+- **CRM, la carte garde sa place** : ouvrir une fiche depuis la carte y pose un bloc « Carte »
+  dans la barre des fiches ouvertes (« près de <rue> » du repère choisi). Un clic la rouvre
+  exactement où on l'a laissée : vue (`carte.vue`), repère choisi et recherche (`carte.retour`
+  dans sessionStorage, lu une fois). La hauteur de la carte se remesure aussi à la fin du
+  glissement d'entrée (elle dépassait parfois du bas).
+- **CRM, les fiches ouvertes se rangent à la main** (`FichesOuvertes.tsx`) : à la souris, on
+  attrape un bloc et on le glisse ; au doigt, appui d'un tiers de seconde (le téléphone vibre) puis
+  glisser — un glissement rapide fait toujours défiler la bande. Les autres blocs s'écartent, la
+  bande défile près des bords, l'ordre est gardé (`fiches.ouvertes`).
 
 ### V3.26 — 28 septembre 2026 · la carte du CRM
 
