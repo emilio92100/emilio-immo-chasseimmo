@@ -23,6 +23,8 @@ import styles from './AppLayout.module.css';
 import '@/styles/crm-mobile.css';
 import type { Client } from '@/lib/supabase';
 import { reprendreSuspendus } from '@/lib/suspension';
+import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, lireFiches, ecrireFiches, ajouterFiche } from '@/components/layout/FichesOuvertes';
+import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
 
@@ -56,6 +58,15 @@ function ecrireUrl(page: string, clientId?: string | null, remplacer = false) {
   window.history[remplacer ? 'replaceState' : 'pushState'](null, '', url);
 }
 
+/* Une fiche de contact pour la barre du bas (FichesOuvertes). */
+function ficheDeContact(c: Client): FicheOuverte {
+  const x = c as unknown as Record<string, unknown>;
+  return {
+    k: 'contact', id: c.id, titre: nomFoyer(c) || 'Contact', sous: c.reference || undefined, statut: c.statut,
+    personne: { prenom: c.prenom, nom: c.nom, civilite: (x.civilite as string) || null, couple: !!x.couple, conjoint: x.conjoint, types: x.types },
+  };
+}
+
 export default function AppLayout() {
   const [activePage, setActivePage] = useState('dashboard');
   const [sens, setSens] = useState<'avant' | 'arriere'>('avant');
@@ -65,6 +76,11 @@ export default function AppLayout() {
   /* Chaque navigation remonte l'écran, même vers celui qui est déjà affiché :
      « Biens en vente » depuis la fiche d'un bien revient à la liste. */
   const [navN, setNavN] = useState(0);
+  /* La barre des fiches ouvertes : lue dans le navigateur après le montage
+     (le serveur ne la connaît pas), puis gardée à chaque changement. */
+  const [fiches, setFiches] = useState<FicheOuverte[]>([]);
+  const [bienActif, setBienActif] = useState<string | null>(null);
+  const fichesLues = useRef(false);
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
@@ -122,6 +138,17 @@ export default function AppLayout() {
      de reprise est arrivée repassent en « Actif » (src/lib/suspension.ts).
      Une fois par ouverture ; un échec s'affiche en rouge comme les autres. */
   useEffect(() => {
+    setFiches(lireFiches());
+    fichesLues.current = true;
+    const ouverte = (e: Event) => setFiches(l => ajouterFiche(l, (e as CustomEvent<FicheOuverte>).detail));
+    const actif = (e: Event) => setBienActif((e as CustomEvent<string | null>).detail);
+    window.addEventListener(EVT_FICHE_OUVERTE, ouverte);
+    window.addEventListener(EVT_BIEN_ACTIF, actif);
+    return () => { window.removeEventListener(EVT_FICHE_OUVERTE, ouverte); window.removeEventListener(EVT_BIEN_ACTIF, actif); };
+  }, []);
+  useEffect(() => { if (fichesLues.current) ecrireFiches(fiches); }, [fiches]);
+
+  useEffect(() => {
     reprendreSuspendus(supabase).then(({ repris, erreurs }) => {
       for (const e of erreurs) signalerEchec('La reprise automatique d’un dossier suspendu', e);
       if (repris.length) signalerMaj();
@@ -140,7 +167,7 @@ export default function AppLayout() {
         const { data } = await supabase.from('clients').select('*').eq('id', clientId).maybeSingle();
         if (!vivant) return;
         setChargeFiche(false);
-        if (data) { setFicheClient(data as Client); return; }
+        if (data) { setFicheClient(data as Client); setFiches(l => ajouterFiche(l, ficheDeContact(data as Client))); return; }
         /* Le client n'existe plus : on ne laisse pas un écran vide derrière. */
         setFicheClient(null);
         setActivePage('clients');
@@ -167,6 +194,7 @@ export default function AppLayout() {
     if (page === 'fiche' && data) {
       const c = data as Client;
       setFicheClient(c);
+      setFiches(l => ajouterFiche(l, ficheDeContact(c)));
       setChargeFiche(false);
       setActivePage('fiche');
       ecrireUrl('fiche', c.id);
@@ -181,6 +209,16 @@ export default function AppLayout() {
     const bienId = page === 'biens' && data && typeof data === 'object' ? (data as { bien?: string }).bien : undefined;
     if (bienId) window.history.replaceState(null, '', `${window.location.pathname}?page=biens&bien=${encodeURIComponent(bienId)}`);
   }, []);
+
+  /* Rouvrir une fiche de la barre du bas. Un contact se relit (la barre ne
+     garde que son nom) ; un contact supprimé depuis sort de la barre. */
+  const ouvrirFiche = useCallback(async (f: FicheOuverte) => {
+    if (f.k === 'bien') { handleNavigate('biens', { bien: f.id }); return; }
+    const { data, error } = await supabase.from('clients').select('*').eq('id', f.id).maybeSingle();
+    if (error) { signalerEchec('L’ouverture de la fiche', error.message); return; }
+    if (!data) { setFiches(l => l.filter(x => !(x.k === 'contact' && x.id === f.id))); return; }
+    handleNavigate('fiche', data);
+  }, [handleNavigate]);
 
   /* Le <main> (sur téléphone : la zone qui le contient) est le seul élément
      qui défile du CRM (html et body sont en overflow:hidden), et React ne le
@@ -231,13 +269,19 @@ export default function AppLayout() {
       <Sidebar activePage={activePage} onNavigate={handleNavigate} ouvert={menuOuvert} onFermer={fermerMenu} reduit={menuReduit} />
       <div className={styles.mainArea} ref={zoneBarre}>
         <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={() => setMenuReduit(r => !r)} />
-        <main className={styles.content} ref={contenu}>
+        <main className={`${styles.content} ${fiches.length ? styles.contentAvecFiches : ''}`} ref={contenu}>
           {/* La carte professionnelle à renouveler (Paramètres › Agence). */}
           <RappelCarte page={activePage} onNavigate={handleNavigate} />
           <div key={`${activePage}:${ficheClient?.id || ''}:${navN}`} className={sens === 'avant' ? 'ecran-avant' : 'ecran-arriere'}>
             {renderPage()}
           </div>
         </main>
+        {/* Les fiches ouvertes : on passe d'un contact ou d'un bien à l'autre. */}
+        <FichesOuvertes fiches={fiches}
+          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : null}
+          onOuvrir={ouvrirFiche}
+          onFermer={f => setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)))}
+          onToutFermer={() => setFiches([])} />
       </div>
       {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
           l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}

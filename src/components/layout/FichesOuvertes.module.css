@@ -1,0 +1,86 @@
+/* Les fiches ouvertes — voir FichesOuvertes.tsx.
+   Ordinateur : une barre au pied de la colonne principale, toujours visible.
+   Téléphone : une bande qui défile au doigt, juste au-dessus des onglets. */
+
+.barre {
+  flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+  padding: 8px 16px; min-height: 56px; box-sizing: border-box;
+  background: rgba(255, 255, 255, .96); border-top: 1px solid #e3e8f0;
+  box-shadow: 0 -8px 24px -18px rgba(26, 35, 50, .35);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  animation: barreMonte .28s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes barreMonte { from { transform: translateY(100%); } to { transform: none; } }
+.titre {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px;
+  font: 800 10px 'DM Sans', sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: #a3b0c2;
+}
+.titre i {
+  font-style: normal; letter-spacing: 0; font-size: 11px; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 99px;
+  background: var(--emilio-fond, #2e4166); color: #f0dc9c;
+}
+/* Les flèches : faire défiler quand les fiches ne tiennent pas toutes ; le
+   chiffre dit combien sont cachées de ce côté. */
+.fleche {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 10px;
+  border-radius: 11px; border: 1px solid #e3e8f0; background: white; cursor: pointer;
+  color: var(--emilio, #2e4166); font: 800 12px 'DM Sans', sans-serif;
+  box-shadow: 0 4px 12px -8px rgba(26, 35, 50, .4); transition: background .15s, border-color .15s;
+}
+.fleche:hover { background: #f5f7fa; border-color: #cfd8e6; }
+.fleche b { font-weight: 800; }
+.liste { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.liste::-webkit-scrollbar { display: none; }
+
+.fiche {
+  flex-shrink: 0; display: flex; align-items: center; max-width: 240px;
+  border-radius: 12px; border: 1px solid #e3e8f0; background: white;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.fiche:hover { border-color: #cfd8e6; box-shadow: 0 6px 16px -12px rgba(26, 35, 50, .5); }
+.ouvrir {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 4px 5px 6px;
+  border: none; background: none; cursor: pointer; font-family: inherit; text-align: left; color: var(--emilio, #2e4166);
+}
+.textes { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.textes b { font: 700 12.5px 'DM Sans', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.textes small { font-size: 11px; color: #8896a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vignette {
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; background: #fdf6e3; color: #a9822f;
+}
+.vignette img { width: 100%; height: 100%; object-fit: cover; }
+.croix {
+  flex-shrink: 0; width: 26px; height: 26px; margin-right: 3px; border-radius: 8px; border: none; background: none;
+  display: inline-flex; align-items: center; justify-content: center; color: #a3b0c2; cursor: pointer;
+}
+.croix:hover { background: #f1f4f8; color: #b91c1c; }
+
+/* La fiche à l'écran : en bleu, comme l'onglet choisi. */
+.on { background: var(--emilio-fond, #2e4166); border-color: var(--emilio-fond, #2e4166); }
+.on .ouvrir { color: white; }
+.on .textes small { color: rgba(255, 255, 255, .6); }
+.on .croix { color: rgba(255, 255, 255, .55); }
+.on .croix:hover { background: rgba(255, 255, 255, .12); color: white; }
+
+.tout {
+  flex-shrink: 0; border: none; background: none; cursor: pointer; padding: 8px 6px;
+  font: 700 12.5px 'DM Sans', sans-serif; color: #8896a8;
+}
+.tout:hover { color: var(--emilio, #2e4166); text-decoration: underline; }
+
+@media (max-width: 900px) {
+  /* Une bande qui flotte juste au-dessus des onglets du bas, assez haut
+     pour que le « + » en relief ne la chevauche pas. */
+  .barre {
+    position: fixed; left: 8px; right: 8px; z-index: 55;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    min-height: 0; padding: 6px; gap: 8px;
+    border: 1px solid #e3e8f0; border-radius: 16px;
+    box-shadow: 0 10px 28px -14px rgba(26, 35, 50, .45);
+  }
+  .titre, .tout, .fleche { display: none; }
+  .fiche { max-width: 170px; }
+  .textes small { display: none; }
+}
