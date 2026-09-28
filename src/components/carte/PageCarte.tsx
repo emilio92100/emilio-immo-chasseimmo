@@ -288,9 +288,16 @@ export default function PageCarte({ onNavigate, onMenu }: {
     const maj = () => {
       const telephone = window.matchMedia('(max-width: 900px)').matches;
       const defile = telephone ? (main?.parentElement as HTMLElement | null) : main;
-      const pb = main && telephone ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
       const haut = el.getBoundingClientRect().top + (defile?.scrollTop || 0);
-      el.style.height = `${Math.max(360, Math.round(window.innerHeight - haut - pb))}px`;
+      if (telephone || !main) {
+        const pb = main && telephone ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+        el.style.height = `${Math.max(360, Math.round(window.innerHeight - haut - pb))}px`;
+        return;
+      }
+      /* Ordinateur (V3.28) : jusqu'au bas de la zone qui défile, et non de la
+         fenêtre — la barre des fiches ouvertes, posée dessous, mangeait le
+         bas de la carte et son bouton « − ». */
+      el.style.height = `${Math.max(360, Math.round(main.getBoundingClientRect().bottom - haut))}px`;
     };
     maj();
     const t = setTimeout(maj, 480); // après l'entrée de l'écran, qui le fait glisser
@@ -301,7 +308,10 @@ export default function PageCarte({ onNavigate, onMenu }: {
     window.addEventListener('resize', maj);
     const mo = main ? new MutationObserver(maj) : null;
     if (main) mo?.observe(main, { attributes: true, attributeFilter: ['class'] });
-    return () => { clearTimeout(t); document.removeEventListener('animationend', finGlissement); window.removeEventListener('resize', maj); mo?.disconnect(); };
+    /* La barre des fiches ouvertes apparaît, disparaît : la zone change de hauteur. */
+    const ro = main ? new ResizeObserver(maj) : null;
+    if (main) ro?.observe(main);
+    return () => { clearTimeout(t); document.removeEventListener('animationend', finGlissement); window.removeEventListener('resize', maj); mo?.disconnect(); ro?.disconnect(); };
   }, [tel]);
 
   /* Téléphone ou ordinateur ; les filtres et les panneaux d'une visite à
