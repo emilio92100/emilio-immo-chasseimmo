@@ -10,6 +10,7 @@ import SignatureMandat, { CarteMonMandat, CartePret, CarteAttente, CarteDocument
 import { jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
+import CarteEspace, { CATS_ESPACE, type BienCarte, type CatEspace } from './CarteEspace';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -259,6 +260,9 @@ const ONGLETS: { id: string; lib: string; libPc?: string; ico: string; ton: stri
   { id: 'accueil', lib: 'Accueil', ico: 'maison', ton: '' },
   { id: 'neufs', lib: 'Nouveautés', ico: 'etoile', ton: 'or' },
   { id: 'consultes', lib: 'Consultés', ico: 'oeil', ton: 'bleu' },
+  /* Sur téléphone, la carte s'ouvre depuis « Consultés » (Liste | Carte), la
+     fiche d'un bien et l'accueil : pas de sixième onglet en bas. */
+  { id: 'carte', lib: 'La carte', ico: 'carte', ton: '', pc: true },
   { id: 'recherche', lib: 'Recherche', libPc: 'Ma recherche', ico: 'cible', ton: '' },
   { id: 'visites', lib: 'Visites', ico: 'calendrier', ton: 'vio' },
   { id: 'marche', lib: 'Le marché', ico: 'graph', ton: '', pc: true },
@@ -395,6 +399,20 @@ const GROUPES: { id: string; e: string; court: string; titre: string; ton: strin
   { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi', ton: 'c-brique',
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
 ];
+/* Les filtres de « Consultés » (V3.27) : une visite calée et une visite
+   souhaitée tombent sous le même « À visiter » — deux filtres pour la même
+   intention faisaient double emploi. Les deux cadres restent distincts
+   dessous : l'un a sa date, l'autre attend la sienne. Les couleurs sont
+   celles de la carte. */
+const FILTRES_C: { id: string; e: string; court: string; groupes: string[]; c: string }[] = [
+  { id: 'attente', e: '⏳', court: 'En attente', groupes: ['attente'], c: '#c9a84c' },
+  { id: 'a_visiter', e: '👀', court: 'À visiter', groupes: ['visite_prevue', 'souhaite_visiter'], c: '#7c3aed' },
+  { id: 'visite', e: '🏠', court: 'Visités', groupes: ['visite'], c: '#2563eb' },
+  { id: 'interesse', e: '👍', court: 'Ça me plaît', groupes: ['interesse'], c: '#16a34a' },
+  { id: 'refuse', e: '👎', court: 'Pas pour moi', groupes: ['refuse'], c: '#b3837e' },
+];
+const filtreDe = (g: string) => FILTRES_C.find(f => f.groupes.includes(g))?.id || g;
+
 /* L'ordre compte : une visite faite l'emporte sur tout, puis une visite calée,
    et seulement ensuite l'avis que le client a donné. C'est ce qui évite
    d'écrire « Visite effectuée » sur un bien que personne n'a encore vu. */
@@ -406,6 +424,43 @@ const groupeDe = (b: Bien) => {
 };
 /* La même règle pour l'étiquette posée sur une carte. */
 const etiqDe = (b: Bien) => ETIQ[groupeDe(b)] || null;
+
+/* ── La carte des biens (V3.27, voir CarteEspace.tsx) ──
+   Les mêmes cases que « Consultés », regroupées en cinq couleurs : une
+   visite prévue et une visite souhaitée sont toutes deux « À visiter » ; un
+   bien pas encore ouvert attend son avis comme les autres. */
+const catCarte = (b: Bien): CatEspace => {
+  const g = groupeDe(b);
+  if (g === 'visite') return 'visite';
+  if (g === 'visite_prevue' || g === 'souhaite_visiter') return 'a_visiter';
+  if (g === 'interesse' || g === 'refuse') return g;
+  return 'attente';
+};
+/* « Visite jeu. 10 h », « Visite lun. 14 h 30 ». */
+const libVisite = (v: { date: string; heure: string | null }) => {
+  const j = new Date(String(v.date).slice(0, 10) + 'T12:00:00');
+  const h = v.heure && /^\d{1,2}:\d{2}/.test(v.heure)
+    ? `${Number(v.heure.slice(0, 2))} h${v.heure.slice(3, 5) === '00' ? '' : ' ' + v.heure.slice(3, 5)}` : '';
+  return `Visite ${isNaN(j.getTime()) ? '' : JOURS_C[j.getDay()]}${h ? ' ' + h : ''}`.trim();
+};
+const pourCarte = (b: Bien): BienCarte => {
+  const cat = catCarte(b);
+  const etiquette = b.visitePrevue ? libVisite(b.visitePrevue)
+    : cat === 'attente' ? (b.etat === 'neuf' ? 'Nouveau' : 'En attente de votre avis')
+      : cat === 'a_visiter' ? 'Je veux visiter'
+        : cat === 'visite' ? 'Visité' : CATS_ESPACE.find(c => c.id === cat)?.lib || '';
+  return {
+    id: b.id, titre: b.titre, prix: b.prix, photo: b.photos?.[0] || null,
+    surface: b.surface, pieces: b.pieces, lieu: [b.quartier, b.ville].filter(Boolean).join(' · ') || b.secteur,
+    cat, etiquette,
+  };
+};
+/* La ville qui revient le plus parmi ses biens : le titre de la carte. */
+const villeDeCarte = (biens: Bien[]) => {
+  const n = new Map<string, number>();
+  for (const b of biens) if (b.ville) n.set(b.ville, (n.get(b.ville) || 0) + 1);
+  return [...n.entries()].sort((a, z) => z[1] - a[1])[0]?.[0] || '';
+};
 
 /* Les secteurs sont écrits par le CRM sous la forme « Quartier (Ville) »,
    ou « Ville » seule quand toute la ville est prise. On relit ce format —
@@ -566,6 +621,10 @@ const T: Record<string, string[]> = {
   chevron:['m6 9 6 6 6-6'],
   /* La barre du bas et l'accueil : « Consultés » et « donner mon avis ». */
   oeil:['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z','c:12,12,3'],
+  /* La carte des biens (V3.27) : un plan plié ; et la liste, pour y revenir. */
+  carte:['M3 6l6-2.5 6 2.5 6-2.5v14.5l-6 2.5-6-2.5-6 2.5z','M9 3.5v14.5','M15 6v14.5'],
+  liste:['M8 6h12','M8 12h12','M8 18h12','M4 6h.01','M4 12h.01','M4 18h.01'],
+  filtre:['M4 5.5h16l-6.2 7.2v5.6l-3.6 1.9v-7.5z'],
   pouce:['M7 10.5v10H4v-10z','M7 10.5l4-7a2 2 0 0 1 2.6 2.3l-.9 4.7H19a2 2 0 0 1 2 2.3l-1.2 6.9A2 2 0 0 1 17.8 20.5H7'],
 };
 
@@ -929,7 +988,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     texte="Un souci de connexion, sans doute. Réessayez dans un instant, ou appelez directement votre conseiller."
     rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
     onFermer={fermer} />, 'pleine');
-  const aller = (v: string) => { setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const aller = (v: string) => { if (v === 'carte') setFocusCarte(null); setVue(v); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  /* La carte, posée sur un bien (« Voir sur la carte » de sa fiche). */
+  const [focusCarte, setFocusCarte] = useState<string | null>(null);
+  const allerCarte = (id: string) => { setFocusCarte(id); setVue('carte'); window.scrollTo({ top: 0 }); };
 
   /* ── passer d'une recherche à l'autre ──
      On recharge la page avec « ?r=<recherche> » plutôt que de rejouer le
@@ -979,7 +1041,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
          c'est le meme geste que les gros boutons d'avis. */
       ['.ba-b', 30],
       /* Les onglets de « Mes derniers biens consultes » et tout le reste. */
-      ['.ch, .rep, .dpe-b, .selec, .rec, .fc', 22],
+      ['.ch, .rep, .dpe-b, .selec, .rec, .fc, .fcz-b', 22],
     ];
     const toucher = (e: Event) => {
       const depart = e.target as HTMLElement | null;
@@ -1015,6 +1077,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const parEtat = (e: string) => biens.filter(b => b.etat === e);
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
   const [filtreC, setFiltreC] = useState('tout');   // filtre de « Mes derniers biens consultés »
+  /* Les filtres de « Consultés » sont repliés d'office : la place va aux biens. */
+  const [filtresOuverts, setFiltresOuverts] = useState(false);
 
   /* ── l'espace sur l'écran d'accueil ── */
   const ecran = useEcranAccueil();
@@ -1199,6 +1263,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
        garder l'espace sous la main, et pas avant. */
     ecran.eveiller();
     montrer(<FicheBien b={b} client={client} crit={crit} onFermer={fermer}
+      onCarte={() => { fermer(); allerCarte(b.id); }}
       onAvis={enregistrerAvis} onPartager={partagerBien}
       visitesB={mesV.filter(x => x.bienId === b.id)} onRepondreVisite={repondreVisite} />, 'fiche');
   }
@@ -1604,7 +1669,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           se loge dans la même bande, et le conseiller à droite. Le bleu est
           celui d'Emilio, en plus clair que l'ancien : le marine presque noir
           faisait austère. */}
-      <div className={'chapeau' + (vue === 'accueil' ? ' ch-acc' : '')}>
+      <div className={'chapeau' + (vue === 'accueil' ? ' ch-acc' : '') + (vue === 'carte' ? ' ch-carte' : '')}>
         <div className="dedans">
           <div className="marque">
             <span className="motmarque">EMILIO IMMOBILIER</span>
@@ -1667,7 +1732,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         </div>
       </div>
 
-      <div className="page">
+      <div className={'page' + (vue === 'carte' ? ' p-carte' : '')}>
         <div className="vue" key={vue}>
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
@@ -1744,23 +1809,60 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             const par: Record<string, Bien[]> = {};
             ouverts.forEach(b => { const g = groupeDe(b); (par[g] ||= []).push(b); });
             const visibles = GROUPES.filter(g => (par[g.id] || []).length > 0);
-            const montres = filtreC === 'tout' ? visibles : visibles.filter(g => g.id === filtreC);
+            const choisi = filtreC === 'tout' ? 'tout' : filtreDe(filtreC);
+            const montres = choisi === 'tout' ? visibles : visibles.filter(g => filtreDe(g.id) === choisi);
+            const nbFiltre = (f: typeof FILTRES_C[number]) => f.groupes.reduce((n, g) => n + (par[g]?.length || 0), 0);
             return (
             <Vue icone="oeil" titre="Mes biens consultés" aller={aller}
-              sous="Tout ce que vous avez déjà ouvert, du plus récent au plus ancien, avec vos retours.">
+              sous="Tout ce que vous avez déjà ouvert, du plus récent au plus ancien, avec vos retours."
+              droite={biens.length > 0 ? (
+                /* Liste | Carte : la même sélection, vue sur un plan. */
+                <div className="lc" role="group" aria-label="Affichage">
+                  <button type="button" className="lc-b on" aria-pressed="true"><Ico n="liste" t={15} />Liste</button>
+                  <button type="button" className="lc-b" onClick={() => aller('carte')}><Ico n="carte" t={15} />Carte</button>
+                </div>
+              ) : null}>
               {ouverts.length === 0 ? (
                 <div className="vide-sec">Vous n&apos;avez encore ouvert aucun bien.<br />Ils se rangeront ici au fur et à mesure, avec vos retours.</div>
               ) : (<>
-                <div className="filtres">
-                  <button className={'fc' + (filtreC === 'tout' ? ' on' : '')} onClick={() => setFiltreC('tout')}>
-                    Tout <i>{ouverts.length}</i>
-                  </button>
-                  {visibles.map(g => (
-                    <button key={g.id} className={'fc' + (filtreC === g.id ? ' on' : '')} onClick={() => setFiltreC(g.id)}>
-                      <span className="fe">{g.e}</span>{g.court} <i>{par[g.id].length}</i>
-                    </button>
-                  ))}
-                </div>
+                {/* Replié d'office : ce qu'on regarde (« Tout », ou le filtre
+                    choisi, avec sa croix), et « Filtrer mes biens » qui déplie
+                    les pastilles à la couleur de chaque avis. Un second clic
+                    les replie. */}
+                {(() => {
+                  const actif = FILTRES_C.find(f => f.id === choisi);
+                  return (
+                    <div className="fcz">
+                      <div className="fcz-l">
+                        {actif ? (
+                          <button type="button" className="fc on" style={{ '--c': actif.c } as React.CSSProperties}
+                            onClick={() => setFiltreC('tout')} aria-label={`${actif.court} : revenir à tous mes biens`}>
+                            <span className="fe">{actif.e}</span>{actif.court}<i>{nbFiltre(actif)}</i><span className="fcz-x"><Ico n="croix" t={11} /></span>
+                          </button>
+                        ) : (
+                          <span className="fc on fcz-tout">Tout<i>{ouverts.length}</i></span>
+                        )}
+                        <button type="button" className={'fcz-b' + (filtresOuverts ? ' ouvert' : '')} aria-expanded={filtresOuverts}
+                          onClick={() => setFiltresOuverts(o => !o)}>
+                          <Ico n="filtre" t={15} /><span>{actif ? 'Filtrer' : 'Filtrer mes biens'}</span><span className="fcz-cv"><Ico n="chevron" t={13} /></span>
+                        </button>
+                      </div>
+                      <div className={'fcz-pli' + (filtresOuverts ? ' ouvert' : '')} aria-hidden={!filtresOuverts}>
+                        <div className="fcz-in">
+                          <div className="filtres-c" role="group" aria-label="Filtrer mes biens">
+                            {FILTRES_C.filter(f => nbFiltre(f) > 0).map(f => (
+                              <button key={f.id} type="button" className={'fc' + (choisi === f.id ? ' on' : '')} aria-pressed={choisi === f.id}
+                                tabIndex={filtresOuverts ? 0 : -1} style={{ '--c': f.c } as React.CSSProperties}
+                                onClick={() => setFiltreC(choisi === f.id ? 'tout' : f.id)}>
+                                <span className="fe">{f.e}</span>{f.court}<i>{nbFiltre(f)}</i>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* Une catégorie = une carte à sa couleur : titre, explication et
                     biens dans le même cadre. On ne confond plus deux sections. */}
                 {montres.map(g => (
@@ -1778,6 +1880,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             </Vue>
             );
           })()}
+          {vue === 'carte' && (
+            <CarteEspace token={token} biens={biens.map(pourCarte)} focus={focusCarte} ville={villeDeCarte(biens)}
+              onOuvrir={id => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }}
+              onListe={() => aller('consultes')} />
+          )}
           {vue === 'marche' && (
             <Marche passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} biens={biens} crit={crit}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
@@ -1816,7 +1923,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       <nav className="barre-bas" aria-label="Menu">
         {ONGLETS.filter(o => !o.pc).map(o => {
           const n = compte[o.id] || 0;
-          const actif = vue === o.id;
+          /* La carte est une façon de voir « Consultés » : l'onglet reste allumé. */
+          const actif = vue === o.id || (vue === 'carte' && o.id === 'consultes');
           return (
             <button key={o.id} type="button" className={'bb' + (actif ? ' on' : '')} data-o={o.id}
               aria-current={actif ? 'page' : undefined}
@@ -1833,7 +1941,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
       {/* La proposition d'écran d'accueil. Elle ne s'affiche jamais par-dessus
           une fiche ouverte : on ne coupe pas la parole. */}
-      {ecran.appareil && ecran.auto && ecran.visible && !ouvert && (
+      {ecran.appareil && ecran.auto && ecran.visible && !ouvert && vue !== 'carte' && (
         <div className="ecran">
           <div className="ecran-dedans">
             <span className="ecran-sceau"><Ico n={dansUneAppli ? 'partage' : 'maison'} t={19} /></span>
@@ -2006,6 +2114,26 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div className="acc-d">
           {visites?.length > 0 && (
             <VisiteCourte v={visites[0]} autres={visites.length - 1} onVoir={() => aller('visites')} />
+          )}
+          {/* La carte de ses biens (V3.27) : un aperçu dessiné, pas une vraie
+              carte — la bibliothèque de carte ne se charge qu'à l'ouverture. */}
+          {(neufs.length + vus.length + donnes.length) > 0 && (
+            <button type="button" className="case large apercu-carte" onClick={() => aller('carte')}>
+              <span className="ac-plan" aria-hidden="true">
+                <svg viewBox="0 0 320 120" preserveAspectRatio="xMidYMid slice">
+                  <path d="M-10 84 C60 70 110 96 180 76 S290 40 340 52" className="ac-fleuve" />
+                  <path d="M20 -10 L70 130 M120 -10 L150 130 M210 -10 L190 130 M-10 30 L330 18 M-10 62 L330 76 M260 -10 L300 130" className="ac-rue" />
+                  <path d="M-10 104 L330 96 M40 -10 L100 130 M170 -10 L240 130" className="ac-ruelle" />
+                </svg>
+                {[...neufs, ...vus, ...donnes].slice(0, 6).map((b: Bien, i: number) => (
+                  <i key={b.id} className={'ac-z ac-' + catCarte(b)} style={{ left: `${[16, 38, 60, 27, 74, 50][i]}%`, top: `${[34, 22, 44, 66, 30, 70][i]}%` }} />
+                ))}
+              </span>
+              <span className="ac-bas">
+                <span><b>Vos biens sur la carte</b><i>Chacun dans sa petite zone, à la couleur de votre avis</i></span>
+                <span className="chev"><Ico n="fleche" t={18} /></span>
+              </span>
+            </button>
           )}
           <div className="acc-cartes">
             <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
@@ -2255,13 +2383,14 @@ function VisiteCourte({ v, autres, onVoir }: { v: any; autres: number; onVoir: (
 }
 
 /* ══ briques de vue ═══════════════════════════════ */
-function Vue({ icone, titre, sous, aller, children }: any) {
+function Vue({ icone, titre, sous, aller, droite, children }: any) {
   return (
     <>
       <button className="retour" onClick={() => aller('accueil')}><Ico n="retour" t={17} /> Retour à l&apos;accueil</button>
-      <div>
+      <div className={droite ? 'tete-bloc' : undefined}>
         <div className="tete-vue"><span className="ico"><Ico n={icone} /></span><h2>{titre}</h2></div>
         {sous && <p className="sous-vue">{sous}</p>}
+        {droite}
       </div>
       {children}
     </>
@@ -3567,7 +3696,7 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
   );
 }
 
-function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, visitesB = [], onRepondreVisite }: any) {
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite }: any) {
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
      de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
@@ -3727,8 +3856,9 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, visitesB = [
       </div>
       <div className="tete-f" style={{ paddingTop: 10 }}>
         <div><h3>{b.titre}</h3>
-          {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
-            <Ico n="lieu" t={13} /> {b.secteur}</div>}</div>
+          {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Ico n="lieu" t={13} /><span>{b.secteur}</span>
+            {onCarte && <button type="button" className="voir-carte" onClick={onCarte}><Ico n="carte" t={13} /><span>Voir sur la carte</span></button>}</div>}</div>
       </div>
       <div className="corps-f">
         {corr && (
@@ -7146,5 +7276,93 @@ button.auj-c:active{transform:scale(.96)}
 @media (prefers-reduced-motion:reduce){
   .bb-n, .nh-n, .bb-ic.lueur, .vc-d, .calme-ic, .chapeau::after, .cn, .cn-jb i{animation:none !important}
 }
+
+/* ═══ La carte des biens (V3.27) — voir CarteEspace.tsx ═══ */
+/* Le menu de l'ordinateur compte un onglet de plus (« La carte ») : chaque
+   intitulé tient sur une ligne, et entre 1024 et 1440 px le menu se resserre
+   (le prénom du conseiller s'efface, son bouton « Appeler » reste). */
+@media(min-width:1024px){ .nh, .motmarque{white-space:nowrap} }
+@media(min-width:1024px) and (max-width:1439px){
+  .marque{gap:14px}
+  .motmarque{letter-spacing:1.6px}
+  .nh{padding:0 11px; gap:6px; font-size:13.5px}
+  .ch-an{display:none}
+}
+/* Sur téléphone, la carte prend tout l'écran : son bandeau bleu remplace
+   l'en-tête, et le pied de page n'a rien à faire dessous. */
+@media(max-width:1023px){
+  .chapeau.ch-carte{display:none}
+  .page.p-carte{padding-bottom:0}
+  .page.p-carte .pied, .page.p-carte ~ .retour-flot{display:none}
+}
+/* Les filtres de « Consultés », à la couleur de chaque avis (V3.27). Repliés
+   d'office sous « Filtrer mes biens » ; ils se déplient en douceur. */
+.fcz{margin:2px 0 14px}
+.fcz-l{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.fcz .fcz-tout{cursor:default} .fcz .fcz-tout:active{transform:none}
+.fcz-x{display:inline-flex; margin-left:1px; opacity:.85}
+.fcz-b{display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 12px 0 13px; border-radius:99px;
+  border:1px solid var(--trait) !important; background:#fff !important; color:#24385c; font-size:13px; font-weight:700;
+  box-shadow:0 6px 14px -12px rgba(36,56,92,.6); transition:background .2s, border-color .2s, transform .15s}
+.fcz-b:hover{background:#f5f7fb !important; border-color:#cfd7e3 !important}
+.fcz-b:active{transform:scale(.95)}
+.fcz-b.ouvert{border-color:#c9a84c !important; background:#fdfaf1 !important}
+.fcz-cv{display:inline-flex; transition:transform .3s cubic-bezier(.16,1,.3,1)}
+.fcz-b.ouvert .fcz-cv{transform:rotate(180deg)}
+.fcz-pli{display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows .34s cubic-bezier(.16,1,.3,1), opacity .25s ease}
+.fcz-pli.ouvert{grid-template-rows:1fr; opacity:1}
+.fcz-in{overflow:hidden; min-height:0}
+.fcz-in .filtres-c{margin:10px 0 2px; padding:2px}
+.filtres-c{display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 14px}
+.fcz-l .fc, .filtres-c .fc{--c:#24385c; height:36px; padding:0 12px 0 13px; gap:7px; font-size:13px; font-weight:700;
+  color:color-mix(in srgb, var(--c) 78%, black); background:color-mix(in srgb, var(--c) 9%, white);
+  border:1px solid color-mix(in srgb, var(--c) 28%, white); box-shadow:none}
+.fcz-l .fc:hover, .filtres-c .fc:hover{background:color-mix(in srgb, var(--c) 15%, white); color:color-mix(in srgb, var(--c) 78%, black)}
+.filtres-c .fc .fe, .fcz-l .fc .fe{font-size:13px; line-height:1}
+.fcz-l .fc i, .filtres-c .fc i{background:color-mix(in srgb, var(--c) 16%, white); color:color-mix(in srgb, var(--c) 85%, black); padding:1px 7px}
+.fcz-l .fc.on, .filtres-c .fc.on{background:var(--c); color:#fff; border-color:var(--c); box-shadow:0 8px 16px -10px color-mix(in srgb, var(--c) 80%, black)}
+.fcz-l .fc.on i, .filtres-c .fc.on i{background:rgba(255,255,255,.24); color:#fff}
+@media(max-width:560px){ .filtres-c{gap:6px} .filtres-c .fc{height:34px; padding:0 10px 0 11px; font-size:12.5px} }
+@media(prefers-reduced-motion:reduce){ .fcz-pli, .fcz-cv{transition:none} }
+
+/* « Liste | Carte », en tête de « Consultés » : à droite du titre sur un
+   grand écran, sur toute la largeur sous la phrase sur téléphone. */
+.tete-bloc{position:relative}
+.tete-bloc > .lc{display:flex; margin:2px 0 14px}
+.tete-bloc > .lc .lc-b{flex:1; justify-content:center; height:36px}
+@media(min-width:640px){
+  .tete-bloc .tete-vue{padding-right:220px}
+  .tete-bloc > .lc{position:absolute; top:4px; right:0; margin:0}
+  .tete-bloc > .lc .lc-b{flex:none; height:34px}
+}
+.lc{display:inline-flex; padding:3px; gap:2px; border-radius:99px; background:#eef2f8; border:1px solid var(--trait); flex:0 0 auto}
+.lc-b{display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; border-radius:99px;
+  font-size:13px; font-weight:700; color:#475569; transition:background .2s, color .2s, transform .15s}
+.lc-b:hover{color:#24385c}
+.lc-b:active{transform:scale(.94)}
+.lc-b.on{background:#fff; color:#24385c; box-shadow:0 4px 12px -6px rgba(36,56,92,.45); cursor:default}
+/* « Voir sur la carte », sur la fiche d'un bien. */
+.voir-carte{display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 10px 0 8px; border-radius:99px;
+  border:1px solid var(--trait) !important; background:#fff !important; color:#24385c; font-size:12px; font-weight:700;
+  transition:background .15s, border-color .15s}
+.voir-carte:hover{background:#f5f7fb !important; border-color:#c9a84c !important}
+/* L'aperçu de la carte, sur l'accueil. */
+.apercu-carte{display:flex !important; flex-direction:column; align-items:stretch; padding:0 !important; overflow:hidden; text-align:left; margin-top:12px; width:100%}
+.ac-plan{position:relative; display:block; height:104px; background:#f3efe6; overflow:hidden}
+.ac-plan svg{position:absolute; inset:0; width:100%; height:100%}
+.ac-fleuve{fill:none; stroke:#bcd6ec; stroke-width:14; stroke-linecap:round}
+.ac-rue{fill:none; stroke:#fff; stroke-width:5}
+.ac-ruelle{fill:none; stroke:#fff; stroke-width:2.5; opacity:.9}
+.ac-z{position:absolute; width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%;
+  background:color-mix(in srgb, var(--c) 22%, transparent); border:1.5px solid var(--c);
+  animation:ac-respire 3.2s ease-in-out infinite}
+.ac-z:nth-of-type(2n){animation-delay:.8s} .ac-z:nth-of-type(3n){animation-delay:1.6s}
+@keyframes ac-respire{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.ac-interesse{--c:#16a34a} .ac-visite{--c:#2563eb} .ac-a_visiter{--c:#7c3aed} .ac-attente{--c:#c9a84c} .ac-refuse{--c:#b3837e}
+.ac-bas{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px 14px}
+.ac-bas > span:first-child{display:flex; flex-direction:column; gap:2px; min-width:0}
+.ac-bas b{font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; color:var(--encre)}
+.ac-bas i{font-style:normal; font-size:13px; color:var(--plume)}
+@media (prefers-reduced-motion:reduce){ .ac-z{animation:none} }
 
 `;
