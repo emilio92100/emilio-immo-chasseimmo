@@ -140,3 +140,31 @@ export function prendreNouveauBien(): string | null {
     return id === '-' ? '' : id;
   } catch { return null; }
 }
+
+/* ── La vue d'une rubrique (V3.24) ───────────────────────────────────
+   « Mes vendeurs », « Mes estimations » : le menu de gauche ouvre Contacts
+   ou Biens sur une catégorie, et allume l'entrée de la catégorie affichée,
+   même quand on l'a choisie dans la page. La vue est dans l'adresse (un
+   rechargement y revient) et dans la session (revenir d'une fiche retrouve
+   la liste telle qu'on l'a laissée). */
+export const EVT_VUE = 'emilio:vue';
+
+export function annoncerVue(page: string, vue: string) {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.setItem(`vue.${page}`, vue); } catch { /* sans mémoire, on revient sur « Tous » */ }
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('page') === page && p.get('vue') !== vue) {
+    p.set('vue', vue);
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${p.toString()}`);
+  }
+  window.dispatchEvent(new CustomEvent(EVT_VUE, { detail: { page, vue } }));
+}
+
+/* La vue à l'ouverture de la rubrique : celle de l'adresse (le menu vient de
+   la demander), sinon la dernière de la session. */
+export function vueDemandee(page: string): string | null {
+  if (typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('page') === page && p.get('vue')) return p.get('vue');
+  try { return window.sessionStorage.getItem(`vue.${page}`); } catch { return null; }
+}
