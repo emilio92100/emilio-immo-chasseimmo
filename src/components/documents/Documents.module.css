@@ -629,7 +629,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .dcCat_offres { background: #fbeee8; color: #a4502d; }
 .dcCat_bons_visite { background: #e9f6ee; color: #1f7a45; }
 .dcCat_courriers { background: #f1f4f8; color: #64748b; }
-.dcTexte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dcTexte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
 .dcTexte b, .dcTexte small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dcTexte b { font-size: 13.5px; font-weight: 700; color: var(--emilio); }
 .dcTexte small { font-size: 12px; color: #7b8799; }
@@ -656,3 +656,62 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .bloqueTx > b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #78350f; line-height: 1.4; }
 .bloqueTx > span { font-size: 13px; line-height: 1.5; color: #92400e; }
 .bloqueBtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── Où en est la signature : qui a signé, qui on attend (V3.32) ──
+   SuiviSignature.tsx : une ligne avec un point par signataire, qui se
+   déplie sur chacun. Or : on attend ; vert : signé ; rouge : lien expiré. */
+.suivi { border-radius: 12px; border: 1px solid #f1e6c6; background: #fffdf6; min-width: 0; }
+.suivi[data-alerte='oui'] { border-color: #fecaca; background: #fffafa; }
+.suiviTete {
+  width: 100%; display: flex; align-items: center; gap: 11px; padding: 9px 12px; border: none; background: none;
+  cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif; border-radius: 12px;
+}
+.suiviTete:hover .suiviVoirL { text-decoration: underline; text-underline-offset: 3px; }
+.suiviPoints { flex-shrink: 0; display: inline-flex; gap: 4px; min-width: 34px; justify-content: center; }
+.suiviPoints i { width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2px #c9a84c; }
+.suiviPoints i[data-etat='signe'] { background: #16a34a; box-shadow: none; }
+.suiviPoints i[data-etat='expire'] { background: #fff; box-shadow: inset 0 0 0 2px #dc2626; }
+.suiviPoints i[data-etat='surplace'] { box-shadow: inset 0 0 0 2px #34496e; }
+.suiviPoints i[data-etat='decline'] { background: #e2e8f0; box-shadow: none; }
+.suiviTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.suiviTx b { font-size: 13px; font-weight: 800; color: #8a6a1f; }
+.suivi[data-alerte='oui'] .suiviTx b { color: #b91c1c; }
+.suiviTx small { font-size: 12px; color: #7b8799; line-height: 1.45; }
+.suiviVoir { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; color: #a07c28; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.suiviFleche { display: inline-flex; transition: transform .3s cubic-bezier(.22, .9, .3, 1); }
+.suiviFleche[data-ouvert='oui'] { transform: rotate(180deg); }
+.suiviListe { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+.suiviLigne { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 10px; background: #fff; border: 1px solid #f1f5f9; }
+.suiviPt { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; background: #fbf1d6; color: #a07c28; }
+.suiviLigne[data-etat='signe'] .suiviPt { background: #dcfce7; color: #15803d; }
+.suiviLigne[data-etat='agence'] .suiviPt { background: #e8eef8; color: #34496e; }
+.suiviLigne[data-etat='expire'] .suiviPt { background: #fee2e2; color: #b91c1c; }
+.suiviLigne[data-etat='surplace'] .suiviPt { background: #e8eef8; color: #34496e; }
+.suiviLigne[data-etat='decline'] .suiviPt { background: #f1f5f9; color: #94a3b8; }
+.suiviQui { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.suiviQui > b { font-size: 13px; color: var(--emilio); }
+.suiviQui > i { font-style: normal; font-size: 11.5px; color: #94a3b8; overflow-wrap: anywhere; }
+.suiviQui > em { font-style: normal; font-size: 12.5px; color: #64748b; line-height: 1.45; }
+.suiviLigne[data-etat='signe'] .suiviQui > em { color: #15803d; font-weight: 600; }
+.suiviLigne[data-etat='expire'] .suiviQui > em { color: #b91c1c; font-weight: 600; }
+.suiviLigne[data-etat='agence'] { background: #fafbfd; }
+@media (max-width: 560px) {
+  .suiviTete { padding: 9px 10px; gap: 9px; flex-wrap: wrap; }
+  .suiviTx { flex-basis: calc(100% - 52px); }
+  .suiviVoir { margin-left: 43px; }
+}
+
+/* ── Les documents d'un contact, rangés par état (V3.32) ── */
+.dcGroupe { display: flex; flex-direction: column; gap: 6px; }
+.dcGroupe + .dcGroupe { margin-top: 10px; }
+.dcGroupeT { display: flex; align-items: center; gap: 8px; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 800; color: #94a3b8; padding: 2px 2px 0; }
+.dcGroupeT > span { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; align-items: center; justify-content: center; background: #f1f5f9; color: #64748b; letter-spacing: 0; font-size: 11px; }
+.dcGroupe[data-g='attente'] .dcGroupeT { color: #a07c28; }
+.dcGroupe[data-g='attente'] .dcGroupeT > span { background: #fbf1d6; color: #8a6a1f; }
+.dcGroupe[data-g='signes'] .dcGroupeT { color: #15803d; }
+.dcGroupe[data-g='signes'] .dcGroupeT > span { background: #dcfce7; color: #166534; }
+.dcCarte { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 14px; border: 1px solid #f1e6c6; background: #fffcf3; }
+.dcCarte .dcOuvrir { background: #fff; }
+.dcCarte .suivi { border: none; background: transparent; }
+.dcCarte .suivi[data-alerte='oui'] { background: #fff5f5; }
+.tSignature, .statutFort.tSignature { background: #fbf1d6; color: #8a6a1f; border-color: #ecdcb0; }
