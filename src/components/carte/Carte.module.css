@@ -395,7 +395,8 @@
 }
 .carrousel::-webkit-scrollbar { display: none; }
 .carteTel {
-  flex: 0 0 min(300px, calc(100vw - 64px)); scroll-snap-align: center;
+  /* Un glissement = une fiche (V3.28), comme dans l'espace acheteur. */
+  flex: 0 0 min(300px, calc(100vw - 64px)); scroll-snap-align: center; scroll-snap-stop: always;
   display: flex; align-items: center; gap: 10px; height: 62px; padding: 0 8px 0 9px; box-sizing: border-box;
   background: white; border-radius: 16px; border: 2px solid transparent;
   box-shadow: 0 12px 26px -16px rgba(15, 23, 42, .6);
