@@ -108,8 +108,17 @@
 
 /* L'entrée ouverte : le mot en gras, et sa pastille qui s'allume — pleine,
    à sa couleur, avec une onde qui s'en échappe doucement, sans fin. Pas de
-   cadre autour de la ligne : il se coupait contre la barre de défilement. */
-.sousActif, .sousActif:hover { color: var(--emilio); font-weight: 700; background: transparent; }
+   cadre autour de la ligne : il se coupait contre la barre de défilement.
+   V3.30 : « on ne voit pas sur quel onglet on est » — la ligne entière prend
+   la teinte claire de sa couleur (un fond, pas un cadre), et un petit trait
+   de la même couleur se pose à sa gauche. */
+.sousActif, .sousActif:hover { color: var(--emilio); font-weight: 700; background: var(--sf, #f1f5f9); }
+.sousActif::before {
+  content: ''; position: absolute; left: -8px; top: 7px; bottom: 7px; width: 3px; border-radius: 3px;
+  background: var(--sc); animation: sousTrait .35s cubic-bezier(.22,.9,.3,1) backwards;
+}
+.sousActif .sousMot { color: var(--sc); filter: brightness(.72) saturate(1.2); }
+@keyframes sousTrait { from { transform: scaleY(0); opacity: 0; } }
 .sousActif .sousIc { background: var(--sc); color: #fff; animation: sousAllume 2.4s ease-in-out infinite; }
 .sousActif .sousIc::after {
   content: ''; position: absolute; inset: -2px; border-radius: 10px;
@@ -125,7 +134,7 @@
   75%, 100% { transform: scale(1.38); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sousActif .sousIc, .sousActif .sousIc::after { animation: none; }
+  .sousActif .sousIc, .sousActif .sousIc::after, .sousActif::before { animation: none; }
 }
 
 /* Le chiffre était trop timide pour une alerte : on le pose en Jakarta,
