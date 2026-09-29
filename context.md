@@ -1466,6 +1466,28 @@ dans `biens_vente.donnees`.
   porte le même petit personnage que la liste des acheteurs (`AvatarContact` : deux pour un
   couple, une mallette pour un professionnel), à la couleur de son type — elle montrait ses
   initiales.
+- **Plus d'initiales nulle part dans le CRM** : le même petit personnage (`AvatarContact`) dans
+  la recherche du haut, le bandeau d'une fiche vendeur / propriétaire / pro et celui d'un
+  acheteur, l'aperçu au survol de la liste des acheteurs, « Le propriétaire » d'un bien (carte et
+  bloc ; une SCI a la mallette), la fiche reliée dans l'éditeur, les acheteurs d'un bien, les
+  offres, les associés d'une société (« Madame » devinée d'après le rôle : Gérante, Associée…),
+  les relances, l'agenda, le choix des destinataires d'un mail. `libre` laisse la feuille de style
+  décider de la taille et de la forme (elles changent sur le téléphone) ; `teinteDe(c)` donne la
+  couleur de son type ; `personneDe(nom, role)` pour une personne sans fiche. Seule la page de
+  signature du mandat (côté client) garde ses initiales.
+- **Les photos en grand** (`biens/Visionneuse.tsx`) : dans l'onglet Photos (et l'éditeur), un clic
+  sur une photo l'ouvre sur tout l'écran — flèches (qui reviennent au début après la dernière),
+  clavier ← → et Échap, glisser du doigt sur le téléphone, sa légende et les vignettes en bas.
+  Posée dans `document.body` (une fenêtre ne la rogne pas), `z-index` 2000.
+- **« Le bien » sans la bande de photos** : elle doublait l'onglet Photos. Il commence par
+  l'annonce (après le mandat) ou directement par les cartes.
+- **« Le propriétaire », une seule fois** dans la Vue d'ensemble : le bloc du bas doublait la
+  carte du haut, il est retiré. La carte reprend ce qu'il disait de plus (pourquoi il vend, son
+  délai, venu par, son notaire : une petite ligne sous le nom), l'e-mail remplace le SMS, et
+  **« Retirer du bien »** (en haut à droite de la carte, après confirmation) fait comme l'éditeur :
+  plus de fiche reliée, ni nom, ni coordonnées (`clientId`, `proprietaires`, `qui`, `sciNom`
+  vidés, `client_id` à null) ; sa fiche reste dans les contacts, la carte repasse à « Pas encore
+  renseigné ».
 - **Téléphone : plus de barre « Fiches ouvertes »** en bas (`FichesOuvertes.module.css`,
   ≤ 900 px) ; elle reste sur l'ordinateur.
 - **Mise en ligne** : le 29 septembre, une ancienne mise en ligne (commit « 2/7 ») avait été
