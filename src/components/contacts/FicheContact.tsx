@@ -4,7 +4,7 @@ import { supabase, addJournal, type Client } from '@/lib/supabase';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
 import {
-  colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, typeDe, typesDe,
+  colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, lireStructure, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -15,6 +15,7 @@ import FriseSuivi from '@/components/fiche/FriseSuivi';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import FenetreAction, { supprimerActionContact } from './FenetreAction';
 import CarteASavoir from './CarteASavoir';
+import BlocSociete from './BlocSociete';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
 import c from './Contacts.module.css';
@@ -184,6 +185,15 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const aUneAdresse = [x.adresse, pro.adresseEtude, pro.adresseAgence, pro.immeuble, (x as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse]
     .some(v => typeof v === 'string' && v.trim().length > 4);
   const cls = { row: c.g2, group: c.ch, label: '', input: c.in };
+  /* Sa société (V3.30) : pour un vendeur, un propriétaire, un contact sans
+     métier ; pas pour un notaire ou un confrère, qui ont déjà la leur. */
+  const structure = lireStructure(pro.structure);
+  const peutSociete = !estPro(types) || types.includes('vendeur') || types.includes('proprietaire');
+  const societe = (
+    <BlocSociete client={x} notes={x.notes}
+      onEnregistrer={async st => !!(await ecrire({ pro: { ...pro, structure: st || undefined } }, 'La société n’a pas pu être enregistrée'))}
+      onFiche={cl => onNavigate('fiche', cl)} />
+  );
 
   return (
     <div className={c.fiche}>
@@ -234,8 +244,16 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       {archive && <div className={c.archiveBandeau}>Ce contact est archivé : il n’apparaît plus dans la liste, seulement dans « Archivés ».</div>}
       {erreur && <div className={c.erreur}>{erreur}</div>}
 
-      <div className={c.deux}>
-        <div className={c.col}>
+      {/* V3.30 : « À savoir » en tête, sur toute la largeur, rangé en blocs
+          et replié s'il est long ; dessous, les blocs de la fiche en grille.
+          Avant, il était seul dans la colonne de droite : un long texte y
+          faisait une colonne d'un mètre à côté de blocs courts. */}
+      <CarteASavoir prenom={x.prenom || ''} texte={x.notes}
+        onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
+
+      <div className={c.blocs}>
+          {/* La société qu'il représente (V3.30) : en tête quand elle est notée. */}
+          {peutSociete && structure && societe}
           {types.includes('confrere') && (
             <section className={c.bloc}>
               <div className={c.blocT}><span className={c.blocIc}><Ic n="agence" t={15} /></span><h3>Son agence</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
@@ -311,16 +329,9 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
               <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={ouvrirRecherche}>Ouvrir une recherche</button>
             </div>
           ) : null}
-        </div>
-        <div className={c.col}>
-          {/* Ce qu'il faut retenir sur lui (V3.23) : la même carte que sur la
-              fiche d'un acheteur. L'ancien « Historique » est devenu le suivi,
-              en dessous, sur toute la largeur. */}
-          <CarteASavoir prenom={x.prenom || ''} texte={x.notes}
-            onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
-          <div className={c.pied} style={{ textAlign: 'right' }}>{`${principal.lib} · ${x.reference}`}</div>
-        </div>
+          {peutSociete && !structure && <div className={c.plein}>{societe}</div>}
       </div>
+      <div className={c.refPied}>{`${principal.lib} · ${x.reference}`}</div>
 
       {(() => {
         /* Le suivi (V3.23) : la frise des acheteurs, sans Veille ni Sélection.

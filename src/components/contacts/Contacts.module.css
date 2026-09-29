@@ -130,8 +130,10 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .heroNom { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -.4px; }
 .heroLigne { font-size: 14px; color: rgba(255,255,255,.75); }
 .heroCoord { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.heroCoord a, .heroCoord span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: white; font: 600 13px 'DM Sans', sans-serif; text-decoration: none; }
-.heroCoord a:hover { background: rgba(255,255,255,.14); }
+/* « > » : sans lui, le mot du bouton « Voir sur la carte » (un <span>)
+   prenait lui aussi l'allure d'une pastille, dans la pastille (V3.30). */
+.heroCoord > a, .heroCoord > span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: white; font: 600 13px 'DM Sans', sans-serif; text-decoration: none; }
+.heroCoord > a:hover { background: rgba(255,255,255,.14); }
 .heroCoord em { align-self: center; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 2px 8px; border: 1px solid rgba(255,255,255,.18); border-radius: 99px; }
 .archiveBandeau { padding: 10px 14px; border-radius: 12px; background: #f8fafc; border: 1px solid #e3e8f0; font-size: 13px; color: #64748b; }
 .deux { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -265,3 +267,60 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 @media (max-width: 720px) { .suiviCorps { margin: 10px; padding: 14px 12px; } }
 .heroSource { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,.7); }
 .heroSource b { color: #e3c872; font-weight: 700; }
+
+/* ══ V3.30 ══ */
+/* « À savoir » : le texte rangé en blocs (NoteRiche). */
+.asvNote { margin-top: 10px; }
+.asvAide { margin-top: 6px; font-size: 12px; color: #94a3b8; line-height: 1.45; }
+/* Les blocs de la fiche d'un contact : en grille, « À savoir » au-dessus sur
+   toute la largeur (il était seul dans la colonne de droite, et un long texte
+   y faisait une colonne d'un mètre à côté de blocs courts). */
+.blocs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; align-items: start; }
+.blocs > .aussi { grid-column: 1 / -1; }
+.refPied { font-size: 12px; color: #94a3b8; text-align: right; margin-top: -6px; }
+
+/* « Sa société » (V3.30, BlocSociete.tsx). */
+.plein { grid-column: 1 / -1; }
+.socBloc { gap: 12px; }
+.socTete { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.socTete > div { min-width: 0; }
+.socTete b { display: flex; align-items: center; gap: 8px; font: 800 17px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.socTete b em { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; background: #eef2f8; color: #34496e; }
+.socTete small { display: block; margin-top: 2px; font-size: 12.5px; color: #64748b; line-height: 1.45; }
+.socAv { width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #1a2332; color: #e0c36e; font: 800 18px 'Plus Jakarta Sans', sans-serif; }
+.socAssT { font-size: 11px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #a07c28; padding-top: 10px; border-top: 1px solid #f1f4f8; }
+.socListe { display: flex; flex-direction: column; gap: 6px; }
+.socL { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: 'av nom fiche' 'av joindre fiche'; gap: 2px 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: #f8fafc; border: 1px solid #eef1f6; }
+.socL[data-gerant='oui'] { background: #fbf8ef; border-color: #efe4c6; }
+.socInit { grid-area: av; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3e8f0; color: #34496e; font: 800 12px 'Plus Jakarta Sans', sans-serif; }
+.socNom { grid-area: nom; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.socNom b { font-size: 13.5px; color: var(--emilio); }
+.socNom > span { display: inline-flex; gap: 5px; }
+.socRole, .socRoleG, .socSoi { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
+.socRole { background: #eef2f8; color: #34496e; }
+.socRoleG { background: #c9a84c; color: #1a2332; }
+.socSoi { background: #dcfce7; color: #15803d; }
+.socJoindre { grid-area: joindre; display: flex; gap: 4px 12px; flex-wrap: wrap; min-width: 0; }
+.socJoindre a { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; font-size: 12.5px; font-weight: 600; color: #475569; text-decoration: none; }
+.socJoindre a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.socJoindre a:hover { color: var(--emilio); text-decoration: underline; text-underline-offset: 3px; }
+.socJoindre svg { color: #a07c28; flex-shrink: 0; }
+.socFiche { grid-area: fiche; display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid #e3e8f0; background: #fff; color: var(--emilio); font: 700 12px 'DM Sans', sans-serif; cursor: pointer; }
+.socFiche:hover { background: #f7f9fc; }
+.socReprendre { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 13px; border-radius: 13px; border: 1.5px solid #c9a84c; background: #fffbf0; cursor: pointer; text-align: left; font: inherit; color: #6b5413; }
+.socReprendre b { display: block; font-size: 13.5px; color: #8a6a1f; }
+.socReprendre small { display: block; font-size: 12px; color: #9a8350; margin-top: 1px; }
+.socReprendre svg { color: #a07c28; flex-shrink: 0; }
+.socEdit { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.3fr) 30px; gap: 6px; align-items: center; }
+.socSuppr { width: 30px; height: 30px; border-radius: 9px; border: none; background: none; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.socSuppr:hover { background: #fef2f2; color: #b91c1c; }
+@media (max-width: 720px) {
+  .socEdit { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px; padding-bottom: 8px; border-bottom: 1px dashed #e3e8f0; }
+  .socEdit > :nth-child(1) { grid-column: 1 / 3; }
+  .socEdit > :nth-child(5) { grid-column: 3; grid-row: 1; }
+  .socEdit > :nth-child(4) { grid-column: 1 / 3; }
+  .socL { grid-template-areas: 'av nom' 'av joindre' 'av fiche'; grid-template-columns: 34px minmax(0, 1fr); }
+  .socFiche { justify-self: start; margin-top: 4px; }
+}
+.socPlus { align-self: flex-start; border: none; background: none; padding: 2px 0; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.socPlus:hover { text-decoration: underline; text-underline-offset: 3px; }

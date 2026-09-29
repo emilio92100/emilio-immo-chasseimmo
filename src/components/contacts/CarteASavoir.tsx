@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Ic } from '@/components/documents/ApercuActe';
+import NoteRiche from '@/components/shared/NoteRiche';
 import c from './Contacts.module.css';
 
 /* ═══ « À savoir sur… » ═══════════════════════════════════════════════════
@@ -14,11 +15,15 @@ import c from './Contacts.module.css';
    dans son espace) : ceci n'est lu que par Alexandre.
    Vide : un lien discret pour en ajouter une. `onEnregistrer` rend false si
    l'écriture a échoué (le message rouge est déjà affiché) : on reste alors
-   en modification, le texte tapé n'est pas perdu. */
+   en modification, le texte tapé n'est pas perdu.
+   V3.30 : le texte se range en blocs (un par paragraphe, « Libellé : » en
+   titre), les e-mails et téléphones deviennent des liens, et au-delà d'une
+   certaine hauteur il se replie (NoteRiche). */
 
 export default function CarteASavoir({ prenom, texte, onEnregistrer }: {
   prenom: string; texte: string | null | undefined; onEnregistrer: (t: string) => Promise<boolean>;
 }) {
+  const sections = useMemo(() => [{ texte: (texte || '').trim() }], [texte]);
   const [edit, setEdit] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
   useEffect(() => { setEdit(null); }, [texte]);
@@ -51,11 +56,12 @@ export default function CarteASavoir({ prenom, texte, onEnregistrer }: {
           {edit === null && <button type="button" className={c.asvModif} onClick={() => setEdit(t)}>Modifier</button>}
         </div>
         {edit === null ? (
-          <p className={c.asvTexte}>{t}</p>
+          <div className={c.asvNote}><NoteRiche sections={sections} hauteur={260} /></div>
         ) : (
           <>
             <textarea className={c.notes} value={edit} autoFocus onChange={e => setEdit(e.target.value)}
-              style={{ marginTop: 8, minHeight: 96 }} />
+              style={{ marginTop: 8, minHeight: Math.min(420, 96 + Math.floor(edit.length / 90) * 22) }} />
+            <div className={c.asvAide}>Une ligne vide sépare deux blocs ; « Libellé : » en début de paragraphe lui donne son titre ; « – » en début de ligne fait une liste.</div>
             <div className={c.asvBoutons}>
               <button type="button" className={c.btn} disabled={occupe} onClick={() => setEdit(null)}>Annuler</button>
               <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={enregistrer}>
