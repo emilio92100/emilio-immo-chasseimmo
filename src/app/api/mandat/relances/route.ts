@@ -62,11 +62,13 @@ export async function GET(req: NextRequest) {
   const bilan: string[] = [];
   /* Le mandat proposé dans l'espace, pas encore signé (V3.32). */
   bilan.push(...await relancerPropositions(sb));
-  /* Table absente (SQL pas encore lancé) : rien à faire. */
-  if (error) return NextResponse.json({ ok: true, rien: error.message, bilan, archive, reprise });
+  /* Lecture impossible (table absente, ou la base qui répond mal ce
+     matin-là) : on le note et on passe aux cosignataires suivants… sans
+     sauter les relances des documents, plus bas (V3.33 : elles sautaient). */
+  if (error) bilan.push(`cosignataires : ${error.message}`);
 
   const lignes = new Map<string, LigneMandat | null>();
-  for (const co of (data || []) as Co[]) {
+  for (const co of (error ? [] : data || []) as Co[]) {
     try {
       if (!lignes.has(co.signature_id)) {
         const { data: l } = await sb.from('mandats_signatures').select('*').eq('id', co.signature_id).maybeSingle();
