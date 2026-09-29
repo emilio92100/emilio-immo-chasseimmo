@@ -132,17 +132,15 @@ function FormulaireAcces() {
     >
       <div style={{ width: '100%', maxWidth: 380 }}>
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
-          <div
-            style={{
-              fontSize: 27,
-              fontWeight: 800,
-              color: '#ffffff',
-              letterSpacing: -0.5,
-              marginBottom: 6,
-            }}
-          >
-            Emilio Immobilier
-          </div>
+          {/* Le logo de l'agence (V3.29), en blanc sur le fond bleu. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logos/logo-emilio-blanc-800.png"
+            alt="Emilio conseil immobilier"
+            width={800}
+            height={336}
+            style={{ display: 'block', width: 230, height: 'auto', margin: '0 auto 14px' }}
+          />
           <div
             style={{
               fontSize: 12,
