@@ -1,0 +1,21 @@
+/* ═══ Ce qui se déplie, en douceur (V3.32) : voir Depliant.tsx ═══ */
+
+.depliant {
+  display: grid; grid-template-rows: 0fr; min-width: 0; margin-top: calc(-1 * var(--ecart, 0px));
+  transition: grid-template-rows .38s cubic-bezier(.22, .9, .3, 1), margin-top .38s cubic-bezier(.22, .9, .3, 1);
+}
+.depliant[data-ouvert='oui'] { grid-template-rows: 1fr; margin-top: 0; }
+
+.dedans {
+  min-height: 0; min-width: 0; overflow: hidden;
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity .22s ease, transform .32s cubic-bezier(.22, .9, .3, 1);
+}
+.depliant[data-ouvert='oui'] > .dedans { opacity: 1; transform: none; transition-delay: .06s, 0s; }
+/* Arrivé : plus rien n'est coupé (ombres, menus, contours de focus). */
+.depliant[data-arrive='oui'] > .dedans { overflow: visible; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .depliant, .dedans { transition: none; }
+  .depliant[data-ouvert='oui'] > .dedans { overflow: visible; }
+}
