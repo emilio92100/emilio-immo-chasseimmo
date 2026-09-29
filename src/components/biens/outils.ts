@@ -1,4 +1,5 @@
 'use client';
+import { conseilMandat, mandatVenteEnCours, phraseMandat } from '@/lib/coherence';
 import { supabase, genererReference } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import { programmerRelance } from '@/lib/relances';
@@ -609,6 +610,12 @@ export type PourDocument = {
 export async function creerDocument(b: BienVente, x: PourDocument): Promise<string> {
   const m = modele(x.modele);
   if (!m) throw new Error('Modèle introuvable.');
+  /* Un seul mandat de vente en cours par bien (V3.32, src/lib/coherence.ts) :
+     le dernier garde-fou, quel que soit le chemin qui mène ici. */
+  if (x.modele === 'mandat_vente') {
+    const enCours = await mandatVenteEnCours(b);
+    if (enCours) throw new Error(`${phraseMandat(enCours)} ${conseilMandat(enCours)}`);
+  }
   const identite = await identiteDuJour();
   const d = b.donnees || {};
   const a = argentBien(d);

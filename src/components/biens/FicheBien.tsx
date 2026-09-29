@@ -24,6 +24,7 @@ import {
   type Acheteur, type ClientMini, type Copie, type DetailBien, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
 import { lienFichier, nomFichier } from '@/components/documents/outils';
+import { mandatVenteEnCours } from '@/lib/coherence';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
@@ -898,6 +899,16 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   async function faireDocument(x: PourDocument) {
     setMessage({ t: 'Préparation du document…', ok: true });
     try {
+      /* Un mandat déjà en préparation (V3.32) : on le reprend plutôt que
+         d'en commencer un second. Signé, `creerDocument` refuse et dit pourquoi. */
+      if (x.modele === 'mandat_vente') {
+        const enCours = await mandatVenteEnCours(bien);
+        if (enCours?.documentId && enCours.etat !== 'signe') {
+          setMessage({ t: 'Un mandat est déjà en préparation pour ce bien : il s’ouvre.', ok: true });
+          onNavigate('documents', { ouvrir: enCours.documentId });
+          return;
+        }
+      }
       const id = await creerDocument(bien, x);
       onNavigate('documents', { ouvrir: id });
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
