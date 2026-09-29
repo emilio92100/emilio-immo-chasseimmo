@@ -89,6 +89,16 @@ export type InfosPro = {
   structure?: Structure;
 };
 export const lirePro = (x: unknown): InfosPro => (x && typeof x === 'object' && !Array.isArray(x) ? x as InfosPro : {});
+/* La société saisie dans le formulaire (V3.31) : gardée si elle a un nom ou
+   des associés, nettoyée ; sinon retirée (on avait coché « Pour une
+   société » sans rien écrire). */
+export function structurePropre(p: InfosPro): InfosPro {
+  if (p.structure === undefined) return p;
+  const st = lireStructure(p.structure);
+  const { structure: _, ...reste } = p;
+  void _;
+  return st ? { ...reste, structure: { ...st, denomination: st.denomination.trim(), qualite: st.qualite.trim() } } : reste;
+}
 export const STATUTS_PRO: { v: 'salarie' | 'mandataire' | 'independant'; l: string; aide: string }[] = [
   { v: 'salarie', l: 'Salarié d’une agence', aide: 'Il travaille pour une agence' },
   { v: 'mandataire', l: 'Mandataire', aide: 'Réseau : IAD, SAFTI, Capifrance…' },
