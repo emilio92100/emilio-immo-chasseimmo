@@ -11,7 +11,7 @@ import {
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import { NOM_MANDAT, prixCarte } from './CarteBien';
-import { COULEURS, ChampDossier, ChampPhotos } from './ChampsBien';
+import { COULEURS, ChampPhotos } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
@@ -29,11 +29,13 @@ import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/Fic
 import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
+import { DossierBien, type DestPropose } from './DossierBien';
 import {
-  ADecrire, BandePhotos, BoutonAct, BtnTuile, CarteAnnonce, CarteDossier, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, Haut, HistoriqueBien,
-  Kv, LesPieces, Lettres, ListeDocs, ListeVisites, Note, Pile, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
-  type AVenirBien, type EvtBien, type VisiteCarte,
+  ADecrire, BandePhotos, BoutonAct, BtnTuile, CarteAnnonce, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, Haut, HistoriqueBien,
+  Kv, Lettres, ListeDocs, ListeTravaux, ListeVisites, Note, OngletSurfaces, Pile, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
+  type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
+import NoteRiche from '@/components/shared/NoteRiche';
 import { BlocDernierement, BlocProchaines, CarteEstimation, CarteMandat, CarteProprio, CarteVisites, Kpis, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
@@ -56,7 +58,7 @@ import { BlocDernierement, BlocProchaines, CarteEstimation, CarteMandat, CartePr
      bien et ses chiffres.
    Chaque bloc a son « Modifier », qui ouvre l'éditeur à la bonne étape. */
 
-type Onglet = 'apercu' | 'bien' | 'photos' | 'visites' | 'acheteurs' | 'documents' | 'historique';
+type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
   | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre' } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] };
@@ -205,28 +207,31 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   const eau = (n('sdb') || 0) + (n('salleseau') || 0);
   const ann = liste(d, 'annexes');
   const icExt = PICTO_ANNEXE[['terrasse', 'jardin', 'balcon', 'loggia'].find(x => ann.includes(x)) || ann[0] || ''] || 'terrain';
-  const items: { ic: string; v: string; l: string; dpe?: string }[] = [];
-  if (n('surface')) items.push({ ic: 'regle', v: m2(n('surface') as number), l: n('carrez') ? `Carrez ${m2(n('carrez') as number)}` : 'Habitable' });
-  else if (n('terrain')) items.push({ ic: 'terrain', v: m2(n('terrain') as number), l: 'Terrain' });
-  if (n('pieces')) items.push({ ic: 'plan', v: `${n('pieces')} pièce${(n('pieces') as number) > 1 ? 's' : ''}`, l: n('sejour') ? `Séjour ${m2(n('sejour') as number)}` : 'Pièces' });
-  if (n('chambres')) items.push({ ic: 'lit', v: String(n('chambres')), l: (n('chambres') as number) > 1 ? 'Chambres' : 'Chambre' });
-  if (eau) items.push({ ic: n('sdb') ? 'bain' : 'douche', v: String(eau), l: eau > 1 ? 'Salles d’eau ou de bains' : n('sdb') ? 'Salle de bains' : 'Salle d’eau' });
-  if (enImm && n('etage') !== null) items.push({ ic: asc ? 'ascenseur' : 'escalier', v: etageTexte(n('etage'), n('etages')).replace(' étage', ''), l: n('etage') === 0 ? (asc ? 'Avec ascenseur' : 'Étage') : asc ? 'Étage, avec ascenseur' : 'Étage, sans ascenseur' });
-  if (!enImm && n('etages')) items.push({ ic: 'escalier', v: n('etages') === 1 ? 'Plain-pied' : String(n('etages')), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
-  if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
-  if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
-  if (ann.length) items.push({ ic: icExt, v: exterieurCourt(d), l: 'Extérieur' });
-  if (d.expo) items.push({ ic: 'boussole', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo).replace(/^./, x => x.toUpperCase()), l: 'Exposition' });
-  if (d.dpe) items.push({ ic: '', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: 'DPE, par m² et par an' });
-  else if (d.dpeStatut === 'vierge') items.push({ ic: 'eclair', v: 'Vierge', l: 'DPE' });
-  if (n('chargesAn')) items.push({ ic: 'lots', v: `${euros((n('chargesAn') as number) / 12)}`, l: 'Charges par mois' });
-  if (n('taxeFonciere')) items.push({ ic: 'fiscal', v: euros(n('taxeFonciere') as number), l: 'Taxe foncière' });
-  if (n('annee')) items.push({ ic: 'calendrier', v: String(n('annee')), l: 'Construction' });
+  /* V3.30 : chaque tuile a sa teinte (la même famille que dans « Le bien »),
+     sur fond blanc : sur le gris de la page, les tuiles grises se perdaient. */
+  type Ton = 'or' | 'bleu' | 'violet' | 'cyan' | 'ardoise' | 'vert' | 'ambre';
+  const items: { ic: string; v: string; l: string; dpe?: string; ton: Ton }[] = [];
+  if (n('surface')) items.push({ ic: 'regle', ton: 'or', v: m2(n('surface') as number), l: n('carrez') ? `Carrez ${m2(n('carrez') as number)}` : 'Habitable' });
+  else if (n('terrain')) items.push({ ic: 'terrain', ton: 'vert', v: m2(n('terrain') as number), l: 'Terrain' });
+  if (n('pieces')) items.push({ ic: 'plan', ton: 'bleu', v: `${n('pieces')} pièce${(n('pieces') as number) > 1 ? 's' : ''}`, l: n('sejour') ? `Séjour ${m2(n('sejour') as number)}` : 'Pièces' });
+  if (n('chambres')) items.push({ ic: 'lit', ton: 'violet', v: String(n('chambres')), l: (n('chambres') as number) > 1 ? 'Chambres' : 'Chambre' });
+  if (eau) items.push({ ic: n('sdb') ? 'bain' : 'douche', ton: 'cyan', v: String(eau), l: eau > 1 ? 'Salles d’eau ou de bains' : n('sdb') ? 'Salle de bains' : 'Salle d’eau' });
+  if (enImm && n('etage') !== null) items.push({ ic: asc ? 'ascenseur' : 'escalier', ton: 'ardoise', v: etageTexte(n('etage'), n('etages')).replace(' étage', ''), l: n('etage') === 0 ? (asc ? 'Avec ascenseur' : 'Étage') : asc ? 'Étage, avec ascenseur' : 'Étage, sans ascenseur' });
+  if (!enImm && n('etages')) items.push({ ic: 'escalier', ton: 'ardoise', v: n('etages') === 1 ? 'Plain-pied' : String(n('etages')), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
+  if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', ton: 'ardoise', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
+  if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', ton: 'vert', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
+  if (ann.length) items.push({ ic: icExt, ton: 'vert', v: exterieurCourt(d), l: 'Extérieur' });
+  if (d.expo) items.push({ ic: 'boussole', ton: 'ambre', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo).replace(/^./, x => x.toUpperCase()), l: 'Exposition' });
+  if (d.dpe) items.push({ ic: '', ton: 'ambre', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: 'DPE, par m² et par an' });
+  else if (d.dpeStatut === 'vierge') items.push({ ic: 'eclair', ton: 'ambre', v: 'Vierge', l: 'DPE' });
+  if (n('chargesAn')) items.push({ ic: 'lots', ton: 'ardoise', v: `${euros((n('chargesAn') as number) / 12)}`, l: 'Charges par mois' });
+  if (n('taxeFonciere')) items.push({ ic: 'fiscal', ton: 'ardoise', v: euros(n('taxeFonciere') as number), l: 'Taxe foncière' });
+  if (n('annee')) items.push({ ic: 'calendrier', ton: 'ardoise', v: String(n('annee')), l: 'Construction' });
   if (!items.length) return <div className={b.vide}>{vide || 'Les caractéristiques du bien s’afficheront ici.'}</div>;
   return (
     <div className={b.faits}>
-      {items.map(x => (
-        <div key={x.l + x.v} className={b.fait}>
+      {items.map((x, i) => (
+        <div key={x.l + x.v} className={b.fait} data-ton={x.ton} style={{ animationDelay: `${Math.min(i, 10) * 0.035}s` }}>
           {x.dpe
             ? <span className={b.faitDpe} style={{ background: COULEURS.dpe[x.dpe]?.f, color: COULEURS.dpe[x.dpe]?.t }}>{x.dpe}</span>
             : <span className={b.faitIc}><Ic n={x.ic} t={19} /></span>}
@@ -234,6 +239,20 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
         </div>
       ))}
     </div>
+  );
+}
+/* Le bien en bref, dans sa carte blanche : un lien vers les surfaces, un
+   « Modifier ». */
+function BlocBref({ d, onSurfaces, onModifier }: { d: Donnees; onSurfaces: () => void; onModifier: () => void }) {
+  return (
+    <section className={b.bref} aria-label="Le bien en bref">
+      <div className={b.brefT}>
+        <h3>Le bien en bref</h3>
+        <button type="button" className={`${b.lien} ${b.lienOr}`} onClick={onSurfaces}><Ic n="regle" t={14} />Surfaces et pièces</button>
+        <Modifier onClick={onModifier} />
+      </div>
+      <Faits d={d} vide="Surface, pièces, étage, extérieur… : « Modifier » pour les saisir." />
+    </section>
   );
 }
 
@@ -337,7 +356,10 @@ function BlocVisite({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
 }
 
 /* Les observations (V3.16) : les travaux, les sinistres, les PV d'AG, les
-   notes. Pour Alexandre seul ; un sinistre en cours passe en rouge, en haut. */
+   notes. Pour Alexandre seul ; un sinistre en cours passe en rouge, en haut.
+   V3.30 : sur toute la largeur, sous les deux colonnes, et le texte libre
+   rangé en blocs qui se replient (NoteRiche) — dans la colonne de droite, les
+   notes d'un dossier fourni faisaient un mur de texte d'un mètre de haut. */
 function BlocObservations({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
   const copro = d.copro === 'oui';
   const sinistres = lireObservations(d.sinistres);
@@ -350,33 +372,40 @@ function BlocObservations({ d, onModifier }: { d: Donnees; onModifier: () => voi
     { t: 'Copropriété · travaux à venir', ic: 'horloge', l: copro ? lireObservations(d.coproAVenir) : [] },
   ].filter(g => g.l.length);
   const notes = txt(d, 'notes');
-  const vide = !groupes.length && !notes && !txt(d, 'travaux') && !(copro && txt(d, 'travauxVotes')) && d.sinistre !== 'non';
+  const sections = useMemo(() => [
+    { titre: 'Travaux', texte: txt(d, 'travaux') },
+    { titre: 'Copropriété', texte: copro ? txt(d, 'travauxVotes') : '' },
+    { titre: 'Notes', texte: notes },
+  ].filter(x => x.texte), [d, copro, notes]);
+  const vide = !groupes.length && !sections.length && d.sinistre !== 'non';
   return (
-    <Bloc ic="loupe" titre="Observations et notes" action={<Modifier onClick={onModifier} />}>
+    <Bloc ic="loupe" titre="Observations et notes" action={<Modifier onClick={onModifier} />} large>
       {d.sinistre === 'oui' && enCours.length > 0 && (
         <div className={b.obsAlerte}><Ic n="info" t={16} /><span>{`Sinistre en cours : ${enCours.map(x => [x.nature || 'à préciser', x.quand].filter(Boolean).join(', ')).join(' ; ')}`}</span></div>
       )}
       {d.sinistre === 'non' && <span className={b.obsOk}><Ic n="check" t={15} e={2.6} />Aucun sinistre, à sa connaissance</span>}
-      {groupes.map(g => (
-        <div key={g.t} className={b.obsG}>
-          <div className={b.obsT}><Ic n={g.ic} t={14} />{g.t}</div>
-          <ul className={b.obsL}>
-            {g.l.map(o => (
-              <li key={o.id}>
-                <b>{o.nature || 'À préciser'}</b>
-                {o.quand && <span>{o.quand}</span>}
-                {o.enCours !== undefined && <em className={`${b.obsTag} ${o.enCours ? b.obsTagRouge : ''}`}>{o.enCours ? 'en cours' : 'réglé'}</em>}
-                {o.note && <small>{o.note}</small>}
-              </li>
-            ))}
-          </ul>
+      {groupes.length > 0 && (
+        <div className={b.obsGroupes}>
+          {groupes.map(g => (
+            <div key={g.t} className={b.obsG}>
+              <div className={b.obsT}><Ic n={g.ic} t={14} />{g.t}</div>
+              <ul className={b.obsL}>
+                {g.l.map(o => (
+                  <li key={o.id}>
+                    <b>{o.nature || 'À préciser'}</b>
+                    {o.quand && <span>{o.quand}</span>}
+                    {o.enCours !== undefined && <em className={`${b.obsTag} ${o.enCours ? b.obsTagRouge : ''}`}>{o.enCours ? 'en cours' : 'réglé'}</em>}
+                    {o.note && <small>{o.note}</small>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-      ))}
-      {txt(d, 'travaux') && <div className={b.texte}><b>Travaux : </b>{txt(d, 'travaux')}</div>}
-      {copro && txt(d, 'travauxVotes') && <div className={b.texte}><b>Copropriété : </b>{txt(d, 'travauxVotes')}</div>}
-      {notes && <div className={b.texte}><b>Notes : </b>{notes}</div>}
+      )}
+      {sections.length > 0 && <NoteRiche sections={sections} hauteur={320} />}
       {vide && <div className={b.vide}>Les travaux, un sinistre, ce que disent les PV d’AG, tes notes : « Modifier » pour les noter.</div>}
-      <div className={b.pied}>Visibles par toi seul, jamais dans un espace client ni une annonce.</div>
+      <div className={b.pied}>Visibles par toi seul, jamais dans un espace client ni une annonce. Présentes à chaque étape du bien, de « À suivre » jusqu’à la vente.</div>
     </Bloc>
   );
 }
@@ -501,7 +530,32 @@ function BlocEstimation({ bien, onDefinir, onEstimation, onMandat }: { bien: Bie
    couleur, puis les pièces, en liste ou en cartes. */
 const SURF_ANNEXE: Record<string, string> = { balcon: 'surfBalcon', terrasse: 'surfTerrasse', jardin: 'surfJardin', cave: 'surfCave', parking: 'nbParking' };
 
-function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifier: (etape: string) => void; onPhotos: () => void }) {
+/* ══ ONGLET « SURFACES » (V3.30, OngletsBien.tsx) ═══════════════════════════ */
+const PICTO_ANN: Record<string, string> = { balcon: 'balcon', terrasse: 'parasol', jardin: 'terrain', cave: 'cave', loggia: 'loggia', parking: 'parking', box: 'box', garage: 'voiture', piscine: 'piscine' };
+/* « l’appartement du 68 avenue d’Iéna » : pour le message d'envoi des documents. */
+const LE_TYPE: Record<string, string> = { appartement: 'l’appartement', maison: 'la maison', duplex: 'le duplex', studio: 'le studio', loft: 'le loft', terrain: 'le terrain', local: 'le local', parking: 'le parking', immeuble: 'l’immeuble' };
+function lieuDe(d: Donnees): string {
+  const t = LE_TYPE[String(d.typeBien || '')] || 'le bien';
+  const adr = txt(d, 'adresse'), ville = txt(d, 'ville');
+  return adr ? (/^\d/.test(adr) ? `${t} du ${adr}` : `${t}, ${adr}`) : ville ? `${t} à ${ville}` : t;
+}
+function surfacesDe(d: Donnees): SurfacesBien {
+  const ann = liste(d, 'annexes');
+  const annexes: SurfacesBien['annexes'] = [];
+  for (const v of ann) {
+    const cle = SURF_ANNEXE[v];
+    const n = cle ? num(d, cle) : null;
+    const l = OPTIONS.annexes?.[v] || v;
+    if (v === 'parking') annexes.push({ ic: PICTO_ANN.parking, l: n ? 'Parking' : 'Nombre de places non saisi', v: n ? `${n} place${n > 1 ? 's' : ''}` : 'Parking' });
+    else annexes.push({ ic: PICTO_ANN[v] || 'plan', l: n ? l : 'Surface non saisie', v: n ? m2(n) : l });
+  }
+  return {
+    surface: num(d, 'surface'), carrez: num(d, 'carrez'), sejour: num(d, 'sejour'), terrain: num(d, 'terrain'),
+    carrezAttendu: d.copro === 'oui', chambres: num(d, 'chambres'), annexes,
+  };
+}
+
+function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVente; onModifier: (etape: string) => void; onPhotos: () => void; onSurfaces: () => void }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
@@ -514,8 +568,14 @@ function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifie
   const chauffage = [lib(d, 'chauffageMode'), lib(d, 'chauffageEnergie').toLowerCase()].filter(Boolean).join(', ');
   const cuisine = [lib(d, 'cuisine'), lib(d, 'cuisineEquip').toLowerCase()].filter(Boolean).join(', ');
   const equip = libs(d, 'equipements');
-  const sejour = num(d, 'sejour');
-  const videInt = !d.etat && !chauffage && !cuisine && !equip.length && !txt(d, 'interieurNote') && !txt(d, 'travaux') && !sejour;
+  const videInt = !d.etat && !chauffage && !cuisine && !equip.length && !txt(d, 'interieurNote') && !txt(d, 'travaux');
+  /* Les gros travaux votés (la liste de l'étape Copropriété) et les
+     remarques libres : « Autres remarques sur la copropriété » dans
+     l'éditeur. Jusqu'à la V3.29, ces remarques s'affichaient ici sous le mot
+     « Travaux votés », en gras, calées à droite : un paragraphe entier
+     tenait dans une colonne de trois mots. */
+  const votes = d.copro === 'oui' ? lireObservations(d.coproVotes) : [];
+  const remarquesCopro = d.copro === 'oui' ? txt(d, 'travauxVotes') : '';
   const ann = liste(d, 'annexes');
   const nbPark = num(d, 'nbParking');
   /* Les annexes sans ligne à elles (loggia, box, piscine…, ou sans surface) : en pastilles. */
@@ -567,7 +627,6 @@ function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifie
 
       <Familles>
         <Famille ton="bleu" ic="canape" titre="L’intérieur" onModifier={M('interieur')}>
-          <Kv l="Séjour" v={sejour ? m2(sejour) : ''} />
           <Kv l="État" v={lib(d, 'etat')} />
           <Kv l="Cuisine" v={cuisine} />
           <Kv l="Chauffage" v={chauffage} />
@@ -595,7 +654,15 @@ function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifie
               <Kv l="Procédure en cours" v={d.procedure === 'oui' ? txt(d, 'procedureNature') || 'oui' : d.procedure === 'non' ? 'aucune' : ''} alerte={d.procedure === 'oui'} />
               <Kv l="Syndic" v={txt(d, 'syndic')} />
               <Kv l="Fonds de travaux" v={eur(num(d, 'fondsTravaux'))} />
-              <Kv l="Travaux votés" v={txt(d, 'travauxVotes')} />
+              {votes.length > 0 && (
+                <ListeTravaux titre="Gros travaux votés" l={votes.map(o => ({ id: o.id, t: o.nature || 'À préciser', s: [o.quand, o.note].filter(Boolean).join(' · ') }))} />
+              )}
+              {remarquesCopro && (
+                <div className={b.remarques}>
+                  <span className={b.remarquesT}>Remarques</span>
+                  <NoteRiche sections={[{ texte: remarquesCopro }]} hauteur={150} colonnes={false} />
+                </div>
+              )}
             </>
           ) : d.copro === 'non' ? <Note>Pas de copropriété.</Note> : <ADecrire t="À renseigner." />}
         </Famille>
@@ -616,7 +683,11 @@ function OngletBien({ bien, onModifier, onPhotos }: { bien: BienVente; onModifie
         <Pile>{charges}{prix}</Pile>
       </Familles>
 
-      <LesPieces pieces={pieces} onModifier={M('pieces')} />
+      <button type="button" className={b.versSurfaces} onClick={onSurfaces}>
+        <span className={b.versSurfacesIc}><Ic n="regle" t={18} /></span>
+        <span><b>Les surfaces et les pièces</b><small>{pieces.length ? `${pieces.length} pièce${pieces.length > 1 ? 's' : ''} saisie${pieces.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''} · dans l’onglet Surfaces` : 'Pièce par pièce, dans l’onglet Surfaces'}</small></span>
+        <Ic n="droite" t={16} e={2.4} />
+      </button>
     </Col>
   );
 }
@@ -671,6 +742,12 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
         l.push({ cle: x.id + '-r', le: `${str('reponse_le')}T18:00:00`, ic: x.statut === 'acceptee' ? 'check' : 'euro', ton: x.statut === 'acceptee' ? 'ic_vert' : 'ic_gris',
           titre: `Réponse à l’offre de ${x.qui || 'l’acquéreur'} : ${(PUCE_OFFRE[x.statut]?.l || x.statut).toLowerCase()}`, detail: [typeof d.contre === 'number' ? `Contre-offre du vendeur à ${euros(d.contre)}` : '', x.commentaire || ''].filter(Boolean).join(' · '), genre: 'offres' });
       }
+    } else if (x.type === 'envoi') {
+      /* Des pièces du dossier envoyées par mail (V3.30). */
+      const pieces = Array.isArray(d.pieces) ? (d.pieces as unknown[]).map(String) : [];
+      l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_or', genre: 'documents', titre: `Documents envoyés à ${x.qui || 'un contact'}`,
+        detail: [pieces.join(', '), d.mode === 'liens' ? 'en liens de téléchargement (7 jours)' : ''].filter(Boolean).join(' · '),
+        puce: { l: `${pieces.length} document${pieces.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
     } else if (x.type === 'visite') {
       const iss = x.avis && x.avis in ISSUES ? (x.avis as Issue) : null;
       const passe = x.statut === 'faite' || x.le < new Date().toISOString();
@@ -914,8 +991,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const docsLies = detail?.docs || [];
   const nbPhotos = lirePhotos(d.photos).length;
   const avant = avantMandat(e);
+  /* L'ordre voulu par Alexandre (V3.30) : Vue d'ensemble, Photos, Le bien,
+     Surfaces, puis Acheteurs, Documents, Historique. */
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
-    { k: 'apercu', l: 'Vue d’ensemble', ic: 'oeil' }, { k: 'bien', l: 'Le bien', ic: 'maison' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' },
+    { k: 'apercu', l: 'Vue d’ensemble', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
+    { k: 'surfaces', l: 'Surfaces', ic: 'regle' },
     ...(avant ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
     { k: 'acheteurs', l: 'Acheteurs', n: acheteurs.filter(a => a.corr.note >= SEUIL_CORRESPOND).length, ic: 'cible' },
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
@@ -931,7 +1011,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const nomP = nomProprio(d) || (proprio ? nomClient(proprio) : '');
   const telP = proprio?.telephones?.[0] || persP.find(p => p?.telephone)?.telephone || '';
   const plurielP = d.qui === 'couple' || d.qui === 'indivision' || persP.filter(p => p && (p.nom || p.prenom)).length > 1;
-  const sousP = recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · ');
+  /* Une société qui vend : on dit qui est l'interlocuteur (V3.30). */
+  const interlocuteur = d.qui === 'sci' && proprio && nomP !== nomClient(proprio) ? `${proprio.civilite === 'Madame' ? 'Interlocutrice' : 'Interlocuteur'} : ${nomClient(proprio)}` : '';
+  const sousP = interlocuteur || (recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · '));
   const faites = visites.filter(v => v.statut !== 'annulee' && passee(v));
   const compte = (x: Issue | null) => faites.filter(v => v.issue === x).length;
   const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
@@ -1027,14 +1109,24 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       )}
     </>
   );
-  const lignesDoss = lignesDossier(d);
-  const doss = lireDossier(d.dossier);
-  const compteDossier = {
-    recus: lignesDoss.filter(l => doss[l.k]?.etat === 'recu').length,
-    demandes: lignesDoss.filter(l => doss[l.k]?.etat === 'demande').length,
-    nc: lignesDoss.filter(l => doss[l.k]?.etat === 'nc').length,
-    total: lignesDoss.length,
-  };
+  /* ── Documents : à qui les envoyer (V3.30) — le propriétaire (et son
+     conjoint), les autres propriétaires saisis, puis les acheteurs du bien. ── */
+  const destsDocs: DestPropose[] = [];
+  const ajouteDest = (x: DestPropose) => { if (x.email && !destsDocs.some(y => y.email.toLowerCase() === x.email.toLowerCase())) destsDocs.push(x); };
+  if (proprio) {
+    ajouteDest({ cle: 'p-' + proprio.id, nom: nomClient(proprio), email: proprio.emails?.find(Boolean) || '', clientId: proprio.id, role: nomP && nomP !== nomClient(proprio) ? `Pour ${nomP}` : 'Propriétaire' });
+    const j = proprio.couple && proprio.conjoint && typeof proprio.conjoint === 'object' ? proprio.conjoint as Record<string, string> : null;
+    if (j?.email) ajouteDest({ cle: 'pj-' + proprio.id, nom: [j.prenom, j.nom].filter(Boolean).join(' '), email: j.email, clientId: proprio.id, role: 'Propriétaire' });
+  }
+  persP.forEach((p, i) => { if (p?.email) ajouteDest({ cle: 'pp-' + i, nom: [p.prenom, p.nom].filter(Boolean).join(' '), email: p.email, role: 'Propriétaire' }); });
+  for (const c of detail?.copies || []) {
+    const cl = liste.clients[c.client_id];
+    if (cl) ajouteDest({ cle: 'a-' + c.id, nom: nomClient(cl), email: cl.emails?.find(Boolean) || '', clientId: cl.id, rechercheId: c.recherche_id, role: c.envoye_le ? 'Acheteur · bien présenté' : 'Acheteur · en sélection' });
+  }
+  for (const o of offres) {
+    const cl = o.client_id ? liste.clients[o.client_id] : null;
+    if (cl) ajouteDest({ cle: 'o-' + o.id, nom: nomClient(cl), email: cl.emails?.find(Boolean) || '', clientId: cl.id, rechercheId: o.recherche_id, role: 'Acheteur · a fait une offre' });
+  }
 
   /* ── Historique : ce qui arrive, et les chiffres de la vente ── */
   const aVenirHisto: AVenirBien[] = [
@@ -1131,8 +1223,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           {offresOuvertes.map(o => (
             <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
           ))}
-          {avant && <ListeAcheteurs acheteurs={acheteurs} mode={mode} nbRecherches={liste.recherches.length} onFiche={ouvrirClient} max={5} onTout={() => setOnglet('acheteurs')} />}
-          <Faits d={d} vide="Surface, pièces, étage, extérieur… : « Modifier » pour les saisir." />
+          {/* « Qui pourrait l'acheter » n'est plus répété ici (V3.30) : la carte
+              « Acheteurs potentiels » juste au-dessus dit combien, et qui ; la
+              liste entière est dans l'onglet Acheteurs. */}
+          <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
           <div className={b.deuxEgal}>
             <div className={b.col}>
               {avant && <BlocVisiteSurPlace d={d} onOuvrir={() => setVisite(true)} />}
@@ -1145,13 +1239,15 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
               <BlocProprio bien={bien} proprio={proprio} recherchesProprio={recherchesProprio} onFiche={ouvrirClient} onModifier={() => onModifier('proprio')} />
               {e === 'estimation' && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
-              {blocNotes}
             </div>
           </div>
+          {blocNotes}
         </div>
       )}
 
-      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onPhotos={() => setOnglet('photos')} />}
+      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onPhotos={() => setOnglet('photos')} onSurfaces={() => setOnglet('surfaces')} />}
+
+      {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien')} />}
 
       {onglet === 'photos' && (
         <Bloc ic="photo" titre={<>{'Les photos'}<i>{nbPhotos ? ` · ${nbPhotos}` : ''}</i></>}>
@@ -1222,9 +1318,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       )}
 
       {onglet === 'documents' && (
+        <div className={b.col}>
         <Deux>
           <Col gap={12}>
-            <TitreSec>Les documents</TitreSec>
+            <TitreSec>Les documents à signer</TitreSec>
             {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
             <Tuiles>
               {tuileMandat}
@@ -1239,12 +1336,13 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               };
             })} />
             <div className={b.pied}>Préremplis avec le bien, le propriétaire, le prix et les honoraires. Ils s’ouvrent dans Documents, et restent reliés au bien.</div>
-            <BlocMandat bien={bien} docs={docsLies} onDoc={faireDocument} onOuvrirDoc={ouvrirDoc} onMandat={() => setFen({ k: 'mandat' })} />
           </Col>
-          <CarteDossier {...compteDossier}>
-            <ChampDossier d={d} maj={majDonnees} off={false} bienId={bien.id} />
-          </CarteDossier>
+          <BlocMandat bien={bien} docs={docsLies} onDoc={faireDocument} onOuvrirDoc={ouvrirDoc} onMandat={() => setFen({ k: 'mandat' })} />
         </Deux>
+        {/* Le dossier sur toute la largeur, en tuiles (V3.30) : déposer,
+            ranger, cocher, envoyer. */}
+        <DossierBien bienId={bien.id} d={d} maj={majDonnees} destinataires={destsDocs} lieu={lieuDe(d)} onMessage={m => { setMessage(m); void apres(); }} />
+        </div>
       )}
 
       {onglet === 'historique' && (

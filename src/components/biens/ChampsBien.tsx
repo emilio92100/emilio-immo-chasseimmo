@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
+import { lirePro, lireStructure } from '@/lib/contacts';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import {
   EXPOSITIONS, NIVEAUX, PIECES_GROUPES, PIECES_TUILES, lirePieces, lirePhotos, lireDossier, lignesDossier, pictoPiece,
@@ -352,7 +353,7 @@ export function ChampDossier({ d, maj, off, bienId }: { d: Donnees; maj: Maj; of
     try {
       const ancien = doss[k]?.chemin;
       const x = await deposerPiece(bienId, k, f);
-      poser(k, { chemin: x.chemin, nom: x.nom, etat: 'recu', date: doss[k]?.date || aujourdhui() });
+      poser(k, { chemin: x.chemin, nom: x.nom, taille: f.size, etat: 'recu', date: doss[k]?.date || aujourdhui() });
       if (ancien) retirerPiece(ancien).catch(() => { /* l'ancien reste au stockage, sans lien */ });
     } catch (e) { setErreur((e as Error).message); }
     setOccupe('');
@@ -423,7 +424,7 @@ let CLIENTS: Promise<ClientMini[]> | null = null;
 export const lireClients = (frais = false) => {
   if (!CLIENTS || frais) {
     CLIENTS = (async () => {
-      const { data, error } = await supabase.from('clients').select('id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones')
+      const { data, error } = await supabase.from('clients').select('id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro')
         .order('created_at', { ascending: false }).limit(2000);
       if (error) { CLIENTS = null; throw new Error('Les clients n’ont pas pu être lus : ' + error.message); }
       return (data || []) as ClientMini[];
@@ -433,14 +434,66 @@ export const lireClients = (frais = false) => {
 };
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-/* ── L'étape « Le propriétaire » (V3.29) ──
-   D'abord une question : « Ce propriétaire est-il déjà dans le CRM ? ». La
-   recherche relie sa fiche (et remplit ses coordonnées) ; sinon, « Créer sa
-   fiche » ouvre la suite, sur fond clair, et la fiche se crée d'un clic dès
-   que son nom est écrit. Tant que rien n'est choisi, la suite de l'étape
-   reste grisée (EditeurBien, `proprioOuvert`). */
+/* ── L'étape « Le propriétaire » (V3.29, refaite en V3.30) ──
+   Alexandre ne comprenait pas le parcours : « Créer sa fiche » ouvrait la
+   suite, il fallait descendre écrire le nom, remonter cliquer « Créer la
+   fiche de… » ; et « Délier » détachait la fiche mais laissait le nom sur
+   le bien. Maintenant, trois états, chacun dit ce qu'il fait :
+   · rien de choisi : on cherche dans les contacts, ou « Nouveau contact »
+     ouvre un petit formulaire ICI (prénom, nom, téléphone, e-mail) qui crée
+     la fiche et la relie d'un clic. Un bien peut aussi n'avoir personne pour
+     l'instant : « Continuer sans propriétaire ».
+   · des noms saisis sans fiche (les biens d'avant) : ils restent, et on
+     propose de créer la fiche à partir d'eux.
+   · une fiche reliée : « Changer de fiche » (on en relie une autre, ce qui
+     est saisi plus bas ne bouge pas) ou « Retirer du bien » (le bien n'a
+     plus de propriétaire ; sa fiche reste dans les contacts).
+   Tant que rien n'est choisi, la suite de l'étape reste grisée (EditeurBien,
+   `proprioOuvert`). */
 export const proprioOuvert = (d: Donnees) =>
-  !!txt(d, 'clientId') || d.proprioNouveau === true || lirePersonnes(d.proprietaires).some(p => p.nom || p.prenom);
+  !!txt(d, 'clientId') || d.proprioNouveau === true || d.proprioSans === true || lirePersonnes(d.proprietaires).some(p => p.nom || p.prenom);
+
+/* Le petit formulaire d'une fiche nouvelle. Au niveau du module : défini
+   dans ChampProprio, il perdrait le curseur à chaque lettre (AGENTS.md §2.4). */
+function FormNouveauProprio({ depart, occupe, erreur, onCreer, onAnnuler }: {
+  depart: Personne; occupe: boolean; erreur: string; onCreer: (p: Personne) => void; onAnnuler: () => void;
+}) {
+  const [p, setP] = useState<Personne>(depart);
+  const ok = !!(p.nom.trim() || p.prenom.trim());
+  const champ = (cle: 'prenom' | 'nom' | 'telephone' | 'email', l: string, o: { type?: string; exemple?: string; focus?: boolean } = {}) => (
+    <label className={b.npChamp}>
+      <span>{l}</span>
+      <input type={o.type || 'text'} value={p[cle]} autoFocus={o.focus} placeholder={o.exemple} onChange={e => setP({ ...p, [cle]: e.target.value })}
+        onKeyDown={e => { if (e.key === 'Enter' && ok && !occupe) { e.preventDefault(); onCreer(p); } }} />
+    </label>
+  );
+  return (
+    <div className={`${b.question} ${b.questionNouveau}`}>
+      <div className={b.questionT}>
+        <span className={b.questionIc}><Ic n="plus" t={18} e={2.4} /></span>
+        <div><b>Nouveau contact : le propriétaire</b><small>Sa fiche se crée dans tes contacts (type « vendeur ») et se relie à ce bien. Seul le nom est obligatoire.</small></div>
+      </div>
+      <div className={b.npCivilite} role="group" aria-label="Civilité">
+        {(['Madame', 'Monsieur'] as const).map(v => (
+          <button key={v} type="button" aria-pressed={p.civilite === v} onClick={() => setP({ ...p, civilite: p.civilite === v ? '' : v })}>{v}</button>
+        ))}
+      </div>
+      <div className={b.npGrille}>
+        {champ('prenom', 'Prénom', { focus: !depart.prenom && !depart.nom, exemple: 'Christine' })}
+        {champ('nom', 'Nom', { exemple: 'Dupont' })}
+        {champ('telephone', 'Téléphone', { type: 'tel', exemple: '06 12 34 56 78' })}
+        {champ('email', 'E-mail', { type: 'email', exemple: 'nom@exemple.fr' })}
+      </div>
+      <div className={b.questionActs}>
+        <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} disabled={occupe || !ok} onClick={() => onCreer(p)}>
+          <Ic n="check" t={15} e={2.6} />{occupe ? 'Création…' : ok ? `Créer la fiche de ${[p.prenom.trim(), p.nom.trim()].filter(Boolean).join(' ')} et la relier` : 'Écris au moins son nom'}
+        </button>
+        <button type="button" className={b.questionLien} disabled={occupe} onClick={onAnnuler}>Annuler</button>
+      </div>
+      {erreur && <div className={s.erreur}>{erreur}</div>}
+    </div>
+  );
+}
 
 function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const id = typeof d.clientId === 'string' ? d.clientId : '';
@@ -448,6 +501,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const [q, setQ] = useState('');
   const [erreur, setErreur] = useState('');
   const [cree, setCree] = useState(false);
+  const [form, setForm] = useState<Personne | null>(null);
   useEffect(() => {
     let vivant = true;
     lireClients().then(l => { if (vivant) setClients(l); }).catch(e => { if (vivant) { setErreur((e as Error).message); setClients([]); } });
@@ -457,95 +511,129 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const trouves = clients && q.trim().length >= 2
     ? clients.filter(c => sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom}`).includes(sansAccent(q.trim()))).slice(0, 6) : [];
   const personnes = lirePersonnes(d.proprietaires);
-  const premier = personnes[0];
+  const saisis = personnes.filter(p => p.nom || p.prenom);
+  const premier = saisis[0];
   const nomPremier = premier ? [premier.prenom, premier.nom].filter(Boolean).join(' ') : '';
-  const nouveau = d.proprioNouveau === true;
+  const sci = d.qui === 'sci' && txt(d, 'sciNom') ? txt(d, 'sciNom') : '';
 
   function choisir(c: ClientMini) {
     maj('clientId', c.id);
     maj('proprioNouveau', false);
+    maj('proprioSans', false);
     /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses contacts. */
     void marquerVendeur(c.id);
     /* Ses coordonnées remplacent ce qui est saisi : d'office si rien ne
        l'est, sinon après accord (un autre nom avait été tapé). */
-    const deja = personnes.some(p => p.nom || p.prenom);
+    const deja = saisis.length > 0;
     const memeNom = deja && sansAccent(`${premier?.prenom || ''} ${premier?.nom || ''}`).trim() === sansAccent(`${c.prenom || ''} ${c.nom || ''}`).trim();
     if (!deja || (!memeNom && confirm(`Reprendre les coordonnées de la fiche de ${nomClient(c)} à la place de celles déjà saisies ?`))) {
       const j = c.couple ? conjointDe(c.conjoint) : null;
       const l: Personne[] = [personneDepuisClient(c)];
       if (j) l.push({ ...PERSONNE_VIDE, civilite: j.civilite === 'Madame' || j.civilite === 'Monsieur' ? j.civilite : '', prenom: j.prenom || '', nom: j.nom || '', email: j.email || '', telephone: j.telephone || '' });
       maj('proprietaires', l);
-      maj('qui', j ? 'couple' : 'personne');
+      if (d.qui !== 'sci') maj('qui', j ? 'couple' : 'personne');
+    }
+    /* Il représente une société (V3.30, « Sa société » sur sa fiche) : est-ce
+       elle qui vend ? */
+    const st = lireStructure(lirePro(c.pro).structure);
+    if (st?.denomination && !(d.qui === 'sci' && txt(d, 'sciNom')) && confirm(`${nomClient(c)} représente ${st.denomination}. C’est la société qui vend ce bien ?`)) {
+      maj('qui', 'sci');
+      maj('sciNom', st.denomination);
     }
     setQ('');
   }
-  /* « Créer sa fiche » : la suite s'ouvre ; ce qui était tapé dans la
-     recherche devient son nom (le premier mot en prénom s'il y en a deux). */
-  function nouvelleFiche() {
+  /* « Nouveau contact » : le petit formulaire, prérempli de ce qui a été
+     tapé dans la recherche (le premier mot en prénom s'il y en a deux). */
+  function ouvrirForm() {
     setErreur('');
-    maj('proprioNouveau', true);
     const tape = q.trim().replace(/\s+/g, ' ');
-    if (tape && !personnes.some(p => p.nom || p.prenom)) {
-      const mots = tape.split(' ');
-      const p: Personne = mots.length > 1 ? { ...PERSONNE_VIDE, prenom: mots[0], nom: mots.slice(1).join(' ') } : { ...PERSONNE_VIDE, nom: tape };
-      maj('proprietaires', [p]);
-      if (!d.qui) maj('qui', 'personne');
-    }
+    const mots = tape ? tape.split(' ') : [];
+    setForm(mots.length > 1 ? { ...PERSONNE_VIDE, prenom: mots[0], nom: mots.slice(1).join(' ') } : { ...PERSONNE_VIDE, nom: tape });
     setQ('');
   }
-  async function creer() {
-    if (!premier || !(premier.nom || premier.prenom)) { setErreur('Écris d’abord son nom, juste en dessous : la fiche se crée à partir de lui.'); return; }
+  async function creer(p: Personne) {
+    const net: Personne = { ...p, prenom: p.prenom.trim(), nom: p.nom.trim(), telephone: p.telephone.trim(), email: p.email.trim().toLowerCase() };
+    if (!net.nom && !net.prenom) { setErreur('Écris au moins son nom.'); return; }
     setCree(true); setErreur('');
     try {
-      const c = await creerFicheProprio(premier);
+      const c = await creerFicheProprio(net);
       const l = await lireClients(true);
       setClients(l);
       maj('clientId', c.id);
       maj('proprioNouveau', false);
+      maj('proprioSans', false);
+      /* La personne créée devient la première des propriétaires ; les autres
+         (un couple, une indivision) restent derrière elle. */
+      maj('proprietaires', [net, ...personnes.filter(x => (x.nom || x.prenom) && sansAccent(`${x.prenom} ${x.nom}`) !== sansAccent(`${net.prenom} ${net.nom}`)).slice(0, 5)]);
+      if (!d.qui) maj('qui', 'personne');
+      setForm(null);
     } catch (e) { setErreur((e as Error).message); }
     setCree(false);
+  }
+  function changer() {
+    maj('clientId', '');
+    setQ('');
+  }
+  function retirer() {
+    const nom = lie ? nomClient(lie) : nomPremier || 'ce propriétaire';
+    if (!confirm(`Retirer ${nom} de ce bien ?\n\nSa fiche reste dans tes contacts. Le bien n’aura plus de propriétaire : ni fiche reliée, ni nom, ni coordonnées. Tu pourras en relier un autre.`)) return;
+    maj('clientId', '');
+    maj('proprietaires', []);
+    maj('proprioNouveau', false);
+    maj('proprioSans', false);
+    maj('qui', '');
+    maj('sciNom', '');
+    setQ('');
   }
 
   if (id) {
     return (
-      <div className={b.lie}>
-        <span className={b.avatar}>{lie ? `${(lie.prenom || ' ')[0]}${(lie.nom || ' ')[0]}`.trim().toUpperCase() : '…'}</span>
-        <div>
-          <b>{lie ? nomClient(lie) : clients ? 'Fiche introuvable' : 'Chargement…'}</b>
-          <small>{lie ? [lie.telephones?.[0], lie.emails?.[0]].filter(Boolean).join(' · ') || 'Sa fiche client est reliée à ce bien' : ''}</small>
+      <div className={b.lieBloc}>
+        <div className={b.lie}>
+          <span className={b.avatar}>{lie ? `${(lie.prenom || ' ')[0]}${(lie.nom || ' ')[0]}`.trim().toUpperCase() : '…'}</span>
+          <div>
+            <b>{lie ? nomClient(lie) : clients ? 'Fiche introuvable' : 'Chargement…'}</b>
+            <small>{lie ? [lie.telephones?.[0], lie.emails?.[0]].filter(Boolean).join(' · ') || 'Pas encore de coordonnées sur sa fiche' : ''}</small>
+          </div>
+          <span className={b.lieOk}><Ic n="check" t={12} e={3} />Fiche reliée</span>
         </div>
-        <span className={b.lieOk}><Ic n="check" t={12} e={3} />Fiche reliée</span>
-        {!off && <button type="button" className={b.mini} onClick={() => maj('clientId', '')}>Délier</button>}
+        {sci && <div className={b.lieNote}>{`${lie?.civilite === 'Madame' ? 'Elle' : 'Il'} vend pour ${sci} : la société est notée plus bas, dans « Qui vend ? ».`}</div>}
+        {!off && (
+          <div className={b.lieActs}>
+            <button type="button" className={b.mini} onClick={changer} title="Relier une autre fiche. Ce qui est saisi plus bas ne bouge pas.">
+              <Ic n="personne" t={13} />Changer de fiche
+            </button>
+            <button type="button" className={`${b.mini} ${b.miniDanger}`} onClick={retirer} title="Le bien n’aura plus de propriétaire. Sa fiche reste dans tes contacts.">
+              <Ic n="croix" t={12} e={2.4} />Retirer du bien
+            </button>
+            <span className={b.lieAide}>{'« Changer de fiche » relie quelqu’un d’autre ; « Retirer du bien » enlève aussi le nom et les coordonnées. Sa fiche, elle, reste dans tes contacts.'}</span>
+          </div>
+        )}
       </div>
     );
   }
-  if (nouveau) {
-    return (
-      <div className={`${b.question} ${b.questionNouveau}`}>
-        <div className={b.questionT}>
-          <span className={b.questionIc}><Ic n="plus" t={18} e={2.4} /></span>
-          <div><b>Nouvelle fiche client</b><small>Remplis juste en dessous qui vend et son nom. Sa fiche se crée ensuite d’un clic, et se relie au bien.</small></div>
-        </div>
-        {!off && (
-          <div className={b.questionActs}>
-            <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} disabled={cree || !nomPremier} onClick={creer}>
-              <Ic n="check" t={15} e={2.6} />{cree ? 'Création…' : nomPremier ? `Créer la fiche de ${nomPremier}` : 'Créer la fiche (écris d’abord son nom)'}
-            </button>
-            <button type="button" className={b.questionLien} onClick={() => maj('proprioNouveau', false)}>Il est peut-être déjà dans le CRM : chercher</button>
-          </div>
-        )}
-        {erreur && <div className={s.erreur}>{erreur}</div>}
-      </div>
-    );
+  if (form) {
+    return <FormNouveauProprio depart={form} occupe={cree} erreur={erreur} onCreer={creer} onAnnuler={() => { setForm(null); setErreur(''); }} />;
   }
   return (
     <div className={b.question}>
       <div className={b.questionT}>
         <span className={b.questionIc}><Ic n="loupe" t={18} /></span>
-        <div><b>Ce propriétaire est-il déjà dans le CRM ?</b><small>Tape son nom : s’il y est, sa fiche se relie au bien et ses coordonnées se remplissent.</small></div>
+        <div><b>Qui est le propriétaire ?</b><small>S’il est déjà dans tes contacts, tape son nom : sa fiche se relie au bien et ses coordonnées se remplissent.</small></div>
       </div>
+      {/* Des noms saisis sans fiche (les biens d'avant la V3.30) : on les garde, et on propose la fiche. */}
+      {saisis.length > 0 && (
+        <div className={b.sansFiche}>
+          <span><b>{nomPremier}</b>{saisis.length > 1 ? ` et ${saisis.length - 1} autre${saisis.length > 2 ? 's' : ''}` : ''}{' est saisi sur le bien, sans fiche dans tes contacts.'}</span>
+          {!off && (
+            <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} disabled={cree} onClick={() => creer(premier!)}>
+              <Ic n="plus" t={15} e={2.4} />{cree ? 'Création…' : `Créer sa fiche`}
+            </button>
+          )}
+        </div>
+      )}
       <div className={b.chercheC}>
-        <input className={s.cherche} value={q} disabled={off} placeholder="Nom ou prénom du propriétaire…" onChange={e => setQ(e.target.value)} aria-label="Chercher le propriétaire dans le CRM" />
+        <input className={s.cherche} value={q} disabled={off} placeholder="Chercher dans mes contacts : nom ou prénom…" onChange={e => setQ(e.target.value)} aria-label="Chercher le propriétaire dans les contacts" />
         {trouves.length > 0 && (
           <div className={s.resultats}>
             {trouves.map(c => (
@@ -555,16 +643,20 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
             ))}
           </div>
         )}
-        {q.trim().length >= 2 && clients && !trouves.length && <div className={s.chAide}>{`Aucun client « ${q.trim()} » dans le CRM.`}</div>}
+        {q.trim().length >= 2 && clients && !trouves.length && <div className={s.chAide}>{`Personne ne s’appelle « ${q.trim()} » dans tes contacts.`}</div>}
       </div>
       {!off && (
         <div className={b.questionOu}>
-          <span>Il n’est pas encore dans le CRM ?</span>
-          <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} onClick={nouvelleFiche}>
-            <Ic n="plus" t={15} e={2.4} />{q.trim().length >= 2 ? `Créer sa fiche : « ${q.trim()} »` : 'Créer sa fiche'}
+          <span>Il n’est pas encore dans tes contacts ?</span>
+          <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} onClick={ouvrirForm}>
+            <Ic n="plus" t={15} e={2.4} />{q.trim().length >= 2 ? `Nouveau contact : « ${q.trim()} »` : 'Nouveau contact'}
           </button>
+          {!saisis.length && d.proprioSans !== true && (
+            <button type="button" className={b.questionLien} onClick={() => maj('proprioSans', true)}>Continuer sans propriétaire pour l’instant</button>
+          )}
         </div>
       )}
+      {d.proprioSans === true && !saisis.length && <div className={b.lieAide}>Pas de propriétaire pour l’instant : la suite est ouverte, et tu pourras le relier plus tard, ici ou depuis la fiche du bien.</div>}
       {erreur && <div className={s.erreur}>{erreur}</div>}
     </div>
   );

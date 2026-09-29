@@ -69,7 +69,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
           suite reste grisée tant qu'elle n'est ni trouvée ni à créer, puis
           s'ouvre sur fond clair pour une fiche nouvelle. */}
       {champProprio && <ChampBien c={champProprio} d={d} maj={maj} off={false} bienId={bienId} />}
-      {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que sa fiche est choisie, ou à créer.</div>}
+      {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que le propriétaire est choisi, créé, ou laissé pour plus tard.</div>}
       <div className={verrou ? b.suiteVerrou : champProprio && nouveau ? b.suiteNouveau : b.suite} inert={verrou || undefined} aria-disabled={verrou || undefined}>
         {groupes(reste, d).map((g, k) => (
           <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect}>

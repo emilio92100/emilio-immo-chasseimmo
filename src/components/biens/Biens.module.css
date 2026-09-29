@@ -155,14 +155,32 @@
 .tagIc { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 9px; background: #fbf8ef; border: 1px solid #efe4c6; color: #6b5413; }
 .tagIc svg { color: #a07c28; }
 
-/* Le bien en bref : des tuiles à icône */
-.faits { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
-.fait { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #eef1f6; min-width: 0; }
+/* Le bien en bref : des tuiles à icône (V3.30 : dans une carte blanche,
+   chaque tuile sur fond blanc avec son icône teintée — les tuiles grises
+   posées sur le gris de la page ne se voyaient presque pas). */
+.bref { background: white; border: 1px solid #e3e8f0; border-radius: 18px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; box-shadow: 0 1px 3px rgba(15,23,42,.03); }
+.brefT { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brefT h3 { margin: 0; flex: 1 1 auto; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.faits { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 10px; }
+.fait {
+  --t: #a07c28; --tf: #fbf1d6;
+  display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 14px; min-width: 0;
+  background: #fff; border: 1px solid #e6ebf2; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 20px -18px rgba(26,35,50,.45);
+  animation: faitEntre .45s cubic-bezier(.16,1,.3,1) backwards;
+}
+.fait[data-ton='bleu'] { --t: #2d5c8f; --tf: #e8f0fb; }
+.fait[data-ton='violet'] { --t: #6d28d9; --tf: #f1edff; }
+.fait[data-ton='cyan'] { --t: #0e7490; --tf: #e3f6fa; }
+.fait[data-ton='ardoise'] { --t: #475569; --tf: #eef2f7; }
+.fait[data-ton='vert'] { --t: #15803d; --tf: #e7f8ee; }
+.fait[data-ton='ambre'] { --t: #b45309; --tf: #fff3df; }
 .fait > div { min-width: 0; }
-.fait b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 800; color: var(--emilio); line-height: 1.2; overflow-wrap: anywhere; }
+.fait b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; color: #1a2332; line-height: 1.2; overflow-wrap: anywhere; }
 .fait small { display: block; margin-top: 2px; font-size: 12px; color: #64748b; line-height: 1.3; }
-.faitIc { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; background: white; border: 1px solid #ecdcb0; color: #a07c28; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(160,124,40,.08); }
-.faitDpe { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font: 800 19px 'Plus Jakarta Sans', sans-serif; box-shadow: 0 2px 6px rgba(15,23,42,.12); }
+.faitIc { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: var(--tf); color: var(--t); display: flex; align-items: center; justify-content: center; }
+.faitDpe { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font: 800 19px 'Plus Jakarta Sans', sans-serif; box-shadow: 0 2px 6px rgba(15,23,42,.12); }
+@keyframes faitEntre { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .fait { animation: none; } }
 
 /* Le dossier en bref : la jauge */
 .jauge { height: 8px; border-radius: 99px; background: #f1f4f8; overflow: hidden; }
@@ -1044,4 +1062,53 @@ button.pillRouge svg { color: white !important; }
   .ligneTitre > b { font-size: 16.5px; }
   .ligneEtat { grid-area: etat; flex-direction: row; flex-wrap: wrap; align-items: center; }
   .ligneFleche { display: none; }
+}
+
+/* ══ V3.30 ═════════════════════════════════════════════════════════════════ */
+/* Observations et notes : sur toute la largeur. Les listes (travaux,
+   sinistres) côte à côte quand il y a la place. */
+.obsGroupes { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px 22px; }
+.obsGroupes .obsG + .obsG { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* La copropriété, dans « Le bien » : les remarques libres, repliées. */
+.remarques { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid #eef1f6; }
+.remarquesT { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #0f766e; }
+.remarques > div { --note-fond: #fff; }
+
+/* « Le bien » renvoie vers l'onglet Surfaces. */
+.versSurfaces {
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 18px; border-radius: 18px; cursor: pointer; text-align: left;
+  background: #fff; border: 1px dashed #d5deeb; font: inherit; color: #1a2332; transition: background .15s, border-color .15s;
+}
+.versSurfaces:hover { background: #fbfcfe; border-color: #b9c6d8; }
+.versSurfaces > span:nth-child(2) { flex: 1; min-width: 0; }
+.versSurfaces b { display: block; font: 800 15px 'Plus Jakarta Sans', sans-serif; }
+.versSurfaces small { display: block; font-size: 12.5px; color: #64748b; margin-top: 2px; }
+.versSurfaces > svg { color: #94a3b8; }
+.versSurfacesIc { width: 38px; height: 38px; border-radius: 12px; background: #fbf1d6; color: #a07c28; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+@media (max-width: 640px) {
+  .bref { padding: 14px; border-radius: 16px; gap: 12px; }
+  .brefT { gap: 8px 14px; }
+  .brefT h3 { flex-basis: 100%; }
+}
+
+/* L'étape « Le propriétaire » (V3.30) : la fiche reliée et ses deux gestes,
+   le petit formulaire d'une fiche nouvelle, les noms saisis sans fiche. */
+.lieBloc { display: flex; flex-direction: column; gap: 8px; }
+.lieActs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lieAide { flex: 1 1 260px; font-size: 12px; line-height: 1.45; color: #94a3b8; }
+.lieNote { font-size: 12.5px; color: #7a5d1c; padding: 7px 11px; border-radius: 10px; background: #fbf6e9; }
+.npCivilite { display: flex; gap: 6px; }
+.npCivilite button { height: 32px; padding: 0 14px; border-radius: 99px; border: 1px solid #e3e8f0; background: #fff; color: #475569; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+.npCivilite button[aria-pressed='true'] { background: #2e4166; border-color: #2e4166; color: #fff; }
+.npGrille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.npChamp { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.npChamp > span { font-size: 12px; font-weight: 700; color: #64748b; }
+.npChamp input { height: 42px; padding: 0 12px; border-radius: 11px; border: 1px solid #d5deeb; background: #fff; color: #1a2332; font: 600 14px 'DM Sans', sans-serif; min-width: 0; }
+.npChamp input:focus { outline: 2px solid #c9a84c; outline-offset: 0; border-color: #c9a84c; }
+.sansFiche { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #fbf8ef; border: 1px solid #efe4c6; font-size: 13.5px; color: #475569; }
+.sansFiche > span { flex: 1 1 220px; }
+.sansFiche b { color: var(--emilio); }
+@media (max-width: 640px) {
+  .npGrille { grid-template-columns: minmax(0, 1fr); }
 }

@@ -96,10 +96,24 @@ export function Famille({ ton, ic, titre, onModifier, children }: { ton: Ton; ic
     </section>
   );
 }
-/* Une ligne : le mot à gauche, la valeur à droite. Vide : rien. */
+/* Une ligne : le mot à gauche, la valeur à droite. Vide : rien.
+   Une valeur longue (une phrase, pas un chiffre) passe sous le mot, calée à
+   gauche, en texte normal (V3.30) : en gras et calée à droite, elle faisait
+   une colonne de trois mots par ligne. */
 export function Kv({ l, v, alerte }: { l: string; v: ReactNode; alerte?: boolean }) {
   if (v === '' || v === null || v === undefined || v === false) return null;
-  return <div className={`${o.kv} ${alerte ? o.kvAlerte : ''}`}><span>{l}</span><b>{v}</b></div>;
+  const long = typeof v === 'string' && v.length > 38;
+  return <div className={`${o.kv} ${long ? o.kvLong : ''} ${alerte ? o.kvAlerte : ''}`}><span>{l}</span><b>{v}</b></div>;
+}
+/* Une petite liste de travaux : le quoi en gras, le quand et le mot dessous. */
+export function ListeTravaux({ titre, l }: { titre: string; l: { id: string; t: string; s: string }[] }) {
+  if (!l.length) return null;
+  return (
+    <div className={o.travaux}>
+      <span className={o.travauxT}>{titre}</span>
+      <ul>{l.map(x => <li key={x.id}><b>{x.t}</b>{x.s && <small>{x.s}</small>}</li>)}</ul>
+    </div>
+  );
 }
 export function Puces({ l }: { l: string[] }) {
   if (!l.length) return null;
@@ -288,6 +302,98 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
             </div>
           )}
     </section>
+  );
+}
+
+/* ══ SURFACES (V3.30) ═════════════════════════════════════════════════════
+   Un onglet à lui, à la demande d'Alexandre : les pièces étaient tout en bas
+   de « Le bien ». En haut, les surfaces qui comptent (habitable, Carrez,
+   séjour, terrain) et le contrôle avec la somme des pièces ; puis la
+   répartition de la surface ; puis les pièces, en liste ou en cartes ; puis
+   les annexes. */
+type GenrePiece = 'vie' | 'nuit' | 'cuisine' | 'eau' | 'passage' | 'autre';
+const FAMILLES: Record<GenrePiece, { l: string; c: string }> = {
+  vie: { l: 'Pièces de vie', c: '#2d5c8f' }, nuit: { l: 'Chambres', c: '#7c3aed' }, cuisine: { l: 'Cuisine', c: '#ea7a2c' },
+  eau: { l: 'Eau et WC', c: '#0e98b4' }, passage: { l: 'Entrée, dégagements', c: '#94a3b8' }, autre: { l: 'Le reste', c: '#cbd5e1' },
+};
+const familleDe = (nom: string): GenrePiece => {
+  const ic = pictoPiece(nom);
+  if (['canape', 'table', 'bureau', 'vitrine'].includes(ic)) return 'vie';
+  if (['lit', 'cintre'].includes(ic)) return 'nuit';
+  if (ic === 'cuisine') return 'cuisine';
+  if (['bain', 'douche', 'wc', 'machine'].includes(ic)) return 'eau';
+  if (['porte', 'couloir', 'escalier'].includes(ic)) return 'passage';
+  return 'autre';
+};
+export type SurfacesBien = {
+  surface: number | null; carrez: number | null; sejour: number | null; terrain: number | null;
+  carrezAttendu: boolean; chambres: number | null;
+  annexes: { ic: string; l: string; v: string }[];
+};
+export function OngletSurfaces({ s: x, pieces, onPieces, onBien }: { s: SurfacesBien; pieces: Piece[]; onPieces: () => void; onBien: () => void }) {
+  const hab = pieces.filter(habitable);
+  const somme = Math.round(hab.reduce((t, p) => t + (p.surface || 0), 0) * 100) / 100;
+  const princ = nbPrincipales(pieces);
+  const ecart = x.surface && somme ? Math.round((somme - x.surface) * 100) / 100 : null;
+  const sejourPiece = pieces.find(p => familleDe(p.nom) === 'vie' && /^s[ée]jour|^salon|^pi[eè]ce [àa] vivre/i.test(p.nom))?.surface || null;
+  const sejour = x.sejour || sejourPiece;
+  /* La répartition : par famille de pièces, sur la somme des pièces habitables. */
+  const parts = (Object.keys(FAMILLES) as GenrePiece[]).map(k => ({ k, m: hab.filter(p => familleDe(p.nom) === k).reduce((t, p) => t + (p.surface || 0), 0) })).filter(y => y.m > 0);
+  const total = parts.reduce((t, y) => t + y.m, 0);
+  const tuiles: { ic: string; l: string; v: string; sous?: ReactNode; ton: string }[] = [];
+  tuiles.push({
+    ic: 'regle', ton: 'or', l: 'Surface habitable', v: x.surface ? m2(x.surface) : somme ? m2(somme) : '—',
+    sous: x.surface && somme
+      ? (ecart !== null && Math.abs(ecart) < 0.5
+        ? <span className={o.sfOk}><Ic n="check" t={12} e={3} />{'Même total que les pièces'}</span>
+        : <span className={o.sfEcart}>{`Pièces : ${m2(somme)} (${ecart! > 0 ? '+' : '−'}${m2(Math.abs(ecart!))})`}</span>)
+      : x.surface ? 'Saisie dans la fiche' : somme ? 'Somme des pièces' : 'À saisir',
+  });
+  if (x.carrezAttendu || x.carrez) tuiles.push({ ic: 'regle', ton: 'bleu', l: 'Loi Carrez', v: x.carrez ? m2(x.carrez) : 'À mesurer', sous: x.carrez ? 'Mesurage du diagnostiqueur' : 'Obligatoire pour vendre un lot de copropriété' });
+  if (sejour) tuiles.push({ ic: 'canape', ton: 'bleu', l: 'Séjour', v: m2(sejour), sous: x.surface ? `${Math.round((sejour / x.surface) * 100)} % de la surface` : undefined });
+  if (princ || x.chambres) tuiles.push({ ic: 'plan', ton: 'violet', l: 'Pièces', v: princ ? `${princ} pièce${princ > 1 ? 's' : ''}` : '—', sous: x.chambres ? `dont ${x.chambres} chambre${x.chambres > 1 ? 's' : ''}` : undefined });
+  if (x.terrain) tuiles.push({ ic: 'terrain', ton: 'vert', l: 'Terrain', v: m2(x.terrain) });
+  return (
+    <div className={o.col}>
+      <section className={o.sf}>
+        <div className={o.sfT}>
+          <b className={o.titreSec}>Les surfaces</b>
+          <button type="button" className={o.act} onClick={onBien}>Modifier</button>
+        </div>
+        <div className={o.sfTuiles}>
+          {tuiles.map((t, i) => (
+            <div key={t.l} className={o.sfTuile} data-ton={t.ton} style={{ animationDelay: `${i * 0.05}s` }}>
+              <span className={o.sfIc}><Ic n={t.ic} t={20} /></span>
+              <small>{t.l}</small>
+              <b>{t.v}</b>
+              {t.sous && <span className={o.sfSous}>{t.sous}</span>}
+            </div>
+          ))}
+        </div>
+        {total > 0 && (
+          <div className={o.rep}>
+            <div className={o.repT}><b>Comment se partage la surface</b><span>{`sur ${m2(Math.round(total * 100) / 100)} de pièces habitables`}</span></div>
+            <div className={o.repBarre} role="img" aria-label={parts.map(y => `${FAMILLES[y.k].l} ${Math.round((y.m / total) * 100)} %`).join(', ')}>
+              {parts.map((y, i) => <span key={y.k} style={{ flexGrow: y.m, background: FAMILLES[y.k].c, animationDelay: `${0.1 + i * 0.08}s` }} />)}
+            </div>
+            <div className={o.repLeg}>
+              {parts.map(y => (
+                <span key={y.k}><i style={{ background: FAMILLES[y.k].c }} /><b>{FAMILLES[y.k].l}</b>{`${m2(Math.round(y.m * 100) / 100)} · ${Math.round((y.m / total) * 100)}${NBSP}%`}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+      <LesPieces pieces={pieces} onModifier={onPieces} />
+      {x.annexes.length > 0 && (
+        <section className={o.sf}>
+          <div className={o.sfT}><b className={o.titreSec}>Les annexes</b><span className={o.sfNote}>Hors surface habitable</span></div>
+          <div className={o.annexes}>
+            {x.annexes.map(a => <div key={a.l} className={o.annexe}><span><Ic n={a.ic} t={17} /></span><div><b>{a.v}</b><small>{a.l}</small></div></div>)}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
 

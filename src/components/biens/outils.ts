@@ -23,6 +23,8 @@ export type ClientMini = {
   id: string; prenom: string | null; nom: string | null; statut: string | null;
   civilite?: string | null; couple?: boolean | null; conjoint?: unknown; adresse?: string | null;
   emails: string[] | null; telephones: string[] | null;
+  /* Ce qui est propre au type (V3.14) ; « Sa société » y vit (V3.30). */
+  pro?: unknown;
 };
 export type RechercheMini = Record<string, unknown> & { id: string; client_id: string; nom?: string | null; active?: boolean | null; type_bien?: string | null; budget_max?: number | null };
 /* La copie d'un bien en vente dans le dossier d'un acheteur (table biens). */
@@ -531,6 +533,17 @@ export async function ouvrirPiece(chemin: string, nom?: string) {
     onglet?.close();
     alert('Le fichier n’a pas pu être ouvert.\n\n' + (e as Error).message);
   }
+}
+
+/* Des pièces du dossier, envoyées par mail (V3.30, /api/biens-vente
+   « envoyer ») : jointes jusqu'à 10 Mo, en liens de 7 jours au-delà. */
+export type DestDocuments = { email: string; nom: string; clientId?: string | null; rechercheId?: string | null };
+export async function envoyerDocuments(o: {
+  bienId: string; destinataires: DestDocuments[]; sujet: string; message: string; pieces: { chemin: string; nom: string }[];
+}): Promise<{ mode: 'pj' | 'liens'; envoyes: string[]; avertissements: string[] }> {
+  return api<{ mode: 'pj' | 'liens'; envoyes: string[]; avertissements: string[] }>({
+    action: 'envoyer', id: o.bienId, destinataires: o.destinataires, sujet: o.sujet, message: o.message, pieces: o.pieces,
+  });
 }
 
 /* ══ Le propriétaire ═══════════════════════════════════════════════════ */
