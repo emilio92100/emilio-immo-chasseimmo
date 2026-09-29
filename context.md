@@ -1422,13 +1422,27 @@ les cases à cocher, la réponse du vendeur, le certificat.
 
 Retours d'Alexandre du soir. Rien à passer dans Supabase.
 
-- **Les documents à signer, repliés** (`FicheBien.tsx`, onglet Documents d'un bien) : la section
-  s'ouvre repliée ; son en-tête dit où l'on en est (« Mandat de vente à préparer », « Mandat en
-  préparation, à faire signer », « Mandat signé le … · exclusif », « Offre acceptée : le compromis
-  est à signer », « Compromis signé le … ») avec, dessous, les offres et les bons de visite. Replié,
-  il garde ses boutons (« Préparer le mandat », « Continuer le mandat », « Déjà signé ? »,
-  « Compromis signé ») ; la flèche déplie les tuiles et la liste. Tout se déduit des données : rien
-  à tenir à jour (`etatSigner`, `actionsSigner`).
+- **Les documents de la vente** (onglet Documents d'un bien ; remplace « Les documents à signer »,
+  tuiles puis version repliée) : une liste dans l'ordre de la vente — le mandat, les bons de
+  visite, les offres d'achat, le compromis (`EtapesDocs`, OngletsBien.tsx) —, chacun avec son état
+  (fait en vert, à faire en or, en cours, libre, plus tard en gris), une phrase et ses boutons.
+  « Tous les documents préparés pour ce bien · N » se déplie dessous.
+- **Le mandat signé, indiqué et retéléchargeable** : une pastille dit comment il a été signé
+  (« Signature électronique », « Signé sur la tablette », « Signé à la main », « Signé hors du
+  CRM », « … · scan joint ») ; « Le mandat signé » ouvre l'exemplaire signé (`signe_chemin` du
+  document, via /api/documents « lien ») ou le scan joint au bien. Signé hors du CRM : « Joindre le
+  mandat signé » (et « Remplacer le scan ») dépose le fichier (/api/biens-vente « depot »,
+  `donnees.mandatFichier` = { chemin, nom, taille, le }) ; la fenêtre « Le mandat est signé » a
+  aussi son champ « Le mandat signé (scan ou PDF) · facultatif ». `documentsDuBien` lit
+  désormais `*` (la colonne `signature` n'existe qu'après le SQL de la signature en ligne).
+- **Tout se déplie en douceur** (`src/components/shared/Depliant.tsx`) : la hauteur glisse
+  (grille 0fr → 1fr), le contenu arrive en fondu ; rendu à la première ouverture seulement ;
+  `ecart` reprend le `gap` du parent quand c'est replié ; le débordement redevient visible une fois
+  ouvert ; `prefers-reduced-motion` respecté. Branché sur : les groupes du dossier, la liste des
+  documents préparés, « Tout voir » de « Pour la visite », « Voir les N associés », « Voir les N
+  autres » documents d'un contact, le choix du type de pièce (éditeur), « Lire le texte » de
+  l'annonce, la société qui apparaît sous le bandeau (fiche contact et fiche acheteur, remontée à
+  chaque « Ajouter »). Déjà fluides avant : `BlocRepliable`, les sous-menus, `NoteRiche`.
 - **Le dossier du vendeur** (`biens-vente.ts`, `DOSSIER`) : trois lignes selon le bien — « Bail en
   cours et dernier avis d'échéance » (bien loué), « Permis de construire et certificat de
   conformité » (maison), « Dispositif de sécurité de la piscine » (annexe piscine). Les idées de
@@ -1497,6 +1511,24 @@ Retours d'Alexandre du soir. Rien à passer dans Supabase.
   dans Documents, sur lui (intention `{ ouvrir }`). Idem pour « + Déléguer un mandat » d'un confrère.
 - **Page Documents** : les modèles tiennent sur une ligne chacun (description en une ligne,
   entière au survol), deux par ligne sur téléphone ; la liste des documents remonte d'autant.
+- **Un seul mandat en cours** (`src/lib/coherence.ts`) : un mandat de vente par bien, un mandat de
+  recherche par recherche (un acheteur qui a deux recherches peut avoir deux mandats). « En cours »
+  = en préparation (brouillon), en signature (prêt), ou signé — ni annulé, ni rétracté.
+  `mandatVenteEnCours(bien)` regarde les documents `mandat_vente` du bien
+  (`donnees->>bienVenteId`), le document rattaché (`biens_vente.document_id`) et le mandat noté
+  signé hors du CRM (`donnees.mandatDate` quand le bien est en mandat, offre, compromis ou pause) ;
+  un bien retiré ou vendu libère son mandat signé. `mandatRechercheEnCours(rechercheId)` regarde les
+  documents `mandat_recherche`, `mandats_signatures` (signé, partiel, en cours, non rétracté) et
+  `recherches.mandat_date_signature`. `phraseMandat` / `conseilMandat` : la même phrase partout.
+  Branché sur : « Nouveau document » (l'encadré « Un mandat de vente est déjà en cours sur ce
+  bien… » ; « Reprendre ce mandat » s'il n'est pas signé, « Faire un avenant » — modèle avenant,
+  mandat choisi d'avance — et « Voir le mandat en cours » s'il l'est ; « Créer » grisé « Déjà un
+  mandat en cours ») ; « Dupliquer » dans Documents (seulement un mandat annulé, et s'il n'y en a
+  pas d'autre en cours) ; « Préparer le mandat » sur la fiche du bien (un brouillon existant
+  s'ouvre) ; `creerDocument` refuse de lui-même en dernier garde-fou. Un avenant n'est jamais
+  bloqué. Le mandat signé en ligne depuis l'espace était déjà protégé (/api/espace/mandat,
+  « deja »). Avant : rien n'empêchait un second mandat par « Nouveau document » ou « Dupliquer ».
+  L'ancienne remarque « Le nouveau le remplacera une fois signé » est retirée.
 
 ### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
 
