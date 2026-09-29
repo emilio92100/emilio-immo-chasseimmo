@@ -147,13 +147,17 @@ export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, onVoi
 }
 
 /* ── Le propriétaire : l'appeler en un geste ── */
-export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, societe, onFiche, onModifier, onRetirer }: {
+/* « la SCI AVIENA », « Dupont Investissements » */
+const laSociete = (n: string) => (/^(sci|sarl|sas|sasu|eurl|sa|snc|société|holding)\b/i.test(n) ? `la ${n}` : n);
+export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, societe, pour, onFiche, onModifier, onRetirer }: {
   nom: string; sous: string; tel: string; pluriel: boolean; onFiche?: () => void; onModifier: () => void;
   /* V3.31 : une ligne de plus (délai, venu par, notaire), l'e-mail à la
      place du SMS, et « Retirer du bien ». */
   plus?: string; mail?: string; onRetirer?: () => void;
   /* Sa fiche, pour dessiner son avatar (V3.31) ; une SCI : la mallette. */
   personne?: Personne | null; societe?: boolean;
+  /* Il agit au nom d'une société (V3.32) : son rôle, et laquelle. */
+  pour?: { nom: string; role: string } | null;
 }) {
   const brut = tel.replace(/[\s.]+/g, '');
   return (
@@ -162,7 +166,11 @@ export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, so
       {nom ? (
         <div className={v.proprio}>
           <AvatarContact c={{ ...(personne || { prenom: nom }), couple: pluriel }} teinte={{ bg: '', fg: '#e8c96a' }} className={v.proprioAv} libre societe={societe} />
-          <div><b>{nom}</b>{sous && <small>{sous}</small>}{plus && <small className={v.proprioPlus}>{plus}</small>}</div>
+          <div>
+            <b>{nom}</b>
+            {pour && <span className={v.proprioSoc}><Ic n="immeuble" t={13} /><span>{pour.role ? `${pour.role} de ${laSociete(pour.nom)}` : `Pour ${laSociete(pour.nom)}`}</span></span>}
+            {sous && <small>{sous}</small>}{plus && <small className={v.proprioPlus}>{plus}</small>}
+          </div>
         </div>
       ) : <span className={v.kpiSousGris}>Pas encore renseigné.</span>}
       <div className={v.proprioBtns}>

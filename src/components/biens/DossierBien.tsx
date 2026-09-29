@@ -51,7 +51,7 @@ const GROUPES: { k: LigneDossier['groupe'] | 'autres'; l: string; ic: string }[]
 const IDEES: Record<LigneDossier['groupe'], string[]> = {
   diag: ['Diagnostic radon', 'Attestation de surface (loi Boutin)', 'Rapport de repérage avant travaux'],
   copro: ['Relevés de charges (4 derniers trimestres)', 'Convocation à la prochaine AG', 'État daté', 'Attestation du syndic'],
-  vendeur: ['Pièce d’identité', 'Bail en cours', 'Attestation d’assurance habitation', 'Contrat de gestion locative'],
+  vendeur: ['Pièces d’identité des vendeurs', 'Livret de famille, contrat de mariage ou de PACS', 'Plans du bien', 'Garanties décennales et dommages-ouvrage', 'Prêt en cours (pour la mainlevée)', 'Attestation d’entretien de la chaudière', 'Attestation d’assurance habitation', 'Contrat de gestion locative'],
 };
 const IDEES_SCI = ['Kbis de la SCI', 'Statuts de la SCI', 'PV d’AG de la SCI autorisant la vente'];
 const VIDE: PieceDossier = { etat: '', date: '', chemin: '', nom: '' };
@@ -364,7 +364,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
   };
   const poids = choisis.reduce((t, p) => t + (p.taille || 0), 0);
   const idees = (g: LigneDossier['groupe']) => [...(g === 'vendeur' && d.qui === 'sci' ? IDEES_SCI : []), ...IDEES[g]]
-    .filter(t => !lignes.some(y => sansAccent(y.l) === sansAccent(t))).slice(0, 5);
+    .filter(t => !lignes.some(y => sansAccent(y.l) === sansAccent(t))).slice(0, 8);
 
   /* La tuile « + Ajouter une pièce » d'un groupe, ou son petit formulaire. */
   const tuileAjout = (g: LigneDossier['groupe']) => (filtre !== 'tout' ? null : ajout?.g === g ? (

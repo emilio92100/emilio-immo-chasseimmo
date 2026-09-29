@@ -322,7 +322,7 @@
 .sfTuile[data-ton='vert'] { --t: #15803d; --tf: #e7f8ee; }
 .sfIc { width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; background: var(--t); color: #fff; margin-bottom: 8px; box-shadow: 0 8px 16px -10px var(--t); }
 .sfTuile small { font-size: 12px; font-weight: 700; letter-spacing: .2px; color: #64748b; }
-.sfTuile > b { font: 800 26px/1.15 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.4px; }
+.sfTuile > b { font: 800 20px/1.2 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.25px; }
 .sfSous { margin-top: 3px; font-size: 12.5px; line-height: 1.4; color: #64748b; }
 .sfOk { display: inline-flex; align-items: center; gap: 5px; color: #15803d; font-weight: 700; }
 .sfOk svg { padding: 2px; border-radius: 50%; background: #dcfce7; }
@@ -349,7 +349,7 @@
   .sf { padding: 14px; border-radius: 18px; }
   .sfTuiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .sfTuile { padding: 12px 13px 13px; }
-  .sfTuile > b { font-size: 21px; }
+  .sfTuile > b { font-size: 17px; }
   .sfIc { width: 32px; height: 32px; margin-bottom: 6px; }
   .annexes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

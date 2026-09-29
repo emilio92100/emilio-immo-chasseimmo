@@ -387,7 +387,11 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
     if (charge === 'acquereur' && !ventile) { setErreur('Honoraires à la charge de l’acquéreur : écris le taux ou le forfait. L’annonce doit donner le pourcentage et le prix hors honoraires.'); return; }
     setOccupe(true); setErreur('');
     try {
-      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono };
+      /* Le prix conseillé à l'estimation est gardé à part (V3.32) : « prix »
+         devient le prix affiché, et l'onglet Le bien montre encore ce qui
+         avait été estimé. */
+      const conseille = num(d, 'prixConseille') ?? (avantMandat(bien.etape) || (bien.etape === 'retire' && !bien.en_vente_le) ? num(d, 'prix') : null);
+      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono, ...(conseille ? { prixConseille: conseille } : {}) };
       const { bien: r } = await changerEtape(bien, 'mandat', { donnees, commentaire: raison.trim() || undefined, infos: { type, numero: numero.trim(), date, fin: finM, prix } });
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
@@ -428,6 +432,11 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
               : charge === 'vendeur' ? `Dans l’annonce : ${euros(prix)}, honoraires à la charge du vendeur.`
                 : ventile ? `Dans l’annonce : ${euros(prix)} honoraires inclus, dont ${pourcent(a.taux as number)} TTC à la charge de l’acquéreur (${euros(a.net as number)} hors honoraires).`
                   : 'À la charge de l’acquéreur, l’annonce doit donner le pourcentage et le prix hors honoraires : écris le taux ou le forfait.'}
+            {/* Pour toi, pas pour l'annonce (V3.32) : ce que le vendeur touche,
+                aussi quand les honoraires sont à sa charge. */}
+            {prix && a.net !== null && a.hono !== null && (charge === 'vendeur' || ventile) ? (
+              <small className={b.ventileNet}>{`En interne : net vendeur ${euros(a.net)} (${euros(prix)} − ${euros(a.hono)} d’honoraires TTC, soit ${charge === 'vendeur' ? `${pourcent(Math.round((a.hono / prix) * 1000) / 10)} du prix` : `${pourcent(Math.round(((a.hono / (a.net || 1)) * 1000)) / 10)} du net`}).`}</small>
+            ) : null}
           </span>
         </div>
       </div>
@@ -631,6 +640,7 @@ export function FenVendu({ bien, compromis, onFermer, onFait }: { bien: BienVent
 /* ══ Une étape avec sa raison : pause, retrait, retour en vente ═════════ */
 const RAISONS: Partial<Record<EtapeVente, string[]>> = {
   suspendu: ['Le vendeur fait une pause', 'Travaux avant la vente', 'Succession en cours', 'Il attend son achat'],
+  a_suivre: ['Il veut attendre', 'Il attend son achat', 'Travaux avant la vente', 'Succession en cours'],
   retire: ['Mandat expiré', 'Vendu par un autre', 'Le vendeur renonce', 'Le vendeur loue finalement'],
 };
 export function FenRaison({ bien, etape, titre, sur, onFermer, onFait }: {
@@ -655,7 +665,7 @@ export function FenRaison({ bien, etape, titre, sur, onFermer, onFait }: {
         <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Valider'}</button></>}>
       {choix.length > 0 && <Pills options={choix.map(x => ({ v: x, l: x }))} v={raison} onChange={setRaison} />}
       <Ch lib="La raison"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="En quelques mots" /></Ch>
-      {etape === 'suspendu' && <Ch lib="Reprise prévue le"><input className={s.input} type="date" value={reprise} onChange={e => setReprise(e.target.value)} /></Ch>}
+      {(etape === 'suspendu' || etape === 'a_suivre') && <Ch lib={etape === 'a_suivre' ? 'Le recontacter vers le' : 'Reprise prévue le'}><input className={s.input} type="date" value={reprise} onChange={e => setReprise(e.target.value)} /></Ch>}
       <Ch lib="Commentaire (facultatif)"><textarea className={s.input} rows={2} value={note} onChange={e => setNote(e.target.value)} /></Ch>
       <Erreur t={erreur} />
     </Fenetre>

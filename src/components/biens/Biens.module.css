@@ -81,14 +81,29 @@
 .heroCoteIc { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(201,168,76,.18); color: #e3c872; }
 .heroCoteBtn { height: 42px; padding: 0 14px; border-radius: 12px; border: none; background: #c9a84c; color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: filter .15s; }
 .heroCoteBtn:hover { filter: brightness(1.06); }
+/* Le mandat dans le bandeau (V3.32) : même panneau, plus discret. */
+.heroMandat { gap: 9px; border-color: rgba(255,255,255,.16); }
+.heroMandatL { display: flex; flex-direction: column; gap: 3px; padding-left: 44px; font-size: 12.5px; color: rgba(255,255,255,.78); }
+.heroMandatL i { font-style: normal; font-weight: 700; color: #e3c872; }
+.heroMandatL i[data-ton='or'] { color: #fbbf24; }
+.heroMandatL i[data-ton='rouge'] { color: #fca5a5; }
+.heroMandatLien { align-self: flex-start; padding: 0; border: none; background: none; cursor: pointer; color: #e3c872; font: 700 12.5px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 3px; }
 /* Plus étroit : le bloc passe sous le prix, en une ligne. */
 @media (max-width: 1180px) {
   .heroTxtCote { grid-template-columns: minmax(0, 1fr); }
   .heroTxtCote > .heroCote { grid-column: 1; grid-row: auto; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 6px; }
 }
+@media (max-width: 1180px) {
+  .heroMandatL { padding-left: 0; text-align: right; }
+}
 @media (max-width: 760px) {
   .heroTxtCote > .heroCote { flex-direction: column; align-items: stretch; }
   .heroCoteBtn { height: 44px; }
+  /* Le mandat, en deux lignes sur le téléphone. */
+  .heroTxtCote > .heroMandat { gap: 4px; padding: 10px 12px; }
+  .heroMandat .heroCoteIc { display: none; }
+  .heroMandat .heroCoteT > span:last-child { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+  .heroMandatL { flex-direction: row; flex-wrap: wrap; gap: 0 10px; text-align: left; }
 }
 /* Ce qu'on a retenu de la visite, dans le parcours de l'estimation. */
 .retenu { display: flex; flex-direction: column; gap: 7px; padding-top: 12px; border-top: 1px dashed #e3e8f0; }
@@ -746,6 +761,7 @@ input.pcNote { flex: 1 1 200px; min-width: 0; width: auto; }
 .ventile { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 13px; line-height: 1.5; }
 .ventile svg { flex-shrink: 0; margin-top: 1px; }
 .ventileManque { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.ventileNet { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #15803d; opacity: .85; }
 /* Un compteur tient sur une ligne : le libellé à gauche, – n + à droite. */
 .chCpt { flex-direction: row !important; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px !important; padding: 6px 8px 6px 12px; border-radius: 14px; background: #fbfcfe; border: 1px solid #eef1f6; }
 .chCpt > .cpt { border: none; background: transparent; padding: 0; }
@@ -1163,7 +1179,47 @@ button.pillRouge svg { color: white !important; }
 /* Documents d'un bien (V3.31) : « Les documents à signer », une section sur
    toute la largeur. */
 .signer { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.signerT h3 { margin: 0; font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
-.signerT span { display: block; margin-top: 3px; font-size: 13px; color: #64748b; line-height: 1.5; }
 .signerSous { font-size: 11.5px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #7a5d1c; padding-top: 4px; }
 @media (max-width: 720px) { .signer { padding: 14px; border-radius: 18px; } }
+/* Repliés par défaut (V3.32) : l'en-tête dit où l'on en est, garde ses
+   boutons, et la flèche déplie les tuiles. */
+.signer[data-ouvert='non'] { padding-bottom: 18px; }
+.signerTete { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.signerOuvrir {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 0; border: none; background: none;
+  text-align: left; cursor: pointer; font: inherit; color: inherit;
+}
+.signerIc { flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: #fbf1d6; color: #a07c28; }
+.signerIc[data-ton='vert'] { background: #ecfdf3; color: #15803d; }
+.signerIc[data-ton='gris'] { background: #f1f5f9; color: #64748b; }
+.signerTx { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.signerTitre { font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
+.signerEtat { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: #7a5d1c; line-height: 1.4; }
+.signerEtat::before { content: ''; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: #c9a84c; }
+.signerEtat[data-ton='vert'] { color: #15803d; }
+.signerEtat[data-ton='vert']::before { background: #16a34a; }
+.signerEtat[data-ton='gris'] { color: #475569; }
+.signerEtat[data-ton='gris']::before { background: #94a3b8; }
+.signerTx small { font-size: 12.5px; color: #64748b; line-height: 1.45; }
+.signerOuvrir:hover .signerTitre { color: #34496e; }
+.signerActs { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.signerFleche {
+  flex-shrink: 0; width: 38px; height: 38px; padding: 0; border-radius: 50%; border: 1px solid #e3e8f0; background: #fff; color: #34496e;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.signerFleche:hover { background: #f8fafc; border-color: #d5deeb; }
+.signerFleche svg { transition: transform .2s ease; }
+.signerFleche[data-ouvert='oui'] svg { transform: rotate(180deg); }
+.signerAide { margin: -4px 0 0; font-size: 13px; color: #64748b; line-height: 1.5; }
+@media (max-width: 720px) {
+  .signerTete { flex-wrap: wrap; align-items: flex-start; }
+  .signerOuvrir { align-items: flex-start; }
+  .signerIc { width: 40px; height: 40px; border-radius: 12px; }
+  .signerTitre { font-size: 16.5px; }
+  .signerActs { order: 3; width: 100%; }
+  .signerActs > * { flex: 1; height: 42px; }
+}
+
+/* Onglet Le bien, après le mandat (V3.32) : ce qui avait été estimé. */
+.histoEstim { margin-top: 3px; padding-top: 11px; border-top: 1px dashed #ecdcb0; display: flex; flex-direction: column; gap: 8px; }
+.histoEstimT { font-size: 11px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: #a07c28; line-height: 1.4; }

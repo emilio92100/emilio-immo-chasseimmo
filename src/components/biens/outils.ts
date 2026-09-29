@@ -42,7 +42,7 @@ export type DocLie = {
   signe_le: string | null; finalise_le: string | null; client_id: string | null;
 };
 
-const CLIENT_COLS = 'id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones';
+const CLIENT_COLS = 'id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro';
 export const nomClient = (c?: { prenom?: string | null; nom?: string | null } | null) => `${c?.prenom || ''} ${c?.nom || ''}`.trim() || 'Client';
 export const initiales = (t: string) => t.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0]!.toUpperCase()).join('') || '·';
 
