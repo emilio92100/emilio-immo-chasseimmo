@@ -1435,6 +1435,23 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
   (`PointAuto`, sorti du bloc des critères). **Documents** : `DocumentsDuClient` ouvert d'emblée
   (nouvelle option `ouvert`) ; le nombre de documents est compté pour l'onglet.
 - Nouvelles icônes dans `TRAITS` (`ParcoursBien.tsx`) : `copie`, `oeil`, `mobile`, `doc`.
+- **Le rapprochement, depuis la fiche d'un acheteur** (`src/lib/rapprochement.ts`,
+  `fiche/Rapprochement.tsx`) : « Faire un rapprochement » (bandeau de la Vue d'ensemble, et bouton
+  doré dans l'en-tête « Où en est la recherche »). Une fenêtre en trois temps : **où chercher**
+  (mes mandats en cours — `biens_vente` à l'étape `mandat`, sauf ceux du client —, les biens des
+  veilles des autres clients — `veille_propositions` des autres recherches, statuts `nouveau` et
+  `retenu`, sur 1, 3, 6 mois ou depuis le début —, ou les deux) ; **ça cherche** (un sourire,
+  1,4 s au moins) ; **les biens trouvés**, notés par `correspondance()` (la note de l'espace) :
+  70 % et plus « correspondent » (cochés d'office), 50 à 69 % « en partie », rien en dessous. Ce
+  qui est déjà dans son dossier (même `url`, ou même `bien_vente_id`) est mis de côté et compté.
+  Une annonce trouvée pour plusieurs clients n'apparaît qu'une fois. Un aperçu simple par bien
+  (photos, prix, critère par critère, lien vers l'annonce ou la fiche du bien), puis **Mettre en
+  sélection** (ligne `biens` à l'étape `selection`, avec `recherche_id`) ou **Envoyer par mail**
+  (les mêmes, puis le mail d'envoi habituel `openEnvoiMulti`, qui les passe « Présenté »).
+  Au Suivi : `rapprochement` (le rapprochement, avec `metadata.n`) et `rapprochement_bien` (chaque
+  bien posé). Le bandeau lit le dernier `rapprochement` de la recherche : grand avant, une ligne
+  « Dernier rapprochement le … · Refaire » après. Il annonce aussi, sans rien lancer, les mandats
+  qui lui correspondent déjà (`mandatsPour`, 70 % et plus).
 
 ### V3.28 — 29 septembre 2026 · la carte du CRM sur téléphone, plus de place
 
