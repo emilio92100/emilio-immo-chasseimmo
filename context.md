@@ -1461,6 +1461,23 @@ Retours d'Alexandre du soir. Rien à passer dans Supabase.
   lignes sur téléphone), et le badge « SEMI-EXCLUSIF · n° » du haut ne se répète plus. « Les
   acheteurs » quitte la Vue d'ensemble (onglet Acheteurs). La rangée : Visites et offres, Le
   propriétaire, Pour la visite (remontée ; le bloc « Les indications de visite » du bas est retiré).
+- **L'onglet « Visites et offres », refait** (`VisitesOffres.tsx`, `OngletVisitesOffres`) : en haut, une
+  carte avec les deux gestes — « Organiser une visite » (marine) et « Enregistrer une offre » (or) —
+  et quatre chiffres (visites faites, à venir, comptes rendus à faire — en orange s'il y en a —,
+  offres en cours avec la meilleure). Vide : « Comment ça se passe », le chemin en trois étapes
+  (visite, compte rendu, offre et réponse). Puis, côte à côte, « À faire » (offres en attente de
+  réponse ou en contre-offre, offre acceptée tant que le compromis n'est pas signé, comptes rendus
+  en retard ; les cartes `CarteOffreB` / `CarteVisiteB`) et « Les prochaines visites ». Enfin
+  « L'historique » : visites et offres passées mêlées par date, en frise (date, pastille violette
+  pour une visite, or pour une offre, verte acceptée, grise annulée), filtre Tout / Visites /
+  Offres. Une visite dont le compte rendu dit « Veut faire une offre » propose « Enregistrer son
+  offre » : `FenOffre` s'ouvre avec l'acheteur choisi (prop `pour`), sauf s'il en a déjà fait une.
+  `ListeVisites` (OngletsBien) est retiré.
+- **La fiche des autres contacts, comme celle d'un acheteur** (`FicheContact.tsx`) : les coordonnées
+  passent dans le panneau crème à droite du bandeau (`Coordonnees`, désormais exporté par
+  `FicheClient.tsx` : trois lignes, copier, « Tout voir », « Voir sur la carte ») ; « Il agit pour
+  une société ? Ajouter » (ou « Pour SCI AVIENA · Associée ») monte à droite du nom — une ligne de
+  moins ; la ligne de sous-titre ne répète plus la société.
 - **Le net vendeur, en interne** (fenêtre « Le mandat est signé ») : sous la phrase de l'annonce,
   une ligne « En interne : net vendeur 304 000 € (349 000 € − 45 000 € d'honoraires TTC, soit
   12,9 % du prix) » — aussi quand les honoraires sont à la charge du vendeur, où l'annonce ne dit que
