@@ -1153,7 +1153,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                       onMouseLeave={sortir}
                     >
                       <div className={styles.ficheTete}>
-                        <span className={styles.ficheAv}>{(client.prenom?.[0] || client.nom?.[0] || '?').toUpperCase()}</span>
+                        <AvatarContact c={client as never} teinte={TEINTE[client.statut] || TEINTE.actif} className={styles.ficheAv} libre />
                         <span style={{ flexGrow: 1, minWidth: 0 }}>
                           <span className={styles.ficheNom}>{nomFoyer(client)}</span>
                           <span className={styles.ficheRef}>{client.reference} · suivi depuis {joursDepuis(client.created_at)} j</span>
