@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
+import { toutLire } from '@/lib/registre';
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
 import { prendreDemandeRendezVous, signalerMaj, EVT_NOUVEAU_RDV, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
@@ -301,6 +302,22 @@ function useEtroit() {
 
 type Modale = { mode: 'nouveau'; jour: string; heure: string; rechercheId?: string } | { mode: 'modifier'; ev: Ev } | null;
 
+/* Tout ce que l'agenda affiche, par pages de 1 000 (V3.33) : au-delà,
+   Supabase coupait sans rien dire et des visites ou des rendez-vous
+   disparaissaient de l'agenda. */
+const lire = (t: string, cols: string, filtre?: (q: any) => any) => toutLire<any>((de, a) => {
+  const q = supabase.from(t).select(cols);
+  return (filtre ? filtre(q) : q).order('id').range(de, a);
+});
+const lireAgenda = () => Promise.all([
+  lire('visites', '*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
+  lire('rendez_vous', '*'),
+  lire('relances', '*', q => q.eq('statut', 'en_attente')),
+  lire('transactions', '*'),
+  lire('recherches', '*'),
+  lire('clients', 'id, prenom, nom, statut, emails, civilite, couple, conjoint'),
+]);
+
 export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const etroit = useEtroit();
   const [maintenant, setMaintenant] = useState(() => new Date());
@@ -319,18 +336,11 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   useEffect(() => { if (etroit) setVue(v => (v === 'semaine' ? 'jour' : v)); }, [etroit]);
 
   const charger = useCallback(async () => {
-    const [v, r, rel, tx, rech, cl] = await Promise.all([
-      supabase.from('visites').select('*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
-      supabase.from('rendez_vous').select('*'),
-      supabase.from('relances').select('*').eq('statut', 'en_attente'),
-      supabase.from('transactions').select('*'),
-      supabase.from('recherches').select('*'),
-      supabase.from('clients').select('id, prenom, nom, statut, emails, civilite, couple, conjoint'),
-    ]);
+    const [v, r, rel, tx, rech, cl] = await lireAgenda();
     /* Tant que le SQL de l'agenda n'a pas été lancé, la table n'existe pas :
        les visites s'affichent quand même, on prévient pour le reste. */
-    setTableAbsente(!!r.error);
-    setBrut({ visites: v.data || [], rdvs: r.data || [], relances: rel.data || [], transactions: tx.data || [], recherches: rech.data || [], clients: cl.data || [] });
+    setTableAbsente(!!r.erreur);
+    setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data });
     setChargement(false);
   }, []);
   useEffect(() => { charger(); }, [charger]);
@@ -532,17 +542,10 @@ export function NouveauRdvPartout() {
   useEffect(() => {
     let vivant = true;
     const ouvrir = async () => {
-      const [v, r, rel, tx, rech, cl] = await Promise.all([
-        supabase.from('visites').select('*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
-        supabase.from('rendez_vous').select('*'),
-        supabase.from('relances').select('*').eq('statut', 'en_attente'),
-        supabase.from('transactions').select('*'),
-        supabase.from('recherches').select('*'),
-        supabase.from('clients').select('id, prenom, nom, statut, emails, civilite, couple, conjoint'),
-      ]);
+      const [v, r, rel, tx, rech, cl] = await lireAgenda();
       if (!vivant) return;
-      setTableAbsente(!!r.error);
-      setBrut({ visites: v.data || [], rdvs: r.data || [], relances: rel.data || [], transactions: tx.data || [], recherches: rech.data || [], clients: cl.data || [] });
+      setTableAbsente(!!r.erreur);
+      setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data });
       /* Comme le bouton de l'agenda : aujourd'hui, à l'heure pleine suivante. */
       const n = new Date(); const suiv = Math.min(20, Math.max(8, n.getHours() + 1));
       setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00` });

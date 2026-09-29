@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVisite';
 import { chargerDemandesVisite, type DemandeVisite } from '@/lib/demandes-visite';
 import { demanderOuvertureFiche, signalerMaj } from '@/lib/intentions';
@@ -64,11 +65,14 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
 
   async function load() {
     setLoading(true);
+    /* Par pages de 1 000 (V3.33) : au-delà, Supabase coupait sans rien dire,
+       et comme la liste part de la plus ancienne, c'étaient les visites à
+       venir qui disparaissaient les premières. */
     const [{ data }, dem] = await Promise.all([
-      supabase
+      toutLire<any>((de, a) => supabase
         .from('visites')
         .select('*, clients(id, prenom, nom, reference), biens(titre, ville, photos, badge_retour)')
-        .order('date_visite', { ascending: true }),
+        .order('date_visite', { ascending: true }).order('id').range(de, a)),
       chargerDemandesVisite().catch(() => [] as DemandeVisite[]),
     ]);
     setVisites(data || []);
