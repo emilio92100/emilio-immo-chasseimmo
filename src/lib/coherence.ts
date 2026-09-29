@@ -11,9 +11,12 @@
      sur place), « Nouveau document » (rubrique Documents, fiche contact),
      « Dupliquer » dans Documents ; et `creerDocument` (biens/outils.ts) refuse
      de lui-même, en dernier garde-fou ;
-   - un mandat de recherche : « Nouveau document », « Dupliquer ». Le mandat
-     signé en ligne depuis l'espace est déjà protégé côté serveur
-     (/api/espace/mandat : « deja » quand la recherche a un mandat valide).
+   - un mandat de recherche : « Nouveau document », « Dupliquer », et
+     « Proposer au client » (fiche › Mandat de recherche) quand un mandat de
+     Documents est en route. L'espace, lui, ne propose pas son mandat en ligne
+     tant qu'un mandat de Documents attend (mandatDocumentEnRoute,
+     src/lib/mandat-serveur.ts) ; /api/espace/mandat refuse (« deja »,
+     « document »).
 
    Un avenant n'est jamais bloqué : il modifie le mandat en cours.
    Pour en refaire un vraiment nouveau, on annule d'abord celui en cours
@@ -32,6 +35,9 @@ export type MandatEnCours = {
   documentId: string | null;
   numero: string;
   signeLe: string;
+  /* Proposé dans l'espace de l'acheteur (« Faire signer le mandat »), pas
+     encore signé : il le voit, il peut le signer à tout moment. */
+  propose?: boolean;
 };
 
 const EN_COURS = ['brouillon', 'pret', 'signe'];
@@ -83,12 +89,17 @@ export async function mandatRechercheEnCours(rechercheId: string): Promise<Manda
   const [a, b, r] = await Promise.all([
     supabase.from('documents').select('id, statut, numero, signe_le').eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId).in('statut', EN_COURS).limit(20),
     supabase.from('mandats_signatures').select('id, numero, statut, signe_le, retracte_le').eq('recherche_id', rechercheId).in('statut', ['signe', 'partiel', 'en_cours']).limit(10),
-    supabase.from('recherches').select('mandat_numero, mandat_date_signature').eq('id', rechercheId).maybeSingle(),
+    /* Toute la ligne : `mandat_propose_le` n'existe qu'après le SQL du mandat en ligne. */
+    supabase.from('recherches').select('*').eq('id', rechercheId).maybeSingle(),
   ]);
   if (a.error) throw new Error('Les mandats de la recherche n’ont pas pu être vérifiés : ' + a.error.message);
-  const docs = (a.data || []) as LigneDoc[];
+  const rr = (r.error ? null : r.data) as { mandat_numero?: string | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null; mandat_propose_le?: string | null } | null;
+  /* Arrivé à son terme, le mandat signé ne court plus : on en signe un nouveau
+     (un mandat terminé ne se prolonge pas par avenant). */
+  const fini = !!rr?.mandat_date_expiration && String(rr.mandat_date_expiration).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  const docs = ((a.data || []) as LigneDoc[]).filter(x => !(fini && x.statut === 'signe'));
   const enLigne = ((b.error ? [] : b.data || []) as { id: string; numero: string | null; statut: string; signe_le: string | null; retracte_le: string | null }[])
-    .filter(x => !x.retracte_le);
+    .filter(x => !x.retracte_le && !(fini && x.statut !== 'en_cours'));
   const signeEnLigne = enLigne.find(x => x.statut === 'signe' || x.statut === 'partiel');
   const docSigne = docs.find(x => x.statut === 'signe');
   if (docSigne) return { sorte: 'recherche', etat: 'signe', cle: 'd-' + docSigne.id, documentId: docSigne.id, numero: docSigne.numero || '', signeLe: docSigne.signe_le || '' };
@@ -97,8 +108,9 @@ export async function mandatRechercheEnCours(rechercheId: string): Promise<Manda
   if (doc) return { sorte: 'recherche', etat: etatDe(doc.statut), cle: 'd-' + doc.id, documentId: doc.id, numero: doc.numero || '', signeLe: '' };
   const enCours = enLigne.find(x => x.statut === 'en_cours');
   if (enCours) return { sorte: 'recherche', etat: 'signature', cle: 'r-' + enCours.id, documentId: null, numero: enCours.numero || '', signeLe: '' };
-  const rr = r.data as { mandat_numero?: string | null; mandat_date_signature?: string | null } | null;
-  if (!r.error && rr?.mandat_date_signature) return { sorte: 'recherche', etat: 'signe', cle: null, documentId: null, numero: rr.mandat_numero || '', signeLe: rr.mandat_date_signature };
+  if (rr?.mandat_date_signature && !fini) return { sorte: 'recherche', etat: 'signe', cle: null, documentId: null, numero: rr.mandat_numero || '', signeLe: rr.mandat_date_signature };
+  /* Proposé dans son espace (V3.32) : il peut le signer à tout moment. */
+  if (rr?.mandat_propose_le && !rr.mandat_date_signature) return { sorte: 'recherche', etat: 'signature', cle: null, documentId: null, numero: rr.mandat_numero || '', signeLe: '', propose: true };
   return null;
 }
 
@@ -107,6 +119,7 @@ export function phraseMandat(x: MandatEnCours): string {
   const quoi = x.sorte === 'vente' ? 'Un mandat de vente' : 'Un mandat de recherche';
   const ou = x.sorte === 'vente' ? 'sur ce bien' : 'pour cette recherche';
   const jour = x.signeLe ? new Date(x.signeLe.length <= 10 ? `${x.signeLe}T12:00:00` : x.signeLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  if (x.propose) return `${quoi} est déjà proposé dans son espace${x.numero ? ` (n° ${x.numero})` : ''} : il ne l’a pas encore signé.`;
   const detail = [x.numero ? `n° ${x.numero}` : '', x.etat === 'signe' ? (jour ? `signé le ${jour}` : 'signé') : x.etat === 'signature' ? 'en cours de signature' : 'en préparation',
     x.cle === null ? 'hors du CRM' : x.cle.startsWith('r-') ? 'en ligne' : ''].filter(Boolean).join(', ');
   return `${quoi} est déjà en cours ${ou} (${detail}).`;
@@ -114,6 +127,7 @@ export function phraseMandat(x: MandatEnCours): string {
 
 /* Ce qu'il faut faire pour en refaire un nouveau. */
 export function conseilMandat(x: MandatEnCours): string {
+  if (x.propose) return 'Laisse-le le signer, ou retire d’abord la proposition (sa fiche › Mandat de recherche) pour faire un mandat papier à la place.';
   if (x.etat !== 'signe') return 'Reprends-le plutôt que d’en commencer un second. Pour repartir de zéro, annule-le d’abord dans Documents.';
   if (x.cle === null) {
     return x.sorte === 'vente'

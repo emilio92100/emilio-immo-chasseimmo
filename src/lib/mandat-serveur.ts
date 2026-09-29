@@ -91,6 +91,40 @@ export async function etatServeur(sb: SupabaseClient, recherche: Record<string, 
   return signeSansNumero(r, recherche.mandat_propose_le) ? 'a_signer' : 'sans_numero';
 }
 
+/* Un mandat de recherche préparé dans la rubrique Documents (V3.32), pas
+   encore signé : en préparation (brouillon) ou parti en signature (prêt).
+   Tant qu'il est là, l'espace ne propose pas le mandat en ligne — ce serait
+   un second mandat pour la même recherche (src/lib/coherence.ts). `lien` :
+   son lien personnel de signature, quand l'une des adresses du client est
+   celle d'un signataire qu'on attend. Table ou colonne absente : null. */
+export type MandatDocument = { id: string; statut: 'brouillon' | 'pret'; titre: string; lien: string | null };
+export async function mandatDocumentEnRoute(sb: SupabaseClient, rechercheId: string, emails: string[]): Promise<MandatDocument | null> {
+  const { data, error } = await sb.from('documents').select('id, statut, titre, updated_at')
+    .eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId).in('statut', ['brouillon', 'pret'])
+    .order('updated_at', { ascending: false }).limit(5);
+  if (error || !data?.length) return null;
+  const docs = data as { id: string; statut: 'brouillon' | 'pret'; titre: string | null }[];
+  const doc = docs.find(x => x.statut === 'pret') || docs[0];
+  let lien: string | null = null;
+  const siens = emails.map(e => e.trim().toLowerCase()).filter(Boolean);
+  if (doc.statut === 'pret' && siens.length) {
+    const { data: sigs } = await sb.from('documents_signataires').select('jeton, personne, lien_expire_le')
+      .eq('document_id', doc.id).eq('statut', 'invite');
+    const sien = ((sigs || []) as { jeton: string | null; personne: { email?: string } | null; lien_expire_le: string | null }[])
+      .find(x => x.jeton && siens.includes(String(x.personne?.email || '').trim().toLowerCase())
+        && (!x.lien_expire_le || Date.parse(x.lien_expire_le) > Date.now()));
+    if (sien?.jeton) lien = `/signer/${sien.jeton}`;
+  }
+  return { id: doc.id, statut: doc.statut, titre: doc.titre || 'Mandat de recherche', lien };
+}
+
+/* Les adresses d'un client (et de son conjoint, sur une fiche « couple »). */
+export function adressesClient(c: { emails?: unknown; conjoint?: unknown } | null | undefined): string[] {
+  const l = Array.isArray(c?.emails) ? (c!.emails as unknown[]) : [];
+  const j = c?.conjoint && typeof c.conjoint === 'object' ? (c.conjoint as { email?: unknown }).email : null;
+  return [...l, j].filter((e): e is string => typeof e === 'string' && e.includes('@'));
+}
+
 /* ── Les mails ── */
 const FROM_EMAIL = process.env.MAILJET_FROM_EMAIL || 'arogelet@emilio-immo.com';
 const FROM_NAME = process.env.MAILJET_FROM_NAME || 'Alexandre ROGELET — Emilio Immobilier';
