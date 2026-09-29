@@ -248,7 +248,7 @@ import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/s
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import Rapprochement from './Rapprochement';
-import { mandatsPour } from '@/lib/rapprochement';
+import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -755,7 +755,12 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   /* Le rapprochement (V3.29) : la fenêtre, et les mandats en cours qui
      correspondent déjà à sa recherche (pour le bandeau de la Vue d'ensemble). */
   const [rappro, setRappro] = useState(false);
-  const [mandatsOk, setMandatsOk] = useState<{ n: number; meilleure: number } | null>(null);
+  const [mandatsOk, setMandatsOk] = useState<{ n: number; meilleure: number; liste: MandatOk[] } | null>(null);
+  /* Depuis une alerte (« un acheteur arrive ») ou le petit message après
+     l'enregistrement des critères : le rapprochement part tout seul, sur vos
+     mandats, ceux-là déjà cochés. Remis à zéro à la fermeture. */
+  const [rapproDepart, setRapproDepart] = useState<{ source: 'mandats' | 'veilles' | 'deux'; cocher?: string[] } | null>(null);
+  const [toastRappro, setToastRappro] = useState<{ titre: string; texte: string; ids: string[] } | null>(null);
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -992,6 +997,30 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       .then(r => { if (vivant) setMandatsOk(r); }).catch(() => { if (vivant) setMandatsOk(null); });
     return () => { vivant = false; };
   }, [rechercheActive, client.id, versionBiens]);
+  /* Ouverte depuis la fiche d'un bien (« Envoyer par mail… ») : le mail
+     d'envoi habituel s'ouvre sur ce bien dès qu'il est chargé. Depuis une
+     alerte : le rapprochement part tout seul (V3.29). */
+  const envoiFait = useRef(false);
+  useEffect(() => {
+    const ids = ouverture?.envoi;
+    if (!ids?.length || envoiFait.current) return;
+    if (!ids.every(id => biens.some(x => x.id === id))) return;
+    envoiFait.current = true;
+    openEnvoiMulti(ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [biens, ouverture]);
+  const rapproLu = useRef(false);
+  useEffect(() => {
+    if (rapproLu.current || !ouverture?.rappro || !rechercheActive) return;
+    rapproLu.current = true;
+    setRapproDepart(ouverture.rappro);
+    setRappro(true);
+  }, [ouverture, rechercheActive]);
+  useEffect(() => {
+    if (!toastRappro) return;
+    const t = setTimeout(() => setToastRappro(null), 14000);
+    return () => clearTimeout(t);
+  }, [toastRappro]);
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '' });
   /* La signature et le modèle « Sélection de biens » des Paramètres (V3.20) :
@@ -1648,6 +1677,17 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
           description: change, metadata: {},
         }));
         load();
+        /* Un de vos mandats lui correspond déjà ? On le dit tout de suite
+           (V3.29), sans rien lancer. */
+        mandatsPour(data as unknown as Record<string, unknown>, client.id).then(r => {
+          if (!r.n) return;
+          const m = r.liste[0];
+          setToastRappro({
+            titre: `Recherche de ${[client.prenom, client.nom].filter(Boolean).join(' ')} enregistrée`,
+            texte: r.n > 1 ? `${r.n} de vos mandats lui correspondent, jusqu’à ${r.meilleure}\u00a0%.` : `« ${m.titre} »${m.ville ? ` à ${m.ville}` : ''} lui correspond à ${m.note}\u00a0%.`,
+            ids: r.liste.map(x => x.id),
+          });
+        }).catch(() => { /* le bandeau de la Vue d'ensemble le dira */ });
       }
     }
     setSaving(false); setShowCriteres(false);
@@ -4872,15 +4912,30 @@ ${signatureMail()}`,
       {/* ═══ LE RAPPROCHEMENT (V3.29) ═══ */}
       {rappro && rechercheActive && (
         <Rapprochement client={client} recherche={rechercheActive as unknown as Record<string, unknown>} resume={resumeRecherche}
-          onFermer={() => { setRappro(false); load(); }}
-          onFicheBien={(id) => { setRappro(false); onNavigate('biens', { bien: id }); }}
+          depart={rapproDepart}
+          onFermer={() => { setRappro(false); setRapproDepart(null); load(); }}
+          onFicheBien={(id) => { setRappro(false); setRapproDepart(null); onNavigate('biens', { bien: id }); }}
           onFini={async (quoi, ids) => {
             setRappro(false);
+            setRapproDepart(null);
             await load();
             setVersionBiens(v => v + 1);
             if (quoi === 'mail') openEnvoiMulti(ids);
             else setTab('selection');
           }} />
+      )}
+
+      {/* Le petit message après l'enregistrement des critères (V3.29). */}
+      {toastRappro && !rappro && (
+        <div role="status" className={styles.toastRappro}>
+          <span className={styles.toastRapproIc}><Icone nom="etoile" taille={16} epaisseur={2.2} /></span>
+          <div className={styles.toastRapproTx}>
+            <b>{toastRappro.titre}</b>
+            <span>{toastRappro.texte}</span>
+            <button type="button" onClick={() => { setRapproDepart({ source: 'mandats', cocher: toastRappro.ids }); setToastRappro(null); setRappro(true); }}>Voir</button>
+          </div>
+          <button type="button" className={styles.toastRapproX} aria-label="Fermer" onClick={() => setToastRappro(null)}><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
+        </div>
       )}
 
       {/* ═══ MODAL CONFIRM ÉTAPE PRÉCÉDENTE ═══ */}

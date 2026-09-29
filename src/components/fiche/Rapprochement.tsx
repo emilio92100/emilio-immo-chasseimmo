@@ -9,7 +9,7 @@
       mail » (le mail d'envoi habituel de la fiche, rien de nouveau).
    Le calcul est dans src/lib/rapprochement.ts. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icone } from './ParcoursBien';
 import {
@@ -66,17 +66,20 @@ function Source({ t }: { t: Trouve }) {
     </span>;
 }
 
-export default function Rapprochement({ client, recherche, resume, onFermer, onFini, onFicheBien }: {
+export default function Rapprochement({ client, recherche, resume, onFermer, onFini, onFicheBien, depart }: {
   client: Ligne; recherche: Ligne; resume: string;
   onFermer: () => void;
   /* Les biens sont posés dans son dossier : la fiche recharge, puis ouvre la
      Sélection ou le mail d'envoi habituel sur ces biens-là. */
   onFini: (quoi: 'selection' | 'mail', ids: string[]) => void;
   onFicheBien?: (bienVenteId: string) => void;
+  /* Ouvert depuis une alerte (« un acheteur arrive ») : la recherche part
+     tout de suite, sur cette source, et ces mandats sont déjà cochés. */
+  depart?: { source: SourceRappro; cocher?: string[] } | null;
 }) {
   const prenom = client.prenom || 'ce client';
   const [etape, setEtape] = useState<'choix' | 'cherche' | 'resultats'>('choix');
-  const [source, setSource] = useState<SourceRappro>('deux');
+  const [source, setSource] = useState<SourceRappro>(depart?.source || 'deux');
   const [periode, setPeriode] = useState<PeriodeVeille>(90);
   const [comptes, setComptes] = useState<{ mandats: number; veilles: Record<number, number> } | null>(null);
   const [res, setRes] = useState<{ trouves: Trouve[]; compares: number; dejaLa: number } | null>(null);
@@ -99,23 +102,33 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
     return () => document.removeEventListener('keydown', k);
   }, [apercu, pose, onFermer]);
 
+  /* Depuis une alerte : on cherche tout de suite, une seule fois. */
+  const parti = useRef(false);
+  useEffect(() => {
+    if (!depart || parti.current) return;
+    parti.current = true;
+    void lancer(depart.source);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depart]);
+
   const nbVeilles = comptes?.veilles[periode] ?? null;
   const aComparer = comptes ? (source === 'mandats' ? comptes.mandats : source === 'veilles' ? (nbVeilles || 0) : comptes.mandats + (nbVeilles || 0)) : null;
 
-  async function lancer() {
+  async function lancer(src: SourceRappro = source) {
     setErreur(''); setEtape('cherche'); setChoisis(new Set()); setFiltre('tout');
     const debut = Date.now();
     try {
-      const r = await rapprocher(recherche, client.id, source, periode);
+      const r = await rapprocher(recherche, client.id, src, periode);
       /* L'animation se voit au moins un instant : un résultat instantané
          laissait croire que rien n'avait été cherché. */
       const reste = 1400 - (Date.now() - debut);
       if (reste > 0) await new Promise(ok => setTimeout(ok, reste));
       setRes(r);
       /* Les « correspondent » sont cochés d'office : c'est eux qu'on garde le plus souvent. */
-      setChoisis(new Set(r.trouves.filter(t => t.corr.note >= SEUIL_CORRESPOND).map(t => t.cle)));
+      const aCocher = new Set((depart?.cocher || []).map(id => `m-${id}`));
+      setChoisis(new Set(r.trouves.filter(t => t.corr.note >= SEUIL_CORRESPOND || aCocher.has(t.cle)).map(t => t.cle)));
       setEtape('resultats');
-      noterRapprochement(client.id, recherche.id, r.trouves.length, source, periode);
+      noterRapprochement(client.id, recherche.id, r.trouves.length, src, periode);
     } catch (e) {
       setErreur((e as Error).message);
       setEtape('choix');
@@ -233,7 +246,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
             </div>
             <div className={s.pied}>
               <button type="button" className={s.btn} onClick={onFermer}>Annuler</button>
-              <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={lancer} disabled={aComparer === 0}>
+              <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => lancer()} disabled={aComparer === 0}>
                 <Icone nom="etoile" taille={17} epaisseur={2.2} />Lancer le rapprochement
               </button>
             </div>
@@ -252,7 +265,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                 <path d="M46 68 Q60 80 74 68" fill="none" stroke="#e8c96a" strokeWidth="4" strokeLinecap="round" />
               </svg>
             </span>
-            <b>{`Je compare ${aComparer ?? ''} biens avec les critères de ${prenom}…`}</b>
+            <b>{aComparer != null ? `Je compare ${aComparer} biens avec les critères de ${prenom}…` : `Je compare vos biens avec les critères de ${prenom}…`}</b>
             <span className={s.points}><i /><i /><i /></span>
           </div>
         )}
