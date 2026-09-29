@@ -31,7 +31,10 @@ import { supabase } from '@/lib/supabase';
 function FormulaireAcces() {
   const router = useRouter();
   const params = useSearchParams();
-  const suite = params.get('suite') || '/';
+  /* Seulement une page du CRM (V3.33) : « ?suite=https://… » renvoyait,
+     juste après une vraie connexion, vers n'importe quel site. */
+  const demande = params.get('suite') || '/';
+  const suite = /^\/(?![\/\\])/.test(demande) ? demande : '/';
   const erreurConfig = params.get('erreur') === 'config';
 
   const [mail, setMail] = useState('');
