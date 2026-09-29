@@ -6,6 +6,7 @@ import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
 import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
 import { Croix, Ic } from './ApercuActe';
 import { etapeDe, type BienVente } from '@/lib/biens-vente';
+import { jourParis } from '@/lib/mandat';
 import { creerDocument } from '@/components/biens/outils';
 import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
 import { cleRecherche, colonnesListe, identiteDuJour, mandatsPour, preparerDepuis, tableAbsente, type DocumentRow, type MandatChoix } from './outils';
@@ -396,7 +397,7 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
                     : (
                       <div className={s.resultats}>
                         {recherches.map(r => {
-                          const valide = !!r.mandat_date_signature && (!r.mandat_date_expiration || String(r.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
+                          const valide = !!r.mandat_date_signature && (!r.mandat_date_expiration || String(r.mandat_date_expiration).slice(0, 10) >= jourParis());
                           return (
                             <button key={r.id} type="button" className={`${s.resultat} ${recherche?.id === r.id ? s.resultatOn : ''}`} onClick={() => setRecherche(r)}>
                               <Ic n="loupe" t={16} />
