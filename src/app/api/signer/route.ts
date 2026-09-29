@@ -397,17 +397,33 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
       const restants = tous.filter(x => SD.actif(x) && SD.attendu(x));
       const echecs: string[] = [];
       let pdf: Uint8Array | null = null;
+      /* V3.33 : la signature est déjà notée « signée » ; si le PDF ne peut
+         pas être scellé, un nouvel essai du signataire répond « déjà signé »
+         et le document resterait « à signer » sans que personne le sache.
+         Alexandre est donc prévenu, avec le geste qui débloque. */
+      const bloque = async (detail: string) => {
+        const geste = restants.length
+          ? 'Sa signature est bien enregistrée. Le document continue d’attendre les autres signataires ; rien à faire pour l’instant.'
+          : 'Tout le monde a signé. Ouvre le document dans Documents et clique sur « Tout le monde a signé : finaliser » : il sera scellé, envoyé à chacun et rangé.';
+        const e = await envoyerMail({
+          a: ALERTES(), deLaPartDe: 'crm', sujet: `⚠️ ${moi} a signé ${nd.le}, mais le PDF n’a pas pu être scellé`,
+          texte: `${moi} vient de signer ${nd.le}, mais le PDF signé n’a pas pu être préparé (${detail}).\n\n${geste}\n\n${lienCrm}`,
+          html: gabarit(`${moi} a signé, un geste à faire`, `<p><b>${echappe(moi)}</b> vient de signer ${echappe(nd.le)}, mais le PDF signé n’a pas pu être préparé.</p>
+            <p>${echappe(geste)}</p><p style="color:#b91c1c;font-size:13px">Détail : ${echappe(detail)}</p>${bouton(lienCrm, 'Ouvrir le CRM')}`),
+        });
+        if (e) console.error('[signer] alerte blocage', e);
+      };
       if (!restants.length) {
         /* Le dernier : tout est scellé, envoyé à chacun, rangé. */
         const t = await SD.terminer(sb, doc, tous);
-        if (t.erreur) return ko('stockage', 500, { detail: t.erreur });
+        if (t.erreur) { await bloque(t.erreur); return ko('stockage', 500, { detail: t.erreur }); }
         pdf = t.signe || null;
         echecs.push(...t.echecs);
       } else {
         /* Pas le dernier : une version scellée avec les signatures du
            moment, qu'il reçoit. */
         const sc = await SD.sceller(sb, doc, tous);
-        if ('erreur' in sc) return ko('stockage', 500, { detail: sc.erreur });
+        if ('erreur' in sc) { await bloque(sc.erreur); return ko('stockage', 500, { detail: sc.erreur }); }
         const { error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id);
         if (eD) echecs.push(`document : ${eD.message}`);
         pdf = sc.signe;
