@@ -7,6 +7,8 @@ import * as SD from '@/lib/signature-documents';
 import { lireCos, lienValide, dansLeMandat, finRetractationDe, type Co, type LigneMandat } from '@/lib/cosignature';
 import { lireIdentiteAgence, IDENTITE_DEFAUT } from '@/lib/agence';
 import { masquerEmail, type Mandant } from '@/lib/mandat';
+import { lienEspace } from '@/lib/jeton';
+import { adressesClient } from '@/lib/mandat-serveur';
 
 /**
  * La page d'un co-signataire : espace.emilio-immo.com/signer/<jeton>.
@@ -99,8 +101,17 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     : doc.statut !== 'pret' ? 'fin'
     : SD.lienValide(s) ? 'invite' : 'expire';
   const parties = m.rediger(doc.donnees, identite);
+  /* Son espace, s'il en a un et que c'est bien lui (V3.32) : une fois signé,
+     « Revenir à mon espace » — sa demande de visite l'y attend peut-être. */
+  let espace: string | null = null;
+  if (doc.client_id) {
+    const { data: c } = await sb.from('clients').select('*').eq('id', doc.client_id).maybeSingle();
+    const cl = c as { token_espace?: string | null; emails?: unknown; conjoint?: unknown } | null;
+    const moiEmail = String(s.personne.email || '').trim().toLowerCase();
+    if (cl?.token_espace && moiEmail && adressesClient(cl).some(e => e.trim().toLowerCase() === moiEmail)) espace = lienEspace(cl.token_espace) || null;
+  }
   return {
-    jeton, etat, entete: m.entete(doc.donnees), le: nd.le, court: nd.court,
+    jeton, etat, entete: m.entete(doc.donnees), le: nd.le, court: nd.court, espace,
     moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: masquerEmail(s.personne.email) },
     role: cases.find(c => c.cle === s.cle)?.qui || s.role || 'Signataire',
     autres: sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })),
