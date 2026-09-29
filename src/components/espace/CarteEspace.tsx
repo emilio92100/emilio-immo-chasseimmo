@@ -416,6 +416,23 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
       ))}
     </div>
   );
+  /* Ordinateur (V3.28) : les filtres posés sur la carte, en une seule barre
+     où un trait fin sépare chaque choix ; le choix actif prend la couleur de
+     sa catégorie (« Tous », le bleu de l'espace). */
+  const filtresPc = (
+    <div className={s.filtresPc} role="group" aria-label="Filtrer les biens">
+      <button type="button" className={`${s.fp} ${filtre === 'tout' ? s.fpOn : ''}`} aria-pressed={filtre === 'tout'}
+        onClick={() => setFiltre('tout')}>
+        Tous<b>{places.length}</b>
+      </button>
+      {CATS_ESPACE.filter(c => nb[c.id]).map(c => (
+        <button key={c.id} type="button" className={`${s.fp} ${filtre === c.id ? s.fpOn : ''}`} aria-pressed={filtre === c.id}
+          style={{ '--c': c.c } as React.CSSProperties} onClick={() => setFiltre(f => (f === c.id ? 'tout' : c.id))}>
+          <i />{c.lib}<b>{nb[c.id]}</b>
+        </button>
+      ))}
+    </div>
+  );
   const carteBien = (p: Place, compacte: boolean) => {
     const choisi = sel === p.id;
     return (
@@ -498,10 +515,10 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
           {bascule}
         </div>
       )}
-      {!tel && !sansFiltres && puces}
 
       <div className={s.corpsCarte}>
-        <div className={s.cadre}>
+        <div className={`${s.cadre} ${!tel && !sansFiltres ? s.avecFiltres : ''}`}>
+          {!tel && !sansFiltres && filtresPc}
           <FondCarte className={s.fond} surPrete={surPrete} centre={CENTRE} zoom={12.6}
             mention={tel ? 'haut-droite' : 'bas-gauche'} surErreur={m => setErreur(m)} />
           {charge && <div className={s.charge} role="status"><span />Placement de vos biens…</div>}

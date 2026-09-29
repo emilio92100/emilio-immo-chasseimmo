@@ -246,19 +246,51 @@
 
 /* ── Ordinateur : la carte, et la liste de la zone à côté ── */
 .pc { margin-top: 20px; }
-.tetePc { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.tetePc { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .tetePc h2 { margin: 0; font: 800 26px/1.2 'Plus Jakarta Sans', sans-serif; letter-spacing: -.5px; color: #1a2332; }
 .tetePc p { margin: 4px 0 0; font-size: 14px; color: #64748b; }
 .pc .bascule { background: #eef2f8; border-color: #e3e8f0; }
 .pc .bascule button { color: #475569; height: 32px; padding: 0 14px; font-size: 13px; }
 .pc .bascule button:hover { color: #24385c; }
 .pc .bascule .basculeOn { background: #fff; color: #24385c; box-shadow: 0 4px 12px -6px rgba(36, 56, 92, .45); }
-.pc .puces { flex-wrap: wrap; padding: 0; margin-bottom: 14px; overflow: visible; }
-.pc .puce { background: #fff; color: #334155; border-color: #e3e8f0; }
-.pc .puce:hover { border-color: #cfd7e3; }
-.pc .puce i { background: var(--c, #94a3b8); }
-.pc .puceOn { background: #3a5886; color: #fff; border-color: #3a5886; }
-.pc .puceOn b { color: #fff; }
+/* Les filtres, posés sur la carte (V3.28). Avant, une ligne de pastilles
+   entre le titre et la carte. Une seule barre blanche en haut, au milieu :
+   un trait fin entre chaque choix, et le choix actif à sa couleur. Centrée
+   par les marges, pas par `transform` (rien ne saute à l'apparition). */
+.filtresPc {
+  position: absolute; z-index: 4; top: 14px; left: 0; right: 0; margin: 0 auto;
+  width: fit-content; max-width: calc(100% - 28px);
+  display: flex; align-items: center; padding: 4px; border-radius: 16px;
+  background: rgba(255, 255, 255, .95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 16px 34px -18px rgba(15, 23, 42, .55), 0 0 0 1px rgba(15, 23, 42, .07);
+  overflow-x: auto; scrollbar-width: none;
+  animation: entre .35s cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.filtresPc::-webkit-scrollbar { display: none; }
+.fp {
+  position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 14px; border-radius: 12px;
+  font: 700 13px 'DM Sans', sans-serif; color: #334155; white-space: nowrap;
+  transition: background .22s, color .22s, box-shadow .22s;
+}
+.fp + .fp::before {
+  content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px;
+  background: #e3e8f0; transition: opacity .2s;
+}
+/* Pas de trait contre le choix actif : il a déjà sa couleur. */
+.fpOn::before, .fpOn + .fp::before { opacity: 0; }
+.fp i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; transition: background .22s; }
+.fp b { font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #94a3b8; transition: color .22s; }
+.fp:hover { background: color-mix(in srgb, var(--c, #3a5886) 9%, transparent); }
+.fpOn, .fpOn:hover { background: var(--c, #3a5886); color: #fff; box-shadow: 0 8px 18px -10px var(--c, #3a5886); }
+.fpOn i { background: #fff; }
+.fpOn b { color: rgba(255, 255, 255, .85); }
+/* Sous la barre de filtres : le message, le bandeau « pas sur la carte »,
+   le « Placement de vos biens… ». */
+.avecFiltres .hors, .avecFiltres .message, .avecFiltres .charge { top: 66px; }
+@media (max-width: 1279px) {
+  .fp { padding: 0 11px; font-size: 12.5px; gap: 6px; }
+}
 .pc .corpsCarte {
   display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px;
   height: clamp(480px, calc(100vh - 150px), 860px);

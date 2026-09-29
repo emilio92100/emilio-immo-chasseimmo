@@ -1810,7 +1810,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               {/* Le détail du travail de la veille n'a de sens que s'il a donné
                   quelque chose. Sinon on dit l'inverse, mais on le dit. */}
               {neufs.length > 0 && !!passage?.lues && (
-                <div className="relance" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
+                /* Centrée sur ordinateur, sous les deux colonnes de biens (V3.28). */
+                <div className="relance relance-pc" style={{ marginTop: 16 }}><Ico n="loupe" t={18} />
                   <span suppressHydrationWarning>{`Ces biens sont ceux qui ont passé tous vos critères. ${debutRecherche(passage.quand, passage.lues)}.`}</span>
                 </div>
               )}
@@ -6317,12 +6318,15 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
    ⚠️ La barre de la page entière se règle sur « body », pas sur « html » :
    html et body sont tous deux en overflow:auto (voir plus haut), et Chrome
    prend alors le style de body. « html » seul ne changeait rien. */
+/* V3.28 : encore plus visible. La poignée faisait 8 px de large, gris
+   clair (#9aa6b8) : on la voyait mal, surtout sur la fiche d'un bien. Elle
+   fait maintenant 11 px, en gris ardoise, et plus longue au minimum. */
 @media (hover:hover) and (pointer:fine){
-  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:14px; height:14px}
-  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#eef1f6}
+  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:17px; height:17px}
+  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#e6eaf1}
   html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
-    background:#9aa6b8; border-radius:10px; border:3px solid transparent; background-clip:padding-box; min-height:48px}
-  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#6b7890}
+    background:#64748b; border-radius:10px; border:3px solid transparent; background-clip:padding-box; min-height:64px}
+  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#475569}
   html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:var(--encre2)}
   /* la fiche a des coins arrondis : la piste ne touche ni le haut ni le bas */
   .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px; border-radius:10px}
@@ -6330,7 +6334,7 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 /* Firefox ne connaît pas les règles ci-dessus : il a les siennes. */
 @supports (-moz-appearance:none){
   @media (hover:hover) and (pointer:fine){
-    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#9aa6b8 #eef1f6}
+    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#64748b #e6eaf1}
   }
 }
 
@@ -7342,6 +7346,12 @@ button.auj-c:active{transform:scale(.96)}
 /* « Rien de nouveau pour le moment » (V3.28) : un seul message, avec sa loupe
    qui cherche doucement ; la dernière recherche, dessous, centrée pareil. */
 .relance-centre{flex-direction:column; align-items:center; text-align:center; gap:8px; padding:16px 18px}
+/* Sur ordinateur, le cadre lui-même est centré sous les biens (V3.28) : à
+   820 px de large, il restait collé à gauche d'une page de 1 080. */
+@media(min-width:1024px){
+  .relance-centre, .relance-pc{margin-left:auto; margin-right:auto}
+  .relance-pc{flex-direction:column; align-items:center; text-align:center; gap:8px; padding:16px 22px}
+}
 /* Sur téléphone, un titre de rubrique tient sur une ligne (« Nouveaux biens
    pour vous » laissait « vous » seul dessous). */
 @media(max-width:560px){
