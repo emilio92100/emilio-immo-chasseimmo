@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import AvatarContact from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { delaiRelance, echeanceDans } from '@/lib/relances';
 import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOngletBien } from '@/lib/intentions';
@@ -393,14 +394,13 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
                 const o = origineDe(r, liens[r.id]);
                 const c = r.clients;
                 const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : 'Client supprimé';
-                const initiales = nom.split(/\s+/).filter(Boolean).slice(0, 2).map((m: string) => m[0]).join('').toUpperCase() || '?';
                 const ouvert = report?.id === r.id;
                 return (
                   <div key={r.id} className="rl-entre" style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
                     <div className="rl-ligne" data-partante={partantes[r.id] ? '' : undefined}
                       style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
                       <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
-                      <span className="rl-av" style={{ width: 44, height: 44, borderRadius: 14, background: NAVY, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: JAK, fontSize: 15, fontWeight: 800 }}>{initiales}</span>
+                      <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>

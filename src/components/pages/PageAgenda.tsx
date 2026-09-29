@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
@@ -145,6 +146,8 @@ const LONGUE_MIN = 360;
 type Tache = { cle: string; jour: string; titre: string; genre: Genre; clientId: string | null };
 type Dossier = {
   rechercheId: string; clientId: string; nom: string; prenom: string; emails: string[]; libelle: string;
+  /* Pour son avatar (V3.31) : civilité, couple. */
+  personne: Personne;
   /* Pour le choix du client : le nom de la recherche, son résumé, et sa
      date (les plus récentes d'abord quand on n'a rien tapé). */
   recherche: string; resume: string; plusieurs: boolean; cree: string;
@@ -322,7 +325,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
       supabase.from('relances').select('*').eq('statut', 'en_attente'),
       supabase.from('transactions').select('*'),
       supabase.from('recherches').select('*'),
-      supabase.from('clients').select('id, prenom, nom, statut, emails'),
+      supabase.from('clients').select('id, prenom, nom, statut, emails, civilite, couple, conjoint'),
     ]);
     /* Tant que le SQL de l'agenda n'a pas été lancé, la table n'existe pas :
        les visites s'affichent quand même, on prévient pour le reste. */
@@ -506,7 +509,7 @@ function dossiersDe(recherches: any[], clientsParId: Record<string, any>): Dossi
     .map(r => ({ r, c: clientsParId[r.client_id] }))
     .filter(x => x.c && x.c.statut !== 'perdu')
     .map(({ r, c }) => ({
-      rechercheId: r.id, clientId: c.id, nom: nomDe(c), prenom: c.prenom || nomDe(c),
+      rechercheId: r.id, clientId: c.id, nom: nomDe(c), prenom: c.prenom || nomDe(c), personne: c,
       emails: (c.emails || []).filter(Boolean),
       libelle: parClient[c.id] > 1 ? `${nomDe(c)} — ${r.nom || 'Recherche'}` : nomDe(c),
       recherche: nommerRecherche(r, 1), resume: resumerRecherche(r), plusieurs: parClient[c.id] > 1, cree: String(r.created_at || ''),
@@ -535,7 +538,7 @@ export function NouveauRdvPartout() {
         supabase.from('relances').select('*').eq('statut', 'en_attente'),
         supabase.from('transactions').select('*'),
         supabase.from('recherches').select('*'),
-        supabase.from('clients').select('id, prenom, nom, statut, emails'),
+        supabase.from('clients').select('id, prenom, nom, statut, emails, civilite, couple, conjoint'),
       ]);
       if (!vivant) return;
       setTableAbsente(!!r.error);
@@ -1452,12 +1455,9 @@ function Puces<T extends string | number>({ options, valeur, onChange }: { optio
    dossiers, on tape trois lettres et on choisit. Sans rien taper, les
    dossiers les plus récents. */
 const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-const initiales = (nom: string) => nom.split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]).join('').toUpperCase() || '?';
-
-function Pastille({ nom, taille = 38 }: { nom: string; taille?: number }) {
-  return (
-    <span style={{ width: taille, height: taille, borderRadius: taille * .32, background: NAVY, color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: JAK, fontSize: taille * .36, fontWeight: 800, letterSpacing: .3 }}>{initiales(nom)}</span>
-  );
+/* Son petit personnage (V3.31), plutôt que ses initiales. */
+function Pastille({ nom, personne, taille = 38 }: { nom: string; personne?: Personne; taille?: number }) {
+  return <AvatarContact c={personne || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} taille={taille} />;
 }
 
 function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[]; valeur: string; fige: boolean; onChange: (id: string) => void }) {
@@ -1468,7 +1468,7 @@ function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[
   if (choisi) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, border: `1.5px solid ${OR}`, background: '#fffaf0' }}>
-        <Pastille nom={choisi.nom} />
+        <Pastille nom={choisi.nom} personne={choisi.personne} />
         <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
           <b style={{ fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{choisi.nom}</b>
           <span style={{ fontSize: 12, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[choisi.recherche, choisi.resume].filter(Boolean).join(' · ') || 'Recherche en cours'}</span>
@@ -1508,7 +1508,7 @@ function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[
         {liste.map((d, i) => (
           <button key={d.rechercheId} type="button" role="option" aria-selected={i === actif} onClick={() => choisir(d)} onMouseEnter={() => setActif(i)}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 12px', border: 'none', borderTop: i ? `1px solid ${LIGNE}` : 'none', background: i === actif ? '#f6f8fc' : 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY }}>
-            <Pastille nom={d.nom} taille={34} />
+            <Pastille nom={d.nom} personne={d.personne} taille={34} />
             <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
               <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.nom}</b>
               <span style={{ fontSize: 11.5, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[d.plusieurs ? d.recherche : '', d.resume].filter(Boolean).join(' · ') || d.recherche}</span>

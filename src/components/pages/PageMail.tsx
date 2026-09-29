@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { signalerEchec } from '@/lib/ecritures';
 import { CLES_MAIL, signatureDe, VARIABLES_MAIL } from '@/lib/mail-variables';
@@ -34,7 +35,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from('clients').select('id, prenom, nom, emails, telephones, reference')
+    supabase.from('clients').select('*')
       .in('statut', ['actif', 'prospect', 'suspendu', 'offre_ecrite', 'bien_trouve'])
       .order('nom')
       .then(({ data }) => setClients(data || []));
@@ -154,9 +155,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
                         style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f8fafc', display: 'flex', gap: 8, alignItems: 'center' }}
                         onMouseOver={e => (e.currentTarget.style.background = '#f8fafc')}
                         onMouseOut={e => (e.currentTarget.style.background = 'white')}>
-                        <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--emilio-fond)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, color: '#c9a84c' }}>{c.prenom[0]}{c.nom[0]}</span>
-                        </div>
+                        <AvatarContact c={c} teinte={teinteDe(c)} taille={30} />
                         <div>
                           <div style={{ fontWeight: 600, color: 'var(--emilio)' }}>{c.prenom} {c.nom}</div>
                           <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.reference} · {(c.emails||[])[0] || 'Pas d\'email'}</div>
