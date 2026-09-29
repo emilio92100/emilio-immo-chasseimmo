@@ -9,7 +9,7 @@ import {
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
-import FicheClient from '@/components/fiche/FicheClient';
+import FicheClient, { Coordonnees, type Coord } from '@/components/fiche/FicheClient';
 import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne } from './ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import FriseSuivi from '@/components/fiche/FriseSuivi';
@@ -182,6 +182,18 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
 
   const tels = (x.telephones || []).filter(Boolean), mails = (x.emails || []).filter(Boolean);
   const j2 = x.couple ? conjointDe(x.conjoint) : null;
+  /* Les coordonnées dans le panneau crème, à droite, comme sur la fiche d'un
+     acheteur (V3.32) : dans un couple, chaque ligne dit à qui elle est. */
+  const civ1 = x.civilite || '', civ2 = j2?.civilite || '';
+  const qui1 = j2 ? (civ1 && civ2 && civ1 !== civ2 ? civ1 : x.prenom || civ1 || 'Personne 1') : undefined;
+  const qui2 = j2 ? (civ1 && civ2 && civ1 !== civ2 ? civ2 : j2.prenom || civ2 || 'Personne 2') : undefined;
+  const coords: Coord[] = [
+    ...tels.map(t => ({ k: 'tel' as const, val: t, qui: qui1 })),
+    ...(j2?.telephone ? [{ k: 'tel' as const, val: j2.telephone, qui: qui2 }] : []),
+    ...mails.map(m => ({ k: 'mail' as const, val: m, qui: qui1 })),
+    ...(j2?.email ? [{ k: 'mail' as const, val: j2.email, qui: qui2 }] : []),
+    ...(x.adresse ? [{ k: 'adresse' as const, val: x.adresse }] : []),
+  ];
   const ligne = ligneContact(x);
   /* Une adresse que la carte peut placer : chez lui, son étude, son agence,
      son immeuble, ou le bien qu'il possède. */
@@ -217,39 +229,32 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         </div>
       </div>
 
-      <div className={c.hero}>
-        <AvatarContact c={x} teinte={{ bg: '', fg: '#e0c36e' }} className={c.heroAv} libre />
-        <div className={c.heroTxt}>
-          <h1 className={c.heroNom}>{nomFoyer(x) || 'Sans nom'}</h1>
-          <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />
-          {ligne && <div className={c.heroLigne}>{ligne}</div>}
-          {peutSociete && !structure && !societeOuverte && (
-            <button type="button" className={c.heroSoc} onClick={() => setSocieteOuverte(true)}>
-              <Ic n="immeuble" t={14} />{`${x.civilite === 'Madame' ? 'Elle' : 'Il'} agit pour une société (SCI…) ?`}<b>Ajouter</b>
-            </button>
-          )}
-          {libelleSource((x as AvecSource).source, (x as AvecSource).source_detail) && (
-            <div className={c.heroSource}><Ic n="drapeau" t={13} /><span>{'Source : '}<b>{libelleSource((x as AvecSource).source, (x as AvecSource).source_detail)}</b></span></div>
-          )}
-          <div className={c.heroCoord}>
-            {j2 && <em>{x.prenom || 'Personne 1'}</em>}
-            {tels.map(t => <a key={t} href={`tel:${t.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />{t}</a>)}
-            {mails.map(m => <a key={m} href={`mailto:${m}`}><Ic n="mail" t={14} />{m}</a>)}
-            {!j2 && x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}
-            {!tels.length && !mails.length && !x.adresse && !j2 && <span>Pas encore de coordonnées</span>}
-            {!j2 && aUneAdresse && <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} sombre />}
-          </div>
-          {/* Un couple : les coordonnées de la personne 2, sous son prénom. */}
-          {j2 && (
-            <div className={c.heroCoord}>
-              <em>{j2.prenom || 'Personne 2'}</em>
-              {j2.telephone && <a href={`tel:${j2.telephone.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />{j2.telephone}</a>}
-              {j2.email && <a href={`mailto:${j2.email}`}><Ic n="mail" t={14} />{j2.email}</a>}
-              {!j2.telephone && !j2.email && <span>Pas encore de coordonnées</span>}
+      <div className={`${c.hero} ${c.heroAvecCo}`}>
+        <div className={c.heroQui}>
+          <AvatarContact c={x} teinte={{ bg: '', fg: '#e0c36e' }} className={c.heroAv} libre />
+          <div className={c.heroTxt}>
+            {/* « Il agit pour une société ? » à droite du nom (V3.32) : une ligne de moins. */}
+            <div className={c.heroNomL}>
+              <h1 className={c.heroNom}>{nomFoyer(x) || 'Sans nom'}</h1>
+              {peutSociete && structure && (
+                <span className={c.heroSocOk}><Ic n="immeuble" t={13} /><span>{'Pour '}<b>{structure.denomination || 'une société'}</b>{structure.qualite ? ` · ${structure.qualite.split(/[,(]/)[0].trim()}` : ''}</span></span>
+              )}
+              {peutSociete && !structure && !societeOuverte && (
+                <button type="button" className={c.heroSoc} onClick={() => setSocieteOuverte(true)}>
+                  <Ic n="immeuble" t={13} />{`${x.civilite === 'Madame' ? 'Elle' : 'Il'} agit pour une société ?`}<b>Ajouter</b>
+                </button>
+              )}
             </div>
-          )}
-          {j2 && (x.adresse || aUneAdresse) && <div className={c.heroCoord}>{x.adresse && <span><Ic n="lieu" t={14} />{x.adresse}</span>}{aUneAdresse && <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} sombre />}</div>}
+            <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />
+            {/* La société est déjà dite à droite du nom : la ligne ne la répète pas. */}
+            {ligne && !(peutSociete && structure?.denomination && ligne.includes(structure.denomination)) && <div className={c.heroLigne}>{ligne}</div>}
+            {libelleSource((x as AvecSource).source, (x as AvecSource).source_detail) && (
+              <div className={c.heroSource}><Ic n="drapeau" t={13} /><span>{'Source : '}<b>{libelleSource((x as AvecSource).source, (x as AvecSource).source_detail)}</b></span></div>
+            )}
+          </div>
         </div>
+        <Coordonnees coords={coords} onModifier={() => { setErreur(''); setEdit(formDe(x)); }}
+          pied={aUneAdresse ? <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} /> : undefined} />
       </div>
 
       {peutSociete && (structure || societeOuverte) && <div className={c.socHaut}>{societe}</div>}
