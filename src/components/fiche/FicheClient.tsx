@@ -720,8 +720,8 @@ function dureeSuivi(j: number): string {
 }
 
 /* Les grandes rubriques de la fiche (V3.29), dans l'ordre de la barre. */
-type VueFiche = 'ensemble' | 'recherche' | 'espace' | 'documents' | 'suivi';
-const ORDRE_VUES: VueFiche[] = ['ensemble', 'recherche', 'espace', 'documents', 'suivi'];
+type VueFiche = 'ensemble' | 'recherche' | 'rapprochement' | 'espace' | 'documents' | 'suivi';
+const ORDRE_VUES: VueFiche[] = ['ensemble', 'recherche', 'rapprochement', 'espace', 'documents', 'suivi'];
 
 export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
@@ -2919,23 +2919,15 @@ ${signatureMail()}`,
     cr.budget_max ? `jusqu’à ${budgetLisible(cr.budget_max)}` : '',
   ].filter(Boolean).join(' · ');
 
-  /* Le bandeau du rapprochement, en Vue d'ensemble. Tant qu'aucun n'a été
-     fait sur cette recherche : grand, avec ce que les mandats donnent déjà.
-     Ensuite : une ligne, avec la date du dernier et « Refaire ». */
-  const dernierRappro = journal
+  /* Le rapprochement a son onglet (V3.32) : il prenait trop de place dans la
+     Vue d'ensemble. En haut, de quoi le lancer, avec ce que vos mandats
+     donnent déjà ; puis ces mandats, un par un ; puis ceux déjà faits. */
+  const rapprochements = journal
     .filter(j => j.type === 'rapprochement' && j.recherche_id === rechercheId)
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-  const bandeauRappro = !rechercheActive ? null : dernierRappro ? (
-    <div className={styles.rapproLigne}>
-      <span className={styles.rapproLigneIc}><Icone nom="etoile" taille={15} epaisseur={2.2} /></span>
-      <span className={styles.rapproLigneTx}>
-        <b>{`Dernier rapprochement le ${new Date(dernierRappro.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`}</b>
-        {` · ${dernierRappro.metadata?.n ?? 0} bien${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''}`}
-        {mandatsOk?.n ? <em>{` · ${mandatsOk.n} de vos mandats lui correspond${mandatsOk.n > 1 ? 'ent' : ''}`}</em> : null}
-      </span>
-      <button type="button" onClick={() => setRappro(true)}>Refaire</button>
-    </div>
-  ) : (
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const dernierRappro = rapprochements[0];
+  const jourRappro = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  const bandeauRappro = !rechercheActive ? null : (
     <section className={styles.rappro} aria-label={`Des biens pour ${client.prenom}`}>
       <svg className={styles.rapproIllu} width="150" height="76" viewBox="0 0 150 76" aria-hidden="true">
         <rect width="150" height="76" rx="14" fill="#fbf6e9" />
@@ -2955,9 +2947,10 @@ ${signatureMail()}`,
         <p>{mandatsOk?.n
           ? <><b>{`${mandatsOk.n > 1 ? `${mandatsOk.n} de vos mandats lui correspondent` : '1 de vos mandats lui correspond'}, jusqu’à ${mandatsOk.meilleure} %`}</b>{' · à comparer aussi : les biens de vos veilles'}</>
           : 'Comparez sa recherche avec vos mandats en cours et les biens trouvés par vos veilles pour vos autres clients.'}</p>
+        {dernierRappro && <small className={styles.rapproDernier}>{`Dernier le ${jourRappro(dernierRappro.created_at)} · ${dernierRappro.metadata?.n ?? 0} bien${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''}`}</small>}
       </div>
       <button type="button" className={styles.rapproCta} onClick={() => setRappro(true)}>
-        <Icone nom="etoile" taille={17} epaisseur={2.2} />Faire un rapprochement
+        <Icone nom="etoile" taille={17} epaisseur={2.2} />{dernierRappro ? 'Refaire un rapprochement' : 'Faire un rapprochement'}
       </button>
     </section>
   );
@@ -3213,6 +3206,8 @@ ${signatureMail()}`,
                 onglets={[
                   { k: 'ensemble', l: 'Vue d’ensemble', ic: <Icone nom="oeil" taille={15} epaisseur={2} /> },
                   { k: 'recherche', l: recherches.length > 1 ? 'Ses recherches' : 'Sa recherche', n: recherches.length > 1 ? recherches.length : undefined, ic: <Icone nom="loupe" taille={15} epaisseur={2} /> },
+                  /* Le rapprochement (V3.32) : pour un acheteur, dès qu'il a une recherche. */
+                  ...(rechercheActive ? [{ k: 'rapprochement' as VueFiche, l: 'Rapprochement', n: mandatsOk?.n || undefined, ic: <Icone nom="etoile" taille={15} epaisseur={2} /> }] : []),
                   { k: 'espace', l: 'Son espace', ic: <Icone nom="mobile" taille={15} epaisseur={2} /> },
                   { k: 'documents', l: 'Documents', n: nbDocs || undefined, ic: <Icone nom="doc" taille={15} epaisseur={2} /> },
                   { k: 'suivi', l: 'Suivi', n: suiviCount || undefined, ic: <Icone nom="horloge" taille={15} epaisseur={2} /> },
@@ -3381,13 +3376,13 @@ ${signatureMail()}`,
         <CorpsOnglet k={vue} ordre={ORDRE_VUES}>
         {vue === 'ensemble' && (
           <div className={styles.ens}>
-            {/* À venir : la prochaine visite et la prochaine relance. Elles
-                étaient dans le bloc bleu ; ici, on les lit d'abord. */}
+            {/* À venir : la prochaine visite. La relance n'est plus répétée
+                ici (V3.32) : elle est déjà dans le bandeau, et dans le Suivi. */}
             {(() => {
               const prochaine = visites
                 .filter(v => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= new Date().toISOString().slice(0, 10))
                 .sort((x, y) => `${x.date_visite}${x.heure || ''}`.localeCompare(`${y.date_visite}${y.heure || ''}`))[0];
-              if (!prochaine && !etiquetteRelance) return null;
+              if (!prochaine) return null;
               const bienV = prochaine ? biens.find(b => b.id === prochaine.bien_id) : null;
               const jourV = prochaine ? new Date(`${String(prochaine.date_visite).slice(0, 10)}T12:00:00`) : null;
               const libJour = jourV ? jourV.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
@@ -3399,17 +3394,9 @@ ${signatureMail()}`,
                       <span><b>{`Visite prévue ${libJour}${prochaine.heure ? ` à ${String(prochaine.heure).slice(0, 5).replace(':', ' h ')}` : ''}`}</b>{bienV?.titre ? ` · ${bienV.titre}` : ''}</span>
                     </button>
                   )}
-                  {prochaine && etiquetteRelance && <span className={styles.aVenirSep} />}
-                  {etiquetteRelance && (
-                    <button type="button" className={styles.aVenirL} onClick={() => setVue('suivi')}>
-                      <span className={styles.aVenirIc} style={{ color: etiquetteRelance.couleur }}><Icone nom="cloche" taille={16} epaisseur={2} /></span>
-                      <span><b style={{ color: etiquetteRelance.couleur }}>{etiquetteRelance.label}</b>{etiquetteRelance.note ? ` · ${etiquetteRelance.note}` : ''}</span>
-                    </button>
-                  )}
                 </div>
               );
             })()}
-            {bandeauRappro}
             {(lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure) || societeOuverte) && (
               <BlocSociete client={client as never} notes={(client as unknown as { notes?: string | null }).notes}
                 ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)} onFiche={cl => onNavigate('fiche', cl)}
@@ -3479,37 +3466,61 @@ ${signatureMail()}`,
                     </div>
                   ) : <p className={styles.situNotes}>Aucune recherche pour l’instant.</p>}
                 </div>
-                {/* Dernièrement : les quatre dernières lignes du Suivi. */}
-                {(() => {
-                  const derniers = [...suiviComms, ...suiviEvents]
-                    .sort((x: any, y: any) => new Date(y.ts).getTime() - new Date(x.ts).getTime()).slice(0, 4);
-                  if (!derniers.length) return null;
-                  const quandCourt = (iso: string) => {
-                    const d = new Date(iso); const auj = new Date();
-                    if (d.toDateString() === auj.toDateString()) return 'Aujourd’hui';
-                    if (new Date(Date.now() - 86400000).toDateString() === d.toDateString()) return 'Hier';
-                    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-                  };
-                  return (
+              </div>
+            </div>
+          </div>
+        )}
+
+        {vue === 'rapprochement' && (
+          <div className={styles.ens}>
+            {!rechercheActive ? <div className={styles.carteEns}><p className={styles.situNotes}>Le rapprochement part d’une recherche : ouvre-lui en une d’abord.</p></div> : (
+              <>
+                {bandeauRappro}
+                <div className={styles.ensCols}>
+                  <div className={styles.ensCol}>
+                    <div className={styles.carteEns}>
+                      <div className={styles.carteEnsT}>
+                        <span className={styles.carteEnsIc}><Icone nom="maison" taille={15} epaisseur={2} /></span>
+                        <b>Vos mandats qui lui correspondent</b>
+                        {!!mandatsOk?.liste.length && (
+                          <button type="button" onClick={() => { setRapproDepart({ source: 'mandats', cocher: mandatsOk.liste.map(m => m.id) }); setRappro(true); }}>Les lui proposer</button>
+                        )}
+                      </div>
+                      {mandatsOk === null ? <p className={styles.situNotes}>Recherche dans vos mandats…</p> : mandatsOk.liste.length ? (
+                        <div className={styles.rapproMandats}>
+                          {mandatsOk.liste.map(m => (
+                            <button key={m.id} type="button" className={styles.rapproMandat} onClick={() => onNavigate('biens', { bien: m.id })}>
+                              <span className={styles.rapproMandatIc}><Icone nom="maison" taille={15} epaisseur={2} /></span>
+                              <span className={styles.rapproMandatTx}><b>{m.titre}</b>{m.ville ? <small>{m.ville}</small> : null}</span>
+                              <span className={styles.rapproNote}>{`${m.note} %`}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : <p className={styles.situNotes}>{`Aucun de vos mandats en cours ne lui correspond assez (70 % de ses critères) pour l’instant. Le rapprochement cherche aussi dans les biens de vos veilles.`}</p>}
+                    </div>
+                  </div>
+                  <div className={styles.ensCol}>
                     <div className={styles.carteEns}>
                       <div className={styles.carteEnsT}>
                         <span className={styles.carteEnsIc}><Icone nom="horloge" taille={15} epaisseur={2} /></span>
-                        <b>Dernièrement</b>
-                        <button type="button" onClick={() => setVue('suivi')}>Tout le suivi</button>
+                        <b>Les rapprochements faits</b>
+                        {rapprochements.length > 0 && <i className={styles.rapproCompte}>{rapprochements.length}</i>}
                       </div>
-                      <div className={styles.derniers}>
-                        {derniers.map((it: any) => (
-                          <div key={`${it.kind}-${it.data.id}`} className={styles.dernier}>
-                            <span className={styles.dernierQuand}>{quandCourt(it.ts)}</span>
-                            <span className={styles.dernierTxt}>{it.kind === 'comm' ? (it.data.objet || 'Envoi au client') : (it.data.titre || 'Action')}</span>
-                          </div>
-                        ))}
-                      </div>
+                      {rapprochements.length ? (
+                        <div className={styles.derniers}>
+                          {rapprochements.slice(0, 8).map(j => (
+                            <div key={j.id} className={styles.dernier}>
+                              <span className={styles.dernierQuand}>{jourRappro(j.created_at)}</span>
+                              <span className={styles.rapproFait}><b>{`${j.metadata?.n ?? 0} bien${(j.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(j.metadata?.n ?? 0) > 1 ? 's' : ''}`}</b>{j.description ? <small>{j.description}</small> : null}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className={styles.situNotes}>{`Aucun pour l’instant. Le premier compare la recherche de ${client.prenom || 'ce client'} avec vos mandats en cours et les biens trouvés par vos veilles.`}</p>}
                     </div>
-                  );
-                })()}
-              </div>
-            </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 

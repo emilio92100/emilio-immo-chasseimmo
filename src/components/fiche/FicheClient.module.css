@@ -536,13 +536,24 @@ a.coLien:hover { color: #1a2332; }
   animation: rapproBrille 3.2s ease-in-out infinite;
 }
 @keyframes rapproBrille { 0% { background-position: -160px 0; } 100% { background-position: 260px 0; } }
-.rapproLigne { display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 10px; border-radius: 16px; background: #fffcf4; border: 1px solid #ecdcb0; }
-.rapproLigneIc { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #c9a84c; color: #1a2332; }
-.rapproLigneTx { flex: 1; min-width: 0; font-size: 13.5px; color: #475569; }
-.rapproLigneTx b { color: #1a2332; }
-.rapproLigneTx em { font-style: normal; font-weight: 700; color: #15803d; }
-.rapproLigne button { border: 1px solid #ecdcb0; background: #fff; border-radius: 10px; height: 34px; padding: 0 14px; cursor: pointer; color: #7a5d1c; font: 700 13px 'DM Sans', sans-serif; }
-.rapproLigne button:hover { background: #fbf6e9; }
+/* L'onglet Rapprochement (V3.32) : le dernier fait, les mandats qui lui
+   correspondent, ceux déjà faits. */
+.rapproDernier { font-size: 12.5px; font-weight: 600; color: #94a3b8; }
+.rapproMandats { display: flex; flex-direction: column; gap: 6px; }
+.rapproMandat {
+  display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 11px; border-radius: 13px; border: 1px solid #eef2f7; background: #fbfcfe;
+  text-align: left; cursor: pointer; font: inherit; color: inherit; transition: background .15s, border-color .15s;
+}
+.rapproMandat:hover { background: #fffcf4; border-color: #ecdcb0; }
+.rapproMandatIc { width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #eef2f8; color: #34496e; }
+.rapproMandatTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rapproMandatTx b { font-size: 13.5px; font-weight: 700; color: #1a2332; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rapproMandatTx small { font-size: 12px; color: #94a3b8; }
+.rapproNote { flex-shrink: 0; padding: 3px 9px; border-radius: 99px; background: #ecfdf3; color: #15803d; font-size: 12px; font-weight: 800; }
+.rapproCompte { font-style: normal; font-size: 12px; font-weight: 700; color: #94a3b8; }
+.rapproFait { display: flex; flex-direction: column; gap: 1px; min-width: 0; color: #334155; }
+.rapproFait b { font-weight: 700; color: #1a2332; }
+.rapproFait small { font-size: 12px; color: #94a3b8; }
 /* Le petit message après l'enregistrement des critères : un mandat lui correspond. */
 .toastRappro {
   position: fixed; right: 24px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 250; width: min(440px, calc(100vw - 24px));
@@ -561,7 +572,6 @@ a.coLien:hover { color: #1a2332; }
   .rappro { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px; }
   .rapproIllu { display: none; }
   .rapproCta { justify-content: center; width: 100%; }
-  .rapproLigne { flex-wrap: wrap; }
   .teteZone { padding: 10px 10px 0; }
   .tete { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 14px 44px; border-radius: 18px; }
   .teteQui { gap: 12px; }
