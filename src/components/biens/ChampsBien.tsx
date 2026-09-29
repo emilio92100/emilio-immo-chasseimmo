@@ -86,6 +86,16 @@ function ChampLettres({ genre, v, onChange, off, lib }: { genre: 'dpe' | 'ges'; 
 /* ══ Les pièces : niveau · pièce · surface · exposition · commentaire ════ */
 const HORS_HABITABLE = new Set(PIECES_GROUPES.filter(g => g.g === 'Annexes' || g.g === 'Extérieur').flatMap(g => g.l));
 export const habitable = (p: Piece) => p.niveau !== 'Extérieur' && !HORS_HABITABLE.has(p.nom.replace(/\s+\d+$/, ''));
+/* Les pièces principales, celles qui font « un 3 pièces » : séjour, salon,
+   salle à manger, bureau, chambres. L'entrée, la cuisine, les salles d'eau,
+   les WC et les dégagements comptent dans la surface habitable, pas dans le
+   nombre de pièces. Un séjour double en vaut deux. */
+const PRINCIPALES = new Set(['Séjour', 'Salon', 'Salle à manger', 'Pièce à vivre', 'Bureau', 'Chambre', 'Suite parentale']);
+export const nbPrincipales = (l: Piece[]) => l.reduce((n, p) => {
+  if (p.niveau === 'Extérieur') return n;
+  const base = p.nom.replace(/\s+\d+$/, '');
+  return n + (base === 'Séjour double' ? 2 : PRINCIPALES.has(base) ? 1 : 0);
+}, 0);
 export const nouvelId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /* « Chambre », puis « Chambre 2 », « Chambre 3 »… */
@@ -176,6 +186,7 @@ function ChampPieces({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   };
   const hab = l.filter(p => habitable(p) && p.surface);
   const total = hab.reduce((t, p) => t + (p.surface || 0), 0);
+  const princ = nbPrincipales(l);
   const declaree = typeof d.surface === 'number' ? d.surface : null;
   const ecart = declaree && total ? Math.abs(total - declaree) / declaree : 0;
   const niveaux = Array.from(new Set(l.map(p => p.niveau || '')));
@@ -226,8 +237,8 @@ function ChampPieces({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       )}
       {l.length > 0 && (
         <div className={b.totaux}>
-          <span><b>{l.length}</b>{` pièce${l.length > 1 ? 's' : ''}`}{niveaux.length > 1 ? ` sur ${niveaux.length} niveaux` : ''}</span>
-          {total > 0 && <span>Pièces à vivre : <b>{m2(total)}</b></span>}
+          <span><b>{l.length}</b>{` pièce${l.length > 1 ? 's' : ''}${niveaux.length > 1 ? ` sur ${niveaux.length} niveaux` : ''}${princ ? ` · dont ${princ} principale${princ > 1 ? 's' : ''}` : ''}`}</span>
+          {total > 0 && <span>Surface habitable : <b>{m2(total)}</b></span>}
           {total > 0 && declaree && ecart > 0.03 && <span className={b.totauxAlerte}>{`La surface habitable déclarée est de ${m2(declaree)} : écart de ${m2(Math.abs(total - declaree))}.`}</span>}
         </div>
       )}
