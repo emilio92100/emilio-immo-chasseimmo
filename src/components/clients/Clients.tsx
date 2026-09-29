@@ -16,7 +16,7 @@ import {
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
 import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, EVT_DEMANDE_VUE, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
 import {
-  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, typeDe, typesDe,
+  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, structurePropre, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
@@ -146,7 +146,7 @@ function Bloc({ ic, titre, petit, teinte = MARINE, children }: { ic: string; tit
   );
 }
 /* L'icône de la section propre à un métier (ChampsPro). */
-const IC_PRO: Record<string, string> = { 'Son agence': 'agence', 'Son étude': 'balance', 'L’immeuble': 'immeuble', 'Son activité': 'outil' };
+const IC_PRO: Record<string, string> = { 'Son agence': 'agence', 'Son étude': 'balance', 'L’immeuble': 'immeuble', 'Son activité': 'outil', 'Sa société': 'immeuble' };
 
 // Style d'une pastille toggle (active/inactive)
 function pill(active: boolean, borderActive: string, bgActive: string, colorActive: string): React.CSSProperties {
@@ -748,7 +748,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         notes: form.notes || null,
         est_vendeur: form.types.includes('vendeur'),
       };
-      const pro = Object.fromEntries(Object.entries(form.pro).filter(([, v]) => typeof v === 'string' && v.trim()));
+      /* Les champs du métier, et la société qu'il représente (V3.31) si elle a un nom. */
+      const soc = structurePropre({ structure: form.pro.structure }).structure;
+      const pro = { ...Object.fromEntries(Object.entries(form.pro).filter(([, v]) => typeof v === 'string' && v.trim())), ...(soc ? { structure: soc } : {}) };
       /* La source n'est écrite que si elle a été choisie : avant le SQL
          « source-contact », la colonne n'existe pas. On crée alors le contact
          sans elle, et on le dit. */
