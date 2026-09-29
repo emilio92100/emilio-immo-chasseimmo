@@ -1500,6 +1500,24 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
     couleur ; ce que le CRM note tout seul (bien créé, document préparé, fiche ouverte) en ligne
     discrète. À côté, le parcours du bien (étapes datées d'après l'historique) et « En N jours de
     vente » (visites faites, offres, acheteurs présentés, fiches ouvertes).
+- **L'Historique d'un bien lit aussi le Suivi des contacts** (`journalDuBien`, `outils.ts`) : une
+  action notée chez un acheteur avec « Concerne un bien » (`journal.bien_id` = sa copie du bien), et
+  le Suivi général du propriétaire (`client_id` du bien, ni `bien_id` ni `recherche_id`). Seulement
+  ce qu'on écrit ou ce que le client dit (`TYPES_JOURNAL_BIEN` : appel, rendez-vous, note, relance,
+  mail, message, demande de rappel) — présentations, visites et envois ont déjà leur ligne. Filtre
+  « Contacts » ; l'étiquette « Dans le Suivi de… » ouvre sa fiche. « Ajouter une note » sur le bien
+  reste une note simple (texte seul), rangée dans `biens_vente_suivi`.
+- **Fiche contact, les coordonnées** : sur fond crème doré (variante C choisie par Alexandre), dépliage
+  compris ; « Voir sur la carte » en version claire.
+- **L'étape « Le propriétaire » de l'éditeur d'un bien** (`ChampProprio`, `proprioOuvert`) : d'abord
+  « Ce propriétaire est-il déjà dans le CRM ? » avec la recherche (un choix relie la fiche et reprend
+  ses coordonnées, après accord si un autre nom était déjà saisi). Sinon « Créer sa fiche » : ce qui
+  était tapé devient son nom, la suite s'ouvre sur fond clair (`donnees.proprioNouveau`), et « Créer
+  la fiche de … » la crée et la relie. Tant que rien n'est choisi (ni fiche, ni nom, ni création
+  demandée), la suite de l'étape reste grisée et inerte.
+- **« Pourquoi il vend »** en tuiles : pour plus grand, pour plus petit (valeurs `plusGrand`,
+  `plusPetit`, nouvelles icônes `agrandir` et `reduire`), il achète ailleurs, mutation, succession,
+  séparation, investissement, autre — chacune avec une ligne d'explication.
 - **Les logos de l'agence** sont rangés dans `public/logos/` : les originaux d'Alexandre (le E
   blanc sur bleu, le E bleu sur blanc, en 1000 px) et leurs déclinaisons — `e-180`, `e-192`,
   `e-512` (écran d'accueil), `e-maskable-512` (Android découpe l'icône en rond : le E y est
