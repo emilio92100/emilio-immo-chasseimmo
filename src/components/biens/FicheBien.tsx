@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { euros } from '@/lib/mandat';
-import { num, txt, liste, STATUTS, modele } from '@/lib/actes';
+import { num, txt, liste, modele, modeSignature } from '@/lib/actes';
 import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
@@ -23,7 +23,9 @@ import {
   deposerPiece, ficheClient, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
-import { lienFichier, nomFichier } from '@/components/documents/outils';
+import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
+import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
+import { DocsParEtat, depuisDoc } from '@/components/documents/DocumentsDuClient';
 import { mandatVenteEnCours } from '@/lib/coherence';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -37,7 +39,7 @@ import { OngletVisitesOffres } from './VisitesOffres';
 import Depliant from '@/components/shared/Depliant';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
-  EtapesDocs, Kv, Lettres, ListeDocs, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
+  EtapesDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
@@ -1038,6 +1040,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const nbVisites = visites.filter(v => v.statut !== 'annulee').length;
   const offresOuvertes = offres.filter(o => o.statut === 'en_attente' || o.statut === 'contre');
   const docsLies = detail?.docs || [];
+  /* Où en sont les signatures (V3.32) : qui a signé, qui on attend, pour les
+     documents partis en signature. Relu après un geste (lien renvoyé…). */
+  const [suivisLus, setSuivisLus] = useState<{ cle: string; s: Record<string, Suivi> }>({ cle: '', s: {} });
+  const [tourSuivis, setTourSuivis] = useState(0);
+  const cleSuivis = docsLies.filter(x => x.statut === 'pret' && x.signature).map(x => x.id).join(',');
+  useEffect(() => {
+    if (!cleSuivis) return;
+    let vivant = true;
+    lireSuivis({ docs: docsLies as unknown as DocumentRow[] })
+      .then(r => { if (vivant) setSuivisLus({ cle: cleSuivis, s: r }); }, e => { if (vivant) setMessage({ t: (e as Error).message, ok: false }); });
+    return () => { vivant = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleSuivis, tourSuivis]);
+  const suivis = cleSuivis && suivisLus.cle === cleSuivis ? suivisLus.s : {};
   const nbPhotos = lirePhotos(d.photos).length;
   const avant = avantMandat(e);
   /* L'ordre voulu par Alexandre (V3.30) : Vue d'ensemble, Photos, Le bien,
@@ -1138,6 +1154,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
      ses boutons. */
   const docsDe = (m: string) => docsLies.filter(x => x.modele === m);
   const mandats = docsDe('mandat_vente');
+  /* Le mandat en route (V3.32) : parti en signature d'abord, sinon celui en
+     préparation. Un mandat annulé n'est plus « en préparation ». */
+  const mandatEnRoute = mandats.find(x => x.statut === 'pret') || mandats.find(x => x.statut === 'brouillon') || null;
+  const suiviMandat = mandatEnRoute ? suivis[mandatEnRoute.id] : undefined;
+  const prevuMandat = mandatEnRoute ? modeSignature((mandatEnRoute.donnees || {}) as Record<string, unknown>) : 'papier';
   const mandatSigne = mandats.find(x => x.signe_le) || null;
   const signeLe = mandatSigne?.signe_le || txt(d, 'mandatDate');
   const typeMandat = d.mandatType ? (NOM_MANDAT[String(d.mandatType)] || '').toLowerCase() : '';
@@ -1185,10 +1206,18 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         {avant && <BoutonAct or onClick={() => setFen({ k: 'mandat' })}>Passer le bien en vente</BoutonAct>}
         {!avant && !mandats.length && <BtnTuile onClick={() => onModifier('prix')}>Modifier</BtnTuile>}
       </>,
-    } : mandats.length ? {
+    } : mandatEnRoute ? {
+      /* Parti en signature (V3.32) : où elle en est, et qui a signé, dépliable. */
       k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'encours',
-      statut: 'En préparation : à faire signer au propriétaire', detail: `Commencé le ${dateCourte(mandats[0].created_at)}`,
-      actions: <><BoutonAct or onClick={() => ouvrirDoc(mandats[0].id)}>Continuer le mandat</BoutonAct><BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile></>,
+      statut: mandatEnRoute.statut === 'brouillon' ? 'En préparation : à terminer, puis à faire signer'
+        : mandatEnRoute.signature ? (mandatEnRoute.signature.mode === 'sur_place' ? 'Signature sur place commencée' : 'Envoyé pour signature')
+          : prevuMandat === 'en_ligne' ? 'Prêt : les liens de signature ne sont pas encore partis'
+            : prevuMandat === 'sur_place' ? 'Prêt : à faire signer sur place' : 'Prêt : à faire signer à la main',
+      detail: mandatEnRoute.statut === 'pret' && mandatEnRoute.signature?.lance_le
+        ? `Le ${dateCourte(mandatEnRoute.signature.lance_le)}${mandatEnRoute.signature.mode !== 'sur_place' && suiviMandat && suiviMandat.signes < suiviMandat.total ? ' · un rappel part tout seul à 2 jours, puis à 7 jours' : ''}`
+        : `Commencé le ${dateCourte(mandatEnRoute.created_at)}`,
+      actions: <><BoutonAct or onClick={() => ouvrirDoc(mandatEnRoute.id)}>{mandatEnRoute.signature ? 'Ouvrir dans Documents' : 'Continuer le mandat'}</BoutonAct>{!mandatEnRoute.signature && <BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile>}</>,
+      suite: suiviMandat ? <SuiviSignature suivi={suiviMandat} onFait={() => setTourSuivis(t => t + 1)} /> : undefined,
     } : {
       k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'afaire', statut: 'À préparer',
       detail: 'Prérempli avec le bien, le propriétaire, le prix et les honoraires. Signé ailleurs (papier, autre logiciel) : « Déjà signé ? ».',
@@ -1444,14 +1473,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               </button>
               <Depliant ouvert={listeDocsOuverte}>
                 <div className={b.docsPrepListe}>
-                  <ListeDocs docs={docsLies.map(x => {
-                    const st = STATUTS[x.statut] || STATUTS.brouillon;
-                    return {
-                      id: x.id, ic: modele(x.modele)?.ic || 'doc', titre: x.titre || modele(x.modele)?.titre || 'Document',
-                      sous: `Créé le ${dateCourte(x.created_at)}${x.signe_le ? ` · signé le ${dateCourte(x.signe_le)}` : ''}`,
-                      statut: <span className={`${s.statut} ${s.statutFort} ${s['t_' + st.ton]}`}>{st.l}</span>, ouvrir: () => ouvrirDoc(x.id),
-                    };
-                  })} />
+                  {/* Rangés par état, comme sur la fiche d'un contact (V3.32) :
+                      en attente de signature (avec qui a signé), en préparation,
+                      signés (avec le PDF signé), annulés. */}
+                  <DocsParEtat elements={docsLies.map(x => ({ ...depuisDoc(x as unknown as DocumentRow), titre: x.titre || modele(x.modele)?.titre || 'Document' }))}
+                    suivis={suivis} onOuvrir={ouvrirDoc} onFait={() => setTourSuivis(t => t + 1)} />
                 </div>
               </Depliant>
             </div>

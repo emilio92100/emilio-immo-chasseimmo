@@ -565,6 +565,8 @@ export type EtapeDoc = {
   statut: string; detail?: string; actions?: ReactNode;
   /* Une précision en pastille : « Signature électronique », « Signé à la main »… */
   puce?: string;
+  /* Sous la ligne, sur toute la largeur : qui a signé, qui on attend (V3.32). */
+  suite?: ReactNode;
 };
 export function EtapesDocs({ etapes }: { etapes: EtapeDoc[] }) {
   return (
@@ -578,6 +580,7 @@ export function EtapesDocs({ etapes }: { etapes: EtapeDoc[] }) {
             {x.detail && <small>{x.detail}</small>}
           </div>
           {x.actions && <div className={o.edocActs}>{x.actions}</div>}
+          {x.suite && <div className={o.edocSuite}>{x.suite}</div>}
         </li>
       ))}
     </ol>

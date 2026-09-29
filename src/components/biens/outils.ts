@@ -43,7 +43,10 @@ export type DocLie = {
   signe_le: string | null; finalise_le: string | null; client_id: string | null;
   /* V3.32 : l'exemplaire signé (scellé en ligne ou sur place, ou le scan
      d'une signature à la main) et le mode de signature. */
-  signe_chemin?: string | null; signature?: { mode?: string } | null;
+  signe_chemin?: string | null;
+  /* Le mode et, en ligne ou sur place, quand la signature est partie. */
+  signature?: { mode?: string; lance_le?: string; agence_le?: string } | null;
+  donnees?: Record<string, unknown> | null; numero?: string | null; categorie?: string; annule_le?: string | null;
 };
 
 const CLIENT_COLS = 'id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro';
