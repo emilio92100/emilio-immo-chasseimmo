@@ -1466,6 +1466,17 @@ Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel)
     documents. Mandat en ligne : un co-signataire retiré ne peut plus être invité si son effacement
     a échoué. « Contact agence » d'une visite s'enregistre en quittant le champ, plus à chaque lettre.
 
+- **Le bandeau d'un vendeur, en tuiles** (`FicheContact.tsx`, `ActiviteHero` ; Alexandre : « 1 en
+  gros, bien en petit dessous… c'est moche », et « quand il y a zéro, ce n'est pas la peine que ça
+  arrive quelque part »). Trois tuiles : « 2 biens · dont 1 en vente », « 3 visites · dont 1 à
+  venir », « 1 offre · en attente de réponse ». À zéro (« Aucune visite · pour l'instant »), la
+  tuile est grisée, en pointillés, et ne se clique pas. Une visite ou une offre sur un seul bien
+  ouvre ce bien sur « Visites et offres » (`demanderOngletBien`) ; sur plusieurs, la liste en
+  dessous, où chaque bien dit ses visites et ses offres. « Suivi depuis » passe en une ligne
+  discrète. Un pro (notaire, confrère…) : « 4 échanges · le dernier… », « 1 relance à venir · la
+  prochaine le… ». Sur téléphone, les tuiles tiennent sur une ligne. Côté acheteur, un compteur à
+  zéro ne se clique plus non plus (`FicheClient`).
+
 Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
 `FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
 vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
