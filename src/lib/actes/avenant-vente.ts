@@ -32,7 +32,9 @@ import { TYPES, typeDe, argent, vendeursDe, aConjoint, ACTIONS, RYTHMES, baseTan
 const REPRIS = ['qui', 'situation', 'logementFamille', 'conjoint', 'lien', 'regime', 'vendeurs', 'represente',
   'sciNom', 'sciForme', 'sciSiege', 'sciRcs', 'sciPouvoir', 'adresse', 'cp', 'ville', 'type',
   'nature', 'copro', 'description', 'lots', 'tantiemesBase', 'actions', 'rythme', 'penale',
-  'charge', 'honoMode', 'taux', 'forfait', 'prix', 'duree', 'dureeMode', 'periode', 'dureeMax'];
+  'charge', 'honoMode', 'taux', 'forfait', 'prix', 'duree', 'dureeMode', 'periode', 'dureeMax',
+  /* Le bien du CRM (V3.32) : l'avenant apparaît dans l'onglet Documents du bien. */
+  'bienVenteId'];
 
 const change = (d: Donnees, k: string) => liste(d, 'objets').includes(k);
 const nomMandant = (d: Donnees) => (d.qui === 'sci' ? txt(d, 'sciNom') || 'La société' : nomsCourts(vendeursDe(d)));
