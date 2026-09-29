@@ -1473,6 +1473,8 @@ les cases à cocher, la réponse du vendeur, le certificat.
   du côté où l'on va. Au téléphone, la barre défile pour montrer l'onglet choisi. La dernière image
   de l'animation ne garde aucun `transform` (les fenêtres fixes du contenu restent fixes). Prévu
   pour la future fiche contact en onglets.
+- **Les fiches qu'on fait glisser sous les cartes : un geste = une fiche** (`scroll-snap-stop:
+  always` sur `.fb` et `.carteTel`) : un glissement un peu vif sautait deux ou trois biens.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
