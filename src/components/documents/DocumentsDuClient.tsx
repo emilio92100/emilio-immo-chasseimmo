@@ -6,6 +6,7 @@ import { STATUTS, jourLong, modele, type Categorie, type Statut } from '@/lib/ac
 import { Ic } from './ApercuActe';
 import BlocRepliable from './BlocRepliable';
 import NouveauDocument from './NouveauDocument';
+import Depliant from '@/components/shared/Depliant';
 import { libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
 import s from './Documents.module.css';
 
@@ -129,7 +130,6 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
   if (!liste || (erreur && !liste.length)) return null;
   const signes = liste.filter(x => x.statut === 'signe').length;
   const aSigner = liste.filter(x => x.statut === 'pret').length;
-  const montres = tout ? liste : liste.slice(0, VISIBLES);
 
   return (
     <>
@@ -145,7 +145,7 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
         : <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
       {liste.length ? (
         <div className={s.dcListe}>
-          {montres.map(el => (
+          {liste.slice(0, VISIBLES).map(el => (
             <div key={el.cle} className={s.dcLigne}>
               <button type="button" className={s.dcOuvrir} onClick={() => onNavigate('documents', { ouvrir: el.cle })} title="Ouvrir dans Documents">
                 <span className={`${s.dcCat} ${s['dcCat_' + el.categorie] || ''}`}><Ic n={CAT_IC[el.categorie] || 'doc'} t={15} /></span>
@@ -159,6 +159,27 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
               )}
             </div>
           ))}
+          {/* Les autres glissent à l'ouverture (V3.32). */}
+          {liste.length > VISIBLES && (
+            <Depliant ouvert={tout} ecart={6}>
+              <div className={s.dcListe}>
+                {liste.slice(VISIBLES).map(el => (
+            <div key={el.cle} className={s.dcLigne}>
+              <button type="button" className={s.dcOuvrir} onClick={() => onNavigate('documents', { ouvrir: el.cle })} title="Ouvrir dans Documents">
+                <span className={`${s.dcCat} ${s['dcCat_' + el.categorie] || ''}`}><Ic n={CAT_IC[el.categorie] || 'doc'} t={15} /></span>
+                <span className={s.dcTexte}><b>{el.titre}</b><small>{el.sous}</small></span>
+                <Pastille statut={el.statut} courrier={el.courrier} />
+              </button>
+              {el.signe && (
+                <button type="button" className={s.dcSigne} disabled={ouvre === el.cle} onClick={() => ouvrirSigne(el)} title={el.courrier ? 'La preuve d’envoi' : 'L’exemplaire signé'}>
+                  <Ic n="doc" t={14} /><span>{ouvre === el.cle ? 'Ouverture…' : el.courrier ? 'Preuve' : 'PDF signé'}</span>
+                </button>
+              )}
+            </div>
+          ))}
+              </div>
+            </Depliant>
+          )}
           {liste.length > VISIBLES && (
             <button type="button" className={s.dcPlus} onClick={() => setTout(t => !t)}>
               {tout ? 'Afficher moins' : `Voir les ${liste.length - VISIBLES} autre${liste.length - VISIBLES > 1 ? 's' : ''}`}
