@@ -146,4 +146,7 @@ export const PICTOS: Record<string, readonly string[]> = {
   fleur: ['M12 21v-8', 'M12 17.5c-1.8-2.2-4-2.6-6-2 1 2.4 3.4 3.2 6 2', 'M8 4.5c0 4.6 1.6 7 4 8.5 2.4-1.5 4-3.9 4-8.5l-2 1.8L12 3.5l-2 2.8z'],
   dirN: vers(0), dirNE: vers(45), dirE: vers(90), dirSE: vers(135),
   dirS: vers(180), dirSO: vers(225), dirO: vers(270), dirNO: vers(315),
+  /* Pourquoi il vend (V3.29) : pour plus grand, pour plus petit. */
+  agrandir: ['M14.5 4.5h5v5', 'M19.5 4.5l-6 6', 'M9.5 19.5h-5v-5', 'M4.5 19.5l6-6'],
+  reduire: ['M4.5 13.5h6v6', 'M10.5 13.5l-6 6', 'M19.5 10.5h-6v-6', 'M13.5 10.5l6-6'],
 };
