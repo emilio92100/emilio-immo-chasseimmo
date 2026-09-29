@@ -1475,6 +1475,13 @@ dans `biens_vente.donnees`.
   décider de la taille et de la forme (elles changent sur le téléphone) ; `teinteDe(c)` donne la
   couleur de son type ; `personneDe(nom, role)` pour une personne sans fiche. Seule la page de
   signature du mandat (côté client) garde ses initiales.
+- **« Sa société », plus tôt et plus haut** : dès la création d'un vendeur ou d'un propriétaire
+  (et dans « Modifier »), une section « Sa société » : « En son nom » ou « Pour une société » —
+  son nom, sa forme, son rôle (`ChampsPro` ; `structurePropre` garde la société si elle a un nom,
+  la retire sinon). Sur la fiche, le bloc passe juste sous le bandeau bleu, sur toute la largeur,
+  ses associés sur deux colonnes ; sans société, le bandeau propose « Il / Elle agit pour une
+  société (SCI…) ? Ajouter », qui ouvre le formulaire là, prérempli de « À savoir » s'il en nomme
+  une. Le bouton en pointillés du bas de la fiche a disparu.
 - **Les photos en grand** (`biens/Visionneuse.tsx`) : dans l'onglet Photos (et l'éditeur), un clic
   sur une photo l'ouvre sur tout l'écran — flèches (qui reviennent au début après la dernière),
   clavier ← → et Échap, glisser du doigt sur le téléphone, sa légende et les vignettes en bas.
