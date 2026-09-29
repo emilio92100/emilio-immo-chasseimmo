@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MODELES, modele, type Contexte } from '@/lib/actes';
 import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
@@ -7,6 +7,7 @@ import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
 import { Croix, Ic } from './ApercuActe';
 import { etapeDe, type BienVente } from '@/lib/biens-vente';
 import { creerDocument } from '@/components/biens/outils';
+import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
 import { cleRecherche, colonnesListe, identiteDuJour, mandatsPour, preparerDepuis, tableAbsente, type DocumentRow, type MandatChoix } from './outils';
 import s from './Documents.module.css';
 
@@ -28,7 +29,7 @@ const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g,
 /* « Mandataire IAD · Agence du Parc », sous le nom d'un confrère. */
 const ligneConfrere = (c: ContactConfrere) => ligneContact({ types: ['confrere'], pro: c.pro }) || 'Confrère';
 
-export default function NouveauDocument({ modeleId, clientId, confrereId, onFermer, onCree }: {
+export default function NouveauDocument({ modeleId, clientId, confrereId, onFermer, onCree, onOuvrir }: {
   modeleId?: string | null;
   /* Venu de la fiche d'un client : il est choisi d'avance (on peut changer). */
   clientId?: string | null;
@@ -36,6 +37,9 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   confrereId?: string | null;
   onFermer: () => void;
   onCree: (d: DocumentRow) => void;
+  /* Ouvrir un document existant (« d-<id> ») ou un mandat signé en ligne
+     (« r-<id> ») : le mandat déjà en cours (V3.32). */
+  onOuvrir?: (cle: string) => void;
 }) {
   const [recherches, setRecherches] = useState<RechercheMini[] | null>(null);
   const [recherche, setRecherche] = useState<RechercheMini | null>(null);
@@ -117,7 +121,14 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
     if (etape !== 2 || lien !== 'mandat' || !m?.deriver || mandats?.modele === m.id) return;
     let vivant = true;
     mandatsPour(m)
-      .then(l => { if (vivant) setMandats({ modele: m.id, liste: l }); })
+      .then(l => {
+        if (!vivant) return;
+        setMandats({ modele: m.id, liste: l });
+        /* Venu de « Faire un avenant » : le mandat en cours, déjà choisi. */
+        const voulu = mandatVoulu.current ? l.find(y => y.cle === mandatVoulu.current) : null;
+        mandatVoulu.current = null;
+        if (voulu) setMandat(voulu);
+      })
       .catch(e => { if (vivant) { setErreur((e as Error).message); setMandats({ modele: m.id, liste: [] }); } });
     return () => { vivant = false; };
   }, [etape, lien, m, mandats?.modele]);
@@ -154,6 +165,33 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
         setBiens((data || []) as BienMini[]);
       });
   }, [client, lien, pourVendre]);
+
+  /* Un seul mandat en cours (V3.32, src/lib/coherence.ts) : un mandat de
+     vente pour ce bien, un mandat de recherche pour cette recherche. S'il y
+     en a déjà un, on ne crée pas : on propose de le reprendre, de faire un
+     avenant, ou de l'annuler d'abord. */
+  const [verif, setVerif] = useState<{ cle: string; x: MandatEnCours | null } | null>(null);
+  const aVerifier = pourVendre && bienVente ? `v-${bienVente.id}` : m?.id === 'mandat_recherche' && recherche ? `r-${recherche.id}` : '';
+  const bloque = aVerifier && verif?.cle === aVerifier ? verif.x : null;
+  const verifie = !!aVerifier && verif?.cle !== aVerifier;
+  useEffect(() => {
+    if (!aVerifier) return;
+    let vivant = true;
+    const p = aVerifier.startsWith('v-') && bienVente ? mandatVenteEnCours(bienVente) : mandatRechercheEnCours(aVerifier.slice(2));
+    p.then(x => { if (vivant) setVerif({ cle: aVerifier, x }); })
+      .catch(e => { if (vivant) { setErreur((e as Error).message); setVerif({ cle: aVerifier, x: null }); } });
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aVerifier]);
+  /* L'avenant au mandat en cours : le même geste, sur le bon modèle ; le
+     mandat se choisit tout seul quand la liste arrive. */
+  const mandatVoulu = useRef<string | null>(null);
+  function versAvenant(x: MandatEnCours) {
+    setMandat(null); setSansMandat(false); setChercheM('');
+    mandatVoulu.current = x.cle;
+    setChoix(x.sorte === 'vente' ? 'avenant_vente' : 'avenant_recherche');
+    setEtape(2);
+  }
 
   const trouves = useMemo(() => {
     if (!clients) return [];
@@ -369,9 +407,6 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
                         })}
                       </div>
                     )}
-                {recherche?.mandat_date_signature && (!recherche.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10)) && (
-                  <div className={s.chAide} style={{ color: '#a16207' }}>{`Cette recherche a déjà un mandat signé${recherche.mandat_date_expiration ? `, valable jusqu’au ${String(recherche.mandat_date_expiration).slice(0, 10).split('-').reverse().join('/')}` : ''}. Le nouveau le remplacera une fois signé.`}</div>
-                )}
               </div>
             )}
 
@@ -423,6 +458,20 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
                     )}
               </div>
             )}
+            {bloque && (
+              <div className={s.bloqueMandat} role="alert">
+                <span className={s.bloqueIc}><Ic n="info" t={18} /></span>
+                <div className={s.bloqueTx}>
+                  <b>{phraseMandat(bloque)}</b>
+                  <span>{conseilMandat(bloque)}</span>
+                  <div className={s.bloqueBtns}>
+                    {bloque.etat !== 'signe' && bloque.cle && onOuvrir && <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => onOuvrir(bloque.cle!)}>Reprendre ce mandat</button>}
+                    {bloque.etat === 'signe' && <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => versAvenant(bloque)}>Faire un avenant</button>}
+                    {bloque.etat === 'signe' && bloque.cle && onOuvrir && <button type="button" className={s.btn} onClick={() => onOuvrir(bloque.cle!)}>Voir le mandat en cours</button>}
+                  </div>
+                </div>
+              </div>
+            )}
             {erreur && <div className={s.erreur}>{erreur}</div>}
           </div>
         )}
@@ -430,8 +479,8 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
         <div className={s.fenPied}>
           {etape === 2 && !modeleId && <button type="button" className={s.btn} disabled={travail} onClick={() => setEtape(1)}>Changer de modèle</button>}
           {etape === 2 && (
-            <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail || (lien === 'mandat' && !mandat && !sansMandat)} onClick={creer}>
-              {travail ? 'Préparation…' : lien === 'mandat' && !mandat && !sansMandat ? 'Choisis un mandat' : lien === 'mandat' && mandat ? `Préparer ${m?.courrier ? 'le courrier' : m?.id === 'delegation' ? 'la délégation' : 'l’avenant'}` : client ? 'Créer le document' : 'Créer un document vierge'}
+            <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail || verifie || !!bloque || (lien === 'mandat' && !mandat && !sansMandat)} onClick={creer}>
+              {travail ? 'Préparation…' : verifie ? 'Vérification…' : bloque ? 'Déjà un mandat en cours' : lien === 'mandat' && !mandat && !sansMandat ? 'Choisis un mandat' : lien === 'mandat' && mandat ? `Préparer ${m?.courrier ? 'le courrier' : m?.id === 'delegation' ? 'la délégation' : 'l’avenant'}` : client ? 'Créer le document' : 'Créer un document vierge'}
             </button>
           )}
         </div>

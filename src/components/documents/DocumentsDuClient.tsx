@@ -196,7 +196,8 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
     {nouveau && typeof document !== 'undefined' && createPortal(
       <NouveauDocument modeleId={confrere ? 'delegation' : undefined} clientId={confrere ? undefined : clientId} confrereId={confrere ? clientId : undefined}
         onFermer={() => setNouveau(false)}
-        onCree={r => { setNouveau(false); onNavigate('documents', { ouvrir: r.id }); }} />,
+        onCree={r => { setNouveau(false); onNavigate('documents', { ouvrir: r.id }); }}
+        onOuvrir={cle => { setNouveau(false); onNavigate('documents', { ouvrir: cle.startsWith('d-') ? cle.slice(2) : cle }); }} />,
       document.body)}
     </>
   );

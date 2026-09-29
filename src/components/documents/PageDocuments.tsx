@@ -6,6 +6,7 @@ import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { CATEGORIES, MODELES, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import EditeurDocument from './EditeurDocument';
+import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat } from '@/lib/coherence';
 import NouveauDocument from './NouveauDocument';
 import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
@@ -499,6 +500,21 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   async function dupliquer(d: DocumentRow) {
     const m = modele(d.modele);
     if (!m) return;
+    /* Un seul mandat en cours (V3.32) : dupliquer un mandat qui court en
+       ferait un second. Annulé, il peut servir de base au suivant. */
+    if (d.modele === 'mandat_vente' || d.modele === 'mandat_recherche') {
+      if (d.statut !== 'annule') {
+        alert('Ce mandat est toujours en cours : on ne peut pas en avoir deux.\n\nPour le modifier : un avenant. Pour en refaire un nouveau : annule d’abord celui-ci, puis duplique-le.');
+        return;
+      }
+      try {
+        const bienId = typeof d.donnees?.bienVenteId === 'string' ? d.donnees.bienVenteId : '';
+        const enCours = d.modele === 'mandat_vente'
+          ? bienId ? await mandatVenteEnCours({ id: bienId }) : null
+          : d.recherche_id ? await mandatRechercheEnCours(d.recherche_id) : null;
+        if (enCours) { alert(`${phraseMandat(enCours)}\n\n${conseilMandat(enCours)}`); return; }
+      } catch (e) { alert((e as Error).message); return; }
+    }
     const donnees = { ...d.donnees, date: aujourdhui(), ...(m.numero ? { numero: '' } : {}) };
     const { data, error } = await supabase.from('documents').insert({
       modele: d.modele, categorie: d.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
@@ -719,7 +735,14 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       )}
       {nouveau && (
         <NouveauDocument modeleId={nouveau.modele} clientId={nouveau.clientId} confrereId={nouveau.confrereId} onFermer={() => setNouveau(null)}
-          onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }} />
+          onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }}
+          onOuvrir={cle => {
+            /* Le mandat déjà en cours (V3.32) : un brouillon s'ouvre dans l'éditeur, le reste dans sa fiche. */
+            setNouveau(null);
+            const id = cle.startsWith('d-') ? cle.slice(2) : cle;
+            const d = (docs || []).find(x => x.id === id);
+            if (d && d.statut === 'brouillon') setEdition(d); else setOuvert(id);
+          }} />
       )}
       {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }}
         onFinalise={r => { majDoc(r); setEdition(null); setOuvert(r.id); }} />}

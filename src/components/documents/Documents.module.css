@@ -647,3 +647,12 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .dcOuvrir > .statut { margin-left: 45px; }
   .dcTexte b, .dcTexte small { white-space: normal; }
 }
+
+/* Un mandat déjà en cours (V3.32, src/lib/coherence.ts) : on ne crée pas le
+   second ; on dit lequel, et ce qu'on peut faire. */
+.bloqueMandat { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; background: #fffbeb; border: 1px solid #fde68a; animation: fondu .2s ease; }
+.bloqueIc { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: #fef3c7; color: #b45309; }
+.bloqueTx { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.bloqueTx > b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #78350f; line-height: 1.4; }
+.bloqueTx > span { font-size: 13px; line-height: 1.5; color: #92400e; }
+.bloqueBtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
