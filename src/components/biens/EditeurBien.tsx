@@ -1,13 +1,13 @@
 'use client';
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { euros } from '@/lib/mandat';
-import { num } from '@/lib/actes';
+import { num, txt } from '@/lib/actes';
 import {
   argentBien, avantMandat, colonnesBien, controleAnnonce, etapeDe, etapesDuBien, lirePieces, lirePhotos, m2, pourcent, titreBien,
   type BienVente, type ChampBien as TChamp, type Donnees, type EtapeBien, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
-import { ChampBien, habitable, manquesBien } from './ChampsBien';
+import { ChampBien, habitable, manquesBien, proprioOuvert } from './ChampsBien';
 import CarteBien from './CarteBien';
 import FilEtapes from '@/components/documents/FilEtapes';
 import { bienVide, enregistrerBien, supprimerBien } from './outils';
@@ -50,6 +50,10 @@ function groupes(champs: TChamp[], d: Donnees): Groupe[] {
 /* `anime` : en « étape par étape », l'étape qui arrive glisse en place,
    ses blocs l'un après l'autre (V3.16). */
 function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; bienId: string; anime?: boolean }) {
+  const champProprio = e.champs.find(c => c.t === 'proprio') || null;
+  const reste = champProprio ? e.champs.filter(c => c !== champProprio) : e.champs;
+  const verrou = !!champProprio && !proprioOuvert(d);
+  const nouveau = d.proprioNouveau === true && !txt(d, 'clientId');
   return (
     <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
       <div className={s.etapeTete}>
@@ -61,21 +65,28 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
           {anime && <span className={b.etapeJauge} aria-hidden="true"><i style={{ width: `${Math.round(((i + 1) / n) * 100)}%` }} /></span>}
         </div>
       </div>
-      {groupes(e.champs, d).map((g, k) => (
-        <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect}>
-          {g.titre && (
-            <div className={b.sectT}>
-              <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
-              <div><b>{g.titre.lib}</b>{g.titre.aide && <small>{g.titre.aide}</small>}</div>
+      {/* « Le propriétaire » (V3.29) : d'abord sa fiche client, à part ; la
+          suite reste grisée tant qu'elle n'est ni trouvée ni à créer, puis
+          s'ouvre sur fond clair pour une fiche nouvelle. */}
+      {champProprio && <ChampBien c={champProprio} d={d} maj={maj} off={false} bienId={bienId} />}
+      {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que sa fiche est choisie, ou à créer.</div>}
+      <div className={verrou ? b.suiteVerrou : champProprio && nouveau ? b.suiteNouveau : b.suite} inert={verrou || undefined} aria-disabled={verrou || undefined}>
+        {groupes(reste, d).map((g, k) => (
+          <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect}>
+            {g.titre && (
+              <div className={b.sectT}>
+                <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
+                <div><b>{g.titre.lib}</b>{g.titre.aide && <small>{g.titre.aide}</small>}</div>
+              </div>
+            )}
+            <div className={s.grille}>
+              {/* Une même clé peut avoir deux libellés selon le type (« etages » :
+                  les niveaux d'une maison, les étages d'un immeuble). */}
+              {g.champs.map(c => <Fragment key={`${c.cle}:${"lib" in c ? c.lib : ""}`}><ChampBien c={c} d={d} maj={maj} off={false} bienId={bienId} /></Fragment>)}
             </div>
-          )}
-          <div className={s.grille}>
-            {/* Une même clé peut avoir deux libellés selon le type (« etages » :
-                les niveaux d'une maison, les étages d'un immeuble). */}
-            {g.champs.map(c => <Fragment key={`${c.cle}:${"lib" in c ? c.lib : ""}`}><ChampBien c={c} d={d} maj={maj} off={false} bienId={bienId} /></Fragment>)}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </section>
   );
 }

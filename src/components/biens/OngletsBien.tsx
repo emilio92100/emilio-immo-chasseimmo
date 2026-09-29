@@ -502,11 +502,13 @@ export function CarteDossier({ recus, demandes, nc, total, children }: { recus: 
 }
 
 /* ══ HISTORIQUE ═════════════════════════════════════════════════════════ */
-export type GenreEvt = 'visites' | 'offres' | 'acheteurs' | 'etapes' | 'documents' | 'notes';
+export type GenreEvt = 'visites' | 'offres' | 'acheteurs' | 'contacts' | 'etapes' | 'documents' | 'notes';
 export type EvtBien = {
   cle: string; le: string; ic: string; ton: string; titre: string; detail?: string; genre: GenreEvt; suppr?: string;
   /* Une ligne discrète (ce que le CRM note tout seul) plutôt qu'une carte. */
   discret?: boolean; puce?: { l: string; c: string; fond: string; bord: string };
+  /* Une ligne venue du Suivi d'un contact : de qui, et un clic ouvre sa fiche. */
+  chez?: { id: string; l: string };
 };
 export type AVenirBien = { cle: string; titre: string; detail?: string; quand: string; genre: 'visites' | 'offres' };
 const GENRES: { k: GenreEvt | 'tout'; l: string; c?: string; fond?: string }[] = [
@@ -514,6 +516,7 @@ const GENRES: { k: GenreEvt | 'tout'; l: string; c?: string; fond?: string }[] =
   { k: 'visites', l: 'Visites', c: '#7c3aed', fond: '#f5f3ff' },
   { k: 'offres', l: 'Offres', c: '#a07c28', fond: '#fbf6e9' },
   { k: 'acheteurs', l: 'Envois', c: '#0d9488', fond: '#f0fdfa' },
+  { k: 'contacts', l: 'Contacts', c: '#2563eb', fond: '#eff6ff' },
   { k: 'etapes', l: 'Étapes et prix', c: '#34496e', fond: '#eef2f8' },
   { k: 'documents', l: 'Documents', c: '#64748b', fond: '#f1f5f9' },
   { k: 'notes', l: 'Notes', c: '#475569', fond: '#eef2f7' },
@@ -554,10 +557,10 @@ export function parcoursDe(bien: BienVente, suivi: SuiviVente[]): PasParcours[] 
   return pas;
 }
 
-export function HistoriqueBien({ evts, aVenir, parcours, chiffres, onNote, onSuppr }: {
+export function HistoriqueBien({ evts, aVenir, parcours, chiffres, erreur, onNote, onSuppr, onFiche }: {
   evts: EvtBien[]; aVenir: AVenirBien[]; parcours: PasParcours[];
-  chiffres: { titre: string; l: { n: number; l: string }[]; note?: string } | null;
-  onNote: () => void; onSuppr: (id: string) => void;
+  chiffres: { titre: string; l: { n: number; l: string }[]; note?: string } | null; erreur?: string;
+  onNote: () => void; onSuppr: (id: string) => void; onFiche?: (clientId: string) => void;
 }) {
   const [g, setG] = useState<GenreEvt | 'tout'>('tout');
   const vus = evts.filter(e => g === 'tout' || e.genre === g);
@@ -592,6 +595,7 @@ export function HistoriqueBien({ evts, aVenir, parcours, chiffres, onNote, onSup
             );
           })}
         </div>
+        {erreur && <div className={o.erreur}>{erreur}</div>}
         {!vus.length && !futur.length ? (
           <div className={f.vide}><span className={f.videIc}><Ic n="historique" t={22} /></span><b>Rien à afficher</b></div>
         ) : (
@@ -636,6 +640,13 @@ export function HistoriqueBien({ evts, aVenir, parcours, chiffres, onNote, onSup
                       {suppr}
                     </div>
                     {e.detail && <p className={`${f.texte} ${e.genre === 'notes' ? f.citation : ''}`}>{e.detail}</p>}
+                    {e.chez && (
+                      <div className={f.etiquettes}>
+                        {onFiche
+                          ? <button type="button" className={o.chez} onClick={() => onFiche(e.chez!.id)} title="Ouvrir sa fiche"><Ic n="personne" t={12} />{e.chez.l}</button>
+                          : <span className={f.etAutre}><Ic n="personne" t={12} />{e.chez.l}</span>}
+                      </div>
+                    )}
                   </div>
                 </li>
               </Fragment>);

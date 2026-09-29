@@ -94,8 +94,23 @@ export async function documentsDuBien(b: BienVente): Promise<DocLie[]> {
   return lie && !l.some(x => x.id === lie.id) ? [lie, ...l] : l;
 }
 
+/* Le Suivi des contacts qui parle du bien (V3.29) : une action notée chez un
+   acheteur avec « Concerne un bien » (journal.bien_id = sa copie du bien), et
+   ce qu'on note chez le propriétaire (son Suivi général : ni recherche, ni
+   bien). Seulement ce qu'Alexandre écrit lui-même ou ce que le client dit :
+   les présentations, visites et envois ont déjà leur ligne dans l'historique. */
+export type LigneJournal = {
+  id: string; client_id: string | null; recherche_id: string | null; bien_id: string | null;
+  type: string; titre: string | null; description: string | null; created_at: string;
+};
+export const TYPES_JOURNAL_BIEN = ['appel', 'rdv', 'rdv_planifie', 'note', 'relance_manuelle', 'envoi_externe', 'email_libre', 'message_client', 'demande_rappel'];
+const COLS_JOURNAL = 'id, client_id, recherche_id, bien_id, type, titre, description, created_at';
+
 /* Tout ce que la fiche d'un bien montre, relu à chaque ouverture. */
-export type DetailBien = { suivi: SuiviVente[]; copies: Copie[]; visites: VisiteRow[]; docs: DocLie[]; erreurDocs: string };
+export type DetailBien = {
+  suivi: SuiviVente[]; copies: Copie[]; visites: VisiteRow[]; docs: DocLie[]; erreurDocs: string;
+  journal: LigneJournal[]; erreurJournal: string;
+};
 export async function chargerFiche(b: BienVente): Promise<DetailBien> {
   const [s, c] = await Promise.all([
     supabase.from('biens_vente_suivi').select('*').eq('bien_id', b.id).order('le', { ascending: false }).limit(500),
@@ -112,7 +127,26 @@ export async function chargerFiche(b: BienVente): Promise<DetailBien> {
   }
   let docs: DocLie[] = [], erreurDocs = '';
   try { docs = await documentsDuBien(b); } catch (e) { erreurDocs = (e as Error).message; }
-  return { suivi: (s.data || []) as SuiviVente[], copies, visites, docs, erreurDocs };
+  let journal: LigneJournal[] = [], erreurJournal = '';
+  try { journal = await journalDuBien(b, copies); } catch (e) { erreurJournal = (e as Error).message; }
+  return { suivi: (s.data || []) as SuiviVente[], copies, visites, docs, erreurDocs, journal, erreurJournal };
+}
+async function journalDuBien(b: BienVente, copies: Copie[]): Promise<LigneJournal[]> {
+  const [a, p] = await Promise.all([
+    copies.length
+      ? supabase.from('journal').select(COLS_JOURNAL).in('bien_id', copies.map(x => x.id)).in('type', TYPES_JOURNAL_BIEN).order('created_at', { ascending: false }).limit(300)
+      : Promise.resolve({ data: [], error: null }),
+    b.client_id
+      ? supabase.from('journal').select(COLS_JOURNAL).eq('client_id', b.client_id).is('bien_id', null).is('recherche_id', null).in('type', TYPES_JOURNAL_BIEN).order('created_at', { ascending: false }).limit(200)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (a.error) throw new Error('Le suivi des acheteurs n’a pas pu être lu : ' + a.error.message);
+  if (p.error) throw new Error('Le suivi du propriétaire n’a pas pu être lu : ' + p.error.message);
+  const ids = new Set(copies.map(x => x.id));
+  const chezAcheteurs = ((a.data || []) as LigneJournal[]).filter(j => j.bien_id && ids.has(j.bien_id));
+  const chezProprio = ((p.data || []) as LigneJournal[]).filter(j => !j.bien_id && !j.recherche_id && j.client_id === b.client_id);
+  const vus = new Set<string>();
+  return [...chezAcheteurs, ...chezProprio].filter(j => !vus.has(j.id) && !!vus.add(j.id));
 }
 
 export async function annulerVisiteCRM(id: string): Promise<void> {

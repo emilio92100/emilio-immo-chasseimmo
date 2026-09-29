@@ -26,6 +26,7 @@ import {
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
+import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
 import {
@@ -705,6 +706,31 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
     l.push({ cle: 'd-' + x.id, le: x.created_at, ic: 'plume', ton: 'ic_gris', titre: `Document préparé : ${x.titre || m?.titre || 'document'}`, genre: 'documents', discret: true });
     if (x.signe_le) l.push({ cle: 'ds-' + x.id, le: x.signe_le, ic: 'check', ton: 'ic_vert', titre: `Document signé : ${x.titre || m?.titre || 'document'}`, genre: 'documents' });
   }
+  /* Le Suivi des contacts qui parle du bien (V3.29) : chez un acheteur, une
+     action notée avec « Concerne un bien » ; chez le propriétaire, son Suivi. */
+  const LIB_J: Record<string, string> = {
+    appel: 'Appel', rdv: 'Rendez-vous', rdv_planifie: 'Rendez-vous prévu', note: 'Note', relance_manuelle: 'Relance', envoi_externe: 'Envoi',
+    email_libre: 'Mail', message_client: 'Message', demande_rappel: 'Demande de rappel',
+  };
+  const IC_J: Record<string, string> = { appel: 'tel', rdv: 'calendrier', rdv_planifie: 'calendrier', note: 'bulle', relance_manuelle: 'horloge', message_client: 'mail', demande_rappel: 'tel' };
+  const GENERIQUES = ['appel passé', 'rdv physique', 'note', 'relance manuelle', 'envoi externe', 'email envoyé', 'appel reçu'];
+  const copieDe = new Map(det.copies.map(c => [c.id, c]));
+  for (const j of det.journal || []) {
+    const cl = j.client_id ? clients[j.client_id] : undefined;
+    const nom = nomClient(cl);
+    const proprio = !j.bien_id;
+    const issue = j.type === 'appel' ? issueAppel(j.titre) : null;
+    const tj = (j.titre || '').trim();
+    const generique = !tj || GENERIQUES.includes(tj.toLowerCase()) || !!issue;
+    const lib = issue?.k === 'recu' ? 'Appel reçu' : LIB_J[j.type] || 'Action';
+    const titre = j.type === 'message_client' ? `${nom} a écrit` : j.type === 'demande_rappel' ? `${nom} demande à être rappelé` : `${lib} · ${nom}`;
+    l.push({
+      cle: 'j-' + j.id, le: j.created_at, ic: IC_J[j.type] || 'bulle', ton: 'ic_bleu', genre: 'contacts', titre,
+      detail: [generique ? '' : tj, j.description || ''].filter(Boolean).join(' — '),
+      puce: issue && issue.k !== 'recu' ? { l: issue.lib, c: issue.c, fond: issue.bg, bord: issue.bord } : undefined,
+      chez: j.client_id ? { id: j.client_id, l: proprio ? `Dans le Suivi de ${nom} · propriétaire` : `Dans le Suivi de ${nom} · acheteur${j.bien_id && copieDe.get(j.bien_id)?.etape === 'selection' ? ', bien en sélection' : ''}` } : undefined,
+    });
+  }
   /* Une visite prévue et pas encore passée est dans « À venir », pas dans l'histoire. */
   const maintenant = new Date().toISOString();
   return l.filter(e => e.le && !(e.genre === 'visites' && e.titre.startsWith('Visite prévue') && e.le > maintenant)).sort((p, q) => q.le.localeCompare(p.le));
@@ -1223,6 +1249,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       {onglet === 'historique' && (
         <HistoriqueBien evts={evts} aVenir={aVenirHisto} parcours={parcoursDe(bien, detail?.suivi || [])} chiffres={chiffresVente}
+          erreur={detail?.erreurJournal} onFiche={id => { void ouvrirClient(id); }}
           onNote={() => setFen({ k: 'note' })}
           onSuppr={async id => {
             if (!confirm('Supprimer cette note ?')) return;

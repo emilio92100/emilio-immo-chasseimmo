@@ -422,6 +422,15 @@ export const lireClients = (frais = false) => {
 };
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+/* ── L'étape « Le propriétaire » (V3.29) ──
+   D'abord une question : « Ce propriétaire est-il déjà dans le CRM ? ». La
+   recherche relie sa fiche (et remplit ses coordonnées) ; sinon, « Créer sa
+   fiche » ouvre la suite, sur fond clair, et la fiche se crée d'un clic dès
+   que son nom est écrit. Tant que rien n'est choisi, la suite de l'étape
+   reste grisée (EditeurBien, `proprioOuvert`). */
+export const proprioOuvert = (d: Donnees) =>
+  !!txt(d, 'clientId') || d.proprioNouveau === true || lirePersonnes(d.proprietaires).some(p => p.nom || p.prenom);
+
 function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const id = typeof d.clientId === 'string' ? d.clientId : '';
   const [clients, setClients] = useState<ClientMini[] | null>(null);
@@ -436,14 +445,21 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const lie = id ? clients?.find(c => c.id === id) || null : null;
   const trouves = clients && q.trim().length >= 2
     ? clients.filter(c => sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom}`).includes(sansAccent(q.trim()))).slice(0, 6) : [];
-  const premier = lirePersonnes(d.proprietaires)[0];
+  const personnes = lirePersonnes(d.proprietaires);
+  const premier = personnes[0];
+  const nomPremier = premier ? [premier.prenom, premier.nom].filter(Boolean).join(' ') : '';
+  const nouveau = d.proprioNouveau === true;
 
   function choisir(c: ClientMini) {
     maj('clientId', c.id);
+    maj('proprioNouveau', false);
     /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses contacts. */
     void marquerVendeur(c.id);
-    const deja = lirePersonnes(d.proprietaires).some(p => p.nom || p.prenom);
-    if (!deja) {
+    /* Ses coordonnées remplacent ce qui est saisi : d'office si rien ne
+       l'est, sinon après accord (un autre nom avait été tapé). */
+    const deja = personnes.some(p => p.nom || p.prenom);
+    const memeNom = deja && sansAccent(`${premier?.prenom || ''} ${premier?.nom || ''}`).trim() === sansAccent(`${c.prenom || ''} ${c.nom || ''}`).trim();
+    if (!deja || (!memeNom && confirm(`Reprendre les coordonnées de la fiche de ${nomClient(c)} à la place de celles déjà saisies ?`))) {
       const j = c.couple ? conjointDe(c.conjoint) : null;
       const l: Personne[] = [personneDepuisClient(c)];
       if (j) l.push({ ...PERSONNE_VIDE, civilite: j.civilite === 'Madame' || j.civilite === 'Monsieur' ? j.civilite : '', prenom: j.prenom || '', nom: j.nom || '', email: j.email || '', telephone: j.telephone || '' });
@@ -452,14 +468,29 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     }
     setQ('');
   }
+  /* « Créer sa fiche » : la suite s'ouvre ; ce qui était tapé dans la
+     recherche devient son nom (le premier mot en prénom s'il y en a deux). */
+  function nouvelleFiche() {
+    setErreur('');
+    maj('proprioNouveau', true);
+    const tape = q.trim().replace(/\s+/g, ' ');
+    if (tape && !personnes.some(p => p.nom || p.prenom)) {
+      const mots = tape.split(' ');
+      const p: Personne = mots.length > 1 ? { ...PERSONNE_VIDE, prenom: mots[0], nom: mots.slice(1).join(' ') } : { ...PERSONNE_VIDE, nom: tape };
+      maj('proprietaires', [p]);
+      if (!d.qui) maj('qui', 'personne');
+    }
+    setQ('');
+  }
   async function creer() {
-    if (!premier || !(premier.nom || premier.prenom)) { setErreur('Écris d’abord le nom du propriétaire, plus bas : la fiche se crée à partir de lui.'); return; }
+    if (!premier || !(premier.nom || premier.prenom)) { setErreur('Écris d’abord son nom, juste en dessous : la fiche se crée à partir de lui.'); return; }
     setCree(true); setErreur('');
     try {
       const c = await creerFicheProprio(premier);
       const l = await lireClients(true);
       setClients(l);
       maj('clientId', c.id);
+      maj('proprioNouveau', false);
     } catch (e) { setErreur((e as Error).message); }
     setCree(false);
   }
@@ -472,27 +503,56 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
           <b>{lie ? nomClient(lie) : clients ? 'Fiche introuvable' : 'Chargement…'}</b>
           <small>{lie ? [lie.telephones?.[0], lie.emails?.[0]].filter(Boolean).join(' · ') || 'Sa fiche client est reliée à ce bien' : ''}</small>
         </div>
+        <span className={b.lieOk}><Ic n="check" t={12} e={3} />Fiche reliée</span>
         {!off && <button type="button" className={b.mini} onClick={() => maj('clientId', '')}>Délier</button>}
       </div>
     );
   }
-  return (
-    <div className={b.chercheC}>
-      <input className={s.cherche} value={q} disabled={off} placeholder="Chercher un client du CRM (nom, prénom)…" onChange={e => setQ(e.target.value)} aria-label="Chercher un client" />
-      {trouves.length > 0 && (
-        <div className={s.resultats}>
-          {trouves.map(c => (
-            <button key={c.id} type="button" className={s.resultat} onClick={() => choisir(c)}>
-              <Ic n="personne" t={15} />{nomClient(c)}<small>{c.telephones?.[0] || c.emails?.[0] || ''}</small>
-            </button>
-          ))}
+  if (nouveau) {
+    return (
+      <div className={`${b.question} ${b.questionNouveau}`}>
+        <div className={b.questionT}>
+          <span className={b.questionIc}><Ic n="plus" t={18} e={2.4} /></span>
+          <div><b>Nouvelle fiche client</b><small>Remplis juste en dessous qui vend et son nom. Sa fiche se crée ensuite d’un clic, et se relie au bien.</small></div>
         </div>
-      )}
-      {q.trim().length >= 2 && clients && !trouves.length && <div className={s.chAide}>Aucun client à ce nom.</div>}
+        {!off && (
+          <div className={b.questionActs}>
+            <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} disabled={cree || !nomPremier} onClick={creer}>
+              <Ic n="check" t={15} e={2.6} />{cree ? 'Création…' : nomPremier ? `Créer la fiche de ${nomPremier}` : 'Créer la fiche (écris d’abord son nom)'}
+            </button>
+            <button type="button" className={b.questionLien} onClick={() => maj('proprioNouveau', false)}>Il est peut-être déjà dans le CRM : chercher</button>
+          </div>
+        )}
+        {erreur && <div className={s.erreur}>{erreur}</div>}
+      </div>
+    );
+  }
+  return (
+    <div className={b.question}>
+      <div className={b.questionT}>
+        <span className={b.questionIc}><Ic n="loupe" t={18} /></span>
+        <div><b>Ce propriétaire est-il déjà dans le CRM ?</b><small>Tape son nom : s’il y est, sa fiche se relie au bien et ses coordonnées se remplissent.</small></div>
+      </div>
+      <div className={b.chercheC}>
+        <input className={s.cherche} value={q} disabled={off} placeholder="Nom ou prénom du propriétaire…" onChange={e => setQ(e.target.value)} aria-label="Chercher le propriétaire dans le CRM" />
+        {trouves.length > 0 && (
+          <div className={s.resultats}>
+            {trouves.map(c => (
+              <button key={c.id} type="button" className={s.resultat} onClick={() => choisir(c)}>
+                <Ic n="personne" t={15} />{nomClient(c)}<small>{c.telephones?.[0] || c.emails?.[0] || ''}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {q.trim().length >= 2 && clients && !trouves.length && <div className={s.chAide}>{`Aucun client « ${q.trim()} » dans le CRM.`}</div>}
+      </div>
       {!off && (
-        <button type="button" className={s.ajouter} disabled={cree} onClick={creer}>
-          <Ic n="plus" t={15} e={2.4} />{cree ? 'Création…' : premier && (premier.nom || premier.prenom) ? `Créer la fiche client de ${[premier.prenom, premier.nom].filter(Boolean).join(' ')}` : 'Créer sa fiche client (après avoir écrit son nom)'}
-        </button>
+        <div className={b.questionOu}>
+          <span>Il n’est pas encore dans le CRM ?</span>
+          <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} onClick={nouvelleFiche}>
+            <Ic n="plus" t={15} e={2.4} />{q.trim().length >= 2 ? `Créer sa fiche : « ${q.trim()} »` : 'Créer sa fiche'}
+          </button>
+        </div>
       )}
       {erreur && <div className={s.erreur}>{erreur}</div>}
     </div>
@@ -682,7 +742,8 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
   else if (c.t === 'compteur') controle = <ChampCompteur c={c} v={d[c.cle]} off={off} onChange={x => maj(c.cle, x)} />;
   else if (c.t === 'adresse') controle = <ChampAdresse d={d} maj={maj} off={off} />;
   else if (c.t === 'journal') controle = <ChampJournal c={c} v={d[c.cle]} off={off} onChange={x => maj(c.cle, x)} />;
-  const sansTitre = c.t === 'pieces';
+  /* Les pièces et le propriétaire portent leur propre titre. */
+  const sansTitre = c.t === 'pieces' || c.t === 'proprio';
   /* Deux compteurs côte à côte ; le reste sur toute la largeur. */
   const large = c.t !== 'compteur';
   /* Les questions à choisir en petites cartes, comme les choix (V3.16). */
