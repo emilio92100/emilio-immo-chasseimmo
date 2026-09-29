@@ -1461,6 +1461,12 @@ les cases à cocher, la réponse du vendeur, le certificat.
   négative : les fiches ne bougent pas. Dans l'espace, plus de bordure transparente autour de la
   fiche (elle dessinait un cadre blanc autour de la photo) : la fiche choisie a un contour doré
   (`outline`) posé par-dessus.
+- **Carte de l'espace acheteur, les biens qu'un filtre écarte ne disparaissent plus d'un coup** :
+  leur étiquette s'allume à sa couleur (lueur), tremble, lance des étincelles et s'éteint en
+  0,95 s (classes `.sort` et `.etinc` ; on anime l'étiquette, jamais l'enveloppe du repère, dont
+  MapLibre tient la position par `transform`). Leurs zones scintillent deux fois puis s'éteignent
+  (couche `zones-sortie`, opacité animée par `setPaintProperty`). Un bien qui revient avant la fin
+  est gardé. Mouvement réduit : un simple fondu.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
