@@ -4,6 +4,7 @@ import AvatarContact from '@/components/contacts/AvatarContact';
 import { lirePro, lireStructure } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
+import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
 import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
 import type { Client, Recherche } from '@/lib/supabase';
@@ -25,7 +26,7 @@ import { solderRelancesVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
-import { jourParis } from '@/lib/mandat';
+import { jourParis, joursRestants } from '@/lib/mandat';
 import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
@@ -1220,21 +1221,16 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
    * n'affiche et qui continuent d'occuper le stockage — on les efface donc
    * partout où un bien disparaît.
    */
-  function cheminsPhotos(lot: any[]): string[] {
-    return lot
-      .flatMap((b: any) => (b?.photos || []) as string[])
-      .filter((u) => typeof u === 'string' && u.includes('supabase.co/storage'))
-      .map((u) => (u.match(/photos-biens\/(.+)$/) || [])[1])
-      .filter(Boolean) as string[];
+  /* V3.33 : seulement une fois les biens effacés de la base, et seulement les
+     fichiers que plus personne n'utilise (une proposition de la veille, ou le
+     dossier d'un autre acheteur, peut partager les mêmes, src/lib/photos.ts). */
+  function cheminsPhotos(lot: any[]): { photos?: unknown; plans?: unknown }[] {
+    return (lot || []).map((b: any) => ({ photos: b?.photos, plans: b?.plans }));
   }
 
-  async function effacerPhotos(chemins: string[]) {
-    if (chemins.length === 0) return;
-    /* Le Storage n'aime pas les très gros lots : on envoie par paquets de 100. */
-    for (let i = 0; i < chemins.length; i += 100) {
-      try { await supabase.storage.from('photos-biens').remove(chemins.slice(i, i + 100)); }
-      catch { /* la suppression des données prime sur le ménage du stockage */ }
-    }
+  async function effacerPhotos(lot: { photos?: unknown; plans?: unknown }[]) {
+    try { await effacerPhotosDeBiens(lot); }
+    catch { /* la suppression des données prime sur le ménage du stockage */ }
   }
 
   /**
@@ -1309,10 +1305,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     ]);
     if (!nettoye) { load(); return; }
 
-    await effacerPhotos(chemins);
-
     const { error: eBiens } = await supabase.from('biens').delete().eq('recherche_id', r.id);
     if (eBiens) { alert('Erreur : ' + eBiens.message); return; }
+    await effacerPhotos(chemins);
 
     const { error } = await supabase.from('recherches').delete().eq('id', r.id);
     if (error) { alert('Erreur : ' + error.message); return; }
@@ -1407,10 +1402,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       ]);
       if (!nettoye) { setReinitEnCours(false); load(); return; }
 
-      await effacerPhotos(chemins);
-
       const { error } = await supabase.from('biens').delete().eq('recherche_id', rechercheId);
       if (error) { alert('La remise à zéro a échoué : ' + error.message); setReinitEnCours(false); return; }
+      await effacerPhotos(chemins);
 
       /* Le compteur d'ouvertures de l'espace repart lui aussi : il comptait des
          visites sur des biens qui n'existent plus. Le lien, lui, ne bouge pas. */
@@ -2248,20 +2242,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
        restent, et on le dit. Avant, les photos partaient même quand le bien
        restait. */
     if (!(await verifie('La suppression du bien', supabase.from('biens').delete().eq('id', bienId).select('id'), { ligne: true }))) { load(); return; }
-    // Les photos stockées dans Supabase Storage partent avec lui.
-    if (bien?.photos?.length > 0) {
-      const photosStorage = bien.photos.filter((p: string) => p.includes('supabase.co/storage'));
-      if (photosStorage.length > 0) {
-        // Extraire les chemins relatifs depuis les URLs publiques
-        const paths = photosStorage.map((url: string) => {
-          const match = url.match(/photos-biens\/(.+)$/);
-          return match ? match[1] : null;
-        }).filter(Boolean) as string[];
-        if (paths.length > 0) {
-          await supabase.storage.from('photos-biens').remove(paths);
-        }
-      }
-    }
+    /* Ses photos partent avec lui, sauf si une proposition de la veille ou
+       un autre dossier s'en sert encore (V3.33). */
+    await effacerPhotosBien([...(bien?.photos || []), ...(bien?.plans || [])]);
     await addJournal(client.id, 'bien_supprime', `🗑️ Bien supprimé — ${bien?.titre || bien?.ville || ''}`, undefined, undefined, { rechercheId });
     setShowFicheBien(false); load();
   }
@@ -2802,7 +2785,7 @@ ${signatureMail()}`,
        vérifiait rien : un clic à vide ajoutait une contre-offre « NaN € ». */
     if (!m) { alert('Indiquez le montant de la contre-offre.'); return; }
     const liste = [...((transaction.contre_offres as any[]) || []),
-      { partie: coForm.partie, montant: m, date: coForm.date || new Date().toISOString().slice(0, 10) }];
+      { partie: coForm.partie, montant: m, date: coForm.date || jourParis() }];
     if (!(await verifie('La contre-offre', supabase.from('transactions').update({ contre_offres: liste }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
     /* La balle est dans l'autre camp : on pré-sélectionne l'autre partie. */
     setCoForm({ partie: coForm.partie === 'vendeur' ? 'acheteur' : 'vendeur', montant: '', date: '' });
@@ -2817,7 +2800,7 @@ ${signatureMail()}`,
   }
 
     const jours = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86400000);
-  const joursMandat = cr.mandat_date_expiration ? Math.floor((new Date(cr.mandat_date_expiration).getTime() - Date.now()) / 86400000) : null;
+  const joursMandat = cr.mandat_date_expiration ? joursRestants(cr.mandat_date_expiration) : null;
 
   // Timeline fusionnée (Historique + Journal)
   // On exclut du journal les types qui font doublon avec les communications (envois)
@@ -3401,7 +3384,7 @@ ${signatureMail()}`,
                 ici (V3.32) : elle est déjà dans le bandeau, et dans le Suivi. */}
             {(() => {
               const prochaine = visites
-                .filter(v => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= new Date().toISOString().slice(0, 10))
+                .filter(v => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= jourParis())
                 .sort((x, y) => `${x.date_visite}${x.heure || ''}`.localeCompare(`${y.date_visite}${y.heure || ''}`))[0];
               if (!prochaine) return null;
               const bienV = prochaine ? biens.find(b => b.id === prochaine.bien_id) : null;
@@ -3636,10 +3619,10 @@ ${signatureMail()}`,
                       {cr.mandat_honoraires ? ` · ${cr.mandat_honoraires}` : ''}
                     </span>
                     {joursMandat !== null && (
-                      <i style={joursMandat > 15 ? undefined : joursMandat > 0
+                      <i style={joursMandat > 15 ? undefined : joursMandat >= 0
                         ? { background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }
                         : { background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
-                        {joursMandat > 0 ? `${joursMandat} j restants` : '⚠️ Expiré'}
+                        {joursMandat > 1 ? `${joursMandat} j restants` : joursMandat === 1 ? 'Dernier jour demain' : joursMandat === 0 ? 'Dernier jour' : '⚠️ Expiré'}
                       </i>
                     )}
                   </>

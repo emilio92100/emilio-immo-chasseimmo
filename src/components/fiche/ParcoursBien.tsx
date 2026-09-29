@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { effacerPhotosBien } from '@/lib/photos';
 import { verifie } from '@/lib/ecritures';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 import { lienEspace, lienBienPublic } from '@/lib/jeton';
@@ -2539,11 +2540,7 @@ export function ModalePhotos({ bien, onFerme, onEnregistre }: {
     if (error) { setEnvoi(false); alert("Les photos n'ont pas pu être enregistrées.\n\n" + error.message); return; }
     /* Les photos retirées que nous hébergeons ne servent plus à rien : on les
        efface du stockage. Un échec ici ne compte pas, le bien est à jour. */
-    const chemins = retirees
-      .filter(u => u.includes('supabase.co/storage'))
-      .map(u => (u.match(/photos-biens\/(.+)$/) || [])[1])
-      .filter(Boolean) as string[];
-    if (chemins.length) { try { await supabase.storage.from('photos-biens').remove(chemins); } catch { /* sans effet */ } }
+    await effacerPhotosBien(retirees);
     setEnvoi(false); onEnregistre(); onFerme();
   }
 

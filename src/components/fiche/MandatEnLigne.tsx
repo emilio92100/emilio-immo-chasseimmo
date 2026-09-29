@@ -28,7 +28,7 @@ import { supabase, addJournal } from '@/lib/supabase';
 import { lienEspace, HOTE_ESPACE } from '@/lib/jeton';
 import {
   HONORAIRES_TAUX, BAREME, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
-  forfaitDe, seuilForfait, honorairesCourt, pourcentDe,
+  forfaitDe, seuilForfait, honorairesCourt, pourcentDe, jourParis,
   type Contenu,
 } from '@/lib/mandat';
 import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
@@ -236,7 +236,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   const honoEnregistre = { taux: tauxDe(recherche?.mandat_taux), forfait: forfaitDe(recherche?.mandat_forfait) };
   const premierDeLaReserve = numeros(reserve)[0] || '';
   const valide = !!recherche?.mandat_date_signature
-    && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= new Date().toISOString().slice(0, 10));
+    && (!recherche?.mandat_date_expiration || String(recherche.mandat_date_expiration).slice(0, 10) >= jourParis());
   const signeEnLigne = sig?.statut === 'signe' || sig?.statut === 'partiel';
   const ecarts = sig && (sig.statut === 'signe' || sig.statut === 'partiel' || sig.statut === 'en_cours') ? ecartsDe(sig.mandant, client) : [];
   const attendus = cos.filter(c => c.statut === 'invite');

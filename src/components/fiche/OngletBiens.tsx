@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { effacerPhotosBien } from '@/lib/photos';
 import { verifie } from '@/lib/ecritures';
 import {
   Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
@@ -245,14 +246,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       decide_le: new Date().toISOString(),
     }).eq('bien_id', b.id)))) return;
 
-    const photos: string[] = [...(b.photos || []), ...(b.plans || [])].filter((p: string) => typeof p === 'string' && p.includes('supabase.co/storage'));
-    if (photos.length > 0) {
-      const chemins = photos.map(u => (u.match(/photos-biens\/(.+)$/) || [])[1]).filter(Boolean) as string[];
-      if (chemins.length > 0) { try { await supabase.storage.from('photos-biens').remove(chemins); } catch { /* le retrait prime */ } }
-    }
-
-    const { error } = await supabase.from('biens').delete().eq('id', b.id);
-    if (error) { alert('Impossible de retirer ce bien : ' + error.message); return; }
+    /* La ligne d'abord, vérifiée ; les photos ensuite, et seulement si
+       personne d'autre ne s'en sert (V3.33) : un bien venu de la veille
+       partage ses fichiers avec la proposition, que « Remettre » fait revenir. */
+    if (!(await verifie('Le retrait du bien', supabase.from('biens').delete().eq('id', b.id).select('id'), { ligne: true }))) { recharge(); return; }
+    await effacerPhotosBien([...(b.photos || []), ...(b.plans || [])]);
     recharge();
   }
 
