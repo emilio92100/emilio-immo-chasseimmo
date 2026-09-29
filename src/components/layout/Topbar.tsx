@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
@@ -121,7 +122,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     if (chargement.current) return chargement.current;
     chargement.current = (async () => {
       /* Avec les types de contact (V3.14) ; avant leur SQL, sans eux. */
-      let c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro');
+      let c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint');
       if (c.error) c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
       if (c.error) { chargement.current = null; return; }
       index.current = { le: Date.now(), clients: c.data || [] };
@@ -210,7 +211,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                 {lesClients.length > 0 && <div className={styles.searchSection}>Contacts</div>}
                 {lesClients.map(({ c, raison }) => (
                   <div key={c.id} className={styles.searchItem} onClick={() => selectClient(c)}>
-                    <div className={styles.searchAv}>{(c.prenom || '?')[0]}{(c.nom || '?')[0]}</div>
+                    <AvatarContact c={c} teinte={teinteDe(c)} className={styles.searchAv} libre />
                     <div className={styles.searchInfo}>
                       <div className={styles.searchName}>{c.prenom} {c.nom}</div>
                       <div className={styles.searchMeta}>{c.reference}</div>
