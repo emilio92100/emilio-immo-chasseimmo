@@ -3615,8 +3615,8 @@ function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOu
 
 /* La carte de l'accueil : sa dernière visite, et la question. */
 function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir }: { b: Bien; v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; onOuvrir: () => void; onVoir: () => void }) {
-  const auj = new Date().toISOString().slice(0, 10);
-  const hier = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const auj = jourParis();
+  const hier = jourParis(new Date(Date.now() - 86400000));
   const j = (v.date || '').slice(0, 10);
   const quand = j === auj ? 'd’aujourd’hui' : j === hier ? 'd’hier' : `du ${dateCourte(j)}`;
   const ph = (b.photos || [])[0];
