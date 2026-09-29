@@ -166,7 +166,9 @@
 }
 .bande::-webkit-scrollbar { display: none; }
 .fb {
-  flex: 0 0 min(312px, calc(100vw - 58px)); scroll-snap-align: center;
+  /* Un glissement = une fiche (V3.28) : sans `scroll-snap-stop`, un geste un
+     peu vif sautait deux ou trois biens. */
+  flex: 0 0 min(312px, calc(100vw - 58px)); scroll-snap-align: center; scroll-snap-stop: always;
   display: flex; background: #fff; border-radius: 18px; overflow: hidden; cursor: pointer;
   /* Pas de bordure transparente : elle dessinait un cadre blanc autour de la
      photo. La fiche choisie prend un contour doré, posé par-dessus. */
