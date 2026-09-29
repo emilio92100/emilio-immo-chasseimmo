@@ -6321,20 +6321,26 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
 /* V3.28 : encore plus visible. La poignée faisait 8 px de large, gris
    clair (#9aa6b8) : on la voyait mal, surtout sur la fiche d'un bien. Elle
    fait maintenant 11 px, en gris ardoise, et plus longue au minimum. */
-@media (hover:hover) and (pointer:fine){
-  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:17px; height:17px}
-  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#e6eaf1}
+/* V3.29 : toujours pas visible chez Alexandre. Sa machine est une tablette
+   Windows (écran tactile) : pour le navigateur, le pointeur principal est le
+   doigt, « (pointer:fine) » était faux, et rien de tout ça ne s'appliquait.
+   On règle maintenant sur la largeur de l'écran, ou dès qu'une souris existe
+   (« any-pointer »). Et plus large, et bien plus foncé : la poignée est
+   bleu marine, la piste gris clair. */
+@media (min-width:900px), (any-pointer:fine){
+  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:20px; height:20px}
+  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#dfe4ec}
   html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
-    background:#64748b; border-radius:10px; border:3px solid transparent; background-clip:padding-box; min-height:64px}
-  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#475569}
-  html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:var(--encre2)}
+    background:#34496e; border-radius:12px; border:3px solid transparent; background-clip:padding-box; min-height:72px}
+  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#1a2332}
+  html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:#c9a84c}
   /* la fiche a des coins arrondis : la piste ne touche ni le haut ni le bas */
   .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px; border-radius:10px}
 }
 /* Firefox ne connaît pas les règles ci-dessus : il a les siennes. */
 @supports (-moz-appearance:none){
-  @media (hover:hover) and (pointer:fine){
-    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#64748b #e6eaf1}
+  @media (min-width:900px), (any-pointer:fine){
+    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#34496e #dfe4ec}
   }
 }
 
