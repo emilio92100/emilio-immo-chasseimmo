@@ -1482,6 +1482,27 @@ dans `biens_vente.donnees`.
   ses associés sur deux colonnes ; sans société, le bandeau propose « Il / Elle agit pour une
   société (SCI…) ? Ajouter », qui ouvre le formulaire là, prérempli de « À savoir » s'il en nomme
   une. Le bouton en pointillés du bas de la fiche a disparu.
+- **Vue d'ensemble avant le mandat, refaite (maquette B validée par Alexandre)** : la carte « Le
+  rendez-vous d'estimation » du haut et le bloc « L'estimation » du bas disaient la même chose.
+  À la place, **« Le parcours de l'estimation »** (`ParcoursEstimation`, `VueBien.tsx` ;
+  `BlocParcours`, `FicheBien.tsx`) sur toute la largeur sous les onglets : cinq jalons en frise —
+  rendez-vous, visite sur place, montant, avis de valeur, mandat — le jalon en cours en or (un
+  jalon franchi plus loin coche ceux d'avant), le montant et la jauge quand il est donné, ce qu'on
+  a retenu de la visite, puis « Ensuite : … » avec le bouton qui fait avancer (noter le rendez-vous,
+  définir l'estimation, avis de valeur envoyé, préparer le mandat ; « Passer à l'estimation » à
+  « À suivre ») et « Le mandat est déjà signé ? ». En colonne sur le téléphone. Dessous, trois
+  cartes : le propriétaire, **« Pour la visite »** (`CartePourLaVisite` : les trois premières
+  indications, le chemin, « Tout voir »), les acheteurs potentiels ; puis le bien en bref, les
+  observations, « Dernièrement ». **« Chez le propriétaire ? Commencer la visite »** passe dans le
+  bandeau bleu, à droite (`CoteVisite`, avant le mandat seulement ; « Reprendre la visite » une
+  fois faite) ; le bouton « Visite sur place » de la barre du haut disparaît. Dans « Le bien », le
+  « Modifier » de « Estimation et prix » ouvre la fenêtre de l'estimation, et non plus tout l'éditeur.
+- **Surfaces, les niveaux** : en liste comme en cartes, chaque niveau a son bandeau (escalier,
+  nom, nombre de pièces, surface) dès qu'il y en a plusieurs, ou que ce n'est pas « Niveau
+  principal » ; « 2 niveaux » s'ajoute au résumé.
+- **« Sa société » pour un acheteur aussi** : « Il achète en son nom / Pour une société » à la
+  création ; sur sa fiche, « Achète pour SCI … · Gérant » dans le bandeau (ou « Pour une société
+  (SCI…) ? Ajouter »), et le bloc « Sa société » en tête de la Vue d'ensemble.
 - **Les photos en grand** (`biens/Visionneuse.tsx`) : dans l'onglet Photos (et l'éditeur), un clic
   sur une photo l'ouvre sur tout l'écran — flèches (qui reviennent au début après la dernière),
   clavier ← → et Échap, glisser du doigt sur le téléphone, sa légende et les vignettes en bas.
