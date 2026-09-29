@@ -314,6 +314,7 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .socAv { width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #1a2332; color: #e0c36e; font: 800 18px 'Plus Jakarta Sans', sans-serif; }
 .socAssT { font-size: 11px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #a07c28; padding-top: 10px; border-top: 1px solid #f1f4f8; }
 .socListe { display: flex; flex-direction: column; gap: 6px; }
+.socListeSuite { margin-top: -4px; }
 .socL { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: 'av nom fiche' 'av joindre fiche'; gap: 2px 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: #f8fafc; border: 1px solid #eef1f6; }
 .socL[data-gerant='oui'] { background: #fbf8ef; border-color: #efe4c6; }
 .socInit { grid-area: av; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3e8f0; color: #34496e; font: 800 12px 'Plus Jakarta Sans', sans-serif; }

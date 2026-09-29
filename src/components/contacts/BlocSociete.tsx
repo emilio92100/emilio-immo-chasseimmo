@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Depliant from '@/components/shared/Depliant';
 import AvatarContact, { personneDe } from './AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import { FORMES_SOCIETE, ROLES_SOCIETE, lireStructure, type Associe, type Structure } from '@/lib/contacts';
@@ -157,6 +158,29 @@ export default function BlocSociete({ client, notes, onEnregistrer, onFiche, ouv
     );
   }
 
+  const tries = [...(st?.associes || [])].sort((p, q) => Number(/g[ée]rant|pr[ée]sident/i.test(q.role)) - Number(/g[ée]rant|pr[ée]sident/i.test(p.role)));
+  const ligneAssocie = (a: (typeof tries)[number]) => {
+    const soi = estSoi(a);
+    const fiche = soi ? null : ficheDe(a);
+    const gerant = /g[ée]rant|pr[ée]sident/i.test(a.role);
+    return (
+      <div key={a.id} className={c.socL} data-gerant={gerant ? 'oui' : 'non'}>
+        <AvatarContact c={personneDe(a.nom, a.role)} teinte={{ bg: '', fg: '#34496e' }} className={c.socInit} libre />
+        <div className={c.socNom}>
+          <b>{a.nom || 'Sans nom'}</b>
+          <span>
+            {a.role && <i className={gerant ? c.socRoleG : c.socRole}>{a.role}</i>}
+            {soi && <i className={c.socSoi}>C’est sa fiche</i>}
+          </span>
+        </div>
+        <div className={c.socJoindre}>
+          {a.tel && <a href={`tel:${a.tel.replace(/[\s.]/g, '')}`} title={a.tel}><Ic n="telephone" t={13} /><span>{a.tel}</span></a>}
+          {a.email && <a href={`mailto:${a.email}`} title={a.email}><Ic n="mail" t={13} /><span>{a.email}</span></a>}
+        </div>
+        {fiche && <button type="button" className={c.socFiche} onClick={() => onFiche(fiche)}><Ic n="personne" t={13} />Sa fiche</button>}
+      </div>
+    );
+  };
   return (
     <section className={`${c.bloc} ${c.socBloc}`}>
       <div className={c.blocT}>
@@ -175,31 +199,12 @@ export default function BlocSociete({ client, notes, onEnregistrer, onFiche, ouv
       {st.associes.length > 0 && (
         <>
           <div className={c.socAssT}>{`Les associés · ${st.associes.length}`}</div>
-          <div className={c.socListe}>
-            {/* Les gérants d'abord ; au-delà de quatre, « Voir les N ». */}
-            {[...st.associes].sort((p, q) => Number(/g[ée]rant|pr[ée]sident/i.test(q.role)) - Number(/g[ée]rant|pr[ée]sident/i.test(p.role))).slice(0, tous ? undefined : 4).map(a => {
-              const soi = estSoi(a);
-              const fiche = soi ? null : ficheDe(a);
-              const gerant = /g[ée]rant|pr[ée]sident/i.test(a.role);
-              return (
-                <div key={a.id} className={c.socL} data-gerant={gerant ? 'oui' : 'non'}>
-                  <AvatarContact c={personneDe(a.nom, a.role)} teinte={{ bg: '', fg: '#34496e' }} className={c.socInit} libre />
-                  <div className={c.socNom}>
-                    <b>{a.nom || 'Sans nom'}</b>
-                    <span>
-                      {a.role && <i className={gerant ? c.socRoleG : c.socRole}>{a.role}</i>}
-                      {soi && <i className={c.socSoi}>C’est sa fiche</i>}
-                    </span>
-                  </div>
-                  <div className={c.socJoindre}>
-                    {a.tel && <a href={`tel:${a.tel.replace(/[\s.]/g, '')}`} title={a.tel}><Ic n="telephone" t={13} /><span>{a.tel}</span></a>}
-                    {a.email && <a href={`mailto:${a.email}`} title={a.email}><Ic n="mail" t={13} /><span>{a.email}</span></a>}
-                  </div>
-                  {fiche && <button type="button" className={c.socFiche} onClick={() => onFiche(fiche)}><Ic n="personne" t={13} />Sa fiche</button>}
-                </div>
-              );
-            })}
-          </div>
+          {/* Les gérants d'abord ; au-delà de quatre, « Voir les N » les déplie
+              en glissant (V3.32). */}
+          <div className={c.socListe}>{tries.slice(0, 4).map(ligneAssocie)}</div>
+          {tries.length > 4 && (
+            <Depliant ouvert={tous} ecart={12}><div className={`${c.socListe} ${c.socListeSuite}`}>{tries.slice(4).map(ligneAssocie)}</div></Depliant>
+          )}
           {st.associes.length > 4 && (
             <button type="button" className={c.socPlus} onClick={() => setTous(t => !t)}>{tous ? 'Replier la liste' : `Voir les ${st.associes.length} associés`}</button>
           )}

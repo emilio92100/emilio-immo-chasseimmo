@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import AvatarContact from './AvatarContact';
+import Depliant from '@/components/shared/Depliant';
 import { supabase, addJournal, type Client } from '@/lib/supabase';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
@@ -84,6 +85,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const [erreur, setErreur] = useState('');
   /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
   const [societeOuverte, setSocieteOuverte] = useState(false);
+  /* Chaque « Ajouter » repart d'un formulaire neuf (le bloc reste monté, V3.32). */
+  const [cleSoc, setCleSoc] = useState(0);
   /* Le suivi (V3.23) : tout le journal du contact, et ses relances en attente.
      Un contact qui n'est pas acheteur n'a pas de recherche : tout est sur
      `client_id`, `recherche_id` vide. */
@@ -208,7 +211,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
      dès qu'elle est notée ; sinon « Sa société (SCI…) » dans le bandeau
      l'ouvre là, prête à remplir. */
   const societe = (
-    <BlocSociete client={x} notes={x.notes} ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)}
+    <BlocSociete key={cleSoc} client={x} notes={x.notes} ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)}
       onEnregistrer={async st => !!(await ecrire({ pro: { ...pro, structure: st || undefined } }, 'La société n’a pas pu être enregistrée'))}
       onFiche={cl => onNavigate('fiche', cl)} />
   );
@@ -240,7 +243,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 <span className={c.heroSocOk}><Ic n="immeuble" t={13} /><span>{'Pour '}<b>{structure.denomination || 'une société'}</b>{structure.qualite ? ` · ${structure.qualite.split(/[,(]/)[0].trim()}` : ''}</span></span>
               )}
               {peutSociete && !structure && !societeOuverte && (
-                <button type="button" className={c.heroSoc} onClick={() => setSocieteOuverte(true)}>
+                <button type="button" className={c.heroSoc} onClick={() => { setCleSoc(k => k + 1); setSocieteOuverte(true); }}>
                   <Ic n="immeuble" t={13} />{`${x.civilite === 'Madame' ? 'Elle' : 'Il'} agit pour une société ?`}<b>Ajouter</b>
                 </button>
               )}
@@ -257,7 +260,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           pied={aUneAdresse ? <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} /> : undefined} />
       </div>
 
-      {peutSociete && (structure || societeOuverte) && <div className={c.socHaut}>{societe}</div>}
+      {/* Elle arrive en glissant quand on clique « Ajouter » (V3.32). */}
+      {peutSociete && <Depliant ouvert={!!structure || societeOuverte} ecart={16}><div className={c.socHaut}>{societe}</div></Depliant>}
 
       {archive && <div className={c.archiveBandeau}>Ce contact est archivé : il n’apparaît plus dans la liste, seulement dans « Archivés ».</div>}
       {erreur && <div className={c.erreur}>{erreur}</div>}
