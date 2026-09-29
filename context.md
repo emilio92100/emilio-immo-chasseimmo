@@ -1570,6 +1570,29 @@ Retours d'Alexandre du soir. Rien à passer dans Supabase.
   du journal (type « mandat », `metadata.rappelMandat` = la date de la proposition) : pas de SQL, et
   une nouvelle proposition repart de zéro. Rien pour une proposition de plus de 15 jours, une
   recherche arrêtée ou fermée à l'espace, ou quand un mandat de Documents est en route.
+- **Vue d'ensemble d'un bien, sans blancs** : « Le bien en bref » passe en tête (avant le mandat,
+  juste sous le parcours de l'estimation). Les trois cartes : « Visites et offres » dit la
+  prochaine visite et a ses deux gestes (« Organiser une visite », « Enregistrer une offre ») ; « Le
+  propriétaire » montre son téléphone et son e-mail en clair ; « Pour la visite » met ses trois
+  premières indications côte à côte, et le chemin prend jusqu'à six lignes quand il est seul (le
+  rognage se fait sur la ligne intérieure : la 3e ligne débordait dans le bas du cadre).
+- **Onglet « Le bien » : une icône par ligne** (`Kv`, table `IC_KV` d'OngletsBien.tsx, trouvée par
+  le mot de la ligne), teintée de la couleur de la carte : état, cuisine, chauffage, étage,
+  ascenseur, lot, exposition, vue, charges, taxe foncière, prix, net vendeur, honoraires…
+- **« Changer le prix ou les honoraires »** (`FenPrix`) : la case « Les honoraires changent aussi »
+  ouvre le taux ou le forfait ; le net vendeur se recalcule. L'historique dit « Prix et honoraires
+  changés : … » ou « Honoraires changés : 45 000 € → 40 000 € » (`donnees.honoAvant`, `honoApres`
+  de la ligne `prix`). Mandat signé dans le CRM : « Préparer l'avenant au mandat » (cochée) crée le
+  brouillon de l'avenant (`creerAvenantVente`, biens/outils.ts : le mandat, ses avenants signés,
+  puis `objets` prix/honoraires, `nouveauPrix`, `charge2`…) et l'ouvre dans Documents.
+- **Le récapitulatif de ce qui a été signé** : sous chaque étape des « Documents de la vente »
+  (`ChaineDocs`), ses documents dans l'ordre — le mandat puis ses avenants (en retrait, avec ce
+  qu'ils changent : « prix 829 000 €, honoraires 40 000 € ») et courriers de reconduction ; les
+  bons de visite (qui, visite du…) ; les offres écrites — chacun avec son état et « PDF » quand il
+  est signé. Les annulés ne comptent plus. Sur la fiche d'un contact, un avenant est rangé sous son
+  mandat (`enChaine`) et dit « Au mandat n° 34 ». Les avenants portent désormais `bienVenteId`
+  (`REPRIS`, avenant-vente.ts), et `documentsDuBien` retrouve aussi ceux d'avant par le numéro du
+  mandat (avenants, courriers de reconduction, délégations).
 
 ### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
 
