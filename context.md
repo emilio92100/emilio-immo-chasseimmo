@@ -1593,6 +1593,13 @@ Retours d'Alexandre du soir. Rien à passer dans Supabase.
   mandat (`enChaine`) et dit « Au mandat n° 34 ». Les avenants portent désormais `bienVenteId`
   (`REPRIS`, avenant-vente.ts), et `documentsDuBien` retrouve aussi ceux d'avant par le numéro du
   mandat (avenants, courriers de reconduction, délégations).
+- **Le bandeau d'un contact qui n'est pas acheteur, rempli** (`ActiviteHero`, FicheContact.tsx) :
+  comme pour l'acheteur, sous le nom, ses chiffres et « Suivi depuis ». Vendeur ou propriétaire :
+  biens, en vente, visites, offres (sur ses biens, `biens_vente_suivi`), puis chacun de ses biens en
+  une ligne (photo, étape, prix ; un clic ouvre le bien ; « Créer son bien » s'il n'en a pas).
+  Les autres (notaire, confrère, gardien…) : échanges et relances à venir, le dernier échange et la
+  prochaine relance. La société reste à droite du nom, son détail juste sous le bandeau — pareil que
+  pour l'acheteur.
 
 ### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
 
