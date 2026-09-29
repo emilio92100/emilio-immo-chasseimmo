@@ -35,6 +35,7 @@ import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
 import { contenuApresAvenants } from '@/lib/actes/avenant-recherche';
 import { signalerEchec } from '@/lib/ecritures';
 import { etatLigne, lireDepart, numeroAncien, prochainNumero, type ObsRegistre } from '@/lib/registre';
+import { mandatRechercheEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -138,6 +139,9 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
 }) {
   const [avenants, setAvenants] = useState<AvenantMini[]>([]);
   const [sig, setSig] = useState<Sig | null>(null);
+  /* Un mandat de recherche préparé dans Documents (V3.32) : tant qu'il est en
+     route, on ne propose pas en plus celui de l'espace. */
+  const [docMandat, setDocMandat] = useState<MandatEnCours | null>(null);
   const [cos, setCos] = useState<CoSig[]>([]);
   const [numero, setNumero] = useState<string>(recherche?.mandat_numero || '');
   const [reserve, setReserve] = useState('');
@@ -171,6 +175,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
         .eq('recherche_id', recherche.id).eq('modele', 'avenant_recherche').neq('statut', 'annule').order('created_at'),
     ]);
     setAvenants(!av.error && av.data ? (av.data as AvenantMini[]) : []);
+    mandatRechercheEnCours(recherche.id).then(x => setDocMandat(x?.cle?.startsWith('d-') ? x : null), () => setDocMandat(null));
     const derniere = !s.error && s.data?.length ? (s.data[0] as Sig) : null;
     setSig(derniere);
     /* Ceux qui signent avec lui (la table n'existe qu'après le SQL : sans
@@ -326,6 +331,11 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
 
   /* ── Proposer le mandat au client ── */
   async function proposer() {
+    /* Pas de second mandat (V3.32) : relu au moment du clic. */
+    try {
+      const x = await mandatRechercheEnCours(recherche.id);
+      if (x?.cle?.startsWith('d-')) { setDocMandat(x); setMsg({ t: `${phraseMandat(x)} Il signe celui-là : pour lui proposer celui de l’espace à la place, annule d’abord l’autre dans Documents.`, ok: false }); return; }
+    } catch (e) { setMsg({ t: (e as Error).message, ok: false }); return; }
     /* Le registre démarré : on garde un numéro d'avant lui, ou celui d'une
        signature commencée ; sinon, il donnera le suivant. */
     const n = registre ? (registre.numero === 'ancien' || registre.numero === 'ouvert' ? (recherche?.mandat_numero || '').trim() : '') : numero.trim();
@@ -610,6 +620,12 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       {!valide && (
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14 }}>
           <div style={titreBloc}>Faire signer le mandat</div>
+          {docMandat && (
+            <div style={{ ...boite('#fffbeb', '#fde68a', '#92400e'), marginBottom: 12 }}>
+              <b>📄 Un mandat de recherche est déjà en route dans Documents</b>
+              <div>{`${phraseMandat(docMandat)} Il signe celui-là : pas de second mandat. Pour lui proposer celui de l’espace à la place, annule d’abord l’autre dans Documents.`}</div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <span style={{ ...btn, borderColor: '#c9a84c', background: '#fdfaf1', cursor: 'default' }}>✓ Simple</span>
             <span style={{ ...btn, color: '#94a3b8', cursor: 'not-allowed' }} title="Bientôt : il faut d’abord reprendre ton modèle exclusif">Exclusif · bientôt</span>
@@ -691,7 +707,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: registre ? 10 : 5, flexWrap: 'wrap' }}>
             {!registre && <input style={{ ...champ, maxWidth: 160 }} value={numero} onChange={e => setNumero(e.target.value)} placeholder="ex. 997" inputMode="numeric" />}
-            <button type="button" style={btnOr} disabled={travail === 'proposer' || !honoOk} onClick={proposer}>
+            <button type="button" style={btnOr} disabled={travail === 'proposer' || !honoOk || !!docMandat} onClick={proposer}>
               {travail === 'proposer' ? '…' : recherche?.mandat_propose_le ? 'Mettre à jour' : 'Proposer au client'}
             </button>
           </div>

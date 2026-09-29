@@ -890,6 +890,23 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     return () => { vivant = false; };
   }, [rechercheId, showMandat]);
   const retracte = derniereSig?.statut === 'retracte' && !cr.mandat_date_signature ? derniereSig : null;
+  /* Un mandat de recherche préparé dans Documents, pas encore signé (V3.32) :
+     le bouton du mandat le dit (« envoyé, en attente de signature »), au lieu
+     de « non renseigné ». */
+  const [docMandatLu, setDocMandatLu] = useState<{ rid: string; doc: { id: string; statut: string; numero: string | null; signature: unknown } | null } | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    if (!rechercheId) return;
+    supabase.from('documents').select('*').eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId)
+      .in('statut', ['brouillon', 'pret']).order('updated_at', { ascending: false }).limit(3)
+      .then(({ data, error }) => {
+        if (!vivant) return;
+        const l = (error ? [] : data || []) as { id: string; statut: string; numero: string | null; signature: unknown }[];
+        setDocMandatLu({ rid: rechercheId, doc: l.find(x => x.statut === 'pret') || l[0] || null });
+      });
+    return () => { vivant = false; };
+  }, [rechercheId, showMandat]);
+  const docMandat = docMandatLu && docMandatLu.rid === rechercheId ? docMandatLu.doc : null;
   function ouvrirMandat() {
     setShowMandat(true);
     if (retracte && !sigVue) {
@@ -3605,7 +3622,7 @@ ${signatureMail()}`,
                 {retracte && !sigVue && (
                   <span aria-label="Nouveau" style={{ position: 'absolute', top: -7, right: -7, minWidth: 20, height: 20, borderRadius: 10, background: '#dc2626', color: '#fff', fontSize: 11.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff' }}>1</span>
                 )}
-                <b style={retracte ? { color: '#991b1b' } : undefined}>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : ''}</b>
+                <b style={retracte ? { color: '#991b1b' } : undefined}>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : docMandat?.numero ? ` n° ${docMandat.numero}` : ''}</b>
                 {retracte ? (
                   <>
                     <span style={{ color: '#991b1b' }}>{`n° ${retracte.numero} rétracté par le client${retracte.retracte_le ? ` le ${new Date(retracte.retracte_le).toLocaleDateString('fr-FR')}` : ''}`}</span>
@@ -3627,7 +3644,14 @@ ${signatureMail()}`,
                     )}
                   </>
                 ) : (
-                  cr.mandat_propose_le ? (
+                  docMandat ? (
+                    <>
+                      <span>{docMandat.statut === 'pret'
+                        ? (docMandat.signature ? 'envoyé, en attente de signature' : 'prêt, à faire signer')
+                        : 'en préparation dans Documents'}</span>
+                      <i style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}>{docMandat.statut === 'pret' ? 'À signer' : 'En préparation'}</i>
+                    </>
+                  ) : cr.mandat_propose_le ? (
                     <>
                       <span>proposé, en attente de signature</span>
                       <i style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}>À signer</i>
