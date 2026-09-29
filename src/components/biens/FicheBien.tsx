@@ -36,7 +36,7 @@ import {
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
-import { BlocDernierement, BlocProchaines, CarteEstimation, CarteMandat, CarteProprio, CarteVisites, Kpis, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
+import { BlocDernierement, BlocProchaines, CarteMandat, CartePourLaVisite, CarteProprio, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
@@ -130,7 +130,7 @@ const joursDepuisIso = (iso: string) => {
 const passee = (v: VisiteU) => v.statut === 'faite' || (!!v.ymd && `${v.ymd}T${v.heure || '23:59'}` < new Date().toISOString().slice(0, 16));
 
 /* ══ LE BANDEAU ═══════════════════════════════════════════════════════════ */
-function Bandeau({ bien, detail, surCarte }: { bien: BienVente; detail: DetailBien | null; surCarte?: () => void }) {
+function Bandeau({ bien, detail, surCarte, cote }: { bien: BienVente; detail: DetailBien | null; surCarte?: () => void; cote?: ReactNode }) {
   const d = bien.donnees || {};
   const photos = lirePhotos(d.photos);
   const a = argentBien(d);
@@ -146,7 +146,7 @@ function Bandeau({ bien, detail, surCarte }: { bien: BienVente; detail: DetailBi
         {photos[0] ? <img src={photos[0].url} alt={photos[0].legende || ''} /> : <span className={b.imgVide}><Ic n="photo" t={28} />Pas encore de photo</span>}
         {photos.length > 1 && <span className={b.heroNb}><Ic n="photo" t={12} />{photos.length}</span>}
       </div>
-      <div className={b.heroTxt}>
+      <div className={`${b.heroTxt} ${cote ? b.heroTxtCote : ''}`}>
         <div className={b.heroBadges}>
           {bien.mandat_type && <span className={b.badgeOr}>{NOM_MANDAT[bien.mandat_type]?.toUpperCase()}{bien.mandat_numero && <i>{` · n° ${bien.mandat_numero}`}</i>}</span>}
           {bien.reference && <span className={b.ref}>{`Réf. ${bien.reference}`}</span>}
@@ -165,6 +165,7 @@ function Bandeau({ bien, detail, surCarte }: { bien: BienVente; detail: DetailBi
           {avantMandat(bien.etape) && a.prix && (num(d, 'estimBasse') || num(d, 'estimHaute')) ? <span>{`prix conseillé ${euros(a.prix)}`}</span>
             : a.prix && a.hono !== null && a.net ? <span>{a.acq ? `honoraires ${euros(a.hono)} inclus · net vendeur ${euros(a.net)}` : `honoraires ${euros(a.hono)} à la charge du vendeur`}</span> : null}
         </div>
+        {cote}
         {i >= 0 && (
           <div className={b.stepMobile} aria-hidden="true">
             <div className={b.stepBarres} style={{ gridTemplateColumns: `repeat(${PARCOURS.length}, 1fr)` }}>{PARCOURS.map((k, j) => <span key={k} className={j <= i ? b.stepPlein : undefined} />)}</div>
@@ -390,90 +391,109 @@ function BlocObservations({ d, onModifier }: { d: Donnees; onModifier: () => voi
 /* « Le dossier » n'est plus résumé dans la Vue d'ensemble (V3.31) : il
    doublait l'onglet Documents, où tout se fait. */
 
-/* Avant le mandat : le rendez-vous, la fourchette, l'avis de valeur. */
-/* ── La visite sur place : l'entrée (chez le propriétaire, tablette en main)
-   et ce qu'on en a retenu. ── */
-function BlocVisiteSurPlace({ d, onOuvrir }: { d: Donnees; onOuvrir: () => void }) {
+/* ── « Chez le propriétaire ? » dans le bandeau (V3.31) ──
+   Avant le mandat seulement (à suivre, estimation) : la visite sur place,
+   tablette en main, pièce par pièce. Elle était un bloc doré en bas de la Vue
+   d'ensemble et un bouton en haut ; la voilà dans le vide à droite du
+   bandeau, visible depuis tous les onglets. Faite : « Reprendre ». */
+function CoteVisite({ d, onOuvrir }: { d: Donnees; onOuvrir: () => void }) {
   const le = txt(d, 'visiteLe');
-  const atouts = liste(d, 'visiteAtouts'), defauts = liste(d, 'visiteDefauts');
-  const note = txt(d, 'visiteNote');
   return (
-    <div className={b.vEntree}>
-      <div className={b.vEntreeTete}>
-        <span className={b.vEntreeIc}><Ic n="tablette" t={24} /></span>
-        <div>
-          <b>{le ? 'La visite sur place' : 'Chez le propriétaire ?'}</b>
-          <span>{le ? `Faite le ${dateLongueCourt(le)} · tu peux la reprendre` : 'Plein écran, pièce par pièce, les photos prises sur place : tout s’enregistre, même sans réseau.'}</span>
-        </div>
-        <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={onOuvrir}><Ic n="tablette" t={16} />{le ? 'Reprendre' : 'Commencer la visite'}</button>
+    <div className={b.heroCote}>
+      <div className={b.heroCoteT}>
+        <span className={b.heroCoteIc}><Ic n="tablette" t={18} /></span>
+        <span><b>{le ? 'La visite sur place' : 'Chez le propriétaire ?'}</b><small>{le ? `Faite le ${dateLongueCourt(le)}` : 'Pièce par pièce, tablette en main'}</small></span>
       </div>
-      {(atouts.length > 0 || defauts.length > 0 || note) && (
-        <div className={b.vEntreeCorps}>
-          {atouts.length > 0 && <div className={b.tags}>{atouts.map(x => <span key={x} className={`${b.tag} ${b.tagIc}`}><Ic n="etoile" t={12} />{x}</span>)}</div>}
-          {defauts.length > 0 && <div className={b.tags}>{defauts.map(x => <span key={x} className={`${b.tag} ${b.tagRouge}`}>{x}</span>)}</div>}
-          {note && <p className={b.vEntreeNote}>{note}</p>}
-        </div>
-      )}
+      <button type="button" className={b.heroCoteBtn} onClick={onOuvrir}>{le ? 'Reprendre la visite' : 'Commencer la visite'}</button>
     </div>
   );
 }
 
-/* Le projet (à suivre) puis l'estimation : où on en est, le montant, et
-   le chemin jusqu'au mandat — rendez-vous, visite, montant, avis de
-   valeur — qui se coche tout seul (V3.16). */
-function BlocEstimation({ bien, onDefinir, onEstimation, onMandat }: { bien: BienVente; onDefinir: () => void; onEstimation: () => void; onMandat: () => void }) {
+/* Les indications de visite, en lignes pour la carte « Pour la visite »
+   (V3.31) — les mêmes que le bloc « Les indications de visite ». */
+function visitePourCarte(d: Donnees): { lignes: LigneVisite[]; encarts: { l: string; v: string }[] } {
+  const cles = [lib(d, 'cles'), d.cles === 'agence' && txt(d, 'trousseau') ? `trousseau ${txt(d, 'trousseau')}` : ''].filter(Boolean).join(', ');
+  const lignes: LigneVisite[] = [
+    { ic: 'porte', l: 'Le bien est', v: [lib(d, 'occupation'), txt(d, 'disponible') ? `disponible ${txt(d, 'disponible')}` : ''].filter(Boolean).join(' · ') },
+    { ic: 'cle', l: 'Clés', v: cles },
+    { ic: 'clavier', l: 'Digicode', v: txt(d, 'digicode') },
+    { ic: 'telephone', l: 'Contact sur place', v: [txt(d, 'contactNom'), txt(d, 'contactTel')].filter(Boolean).join(' · ') },
+    { ic: 'horloge', l: 'Heures de visite', v: txt(d, 'creneaux') },
+    { ic: 'immeuble', l: 'En bas', v: libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase()) },
+    { ic: 'interphone', l: 'Interphone', v: txt(d, 'interphone') },
+    { ic: 'porte', l: 'Porte', v: txt(d, 'porte') },
+    { ic: 'ascenseur', l: 'En sortant de l’ascenseur', v: d.accesAscenseur === 'aucun' ? '' : lib(d, 'accesAscenseur') },
+    { ic: 'cave', l: 'Cave · box', v: txt(d, 'annexesNum') },
+  ].filter(x => x.v);
+  const encarts = [{ l: 'Le chemin', v: txt(d, 'itineraire') }, { l: 'Consignes', v: txt(d, 'consignes') }].filter(x => x.v);
+  return { lignes, encarts };
+}
+
+/* ── Le parcours de l'estimation (V3.31, maquette B) ──
+   À la place de la carte « Le rendez-vous d'estimation » et du bloc
+   « L'estimation » du bas. Un jalon franchi plus loin coche ceux d'avant
+   (une estimation donnée sans visite sur place notée ne laisse pas la visite
+   « en cours » pour toujours). Dessous : le montant quand il est donné, ce
+   qu'on a retenu de la visite, puis « Ensuite : … ». */
+const jourSemaine = (ymd: string) => {
+  const x = new Date(`${ymd}T12:00:00`);
+  return isNaN(x.getTime()) ? ymd : x.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+};
+function BlocParcours({ bien, onDefinir, onEstimation, onMandat, onDocuments }: {
+  bien: BienVente; onDefinir: () => void; onEstimation: () => void; onMandat: () => void; onDocuments: () => void;
+}) {
   const d = bien.donnees || {};
+  const suivre = bien.etape === 'a_suivre';
   const rdv = txt(d, 'rdvEstimation');
   const j = joursAvant(rdv);
+  const visite = txt(d, 'visiteLe');
   const e = lireEstim(d);
-  const suivre = bien.etape === 'a_suivre';
   const fait = !!(e.basse || e.haute || e.prix);
   const avis = txt(d, 'avisEnvoye');
   const surf = num(d, 'carrez') || num(d, 'surface');
-  const jalons = [
-    { l: 'Rendez-vous', ic: 'calendrier', ok: !!rdv, v: rdv ? (j === 0 ? 'aujourd’hui' : dateCourte(rdv)) : 'à prendre' },
-    { l: 'Visite', ic: 'tablette', ok: !!txt(d, 'visiteLe'), v: txt(d, 'visiteLe') ? dateCourte(txt(d, 'visiteLe')) : 'à faire' },
-    { l: 'Montant', ic: 'etiquette', ok: fait, v: fait ? 'défini' : suivre ? 'à l’estimation' : 'à définir' },
-    { l: 'Avis de valeur', ic: 'envoyer', ok: !!avis, v: avis ? dateCourte(avis) : 'à envoyer' },
-  ];
   const fourchette = e.basse && e.haute ? `${euros(e.basse).replace(/\s€$/, '')} – ${euros(e.haute)}` : e.basse || e.haute ? euros((e.basse || e.haute) as number) : '';
+  const brut = [!!rdv, !!visite, fait, !!avis, false];
+  const ok = brut.map((x, i) => x || (i < 4 && brut.slice(i + 1, 4).some(Boolean)));
+  const courant = ok.findIndex(x => !x);
+  const etat = (i: number): Jalon['etat'] => (ok[i] ? 'fait' : i === courant ? 'encours' : 'avenir');
+  const quandRdv = rdv ? [dateCourte(rdv), j === null ? '' : j === 0 ? 'aujourd’hui' : j > 0 ? `dans ${j} jour${j > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ') : ok[0] ? 'sans date notée' : 'à prendre';
+  const jalons: Jalon[] = [
+    { cle: 'rdv', l: rdv ? 'Rendez-vous pris' : 'Le rendez-vous', ic: 'calendrier', v: quandRdv, etat: etat(0) },
+    { cle: 'visite', l: 'Visite sur place', ic: 'tablette', v: visite ? `faite le ${dateCourte(visite)}` : ok[1] ? 'pas notée' : rdv ? 'le jour du rendez-vous' : 'chez le propriétaire', etat: etat(1) },
+    { cle: 'montant', l: 'Le montant', ic: 'etiquette', v: fait ? (e.prix ? `${euros(e.prix)} conseillé` : fourchette) : 'la fourchette, le prix conseillé', etat: etat(2) },
+    { cle: 'avis', l: 'L’avis de valeur', ic: 'envoyer', v: avis ? `envoyé le ${dateCourte(avis)}` : 'à envoyer au propriétaire', etat: etat(3) },
+    { cle: 'mandat', l: 'Le mandat', ic: 'plume', v: 'signé : le bien passe « En vente »', etat: etat(4) },
+  ];
+  let ensuite = '';
+  let action: { l: string; onClick: () => void } | undefined;
+  if (suivre) { ensuite = 'le propriétaire y réfléchit. Quand il se décide, passe le bien à l’estimation.'; action = { l: 'Passer à l’estimation', onClick: onEstimation }; }
+  else if (!rdv && !fait) { ensuite = 'fixer le rendez-vous d’estimation avec le propriétaire.'; action = { l: 'Noter le rendez-vous', onClick: onDefinir }; }
+  else if (!fait) { ensuite = rdv && j !== null && j > 0 ? `la visite chez le propriétaire, ${jourSemaine(rdv)}. Après elle, la fourchette et le prix conseillé.` : 'la fourchette et le prix conseillé.'; action = { l: 'Définir l’estimation', onClick: onDefinir }; }
+  else if (!avis) { ensuite = 'envoyer l’avis de valeur au propriétaire, puis noter la date.'; action = { l: 'Avis de valeur envoyé', onClick: onDefinir }; }
+  else { ensuite = 'le mandat, prérempli avec le bien, le propriétaire et le prix, dans l’onglet Documents.'; action = { l: 'Préparer le mandat', onClick: onDocuments }; }
+  const atouts = liste(d, 'visiteAtouts'), defauts = liste(d, 'visiteDefauts');
+  const note = txt(d, 'visiteNote');
   return (
-    <Bloc ic="regle" titre={suivre ? 'Le projet' : 'L’estimation'} action={!suivre && fait ? <Modifier onClick={onDefinir} /> : undefined}>
-      <ol className={b.jalons}>
-        {jalons.map(x => (
-          <li key={x.l} className={x.ok ? b.jalonOk : undefined}>
-            <span className={b.jalonIc}><Ic n={x.ok ? 'check' : x.ic} t={15} e={x.ok ? 2.8 : 1.9} /></span>
-            <b>{x.l}</b><small>{x.v}</small>
-          </li>
-        ))}
-      </ol>
-      {!suivre && fait && (
+    <ParcoursEstimation titre={suivre ? 'Le projet, jusqu’au mandat' : 'Le parcours de l’estimation'} jalons={jalons} ensuite={ensuite} action={action} onDejaSigne={onMandat}>
+      {fait && (
         <div className={b.estimVue}>
           {fourchette && <div className={b.estimVueF}><small>Fourchette</small><b>{fourchette}</b></div>}
           {e.prix ? <div className={b.estimVueP}><small>Prix conseillé</small><b>{euros(e.prix)}</b>{surf ? <i>{`${euros(Math.round(e.prix / surf))} / m²`}</i> : null}</div> : null}
           <JaugeEstimation e={e} />
           {e.souhaite ? <div className={b.estimVueS}><Ic n="personne" t={14} /><span>{`Le propriétaire espère ${euros(e.souhaite)}`}{e.prix ? <b>{` · ${e.souhaite >= e.prix ? '+' : '−'}${pourcent(Math.abs(Math.round(((e.souhaite - e.prix) / e.prix) * 1000) / 10))}`}</b> : null}</span></div> : null}
+          <button type="button" className={b.lien} onClick={onDefinir}>Modifier l’estimation</button>
         </div>
       )}
-      {!suivre && !fait && (
-        <div className={b.estimAppel}>
-          <span className={b.estimAppelIc}><Ic n="etiquette" t={20} /></span>
-          <div><b>{rdv && (j ?? 1) <= 0 ? 'Le rendez-vous est passé : quel montant ?' : 'Le montant viendra après le rendez-vous'}</b><small>La fourchette et le prix conseillé. Ils s’afficheront sur la carte du bien, à la place de « Estimation à définir ».</small></div>
-          <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={onDefinir}><Ic n="plus" t={15} e={2.4} />Définir l’estimation</button>
+      {!fait && e.souhaite ? <div className={b.estimVueS}><Ic n="personne" t={14} /><span>{`Le propriétaire espère ${euros(e.souhaite)}`}</span></div> : null}
+      {(atouts.length > 0 || defauts.length > 0 || note) && (
+        <div className={b.retenu}>
+          <span className={b.retenuT}>Retenu de la visite</span>
+          {atouts.length > 0 && <div className={b.tags}>{atouts.map(x => <span key={x} className={`${b.tag} ${b.tagIc}`}><Ic n="etoile" t={12} />{x}</span>)}</div>}
+          {defauts.length > 0 && <div className={b.tags}>{defauts.map(x => <span key={x} className={`${b.tag} ${b.tagRouge}`}>{x}</span>)}</div>}
+          {note && <p className={b.vEntreeNote}>{note}</p>}
         </div>
       )}
-      {suivre && (
-        <div className={b.lignes}>
-          <Li ic="personne" l="Prix espéré par le propriétaire" v={eur(e.souhaite)} />
-        </div>
-      )}
-      {suivre && !rdv && <div className={b.vide}>Pas encore de rendez-vous. Tu peux déjà tout décrire (« Modifier », ou la visite sur place) ; le montant se donne en passant à l’estimation.</div>}
-      <div className={b.carteVActions}>
-        {suivre && <button type="button" className={`${b.mini} ${b.miniOr}`} onClick={onEstimation}><Ic n="regle" t={13} />Passer à l’estimation</button>}
-        {!suivre && fait && !avis && <button type="button" className={b.mini} onClick={onDefinir}><Ic n="envoyer" t={13} />Avis de valeur envoyé</button>}
-        <button type="button" className={b.mini} onClick={onMandat}><Ic n="plume" t={13} />Le mandat est signé</button>
-      </div>
-    </Bloc>
+    </ParcoursEstimation>
   );
 }
 
@@ -507,7 +527,7 @@ function surfacesDe(d: Donnees): SurfacesBien {
   };
 }
 
-function OngletBien({ bien, onModifier, onSurfaces }: { bien: BienVente; onModifier: (etape: string) => void; onSurfaces: () => void }) {
+function OngletBien({ bien, onModifier, onSurfaces, onEstimation }: { bien: BienVente; onModifier: (etape: string) => void; onSurfaces: () => void; onEstimation: () => void }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
@@ -561,7 +581,10 @@ function OngletBien({ bien, onModifier, onSurfaces }: { bien: BienVente; onModif
     </Famille>
   );
   const prix = (
-    <Famille ton="or" ic="etiquette" titre={avant ? 'Estimation et prix' : 'Prix et honoraires'} onModifier={M('prix')}>
+    /* Avant le mandat, « Modifier » ouvre la fenêtre de l'estimation (rendez-vous,
+       fourchette, prix conseillé, avis de valeur), comme le parcours de la Vue
+       d'ensemble, et non tout l'éditeur (V3.31). */
+    <Famille ton="or" ic="etiquette" titre={avant ? 'Estimation et prix' : 'Prix et honoraires'} onModifier={avant ? onEstimation : M('prix')}>
       <Kv l="Estimation" v={num(d, 'estimBasse') || num(d, 'estimHaute') ? [eur(num(d, 'estimBasse')), eur(num(d, 'estimHaute'))].filter(Boolean).join(' à ') : ''} />
       <Kv l={avant ? 'Prix conseillé' : 'Prix affiché'} v={eur(a.prix)} />
       <Kv l="Net vendeur" v={eur(a.net)} />
@@ -956,8 +979,6 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
   /* ── La Vue d'ensemble (V3.29) : les quatre cartes, puis le détail ── */
   const mode = modeAcheteurs(e);
-  const estim = lireEstim(d);
-  const fourchette = estim.basse && estim.haute ? `${euros(estim.basse).replace(/\s€$/, '')} – ${euros(estim.haute)}` : estim.basse || estim.haute ? euros((estim.basse || estim.haute) as number) : '';
   const persP = (Array.isArray(d.proprietaires) ? d.proprietaires : []) as Record<string, string>[];
   const nomP = nomProprio(d) || (proprio ? nomClient(proprio) : '');
   const telP = proprio?.telephones?.[0] || persP.find(p => p?.telephone)?.telephone || '';
@@ -1152,7 +1173,6 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       <div className={b.ficheBarre}>
         <button type="button" className={b.retour} onClick={onRetour}><Ic n="retour" t={16} />Biens</button>
         <div className={b.barreActions}>
-          {avant && <button type="button" className={`${s.btn} ${b.btnVisite}`} onClick={() => setVisite(true)}><Ic n="tablette" t={16} /><span className={b.etLong}>Visite sur place</span><span className={b.etCourt}>Visite</span></button>}
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => onModifier()}><Ic n="crayon" t={15} />Modifier</button>
           {!avant && <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'visite' })}><Ic n="plus" t={15} e={2.4} />Visite</button>}
           {/* La note, en un clic : elle était cachée dans « ⋯ ». */}
@@ -1187,7 +1207,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </div>
       </div>
 
-      <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })} />
+      <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}
+        cote={avant ? <CoteVisite d={d} onOuvrir={() => setVisite(true)} /> : undefined} />
 
       {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent.
           La pastille glisse d'un onglet à l'autre, le contenu arrive en
@@ -1201,15 +1222,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       <CorpsOnglet k={onglet} ordre={ONGLETS.map(o => o.k)}>
       {onglet === 'apercu' && (
         <div className={b.col}>
+          {/* Avant le mandat (V3.31, maquette B) : le parcours de l'estimation
+              sur toute la largeur, puis le propriétaire, la visite, les acheteurs. */}
+          {avant && (
+            <BlocParcours bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })}
+              onMandat={() => setFen({ k: 'mandat' })} onDocuments={() => setOnglet('documents')} />
+          )}
           <Kpis n={avant ? 3 : 4}>
-            {avant
-              ? <CarteEstimation rdv={txt(d, 'rdvEstimation')} fourchette={fourchette} prix={estim.prix || null} suivre={e === 'a_suivre'} proprio={nomP}
-                  onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} />
-              : <CarteMandat type={d.mandatType ? NOM_MANDAT[String(d.mandatType)] || '' : ''} numero={txt(d, 'mandatNumero') || bien.mandat_numero || ''}
+            {!avant && <CarteMandat type={d.mandatType ? NOM_MANDAT[String(d.mandatType)] || '' : ''} numero={txt(d, 'mandatNumero') || bien.mandat_numero || ''}
                   signe={txt(d, 'mandatDate')} fin={txt(d, 'mandatFin')} onModifier={() => onModifier('prix')} />}
-            <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />
+            {!avant && <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />}
             {!avant && <CarteVisites nbVisites={nbVisites} nbAVenir={visitesAVenir.length} nbOffres={offresOuvertes.length} repartition={repartition} onVoir={() => setOnglet('visites')} />}
             <CarteProprio nom={nomP} sous={sousP} plus={plusP} tel={telP} mail={mailP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci'} onRetirer={nomP || proprio ? retirerProprio : undefined} onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onModifier={() => onModifier('proprio')} />
+            {avant && <CartePourLaVisite {...visitePourCarte(d)} onModifier={() => onModifier('pratique')} />}
+            {avant && <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />}
           </Kpis>
           {offresOuvertes.map(o => (
             <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
@@ -1220,21 +1246,21 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
           {/* Les observations juste sous le bien en bref (V3.31), et non plus en bas de page. */}
           {blocNotes}
-          <div className={b.deuxEgal}>
-            <div className={b.col}>
-              {avant && <BlocVisiteSurPlace d={d} onOuvrir={() => setVisite(true)} />}
-              {avant && <BlocEstimation bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} onMandat={() => setFen({ k: 'mandat' })} />}
-              {!avant && <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={() => setFen({ k: 'visite' })} onFiche={ouvrirClient} />}
-              {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
+          {avant ? <BlocDernierement items={recents} onTout={() => setOnglet('historique')} /> : (
+            <div className={b.deuxEgal}>
+              <div className={b.col}>
+                <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={() => setFen({ k: 'visite' })} onFiche={ouvrirClient} />
+                {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
+              </div>
+              <div className={b.col}>
+                <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
+              </div>
             </div>
-            <div className={b.col}>
-              <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} />}
+      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} onEstimation={() => setFen({ k: 'estim' })} />}
 
       {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien')} />}
 

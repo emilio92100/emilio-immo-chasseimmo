@@ -67,6 +67,32 @@
 .heroImg .imgVide { color: rgba(255,255,255,.55); }
 .heroNb { position: absolute; right: 8px; bottom: 8px; padding: 3px 9px; border-radius: 99px; background: rgba(26,35,50,.62); color: white; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
 .heroTxt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+/* V3.31 : avant le mandat, « Chez le propriétaire ? » à droite du texte ;
+   les étapes passent dessous, sur toute la largeur. */
+.heroTxtCote { display: grid; grid-template-columns: minmax(0, 1fr) 236px; column-gap: 22px; row-gap: 6px; align-content: center; }
+.heroTxtCote > * { grid-column: 1; min-width: 0; }
+.heroTxtCote > .stepper, .heroTxtCote > .stepMobile { grid-column: 1 / -1; }
+.heroTxtCote > .heroCote { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
+.heroCote { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.07); border: 1px solid rgba(227,200,114,.35); }
+.heroCoteT { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.heroCoteT > span:last-child { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.heroCoteT b { font-size: 14px; color: #fff; }
+.heroCoteT small { font-size: 12px; color: rgba(255,255,255,.66); }
+.heroCoteIc { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(201,168,76,.18); color: #e3c872; }
+.heroCoteBtn { height: 42px; padding: 0 14px; border-radius: 12px; border: none; background: #c9a84c; color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: filter .15s; }
+.heroCoteBtn:hover { filter: brightness(1.06); }
+/* Plus étroit : le bloc passe sous le prix, en une ligne. */
+@media (max-width: 1180px) {
+  .heroTxtCote { grid-template-columns: minmax(0, 1fr); }
+  .heroTxtCote > .heroCote { grid-column: 1; grid-row: auto; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 6px; }
+}
+@media (max-width: 760px) {
+  .heroTxtCote > .heroCote { flex-direction: column; align-items: stretch; }
+  .heroCoteBtn { height: 44px; }
+}
+/* Ce qu'on a retenu de la visite, dans le parcours de l'estimation. */
+.retenu { display: flex; flex-direction: column; gap: 7px; padding-top: 12px; border-top: 1px dashed #e3e8f0; }
+.retenuT { font-size: 11px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #a07c28; }
 .heroBadges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .badgeOr { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 99px; background: rgba(15,23,42,.28); border: 1px solid rgba(201,168,76,.4); color: #e7cf8a; font-size: 11.5px; font-weight: 800; letter-spacing: .6px; }
 .badgeOr i { font-style: normal; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: 0; }

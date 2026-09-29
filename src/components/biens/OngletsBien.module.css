@@ -92,8 +92,12 @@
 .vues { display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: #eef1f6; }
 .vue { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; border: none; background: none; color: #64748b; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
 .vue[aria-pressed='true'] { background: #fff; color: #1a2332; box-shadow: 0 4px 10px -6px rgba(36, 56, 92, .5); }
-.niveau { margin: 6px 0 2px; font-size: 11px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #94a3b8; }
-.niveau i { font-style: normal; font-weight: 700; letter-spacing: 0; text-transform: none; margin-left: 8px; }
+/* Le niveau en tête de ses pièces (V3.31) : un bandeau qui se voit. */
+.niveau { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; padding: 8px 12px; border-radius: 12px; background: #f8fafc; border: 1px solid #eef1f6; }
+.niveau:first-child { margin-top: 4px; }
+.niveauIc { width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fdf6e3; color: #a07c28; }
+.niveau b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.niveau i { margin-left: auto; font-style: normal; font-size: 12.5px; font-weight: 600; color: #64748b; white-space: nowrap; }
 
 .piece { display: grid; grid-template-columns: 40px minmax(0, 1.25fr) 74px minmax(0, 1fr) 96px minmax(0, 1.3fr); gap: 14px; align-items: center; padding: 10px 12px; border-radius: 14px; }
 .liste > .piece:nth-child(odd) { background: #f8fafc; }

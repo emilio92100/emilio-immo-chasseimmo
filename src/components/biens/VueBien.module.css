@@ -77,12 +77,65 @@ button.visiteNom:hover { color: #a07c28; }
 .recentTx b { color: #1a2332; }
 .recentLe { flex-shrink: 0; font-size: 12px; color: #94a3b8; white-space: nowrap; }
 
+/* ══ Le parcours de l'estimation (V3.31) ═══════════════════════════════ */
+.parcours { display: flex; flex-direction: column; gap: 18px; padding: 18px 22px 20px; border-radius: 20px; background: #fff; border: 1px solid #e3e8f0; margin-top: 4px; font-family: 'DM Sans', sans-serif; }
+.parcoursT { display: flex; align-items: center; gap: 10px; }
+.parcoursT h3 { margin: 0; font: 800 16.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.parcoursIc { width: 32px; height: 32px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #fdf6e3; color: #a07c28; }
+.parcoursN { margin-left: auto; font-size: 12.5px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
+.jalons { list-style: none; margin: 0; padding: 0; display: grid; }
+.jalons > li { position: relative; margin: 0; display: flex; flex-direction: column; gap: 8px; padding-right: 10px; min-width: 0; }
+.jalons > li::before { display: none; }
+.jalons > li::after { content: ''; position: absolute; top: 16px; left: 44px; right: 8px; height: 3px; border-radius: 3px; background: #e9edf3; }
+.jalons > li:last-child::after { display: none; }
+.jalons > li[data-etat='fait']::after { background: #c9a84c; }
+.jRond { width: 34px; height: 34px; box-sizing: border-box; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #f1f4f8; color: #94a3b8; }
+li[data-etat='fait'] .jRond { background: #c9a84c; color: #1a2332; }
+li[data-etat='encours'] .jRond { background: #fffbf0; color: #a07c28; border: 2px solid #c9a84c; box-shadow: 0 0 0 4px rgba(201, 168, 76, .16); }
+.jTx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jTx b { font-size: 14px; color: #1a2332; }
+li[data-etat='encours'] .jTx b { color: #a07c28; }
+.jTx small { font-size: 12.5px; line-height: 1.4; color: #64748b; }
+.ensuite { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 12px 14px; border-radius: 14px; background: #fffbf0; border: 1px solid #f0e2b6; font-size: 13.5px; line-height: 1.45; color: #6b5420; }
+.ensuite > span:first-child { flex: 1 1 320px; min-width: 0; }
+.ensuiteBtns { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ensuiteBtn { height: 40px; padding: 0 16px; border-radius: 12px; border: none; background: #c9a84c; color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.ensuiteBtn:hover { filter: brightness(.97); }
+.ensuiteLien { border: none; background: none; padding: 0; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.ensuiteLien:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ══ Pour la visite (V3.31) ═════════════════════════════════════════════ */
+.kpiModif { margin-left: auto; border: none; background: none; padding: 0; color: #2e4166; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; letter-spacing: 0; }
+.kpiModif:hover { text-decoration: underline; text-underline-offset: 3px; }
+.visiteL { display: flex; flex-direction: column; gap: 7px; }
+.visiteLi { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.visiteLi svg { color: #60a5fa; margin-top: 2px; }
+.visiteLi > span { display: flex; flex-direction: column; min-width: 0; }
+.visiteLi small { font-size: 11.5px; color: #94a3b8; }
+.visiteLi b { font-size: 13px; font-weight: 600; color: #1a2332; overflow-wrap: anywhere; }
+.visiteEncart { padding: 9px 11px; border-radius: 11px; background: #eff6ff; border: 1px solid #dbeafe; font-size: 12.5px; line-height: 1.5; color: #1e3a5f; }
+.visiteEncartCourt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kpiLienBleu { align-self: flex-start; margin-top: auto; border: none; background: none; padding: 0; color: #1d4ed8; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+
 @media (max-width: 1180px) {
   .kpis, .kpis[data-n="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpis[data-n="3"] > :last-child { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
   .kpis, .kpis[data-n="3"] { gap: 10px; }
+  .parcours { padding: 14px 14px 16px; gap: 14px; border-radius: 18px; }
+  .parcoursT h3 { font-size: 15px; }
+  /* La frise en colonne : un jalon par ligne, le trait descend. */
+  .jalons { grid-template-columns: minmax(0, 1fr) !important; gap: 0; }
+  .jalons > li { flex-direction: row; align-items: flex-start; gap: 12px; padding: 0 0 16px; }
+  .jalons > li:last-child { padding-bottom: 0; }
+  .jalons > li::after { top: 38px; bottom: 2px; left: 16px; right: auto; width: 3px; height: auto; }
+  .jTx { padding-top: 6px; }
+  .ensuite { flex-direction: column; align-items: stretch; }
+  .ensuite > span:first-child { flex: none; }
+  .ensuiteBtns { flex-direction: column; align-items: stretch; gap: 10px; }
+  .ensuiteBtn { height: 44px; }
+  .ensuiteLien { align-self: center; }
   .kpis[data-n="3"] > * { grid-column: 1 / -1; }
   .kpiLarge { grid-column: 1 / -1; }
   .kpi { padding: 14px; border-radius: 18px; }

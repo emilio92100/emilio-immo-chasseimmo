@@ -224,11 +224,25 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
   const plusGrande = Math.max(1, ...pieces.map(p => p.surface || 0));
   const niveaux = Array.from(new Set(pieces.map(p => p.niveau || '')));
   const plusieurs = niveaux.length > 1;
+  /* Le niveau en tête de ses pièces (V3.31), en liste comme en cartes : dès
+     qu'il y en a plusieurs, ou qu'il n'est pas le « Niveau principal » par
+     défaut (une maison de plain-pied : « Rez-de-chaussée »). */
+  const avecNiveaux = plusieurs || (!!niveaux[0] && niveaux[0] !== 'Niveau principal');
   /* « 3 pièces principales », comme on dit « un 3 pièces » ; sans séjour ni
      chambre saisis, le simple nombre de lignes. */
   const princ = nbPrincipales(pieces);
   const nombre = princ ? `${princ} pièce${princ > 1 ? 's' : ''} principale${princ > 1 ? 's' : ''}` : `${pieces.length} pièce${pieces.length > 1 ? 's' : ''}`;
-  const sous = pieces.length ? `${nombre}${total ? ` · ${m2(total)} habitables` : ''}` : '';
+  const sous = pieces.length ? `${nombre}${total ? ` · ${m2(total)} habitables` : ''}${plusieurs ? ` · ${niveaux.length} niveaux` : ''}` : '';
+  const teteNiveau = (n: string, ps: Piece[]) => {
+    const surf = ps.filter(habitable).reduce((t, p) => t + (p.surface || 0), 0);
+    return (
+      <div className={o.niveau}>
+        <span className={o.niveauIc}><Ic n={n === 'Extérieur' ? 'terrain' : 'escalier'} t={14} /></span>
+        <b>{n || 'Sans niveau'}</b>
+        <i>{`${ps.length} pièce${ps.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''}`}</i>
+      </div>
+    );
+  };
 
   const ligne = (p: Piece) => {
     const ic = pictoPiece(p.nom);
@@ -256,10 +270,10 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
         <span className={o.pcIc} style={{ background: c }}><Ic n={ic} t={18} /></span>
         <b className={o.pcM2}>{p.surface ? m2(p.surface) : '—'}</b>
         <b className={o.pcNom}>{p.nom || 'Pièce'}</b>
-        {(p.expo || p.niveau) && (
+        {(p.expo || (p.niveau && !avecNiveaux)) && (
           <div className={o.pcSous}>
             {p.expo && <span className={o.expo}>{nomExpo(p.expo)}</span>}
-            {p.niveau && <span>{p.niveau}</span>}
+            {p.niveau && !avecNiveaux && <span>{p.niveau}</span>}
           </div>
         )}
         {mot && <span className={o.pcMot}>{mot}</span>}
@@ -285,15 +299,25 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
         <button type="button" className={o.act} onClick={onModifier}>Modifier</button>
       </div>
       {!pieces.length ? <div className={o.vide}>Les pièces une à une : la pièce, sa surface, son exposition et un mot pour la fiche.</div>
-        : vue === 'cartes' ? <div className={o.cartes}>{pieces.map(carte)}</div>
-          : (
+        : vue === 'cartes' ? (
             <div>
               {niveaux.map(n => {
                 const ps = pieces.filter(p => (p.niveau || '') === n);
-                const surf = ps.filter(habitable).reduce((t, p) => t + (p.surface || 0), 0);
                 return (
                   <div key={n || '-'}>
-                    {plusieurs && <div className={o.niveau}>{n || 'Sans niveau'}<i>{`${ps.length} pièce${ps.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''}`}</i></div>}
+                    {avecNiveaux && teteNiveau(n, ps)}
+                    <div className={o.cartes}>{ps.map(carte)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              {niveaux.map(n => {
+                const ps = pieces.filter(p => (p.niveau || '') === n);
+                return (
+                  <div key={n || '-'}>
+                    {avecNiveaux && teteNiveau(n, ps)}
                     <div className={o.liste}>{ps.map(ligne)}</div>
                   </div>
                 );

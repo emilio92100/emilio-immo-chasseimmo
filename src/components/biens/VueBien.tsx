@@ -5,28 +5,16 @@
    offres, le propriétaire. Dessous, les prochaines visites et ce qui s'est
    passé dernièrement. Maquettes validées : « La nouvelle fiche bien ». */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
-import { euros } from '@/lib/mandat';
 import v from './VueBien.module.css';
 
 const jourMois = (ymd: string) => {
   const x = new Date(`${ymd.slice(0, 10)}T12:00:00`);
   return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }).replace(/^1 /, '1er ');
 };
-const jourLong = (ymd: string) => {
-  const x = new Date(`${ymd.slice(0, 10)}T12:00:00`);
-  if (isNaN(x.getTime())) return '';
-  const t = x.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
 const jours = (ymd: string) => Math.round((Date.parse(`${ymd.slice(0, 10)}T12:00:00`) - Date.parse(`${new Date().toISOString().slice(0, 10)}T12:00:00`)) / 86400000);
-const dans = (ymd: string) => {
-  const j = jours(ymd);
-  return j === 0 ? 'aujourd’hui' : j === 1 ? 'demain' : j === -1 ? 'hier' : j > 1 ? `dans ${j} jours` : `il y a ${-j} jours`;
-};
-
 export function Kpis({ n, children }: { n: number; children: ReactNode }) {
   return <div className={v.kpis} data-n={n}>{children}</div>;
 }
@@ -63,36 +51,71 @@ export function CarteMandat({ type, numero, signe, fin, onModifier }: {
   );
 }
 
-/* ── Avant le mandat : le rendez-vous, puis l'estimation ── */
-export function CarteEstimation({ rdv, fourchette, prix, suivre, proprio, onDefinir, onEstimation }: {
-  rdv: string; fourchette: string; prix: number | null; suivre: boolean; proprio: string;
-  onDefinir: () => void; onEstimation: () => void;
+/* ── Avant le mandat : le parcours de l'estimation (V3.31) ──────────────
+   Il remplace la carte « Le rendez-vous d'estimation » du haut et le bloc
+   « L'estimation » du bas, qui disaient la même chose à deux endroits
+   (maquette B validée par Alexandre). Les cinq jalons en frise — rendez-vous,
+   visite sur place, montant, avis de valeur, mandat —, celui en cours en or,
+   puis « Ensuite : … » et le bouton qui fait avancer. En colonne sur le
+   téléphone. */
+export type Jalon = { cle: string; l: string; ic: string; v: string; etat: 'fait' | 'encours' | 'avenir' };
+export function ParcoursEstimation({ titre, jalons, ensuite, action, onDejaSigne, children }: {
+  titre: string; jalons: Jalon[]; ensuite: string; action?: { l: string; onClick: () => void }; onDejaSigne: () => void; children?: ReactNode;
 }) {
-  const fait = !!(fourchette || prix);
+  const n = jalons.findIndex(j => j.etat === 'encours');
   return (
-    <div className={`${v.kpi} ${v.kpiMarine}`}>
-      <div className={v.kpiT}><span className={v.kpiIc}><Ic n={fait ? 'etiquette' : 'calendrier'} t={17} /></span>{fait ? 'L’estimation' : suivre ? 'Le projet' : 'Le rendez-vous d’estimation'}</div>
-      {fait ? (
+    <section className={v.parcours}>
+      <div className={v.parcoursT}>
+        <span className={v.parcoursIc}><Ic n="regle" t={17} /></span>
+        <h3>{titre}</h3>
+        <span className={v.parcoursN}>{n >= 0 ? `étape ${n + 1} sur ${jalons.length}` : ''}</span>
+      </div>
+      <ol className={v.jalons} style={{ gridTemplateColumns: `repeat(${jalons.length}, minmax(0, 1fr))` }}>
+        {jalons.map(j => (
+          <li key={j.cle} data-etat={j.etat}>
+            <span className={v.jRond}><Ic n={j.etat === 'fait' ? 'check' : j.ic} t={j.etat === 'fait' ? 16 : 15} e={j.etat === 'fait' ? 2.8 : 1.9} /></span>
+            <span className={v.jTx}><b>{j.l}</b><small>{j.v}</small></span>
+          </li>
+        ))}
+      </ol>
+      {children}
+      <div className={v.ensuite}>
+        <span>{`Ensuite : ${ensuite}`}</span>
+        <span className={v.ensuiteBtns}>
+          {action && <button type="button" className={v.ensuiteBtn} onClick={action.onClick}>{action.l}</button>}
+          <button type="button" className={v.ensuiteLien} onClick={onDejaSigne}>Le mandat est déjà signé ?</button>
+        </span>
+      </div>
+    </section>
+  );
+}
+
+/* ── Pour la visite (V3.31) : les indications de visite en carte, à côté du
+   propriétaire. Les trois premières lignes, le chemin et les consignes ;
+   « Tout voir » déplie le reste. ── */
+export type LigneVisite = { ic: string; l: string; v: string };
+export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: LigneVisite[]; encarts: { l: string; v: string }[]; onModifier: () => void }) {
+  const [tout, setTout] = useState(false);
+  const vide = !lignes.length && !encarts.length;
+  const long = lignes.length > 3 || encarts.some(x => x.v.length > 110);
+  return (
+    <div className={`${v.kpi} ${v.kpiBlanc}`}>
+      <div className={v.kpiT} style={{ color: '#1d4ed8' }}>
+        <span className={v.kpiIc} style={{ background: '#eff6ff', color: '#2563eb' }}><Ic n="cle" t={17} /></span>
+        Pour la visite
+        <button type="button" className={v.kpiModif} onClick={onModifier}>{vide ? 'Les noter' : 'Modifier'}</button>
+      </div>
+      {vide ? <span className={v.kpiSousGris}>Occupé ou libre, clés, codes, contact sur place : à noter dès maintenant, pour ta visite puis celles des acheteurs.</span> : (
         <>
-          <b className={v.kpiGros}>{prix ? euros(prix) : fourchette}</b>
-          <span className={v.kpiSous}>{prix && fourchette ? `Prix conseillé · fourchette ${fourchette}` : prix ? 'Prix conseillé' : 'Fourchette'}</span>
-          <button type="button" className={v.kpiBtnClair} onClick={onDefinir}>Modifier</button>
-        </>
-      ) : rdv ? (
-        <>
-          <b className={v.kpiGros}>{jourLong(rdv)}</b>
-          <span className={v.kpiSous}>{[proprio ? `Avec ${proprio}` : 'Sur place', dans(rdv)].join(' · ')}</span>
-          {suivre
-            ? <button type="button" className={v.kpiBtn} onClick={onEstimation}>Passer à l’estimation</button>
-            : <button type="button" className={v.kpiBtn} onClick={onDefinir}>Définir l’estimation</button>}
-        </>
-      ) : (
-        <>
-          <b className={v.kpiGros}>À prendre</b>
-          <span className={v.kpiSous}>{suivre ? 'Le propriétaire y réfléchit. Le montant se donne en passant à l’estimation.' : 'Pas encore de date.'}</span>
-          {suivre
-            ? <button type="button" className={v.kpiBtn} onClick={onEstimation}>Passer à l’estimation</button>
-            : <button type="button" className={v.kpiBtn} onClick={onDefinir}>Définir l’estimation</button>}
+          {lignes.length > 0 && (
+            <div className={v.visiteL}>
+              {(tout ? lignes : lignes.slice(0, 3)).map(x => (
+                <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
+              ))}
+            </div>
+          )}
+          {encarts.map(x => <div key={x.l} className={`${v.visiteEncart} ${tout ? '' : v.visiteEncartCourt}`}><b>{`${x.l} : `}</b>{x.v}</div>)}
+          {long && <button type="button" className={v.kpiLienBleu} onClick={() => setTout(!tout)}>{tout ? 'Réduire' : 'Tout voir'}</button>}
         </>
       )}
     </div>
