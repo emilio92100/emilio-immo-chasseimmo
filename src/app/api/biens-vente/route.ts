@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
+import { ecritServeur } from '@/lib/ecritures';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 /**
  * Les fichiers privés d'un bien en vente (rubrique « Biens en vente ») : les
@@ -17,6 +22,16 @@ import { createClient } from '@supabase/supabase-js';
  *   POST { action: 'lien', chemin, nom? }    →  { ok, url }   (5 minutes)
  *   POST { action: 'retirer', chemin }       →  { ok }
  *   POST { action: 'tout', id }              →  { ok, n }     (le bien est supprimé)
+ *   POST { action: 'envoyer', id, destinataires, sujet, message, pieces }
+ *                                            →  { ok, mode, envoyes, avertissements }
+ *
+ * « envoyer » (V3.30) : des pièces du dossier partent par mail, depuis
+ * l'onglet Documents du bien. Un mail par destinataire, au nom d'Alexandre.
+ * Jusqu'à 10 Mo en tout, les fichiers sont joints ; au-delà (un DDT complet
+ * dépasse vite), le mail porte des liens de téléchargement valables 7 jours
+ * — Mailjet refuse un message de plus de 15 Mo, et le base64 grossit d'un
+ * tiers. Ensuite : une ligne « envoi » dans l'historique du bien, et une
+ * ligne dans le Suivi de chaque contact du CRM qui l'a reçu.
  *
  * Tout vit sous biens-vente/<id du bien>/ : la route refuse le reste.
  */
@@ -27,6 +42,13 @@ const EXT = new Set(['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp']);
 const CHEMIN = /^biens-vente\/[0-9a-f-]{36}\/[a-z0-9]+-\d+\.[a-z]+$/i;
 
 const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erreur }, { status });
+const MAX_JOINTS = 10_000_000;
+const LIENS_JOURS = 7;
+const MAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const TYPES: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', webp: 'image/webp' };
+const nomPropre = (n: string) => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^A-Za-z0-9._ -]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'document';
+const tailleFr = (o: number) => (o >= 1_000_000 ? `${String(Math.round(o / 100_000) / 10).replace('.', ',')} Mo` : `${Math.max(1, Math.round(o / 1000))} ko`);
 
 export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -86,6 +108,94 @@ export async function POST(req: NextRequest) {
         if (e2) return ko(e2.message, 500);
       }
       return NextResponse.json({ ok: true, n: chemins.length });
+    }
+
+
+    if (action === 'envoyer') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Bien inconnu');
+      const sujet = String(body.sujet || '').trim().slice(0, 200);
+      const message = String(body.message || '').trim().slice(0, 20_000);
+      if (!sujet) return ko('L’objet du mail est vide');
+      if (!message) return ko('Le message est vide');
+      type Dest = { email: string; nom: string; clientId: string | null; rechercheId: string | null };
+      const dests: Dest[] = (Array.isArray(body.destinataires) ? body.destinataires : []).slice(0, 10).map((x: unknown) => {
+        const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return {
+          email: String(o.email || '').trim().toLowerCase(), nom: String(o.nom || '').trim().slice(0, 120),
+          clientId: UUID.test(String(o.clientId || '')) ? String(o.clientId) : null,
+          rechercheId: UUID.test(String(o.rechercheId || '')) ? String(o.rechercheId) : null,
+        };
+      }).filter((x: Dest, i: number, l: Dest[]) => MAIL.test(x.email) && l.findIndex(y => y.email === x.email) === i);
+      if (!dests.length) return ko('Aucune adresse e-mail valable');
+      const pieces = (Array.isArray(body.pieces) ? body.pieces : []).slice(0, 20).map((x: unknown) => {
+        const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return { chemin: String(o.chemin || ''), nom: nomPropre(String(o.nom || '')) };
+      });
+      if (!pieces.length) return ko('Aucun document choisi');
+      if (pieces.some((p: { chemin: string }) => !CHEMIN.test(p.chemin) || !p.chemin.startsWith(`biens-vente/${id}/`))) return ko('Un document n’appartient pas à ce bien');
+
+      const { data: bien, error: eBien } = await sb.from('biens_vente').select('id, titre').eq('id', id).maybeSingle();
+      if (eBien) return ko(eBien.message, 500);
+      if (!bien) return ko('Bien introuvable', 404);
+
+      /* Les fichiers, lus dans le stockage privé. */
+      const fichiers: { nom: string; type: string; octets: Buffer; chemin: string }[] = [];
+      for (const p of pieces) {
+        const { data, error } = await sb.storage.from(BUCKET).download(p.chemin);
+        if (error || !data) return ko(`« ${p.nom} » est introuvable dans le dossier`, 404);
+        const ext = (p.chemin.split('.').pop() || '').toLowerCase();
+        const nom = /\.[a-z0-9]{2,4}$/i.test(p.nom) ? p.nom : `${p.nom}.${ext}`;
+        fichiers.push({ nom, type: TYPES[ext] || 'application/octet-stream', octets: Buffer.from(await data.arrayBuffer()), chemin: p.chemin });
+      }
+      const total = fichiers.reduce((t, f) => t + f.octets.length, 0);
+      const mode: 'pj' | 'liens' = total <= MAX_JOINTS ? 'pj' : 'liens';
+      const pj: PieceJointe[] = mode === 'pj' ? fichiers.map(f => ({ nom: f.nom, type: f.type, base64: f.octets.toString('base64') })) : [];
+      const liens: { nom: string; url: string; taille: number }[] = [];
+      if (mode === 'liens') {
+        for (const f of fichiers) {
+          const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.chemin, LIENS_JOURS * 86_400, { download: f.nom });
+          if (error || !data) return ko(`Le lien de « ${f.nom} » n’a pas pu être créé`, 500);
+          liens.push({ nom: f.nom, url: data.signedUrl, taille: f.octets.length });
+        }
+      }
+
+      /* Le mail : le message tel qu'Alexandre l'a écrit (il porte déjà
+         « Bonjour » et la signature), puis les liens s'il y en a. */
+      const paras = message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('');
+      const blocLiens = liens.length ? `<div style="margin:18px 0 6px;padding:14px 16px;border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#7a5d1c;margin-bottom:8px">DOCUMENTS À TÉLÉCHARGER · LIENS VALABLES ${LIENS_JOURS} JOURS</div>
+        ${liens.map(l => `<div style="margin:6px 0"><a href="${echappe(l.url)}" style="color:#1a2332;font-weight:700">${echappe(l.nom)}</a> <span style="color:#94a3b8;font-size:12px">· ${tailleFr(l.taille)}</span></div>`).join('')}
+      </div>` : '';
+      const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2f3c52;max-width:600px">${paras}${blocLiens}</div>`;
+      const texte = `${message}${liens.length ? `\n\nDocuments à télécharger (liens valables ${LIENS_JOURS} jours) :\n${liens.map(l => `- ${l.nom} : ${l.url}`).join('\n')}` : ''}`;
+
+      const envoyes: string[] = [];
+      const echecs: string[] = [];
+      for (const dst of dests) {
+        const err = await envoyerMail({ a: dst.email, nomA: dst.nom || undefined, sujet, texte, html, pj });
+        if (err) echecs.push(`${dst.email} : ${err}`); else envoyes.push(dst.email);
+      }
+      if (!envoyes.length) return ko(`Le mail n’est pas parti. ${echecs.join(' · ')}`, 502);
+
+      /* La trace : dans l'historique du bien, et dans le Suivi des contacts. */
+      const avertissements: string[] = [...echecs.map(e => `Pas parti à ${e}`)];
+      const noms = fichiers.map(f => f.nom);
+      const partis = dests.filter(x => envoyes.includes(x.email));
+      const qui = partis.map(x => x.nom || x.email).join(', ');
+      await ecritServeur('L’historique du bien', sb.from('biens_vente_suivi').insert({
+        bien_id: id, type: 'envoi', qui, client_id: partis.find(x => x.clientId)?.clientId || null,
+        recherche_id: partis.find(x => x.rechercheId)?.rechercheId || null, commentaire: sujet,
+        donnees: { a: envoyes, pieces: noms, mode, taille: total },
+      }), avertissements);
+      for (const dst of partis.filter(x => x.clientId)) {
+        await ecritServeur('Le Suivi du contact', sb.from('journal').insert({
+          client_id: dst.clientId, recherche_id: dst.rechercheId, type: 'mail_envoye',
+          titre: `✉️ Documents envoyés — ${bien.titre || 'le bien'}`,
+          description: `À : ${dst.email}\nObjet : ${sujet}\n\n${message}\n\n${mode === 'pj' ? 'Pièces jointes' : `Liens de téléchargement (${LIENS_JOURS} jours)`} : ${noms.join(', ')}`,
+        }), avertissements);
+      }
+      return NextResponse.json({ ok: true, mode, envoyes, avertissements });
     }
 
     return ko('Action inconnue');
