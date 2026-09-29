@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
 
 /**
  * Portail d'accès au CRM.
@@ -18,21 +19,13 @@ import type { NextRequest } from 'next/server';
  *  - les fichiers statiques
  */
 
-const COOKIE = 'emilio_acces';
+const COOKIE = COOKIE_BADGE;
 
 // Chemins accessibles sans code
 /* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
    Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
 const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer'];
 const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
-
-async function sha256(texte: string): Promise<string> {
-  const data = new TextEncoder().encode(texte);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 /* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
    Vercel : c'est le nom d'hôte qui décide de ce qu'on sert. */
@@ -93,18 +86,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 3. Comparaison du cookie avec l'empreinte du code
-  const attendu = await sha256(code);
-  const recu = request.cookies.get(COOKIE)?.value;
-
-  if (recu && recu.length === attendu.length) {
-    // comparaison à temps constant
-    let diff = 0;
-    for (let i = 0; i < attendu.length; i++) {
-      diff |= attendu.charCodeAt(i) ^ recu.charCodeAt(i);
-    }
-    if (diff === 0) return NextResponse.next();
-  }
+  // 3. Le badge posé par /api/login : signé, daté (src/lib/badge.ts, V3.33)
+  if (await badgeValide(request.cookies.get(COOKIE)?.value)) return NextResponse.next();
 
   // 4. Accès refusé
   //    Les routes API répondent 401 ; les pages redirigent vers /login.
