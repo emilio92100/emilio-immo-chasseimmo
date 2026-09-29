@@ -886,12 +886,21 @@ export function typeCompatible(v: unknown, typesRecherche: string | null | undef
   return (t === 'duplex' || t === 'loft') && l.includes('appartement');
 }
 
+/* Le prix que voit l'acheteur dans son espace, tiré du bien en vente. Un
+   bien de l'agence : le prix affiché est celui que paie l'acheteur,
+   honoraires de vente compris. Pas d'honoraires de recherche en plus.
+   Servi à la création de la copie (versBienAcheteur) et à chaque changement
+   de prix ou d'honoraires (repercuterPrix, biens/outils). */
+export function prixCopie(d: Donnees) {
+  const a = argentBien(d);
+  return { prix_vendeur: a.net ?? a.prix, commission_type: 'fixe', commission_val: a.acq ? a.hono || 0 : 0, prix_acquereur: a.prix };
+}
+
 /* Le bien dans le dossier d'un acheteur (table `biens`) : exactement les
    colonnes qu'écrit l'ajout d'un bien depuis la fiche client (FicheClient,
    saveBien), plus le lien vers le bien en vente. */
 export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheId: string; quand: string }) {
   const d = b.donnees || {};
-  const a = argentBien(d);
   const ann = liste(d, 'annexes'), eq = liste(d, 'equipements'), imm = liste(d, 'immeuble');
   const photos = lirePhotos(d.photos).map(p => p.url);
   const energie = { gaz: 'Gaz', electrique: 'Électricité', pac: 'Pompe à chaleur', fioul: 'Fioul', bois: 'Bois', urbain: 'Réseau urbain' } as Record<string, string>;
@@ -915,9 +924,7 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
     surface_balcon: nb(d, 'surfBalcon'), surface_terrasse: nb(d, 'surfTerrasse') ?? nb(d, 'surfLoggia'),
     etat_general: typeof d.etat === 'string' && d.etat ? d.etat : null,
     description: txt(d, 'annonceTexte') || brouillonAnnonce(d),
-    /* Un bien de l'agence : le prix affiché est celui que paie l'acheteur,
-       honoraires de vente compris. Pas d'honoraires de recherche en plus. */
-    prix_vendeur: a.net ?? a.prix, commission_type: 'fixe', commission_val: a.acq ? a.hono || 0 : 0, prix_acquereur: a.prix,
+    ...prixCopie(d),
     charges_trimestrielles: chargesAn ? Math.round(chargesAn / 4) : null, taxe_fonciere: nb(d, 'taxeFonciere'),
     photos, source_portail: 'Emilio Immobilier', agence_nom: 'Emilio Immobilier', agence_tel: null,
   };

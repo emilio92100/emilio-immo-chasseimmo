@@ -648,7 +648,7 @@ export type EtatMandat = 'valide' | 'a_signer' | 'sans_numero';
 
 export function etatMandat(r: {
   mandat_date_signature?: string | null; mandat_date_expiration?: string | null; mandat_numero?: string | null;
-}, aujourdhui = new Date().toISOString().slice(0, 10)): EtatMandat {
+}, aujourdhui = jourParis()): EtatMandat {
   const signe = !!r.mandat_date_signature;
   const exp = r.mandat_date_expiration ? String(r.mandat_date_expiration).slice(0, 10) : null;
   if (signe && (!exp || exp >= aujourdhui)) return 'valide';
@@ -713,6 +713,16 @@ export function masquerEmail(e: string) {
 export function jourParis(d: string | Date = new Date()): string {
   return new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(d));
+}
+
+/* Les jours qui restent jusqu'à la fin d'un mandat, jour à jour, à l'heure de
+   Paris : 0 le dernier jour (le mandat court encore), négatif une fois passé.
+   V3.33 : la fiche client comptait en heures depuis minuit UTC et affichait
+   « Expiré » dès la veille du dernier jour. */
+export function joursRestants(fin: string): number {
+  const f = String(fin).slice(0, 10);
+  const t = (j: string) => Date.UTC(+j.slice(0, 4), +j.slice(5, 7) - 1, +j.slice(8, 10));
+  return Math.round((t(f) - t(jourParis())) / 86400000);
 }
 
 /* Les coordonnées du mandant, vérifiées de la même façon à l'écran (pour

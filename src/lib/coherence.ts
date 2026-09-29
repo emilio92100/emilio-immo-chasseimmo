@@ -24,6 +24,7 @@
    vente » sur le bien, ou effacer le mandat noté sur la recherche). Un bien
    retiré ou vendu n'a plus de mandat qui court. */
 import { supabase } from '@/lib/supabase';
+import { jourParis } from '@/lib/mandat';
 
 export type MandatEnCours = {
   sorte: 'vente' | 'recherche';
@@ -96,7 +97,7 @@ export async function mandatRechercheEnCours(rechercheId: string): Promise<Manda
   const rr = (r.error ? null : r.data) as { mandat_numero?: string | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null; mandat_propose_le?: string | null } | null;
   /* Arrivé à son terme, le mandat signé ne court plus : on en signe un nouveau
      (un mandat terminé ne se prolonge pas par avenant). */
-  const fini = !!rr?.mandat_date_expiration && String(rr.mandat_date_expiration).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  const fini = !!rr?.mandat_date_expiration && String(rr.mandat_date_expiration).slice(0, 10) < jourParis();
   const docs = ((a.data || []) as LigneDoc[]).filter(x => !(fini && x.statut === 'signe'));
   const enLigne = ((b.error ? [] : b.data || []) as { id: string; numero: string | null; statut: string; signe_le: string | null; retracte_le: string | null }[])
     .filter(x => !x.retracte_le && !(fini && x.statut !== 'en_cours'));
