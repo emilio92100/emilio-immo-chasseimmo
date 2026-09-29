@@ -16,7 +16,7 @@ import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
   FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
-  type OptionAcheteur,
+  type ChoixA, type OptionAcheteur,
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerDocument, enregistrerBien,
@@ -31,9 +31,10 @@ import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
 import { DossierBien, type DestPropose } from './DossierBien';
+import { OngletVisitesOffres } from './VisitesOffres';
 import {
-  ADecrire, BoutonAct, BtnTuile, CarteAnnonce, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, HistoriqueBien,
-  Kv, Lettres, ListeDocs, ListeTravaux, ListeVisites, Note, OngletSurfaces, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
+  ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
+  Kv, Lettres, ListeDocs, ListeTravaux, Note, OngletSurfaces, Puces, Tuile, Tuiles, parcoursDe,
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
@@ -61,7 +62,7 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, Cart
 
 type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre' } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -1334,35 +1335,40 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       )}
 
       {onglet === 'visites' && (
-        <Deux>
-          {!detail ? <div className={b.vide}>Chargement…</div> : (
-            <ListeVisites visites={visitesCartes} onAjouter={() => setFen({ k: 'visite' })} rendre={(vc, prochaine) => {
-              const v = visites.find(x => x.cle === vc.cle);
+        !detail ? <div className={b.vide}>Chargement…</div> : (
+          /* Refait en V3.32 (VisitesOffres.tsx) : les deux gestes en haut,
+             ce qui reste à faire, les prochaines visites, puis l'historique. */
+          <OngletVisitesOffres visites={visitesCartes} offres={offresTriees} prix={argentBien(d).prix} compromis={e === 'compromis' || e === 'vendu'}
+            onVisite={() => setFen({ k: 'visite' })} onOffre={() => setFen({ k: 'offre' })}
+            actVisite={cle => {
+              const v = visites.find(y => y.cle === cle);
               if (!v) return null;
-              return <CarteVisiteB v={vc} prochaine={prochaine} onCR={() => setCr(v)} onAnnuler={() => annulerVisite(v)} onDoc={() => bonDeVisite(v)} onFiche={v.clientId ? () => ouvrirClient(v.clientId!) : undefined} />;
-            }} />
-          )}
-          <Col gap={10}>
-            <TitreSec action={<BoutonAct onClick={() => setFen({ k: 'offre' })}><Ic n="plus" t={13} e={2.6} />Offre</BoutonAct>}>Les offres</TitreSec>
-            {offres.length === 0 ? <div className={b.vide}>Aucune offre pour l’instant. « + Offre » l’enregistre : montant, financement, validité.</div> : offresTriees.map(x => (
-              <CarteOffreB key={x.id} o={x} prix={argentBien(d).prix} compromis={e === 'compromis' || e === 'vendu'}
-                onStatut={st => statutOffre(x, st)}
-                onContre={() => {
-                  const r = prompt('Montant de la contre-offre du vendeur, en euros :', x.montant ? String(x.montant) : '');
-                  const n = r ? Number(r.replace(/[\s  €]/g, '').replace(',', '.')) : NaN;
-                  if (Number.isFinite(n) && n > 0) statutOffre(x, 'contre', n);
-                }}
-                onDoc={() => offreEcrite(x)}
-                onPiece={typeof x.donnees?.chemin === 'string' && x.donnees.chemin ? () => ouvrirPiece(String(x.donnees.chemin), String(x.donnees.nom || 'offre.pdf')) : undefined} />
-            ))}
-            {bien.etape === 'offre' && offres.length > 0 && !offresOuvertes.length && !offres.some(x => x.statut === 'acceptee') && (
-              <div className={b.encart}>{'Plus aucune offre en cours. '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'mandat' })}>Remettre le bien en vente</button></div>
-            )}
-            {bien.etape === 'offre' && offres.some(x => x.statut === 'acceptee') && (
-              <div className={b.encart}>{'Une offre est acceptée : quand le compromis est signé, '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'compromis' })}>passe le bien « Sous compromis »</button></div>
-            )}
-          </Col>
-        </Deux>
+              const opt = v.clientId ? options.find(y => y.clientId === v.clientId && (!v.rechercheId || y.rechercheId === v.rechercheId)) : undefined;
+              return {
+                onCR: () => setCr(v), onAnnuler: () => annulerVisite(v), onDoc: () => bonDeVisite(v),
+                onFiche: v.clientId ? () => ouvrirClient(v.clientId!) : undefined,
+                /* Il veut faire une offre : la fenêtre s'ouvre sur lui (s'il
+                   n'en a pas déjà fait une). */
+                onOffre: offres.some(o => (v.clientId && o.client_id === v.clientId) || (!!o.qui && o.qui === v.qui)) ? undefined
+                  : () => setFen({ k: 'offre', pour: opt ? { mode: 'crm', o: opt } : { mode: 'libre', nom: v.qui, tel: '' } }),
+              };
+            }}
+            actOffre={x => ({
+              onStatut: st => statutOffre(x, st),
+              onContre: () => {
+                const r = prompt('Montant de la contre-offre du vendeur, en euros :', x.montant ? String(x.montant) : '');
+                const n = r ? Number(r.replace(/[\s  €]/g, '').replace(',', '.')) : NaN;
+                if (Number.isFinite(n) && n > 0) statutOffre(x, 'contre', n);
+              },
+              onDoc: () => offreEcrite(x),
+              onPiece: typeof x.donnees?.chemin === 'string' && x.donnees.chemin ? () => ouvrirPiece(String(x.donnees.chemin), String(x.donnees.nom || 'offre.pdf')) : undefined,
+            })}
+            encart={bien.etape === 'offre' && offres.length > 0 && !offresOuvertes.length && !offres.some(x => x.statut === 'acceptee') ? (
+              <>{'Plus aucune offre en cours. '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'mandat' })}>Remettre le bien en vente</button></>
+            ) : bien.etape === 'offre' && offres.some(x => x.statut === 'acceptee') ? (
+              <>{'Une offre est acceptée : quand le compromis est signé, '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'compromis' })}>passe le bien « Sous compromis »</button></>
+            ) : undefined} />
+        )
       )}
 
       {onglet === 'acheteurs' && (
@@ -1464,7 +1470,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           else if (suite === 'document') void faireDocument({ modele: 'mandat_vente' });
         });
       }} />}
-      {fen?.k === 'offre' && <FenOffre bien={bien} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={(detail?.suivi || []).find(x => x.type === 'etape' && x.statut === 'compromis') || null} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'prix' && <FenPrix bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}

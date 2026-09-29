@@ -1,0 +1,112 @@
+/* ═══ L'onglet « Visites et offres » (V3.32) : voir VisitesOffres.tsx ═══
+   Violet pour les visites (la teinte de l'onglet), or pour les offres. */
+
+.page { display: flex; flex-direction: column; gap: 16px; min-width: 0; font-family: 'DM Sans', sans-serif; color: #2e4166; }
+
+/* ── L'en-tête ── */
+.tete {
+  display: flex; flex-direction: column; gap: 16px; padding: 18px 20px; border-radius: 20px; background: #fff; border: 1px solid #e3e8f0;
+  box-shadow: 0 16px 34px -28px rgba(46, 65, 102, .5);
+}
+.teteHaut { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.teteTx { min-width: 0; flex: 1 1 320px; }
+.teteTx h2 { margin: 0; font: 800 19px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
+.teteTx p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; color: #475569; }
+.gestes { display: flex; gap: 10px; flex-wrap: wrap; }
+.gesteVisite, .gesteOffre {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 46px; padding: 0 18px; border-radius: 14px; border: none; cursor: pointer;
+  font: 800 14px 'Plus Jakarta Sans', sans-serif; white-space: nowrap; transition: filter .15s, box-shadow .15s;
+}
+.gesteVisite { background: #2e4166; color: #fff; box-shadow: 0 12px 22px -14px rgba(46, 65, 102, .9); }
+.gesteOffre { background: #c9a84c; color: #1a2332; box-shadow: 0 12px 22px -14px rgba(160, 124, 40, .9); }
+.gesteVisite:hover, .gesteOffre:hover { filter: brightness(1.07); }
+
+.chiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.chiffre { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 0; padding: 10px 14px; border-radius: 14px; background: #f8fafc; border: 1px solid #eef2f7; min-width: 0; }
+.chiffre b { font: 800 21px/1.2 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.chiffre span { font-size: 13px; font-weight: 600; color: #475569; }
+.chiffre small { flex-basis: 100%; font-size: 12px; font-weight: 700; color: #a07c28; }
+.chiffre[data-alerte='oui'] { background: #fff7ed; border-color: #fed7aa; }
+.chiffre[data-alerte='oui'] b { color: #c2410c; }
+
+.encart { padding: 11px 14px; border-radius: 14px; background: #fffcf4; border: 1px solid #ecdcb0; font-size: 13.5px; line-height: 1.5; color: #7a5d1c; }
+
+/* ── Vide : le chemin en trois étapes ── */
+.chemin { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.etape { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 18px 16px 16px; border-radius: 18px; background: #fff; border: 1px solid #e3e8f0; min-width: 0; }
+.etapeN { position: absolute; top: 14px; right: 16px; font: 800 28px/1 'Plus Jakarta Sans', sans-serif; color: #eef2f7; }
+.etapeIc { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #f5f3ff; color: #6d28d9; }
+.etapeIc[data-i='1'] { background: #eff6ff; color: #1d4ed8; }
+.etapeIc[data-i='2'] { background: #fbf1d6; color: #a07c28; }
+.etape > b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.etape > p { margin: 0; font-size: 13px; line-height: 1.55; color: #475569; }
+
+/* ── Les blocs ── */
+.bloc { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.blocT { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.blocT h3 { margin: 0; font: 800 16.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.blocT > i { font-style: normal; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; background: #eef2f8; color: #34496e; font-size: 12px; font-weight: 800; }
+.grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+/* « À faire » et « Les prochaines visites », côte à côte quand les deux sont là. */
+.enCours { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; align-items: start; }
+.enCours[data-deux='oui'] .grille { grid-template-columns: minmax(0, 1fr); }
+.vide { margin: 0; font-size: 13.5px; color: #64748b; }
+
+.seg { margin-left: auto; display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: #eef2f7; }
+.seg button {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9px; border: none; background: none; cursor: pointer;
+  color: #475569; font: 700 12.5px 'DM Sans', sans-serif;
+}
+.seg button i { font-style: normal; font-size: 11.5px; color: #94a3b8; }
+.seg button[aria-pressed='true'] { background: #fff; color: #1a2332; box-shadow: 0 2px 6px rgba(15, 23, 42, .08); }
+
+/* ── La frise ── */
+.frise { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ligne { position: relative; display: grid; grid-template-columns: 52px 34px minmax(0, 1fr); column-gap: 10px; padding-bottom: 12px; }
+.ligne::before { content: ''; position: absolute; left: 78px; top: 34px; bottom: 0; width: 2px; background: #e8edf4; }
+.ligne:last-child::before { display: none; }
+.jour { display: flex; flex-direction: column; align-items: center; padding-top: 4px; line-height: 1.1; }
+.jour b { font: 800 19px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.jour small { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #64748b; }
+.point { position: relative; z-index: 1; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f5f3ff; color: #6d28d9; border: 2px solid #fff; box-shadow: 0 0 0 1px #e9e3ff; }
+.ligne[data-genre='offre'] .point { background: #fbf1d6; color: #a07c28; box-shadow: 0 0 0 1px #ecdcb0; }
+.ligne[data-statut='acceptee'] .point { background: #dcfce7; color: #15803d; box-shadow: 0 0 0 1px #bbf7d0; }
+.ligne[data-annulee='oui'] .point { background: #f1f5f9; color: #94a3b8; box-shadow: 0 0 0 1px #e2e8f0; }
+.carte { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: #fff; border: 1px solid #e3e8f0; }
+.ligne[data-annulee='oui'] .carte { background: #fbfcfe; }
+.ligne[data-annulee='oui'] .carteT b { color: #64748b; font-weight: 700; }
+.carteT { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.carteT b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.heure { font-size: 12.5px; font-weight: 700; color: #64748b; }
+.puce { padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+.etoiles { color: #c9a84c; font-size: 13px; letter-spacing: 1px; }
+.source { margin-left: auto; font-size: 12px; font-weight: 600; color: #64748b; }
+.ecart { font-size: 12.5px; font-weight: 700; color: #475569; }
+.qui { margin: 0; font-size: 13px; color: #475569; }
+.citation { margin: 0; font-size: 13.5px; line-height: 1.55; color: #334155; }
+.acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.acts button {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 9px; border: 1px solid #e3e8f0; background: #fff; cursor: pointer;
+  color: #34496e; font: 700 12.5px 'DM Sans', sans-serif; transition: background .15s, border-color .15s;
+}
+.acts button:hover { background: #f8fafc; border-color: #d5deeb; }
+.acts button.actOr { background: #c9a84c; border-color: #c9a84c; color: #1a2332; }
+.acts button.actOr:hover { background: #bf9d3f; }
+
+/* ── Plus étroit ── */
+@media (max-width: 1000px) {
+  .chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chemin { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .tete { padding: 14px; border-radius: 18px; }
+  .gestes { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .gesteVisite, .gesteOffre { height: 48px; padding: 0 10px; font-size: 13.5px; white-space: normal; text-align: center; line-height: 1.2; }
+  .grille, .enCours { grid-template-columns: minmax(0, 1fr); }
+  .seg { margin-left: 0; }
+  .ligne { grid-template-columns: 40px 28px minmax(0, 1fr); column-gap: 8px; }
+  .ligne::before { left: 61px; top: 30px; }
+  .point { width: 28px; height: 28px; }
+  .jour b { font-size: 16px; }
+  .source { margin-left: 0; }
+}

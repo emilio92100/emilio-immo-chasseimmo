@@ -447,12 +447,14 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
 }
 
 /* ══ Une offre est arrivée ═════════════════════════════════════════════ */
-export function FenOffre({ bien, options, recherches, proprio, onFermer, onFait }: {
+export function FenOffre({ bien, pour, options, recherches, proprio, onFermer, onFait }: {
   bien: BienVente; options: OptionAcheteur[]; recherches: RechercheMini[]; proprio: ClientMini | null;
   onFermer: () => void; onFait: (b: BienVente | null) => void;
+  /* Depuis une visite (« Enregistrer son offre », V3.32) : l'acheteur est choisi. */
+  pour?: ChoixA;
 }) {
   const a = argentBien(bien.donnees || {});
-  const [choix, setChoix] = useState<ChoixA>(null);
+  const [choix, setChoix] = useState<ChoixA>(pour ?? null);
   const [montant, setMontant] = useState<number | null>(null);
   const [recue, setRecue] = useState(aujourdhui());
   const [jusquau, setJusquau] = useState(plusJours(aujourdhui(), 5));

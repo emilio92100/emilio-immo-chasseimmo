@@ -476,38 +476,6 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche }: 
   );
 }
 
-export function ListeVisites({ visites, rendre, onAjouter }: {
-  visites: VisiteCarte[]; rendre: (v: VisiteCarte, prochaine: boolean) => ReactNode; onAjouter: () => void;
-}) {
-  const avenir = visites.filter(v => !v.passee && v.statut !== 'annulee').sort((a, b) => `${a.ymd}${a.heure}`.localeCompare(`${b.ymd}${b.heure}`));
-  const passees = visites.filter(v => v.passee || v.statut === 'annulee');
-  const [sel, setSel] = useState<'avenir' | 'passees' | 'toutes'>(avenir.length ? 'avenir' : 'toutes');
-  const montrerAvenir = sel !== 'passees';
-  const montrerPassees = sel !== 'avenir';
-  return (
-    <div className={o.col} style={{ gap: 10 }}>
-      <div className={o.secT}>
-        <b className={o.titreSec}>Les visites</b>
-        {visites.length > 0 && (
-          <div className={o.seg} role="group" aria-label="Quelles visites">
-            <button type="button" aria-pressed={sel === 'avenir'} onClick={() => setSel('avenir')}>À venir<i>{avenir.length}</i></button>
-            <button type="button" aria-pressed={sel === 'passees'} onClick={() => setSel('passees')}>Passées<i>{passees.length}</i></button>
-            <button type="button" aria-pressed={sel === 'toutes'} onClick={() => setSel('toutes')}>Toutes</button>
-          </div>
-        )}
-        <button type="button" className={`${o.act} ${o.actMarine}`} onClick={onAjouter}><Ic n="plus" t={13} e={2.6} />Visite</button>
-      </div>
-      {!visites.length && <div className={o.vide}>Aucune visite. Avec un acheteur suivi, elle s’ajoute aussi à son dossier et à l’agenda ; avec quelqu’un hors du CRM, elle peut aller dans l’agenda.</div>}
-      {montrerAvenir && sel === 'toutes' && avenir.length > 0 && <div className={o.sep}>À venir</div>}
-      {montrerAvenir && avenir.map((v, i) => <div key={v.cle}>{rendre(v, i === 0)}</div>)}
-      {sel === 'avenir' && !avenir.length && visites.length > 0 && <div className={o.vide}>Aucune visite prévue. « + Visite » en planifie une.</div>}
-      {montrerPassees && sel === 'toutes' && passees.length > 0 && <div className={o.sep}>Passées</div>}
-      {montrerPassees && passees.map(v => <div key={v.cle}>{rendre(v, false)}</div>)}
-      {sel === 'passees' && !passees.length && <div className={o.vide}>Aucune visite passée pour l’instant.</div>}
-    </div>
-  );
-}
-
 /* Une offre : le montant, l'écart au prix, ses étapes, le délai. */
 export function CarteOffreB({ o: x, prix, compromis, onStatut, onContre, onDoc, onPiece }: {
   o: SuiviVente; prix: number | null; compromis: boolean;
