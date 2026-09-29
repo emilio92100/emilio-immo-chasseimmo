@@ -27,7 +27,7 @@ export type ClientMini = {
 export type RechercheMini = Record<string, unknown> & { id: string; client_id: string; nom?: string | null; active?: boolean | null; type_bien?: string | null; budget_max?: number | null };
 /* La copie d'un bien en vente dans le dossier d'un acheteur (table biens). */
 export type Copie = Record<string, unknown> & {
-  id: string; client_id: string; recherche_id: string | null; bien_vente_id: string;
+  id: string; client_id: string; recherche_id: string | null; bien_vente_id: string; etape?: string | null;
   envoye_le: string | null; badge_retour: string | null; created_at: string; vu_le?: string | null;
   retour_client?: string | null; retour_le?: string | null;
 };
@@ -250,7 +250,17 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
 async function copieDe(b: BienVente, clientId: string, rechercheId: string, badge?: string): Promise<{ copie: Copie; neuve: boolean }> {
   const { data: deja, error: e1 } = await supabase.from('biens').select('*').eq('bien_vente_id', b.id).eq('recherche_id', rechercheId).limit(1);
   if (e1) lever('Le dossier de l’acheteur n’a pas pu être lu', e1.message);
-  if (deja?.length) return { copie: deja[0] as Copie, neuve: false };
+  if (deja?.length) {
+    const c = deja[0] as Copie;
+    if (c.etape !== 'selection') return { copie: c, neuve: false };
+    /* Mis dans sa sélection plus tôt (V3.29) : il ne l'a pas encore vu. On le
+       lui présente maintenant, comme s'il arrivait. */
+    const { data: p, error: eP } = await supabase.from('biens')
+      .update({ etape: 'presente', envoye_le: new Date().toISOString(), canal_envoi: 'lien', ...(badge ? { badge_retour: badge } : {}) })
+      .eq('id', c.id).select().single();
+    if (eP || !p) lever('Le bien n’a pas pu être présenté', eP?.message || 'réponse vide');
+    return { copie: p as Copie, neuve: true };
+  }
   const ligne = { ...versBienAcheteur(b, { clientId, rechercheId, quand: new Date().toISOString() }), ...(badge ? { badge_retour: badge } : {}) };
   const { data, error } = await supabase.from('biens').insert(ligne).select().single();
   if (error) lever('Le bien n’a pas pu être ajouté au dossier de l’acheteur', error.message);
@@ -282,6 +292,42 @@ export async function envoyerDansEspace(b: BienVente, l: Acheteur[]): Promise<{ 
     }
   }
   return { n, erreurs };
+}
+
+/* Le mettre dans leur sélection (V3.29) : le bien entre dans leur dossier, à
+   l'étape « selection », sans rien leur envoyer. Il partira depuis leur
+   fiche, avec le mail d'envoi habituel, ou d'ici avec « Envoyer dans leur
+   espace ». Rend l'id de la ligne `biens` de chacun. */
+export async function mettreEnSelection(b: BienVente, l: Acheteur[]): Promise<{ n: number; ids: Record<string, string>; erreurs: string[] }> {
+  const erreurs: string[] = [];
+  const ids: Record<string, string> = {};
+  let n = 0;
+  for (const a of l) {
+    try {
+      const { data: deja, error: e1 } = await supabase.from('biens').select('id').eq('bien_vente_id', b.id).eq('recherche_id', a.recherche.id).limit(1);
+      if (e1) lever('Son dossier n’a pas pu être lu', e1.message);
+      if (deja?.length) { ids[a.recherche.id] = String((deja[0] as { id: string }).id); continue; }
+      const ligne = {
+        ...versBienAcheteur(b, { clientId: a.client.id, rechercheId: a.recherche.id, quand: new Date().toISOString() }),
+        etape: 'selection', envoye_le: null, canal_envoi: null, badge_retour: 'propose',
+      };
+      const { data, error } = await supabase.from('biens').insert(ligne).select('id').single();
+      if (error || !data) lever('Le bien n’a pas pu être ajouté à son dossier', error?.message || 'réponse vide');
+      const id = String((data as { id: string }).id);
+      ids[a.recherche.id] = id;
+      n++;
+      const { error: eJ } = await supabase.from('journal').insert({
+        client_id: a.client.id, recherche_id: a.recherche.id, bien_id: id, type: 'rapprochement_bien',
+        titre: 'Mis en sélection · un de vos mandats',
+        description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${a.corr.note} %`,
+        metadata: { bien_vente_id: b.id },
+      });
+      if (eJ) signalerEchec('Le bien est dans sa sélection, mais l’historique du client', eJ.message);
+    } catch (e) {
+      erreurs.push(`${nomClient(a.client)} : ${(e as Error).message}`);
+    }
+  }
+  return { n, ids, erreurs };
 }
 
 /* ══ Les visites ═══════════════════════════════════════════════════════ */

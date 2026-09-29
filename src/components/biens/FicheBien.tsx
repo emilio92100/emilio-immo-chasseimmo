@@ -10,7 +10,7 @@ import {
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
-import { Anneau, NOM_MANDAT, prixCarte } from './CarteBien';
+import { NOM_MANDAT, prixCarte } from './CarteBien';
 import { COULEURS, ChampDossier, ChampPhotos, habitable } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
@@ -20,19 +20,26 @@ import {
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerDocument, enregistrerBien,
-  envoyerDansEspace, ficheClient, initiales, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
+  ficheClient, initiales, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
+import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
+import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
+import { BlocDernierement, BlocProchaines, CarteEstimation, CarteMandat, CarteProprio, CarteVisites, Kpis, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
-   · Vue d'ensemble : le bien en bref (en icônes), puis deux colonnes
-     équilibrées : les acheteurs qui correspondent, les visites et offres (ou
-     l'estimation, avant le mandat), les notes, le dossier ; le propriétaire,
-     le mandat, la visite (codes, clés).
+   · Vue d'ensemble (V3.29, VueBien.tsx) : quatre cartes — le mandat (ou le
+     rendez-vous et l'estimation avant lui), les acheteurs, les visites et
+     offres, le propriétaire —, le bien en bref, puis les prochaines visites
+     et « Dernièrement » ; dessous, la visite (codes, clés), le dossier, le
+     propriétaire en détail, les notes. Avant le mandat, « Qui pourrait
+     l'acheter » (sans envoi) et l'estimation.
+   · Acheteurs (V3.29, AcheteursBien.tsx) : ceux qui correspondent, appeler,
+     SMS, mail, et « Sélection ou envoi… ».
    · Le bien : l'annonce et les photos en haut, le bien en bref, puis le
      détail par thème, avec ses icônes, et les pièces une à une.
    · Photos : ajouter, ranger, légender, sans passer par l'éditeur.
@@ -42,7 +49,7 @@ import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/Fic
 type Onglet = 'apercu' | 'bien' | 'photos' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
   | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre' } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
-  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string };
+  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
 const OPTIONS: Record<string, Record<string, string>> = {};
@@ -171,90 +178,6 @@ function Bandeau({ bien, detail, surCarte }: { bien: BienVente; detail: DetailBi
   );
 }
 
-/* ══ LES ACHETEURS QUI CORRESPONDENT ═════════════════════════════════════ */
-function detailCorr(a: Acheteur): { t: string; ok: boolean } {
-  const pb = a.corr.lignes.filter(l => l.etat !== 'oui');
-  if (!pb.length) return { t: `Tout correspond : ${a.corr.lignes.map(l => l.lib.toLowerCase()).slice(0, 5).join(', ')}`, ok: true };
-  return { t: pb.slice(0, 2).map(l => `${l.lib} : ${l.valeur}, demandé ${l.demande}`).join(' · '), ok: false };
-}
-
-function LigneAcheteur({ a, coche, onCoche, onEnvoyer, onFiche, envoi }: {
-  a: Acheteur; coche: boolean; onCoche: () => void; onEnvoyer: () => void; onFiche: () => void; envoi: boolean;
-}) {
-  const dt = detailCorr(a);
-  const statut = String(a.client.statut || '');
-  const badge = a.copie?.badge_retour ? BADGES[a.copie.badge_retour] : null;
-  return (
-    <div className={b.acheteur}>
-      <button type="button" className={`${b.coche} ${coche ? b.cocheOn : ''}`} disabled={!!a.copie} aria-pressed={coche} aria-label={`Choisir ${nomClient(a.client)}`} onClick={onCoche}>
-        {coche && <Ic n="check" t={13} e={3} />}
-      </button>
-      <Anneau note={a.corr.note} />
-      <div className={b.achTxt}>
-        <div className={b.achNom}>
-          <button type="button" className={b.lien} style={{ padding: 0, fontSize: 14.5 }} onClick={onFiche}>{nomClient(a.client)}</button>
-          {(statut === 'actif' || statut === 'prospect') && <span className={`${b.statutC} ${b['statut_' + statut]}`}>{statut === 'actif' ? 'Actif' : 'Prospect'}</span>}
-          {a.recherche.budget_max ? <span>{`jusqu’à ${euros(a.recherche.budget_max)}`}</span> : null}
-        </div>
-        <div className={`${b.achDetail} ${dt.ok ? b.achOk : ''}`}>{dt.t}</div>
-        {a.copie && (
-          <div className={b.achEnvoye}>
-            {`Dans son espace depuis le ${dateCourte(a.copie.envoye_le || a.copie.created_at)}`}
-            {a.copie.vu_le ? ' · il l’a ouvert' : ''}
-            {badge ? ` · ${badge.l.charAt(0).toLowerCase()}${badge.l.slice(1)}` : ''}
-          </div>
-        )}
-      </div>
-      {!a.copie && <button type="button" className={`${b.mini} ${b.achAction}`} disabled={envoi} onClick={onEnvoyer}><Ic n="envoyer" t={13} />Envoyer dans son espace</button>}
-    </div>
-  );
-}
-
-function BlocAcheteurs({ acheteurs, max, onTout, onEnvoyer, onFiche, nbRecherches }: {
-  acheteurs: Acheteur[]; max?: number; onTout?: () => void; nbRecherches: number;
-  onEnvoyer: (l: Acheteur[]) => Promise<void>; onFiche: (clientId: string) => void;
-}) {
-  const liste = acheteurs.filter(a => a.corr.note >= SEUIL_LISTE);
-  const bons = liste.filter(a => a.corr.note >= SEUIL_CORRESPOND);
-  const [choisis, setChoisis] = useState<string[]>(() => bons.filter(a => !a.copie).slice(0, 3).map(a => a.recherche.id));
-  const [envoi, setEnvoi] = useState(false);
-  const montres = max ? liste.slice(0, max) : liste;
-  const aEnvoyer = liste.filter(a => choisis.includes(a.recherche.id) && !a.copie);
-  async function envoyer(l: Acheteur[]) {
-    if (!l.length) return;
-    if (!confirm(l.length > 1 ? `Envoyer ce bien dans l’espace de ${l.length} acheteurs ?\n\nIl y arrive comme les biens de leur recherche, avec la note de correspondance ; ils sont prévenus sur leur téléphone s’ils l’ont accepté.` : `Envoyer ce bien dans l’espace de ${nomClient(l[0].client)} ?`)) return;
-    setEnvoi(true);
-    await onEnvoyer(l);
-    setChoisis(c => c.filter(x => !l.some(a => a.recherche.id === x)));
-    setEnvoi(false);
-  }
-  return (
-    <Bloc ic="cible" titre={<>{'Acheteurs qui correspondent'}<i>{` · ${bons.length}`}</i></>}
-      action={max && liste.length > max && onTout ? <Modifier onClick={onTout} lib={`Voir les ${liste.length}`} /> : undefined}>
-      <p className={b.sous}>{`Parmi tes ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''}, calculé avec la même note que dans leur espace.`}</p>
-      {liste.length === 0 ? (
-        <div className={b.vide}>Aucune recherche ne correspond pour l’instant. La liste se met à jour dès qu’un acheteur est suivi, ou que le prix change.</div>
-      ) : (
-        <>
-          {aEnvoyer.length > 0 && (
-            <button type="button" className={`${s.btn} ${s.btnOr}`} style={{ alignSelf: 'flex-start' }} disabled={envoi} onClick={() => envoyer(aEnvoyer)}>
-              <Ic n="envoyer" t={15} />{envoi ? 'Envoi…' : aEnvoyer.length > 1 ? `Envoyer aux ${aEnvoyer.length} acheteurs choisis` : `Envoyer à ${nomClient(aEnvoyer[0].client)}`}
-            </button>
-          )}
-          <div className={b.acheteurs}>
-            {montres.map(a => (
-              <LigneAcheteur key={a.recherche.id} a={a} envoi={envoi} coche={choisis.includes(a.recherche.id)}
-                onCoche={() => setChoisis(c => (c.includes(a.recherche.id) ? c.filter(x => x !== a.recherche.id) : [...c, a.recherche.id]))}
-                onEnvoyer={() => envoyer([a])} onFiche={() => onFiche(a.client.id)} />
-            ))}
-          </div>
-          <div className={b.pied}>Le bien arrive dans leur espace comme ceux de leur recherche, avec la note. Ceux qui l’ont déjà ne sont pas cochés.</div>
-        </>
-      )}
-    </Bloc>
-  );
-}
-
 /* ══ L'ESSENTIEL DU BIEN ══════════════════════════════════════════════════ */
 function exterieurCourt(d: Donnees): string {
   const ann = liste(d, 'annexes');
@@ -283,7 +206,7 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
   if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
   if (ann.length) items.push({ ic: icExt, v: exterieurCourt(d), l: 'Extérieur' });
-  if (d.expo) items.push({ ic: 'boussole', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo), l: 'Exposition' });
+  if (d.expo) items.push({ ic: 'boussole', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo).replace(/^./, x => x.toUpperCase()), l: 'Exposition' });
   if (d.dpe) items.push({ ic: '', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: 'DPE, par m² et par an' });
   else if (d.dpeStatut === 'vierge') items.push({ ic: 'eclair', v: 'Vierge', l: 'DPE' });
   if (n('chargesAn')) items.push({ ic: 'lots', v: `${euros((n('chargesAn') as number) / 12)}`, l: 'Charges par mois' });
@@ -300,18 +223,6 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
           <div><b>{x.v}</b><small>{x.l}</small></div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function LigneVisite({ v }: { v: VisiteU }) {
-  const iss = v.issue ? ISSUES[v.issue] : null;
-  const etat = v.statut === 'annulee' ? { t: 'Annulée', c: '#94a3b8' } : iss ? { t: iss.crm, c: iss.couleur } : passee(v) ? { t: 'Compte rendu à faire', c: '#b45309' } : { t: v.heure ? `À ${v.heure.replace(':', ' h ')}` : 'À venir', c: '#2563eb' };
-  return (
-    <div className={b.ligneV}>
-      <span>{v.ymd ? jourCourt(v.ymd) : '—'}</span>
-      <span><b>{v.qui}</b>{v.commentaire ? <i>{` · ${v.commentaire}`}</i> : null}</span>
-      <span className={b.issue} style={{ color: etat.c }}>{etat.t}</span>
     </div>
   );
 }
@@ -1016,7 +927,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   }, [bien.id]);
   const [detail, setDetail] = useState<DetailBien | null>(null);
   const [erreur, setErreur] = useState('');
-  const [onglet, setOnglet] = useState<Onglet>('apercu');
+  /* « Voir les acheteurs » depuis une alerte : la fiche s'ouvre sur l'onglet (V3.29). */
+  const [onglet, setOnglet] = useState<Onglet>(() => {
+    const o = typeof window === 'undefined' ? null : lireOngletBien(depart.id);
+    return o === 'acheteurs' || o === 'visites' || o === 'historique' || o === 'documents' ? o : 'apercu';
+  });
+  useEffect(() => { oublierOngletBien(); }, []);
   const [menu, setMenu] = useState<'etape' | 'plus' | null>(null);
   const [fen, setFen] = useState<Fen | null>(null);
   const [cr, setCr] = useState<VisiteU | null>(null);
@@ -1076,13 +992,6 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   }
   const ouvrirDoc = (id: string) => onNavigate('documents', { ouvrir: id });
 
-  async function envoyer(l: Acheteur[]) {
-    const r = await envoyerDansEspace(bien, l);
-    setMessage(r.erreurs.length
-      ? { t: `${r.n} envoi${r.n > 1 ? 's' : ''} fait${r.n > 1 ? 's' : ''}. Erreurs : ${r.erreurs.join(' ; ')}`, ok: false }
-      : { t: r.n > 1 ? `Envoyé dans l’espace de ${r.n} acheteurs.` : r.n === 1 ? 'Envoyé dans son espace.' : 'Ils l’avaient déjà.', ok: true });
-    await apres();
-  }
   async function statutOffre(o: SuiviVente, statut: string, contre?: number) {
     try {
       await majSuivi(o.id, { statut, donnees: { ...o.donnees, reponse_le: new Date().toISOString().slice(0, 10), ...(contre ? { contre } : {}) } });
@@ -1182,18 +1091,46 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   ];
 
   const blocNotes = <BlocObservations d={d} onModifier={() => onModifier('observations')} />;
-  const blocVisitesResume = (
-    <Bloc ic="cle" titre="Visites et offres" action={<Modifier onClick={() => setFen({ k: 'visite' })} lib="+ Visite" />}>
-      {offresOuvertes.map(o => (
-        <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
-      ))}
-      {visites.length === 0 ? <div className={b.vide}>Aucune visite pour l’instant.</div> : (
-        <div className={b.fil}>{visites.slice(0, 5).map(v => <LigneVisite key={v.cle} v={v} />)}</div>
-      )}
-      {!offres.length && <div className={b.pied}>Aucune offre pour l’instant.</div>}
-      {(visites.length > 5 || offres.length > 0) && <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => setOnglet('visites')}>Tout voir</button>}
-    </Bloc>
-  );
+
+  /* ── La Vue d'ensemble (V3.29) : les quatre cartes, puis le détail ── */
+  const mode = modeAcheteurs(e);
+  const estim = lireEstim(d);
+  const fourchette = estim.basse && estim.haute ? `${euros(estim.basse).replace(/\s€$/, '')} – ${euros(estim.haute)}` : estim.basse || estim.haute ? euros((estim.basse || estim.haute) as number) : '';
+  const persP = (Array.isArray(d.proprietaires) ? d.proprietaires : []) as Record<string, string>[];
+  const nomP = nomProprio(d) || (proprio ? nomClient(proprio) : '');
+  const telP = proprio?.telephones?.[0] || persP.find(p => p?.telephone)?.telephone || '';
+  const plurielP = d.qui === 'couple' || d.qui === 'indivision' || persP.filter(p => p && (p.nom || p.prenom)).length > 1;
+  const sousP = recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · ');
+  const faites = visites.filter(v => v.statut !== 'annulee' && passee(v));
+  const compte = (x: Issue | null) => faites.filter(v => v.issue === x).length;
+  const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+  const repartition: Repartition = [
+    { n: compte('offre'), c: ISSUES.offre.couleur, l: pl(compte('offre'), 'veut faire une offre', 'veulent faire une offre') },
+    { n: compte('revoir'), c: ISSUES.revoir.couleur, l: 'à revoir' },
+    { n: compte('reflexion'), c: ISSUES.reflexion.couleur, l: 'en réflexion' },
+    { n: compte('non'), c: ISSUES.non.couleur, l: pl(compte('non'), 'pas pour lui', 'pas pour eux') },
+    { n: compte(null), c: '#dfe5ee', l: pl(compte(null), 'compte rendu à faire', 'comptes rendus à faire') },
+  ];
+  const noteDe = (rechercheId: string | null) => acheteurs.find(x => x.recherche.id === rechercheId)?.corr.note;
+  const versProchaine = (v: VisiteU, etat: string, ton: ProchaineVisite['ton']): ProchaineVisite => {
+    const n = noteDe(v.rechercheId);
+    return {
+      cle: v.cle, ymd: v.ymd, heure: v.heure, qui: v.qui, clientId: v.clientId, etat, ton,
+      sous: v.source === 'crm' ? `Acheteur suivi${n ? ` · ${n} % de ses critères` : ''}` : 'Hors CRM',
+    };
+  };
+  const prochaines: ProchaineVisite[] = [
+    ...[...visitesAVenir].reverse().slice(0, 3).map(v => versProchaine(v, 'À venir', 'bleu')),
+    ...faites.filter(v => !v.issue && v.statut !== 'faite').slice(0, 2).map(v => versProchaine(v, 'Compte rendu à faire', 'or')),
+  ].slice(0, 4);
+  const TEINTE: Record<string, string> = { ic_or: '#c9a84c', ic_vert: '#16a34a', ic_bleu: '#2563eb', ic_violet: '#7c3aed', ic_rouge: '#dc2626', ic_gris: '#94a3b8', ic_emilio: '#34496e' };
+  const recents: Recent[] = evts.slice(0, 4).map(x => {
+    const det = (x.detail || '').split('\n')[0];
+    return { cle: x.cle, le: x.le, titre: x.titre, c: TEINTE[x.ton] || '#94a3b8', detail: det.length > 90 ? `${det.slice(0, 88)}…` : det || undefined };
+  });
+  /* Les dossiers où le bien est, sans que l'acheteur soit dans la liste (sa
+     recherche a changé, ou il n'est plus actif). */
+  const horsListe = (detail?.copies || []).filter(c => !acheteurs.some(x => x.recherche.id === c.recherche_id && x.corr.note >= SEUIL_LISTE));
 
   return (
     <div className={b.fiche}>
@@ -1249,26 +1186,34 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       <CorpsOnglet k={onglet} ordre={ONGLETS.map(o => o.k)}>
       {onglet === 'apercu' && (
         <div className={b.col}>
-          <Bloc ic="liste" titre="En bref" action={<Modifier onClick={() => setOnglet('bien')} lib="Tout le détail" />}>
-            <Faits d={d} vide="Surface, pièces, étage, extérieur… : « Modifier » pour les saisir." />
-          </Bloc>
+          <Kpis n={avant ? 3 : 4}>
+            {avant
+              ? <CarteEstimation rdv={txt(d, 'rdvEstimation')} fourchette={fourchette} prix={estim.prix || null} suivre={e === 'a_suivre'} proprio={nomP}
+                  onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} />
+              : <CarteMandat type={d.mandatType ? NOM_MANDAT[String(d.mandatType)] || '' : ''} numero={txt(d, 'mandatNumero') || bien.mandat_numero || ''}
+                  signe={txt(d, 'mandatDate')} fin={txt(d, 'mandatFin')} onModifier={() => onModifier('prix')} />}
+            <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />
+            {!avant && <CarteVisites nbVisites={nbVisites} nbAVenir={visitesAVenir.length} nbOffres={offresOuvertes.length} repartition={repartition} onVoir={() => setOnglet('visites')} />}
+            <CarteProprio nom={nomP} sous={sousP} tel={telP} pluriel={plurielP} onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onModifier={() => onModifier('proprio')} />
+          </Kpis>
+          {offresOuvertes.map(o => (
+            <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
+          ))}
+          {avant && <ListeAcheteurs acheteurs={acheteurs} mode={mode} nbRecherches={liste.recherches.length} onFiche={ouvrirClient} max={5} onTout={() => setOnglet('acheteurs')} />}
+          <Faits d={d} vide="Surface, pièces, étage, extérieur… : « Modifier » pour les saisir." />
           <div className={b.deuxEgal}>
             <div className={b.col}>
               {avant && <BlocVisiteSurPlace d={d} onOuvrir={() => setVisite(true)} />}
               {avant && <BlocEstimation bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} onMandat={() => setFen({ k: 'mandat' })} />}
-              {bien.etape !== 'vendu' && bien.etape !== 'retire' && (
-                <BlocAcheteurs acheteurs={acheteurs} max={4} onTout={() => setOnglet('acheteurs')} onEnvoyer={envoyer} onFiche={ouvrirClient} nbRecherches={liste.recherches.length} />
-              )}
-              {!avant && blocVisitesResume}
+              {!avant && <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={() => setFen({ k: 'visite' })} onFiche={ouvrirClient} />}
+              {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
               {!avant && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
-              {e !== 'a_suivre' && blocNotes}
             </div>
             <div className={b.col}>
+              <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
               <BlocProprio bien={bien} proprio={proprio} recherchesProprio={recherchesProprio} onFiche={ouvrirClient} onModifier={() => onModifier('proprio')} />
-              {e !== 'a_suivre' && <BlocMandat bien={bien} docs={docsLies} onDoc={faireDocument} onOuvrirDoc={ouvrirDoc} onMandat={() => setFen({ k: 'mandat' })} />}
-              {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
-              {e === 'a_suivre' && blocNotes}
               {e === 'estimation' && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
+              {blocNotes}
             </div>
           </div>
         </div>
@@ -1314,32 +1259,31 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       )}
 
       {onglet === 'acheteurs' && (
-        <div className={b.deuxCol}>
-          <div className={b.col}>
-            <BlocAcheteurs acheteurs={acheteurs} onEnvoyer={envoyer} onFiche={ouvrirClient} nbRecherches={liste.recherches.length} />
-          </div>
-          <div className={b.col}>
-            <Bloc ic="envoyer" titre={<>{'Déjà présenté à'}<i>{detail?.copies.length ? ` · ${detail.copies.length}` : ''}</i></>}>
-              {!detail?.copies.length ? <div className={b.vide}>Personne pour l’instant.</div> : (
-                <div className={b.fil}>
-                  {detail.copies.map(c => {
-                    const cl = liste.clients[c.client_id];
-                    const bd = c.badge_retour ? BADGES[c.badge_retour] : null;
-                    return (
-                      <div key={c.id} className={b.carteV} style={{ marginTop: 8 }}>
-                        <div className={b.carteVT}>
-                          <button type="button" className={b.lien} style={{ padding: 0, fontSize: 14.5 }} onClick={() => ouvrirClient(c.client_id)}>{nomClient(cl)}</button>
-                          <small>{`le ${dateCourte(c.envoye_le || c.created_at)}${c.vu_le ? ' · fiche ouverte' : ''}`}</small>
-                          {bd && <span className={`${b.etiq} ${b[bd.ton]}`}>{bd.l}</span>}
-                        </div>
-                        {c.retour_client && <div className={b.offreEcart}>{c.retour_client}</div>}
+        <div className={b.col}>
+          <ListeAcheteurs key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} acheteurs={acheteurs} mode={mode}
+            nbRecherches={liste.recherches.length} onFiche={ouvrirClient}
+            onAgir={mode === 'vente' ? l => setFen({ k: 'acheteurs', liste: l }) : undefined} />
+          {horsListe.length > 0 && (
+            <Bloc ic="envoyer" titre={<>{'Aussi dans leur dossier'}<i>{` · ${horsListe.length}`}</i></>}>
+              <p className={b.sous}>Ils ont ce bien dans leur dossier, mais leur recherche ne lui correspond plus assez, ou ils ne sont plus suivis.</p>
+              <div className={b.fil}>
+                {horsListe.map(c => {
+                  const cl = liste.clients[c.client_id];
+                  const bd = c.badge_retour && c.etape !== 'selection' ? BADGES[c.badge_retour] : null;
+                  return (
+                    <div key={c.id} className={b.carteV} style={{ marginTop: 8 }}>
+                      <div className={b.carteVT}>
+                        <button type="button" className={b.lien} style={{ padding: 0, fontSize: 14.5 }} onClick={() => ouvrirClient(c.client_id)}>{nomClient(cl)}</button>
+                        <small>{c.etape === 'selection' ? `dans sa sélection depuis le ${dateCourte(c.created_at)}` : `présenté le ${dateCourte(c.envoye_le || c.created_at)}${c.vu_le ? ' · fiche ouverte' : ''}`}</small>
+                        {bd && <span className={`${b.etiq} ${b[bd.ton]}`}>{bd.l}</span>}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      {c.retour_client && <div className={b.offreEcart}>{c.retour_client}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             </Bloc>
-          </div>
+          )}
         </div>
       )}
 
@@ -1408,6 +1352,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {fen?.k === 'visite' && <FenVisite bien={bien} options={options} recherches={liste.recherches} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'note' && <FenNote bien={bien} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'raison' && <FenRaison bien={bien} etape={fen.etape} titre={fen.titre} sur={fen.sur} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'acheteurs' && (
+        <FenEnvoiAcheteurs bien={bien} choisis={fen.liste} onFermer={() => setFen(null)}
+          onFait={m => { setMessage(m); void apres(); }}
+          onFiche={id => { setFen(null); void ouvrirClient(id); }} />
+      )}
 
       {cr && (
         <CompteRenduVisite
