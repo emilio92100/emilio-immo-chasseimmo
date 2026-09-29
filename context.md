@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.28 · 29 septembre 2026**
+**Version 3.30 · 29 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -120,7 +120,9 @@ partiel. C'est **ce** jeton qu'on envoie, jamais celui d'une recherche — voir 
 **Types de contact (V3.14)** — `types text[]` (défaut `{acheteur}`) : acheteur, vendeur,
 proprietaire, notaire, confrere, gardien, partenaire, plusieurs à la fois. `pro jsonb` : ce qui
 est propre au type (agence, statutPro, reseau, adresseAgence, siteWeb ; etude, adresseEtude,
-clerc, clercTel ; immeuble, horaires, acces ; metier, societe). `archive bool`. Tout passe par
+clerc, clercTel ; immeuble, horaires, acces ; metier, societe ; depuis la V3.30, `structure` : la
+société qu'il représente — `{ denomination, forme, rcs, siege, qualite, associes: [{ id, nom, role,
+tel, email }] }`, lue par `lireStructure()`). `archive bool`. Tout passe par
 `src/lib/contacts.ts` (`typesDe`, `estAcheteur`, `sansCriteres`, `ligneContact`) : sans le SQL,
 un contact sans colonne `types` est un acheteur, comme avant. « Acheteur non filtré » n'est pas
 un type : c'est un acheteur dont la recherche n'a aucun critère (`sansCriteres`). Le `statut`
@@ -318,7 +320,11 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     `offre` (`montant`, `statut` en_attente · acceptee · refusee · contre · retiree, `donnees` :
     validité, financement, fichier), `etape` (`statut` = l'étape atteinte, `donnees` : ce qui a
     été saisi — dates du compromis, raison…), `prix` (`montant` = nouveau, `donnees.ancien`),
-    `note`.
+    `note`, et depuis la V3.30 `envoi` (des pièces du dossier parties par mail : `qui`,
+    `commentaire` = l'objet, `donnees` `{ a, pieces, mode: 'pj' | 'liens', taille }`).
+  - Dans `biens_vente.donnees` (V3.30) : `dossier[k].taille` (octets, noté au dépôt), `fichiers`
+    (les autres documents : `[{ id, titre, chemin, nom, taille, le }]`, `lireFichiers`),
+    `proprioSans` (« Continuer sans propriétaire pour l'instant »).
   - `biens.bien_vente_id` : la copie d'un bien en vente dans le dossier d'un acheteur (présenté
     dans son espace, ou visité). C'est par elle que la fiche retrouve à qui il a été présenté,
     ce qu'ils en ont dit et leurs visites (table `visites`, comme les autres).
@@ -431,8 +437,8 @@ mandat, jusqu'à la vente. Voir V3.12 et V3.13.
   niveau. Clé `detailPieces` (⚠️ `pieces` est leur nombre).
 - **Les charges de copropriété** : champ `eurosAn` — par an ou par mois, l'autre se calcule, le
   trimestre s'affiche. Stocké en annuel (`chargesAn`).
-- **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Le bien · Photos ·
-  Visites et offres (à partir du mandat) · Acheteurs · Documents · Historique. Vue d'ensemble : le
+- **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Photos · Le bien ·
+  Surfaces (V3.30) · Visites et offres (à partir du mandat) · Acheteurs · Documents · Historique. Vue d'ensemble : le
   bien en bref (tuiles à icône), puis deux colonnes équilibrées. Le bien : l'annonce et les photos
   en haut, le détail par thème (lignes à icône, rangées en colonnes équilibrées), les pièces en
   tuiles. Photos : ajouter, ranger, légender sans l'éditeur. Chaque bloc a son « Modifier » qui
@@ -1406,6 +1412,70 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.30 — 29 septembre 2026 · la fiche d'un bien et celle d'un vendeur, rangées
+
+Retours d'Alexandre sur le dossier DESNOULEZ (un appartement avenue d'Iéna vendu par la SCI
+AVIENA, estimation en cours). Rien à passer dans Supabase : tout vit dans `biens_vente.donnees`,
+`clients.pro` et `biens_vente_suivi` (colonne `type` en texte libre).
+
+- **Un texte long, rangé en blocs** (`shared/NoteRiche.tsx`) : chaque paragraphe (séparé par une
+  ligne vide) devient un bloc ; « Vendeur : … » en tête de paragraphe lui donne son titre ;
+  « Kbis du … : » au début d'une ligne passe en gras ; « – » fait une liste ; e-mails et
+  téléphones deviennent des liens. Les blocs se rangent en deux colonnes quand il y a la place, et
+  au-delà d'une hauteur le texte se replie (« Déplier, tout lire » / « Replier »). Rien n'est
+  réécrit en base. Servent : les observations d'un bien, les remarques de copropriété, « À
+  savoir » d'un contact (acheteur compris).
+- **Vue d'ensemble d'un bien** : « Qui pourrait l'acheter » n'est plus répété sous la carte
+  « Acheteurs potentiels » (la liste entière est dans l'onglet Acheteurs). « Le bien en bref » est
+  une carte blanche, ses tuiles blanches avec une icône teintée par famille (elles étaient grises
+  sur le gris de la page). « Observations et notes » passe sous les deux colonnes, sur toute la
+  largeur ; il reste là à toutes les étapes, de « À suivre » à la vente.
+- **Onglets du bien, dans l'ordre voulu** : Vue d'ensemble, Photos, Le bien, **Surfaces**,
+  (Visites et offres), Acheteurs, Documents, Historique. **Surfaces** (`OngletSurfaces`,
+  `OngletsBien.tsx`) : surface habitable (et le contrôle avec la somme des pièces), Carrez (« À
+  mesurer » en copropriété), séjour, pièces ; « Comment se partage la surface » (pièces de vie,
+  chambres, cuisine, eau, entrée) ; les pièces en liste ou en cartes (sorties de « Le bien ») ;
+  les annexes. « Le bien » garde un lien vers Surfaces.
+- **Copropriété, dans « Le bien »** : le champ `travauxVotes` s'appelle « Autres remarques sur la
+  copropriété » dans l'éditeur, mais s'affichait « Travaux votés », en gras, calé à droite — un
+  paragraphe entier en colonne de trois mots. Il s'affiche maintenant « Remarques », replié ; les
+  vrais travaux votés (`coproVotes`) ont leur petite liste. Toute valeur longue d'une carte
+  (`Kv`) passe sous son libellé, calée à gauche.
+- **Documents d'un bien** (`biens/DossierBien.tsx`) : le dossier passe sur toute la largeur, une
+  tuile par pièce en grille, par groupe, avec filtres (Tout · À réunir · Demandés · Reçus).
+  **Déposer** : on glisse ou on choisit plusieurs fichiers ; le CRM devine ce que c'est d'après le
+  nom (`DEVINE` : DPE, amiante, PV d'AG, règlement…), on corrige, « Enregistrer » range chacun à
+  sa ligne (passée « Reçu », datée) ou dans « Autres documents » (`donnees.fichiers`). **Envoyer** :
+  on coche des fichiers (une barre suit en bas), « Envoyer par mail… » ouvre une fenêtre : à qui
+  (le propriétaire, les autres propriétaires saisis, les acheteurs du bien, ou une adresse tapée),
+  les documents, l'objet et le message déjà écrits et modifiables. `/api/biens-vente`, action
+  `envoyer` : un mail par destinataire au nom d'Alexandre, les fichiers joints jusqu'à 10 Mo en
+  tout, au-delà des liens de téléchargement valables 7 jours ; une ligne `envoi` dans l'historique
+  du bien, une ligne `mail_envoye` dans le Suivi de chaque contact du CRM destinataire.
+- **Fiche d'un vendeur, d'un propriétaire** (`FicheContact.tsx`) : « À savoir » en tête, sur toute
+  la largeur, rangé en blocs et replié ; dessous, les blocs en grille (deux colonnes). « Voir sur la
+  carte » dans le bandeau : le mot du bouton prenait lui aussi l'allure d'une pastille (règle
+  `.heroCoord span` sans `>`).
+- **« Sa société »** (`contacts/BlocSociete.tsx`, choix d'Alexandre : la personne reste un
+  contact, sa fiche porte la société) : nom, forme (SCI, SARL, SAS…), RCS, siège, son rôle, et
+  les associés avec leur rôle, téléphone, e-mail — les gérants d'abord, « Voir les N » au-delà de
+  quatre. Un associé qui a déjà sa fiche (même e-mail ou même téléphone) a « Sa fiche ».
+  « Reprendre ce qui est noté dans « À savoir » » pré-remplit le formulaire (`structureDepuisNotes`).
+  La ligne sous le nom dit « Associée · SCI AVIENA » (`ligneContact`). Dans l'éditeur d'un bien,
+  relier un contact qui représente une société propose « Qui vend ? Une société » et son nom.
+- **L'étape « Le propriétaire » de l'éditeur, refaite** (`ChampProprio`) : Alexandre ne comprenait
+  pas le parcours (« Créer sa fiche » ouvrait la suite, il fallait descendre écrire le nom puis
+  remonter ; « Délier » détachait la fiche mais laissait le nom sur le bien). Maintenant : chercher
+  dans ses contacts, ou **« Nouveau contact »** — un petit formulaire sur place (civilité, prénom,
+  nom, téléphone, e-mail) qui crée la fiche et la relie d'un clic ; ou « Continuer sans
+  propriétaire pour l'instant ». Relié : **« Changer de fiche »** (on relie quelqu'un d'autre, le
+  reste ne bouge pas) ou **« Retirer du bien »** (plus de fiche, ni nom, ni coordonnées ; sa fiche
+  reste dans les contacts). Des noms saisis sans fiche (biens d'avant) : « Créer sa fiche » à
+  partir d'eux. La carte « Le propriétaire » d'une SCI dit « Interlocutrice : … ».
+- **Menu de gauche** : le sous-onglet ouvert (Mes acheteurs, Mes estimations…) prend la teinte
+  claire de sa couleur sur toute la ligne, son mot passe dans sa couleur, et un petit trait de la
+  même couleur se pose à gauche — l'icône qui s'anime seule ne suffisait pas à voir où l'on est.
 
 ### V3.29 — 29 septembre 2026 · la fiche contact en rubriques
 
