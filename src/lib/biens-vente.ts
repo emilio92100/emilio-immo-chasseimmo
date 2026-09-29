@@ -154,7 +154,10 @@ export const lirePhotos = (x: unknown): Photo[] => (Array.isArray(x) ? x : [])
 export type EtatPiece = 'recu' | 'demande' | 'nc' | '';
 /* `taille` (V3.30) : en octets, notée au dépôt — l'envoi par mail dit à
    l'avance si les fichiers partiront en pièces jointes ou en liens. */
-export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string; taille?: number };
+/* `dans` (V3.31) : l'id d'un fichier de `donnees.fichiers` qui contient
+   cette pièce — un dossier de diagnostic technique (DDT) d'un seul PDF couvre
+   le DPE, l'amiante, le plomb… Le fichier n'est stocké qu'une fois. */
+export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string; taille?: number; dans?: string };
 export type LigneDossier = { k: string; l: string; aide?: string; si?: (d: Donnees) => boolean; groupe: 'diag' | 'copro' | 'vendeur' };
 export const DOSSIER: LigneDossier[] = [
   { k: 'dpe', l: 'DPE', aide: 'Valable 10 ans', groupe: 'diag' },
@@ -188,6 +191,7 @@ export const lireDossier = (x: unknown): Record<string, PieceDossier> => {
     out[k] = {
       etat: e, date: typeof p.date === 'string' ? p.date : '', chemin: typeof p.chemin === 'string' ? p.chemin : '', nom: typeof p.nom === 'string' ? p.nom : '',
       ...(typeof p.taille === 'number' && p.taille > 0 ? { taille: p.taille } : {}),
+      ...(typeof p.dans === 'string' && p.dans ? { dans: p.dans } : {}),
     };
   }
   return out;
@@ -195,7 +199,9 @@ export const lireDossier = (x: unknown): Record<string, PieceDossier> => {
 /* Les autres documents du bien (V3.30) : ceux qui ne sont pas une ligne du
    dossier — un DDT complet, un bail, un plan, un courrier du syndic. Même
    stockage privé, rangés dans `donnees.fichiers`. */
-export type FichierBien = { id: string; titre: string; chemin: string; nom: string; taille?: number; le: string };
+/* `sorte` (V3.31) : 'ddt' pour un dossier de diagnostics en un seul fichier ;
+   les lignes qu'il couvre portent son id dans `dans`. */
+export type FichierBien = { id: string; titre: string; chemin: string; nom: string; taille?: number; le: string; sorte?: 'ddt' };
 export const lireFichiers = (x: unknown): FichierBien[] => (Array.isArray(x) ? x : [])
   .map(f => (f && typeof f === 'object' ? f : {}) as Record<string, unknown>)
   .filter(o => typeof o.chemin === 'string' && o.chemin)
@@ -203,8 +209,22 @@ export const lireFichiers = (x: unknown): FichierBien[] => (Array.isArray(x) ? x
     id: typeof o.id === 'string' && o.id ? o.id : `f${i}`, titre: typeof o.titre === 'string' ? o.titre : '',
     chemin: String(o.chemin), nom: typeof o.nom === 'string' ? o.nom : '', le: typeof o.le === 'string' ? o.le : '',
     ...(typeof o.taille === 'number' && o.taille > 0 ? { taille: o.taille } : {}),
+    ...(o.sorte === 'ddt' ? { sorte: 'ddt' as const } : {}),
   }));
-export const lignesDossier = (d: Donnees) => DOSSIER.filter(l => !l.si || l.si(d));
+/* Les pièces ajoutées à la main (V3.31) : un Kbis, les statuts d'une SCI, un
+   bail… avec leur nom et leur groupe. Rangées dans `donnees.piecesPerso`,
+   elles se comportent comme les autres : reçu, demandé, non concerné, un
+   fichier. */
+export type LignePerso = { k: string; l: string; groupe: LigneDossier['groupe'] };
+export const lirePiecesPerso = (x: unknown): LignePerso[] => (Array.isArray(x) ? x : [])
+  .map(o => (o && typeof o === 'object' ? o : {}) as Record<string, unknown>)
+  .filter(o => typeof o.k === 'string' && o.k && typeof o.l === 'string' && o.l.trim())
+  .map(o => ({ k: String(o.k), l: String(o.l).trim(), groupe: o.groupe === 'copro' || o.groupe === 'vendeur' ? o.groupe : 'diag' as LigneDossier['groupe'] }));
+export const estPerso = (k: string) => k.startsWith('perso');
+export const lignesDossier = (d: Donnees): LigneDossier[] => [
+  ...DOSSIER.filter(l => !l.si || l.si(d)),
+  ...lirePiecesPerso(d.piecesPerso).map(p => ({ k: p.k, l: p.l, groupe: p.groupe })),
+];
 
 /* ── Les champs propres à cette rubrique (en plus de ceux des documents) ── */
 type BaseB = { cle: string; lib: string; aide?: string; si?: (d: Donnees) => boolean; ic?: string };
