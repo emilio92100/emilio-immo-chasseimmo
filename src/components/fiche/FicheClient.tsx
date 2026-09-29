@@ -246,6 +246,7 @@ import CarteASavoir from '@/components/contacts/CarteASavoir';
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
+import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -584,6 +585,128 @@ function cfDe(client: any) {
   };
 }
 
+/* ══ L'en-tête de la fiche (V3.29) ═════════════════════════════════════
+   Les coordonnées tiennent dans un panneau de trois lignes, posé dans le
+   bloc bleu. « Tout voir » le déplie PAR-DESSUS les onglets : le bloc bleu
+   ne grandit jamais, quel que soit le nombre de numéros. Dans un couple,
+   chaque ligne dit à qui elle est (« Madame », « Monsieur », ou le prénom
+   quand les deux ont la même civilité). */
+type Coord = { k: 'tel' | 'mail' | 'adresse'; val: string; qui?: string };
+
+function Coordonnees({ coords, onModifier, pied }: { coords: Coord[]; onModifier: () => void; pied?: React.ReactNode }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [copie, setCopie] = useState('');
+  const racine = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ouvert) return;
+    const dehors = (e: MouseEvent) => { if (!racine.current?.contains(e.target as Node)) setOuvert(false); };
+    const echap = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(false); };
+    document.addEventListener('mousedown', dehors);
+    document.addEventListener('keydown', echap);
+    return () => { document.removeEventListener('mousedown', dehors); document.removeEventListener('keydown', echap); };
+  }, [ouvert]);
+  const copier = async (v: string) => {
+    try { await navigator.clipboard.writeText(v); setCopie(v); setTimeout(() => setCopie(c => (c === v ? '' : c)), 1600); } catch { /* le presse-papiers refusé : rien à faire */ }
+  };
+  const ligne = (c: Coord, i: number) => {
+    const ic = c.k === 'tel' ? 'tel' : c.k === 'mail' ? 'mail' : 'lieu';
+    const contenu = (
+      <>
+        <span className={styles.coIc}><Icone nom={ic} taille={14} epaisseur={2} /></span>
+        <span className={styles.coVal}>{c.val}</span>
+        {c.qui && <em className={styles.coQui}>{`(${c.qui})`}</em>}
+      </>
+    );
+    return (
+      <div key={`${c.k}-${c.val}-${i}`} className={styles.coLigne}>
+        {c.k === 'adresse'
+          ? <span className={styles.coLien}>{contenu}</span>
+          : <a className={styles.coLien} href={c.k === 'tel' ? `tel:${c.val.replace(/[^+\d]/g, '')}` : `mailto:${c.val}`}>{contenu}</a>}
+        <button type="button" className={styles.coCopie} onClick={() => copier(c.val)}
+          aria-label={c.k === 'tel' ? 'Copier le numéro' : c.k === 'mail' ? 'Copier le mail' : 'Copier l’adresse'}
+          title={copie === c.val ? 'Copié' : 'Copier'}>
+          <Icone nom={copie === c.val ? 'coche' : 'copie'} taille={14} epaisseur={2} />
+        </button>
+      </div>
+    );
+  };
+  const tels = coords.filter(c => c.k === 'tel');
+  const mails = coords.filter(c => c.k === 'mail');
+  const adr = coords.filter(c => c.k === 'adresse');
+  const deborde = coords.length > 3;
+  const tete = (
+    <div className={styles.coTete}>
+      <span>Coordonnées</span>
+      <button type="button" onClick={onModifier}>Modifier</button>
+    </div>
+  );
+  return (
+    <div className={styles.coZone} ref={racine}>
+      <div className={styles.coPanneau}>
+        {tete}
+        {coords.length === 0
+          ? <div className={styles.coVide}>{'Aucun numéro ni mail. '}<button type="button" onClick={onModifier}>Les ajouter</button></div>
+          : coords.slice(0, 3).map(ligne)}
+        {/* « Voir sur la carte » : ici tant que tout tient, sinon dans le dépliage. */}
+        {!deborde && pied && <div className={styles.coPied}>{pied}</div>}
+        {deborde && (
+          <button type="button" className={styles.coPlus} aria-expanded={ouvert} onClick={() => setOuvert(true)}>
+            <span>{`Tout voir · ${coords.length} coordonnée${coords.length > 1 ? 's' : ''}`}</span>
+            <Icone nom="chevron" taille={14} epaisseur={2.2} />
+          </button>
+        )}
+      </div>
+      {ouvert && (
+        <div className={`${styles.coPanneau} ${styles.coDeplie}`} role="dialog" aria-label="Toutes les coordonnées">
+          {tete}
+          {tels.length > 0 && <span className={styles.coGroupe}>{tels.length > 1 ? 'Téléphones' : 'Téléphone'}</span>}
+          {tels.map(ligne)}
+          {mails.length > 0 && <span className={styles.coGroupe}>{mails.length > 1 ? 'Mails' : 'Mail'}</span>}
+          {mails.map(ligne)}
+          {adr.length > 0 && <span className={styles.coGroupe}>Adresse</span>}
+          {adr.map(ligne)}
+          {pied && <div className={styles.coPied}>{pied}</div>}
+          <button type="button" className={`${styles.coPlus} ${styles.coReduire}`} onClick={() => setOuvert(false)}>
+            <span>Réduire</span>
+            <Icone nom="chevron" taille={14} epaisseur={2.2} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* « il y a 12 min », « il y a 2 h », « hier », « il y a 5 jours ». */
+function ilYA(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 2) return 'à l’instant';
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  const j = Math.round(h / 24);
+  if (j === 1) return 'hier';
+  if (j < 31) return `il y a ${j} jours`;
+  return `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+}
+
+/* « 8 jours », « 3 mois », « 1 an et 2 mois » : depuis quand on le suit. */
+function dureeSuivi(j: number): string {
+  if (j <= 0) return 'aujourd’hui';
+  if (j === 1) return '1 jour';
+  if (j < 45) return `${j} jours`;
+  const mois = Math.round(j / 30.44);
+  if (mois < 12) return `${mois} mois`;
+  const ans = Math.floor(mois / 12), reste = mois % 12;
+  return `${ans} an${ans > 1 ? 's' : ''}${reste ? ` et ${reste} mois` : ''}`;
+}
+
+/* Les grandes rubriques de la fiche (V3.29), dans l'ordre de la barre. */
+type VueFiche = 'ensemble' | 'recherche' | 'espace' | 'documents' | 'suivi';
+const ORDRE_VUES: VueFiche[] = ['ensemble', 'recherche', 'espace', 'documents', 'suivi'];
+
 export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
      Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
@@ -593,7 +716,29 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [rechercheId, setRechercheId] = useState<string>(ouverture?.rechercheId || '');
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
-  const [tab, setTab] = useState<string>(ouverture?.onglet || 'presentes');   // c'est là qu'on regarde en premier : ce que le client a reçu
+  /* Deux niveaux depuis la V3.29 : les rubriques de la fiche (Vue
+     d'ensemble, Sa recherche, Son espace, Documents, Suivi), et dans « Sa
+     recherche », les étapes du dossier (Veille, Sélection, Présentés,
+     Visites, Transaction). `setTab` garde son nom et son usage : choisir une
+     étape ouvre « Sa recherche », choisir « suivi » ouvre le Suivi. */
+  const [tab, setTabBrut] = useState<string>(ouverture?.onglet && ouverture.onglet !== 'suivi' ? ouverture.onglet : 'presentes');
+  /* Arrivée par défaut : un contact qui n'est qu'acheteur s'ouvre sur « Sa
+     recherche » — c'est pour elle qu'on vient. S'il est aussi vendeur,
+     propriétaire, etc., sur « Vue d'ensemble ». */
+  const seulAcheteur = !((init as unknown as { types?: string[] | null }).types || []).some(t => t !== 'acheteur');
+  const [vue, setVue] = useState<VueFiche>(ouverture?.onglet === 'suivi' ? 'suivi' : ouverture?.onglet ? 'recherche' : seulAcheteur ? 'recherche' : 'ensemble');
+  const setTab = useCallback((t: string) => {
+    if (t === 'suivi') { setVue('suivi'); return; }
+    setTabBrut(t); setVue('recherche');
+  }, []);
+  /* Le nombre de ses documents, pour l'onglet « Documents ». */
+  const [nbDocs, setNbDocs] = useState<number | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('client_id', init.id)
+      .then(({ count, error }) => { if (vivant) setNbDocs(error ? null : count ?? 0); });
+    return () => { vivant = false; };
+  }, [init.id]);
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -660,7 +805,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       setLigneVisee(j.id);
     }
     const t1 = setTimeout(() => {
-      const cible = (j && ouverture.onglet === 'suivi' && document.getElementById(`suivi-${j.id}`)) || document.querySelector('.fiche-suivi');
+      const cible = (j && ouverture.onglet === 'suivi' && document.getElementById(`suivi-${j.id}`)) || document.querySelector('.fc-onglets');
       cible?.scrollIntoView({ block: j ? 'center' : 'start', behavior: 'smooth' });
     }, 380);
     const t2 = setTimeout(() => setSurligne(null), 6000);
@@ -2637,7 +2782,6 @@ ${signatureMail()}`,
        pour n'en montrer qu'une. */
     { id: 'visites',     icone: 'calendrier', nom: 'Visites',   compte: visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee').length },
     { id: 'transaction', icone: 'mallette',   nom: transaction && transaction.etape_actuelle === 'finalise' ? 'Transaction \u2713' : 'Transaction', compte: null },
-    { id: 'suivi',       icone: 'dossier',    nom: 'Suivi',     compte: suiviCount },
   ];
 
 
@@ -2760,65 +2904,53 @@ ${signatureMail()}`,
         </div>
       </div>
 
-      {/* ══ IDENTITÉ + SITUATION — deux blocs qui s'emboîtent ══════════ */}
+      {/* ══ L'EN-TÊTE (V3.29) : qui, où en est son dossier, comment le joindre ══
+          Le bloc bleu ne grandit jamais : les coordonnées tiennent dans un
+          panneau qui se déplie par-dessus les onglets, et la situation est
+          descendue dans « Vue d'ensemble ». Les onglets sont posés à cheval
+          sur son bord bas. */}
       {(() => {
-        const occ = client as any;
-        const aSituation = !!(occ.statut_occupation || occ.bien_actuel_a_vendre);
-        const aVendre = !!occ.bien_actuel_a_vendre;
-        const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
         const st = client.statut as string;
         const dossierClos = st === 'bien_trouve' || st === 'perdu';
         const teinte = st === 'actif' ? '#34d399' : st === 'prospect' ? '#a78bfa' : st === 'suspendu' || st === 'offre_ecrite' ? '#fbbf24' : st === 'bien_trouve' ? '#60a5fa' : '#f87171';
-        const tels = (client.telephones || []).filter(Boolean);
-        const mails = (client.emails || []).filter(Boolean);
-        /* Un couple : les coordonnées de chacun, sous son prénom. Avant, seules
-           celles de la personne 1 se voyaient ici. */
+        void dossierClos;
+        /* À qui est chaque numéro : seulement dans un couple. « Madame » et
+           « Monsieur » quand les civilités diffèrent, sinon le prénom. */
         const j2 = client.couple ? conjointDe(client.conjoint) : null;
-        const deux = !!j2 && !!(j2.telephone || j2.email);
-        const groupeTete: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', columnGap: 16, rowGap: 6, flexWrap: 'wrap' };
-        const quiTete: React.CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '2px 8px', border: '1px solid rgba(255,255,255,.18)', borderRadius: 99 };
-
-        const kpis = [
-          { val: presentes.length, l: 'Propositions', or: false },
-          { val: visites.filter(v => v.statut === 'effectuee').length, l: 'Visites', or: false },
-          { val: biens.filter(b => b.badge_retour === 'offre_faite').length, l: 'Offres', or: true },
-          { val: jours, l: 'Jours de suivi', or: false },
+        const civ1 = (client as unknown as { civilite?: string | null }).civilite || '';
+        const civ2 = j2?.civilite || '';
+        const qui1 = j2 ? (civ1 && civ2 && civ1 !== civ2 ? civ1 : client.prenom || civ1 || 'Personne 1') : undefined;
+        const qui2 = j2 ? (civ1 && civ2 && civ1 !== civ2 ? civ2 : j2.prenom || civ2 || 'Personne 2') : undefined;
+        const coords: Coord[] = [
+          ...(client.telephones || []).filter(Boolean).map(t => ({ k: 'tel' as const, val: t, qui: qui1 })),
+          ...(j2?.telephone ? [{ k: 'tel' as const, val: j2.telephone, qui: qui2 }] : []),
+          ...(client.emails || []).filter(Boolean).map(e => ({ k: 'mail' as const, val: e, qui: qui1 })),
+          ...(j2?.email ? [{ k: 'mail' as const, val: j2.email, qui: qui2 }] : []),
+          ...(client.adresse ? [{ k: 'adresse' as const, val: client.adresse }] : []),
         ];
-
-        const Champ = ({ lib, val, premier }: { lib: string; val: React.ReactNode; premier?: boolean }) => (
-          <div className="fc-champ" style={{ padding: premier ? '2px 26px 2px 0' : '2px 26px', borderLeft: premier ? 'none' : '1px solid #edf1f6' }}>
-            <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>{lib}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)', letterSpacing: -0.1 }}>{val}</div>
-          </div>
-        );
-
+        const aCarte = !!(client.adresse || (client as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse);
+        const piedCarte = !aCarte ? undefined : <BoutonCarte focus={`c:${client.id}`} onNavigate={onNavigate} sombre />;
+        const nbFaites = visites.filter(v => v.statut === 'effectuee').length;
+        const nbOffres = biens.filter(b => b.badge_retour === 'offre_faite').length;
+        /* Une visite prévue peut être annulée : on ne compte que les
+           visites effectuées. La prochaine est dans « À venir ». */
+        const compteurs = [
+          { k: 'selection', n: enSelection.length, l: 'en sélection' },
+          { k: 'presentes', n: presentes.length, l: presentes.length > 1 ? 'présentés' : 'présenté' },
+          { k: 'visites', n: nbFaites, l: nbFaites > 1 ? 'visites effectuées' : 'visite effectuée' },
+          { k: 'transaction', n: nbOffres, l: nbOffres > 1 ? 'offres' : 'offre' },
+        ];
+        const espaceLe = (rechercheActive as unknown as { espace_ouvert_le?: string | null } | null)?.espace_ouvert_le;
         return (
-          <div className="fc-id-zone" style={{ background: '#f8fafc', padding: '16px 24px 0' }}>
-
-            {/* le bloc identité */}
-            <div className="fc-id-carte" style={{
-              position: 'relative', borderRadius: 22, overflow: 'hidden',
-              background: 'linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%)',
-              border: '1px solid rgba(201,168,76,.2)',
-              boxShadow: '0 24px 50px -30px rgba(30,45,75,.75)',
-              padding: aSituation ? '24px 28px 40px' : '24px 28px 26px',
-            }}>
-              <span aria-hidden style={{ position: 'absolute', top: -140, right: -90, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,168,76,.22), transparent 64%)', pointerEvents: 'none' }} />
-              <span aria-hidden style={{ position: 'absolute', bottom: -160, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(125,185,255,.12), transparent 66%)', pointerEvents: 'none' }} />
-
-              <div className="fc-id-rangee" style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 26, flexWrap: 'wrap' }}>
-
-                <div className="fc-id-gauche" style={{ display: 'flex', alignItems: 'flex-start', gap: 17, flex: '1 1 420px', minWidth: 0 }}>
+          <div className={styles.teteZone}>
+            <div className={styles.tete}>
+              <span aria-hidden className={styles.teteFond}><span className={styles.teteHalo1} /><span className={styles.teteHalo2} /></span>
+              <div className={styles.teteG}>
+                <div className={styles.teteQui}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div className="fc-id-avatar" style={{
-                      width: 58, height: 58, borderRadius: '50%',
-                      background: 'linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.02))',
-                      border: '1px solid rgba(201,168,76,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 23, fontWeight: 800, color: '#c9a84c', fontFamily: "'Plus Jakarta Sans',sans-serif", letterSpacing: .5,
-                    }}>{client.prenom[0]}{client.nom?.[0] || ''}</div>
-                    <span style={{ position: 'absolute', right: 1, bottom: 1, width: 13, height: 13, borderRadius: '50%', background: teinte, border: '2.5px solid #2b3f63' }} />
+                    <div className={styles.teteAvatar}>{client.prenom[0]}{client.nom?.[0] || ''}</div>
+                    <span className={styles.teteEtat} style={{ background: teinte }} />
                   </div>
-
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                       <div className="fc-id-nom" style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
@@ -2900,129 +3032,372 @@ ${signatureMail()}`,
                         )}
                       </div>
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
                       {/* Ses types de contact : acheteur, et peut-être vendeur, propriétaire… */}
                       <TypesEnLigne client={client} sombre onMaj={t => { if (!t.includes('acheteur')) onNavigate('fiche', { ...client, types: t }); }} />
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,.38)', fontWeight: 500, letterSpacing: .2 }}>
-                        {client.reference} · suivi depuis {jours}{' '}jours
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,.42)', fontWeight: 500, letterSpacing: .2 }}>
+                        {client.reference}
                       </span>
                       {libelleSource((client as unknown as { source?: string }).source, (client as unknown as { source_detail?: string }).source_detail) && (
                         <span style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', fontWeight: 500 }}>
                           {'Source : '}<b style={{ color: '#e2c979', fontWeight: 700 }}>{libelleSource((client as unknown as { source?: string }).source, (client as unknown as { source_detail?: string }).source_detail)}</b>
                         </span>
                       )}
-                      <button onClick={() => { setCf(cfDe(client)); setShowContact(true); }}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.42)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <Icone nom="crayon" taille={12} />{' '}Modifier
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.compteursLigne}>
+                  <div className={styles.compteurs} aria-label="Où en est son dossier">
+                    {compteurs.map(c => (
+                      <button key={c.k} type="button" className={`${styles.compteur} ${c.n ? '' : styles.compteurVide}`} onClick={() => setTab(c.k)}>
+                        <b>{c.n}</b><small>{c.l}</small>
                       </button>
-                    </div>
-
-                    <div className="fc-id-contacts" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 9, alignItems: 'center', marginTop: 14 }}>
-                      <span className="fc-id-groupe" style={groupeTete}>
-                        {deux && <span className="fc-id-qui" style={quiTete}>{client.prenom || 'Personne 1'}</span>}
-                        {tels.map((t) => (
-                          <a key={t} className="fc-id-lien" href={`tel:${t}`} style={lienEntete}>
-                            <Icone nom="tel" taille={14} /> {t}
-                          </a>
-                        ))}
-                        {mails.map((e) => (
-                          <a key={e} className="fc-id-lien" href={`mailto:${e}`} style={{ ...lienEntete, color: '#c9a84c' }}>
-                            <Icone nom="mail" taille={14} /> {e}
-                          </a>
-                        ))}
-                      </span>
-                      {deux && j2 && (
-                        <span className="fc-id-groupe" style={groupeTete}>
-                          <span className="fc-id-qui" style={quiTete}>{j2.prenom || 'Personne 2'}</span>
-                          {j2.telephone && (
-                            <a className="fc-id-lien" href={`tel:${j2.telephone}`} style={lienEntete}>
-                              <Icone nom="tel" taille={14} /> {j2.telephone}
-                            </a>
-                          )}
-                          {j2.email && (
-                            <a className="fc-id-lien" href={`mailto:${j2.email}`} style={{ ...lienEntete, color: '#c9a84c' }}>
-                              <Icone nom="mail" taille={14} /> {j2.email}
-                            </a>
-                          )}
-                        </span>
-                      )}
-                      {client.adresse && (
-                        <span className="fc-id-lien fc-id-adresse" style={{ ...lienEntete, color: 'rgba(255,255,255,.55)', ...(deux ? { flexBasis: '100%' } : {}) }}>
-                          <Icone nom="lieu" taille={14} /> {client.adresse}
-                        </span>
-                      )}
-                      {(client.adresse || (client as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse) && <BoutonCarte focus={`c:${client.id}`} onNavigate={onNavigate} sombre />}
-                      {!tels.length && !mails.length && !deux && <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)' }}>Aucun contact renseigné</span>}
-                    </div>
+                    ))}
                   </div>
-                </div>
-
-                {/* les compteurs, un seul panneau divisé */}
-                <div className="fc-kpis" style={{ display: 'flex', background: 'rgba(255,255,255,.045)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
-                  {kpis.map((s, i) => (
-                    <div key={s.l} className="fc-kpi" style={{ padding: '13px 21px', textAlign: 'center', minWidth: 78, borderLeft: i ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
-                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, lineHeight: 1, letterSpacing: -.8, color: s.or && s.val ? '#c9a84c' : s.val ? 'white' : 'rgba(255,255,255,.3)' }}>{s.val}</div>
-                      <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.42)', marginTop: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .9 }}>{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* la situation actuelle, posée à cheval sur le bloc du dessus */}
-            {aSituation && (
-              <div className="fc-situation" style={{ position: 'relative', margin: '-22px 20px 0', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: '18px 22px 15px', boxShadow: '0 20px 40px -30px rgba(16,24,40,.8)' }}>
-                <span style={{ position: 'absolute', top: -10, left: 22, background: 'linear-gradient(135deg,#3a5178,#27395a)', color: '#e2c979', borderRadius: 20, padding: '4px 14px', fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, border: '1px solid rgba(201,168,76,.3)', boxShadow: '0 8px 18px -10px rgba(16,24,40,.9)' }}>
-                  Situation actuelle
-                </span>
-                <div className="fc-champs" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', rowGap: 12 }}>
-                  {occ.statut_occupation && <Champ lib="Statut" val={labelStatut} premier />}
-                  {aVendre && occ.bien_actuel_type && <Champ lib="Bien à revendre" val={`${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`} premier={!occ.statut_occupation} />}
-                  {aVendre && occ.bien_actuel_valeur && <Champ lib="Valeur estimée" val={<span style={{ color: '#c9a84c', fontWeight: 800 }}>{occ.bien_actuel_valeur.toLocaleString('fr-FR')} €</span>} />}
-                  {aVendre && <Champ lib="Adresse du bien" val={occ.bien_actuel_adresse ? occ.bien_actuel_adresse : 'Même adresse que le contact'} />}
-                  {aVendre && (
-                    <span className="fc-vente" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fffaf3', color: '#b45309', border: '1px solid #f3dcb8', padding: '7px 14px', borderRadius: 11, fontSize: 12.5, fontWeight: 700 }}>
-                      <Icone nom="etiquette" taille={14} />{' '}Revente possible après l&apos;achat
+                  {/* Depuis quand on le suit : à côté des chiffres du dossier
+                      (V3.29), plus sous le nom où il se perdait. */}
+                  <div className={styles.depuis}>
+                    <span className={styles.depuisIc}><Icone nom="horloge" taille={17} epaisseur={2} /></span>
+                    <span className={styles.depuisTx}>
+                      <small>Suivi depuis</small>
+                      <b>{dureeSuivi(jours)}</b>
+                      <i>{`le ${new Date(client.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: new Date(client.created_at).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}`}</i>
                     </span>
-                  )}
-                </div>
-                {aVendre && occ.bien_actuel_notes && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: 1.1, marginRight: 8 }}>Précisions</span>
-                    {occ.bien_actuel_notes}
                   </div>
-                )}
+                </div>
+                <button type="button" className={styles.teteEspace} onClick={() => setVue('espace')}>
+                  <span className={espaceLe ? styles.teteEspaceOn : styles.teteEspaceOff} />
+                  <b>Son espace</b>
+                  <span suppressHydrationWarning>{espaceLe ? ` · ouvert ${ilYA(espaceLe)}` : ' · pas encore ouvert'}</span>
+                </button>
               </div>
-            )}
+              <Coordonnees coords={coords} onModifier={() => { setCf(cfDe(client)); setShowContact(true); }} pied={piedCarte} />
+            </div>
+            <div className={`${styles.ongletsTete} fc-onglets`}>
+              <BarreOnglets<VueFiche> label="Rubriques du contact" actif={vue} onChoisir={setVue}
+                onglets={[
+                  { k: 'ensemble', l: 'Vue d’ensemble', ic: <Icone nom="oeil" taille={15} epaisseur={2} /> },
+                  { k: 'recherche', l: recherches.length > 1 ? 'Ses recherches' : 'Sa recherche', n: recherches.length > 1 ? recherches.length : undefined, ic: <Icone nom="loupe" taille={15} epaisseur={2} /> },
+                  { k: 'espace', l: 'Son espace', ic: <Icone nom="mobile" taille={15} epaisseur={2} /> },
+                  { k: 'documents', l: 'Documents', n: nbDocs || undefined, ic: <Icone nom="doc" taille={15} epaisseur={2} /> },
+                  { k: 'suivi', l: 'Suivi', n: suiviCount || undefined, ic: <Icone nom="horloge" taille={15} epaisseur={2} /> },
+                ]} />
+            </div>
           </div>
         );
       })()}
       <div className={styles.contentWrap}>
-        {/* LE LIEN DE L'ESPACE CLIENT, juste sous le nom */}
-        {rechercheActive && (
-          <div style={{ marginBottom: 16 }}>
-            <LienEspace recherche={rechercheActive} client={client} />
+        {/* ONGLETS en haut */}
+      <style>{`
+        @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes emilioMenu { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
+        .emilio-menu { animation: emilioMenu .16s cubic-bezier(.22,.8,.3,1) both; transform-origin: top left; }
+        .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
+        @keyframes ficheTabIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
+        /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
+           pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
+        .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; min-height: 240px;
+          background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
+          border-radius: 0 0 16px 16px; padding: 16px; }
+        @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
+
+        /* Les onglets arrivaient collés aux critères, sans rien pour dire qu'on
+           changeait de sujet. Ce bandeau sombre le dit d'un seul contraste. */
+        /* Discrets par défaut : le suivi se lit d'abord, il se corrige ensuite. */
+        .suivi-actions { opacity: 0; transition: opacity .16s ease; }
+        /* L'action d'où vient la relance, quand on arrive depuis la page Relances. */
+        @keyframes suiviLueur {
+          0% { background: rgba(201,168,76,0); box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+          15% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
+          75% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
+          100% { background: rgba(255,246,221,0); box-shadow: 0 0 0 6px rgba(255,246,221,0); }
+        }
+        .suivi-surligne { border-radius: 12px; animation: suiviLueur 5.5s ease both; }
+        .suivi-ligne:hover .suivi-actions, .suivi-actions:focus-within { opacity: 1; }
+        @media (hover: none) { .suivi-actions { opacity: 1; } }
+
+        .fiche-suivi { margin-top: 22px; padding: 13px 14px 0;
+          background: linear-gradient(105deg, #3d5878 0%, #4d6f95 100%);
+          border-radius: 16px 16px 0 0; }
+        .fiche-suivi-tete { display: flex; align-items: baseline; gap: 10px;
+          flex-wrap: wrap; padding: 0 4px 11px; }
+        .fiche-suivi-tete b { font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 12px; font-weight: 800; color: #e0c479;
+          text-transform: uppercase; letter-spacing: 1.1px; }
+        .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.55); }
+        /* Remettre le suivi à zéro se décide en regardant le suivi : le bouton
+           est donc ici, au bout de son en-tête, et nulle part ailleurs. */
+        .fiche-suivi-reinit { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+          border-radius: 99px; padding: 5px 13px; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; font-size: 11.5px; font-weight: 700;
+          color: rgba(255,255,255,.72); transition: background .14s, color .14s, border-color .14s; }
+        .fiche-suivi-reinit:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
+
+        /* ═══════════ La transaction ═══════════
+           Cinq étapes empilées à la verticale, chacune avec son formulaire
+           déplié : il fallait défiler pour savoir où on en était. Un rail en
+           haut, les chiffres juste dessous, une seule étape ouverte. */
+
+        .tx-bien { display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+          background: #fff; border: 1px solid #e8edf5; border-radius: 14px; padding: 10px 14px; }
+        .tx-photo { width: 46px; height: 46px; border-radius: 11px; background: #e2e8f0; flex-shrink: 0;
+          display: inline-flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+        .tx-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .tx-sur { display: block; font-size: 10px; font-weight: 800; color: #94a3b8;
+          text-transform: uppercase; letter-spacing: .9px; }
+        .tx-titre { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+          font-size: 14.5px; color: var(--emilio); margin-top: 2px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tx-detail { display: block; font-size: 12.5px; color: #64748b; }
+
+        .tx-rail { display: flex; align-items: flex-start; margin: 0 0 18px; }
+        .tx-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0;
+          font-family: inherit; display: flex; flex-direction: column; align-items: center;
+          gap: 7px; cursor: pointer; }
+        .tx-pas:disabled { cursor: default; }
+        .tx-fil { display: flex; align-items: center; width: 100%; }
+        .tx-fil i { flex: 1; height: 2px; background: #e3e8f0; transition: background .35s ease; }
+        .tx-fil i.on { background: #c9a84c; }
+        .tx-fil i.vide { background: transparent; }
+        .tx-rond { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
+          display: inline-flex; align-items: center; justify-content: center;
+          font-size: 15px; font-weight: 800; background: #fff; border: 2px solid #e3e8f0; color: #b0bec5;
+          transition: transform .22s cubic-bezier(.3,1.5,.5,1), box-shadow .22s, background .3s, border-color .3s, color .3s; }
+        .tx-pas[data-etat="fait"] .tx-rond { background: #c9a84c; border-color: #c9a84c; color: var(--emilio); }
+        .tx-pas[data-etat="encours"] .tx-rond { background: var(--emilio); border-color: var(--emilio); color: #fff; }
+        .tx-pas[data-vue="true"] .tx-rond { transform: scale(1.14); box-shadow: 0 0 0 5px rgba(201,168,76,.2); }
+        .tx-pas:not(:disabled):hover .tx-rond { transform: scale(1.09); }
+        .tx-nom { font-size: 11.5px; font-weight: 700; color: #a8b3c4; text-align: center;
+          line-height: 1.25; padding: 0 3px; transition: color .25s; }
+        .tx-pas[data-etat="fait"] .tx-nom { color: #64748b; }
+        .tx-pas[data-etat="encours"] .tx-nom, .tx-pas[data-vue="true"] .tx-nom { color: var(--emilio); font-weight: 800; }
+
+        .tx-chiffres { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 16px; }
+        .tx-chiffre { flex: 1 1 145px; background: #fff; border: 1px solid #e8edf5;
+          border-radius: 12px; padding: 9px 13px; }
+        .tx-chiffre b { display: block; font-size: 9.5px; font-weight: 800; color: #94a3b8;
+          text-transform: uppercase; letter-spacing: .8px; }
+        .tx-chiffre strong { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 1px; }
+        .tx-chiffre i { font-style: normal; font-size: 11.5px; color: #94a3b8; }
+
+        @keyframes txPanneau { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .tx-panneau { animation: txPanneau .28s cubic-bezier(.22,.9,.3,1) both;
+          background: #fff; border: 1px solid #e8edf5; border-radius: 16px; overflow: hidden; }
+
+        .tx-tete { display: flex; align-items: center; gap: 11px; padding: 13px 16px;
+          border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+        .tx-tete[data-encours="true"] { background: #fdfaf1; border-bottom-color: #f0e4c6; }
+        .tx-tete-nom { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 800; font-size: 16px; color: var(--emilio); letter-spacing: -.2px; }
+        .tx-tete-quoi { display: block; font-size: 12px; color: #8593a8; margin-top: 1px; }
+        .tx-franchie { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #a9822f;
+          background: #fff; border: 1px solid #ecdcb4; border-radius: 99px; padding: 3px 10px; }
+
+        .tx-corps { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+        .tx-note { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+          padding: 9px 13px; font-size: 12.5px; color: #55647a; line-height: 1.55; }
+        .tx-ajout { background: #f8fafc; border: 1px dashed #d9e2ee; border-radius: 12px;
+          padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; }
+
+        .tx-co { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+          border-radius: 11px; border: 1px solid #e8edf5; background: #fff; font-size: 13.5px; }
+        .tx-co[data-partie="acheteur"] { border-color: #dbe7fa; background: #f7fbff; }
+        .tx-co[data-partie="vendeur"] { border-color: #fbe0e0; background: #fffafa; }
+        .tx-co-qui { font-size: 12px; font-weight: 700; color: #55647a; flex-shrink: 0; }
+        .tx-co b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; color: var(--emilio); }
+        .tx-co-x { background: none; border: none; cursor: pointer; color: #cbd5e1;
+          font-size: 13px; padding: 2px 4px; line-height: 1; transition: color .15s; }
+        .tx-co-x:hover { color: #ef4444; }
+
+        .tx-alerte { border-radius: 10px; padding: 10px 13px; font-size: 12.5px; line-height: 1.55;
+          background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .tx-alerte[data-ton="calme"] { background: #f8fafc; border-color: #e8edf5; color: #55647a; }
+        .tx-alerte[data-ton="vert"] { background: #ecfdf5; border-color: #bbf7d0; color: #15803d; }
+        .tx-alerte[data-ton="veille"] { background: #eef4fb; border-color: #d6e3f5; color: #2d5c8f; }
+
+        .tx-pied { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+          padding: 12px 16px; border-top: 1px solid #f1f5f9; background: #fbfcfe; }
+        .tx-abandon { background: none; border: none; padding: 0; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; font-size: 12.5px; color: #a8b3c4; text-decoration: underline; }
+        .tx-abandon:hover { color: #ef4444; }
+        .tx-cloture { background: #10b981; color: #fff; border: none; border-radius: 10px;
+          padding: 10px 20px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+          font-size: 13.5px; cursor: pointer; transition: background .15s, transform .12s; }
+        .tx-cloture:hover { background: #0ea271; transform: translateY(-1px); }
+        .tx-cloture:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+        @media (max-width: 640px) {
+          .tx-rond { width: 30px; height: 30px; font-size: 12.5px; }
+          .tx-nom { font-size: 10px; }
+          .tx-chiffre { flex-basis: 100%; }
+        }
+      `}</style>
+
+        <StylesEmilio />
+
+        <CorpsOnglet k={vue} ordre={ORDRE_VUES}>
+        {vue === 'ensemble' && (
+          <div className={styles.ens}>
+            {/* À venir : la prochaine visite et la prochaine relance. Elles
+                étaient dans le bloc bleu ; ici, on les lit d'abord. */}
+            {(() => {
+              const prochaine = visites
+                .filter(v => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= new Date().toISOString().slice(0, 10))
+                .sort((x, y) => `${x.date_visite}${x.heure || ''}`.localeCompare(`${y.date_visite}${y.heure || ''}`))[0];
+              if (!prochaine && !etiquetteRelance) return null;
+              const bienV = prochaine ? biens.find(b => b.id === prochaine.bien_id) : null;
+              const jourV = prochaine ? new Date(`${String(prochaine.date_visite).slice(0, 10)}T12:00:00`) : null;
+              const libJour = jourV ? jourV.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+              return (
+                <div className={styles.aVenir}>
+                  {prochaine && (
+                    <button type="button" className={styles.aVenirL} onClick={() => setTab('visites')}>
+                      <span className={styles.aVenirIc}><Icone nom="calendrier" taille={16} epaisseur={2} /></span>
+                      <span><b>{`Visite prévue ${libJour}${prochaine.heure ? ` à ${String(prochaine.heure).slice(0, 5).replace(':', ' h ')}` : ''}`}</b>{bienV?.titre ? ` · ${bienV.titre}` : ''}</span>
+                    </button>
+                  )}
+                  {prochaine && etiquetteRelance && <span className={styles.aVenirSep} />}
+                  {etiquetteRelance && (
+                    <button type="button" className={styles.aVenirL} onClick={() => setVue('suivi')}>
+                      <span className={styles.aVenirIc} style={{ color: etiquetteRelance.couleur }}><Icone nom="cloche" taille={16} epaisseur={2} /></span>
+                      <span><b style={{ color: etiquetteRelance.couleur }}>{etiquetteRelance.label}</b>{etiquetteRelance.note ? ` · ${etiquetteRelance.note}` : ''}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            <div className={styles.ensCols}>
+              <div className={styles.ensCol}>
+                {/* Ce qu'Alexandre a noté sur lui (V3.23). */}
+                <CarteASavoir prenom={client.prenom || ''} texte={(client as unknown as { notes?: string | null }).notes}
+                  onEnregistrer={async t => {
+                    const ok = await verifie('Les infos sur le client', supabase.from('clients').update({ notes: t || null }).eq('id', client.id).select('id'), { ligne: true });
+                    if (ok) setClient(c0 => ({ ...c0, notes: t || null } as Client));
+                    return ok;
+                  }} />
+                {/* Sa situation : descendue du bloc bleu (V3.29), où elle
+                    empiétait sur l'en-tête. */}
+                {(() => {
+                  const occ = client as any;
+                  if (!occ.statut_occupation && !occ.bien_actuel_a_vendre) return null;
+                  const aVendre = !!occ.bien_actuel_a_vendre;
+                  const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
+                  const champs: [string, React.ReactNode][] = [];
+                  if (occ.statut_occupation) champs.push(['Statut', labelStatut]);
+                  if (aVendre && occ.bien_actuel_type) champs.push(['Bien à revendre', `${occ.bien_actuel_type}${occ.bien_actuel_surface ? ` · ${occ.bien_actuel_surface} m²` : ''}`]);
+                  if (aVendre && occ.bien_actuel_valeur) champs.push(['Valeur estimée', <b key="v" style={{ color: '#a9822f' }}>{`${occ.bien_actuel_valeur.toLocaleString('fr-FR')} €`}</b>]);
+                  if (aVendre) champs.push(['Adresse du bien', occ.bien_actuel_adresse || 'Même adresse que le contact']);
+                  return (
+                    <div className={styles.carteEns}>
+                      <div className={styles.carteEnsT}>
+                        <span className={styles.carteEnsIc}><Icone nom="maison" taille={15} epaisseur={2} /></span>
+                        <b>Sa situation</b>
+                        <button type="button" onClick={() => { setCf(cfDe(client)); setShowContact(true); }}>Modifier</button>
+                      </div>
+                      <div className={styles.situGrille}>
+                        {champs.map(([l, v]) => (
+                          <div key={l} className={styles.situChamp}><small>{l}</small><span>{v}</span></div>
+                        ))}
+                      </div>
+                      {aVendre && <span className={styles.situVente}><Icone nom="etiquette" taille={14} />{'Revente possible après l’achat'}</span>}
+                      {aVendre && occ.bien_actuel_notes && <p className={styles.situNotes}>{occ.bien_actuel_notes}</p>}
+                    </div>
+                  );
+                })()}
+                {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
+                <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
+              </div>
+              <div className={styles.ensCol}>
+                {/* Sa recherche en bref : le détail est dans « Sa recherche ». */}
+                <div className={styles.carteEns}>
+                  <div className={styles.carteEnsT}>
+                    <span className={styles.carteEnsIc}><Icone nom="loupe" taille={15} epaisseur={2} /></span>
+                    <b>{recherches.length > 1 ? `Sa recherche : ${rechercheActive?.nom || ''}` : 'Sa recherche en bref'}</b>
+                    <button type="button" onClick={() => setVue('recherche')}>{rechercheActive ? 'Voir sa recherche' : 'En ouvrir une'}</button>
+                  </div>
+                  {rechercheActive ? (
+                    <div className={styles.brefGrille}>
+                      <div className={styles.brefCase}><small>Budget</small><b className={styles.brefOr}>{cr.budget_min && cr.budget_max ? fourchetteBudget(cr.budget_min, cr.budget_max) : cr.budget_max ? `Jusqu’à ${budgetLisible(cr.budget_max)}` : cr.budget_min ? `À partir de ${budgetLisible(cr.budget_min)}` : 'À préciser'}</b></div>
+                      <div className={styles.brefCase}><small>Bien</small><b>{[cr.type_bien ? String(cr.type_bien).split(',').join(', ') : '', cr.nb_pieces_min ? `${cr.nb_pieces_min} p. et +` : '', cr.surface_min ? `${cr.surface_min} m² et +` : ''].filter(Boolean).join(' · ') || 'À préciser'}</b></div>
+                      {cr.secteurs?.length > 0 && (
+                        <div className={`${styles.brefCase} ${styles.brefLarge}`}><small>Secteurs</small><b>{cr.secteurs.join(', ')}</b></div>
+                      )}
+                    </div>
+                  ) : <p className={styles.situNotes}>Aucune recherche pour l’instant.</p>}
+                </div>
+                {/* Dernièrement : les quatre dernières lignes du Suivi. */}
+                {(() => {
+                  const derniers = [...suiviComms, ...suiviEvents]
+                    .sort((x: any, y: any) => new Date(y.ts).getTime() - new Date(x.ts).getTime()).slice(0, 4);
+                  if (!derniers.length) return null;
+                  const quandCourt = (iso: string) => {
+                    const d = new Date(iso); const auj = new Date();
+                    if (d.toDateString() === auj.toDateString()) return 'Aujourd’hui';
+                    if (new Date(Date.now() - 86400000).toDateString() === d.toDateString()) return 'Hier';
+                    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+                  };
+                  return (
+                    <div className={styles.carteEns}>
+                      <div className={styles.carteEnsT}>
+                        <span className={styles.carteEnsIc}><Icone nom="horloge" taille={15} epaisseur={2} /></span>
+                        <b>Dernièrement</b>
+                        <button type="button" onClick={() => setVue('suivi')}>Tout le suivi</button>
+                      </div>
+                      <div className={styles.derniers}>
+                        {derniers.map((it: any) => (
+                          <div key={`${it.kind}-${it.data.id}`} className={styles.dernier}>
+                            <span className={styles.dernierQuand}>{quandCourt(it.ts)}</span>
+                            <span className={styles.dernierTxt}>{it.kind === 'comm' ? (it.data.objet || 'Envoi au client') : (it.data.titre || 'Action')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Il vend aussi (ses biens de la rubrique Biens, rien s'il n'en a
-            pas) et ses documents : deux blocs repliés, côte à côte (V3.17). */}
-        {/* Ce qu'Alexandre a noté sur lui (V3.23) : tapé à la création, il
-            n'apparaissait nulle part sur la fiche d'un acheteur. */}
-        <div style={{ marginBottom: 16 }}>
-          <CarteASavoir prenom={client.prenom || ''} texte={(client as unknown as { notes?: string | null }).notes}
-            onEnregistrer={async t => {
-              const ok = await verifie('Les infos sur le client', supabase.from('clients').update({ notes: t || null }).eq('id', client.id).select('id'), { ligne: true });
-              if (ok) setClient(c0 => ({ ...c0, notes: t || null } as Client));
-              return ok;
-            }} />
-        </div>
-        <div className={styles.replis}>
-          <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
-          <DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
-        </div>
+        {vue === 'espace' && (
+          <div className={styles.ens}>
+            {rechercheActive
+              ? <LienEspace recherche={rechercheActive} client={client} />
+              : <div className={styles.carteEns}><p className={styles.situNotes}>Son espace s’ouvre avec sa première recherche.</p></div>}
+            {rechercheActive && (
+              <div className={styles.carteEns}>
+                <div className={styles.carteEnsT}>
+                  <span className={styles.carteEnsIc}><Icone nom="envoyer" taille={15} epaisseur={2} /></span>
+                  <b>{dejaAccueilli ? 'Prévenir de cette nouvelle recherche' : 'Le mail de bienvenue'}</b>
+                </div>
+                <p className={styles.situNotes}>{rechercheActive.bienvenue_envoye_le
+                  ? `Envoyé le ${new Date(rechercheActive.bienvenue_envoye_le).toLocaleDateString('fr-FR')}.`
+                  : dejaAccueilli
+                    ? 'Elle a déjà son espace : ce mail lui dit que cette recherche s’y trouve aussi.'
+                    : 'Son lien d’espace, et comment l’installer sur son téléphone pour recevoir les biens en notification.'}</p>
+                {!rechercheActive.bienvenue_envoye_le && (
+                  <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: 'flex-start' }} onClick={envoyerBienvenue} disabled={envoiBienvenue}>
+                    {envoiBienvenue ? 'Envoi…' : dejaAccueilli ? 'Prévenir le client' : 'Envoyer le mail de bienvenue'}
+                  </button>
+                )}
+              </div>
+            )}
+            {/* Le mail « Où en est votre recherche ? » (V3.17), sorti du bloc
+                des critères : c'est un mail automatique, il vit avec l'espace. */}
+            {client.id && <PointAuto clientId={client.id} integre />}
+          </div>
+        )}
 
+        {vue === 'documents' && (
+          <div className={styles.ens}>
+            <DocumentsDuClient clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} ouvert />
+          </div>
+        )}
+
+        {vue === 'recherche' && (
+          <>
         {/* LES CRITÈRES — sur toute la largeur depuis que le mandat est remonté */}
         <div className={styles.infoRow}>
           {/* coin supérieur gauche carré : c'est là que vient se poser le sélecteur */}
@@ -3340,165 +3715,16 @@ ${signatureMail()}`,
             {/* Le mail « Où en est votre recherche ? » : quand il partira, ce que
                 le client a répondu, et l'interrupteur pour l'exclure. Dans le
                 bloc de la recherche, en pied (V3.17) : plus de blanc entre les deux. */}
-            {client.id && <PointAuto clientId={client.id} integre />}
           </div>
 
         </div>
 
 
-        {/* ONGLETS en haut */}
-      <style>{`
-        @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-        @keyframes emilioMenu { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
-        .emilio-menu { animation: emilioMenu .16s cubic-bezier(.22,.8,.3,1) both; transform-origin: top left; }
-        .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
-        @keyframes ficheTabIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
-        /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
-           pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
-        .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; min-height: 240px;
-          background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
-          border-radius: 0 0 16px 16px; padding: 16px; }
-        @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
 
-        /* Les onglets arrivaient collés aux critères, sans rien pour dire qu'on
-           changeait de sujet. Ce bandeau sombre le dit d'un seul contraste. */
-        /* Discrets par défaut : le suivi se lit d'abord, il se corrige ensuite. */
-        .suivi-actions { opacity: 0; transition: opacity .16s ease; }
-        /* L'action d'où vient la relance, quand on arrive depuis la page Relances. */
-        @keyframes suiviLueur {
-          0% { background: rgba(201,168,76,0); box-shadow: 0 0 0 0 rgba(201,168,76,0); }
-          15% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
-          75% { background: #fff6dd; box-shadow: 0 0 0 6px #fff6dd; }
-          100% { background: rgba(255,246,221,0); box-shadow: 0 0 0 6px rgba(255,246,221,0); }
-        }
-        .suivi-surligne { border-radius: 12px; animation: suiviLueur 5.5s ease both; }
-        .suivi-ligne:hover .suivi-actions, .suivi-actions:focus-within { opacity: 1; }
-        @media (hover: none) { .suivi-actions { opacity: 1; } }
-
-        .fiche-suivi { margin-top: 22px; padding: 13px 14px 0;
-          background: linear-gradient(105deg, #3d5878 0%, #4d6f95 100%);
-          border-radius: 16px 16px 0 0; }
-        .fiche-suivi-tete { display: flex; align-items: baseline; gap: 10px;
-          flex-wrap: wrap; padding: 0 4px 11px; }
-        .fiche-suivi-tete b { font-family: 'Plus Jakarta Sans', sans-serif;
-          font-size: 12px; font-weight: 800; color: #e0c479;
-          text-transform: uppercase; letter-spacing: 1.1px; }
-        .fiche-suivi-tete i { font-style: normal; font-size: 11.5px; color: rgba(255,255,255,.55); }
-        /* Remettre le suivi à zéro se décide en regardant le suivi : le bouton
-           est donc ici, au bout de son en-tête, et nulle part ailleurs. */
-        .fiche-suivi-reinit { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
-          border-radius: 99px; padding: 5px 13px; cursor: pointer;
-          font-family: 'DM Sans', sans-serif; font-size: 11.5px; font-weight: 700;
-          color: rgba(255,255,255,.72); transition: background .14s, color .14s, border-color .14s; }
-        .fiche-suivi-reinit:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
-
-        /* ═══════════ La transaction ═══════════
-           Cinq étapes empilées à la verticale, chacune avec son formulaire
-           déplié : il fallait défiler pour savoir où on en était. Un rail en
-           haut, les chiffres juste dessous, une seule étape ouverte. */
-
-        .tx-bien { display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
-          background: #fff; border: 1px solid #e8edf5; border-radius: 14px; padding: 10px 14px; }
-        .tx-photo { width: 46px; height: 46px; border-radius: 11px; background: #e2e8f0; flex-shrink: 0;
-          display: inline-flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
-        .tx-photo img { width: 100%; height: 100%; object-fit: cover; }
-        .tx-sur { display: block; font-size: 10px; font-weight: 800; color: #94a3b8;
-          text-transform: uppercase; letter-spacing: .9px; }
-        .tx-titre { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
-          font-size: 14.5px; color: var(--emilio); margin-top: 2px;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .tx-detail { display: block; font-size: 12.5px; color: #64748b; }
-
-        .tx-rail { display: flex; align-items: flex-start; margin: 0 0 18px; }
-        .tx-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0;
-          font-family: inherit; display: flex; flex-direction: column; align-items: center;
-          gap: 7px; cursor: pointer; }
-        .tx-pas:disabled { cursor: default; }
-        .tx-fil { display: flex; align-items: center; width: 100%; }
-        .tx-fil i { flex: 1; height: 2px; background: #e3e8f0; transition: background .35s ease; }
-        .tx-fil i.on { background: #c9a84c; }
-        .tx-fil i.vide { background: transparent; }
-        .tx-rond { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
-          display: inline-flex; align-items: center; justify-content: center;
-          font-size: 15px; font-weight: 800; background: #fff; border: 2px solid #e3e8f0; color: #b0bec5;
-          transition: transform .22s cubic-bezier(.3,1.5,.5,1), box-shadow .22s, background .3s, border-color .3s, color .3s; }
-        .tx-pas[data-etat="fait"] .tx-rond { background: #c9a84c; border-color: #c9a84c; color: var(--emilio); }
-        .tx-pas[data-etat="encours"] .tx-rond { background: var(--emilio); border-color: var(--emilio); color: #fff; }
-        .tx-pas[data-vue="true"] .tx-rond { transform: scale(1.14); box-shadow: 0 0 0 5px rgba(201,168,76,.2); }
-        .tx-pas:not(:disabled):hover .tx-rond { transform: scale(1.09); }
-        .tx-nom { font-size: 11.5px; font-weight: 700; color: #a8b3c4; text-align: center;
-          line-height: 1.25; padding: 0 3px; transition: color .25s; }
-        .tx-pas[data-etat="fait"] .tx-nom { color: #64748b; }
-        .tx-pas[data-etat="encours"] .tx-nom, .tx-pas[data-vue="true"] .tx-nom { color: var(--emilio); font-weight: 800; }
-
-        .tx-chiffres { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 16px; }
-        .tx-chiffre { flex: 1 1 145px; background: #fff; border: 1px solid #e8edf5;
-          border-radius: 12px; padding: 9px 13px; }
-        .tx-chiffre b { display: block; font-size: 9.5px; font-weight: 800; color: #94a3b8;
-          text-transform: uppercase; letter-spacing: .8px; }
-        .tx-chiffre strong { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
-          font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 1px; }
-        .tx-chiffre i { font-style: normal; font-size: 11.5px; color: #94a3b8; }
-
-        @keyframes txPanneau { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-        .tx-panneau { animation: txPanneau .28s cubic-bezier(.22,.9,.3,1) both;
-          background: #fff; border: 1px solid #e8edf5; border-radius: 16px; overflow: hidden; }
-
-        .tx-tete { display: flex; align-items: center; gap: 11px; padding: 13px 16px;
-          border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
-        .tx-tete[data-encours="true"] { background: #fdfaf1; border-bottom-color: #f0e4c6; }
-        .tx-tete-nom { display: block; font-family: 'Plus Jakarta Sans', sans-serif;
-          font-weight: 800; font-size: 16px; color: var(--emilio); letter-spacing: -.2px; }
-        .tx-tete-quoi { display: block; font-size: 12px; color: #8593a8; margin-top: 1px; }
-        .tx-franchie { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #a9822f;
-          background: #fff; border: 1px solid #ecdcb4; border-radius: 99px; padding: 3px 10px; }
-
-        .tx-corps { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
-        .tx-note { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
-          padding: 9px 13px; font-size: 12.5px; color: #55647a; line-height: 1.55; }
-        .tx-ajout { background: #f8fafc; border: 1px dashed #d9e2ee; border-radius: 12px;
-          padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; }
-
-        .tx-co { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-          border-radius: 11px; border: 1px solid #e8edf5; background: #fff; font-size: 13.5px; }
-        .tx-co[data-partie="acheteur"] { border-color: #dbe7fa; background: #f7fbff; }
-        .tx-co[data-partie="vendeur"] { border-color: #fbe0e0; background: #fffafa; }
-        .tx-co-qui { font-size: 12px; font-weight: 700; color: #55647a; flex-shrink: 0; }
-        .tx-co b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; color: var(--emilio); }
-        .tx-co-x { background: none; border: none; cursor: pointer; color: #cbd5e1;
-          font-size: 13px; padding: 2px 4px; line-height: 1; transition: color .15s; }
-        .tx-co-x:hover { color: #ef4444; }
-
-        .tx-alerte { border-radius: 10px; padding: 10px 13px; font-size: 12.5px; line-height: 1.55;
-          background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
-        .tx-alerte[data-ton="calme"] { background: #f8fafc; border-color: #e8edf5; color: #55647a; }
-        .tx-alerte[data-ton="vert"] { background: #ecfdf5; border-color: #bbf7d0; color: #15803d; }
-        .tx-alerte[data-ton="veille"] { background: #eef4fb; border-color: #d6e3f5; color: #2d5c8f; }
-
-        .tx-pied { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
-          padding: 12px 16px; border-top: 1px solid #f1f5f9; background: #fbfcfe; }
-        .tx-abandon { background: none; border: none; padding: 0; cursor: pointer;
-          font-family: 'DM Sans', sans-serif; font-size: 12.5px; color: #a8b3c4; text-decoration: underline; }
-        .tx-abandon:hover { color: #ef4444; }
-        .tx-cloture { background: #10b981; color: #fff; border: none; border-radius: 10px;
-          padding: 10px 20px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
-          font-size: 13.5px; cursor: pointer; transition: background .15s, transform .12s; }
-        .tx-cloture:hover { background: #0ea271; transform: translateY(-1px); }
-        .tx-cloture:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-
-        @media (max-width: 640px) {
-          .tx-rond { width: 30px; height: 30px; font-size: 12.5px; }
-          .tx-nom { font-size: 10px; }
-          .tx-chiffre { flex-basis: 100%; }
-        }
-      `}</style>
-
-        <StylesEmilio />
         <div className="fiche-suivi">
           <div className="fiche-suivi-tete">
-            <b>Le suivi du dossier</b>
-            <i>ce qui a été fait pour ce client</i>
+            <b>Où en est la recherche</b>
+            <i>de la veille à la transaction</i>
             {rechercheActive && (
               <button type="button" className="fiche-suivi-reinit" onClick={ouvrirReinit}
                 title="Effacer tout le suivi et repartir sur une veille neuve">
@@ -4007,9 +4233,13 @@ ${signatureMail()}`,
           </div>
         )}
 
+        </div>
+          </>
+        )}
+
         {/* TAB SUIVI (fusion Historique + Journal) — en frise depuis la V3.23 :
             le rendu vit dans FriseSuivi, les données restent préparées ici. */}
-        {tab === 'suivi' && (
+        {vue === 'suivi' && (
           <div className={`${styles.card} fc-suivi-carte`} style={{ padding: 22 }}>
             {/* « À venir », en haut de la frise : les relances en attente de CETTE
                 recherche, et celles du client qui n'en ont pas. */}
@@ -4038,7 +4268,7 @@ ${signatureMail()}`,
             />
           </div>
         )}
-        </div>
+        </CorpsOnglet>
 
       {showContact && (
         <Portail>

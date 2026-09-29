@@ -352,3 +352,167 @@
 }
 
 @keyframes feuilleMonte { from { transform: translateY(60px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+/* ══ L'en-tête de la fiche contact (V3.29) ══════════════════════════════
+   Le bloc bleu : qui, où en est son dossier, son espace, et un panneau de
+   coordonnées qui se déplie par-dessus les onglets (le bloc ne grandit
+   jamais). Les onglets sont posés à cheval sur son bord bas. */
+.teteZone { background: #f8fafc; padding: 16px 24px 0; }
+.tete {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 24px;
+  padding: 24px 22px 48px 28px; border-radius: 22px; color: #fff;
+  background: linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%);
+  border: 1px solid rgba(201, 168, 76, .2); box-shadow: 0 24px 50px -30px rgba(30, 45, 75, .75);
+}
+.teteFond { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.teteHalo1 { position: absolute; top: -140px; right: -90px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(201, 168, 76, .2), transparent 64%); }
+.teteHalo2 { position: absolute; bottom: -160px; left: -60px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(125, 185, 255, .12), transparent 66%); }
+.teteG { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-width: 0; }
+.teteQui { display: flex; align-items: flex-start; gap: 17px; min-width: 0; }
+.teteAvatar {
+  width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02));
+  border: 1.5px solid rgba(201, 168, 76, .55); color: #e0c36e;
+  font: 800 22px 'Plus Jakarta Sans', sans-serif; letter-spacing: .5px;
+}
+.teteEtat { position: absolute; right: 1px; bottom: 1px; width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid #2b3f63; }
+
+/* Où en est son dossier : quatre chiffres, sans cadre, séparés d'un trait,
+   et à côté, depuis quand on le suit. */
+.compteursLigne { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.depuis {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 9px; border-radius: 16px;
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12);
+}
+.depuisIc {
+  width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(232, 201, 106, .15); color: #e8c96a;
+}
+.depuisTx { display: flex; flex-direction: column; gap: 1px; }
+.depuisTx small { font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: rgba(255, 255, 255, .55); }
+.depuisTx b { font: 800 16px/1.2 'Plus Jakarta Sans', sans-serif; color: #fff; white-space: nowrap; }
+.depuisTx i { font-style: normal; font-size: 11.5px; color: rgba(255, 255, 255, .5); }
+
+.compteurs { display: flex; align-items: stretch; }
+.compteur {
+  display: flex; flex-direction: column; gap: 4px; padding: 0 15px; text-align: left;
+  border: none; border-left: 1px solid rgba(255, 255, 255, .14); background: none; color: #fff; cursor: pointer;
+  font-family: inherit;
+}
+.compteur:first-child { padding-left: 0; border-left: none; }
+.compteur b { font: 800 27px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: -.6px; font-variant-numeric: tabular-nums; transition: color .18s; }
+.compteur small { font-size: 12px; color: rgba(255, 255, 255, .62); white-space: nowrap; }
+.compteur:hover b { color: #e8c96a; }
+.compteurVide b { color: rgba(255, 255, 255, .36); }
+
+.teteEspace {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 0;
+  border: none; background: none; cursor: pointer; font: 500 12.5px 'DM Sans', sans-serif; color: rgba(255, 255, 255, .78);
+}
+.teteEspace b { color: #fff; font-weight: 700; }
+.teteEspace:hover b { color: #e8c96a; }
+.teteEspaceOn, .teteEspaceOff { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.teteEspaceOn { background: #4ade80; animation: espaceVivant 2s ease-out infinite; }
+.teteEspaceOff { background: rgba(255, 255, 255, .3); }
+@keyframes espaceVivant { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, .6); } 80%, 100% { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); } }
+
+/* Les coordonnées : trois lignes, puis « Tout voir » par-dessus les onglets. */
+.coZone { position: relative; align-self: start; min-width: 0; }
+.coPanneau {
+  display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 18px;
+  background: rgba(10, 18, 32, .2); border: 1px solid rgba(255, 255, 255, .1);
+}
+.coDeplie {
+  position: absolute; left: auto; right: 0; top: 0; z-index: 6; width: max(100%, 460px); box-sizing: border-box; max-height: min(70vh, 560px); overflow-y: auto;
+  background: linear-gradient(170deg, #34496e 0%, #26375a 100%); border-color: rgba(232, 201, 106, .35);
+  box-shadow: 0 30px 60px -24px rgba(15, 23, 42, .75);
+  animation: coOuvre .24s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes coOuvre { from { opacity: 0; clip-path: inset(0 0 60% 0 round 18px); } to { opacity: 1; clip-path: inset(0 0 0 0 round 18px); } }
+.coTete {
+  display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, .6);
+}
+.coTete button { border: none; background: none; padding: 0; cursor: pointer; color: #e8c96a; font: 700 12px 'DM Sans', sans-serif; letter-spacing: 0; text-transform: none; }
+.coLigne { display: flex; align-items: center; gap: 2px; border-radius: 11px; transition: background .15s; }
+.coLigne:hover { background: rgba(255, 255, 255, .07); }
+.coLien {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 4px 0 8px;
+  color: #fff; text-decoration: none; font: 700 13.5px 'DM Sans', sans-serif;
+}
+a.coLien:hover { color: #fff; }
+.coIc { width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(232, 201, 106, .14); color: #e8c96a; }
+.coVal { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.coQui { flex-shrink: 0; font-style: normal; font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, .55); }
+.coCopie {
+  width: 30px; height: 30px; margin-right: 4px; flex-shrink: 0; border: none; border-radius: 9px; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .45); transition: background .15s, color .15s;
+}
+.coCopie:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.coVide { padding: 6px 4px; font-size: 13px; color: rgba(255, 255, 255, .62); }
+.coVide button { border: none; background: none; padding: 0; cursor: pointer; color: #e8c96a; font: 700 13px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 2px; }
+.coPlus {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 34px; margin-top: 4px; padding: 0 10px;
+  border: none; border-radius: 10px; background: rgba(255, 255, 255, .07); color: #fff; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif;
+  transition: background .15s;
+}
+.coPlus:hover { background: rgba(255, 255, 255, .12); }
+.coPlus svg { color: #e8c96a; }
+.coReduire svg { transform: rotate(180deg); }
+.coGroupe { padding: 8px 4px 2px; font-size: 10px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
+.coPied { padding: 8px 4px 2px; }
+
+.ongletsTete { position: relative; z-index: 3; margin: -24px 22px 0; }
+.ongletsTete > nav { box-shadow: 0 14px 30px -16px rgba(26, 35, 50, .45), 0 2px 6px rgba(26, 35, 50, .06); }
+
+/* ── Vue d'ensemble, Son espace, Documents ── */
+.ens { display: flex; flex-direction: column; gap: 16px; }
+.ensCols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.ensCol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.aVenir { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 12px; border-radius: 16px; background: #fff; border: 1px solid #e3e8f0; }
+.aVenirL { display: inline-flex; align-items: center; gap: 10px; padding: 4px; border: none; background: none; cursor: pointer; text-align: left; font: 500 13.5px 'DM Sans', sans-serif; color: #475569; }
+.aVenirL b { color: #1a2332; }
+.aVenirIc { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fbf6e9; color: #a07c28; }
+.aVenirSep { width: 1px; height: 22px; background: #e3e8f0; }
+.carteEns { background: #fff; border: 1px solid #e3e8f0; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+.carteEnsT { display: flex; align-items: center; gap: 10px; }
+.carteEnsT b { flex: 1; min-width: 0; font: 800 15.5px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.carteEnsT button { border: none; background: none; padding: 0; cursor: pointer; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; white-space: nowrap; }
+.carteEnsIc { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fbf6e9; border: 1px solid #ecdcb0; color: #a07c28; }
+.situGrille, .brefGrille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.situChamp, .brefCase { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; border-radius: 11px; background: #f8fafc; min-width: 0; }
+.situChamp small, .brefCase small { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #94a3b8; }
+.situChamp span { font-size: 14px; font-weight: 700; color: var(--emilio); overflow-wrap: anywhere; }
+.brefCase b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.brefOr { color: #a9822f !important; }
+.brefLarge { grid-column: 1 / -1; }
+.brefLarge b { font: 700 13.5px 'DM Sans', sans-serif; }
+.situVente { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 10px; background: #fffaf3; color: #b45309; border: 1px solid #f3dcb8; font-size: 12.5px; font-weight: 700; }
+.situNotes { margin: 0; font-size: 13px; line-height: 1.6; color: #64748b; }
+.derniers { display: flex; flex-direction: column; }
+.dernier { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; padding: 8px 2px; border-top: 1px solid #f1f5f9; font-size: 13px; }
+.dernier:first-child { border-top: none; padding-top: 2px; }
+.dernierQuand { font-size: 12px; font-weight: 700; color: #94a3b8; }
+.dernierTxt { color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .teteZone { padding: 10px 10px 0; }
+  .tete { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 14px 44px; border-radius: 18px; }
+  .teteQui { gap: 12px; }
+  .teteAvatar { width: 44px; height: 44px; font-size: 16px; }
+  .compteursLigne { gap: 14px; }
+  .compteurs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; }
+  .depuis { width: 100%; box-sizing: border-box; }
+  .compteur { padding: 0 8px; }
+  .compteur b { font-size: 21px; }
+  .compteur small { font-size: 10.5px; white-space: normal; line-height: 1.25; }
+  .ongletsTete { margin: -24px 8px 0; }
+  .ensCols { grid-template-columns: minmax(0, 1fr); }
+  .aVenir { flex-direction: column; align-items: stretch; gap: 4px; }
+  .aVenirSep { display: none; }
+  .coLien { font-size: 13px; }
+  .coDeplie { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .teteEspaceOn, .coDeplie { animation: none; }
+}
