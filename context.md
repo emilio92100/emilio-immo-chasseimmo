@@ -1462,6 +1462,10 @@ dans `biens_vente.donnees`.
   chaque colonne empile les siennes. Déplier les remarques d'une carte ne fait pas sauter les
   autres d'une colonne à l'autre. Le texte `travaux` y porte aussi son nom : « Autres remarques
   sur les travaux ».
+- **Contacts, « Tous » et les autres types** (`LigneContact`, `ChampsContact.tsx`) : chaque ligne
+  porte le même petit personnage que la liste des acheteurs (`AvatarContact` : deux pour un
+  couple, une mallette pour un professionnel), à la couleur de son type — elle montrait ses
+  initiales.
 - **Téléphone : plus de barre « Fiches ouvertes »** en bas (`FichesOuvertes.module.css`,
   ≤ 900 px) ; elle reste sur l'ordinateur.
 - **Mise en ligne** : le 29 septembre, une ancienne mise en ligne (commit « 2/7 ») avait été
