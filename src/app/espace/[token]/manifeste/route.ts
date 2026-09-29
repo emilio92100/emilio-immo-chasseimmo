@@ -70,14 +70,17 @@ export async function GET(
     orientation: 'portrait',
     /* La couleur de l'écran d'ouverture d'Android. Elle est volontairement la
        même que celle de l'écran de chargement (voir loading.tsx) : le passage
-       de l'un à l'autre devient invisible, et l'ouverture paraît immédiate. */
-    background_color: '#1a2332',
+       de l'un à l'autre devient invisible, et l'ouverture paraît immédiate.
+       V3.29 : plus claire, à la demande d'Alexandre, avec son logo. */
+    background_color: '#f4f6fa',
     theme_color: '#1a2332',
+    /* Le « E » d'Emilio (V3.29), rangé dans public/logos/. */
     icons: [
-      { src: '/icone?t=192', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icone?t=512', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      /* Android découpe l'icône en rond : il lui faut une version prévue pour. */
-      { src: '/icone?t=512', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/logos/e-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/logos/e-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      /* Android découpe l'icône en rond : le E y est réduit pour ne pas être rogné. */
+      { src: '/logos/e-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/logos/e-silhouette-96.png', sizes: '96x96', type: 'image/png', purpose: 'monochrome' },
     ],
   };
 
