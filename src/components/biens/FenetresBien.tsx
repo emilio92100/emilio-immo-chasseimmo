@@ -686,39 +686,84 @@ export function FenRaison({ bien, etape, titre, sur, onFermer, onFait }: {
   );
 }
 
-/* ══ Changer le prix (l'ancien reste dans l'historique) ══════════════════ */
-export function FenPrix({ bien, onFermer, onFait }: { bien: BienVente; onFermer: () => void; onFait: (b: BienVente) => void }) {
+/* ══ Changer le prix (l'ancien reste dans l'historique) ══════════════════
+   V3.32 (Alexandre : « il faut aussi une case honoraires si les honoraires
+   changent ») : « Les honoraires changent aussi » ouvre le taux ou le forfait,
+   le net vendeur se recalcule, l'historique garde les deux. Pendant un mandat
+   signé dans le CRM, « Préparer l'avenant au mandat » fait le brouillon de
+   l'avenant, prérempli (nouveau prix, nouveaux honoraires). */
+export type ApresPrix = { avenant: { prix: number | null; hono: Donnees | null } | null };
+export function FenPrix({ bien, mandatSigne = false, onFermer, onFait }: {
+  bien: BienVente;
+  /* Un mandat signé dans le CRM : l'avenant peut se préparer d'ici. */
+  mandatSigne?: boolean;
+  onFermer: () => void; onFait: (b: BienVente, x?: ApresPrix) => void;
+}) {
   const d = bien.donnees || {};
   const ancien = num(d, 'prix');
+  const avantA = argentBien(d);
   const [prix, setPrix] = useState<number | null>(ancien);
+  const [changeHono, setChangeHono] = useState(false);
+  const [honoMode, setHonoMode] = useState<'taux' | 'forfait'>(d.honoMode === 'forfait' ? 'forfait' : 'taux');
+  const [taux, setTaux] = useState<number | null>(num(d, 'taux'));
+  const [forfait, setForfait] = useState<number | null>(num(d, 'forfait'));
+  const [avenant, setAvenant] = useState(mandatSigne);
   const [note, setNote] = useState('');
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
-  const apres = argentBien({ ...d, prix });
+  const hono: Donnees | null = changeHono ? { charge: d.charge || 'acquereur', honoMode, ...(honoMode === 'taux' ? { taux, forfait: null } : { forfait, taux: null }) } : null;
+  const apres = argentBien({ ...d, prix, ...(hono || {}) });
+  const prixChange = !!prix && prix !== ancien;
+  const honoChange = !!hono && apres.hono !== null && apres.hono !== avantA.hono;
   async function valider() {
-    if (!prix || prix === ancien) { onFermer(); return; }
+    if (!prixChange && !honoChange) { onFermer(); return; }
+    if (changeHono && apres.hono === null) { setErreur(honoMode === 'taux' ? 'Écris le nouveau taux.' : 'Écris le nouveau forfait.'); return; }
     setOccupe(true); setErreur('');
     try {
-      const r = await enregistrerBien(bien.id, { ...d, prix });
-      await ajouterSuivi({ bien_id: bien.id, type: 'prix', montant: prix, commentaire: note.trim() || null, donnees: { ancien } });
-      onFait(r);
+      const r = await enregistrerBien(bien.id, { ...d, prix, ...(hono || {}) });
+      /* L'historique dit ce qui a changé (FicheBien, « Prix et honoraires changés »). */
+      await ajouterSuivi({
+        bien_id: bien.id, type: 'prix', montant: prix, commentaire: note.trim() || null,
+        donnees: { ancien, ...(honoChange ? { honoAvant: avantA.hono, honoApres: apres.hono } : {}) },
+      });
+      onFait(r, { avenant: mandatSigne && avenant ? { prix: prixChange ? prix : null, hono: honoChange ? hono : null } : null });
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
   return (
-    <Fenetre sur="Garde l’historique des prix" couleur="#8b5cf6" titre="Changer le prix" sous={resume(bien)} occupe={occupe} onFermer={onFermer}
+    <Fenetre sur="Garde l’historique" couleur="#8b5cf6" titre="Changer le prix ou les honoraires" sous={resume(bien)} occupe={occupe} onFermer={onFermer}
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
-        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Changer le prix'}</button></>}>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : honoChange && !prixChange ? 'Changer les honoraires' : honoChange ? 'Changer le prix et les honoraires' : 'Changer le prix'}</button></>}>
       <div className={b.g2}>
         <Ch lib="Prix affiché aujourd’hui"><input className={s.input} disabled value={ancien ? euros(ancien) : '—'} /></Ch>
         <Ch lib="Nouveau prix"><SaisieNombre v={prix} euros unite="€" off={false} onChange={setPrix} /></Ch>
       </div>
-      {prix && ancien && prix !== ancien && (
+      {/* Les honoraires : une case, qui ouvre le taux ou le forfait. */}
+      <label className={b.caseHono}>
+        <input type="checkbox" checked={changeHono} onChange={e => setChangeHono(e.target.checked)} />
+        <span><b>Les honoraires changent aussi</b><small>{avantA.hono !== null ? `Aujourd’hui : ${euros(avantA.hono)} TTC${avantA.taux ? ` (${pourcent(avantA.taux)})` : ''}, à la charge ${avantA.acq ? 'de l’acquéreur' : 'du vendeur'}` : 'Aujourd’hui : pas encore renseignés'}</small></span>
+      </label>
+      {changeHono && (
+        <div className={b.g2}>
+          <ChG lib="Honoraires"><Pills options={[{ v: 'taux', l: 'En %' }, { v: 'forfait', l: 'Au forfait' }]} v={honoMode} onChange={setHonoMode} /></ChG>
+          {honoMode === 'taux'
+            ? <Ch lib={d.charge !== 'vendeur' ? 'Nouveau taux, du prix net vendeur' : 'Nouveau taux'}><SaisieNombre v={taux} unite="% TTC" off={false} onChange={setTaux} ph="Ex : 4" lib="Taux" /></Ch>
+            : <Ch lib="Nouveau forfait"><SaisieNombre v={forfait} euros unite="€ TTC" off={false} onChange={setForfait} ph="Ex : 15 000" lib="Forfait" /></Ch>}
+        </div>
+      )}
+      {(prixChange || honoChange) && (
         <div className={b.calc}>
-          {prix < ancien ? `Baisse de ${euros(ancien - prix)} (−${pourcent(((ancien - prix) / ancien) * 100)}).` : `Hausse de ${euros(prix - ancien)}.`}
-          {apres.net ? <>{' '}Net vendeur : <b>{euros(apres.net)}</b>{apres.hono !== null ? `, honoraires ${euros(apres.hono)}` : ''}.</> : null}
+          {prixChange && ancien ? (prix! < ancien ? `Baisse de ${euros(ancien - prix!)} (−${pourcent(((ancien - prix!) / ancien) * 100)}).` : `Hausse de ${euros(prix! - ancien)}.`) : ''}
+          {honoChange ? `${prixChange ? ' ' : ''}Honoraires : ${avantA.hono !== null ? `${euros(avantA.hono)} → ` : ''}${euros(apres.hono as number)} TTC.` : ''}
+          {apres.net ? <>{' '}Net vendeur : <b>{euros(apres.net)}</b>{!honoChange && apres.hono !== null ? `, honoraires ${euros(apres.hono)}` : ''}.</> : null}
         </div>
       )}
       <Ch lib="Pourquoi (pour l’historique)"><input className={s.input} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex : retours de visite, pas d’offre en 6 semaines" /></Ch>
+      {mandatSigne && (prixChange || honoChange) && (
+        <label className={b.caseHono}>
+          <input type="checkbox" checked={avenant} onChange={e => setAvenant(e.target.checked)} />
+          <span><b>Préparer l’avenant au mandat</b><small>{'Pendant le mandat, un changement de prix ou d’honoraires se signe par un avenant : il sera prérempli dans Documents, à relire et à faire signer.'}</small></span>
+        </label>
+      )}
       <div className={b.calc}>Les acheteurs à qui le bien a déjà été présenté gardent l’ancien prix dans leur espace : renvoie-le si tu veux qu’ils voient le nouveau.</div>
       <Erreur t={erreur} />
     </Fenetre>

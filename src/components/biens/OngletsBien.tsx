@@ -101,10 +101,30 @@ export function Famille({ ton, ic, titre, onModifier, children }: { ton: Ton; ic
    Une valeur longue (une phrase, pas un chiffre) passe sous le mot, calée à
    gauche, en texte normal (V3.30) : en gras et calée à droite, elle faisait
    une colonne de trois mots par ligne. */
-export function Kv({ l, v, alerte }: { l: string; v: ReactNode; alerte?: boolean }) {
+/* Sa petite icône (V3.32, Alexandre : « que ce soit plus vivant ») : trouvée
+   par le mot de la ligne, teintée de la couleur de la carte. Un mot inconnu :
+   un point discret, pour garder l'alignement. */
+const IC_KV: Record<string, string> = {
+  'État': 'etincelle', 'Cuisine': 'cuisine', 'Chauffage': 'radiateur', 'Par': 'convecteur', 'Eau chaude': 'ballon',
+  'Étage': 'escalier', 'Niveaux': 'escalier', 'Ascenseur': 'ascenseur', 'Construction': 'calendrier', 'N° de lot': 'lots', 'Cadastre': 'carte',
+  'Lots': 'lots', 'Procédure en cours': 'balance', 'Syndic': 'personne', 'Fonds de travaux': 'outil',
+  'Balcon': 'balcon', 'Terrasse': 'parasol', 'Jardin': 'fleur', 'Cave': 'cave', 'Parking': 'parking', 'Loggia': 'loggia',
+  'Exposition': 'boussole', 'Vue': 'horizon', 'Vis-à-vis': 'oeil',
+  'Charges': 'euro', 'Elles comprennent': 'liste', 'Taxe foncière': 'fiscal', 'Loyer (bien loué)': 'bail', 'Fin du bail': 'calendrier',
+  'Estimation': 'regle', 'Fourchette': 'regle', 'Prix conseillé': 'etiquette', 'Prix affiché': 'etiquette', 'Net vendeur': 'banque',
+  'Honoraires': 'pourcent', 'Prix au m²': 'regle', 'Le propriétaire espère': 'personne', 'Le propriétaire espérait': 'personne',
+  'Diagnostic fait le': 'calendrier', 'Coût estimé': 'euro',
+};
+export function Kv({ l, v, alerte, ic }: { l: string; v: ReactNode; alerte?: boolean; ic?: string }) {
   if (v === '' || v === null || v === undefined || v === false) return null;
   const long = typeof v === 'string' && v.length > 38;
-  return <div className={`${o.kv} ${long ? o.kvLong : ''} ${alerte ? o.kvAlerte : ''}`}><span>{l}</span><b>{v}</b></div>;
+  const picto = ic || IC_KV[l];
+  return (
+    <div className={`${o.kv} ${long ? o.kvLong : ''} ${alerte ? o.kvAlerte : ''}`}>
+      <span className={o.kvL}><i className={o.kvIc} aria-hidden="true">{picto ? <Ic n={picto} t={14} e={2} /> : <em />}</i>{l}</span>
+      <b>{v}</b>
+    </div>
+  );
 }
 /* Une petite liste de travaux : le quoi en gras, le quand et le mot dessous. */
 export function ListeTravaux({ titre, l }: { titre: string; l: { id: string; t: string; s: string }[] }) {
@@ -581,6 +601,32 @@ export function EtapesDocs({ etapes }: { etapes: EtapeDoc[] }) {
           </div>
           {x.actions && <div className={o.edocActs}>{x.actions}</div>}
           {x.suite && <div className={o.edocSuite}>{x.suite}</div>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+/* ── Le récapitulatif d'une étape (V3.32) ──────────────────────────────
+   Alexandre : « le mandat de vente, suivi d'un avenant, un deuxième
+   avenant… plusieurs bons de visite, les offres : que ce soit bien à jour ».
+   Sous une étape, ses documents dans l'ordre où ils sont venus : un point
+   vert signé, or en signature, gris en préparation ; un avenant est rangé
+   sous son mandat. Un clic l'ouvre dans Documents ; « PDF » : le signé. */
+export type MaillonDoc = {
+  id: string; titre: string; detail: string; etat: 'signe' | 'attente' | 'prepa';
+  retrait?: boolean; onOuvrir: () => void; onPdf?: () => void;
+};
+export function ChaineDocs({ items }: { items: MaillonDoc[] }) {
+  if (!items.length) return null;
+  return (
+    <ol className={o.chaine}>
+      {items.map(x => (
+        <li key={x.id} className={o.maillon} data-etat={x.etat} data-retrait={x.retrait ? 'oui' : undefined}>
+          <span className={o.maillonPt} aria-hidden="true">{x.etat === 'signe' ? <Ic n="check" t={11} e={3.2} /> : null}</span>
+          <button type="button" className={o.maillonTx} onClick={x.onOuvrir} title="Ouvrir dans Documents">
+            <b>{x.titre}</b><small>{x.detail}</small>
+          </button>
+          {x.onPdf && <button type="button" className={o.maillonPdf} onClick={x.onPdf} title="L’exemplaire signé"><Ic n="doc" t={13} />PDF</button>}
         </li>
       ))}
     </ol>

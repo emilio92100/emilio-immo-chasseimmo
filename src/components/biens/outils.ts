@@ -13,7 +13,7 @@ import {
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
-import { colonnesListe, identiteDuJour } from '@/components/documents/outils';
+import { colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
 
 /* ═══ Biens en vente : les lectures et les écritures ══════════════════════
    Tout ce qui touche à la base pour la rubrique, au même endroit. Chaque
@@ -100,9 +100,48 @@ export async function documentsDuBien(b: BienVente): Promise<DocLie[]> {
     b.document_id ? supabase.from('documents').select(cols).eq('id', b.document_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ]);
   if (a.error) throw new Error('Les documents du bien n’ont pas pu être lus : ' + a.error.message);
-  const l = (a.data || []) as DocLie[];
+  let l = (a.data || []) as DocLie[];
   const lie = m.data as DocLie | null;
-  return lie && !l.some(x => x.id === lie.id) ? [lie, ...l] : l;
+  if (lie && !l.some(x => x.id === lie.id)) l = [lie, ...l];
+  /* Les avenants, courriers de reconduction et délégations faits à partir de
+     ses mandats (V3.32) : reliés par le numéro du mandat — ceux d'avant la
+     V3.32 ne portaient pas le bien. */
+  const numeros = [...new Set([
+    ...l.filter(x => x.modele === 'mandat_vente' && x.statut !== 'annule').map(x => String(x.numero || '').trim()),
+    String((b.donnees || {}).mandatNumero || b.mandat_numero || '').trim(),
+  ].filter(Boolean))];
+  if (numeros.length) {
+    const { data, error } = await supabase.from('documents').select(cols).in('modele', ['avenant_vente', 'courrier_reconduction', 'delegation'])
+      .in('donnees->>mandatNumero', numeros).order('created_at', { ascending: false }).limit(40);
+    if (!error) for (const x of (data || []) as DocLie[]) if (!l.some(y => y.id === x.id)) l.push(x);
+  }
+  return l.sort((p, q) => q.created_at.localeCompare(p.created_at));
+}
+
+/* ══ L'avenant au mandat de vente, depuis « Changer le prix » (V3.32) ═════
+   Le mandat signé du bien, ses avenants déjà signés (preparerDepuis), puis ce
+   qui change : le prix, les honoraires. Un brouillon, relié au bien, à
+   relire et à faire signer dans Documents. */
+export async function creerAvenantVente(b: BienVente, mandatId: string, x: {
+  prix?: number | null; hono?: { charge: unknown; honoMode: unknown; taux: unknown; forfait: unknown } | null;
+}): Promise<string> {
+  const m = modele('avenant_vente');
+  if (!m) throw new Error('Le modèle d’avenant est introuvable.');
+  const choix = await mandatDepuis('d-' + mandatId);
+  const identite = await identiteDuJour();
+  const base = await preparerDepuis(m, choix, identite);
+  const objets = [...(x.prix ? ['prix'] : []), ...(x.hono ? ['honoraires'] : [])];
+  const donnees = {
+    ...base, bienVenteId: b.id, objets: objets.length ? objets : ['prix'],
+    ...(x.prix ? { nouveauPrix: x.prix } : {}),
+    ...(x.hono ? { charge2: x.hono.charge, honoMode2: x.hono.honoMode, taux2: x.hono.taux ?? null, forfait2: x.hono.forfait ?? null } : {}),
+  };
+  const { data, error } = await supabase.from('documents').insert({
+    modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
+    client_id: choix.client_id || null, bien_id: choix.bien_id || null, recherche_id: null,
+  }).select('id').single();
+  if (error || !data) throw new Error('L’avenant n’a pas pu être préparé : ' + (error?.message || 'rien n’est revenu'));
+  return (data as { id: string }).id;
 }
 
 /* Le Suivi des contacts qui parle du bien (V3.29) : une action notée chez un

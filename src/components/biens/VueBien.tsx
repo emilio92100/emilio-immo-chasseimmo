@@ -98,7 +98,7 @@ export type LigneVisite = { ic: string; l: string; v: string };
 export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: LigneVisite[]; encarts: { l: string; v: string }[]; onModifier: () => void }) {
   const [tout, setTout] = useState(false);
   const vide = !lignes.length && !encarts.length;
-  const long = lignes.length > 3 || encarts.some(x => x.v.length > 110);
+  const long = lignes.length > 3 || encarts.some(x => x.v.length > (lignes.length ? 110 : 300));
   return (
     <div className={`${v.kpi} ${v.kpiBlanc}`}>
       <div className={v.kpiT} style={{ color: '#1d4ed8' }}>
@@ -110,9 +110,13 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
         <>
           {lignes.length > 0 && (
             <div className={v.visiteL}>
-              {lignes.slice(0, 3).map(x => (
-                <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
-              ))}
+              {/* Les trois premières côte à côte (V3.32) : la carte ne dépasse
+                  plus ses voisines, plus de grand blanc à côté d'elle. */}
+              <div className={v.visiteGrille}>
+                {lignes.slice(0, 3).map(x => (
+                  <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
+                ))}
+              </div>
               {/* Le reste glisse à l'ouverture (V3.32). */}
               {lignes.length > 3 && (
                 <Depliant ouvert={tout} ecart={7}>
@@ -125,7 +129,9 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
               )}
             </div>
           )}
-          {encarts.map(x => <div key={x.l} className={`${v.visiteEncart} ${tout ? '' : v.visiteEncartCourt}`}><b>{`${x.l} : `}</b>{x.v}</div>)}
+          {/* Le rognage sur la ligne intérieure : sur le cadre, la 3e ligne
+              débordait dans le bas du cadre (V3.32). */}
+          {encarts.map(x => <div key={x.l} className={v.visiteEncart}><span className={tout ? undefined : lignes.length ? v.visiteEncartCourt : v.visiteEncartMoyen}><b>{`${x.l} : `}</b>{x.v}</span></div>)}
           {long && <button type="button" className={v.kpiLienBleu} onClick={() => setTout(!tout)}>{tout ? 'Réduire' : 'Tout voir'}</button>}
         </>
       )}
@@ -135,8 +141,11 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
 
 /* ── Les visites et les offres, en chiffres ── */
 export type Repartition = { l: string; n: number; c: string }[];
-export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, onVoir }: {
+export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, prochaine, onVoir, onVisite, onOffre }: {
   nbVisites: number; nbAVenir: number; nbOffres: number; repartition: Repartition; onVoir: () => void;
+  /* V3.32 : la prochaine visite (« jeu. 2 oct. · 18 h · Paul MARTIN »), et
+     les deux gestes — la carte n'a plus de grand blanc sous ses chiffres. */
+  prochaine?: string; onVisite?: () => void; onOffre?: () => void;
 }) {
   const total = repartition.reduce((t, x) => t + x.n, 0);
   return (
@@ -146,13 +155,20 @@ export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, onVoi
         <div><b>{nbVisites}</b><small>{nbVisites > 1 ? 'visites' : 'visite'}{nbAVenir ? ` · ${nbAVenir} à venir` : ''}</small></div>
         <div><b className={nbOffres ? v.or : undefined}>{nbOffres}</b><small>{nbOffres > 1 ? 'offres en cours' : 'offre en cours'}</small></div>
       </div>
+      {prochaine && <span className={v.voProchaine}><Ic n="calendrier" t={14} /><span><small>Prochaine visite</small><b>{prochaine}</b></span></span>}
       {total > 0 ? (
         <>
           <div className={v.repart} aria-hidden="true">{repartition.filter(x => x.n).map(x => <span key={x.l} style={{ flex: x.n, background: x.c }} />)}</div>
           <span className={v.kpiSousGris}>{repartition.filter(x => x.n).map(x => `${x.n} ${x.l}`).join(' · ')}</span>
         </>
-      ) : <span className={v.kpiSousGris}>{nbVisites ? 'Les comptes rendus diront ce qu’ils en pensent.' : 'Aucune visite pour l’instant.'}</span>}
-      <button type="button" className={v.kpiLien} onClick={onVoir}>Voir les visites et offres</button>
+      ) : !prochaine && <span className={v.kpiSousGris}>{nbVisites ? 'Les comptes rendus diront ce qu’ils en pensent.' : 'Aucune visite pour l’instant.'}</span>}
+      {(onVisite || onOffre) && (
+        <div className={v.voBtns}>
+          {onVisite && <button type="button" className={v.voBtn} onClick={onVisite}><Ic n="calendrier" t={14} /><span>Organiser une visite</span></button>}
+          {onOffre && <button type="button" className={`${v.voBtn} ${v.voBtnOr}`} onClick={onOffre}><Ic n="euro" t={14} /><span>Enregistrer une offre</span></button>}
+        </div>
+      )}
+      <button type="button" className={v.kpiLien} style={onVisite || onOffre ? { marginTop: 0 } : undefined} onClick={onVoir}>Voir les visites et offres</button>
     </div>
   );
 }
@@ -184,6 +200,13 @@ export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, so
           </div>
         </div>
       ) : <span className={v.kpiSousGris}>Pas encore renseigné.</span>}
+      {/* Ses coordonnées en clair (V3.32) : on les lit sans ouvrir sa fiche. */}
+      {nom && (tel || mail) && (
+        <div className={v.proprioCo}>
+          {tel && <a href={`tel:${brut}`}><Ic n="telephone" t={13} /><span>{tel}</span></a>}
+          {mail && <a href={`mailto:${mail}`}><Ic n="mail" t={13} /><span>{mail}</span></a>}
+        </div>
+      )}
       <div className={v.proprioBtns}>
         {tel && <a className={v.pbTel} href={`tel:${brut}`} aria-label="Appeler" title={tel}><Ic n="telephone" t={16} /></a>}
         {mail && <a className={v.pb} href={`mailto:${mail}`} aria-label="E-mail" title={mail}><Ic n="mail" t={16} /></a>}
