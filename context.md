@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.31 · 29 septembre 2026**
+**Version 3.32 · 29 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1417,6 +1417,69 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.32 — 29 septembre 2026 · documents repliés, rapprochement en onglet, projet en attente
+
+Retours d'Alexandre du soir. Rien à passer dans Supabase.
+
+- **Les documents à signer, repliés** (`FicheBien.tsx`, onglet Documents d'un bien) : la section
+  s'ouvre repliée ; son en-tête dit où l'on en est (« Mandat de vente à préparer », « Mandat en
+  préparation, à faire signer », « Mandat signé le … · exclusif », « Offre acceptée : le compromis
+  est à signer », « Compromis signé le … ») avec, dessous, les offres et les bons de visite. Replié,
+  il garde ses boutons (« Préparer le mandat », « Continuer le mandat », « Déjà signé ? »,
+  « Compromis signé ») ; la flèche déplie les tuiles et la liste. Tout se déduit des données : rien
+  à tenir à jour (`etatSigner`, `actionsSigner`).
+- **Le dossier du vendeur** (`biens-vente.ts`, `DOSSIER`) : trois lignes selon le bien — « Bail en
+  cours et dernier avis d'échéance » (bien loué), « Permis de construire et certificat de
+  conformité » (maison), « Dispositif de sécurité de la piscine » (annexe piscine). Les idées de
+  pièces du vendeur s'enrichissent (identité, livret de famille ou contrat de mariage, plans,
+  garanties décennales, prêt en cours pour la mainlevée, entretien de la chaudière) et en montrent
+  jusqu'à huit.
+- **Surfaces** : les chiffres des tuiles du haut passent de 26 à 20 px (17 px sur téléphone).
+- **L'estimation reste lisible après le mandat** (onglet Le bien) : la carte « Prix et honoraires »
+  garde, sous un trait, « L'estimation · avis de valeur du … » : la fourchette, le prix conseillé
+  (et l'écart du prix affiché), ce que le propriétaire espérait. `FenMandat` range le prix
+  conseillé dans `donnees.prixConseille` au moment où le mandat est signé (« prix » devient le prix
+  affiché) ; pour les biens déjà en mandat avant la V3.32, seuls la fourchette et le prix espéré
+  s'affichent. Avant le mandat, la carte montre aussi « Le propriétaire espère ».
+- **Mettre un projet en attente** : à l'estimation, le menu d'étape propose « Le propriétaire veut
+  attendre… » → le bien repasse « À suivre » (raison, date « Le recontacter vers le »), l'estimation
+  est gardée ; la carte dit « En attente · raison · à recontacter vers le … », l'historique « Projet
+  mis en attente ». « Le vendeur renonce… » reste le retrait (Retiré). Un bien retiré **avant tout
+  mandat** propose « Reprendre l'estimation… » et « Le mandat est signé… » au lieu de « Remettre en
+  vente ». Après le mandat, rien ne change : « Mettre la vente en pause… » (En pause), puis
+  « Remettre en vente… » ou « Mandat terminé sans vente… ».
+- **Le propriétaire qui agit pour une société** (Vue d'ensemble d'un bien, carte « Le propriétaire ») :
+  la personne en titre (son avatar), et dessous une pastille « Associée de la SCI AVIENA » (son rôle
+  pris dans « Sa société » de sa fiche, premier mot de la qualité) ou « Pour la SCI AVIENA ». La
+  société vient du bien (« Une SCI » + son nom) ou de la fiche du contact (`pro.structure`) : la
+  liste des biens charge désormais `clients.pro` (`CLIENT_COLS`). Pour l'envoi des documents, le
+  destinataire s'annonce « Pour SCI AVIENA ».
+- **La Vue d'ensemble après le mandat, allégée** : plus de grosse carte « Le mandat » — il passe dans
+  le bandeau, à droite, discret (`CoteMandat` : « Mandat en cours » ou « Mandat · vente en pause »,
+  type et n°, signé le, jusqu'au, « encore N j » ; sous le prix en dessous de 1180 px, en deux
+  lignes sur téléphone), et le badge « SEMI-EXCLUSIF · n° » du haut ne se répète plus. « Les
+  acheteurs » quitte la Vue d'ensemble (onglet Acheteurs). La rangée : Visites et offres, Le
+  propriétaire, Pour la visite (remontée ; le bloc « Les indications de visite » du bas est retiré).
+- **Le net vendeur, en interne** (fenêtre « Le mandat est signé ») : sous la phrase de l'annonce,
+  une ligne « En interne : net vendeur 304 000 € (349 000 € − 45 000 € d'honoraires TTC, soit
+  12,9 % du prix) » — aussi quand les honoraires sont à la charge du vendeur, où l'annonce ne dit que
+  le prix. Le bandeau du bien ajoute « · net vendeur … » dans ce cas.
+- **L'étage** (Le bien › L'immeuble) : « 1er étage sur 5 », « 5e étage sur 5 · dernier étage »,
+  « Rez-de-chaussée · immeuble de 5 étages » quand « Étages en tout » est noté.
+- **Fiche d'un acheteur** (`FicheClient.tsx`) : **un onglet « Rapprochement »** (dès qu'il a une
+  recherche ; pastille = nombre de vos mandats qui lui correspondent) : le bandeau « Des biens pour
+  … » avec « Faire / Refaire un rapprochement » et la date du dernier, « Vos mandats qui lui
+  correspondent » (un clic ouvre le bien, « Les lui proposer » lance le rapprochement sur eux,
+  cochés) et « Les rapprochements faits » (date, biens trouvés, où). La Vue d'ensemble ne garde que
+  l'essentiel : la prochaine visite s'il y en a une, la société, « À savoir », sa situation, ses
+  biens, sa recherche en bref. Ni le rapprochement, ni la relance (déjà dans le bandeau et le
+  Suivi), ni « Dernièrement » (le Suivi).
+- **« + Nouveau document » depuis une fiche contact** (`DocumentsDuClient.tsx`) : la fenêtre du choix
+  s'ouvre sur la fiche, sans basculer dans la rubrique Documents ; une fois le document créé, on part
+  dans Documents, sur lui (intention `{ ouvrir }`). Idem pour « + Déléguer un mandat » d'un confrère.
+- **Page Documents** : les modèles tiennent sur une ligne chacun (description en une ligne,
+  entière au survol), deux par ligne sur téléphone ; la liste des documents remonte d'autant.
 
 ### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
 
