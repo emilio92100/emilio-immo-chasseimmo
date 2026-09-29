@@ -415,6 +415,9 @@
 .compteur small { font-size: 12px; color: rgba(255, 255, 255, .62); white-space: nowrap; }
 .compteur:hover b { color: #e8c96a; }
 .compteurVide b { color: rgba(255, 255, 255, .36); }
+/* À zéro, rien à ouvrir (V3.33) : le chiffre ne réagit plus. */
+.compteur:disabled { cursor: default; }
+.compteur:disabled:hover b { color: rgba(255, 255, 255, .36); }
 
 .teteEspace {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 0;

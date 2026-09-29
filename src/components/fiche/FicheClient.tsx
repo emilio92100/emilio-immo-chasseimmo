@@ -3181,7 +3181,7 @@ ${signatureMail()}`,
                 <div className={styles.compteursLigne}>
                   <div className={styles.compteurs} aria-label="Où en est son dossier">
                     {compteurs.map(c => (
-                      <button key={c.k} type="button" className={`${styles.compteur} ${c.n ? '' : styles.compteurVide}`} onClick={() => setTab(c.k)}>
+                      <button key={c.k} type="button" className={`${styles.compteur} ${c.n ? '' : styles.compteurVide}`} disabled={!c.n} onClick={() => setTab(c.k)}>
                         <b>{c.n}</b><small>{c.l}</small>
                       </button>
                     ))}
