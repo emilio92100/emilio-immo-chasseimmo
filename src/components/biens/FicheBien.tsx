@@ -13,6 +13,7 @@ import { Ic } from '@/components/documents/ApercuActe';
 import { Anneau, NOM_MANDAT, prixCarte } from './CarteBien';
 import { COULEURS, ChampDossier, ChampPhotos, habitable } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
+import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
   FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
   type OptionAcheteur,
@@ -1236,18 +1237,16 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })} />
 
-      {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent. */}
-      <nav className={`${b.onglets} ${b.ongletsCheval}`} aria-label="Rubriques du bien">
-        {ONGLETS.map(o => (
-          <button key={o.k} type="button" className={`${b.onglet} ${onglet === o.k ? b.ongletOn : ''}`} aria-pressed={onglet === o.k} onClick={() => setOnglet(o.k)}>
-            <Ic n={o.ic} t={15} />{o.l}{o.n ? <i>{o.n}</i> : null}
-          </button>
-        ))}
-      </nav>
+      {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent.
+          La pastille glisse d'un onglet à l'autre, le contenu arrive en
+          fondu (V3.28, src/components/shared/OngletsGlissants.tsx). */}
+      <BarreOnglets label="Rubriques du bien" className={b.ongletsCheval} actif={onglet} onChoisir={setOnglet}
+        onglets={ONGLETS.map(o => ({ k: o.k, l: o.l, n: o.n, ic: <Ic n={o.ic} t={15} /> }))} />
 
       {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
       {erreur && <div className={s.erreur}>{erreur}</div>}
 
+      <CorpsOnglet k={onglet} ordre={ONGLETS.map(o => o.k)}>
       {onglet === 'apercu' && (
         <div className={b.col}>
           <Bloc ic="liste" titre="En bref" action={<Modifier onClick={() => setOnglet('bien')} lib="Tout le détail" />}>
@@ -1386,6 +1385,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           try { await supprimerSuivi(id); await apres(); } catch (e2) { setMessage({ t: (e2 as Error).message, ok: false }); }
         }} />
       )}
+      </CorpsOnglet>
 
       {/* ── Les fenêtres ── */}
       {fen?.k === 'mandat' && <FenMandat bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
