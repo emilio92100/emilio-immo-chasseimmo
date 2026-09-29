@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.30 · 29 septembre 2026**
+**Version 3.31 · 29 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -325,6 +325,11 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
   - Dans `biens_vente.donnees` (V3.30) : `dossier[k].taille` (octets, noté au dépôt), `fichiers`
     (les autres documents : `[{ id, titre, chemin, nom, taille, le }]`, `lireFichiers`),
     `proprioSans` (« Continuer sans propriétaire pour l'instant »).
+  - Depuis la V3.31 : `fichiers[i].sorte = 'ddt'` (un dossier de diagnostic technique : un seul
+    fichier qui en contient plusieurs), `dossier[k].dans` (l'`id` du fichier qui contient cette
+    pièce : la ligne est « Reçu » sans fichier à elle), `piecesPerso` (les pièces ajoutées par
+    Alexandre, avec le nom de son choix : `[{ k: 'perso…', l, groupe }]`, `lirePiecesPerso` ;
+    `lignesDossier(d)` renvoie les lignes fixes puis celles-ci).
   - `biens.bien_vente_id` : la copie d'un bien en vente dans le dossier d'un acheteur (présenté
     dans son espace, ou visité). C'est par elle que la fiche retrouve à qui il a été présenté,
     ce qu'ils en ont dit et leurs visites (table `visites`, comme les autres).
@@ -439,7 +444,7 @@ mandat, jusqu'à la vente. Voir V3.12 et V3.13.
   trimestre s'affiche. Stocké en annuel (`chargesAn`).
 - **La fiche** : bandeau (photo, prix, étape), onglets Vue d'ensemble · Photos · Le bien ·
   Surfaces (V3.30) · Visites et offres (à partir du mandat) · Acheteurs · Documents · Historique. Vue d'ensemble : le
-  bien en bref (tuiles à icône), puis deux colonnes équilibrées. Le bien : l'annonce et les photos
+  bien en bref (tuiles à icône), les observations et notes (V3.31), puis deux colonnes équilibrées. Le bien : l'annonce et les photos
   en haut, le détail par thème (lignes à icône, rangées en colonnes équilibrées), les pièces en
   tuiles. Photos : ajouter, ranger, légender sans l'éditeur. Chaque bloc a son « Modifier » qui
   ouvre l'éditeur à la bonne étape. Le bouton d'étape propose ce qui peut arriver ensuite (passer à
@@ -1412,6 +1417,57 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
+
+Suite des retours d'Alexandre sur le dossier DESNOULEZ. Rien à passer dans Supabase : tout vit
+dans `biens_vente.donnees`.
+
+- **Un seul fichier pour tous les diagnostics** (`DossierBien.tsx`) : au dépôt, « Dossier de
+  diagnostics complet (plusieurs en un fichier)… » ; on coche ce qu'il contient (DPE, amiante,
+  plomb…, « Tout » / « Aucun »). Il est rangé une fois (`fichiers`, `sorte: 'ddt'`) et chaque
+  diagnostic coché passe « Reçu » avec `dans` = ce fichier. Il s'affiche en tête des
+  diagnostics, en carte : son nom, ses pastilles (ce qu'il contient), « Ce qu'il contient… » pour
+  corriger. Une pièce qui est dedans porte « Dans le DDT » (✕ pour l'en détacher). Le retirer
+  remet « À réunir » les pièces qui n'avaient que lui.
+- **Ajouter une pièce avec le nom de son choix** : « Ajouter une pièce » au bout de chaque groupe
+  (des idées proposées : Kbis, statuts et PV d'AG de la SCI quand une société vend…), ou « Autre
+  document, avec le nom de mon choix… » au dépôt. Ces pièces (`piecesPerso`) se renomment (crayon)
+  et se retirent (croix) ; les « Autres documents » se renomment aussi.
+- **Les groupes se replient** (Diagnostics, Copropriété, Vendeur, Autres) : un clic sur leur tête ;
+  replié, la tête garde le compte, une jauge et ce qui manque. Un groupe complet se replie seul ;
+  « Tout replier / Tout déplier » ; le choix est retenu sur l'appareil (`emilio.dossier.replis`).
+- **Les liens de téléchargement** (rappel, pour Alexandre) : au-delà de 10 Mo de pièces jointes,
+  le serveur crée tout seul, pour chaque fichier, un lien privé et temporaire (Supabase,
+  `createSignedUrl`, 7 jours) mis en boutons dans le mail. Personne ne l'écrit ; le fichier reste
+  privé ; passé 7 jours, renvoyer.
+- **Documents, avant le mandat** : le bloc de droite « Le mandat » répétait la tuile « Mandat de
+  vente » et laissait un blanc au milieu. Une seule section « Les documents à signer » sur toute
+  la largeur : la tuile du mandat (dorée tant que rien n'est préparé : « Préparer le mandat »,
+  « Déjà signé ? » ; marine une fois signé : n°, échéance, honoraires) puis, en pointillés, ceux
+  qui viendront (offre d'achat, bons de visite, compromis). `BlocMandat` n'existe plus.
+- **Observations et notes** : rangées comme dans « Modifier » — une carte « Le logement »
+  (sinistres, travaux réalisés, « Autres remarques sur les travaux »), une carte « La
+  copropriété » (gros travaux votés, réalisés, à venir, « Autres remarques sur la copropriété »),
+  une carte « Tes notes » (sur toute la largeur quand elles sont longues). Le texte libre
+  `travaux` s'affichait « Travaux » tout seul, sous la liste des travaux : on ne savait pas ce que
+  c'était. Chaque travail est une ligne numérotée, la date dans une pastille (dessous sur le
+  téléphone). Le bloc remonte juste sous « Le bien en bref ». Dans « Le bien », les remarques de
+  copropriété s'appellent aussi « Autres remarques sur la copropriété ».
+- **« Le dossier » n'est plus résumé dans la Vue d'ensemble** : il doublait l'onglet Documents.
+- **« Le bien » sans trous** (`Familles`, `OngletsBien.tsx`) : les cartes étaient en grille, et
+  chaque rangée prenait la hauteur de sa plus haute carte — « L'intérieur » encore à décrire
+  laissait un grand blanc sous lui, « L'immeuble » aussi. Elles sont maintenant distribuées en
+  colonnes (1re, 2e, 3e, puis on recommence ; 3 colonnes, 2 sous 1 180 px, 1 sous 720 px) et
+  chaque colonne empile les siennes. Déplier les remarques d'une carte ne fait pas sauter les
+  autres d'une colonne à l'autre. Le texte `travaux` y porte aussi son nom : « Autres remarques
+  sur les travaux ».
+- **Téléphone : plus de barre « Fiches ouvertes »** en bas (`FichesOuvertes.module.css`,
+  ≤ 900 px) ; elle reste sur l'ordinateur.
+- **Mise en ligne** : le 29 septembre, une ancienne mise en ligne (commit « 2/7 ») avait été
+  relancée sur Vercel après la dernière et l'avait remplacée en production — la fiche semblait
+  revenue en arrière. Réglé par « Promote » sur le dernier commit. Une mise en ligne « Canceled »
+  est normale (une plus récente l'a remplacée) : ne jamais faire « Redeploy » sur une ancienne.
 
 ### V3.30 — 29 septembre 2026 · la fiche d'un bien et celle d'un vendeur, rangées
 
