@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { delaiRelance, echeanceDans } from '@/lib/relances';
-import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance } from '@/lib/intentions';
+import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOngletBien } from '@/lib/intentions';
+import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } from '@/lib/alertes-rappro';
 import ChoixDate from '@/components/shared/ChoixDate';
 
 /*
@@ -38,6 +39,8 @@ const TR: Record<string, string[]> = {
   fermer: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
   oeil: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 'c:12,12,3'],
   euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
+  groupe: ['c:9,8,3.2', 'M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6', 'c:17,9,2.6', 'M16 14.2c2.8.3 5 2.6 5 5.8'],
+  drapeau: ['M5 3v18', 'M5 5h13l-2 4 2 4H5'],
 };
 function Ic({ n, t = 16, ep = 2 }: { n: string; t?: number; ep?: number }) {
   const traits = TR[n];
@@ -112,8 +115,13 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const [partantes, setPartantes] = useState<Record<string, boolean>>({});
   const [annulable, setAnnulable] = useState<{ id: string; nom: string } | null>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Les rapprochements à faire (V3.29) : un acheteur ou un mandat qui vient
+     d'arriver, et ce qui leur correspond déjà. */
+  const [alertes, setAlertes] = useState<AlerteRappro[]>([]);
+  const [alerteEnCours, setAlerteEnCours] = useState('');
+  const [toutesAlertes, setToutesAlertes] = useState(false);
 
-  useEffect(() => { charger(); }, []);
+  useEffect(() => { charger(); chargerAlertesRappro().then(setAlertes).catch(() => setAlertes([])); }, []);
   useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
 
   async function charger() {
@@ -174,6 +182,27 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     charger();
   }
 
+  async function alertePlusTard(a: AlerteRappro) {
+    setAlerteEnCours(a.cle);
+    const ok = a.k === 'acheteur' ? await plusTardAcheteur(a) : await mandatVu(a, false);
+    setAlerteEnCours('');
+    if (ok) setAlertes(l => l.filter(x => x.cle !== a.cle));
+  }
+  async function alerteVoir(a: AlerteRappro) {
+    setAlerteEnCours(a.cle);
+    if (a.k === 'mandat') {
+      await mandatVu(a, true);
+      demanderOngletBien(a.bien.id, 'acheteurs');
+      onNavigate('biens', { bien: a.bien.id });
+      return;
+    }
+    const { data, error } = await supabase.from('clients').select('*').eq('id', a.client.id).maybeSingle();
+    setAlerteEnCours('');
+    if (error || !data) { alert(`La fiche n'a pas pu être ouverte.${error ? `\n\n${error.message}` : ''}`); return; }
+    demanderOuvertureFiche({ clientId: a.client.id, onglet: 'selection', rechercheId: a.recherche.id, rappro: { source: 'mandats', cocher: a.mandats.map(m => m.id) } });
+    onNavigate('fiche', data);
+  }
+
   function ouvrirFiche(r: any) {
     if (!r.clients) return;
     demanderOuvertureFiche(ouvertureDepuisRelance(r, liens[r.id]));
@@ -224,7 +253,13 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         .rl-appui:hover{transform:translateY(-1px)}
         .rl-appui:active{transform:scale(.97)}
         .rl-pouls{animation:rlPouls 1.9s ease-out infinite}
+        @media (prefers-reduced-motion: reduce){.rl-al-ping{animation:none}}
         .rl-court{display:none}
+        .rl-al{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:16px;align-items:center;padding:16px 18px;border-radius:20px;background:white;border:1px solid #ecdcb0;box-shadow:0 16px 34px -26px rgba(46,65,102,.45)}
+        .rl-al-m{border-color:${BORD}}
+        .rl-al-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+        .rl-al-ping{animation:rlPing 2s ease-out infinite}
+        @keyframes rlPing{0%{box-shadow:0 0 0 0 rgba(201,168,76,.5)}80%,100%{box-shadow:0 0 0 10px rgba(201,168,76,0)}}
         @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ligne[data-partante]{animation:none}}
         @media (max-width: 760px){
           .rl-page{padding:16px 12px 96px !important;gap:16px !important}
@@ -233,6 +268,10 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-carte-sous{display:none !important}
           .rl-ligne{flex-wrap:wrap !important}
           .rl-actions{width:100%;justify-content:stretch !important}
+          .rl-al{grid-template-columns:40px minmax(0,1fr);gap:12px;padding:14px}
+          .rl-al-ic{width:40px;height:40px;border-radius:12px}
+          .rl-al-btns{grid-column:1 / -1}
+          .rl-al-btns > button{flex:1 1 0}
           .rl-actions > button{flex:1 1 0;padding:0 8px !important;white-space:nowrap}
           .rl-long{display:none}
           .rl-court{display:inline !important}
@@ -253,6 +292,54 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         <h1 className="rl-titre" style={{ margin: 0, fontFamily: JAK, fontSize: 28, fontWeight: 800, letterSpacing: -.5 }}>Relances</h1>
         <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter, du plus pressé au plus lointain.</p>
       </header>
+
+      {alertes.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-label="Rapprochements">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: '#a07c28' }}>Rapprochements</span>
+            <span style={{ padding: '2px 9px', borderRadius: 99, background: OR, color: '#1a2332', fontFamily: JAK, fontSize: 12, fontWeight: 800 }}>{alertes.length > 1 ? `${alertes.length} nouveaux` : '1 nouveau'}</span>
+          </div>
+          {alertes.slice(0, toutesAlertes ? alertes.length : 3).map((a, i) => {
+            const acheteur = a.k === 'acheteur';
+            const nomC = acheteur ? [a.client?.prenom, a.client?.nom].filter(Boolean).join(' ') || 'Un acheteur' : '';
+            const m0 = acheteur ? a.mandats[0] : null;
+            const titre = acheteur
+              ? (a.mandats.length > 1 ? `${nomC} correspond à ${a.mandats.length} de vos mandats, jusqu’à ${m0!.note}\u00a0%` : `${nomC} correspond à votre « ${m0!.titre} »${m0!.ville ? ` à ${m0!.ville}` : ''} · ${m0!.note}\u00a0%`)
+              : `Votre mandat « ${a.titre} »${a.bien.ville ? ` à ${a.bien.ville}` : ''} intéresse ${a.n > 1 ? `${a.n} de vos acheteurs` : 'un de vos acheteurs'}`;
+            const j = Math.max(0, Math.floor((Date.now() - Date.parse(a.le)) / 86400000));
+            const quand = j === 0 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`;
+            const autres = acheteur ? 0 : a.n - a.noms.length;
+            const sous = acheteur
+              ? `Sa recherche a été ouverte ${quand}. « Voir » ouvre sa fiche sur les biens trouvés, ${a.mandats.length > 1 ? 'ces mandats déjà cochés' : 'ce mandat déjà coché'}.`
+              : `${j === 0 ? 'Passé en vente aujourd’hui' : j === 1 ? 'Passé en vente hier' : `En vente depuis ${j} jours`}${a.noms.length ? ` · ${a.noms.join(', ')}${autres > 0 ? ` et ${autres > 1 ? `${autres} autres` : 'un autre'}` : ''}` : ''}. « Voir les acheteurs » ouvre sa fiche sur l’onglet Acheteurs.`;
+            const occupe = alerteEnCours === a.cle;
+            return (
+              <div key={a.cle} className={`rl-al rl-entre${acheteur ? '' : ' rl-al-m'}`} style={{ animationDelay: `${i * 80}ms` }}>
+                <span className={`rl-al-ic${acheteur ? ' rl-al-ping' : ''}`} style={acheteur ? { background: '#fbf6e9', border: '1px solid #ecdcb0', color: '#a07c28' } : { background: '#eef2f8', color: NAVY }}>
+                  <Ic n={acheteur ? 'groupe' : 'drapeau'} t={22} ep={2} />
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: acheteur ? '#a07c28' : NAVY }}>{acheteur ? 'Un acheteur arrive' : 'Un mandat arrive'}</span>
+                  <b style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800, color: '#1a2332', lineHeight: 1.35 }}>{titre}</b>
+                  <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.5 }}>{sous}</span>
+                </span>
+                <span className="rl-al-btns" style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="rl-appui" disabled={occupe} onClick={() => alertePlusTard(a)}
+                    style={{ height: 40, padding: '0 15px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Plus tard</button>
+                  <button type="button" className="rl-appui" disabled={occupe} onClick={() => alerteVoir(a)}
+                    style={{ height: 40, padding: '0 16px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{occupe ? 'Un instant…' : acheteur ? 'Voir' : 'Voir les acheteurs'}</button>
+                </span>
+              </div>
+            );
+          })}
+          {alertes.length > 3 && (
+            <button type="button" className="rl-appui" onClick={() => setToutesAlertes(x => !x)}
+              style={{ alignSelf: 'flex-start', height: 34, padding: '0 14px', borderRadius: 11, border: '1px solid #ecdcb0', background: '#fffcf4', color: OR_FONCE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {toutesAlertes ? 'N’en montrer que trois' : `Voir les ${alertes.length - 3} autres`}
+            </button>
+          )}
+        </section>
+      )}
 
       {!loading && (
         <div className="rl-cartes" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
