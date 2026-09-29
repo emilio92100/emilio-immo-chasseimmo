@@ -42,11 +42,12 @@ export async function generateMetadata(
          l'heure et la batterie, au lieu de passer dessous. */
       statusBarStyle: 'default',
     },
-    /* La même épingle dans l'onglet du navigateur : le client retrouve son
-       espace parmi ses onglets ouverts. Le CRM, lui, garde son « EI ». */
+    /* Le « E » d'Emilio (V3.29), le même que sur l'écran d'accueil : le client
+       retrouve son espace parmi ses onglets ouverts. Les images sont dans
+       public/logos/. */
     icons: {
-      icon: [{ url: '/icone?t=192', sizes: '192x192', type: 'image/png' }],
-      apple: [{ url: '/icone?t=180', sizes: '180x180' }],
+      icon: [{ url: '/logos/e-192.png', sizes: '192x192', type: 'image/png' }],
+      apple: [{ url: '/logos/e-180.png', sizes: '180x180' }],
     },
     robots: { index: false, follow: false },
   };

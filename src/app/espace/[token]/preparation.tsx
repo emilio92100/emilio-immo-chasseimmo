@@ -50,18 +50,13 @@ export default function EspaceEnPreparation({ prenom }: { prenom?: string | null
 
       {/* La même icône que l'écran d'ouverture : il est au bon endroit, et il
           doit le sentir tout de suite. */}
-      <div style={{
-        width: 76, height: 76, borderRadius: 19,
-        background: `linear-gradient(135deg, ${OR_CLAIR} 0%, ${OR_FONCE} 100%)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)',
+      {/* Le « E » d'Emilio (V3.29), celui de l'écran d'accueil du téléphone. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logos/e-192.png" alt="" width={76} height={76} style={{
+        width: 76, height: 76, borderRadius: 19, display: 'block',
+        boxShadow: '0 18px 40px -18px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.12)',
         animation: 'emilio-pose .5s cubic-bezier(.16,1,.3,1) both',
-      }}>
-        <svg width={76} height={76} viewBox="0 0 100 100" aria-hidden="true">
-          <path d="M50 18c-12.7 0-23 10.3-23 23 0 17.3 23 41 23 41s23-23.7 23-41c0-12.7-10.3-23-23-23z" fill={ENCRE} />
-          <path d="M39 44 50 34l11 10v12H39z" fill={OR_CLAIR} />
-        </svg>
-      </div>
+      }} />
 
       <div style={{
         textAlign: 'center', maxWidth: 430,

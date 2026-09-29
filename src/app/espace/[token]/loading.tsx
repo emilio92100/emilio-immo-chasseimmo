@@ -9,11 +9,14 @@
  * elle est prête. Le fond est exactement celui de l'écran d'ouverture
  * d'Android (background_color du manifeste) : le client ne voit aucune
  * coupure, juste son icône, puis son espace.
+ *
+ * V3.29 : plus clair, avec le logo de l'agence (public/logos/) et
+ * « Chargement en cours… », à la demande d'Alexandre.
  */
 
-const ENCRE = '#1a2332';
-const OR_CLAIR = '#dcc271';
-const OR_FONCE = '#b8923a';
+const FOND = '#f4f6fa';
+const ENCRE = '#1b365d';
+const OR = '#c9a84c';
 
 export default function Ouverture() {
   return (
@@ -21,51 +24,46 @@ export default function Ouverture() {
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 22,
-        background: ENCRE, fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        alignItems: 'center', justifyContent: 'center', gap: 26,
+        background: `radial-gradient(ellipse at 50% 38%, #ffffff 0%, ${FOND} 62%)`,
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       }}
     >
       <style>{`
-        @keyframes emilio-tourne { to { transform: rotate(360deg) } }
         @keyframes emilio-pose {
-          from { opacity: 0; transform: translateY(8px) scale(.96) }
+          from { opacity: 0; transform: translateY(8px) scale(.97) }
           to   { opacity: 1; transform: none }
+        }
+        @keyframes emilio-file {
+          0%   { transform: translateX(-100%) }
+          100% { transform: translateX(250%) }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .emilio-anim { animation: none !important }
         }
       `}</style>
 
-      {/* La même icône que sur l'écran d'accueil, au même format : le client
-          reconnaît ce sur quoi il vient d'appuyer. */}
-      <div style={{
-        width: 88, height: 88, borderRadius: 22,
-        background: `linear-gradient(135deg, ${OR_CLAIR} 0%, ${OR_FONCE} 100%)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)',
-        animation: 'emilio-pose .5s cubic-bezier(.16,1,.3,1) both',
-      }}>
-        <svg width={88} height={88} viewBox="0 0 100 100" aria-hidden="true">
-          <path d="M50 18c-12.7 0-23 10.3-23 23 0 17.3 23 41 23 41s23-23.7 23-41c0-12.7-10.3-23-23-23z" fill={ENCRE} />
-          <path d="M39 44 50 34l11 10v12H39z" fill={OR_CLAIR} />
-        </svg>
-      </div>
+      {/* Le logo de l'agence, en grand : le client sait chez qui il arrive. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logos/logo-emilio-800.png" alt="Emilio conseil immobilier" width={240} height={101}
+        className="emilio-anim"
+        style={{ width: 'min(240px, 62vw)', height: 'auto', animation: 'emilio-pose .5s cubic-bezier(.16,1,.3,1) both' }}
+      />
 
-      <div style={{ textAlign: 'center', animation: 'emilio-pose .5s .1s cubic-bezier(.16,1,.3,1) both' }}>
-        <div style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: 2.4,
-          textTransform: 'uppercase', color: OR_CLAIR, opacity: .85,
-        }}>
-          Emilio Immobilier
+      <div className="emilio-anim" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, animation: 'emilio-pose .5s .12s cubic-bezier(.16,1,.3,1) both' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: ENCRE, opacity: .78 }}>
+          Chargement en cours…
         </div>
-        <div style={{ marginTop: 8, fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,.72)' }}>
-          Ouverture de votre espace…
+        {/* Une fine barre qui file : ça avance, sans promettre de durée. */}
+        <div style={{ position: 'relative', width: 150, height: 4, borderRadius: 99, background: 'rgba(27,54,93,.12)', overflow: 'hidden' }}>
+          <span className="emilio-anim" style={{
+            position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', borderRadius: 99,
+            background: `linear-gradient(90deg, ${ENCRE}, ${OR})`,
+            animation: 'emilio-file 1.1s cubic-bezier(.45,0,.35,1) infinite',
+          }} />
         </div>
       </div>
-
-      <div style={{
-        width: 26, height: 26, borderRadius: '50%',
-        border: '2.5px solid rgba(255,255,255,.14)', borderTopColor: OR_CLAIR,
-        animation: 'emilio-tourne .75s linear infinite',
-      }} />
     </div>
   );
 }
