@@ -1418,6 +1418,61 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.33 — 30 septembre 2026 · le point complet du code, et ce qu'il a corrigé
+
+Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel). Ce qui a été corrigé :
+
+- **Sécurité.**
+  - **Inscriptions Supabase fermées** (Authentication › Sign In / Providers › « Allow new users to
+    sign up » : désactivé, vérifié le 30 septembre ; un seul compte, celui d'Alexandre). Elles
+    étaient ouvertes par défaut : avec la clé publique, n'importe qui pouvait se créer un compte, et
+    le RLS laisse tout lire à tout compte connecté. **Ne jamais les rouvrir.**
+  - **Le badge du CRM** (`src/lib/badge.ts`) : le cookie `emilio_acces` valait l'empreinte fixe de
+    `EMILIO_ACCESS_CODE`, calculable par qui devinait ce code, et plusieurs routes `/api` lisent la
+    base avec la clé de service sur sa seule foi. C'est désormais `v1.<fin>.<HMAC>` : signé avec le
+    code **et** la clé de service, valable 30 jours. `proxy.ts` et `/api/login` passent par ce
+    fichier. Conséquence : une reconnexion au premier passage après la mise en ligne.
+  - **Next 16.2.3 → 16.3.7** (et `eslint-config-next`) : plusieurs failles publiées permettaient de
+    contourner le proxy. Reste `maplibre-gl` 5 (faille dans une fonction que le CRM n'utilise pas ;
+    la 6 change l'API, à faire à part).
+  - En-têtes sur toutes les pages (`next.config.ts`) : pas d'affichage dans le cadre d'un autre site,
+    `nosniff`, `Referrer-Policy`.
+  - `/login?suite=` n'accepte plus qu'une page du CRM. Le mail « partager ce bien » échappe le
+    titre et le prénom. « Corriger l'adresse » d'un co-signataire : 5 par jour. « Message » depuis
+    l'espace : 20 par jour, et une seule relance en attente à la fois.
+- **Données.**
+  - **Le prix suit chez les acheteurs** : un bien présenté est copié dans `biens`, prix compris, et
+    l'espace comme `/bien/<id>` lisent la copie. `enregistrerBien` appelle `repercuterPrix`
+    (`biens/outils.ts`), qui met à jour les copies dont le prix diffère (`prixCopie`,
+    `lib/biens-vente.ts`, sert aussi à `versBienAcheteur`).
+  - **« Expiré » la veille** : la fiche client comptait en heures depuis minuit UTC. `joursRestants()`
+    (`lib/mandat.ts`) compte jour à jour à l'heure de Paris ; « Dernier jour », « Dernier jour
+    demain ». Les comparaisons « mandat encore valable » et les dates du jour écrites en base
+    (vendu le, réponse à une offre, contre-offre, fichiers du dossier, relances du tableau de bord)
+    passent par `jourParis()`.
+  - **Listes coupées à 1 000 lignes** (le plafond de Supabase par requête, quoi que dise
+    `.limit()`) : Contacts (contacts, recherches, compteurs, dernier geste), Visites, Agenda, Biens
+    lisent par pages avec `toutLire` (`lib/registre.ts`). Contacts ne met plus la liste de tous les
+    identifiants dans l'adresse (trop longue au-delà de quelques centaines de fiches) ; les visites
+    des biens en vente se lisent par paquets de 100.
+  - **Photos effacées à tort** (`lib/photos.ts`) : un bien venu de la veille ou du rapprochement
+    partage ses fichiers avec la proposition (et parfois avec un autre dossier). Retirer, supprimer
+    un bien, une recherche ou un client n'efface plus que les fichiers que plus personne n'utilise,
+    et toujours **après** la ligne en base.
+  - **Signature bloquée sans alerte** (`api/signer`) : si le PDF ne peut pas être scellé après une
+    signature, Alexandre reçoit un mail avec le geste qui débloque (« Tout le monde a signé :
+    finaliser »).
+  - Cron du matin : une lecture ratée des co-signataires ne fait plus sauter les relances des
+    documents. Mandat en ligne : un co-signataire retiré ne peut plus être invité si son effacement
+    a échoué. « Contact agence » d'une visite s'enregistre en quittant le champ, plus à chaque lettre.
+
+Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
+`FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
+vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
+registre chargé d'office) ; polices chargées depuis Google sur les pages clients ; pas de mentions
+légales sur `/espace`, `/bien`, `/signer` ; `/bien/<id>` indexable ; pas de lien de désinscription
+dans le point automatique ; aucune page publique ne crée encore de contact (projet QR codes).
+
 ### V3.32 — 29 septembre 2026 · documents repliés, rapprochement en onglet, projet en attente
 
 Retours d'Alexandre du soir. Rien à passer dans Supabase.

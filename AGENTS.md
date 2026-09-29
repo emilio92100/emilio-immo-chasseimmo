@@ -221,8 +221,13 @@ session Supabase valide — pas seulement le cookie. Les deux serrures :
   l'**affichage des pages** ;
 - la **session Supabase** (dans le navigateur) autorise la **lecture des données**.
 
-Le cookie seul ne donne accès à rien : les écrans s'afficheraient vides. `AppLayout` surveille la
+Les écrans lisent avec la session : sans elle, ils s'afficheraient vides. `AppLayout` surveille la
 session et renvoie vers `/login` si elle disparaît — ne pas retirer ce garde-fou.
+
+⚠️ **Mais plusieurs routes `/api` du CRM lisent avec la clé de service sur la seule foi du
+cookie.** Depuis la V3.33, ce cookie est un badge signé et daté (`src/lib/badge.ts`) : ne jamais
+revenir à une valeur fixe. Et les **inscriptions Supabase restent fermées** (Authentication ›
+Sign In / Providers) : le RLS donne tout à tout compte connecté.
 
 ---
 
