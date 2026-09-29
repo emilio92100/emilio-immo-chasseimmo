@@ -6,7 +6,7 @@ import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
-import SignatureMandat, { CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
+import SignatureMandat, { AvantVisiteDocument, CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
 import { jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
@@ -1317,22 +1317,35 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      navigateur : si le téléphone a fermé la page pendant que le client
      cherchait son code, elle repart quand même une fois signé. */
   const CLE_VISITE = 'emilio_visite_apres_mandat';
-  function garderVisite(b: Bien, commentaire: string) {
-    try { localStorage.setItem(CLE_VISITE, JSON.stringify({ bienId: b.id, commentaire, t: Date.now() })); } catch { /* sans effet */ }
+  /* `doc` : il part signer le mandat qu'Alexandre lui a envoyé (V3.32), sur
+     une autre page ; sa demande l'attend une semaine, pas une heure. */
+  function garderVisite(b: Bien, commentaire: string, doc = false) {
+    try { localStorage.setItem(CLE_VISITE, JSON.stringify({ bienId: b.id, commentaire, t: Date.now(), doc })); } catch { /* sans effet */ }
   }
   function oublierVisite() { try { localStorage.removeItem(CLE_VISITE); } catch { /* sans effet */ } }
-  function visiteEnAttente(): { bienId: string; commentaire: string } | null {
+  function visiteEnAttente(): { bienId: string; commentaire: string; doc?: boolean } | null {
     try {
       const v = JSON.parse(localStorage.getItem(CLE_VISITE) || 'null');
-      return v && typeof v.bienId === 'string' && Date.now() - Number(v.t) < 3_600_000 ? v : null;
+      return v && typeof v.bienId === 'string' && Date.now() - Number(v.t) < (v.doc ? 7 * 86_400_000 : 3_600_000) ? v : null;
     } catch { return null; }
   }
   function ouvrirMandatPourVisite(b: Bien, avis: string, commentaire: string) {
     garderVisite(b, commentaire);
     ouvrirMandat('visite', async () => { oublierVisite(); await poserAvis(b, avis, commentaire, true); }, b.id);
   }
+  /* Son mandat de recherche l'attend dans le CRM (V3.32) : il va le signer
+     avec son lien, et sa demande de visite repart à son retour. */
+  function ouvrirMandatDocument(b: Bien, commentaire: string, lien: string) {
+    garderVisite(b, commentaire, true);
+    montrer(<AvantVisiteDocument lien={lien} onFermer={fermer} />, 'pleine mandat');
+  }
 
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
+    const enRoute = mandatRef.current.enRoute;
+    if (avis === 'souhaite_visiter' && mandatRef.current.etat !== 'valide' && enRoute?.lien) {
+      ouvrirMandatDocument(b, commentaire, enRoute.lien);
+      return;
+    }
     if (avis === 'souhaite_visiter' && mandatRef.current.etat === 'a_signer') {
       ouvrirMandatPourVisite(b, avis, commentaire);
       return;
@@ -1349,6 +1362,14 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       setMandat(x => ({ ...x, etat: 'a_signer' }));
       mandatRef.current = { ...mandatRef.current, etat: 'a_signer' };
       ouvrirMandatPourVisite(b, avis, commentaire);
+      return;
+    }
+    /* Alexandre vient de lui envoyer son mandat (V3.32) : celui-là, pas un second. */
+    if (r?.error === 'mandat_document' && typeof r.lien === 'string') {
+      const lien = r.lien;
+      setMandat(x => ({ ...x, etat: 'sans_numero', propose: false, enRoute: { lien } }));
+      mandatRef.current = { ...mandatRef.current, etat: 'sans_numero', propose: false, enRoute: { lien } };
+      ouvrirMandatDocument(b, commentaire, lien);
       return;
     }
     if (!r?.ok) { pasParti('Votre réponse n’est pas partie'); return; }
@@ -1476,6 +1497,23 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       const b = v ? biens.find(x => x.id === v.bienId) : undefined;
       if (b && v) ouvrirMandat('visite', async () => { oublierVisite(); await poserAvis(b, 'souhaite_visiter', v.commentaire, true); }, b.id);
       else ouvrirMandat('libre');
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* Il revient après avoir signé le mandat qu'Alexandre lui avait envoyé
+     (V3.32) : la demande de visite qui l'attendait part toute seule. */
+  const visiteRepartie = useRef(false);
+  useEffect(() => {
+    if (visiteRepartie.current || mandatRef.current.etat !== 'valide') return;
+    const v = visiteEnAttente();
+    if (!v?.doc) return;
+    const t = setTimeout(() => {
+      visiteRepartie.current = true;
+      const b = biens.find(x => x.id === v.bienId);
+      oublierVisite();
+      if (b) void poserAvis(b, 'souhaite_visiter', v.commentaire, false);
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

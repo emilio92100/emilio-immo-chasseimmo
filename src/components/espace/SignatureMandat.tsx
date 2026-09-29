@@ -52,6 +52,10 @@ export type MandatEspace = {
   cos?: CoEspace[];
   /** Ses documents signés en ligne (avenant, offre…) : à signer, ou signés. */
   documents?: DocEspace[];
+  /** Un mandat de recherche préparé par Alexandre dans le CRM (V3.32), pas
+      encore signé : c'est lui qu'il signe, avec son lien (null tant qu'il
+      n'est pas parti). Le mandat de l'espace n'est alors pas proposé. */
+  enRoute?: { lien: string | null } | null;
 };
 export type DocEspace = { id: string; titre: string; etat: 'a_signer' | 'signe'; lien?: string; le?: string | null };
 
@@ -415,6 +419,7 @@ export const ERREURS: Record<string, string> = {
   stockage: 'La signature n’a pas pu être enregistrée. Réessayez dans un instant.',
   enregistrement: 'La signature n’a pas pu être enregistrée. Réessayez dans un instant.',
   deja: 'Votre mandat est déjà signé.',
+  document: 'Alexandre vous a préparé votre mandat de recherche : c’est celui-là qu’il faut signer. Rechargez la page pour le retrouver.',
 };
 
 /* ── Son conjoint, un co-acquéreur : la fiche qu'il remplit pour lui ──
@@ -654,6 +659,8 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     let vivant = true;
     envoyer('mandat', { etape: 'afficher' }).then(r => {
       if (!vivant) return;
+      /* Alexandre lui a préparé son mandat dans le CRM (V3.32) : pas celui-ci. */
+      if (r?.error === 'document') setErreur(ERREURS.document);
       if (r?.recherche) setRech(r.recherche);
       if (r?.identite) setIdentite(lireIdentite(r.identite));
     });
@@ -1169,6 +1176,17 @@ export function CarteMonMandat({ mandat, envoyer, onSigner, onRenoncer }: {
   mandat: MandatEspace; envoyer: Envoyer; onSigner: () => void; onRenoncer: () => void;
 }) {
   const [erreur, setErreur] = useState('');
+  /* Préparé par Alexandre dans le CRM (V3.32) : parti, il se signe avec son
+     lien ; pas encore parti, on le dit simplement. */
+  if (mandat.etat !== 'valide' && mandat.enRoute) return (
+    <section className="mdt-carte">
+      <div className="mdt-carte-t"><span className="ic"><Ic n="bouclier" t={17} /></span><span>Mon mandat de recherche</span></div>
+      <p className="mdt-carte-p">{mandat.enRoute.lien
+        ? 'Alexandre vous l’a envoyé à signer. Vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.'
+        : 'Alexandre le prépare pour vous : vous le recevrez très vite par e-mail, pour le signer.'}</p>
+      {mandat.enRoute.lien && <a className="btn or" href={mandat.enRoute.lien}><Ic n="plume" t={16} /><span>Signer mon mandat</span></a>}
+    </section>
+  );
   if (mandat.etat === 'sans_numero') return null;
   const telecharger = async () => {
     const w = window.open('', '_blank');
@@ -1363,6 +1381,32 @@ export function CartePret({ onSigner }: { onSigner: () => void }) {
       </div>
       <button type="button" className="btn or" onClick={onSigner}>Le signer</button>
     </section>
+  );
+}
+
+/* ══ Avant la visite : le mandat qu'Alexandre lui a envoyé (V3.32) ═══════
+   Il veut visiter, et son mandat de recherche l'attend (préparé dans le
+   CRM, envoyé par e-mail). Pas de second mandat : on l'emmène signer
+   celui-là. Sa demande de visite est gardée et part à son retour. */
+export function AvantVisiteDocument({ lien, onFermer }: { lien: string; onFermer: () => void }) {
+  return (
+    <div className="mdt">
+      <div className="mdt-tete">
+        <div className="mdt-tete-g"><span className="mdt-sur">Avant la visite</span></div>
+        <button type="button" className="mdt-rond" aria-label="Fermer" onClick={onFermer}><Ic n="croix" t={14} /></button>
+      </div>
+      <div className="mdt-corps mdt-accueil">
+        <div className="mdt-sceau"><Ic n="bouclier" t={30} /></div>
+        <h3>Votre mandat de recherche vous attend</h3>
+        <p className="mdt-p">{'Pour organiser cette visite, Alexandre vous a envoyé votre mandat de recherche. Il se relit en entier et se signe en deux minutes, avec un code reçu par e-mail.'}</p>
+        <div className="mdt-puces">
+          <span><span className="k"><Ic n="check" t={14} /></span><span><b>Une seule signature</b>, valable pour tous les biens qu’il vous présentera.</span></span>
+          <span><span className="k"><Ic n="check" t={14} /></span><span>Votre demande de visite est gardée&nbsp;: elle part dès votre retour dans votre espace, une fois signé.</span></span>
+        </div>
+        <a className="btn or mdt-plein" href={lien}>Lire et signer mon mandat</a>
+        <button type="button" className="btn lien mdt-plein" onClick={onFermer}>Plus tard</button>
+      </div>
+    </div>
   );
 }
 
