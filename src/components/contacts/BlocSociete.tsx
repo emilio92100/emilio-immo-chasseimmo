@@ -60,15 +60,20 @@ export function structureDepuisNotes(notes: string, soi: { prenom?: string | nul
   return s.denomination || s.associes.length ? s : null;
 }
 
-export default function BlocSociete({ client, notes, onEnregistrer, onFiche }: {
+export default function BlocSociete({ client, notes, onEnregistrer, onFiche, ouvrir, onFermer }: {
   client: { id: string; prenom?: string | null; nom?: string | null; emails?: string[] | null; telephones?: string[] | null; pro?: unknown };
   notes: string | null | undefined;
   onEnregistrer: (s: Structure | null) => Promise<boolean>;
   onFiche: (c: ClientMini) => void;
+  /* Ouvert depuis le bandeau (V3.31) : le formulaire d'emblée, prérempli de
+     « À savoir » s'il y nomme une société ; « Annuler » le referme. */
+  ouvrir?: boolean; onFermer?: () => void;
 }) {
   const pro = (client.pro && typeof client.pro === 'object' ? client.pro : {}) as Record<string, unknown>;
   const st = lireStructure(pro.structure);
-  const [edit, setEdit] = useState<Structure | null>(null);
+  const [edit, setEditBrut] = useState<Structure | null>(() => (ouvrir && !st ? ((notes ? structureDepuisNotes(notes, client) : null) || { ...VIDE, associes: [] }) : null));
+  /* Refermer le formulaire sans société notée : le bloc s'efface. */
+  const setEdit = (e: Structure | null) => { setEditBrut(e); if (!e && !st) onFermer?.(); };
   const [occupe, setOccupe] = useState(false);
   const [contacts, setContacts] = useState<ClientMini[]>([]);
   const [tous, setTous] = useState(false);
@@ -97,7 +102,7 @@ export default function BlocSociete({ client, notes, onEnregistrer, onFiche }: {
     setOccupe(false);
     if (ok) setEdit(null);
   }
-  const majA = (id: string, patch: Partial<Associe>) => setEdit(e => (e ? { ...e, associes: e.associes.map(a => (a.id === id ? { ...a, ...patch } : a)) } : e));
+  const majA = (id: string, patch: Partial<Associe>) => setEditBrut(e => (e ? { ...e, associes: e.associes.map(a => (a.id === id ? { ...a, ...patch } : a)) } : e));
 
   if (edit) {
     return (

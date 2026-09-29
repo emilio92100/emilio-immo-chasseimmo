@@ -5,7 +5,7 @@ import { supabase, addJournal, type Client } from '@/lib/supabase';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
 import {
-  colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, lireStructure, typeDe, typesDe,
+  colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, lireStructure, structurePropre, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -82,6 +82,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const [edit, setEdit] = useState<Form | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
+  /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
+  const [societeOuverte, setSocieteOuverte] = useState(false);
   /* Le suivi (V3.23) : tout le journal du contact, et ses relances en attente.
      Un contact qui n'est pas acheteur n'a pas de recherche : tout est sur
      `client_id`, `recherche_id` vide. */
@@ -140,7 +142,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     const r = await ecrire({
       types: edit.types, civilite: edit.civilite || null, prenom: edit.prenom.trim(), nom: edit.nom.trim(),
       telephones: [edit.tel1, edit.tel2].map(s => s.trim()).filter(Boolean), emails: [edit.email1, edit.email2].map(s => s.trim().toLowerCase()).filter(Boolean),
-      adresse: edit.adresse.trim() || null, pro: edit.pro, ...foyer,
+      adresse: edit.adresse.trim() || null, pro: structurePropre(edit.pro), ...foyer,
     }, 'La fiche n’a pas pu être enregistrée');
     if (!r) { setOccupe(false); return; }
     /* La source s'écrit à part, et seulement si elle a changé : avant le SQL
@@ -190,8 +192,11 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
      métier ; pas pour un notaire ou un confrère, qui ont déjà la leur. */
   const structure = lireStructure(pro.structure);
   const peutSociete = !estPro(types) || types.includes('vendeur') || types.includes('proprietaire');
+  /* V3.31 : juste sous le bandeau bleu (et non plus en bas de la fiche),
+     dès qu'elle est notée ; sinon « Sa société (SCI…) » dans le bandeau
+     l'ouvre là, prête à remplir. */
   const societe = (
-    <BlocSociete client={x} notes={x.notes}
+    <BlocSociete client={x} notes={x.notes} ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)}
       onEnregistrer={async st => !!(await ecrire({ pro: { ...pro, structure: st || undefined } }, 'La société n’a pas pu être enregistrée'))}
       onFiche={cl => onNavigate('fiche', cl)} />
   );
@@ -218,6 +223,11 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           <h1 className={c.heroNom}>{nomFoyer(x) || 'Sans nom'}</h1>
           <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />
           {ligne && <div className={c.heroLigne}>{ligne}</div>}
+          {peutSociete && !structure && !societeOuverte && (
+            <button type="button" className={c.heroSoc} onClick={() => setSocieteOuverte(true)}>
+              <Ic n="immeuble" t={14} />{`${x.civilite === 'Madame' ? 'Elle' : 'Il'} agit pour une société (SCI…) ?`}<b>Ajouter</b>
+            </button>
+          )}
           {libelleSource((x as AvecSource).source, (x as AvecSource).source_detail) && (
             <div className={c.heroSource}><Ic n="drapeau" t={13} /><span>{'Source : '}<b>{libelleSource((x as AvecSource).source, (x as AvecSource).source_detail)}</b></span></div>
           )}
@@ -242,6 +252,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         </div>
       </div>
 
+      {peutSociete && (structure || societeOuverte) && <div className={c.socHaut}>{societe}</div>}
+
       {archive && <div className={c.archiveBandeau}>Ce contact est archivé : il n’apparaît plus dans la liste, seulement dans « Archivés ».</div>}
       {erreur && <div className={c.erreur}>{erreur}</div>}
 
@@ -253,8 +265,6 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
 
       <div className={c.blocs}>
-          {/* La société qu'il représente (V3.30) : en tête quand elle est notée. */}
-          {peutSociete && structure && societe}
           {types.includes('confrere') && (
             <section className={c.bloc}>
               <div className={c.blocT}><span className={c.blocIc}><Ic n="agence" t={15} /></span><h3>Son agence</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
@@ -330,7 +340,6 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
               <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={ouvrirRecherche}>Ouvrir une recherche</button>
             </div>
           ) : null}
-          {peutSociete && !structure && <div className={c.plein}>{societe}</div>}
       </div>
       <div className={c.refPied}>{`${principal.lib} · ${x.reference}`}</div>
 

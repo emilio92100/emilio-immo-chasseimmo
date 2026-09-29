@@ -5,7 +5,7 @@ import { euros } from '@/lib/mandat';
 import { nomFoyer } from '@/lib/foyer';
 import { demanderNouveauBien } from '@/lib/intentions';
 import {
-  METIERS, STATUTS_PRO, TYPES_CONTACT, colonneContactAbsente, ligneContact, typeDe, typesDe,
+  FORMES_SOCIETE, METIERS, STATUTS_PRO, TYPES_CONTACT, colonneContactAbsente, ligneContact, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
@@ -105,6 +105,9 @@ function Champ({ cls, lib, v, onV, ph }: { cls: Cls; lib: string; v?: string; on
     </label>
   );
 }
+/* Une société cochée « Pour une société », encore vide (V3.31). */
+const SOCIETE_VIDE = { denomination: '', forme: 'SCI', rcs: '', siege: '', qualite: '' };
+
 export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[]; pro: InfosPro; onChange: (p: InfosPro) => void; cls: Cls }) {
   const set = (k: keyof InfosPro) => (x: string) => onChange({ ...pro, [k]: x });
   const bloc = cls.bloc || ((titre: string, enfants: ReactNode) => <div className={c.groupe}><div className={c.groupeT}>{titre}</div>{enfants}</div>);
@@ -148,6 +151,38 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
             <Champ cls={cls} lib="Horaires de la loge · facultatif" v={pro.horaires} onV={set('horaires')} />
             <Champ cls={cls} lib="Accès, clés · facultatif" v={pro.acces} onV={set('acces')} />
           </div>
+        </div>
+      ))}
+      {/* Sa société (V3.31) : un vendeur, un propriétaire peut agir pour une
+          SCI, une SARL… On la note dès la création ; les associés, le RCS et
+          le siège se complètent ensuite sur sa fiche (« Sa société »). */}
+      {(types.includes('vendeur') || types.includes('proprietaire')) && bloc('Sa société', (
+        <div className={c.pro}>
+          <div className={c.pills} role="radiogroup" aria-label="Il agit en son nom ou pour une société">
+            <button type="button" role="radio" aria-checked={!pro.structure} className={`${c.pill} ${!pro.structure ? c.pillOn : ''}`}
+              onClick={() => onChange({ ...pro, structure: undefined })}>
+              En son nom<small>Il vend ou possède le bien lui-même</small>
+            </button>
+            <button type="button" role="radio" aria-checked={!!pro.structure} className={`${c.pill} ${pro.structure ? c.pillOn : ''}`}
+              onClick={() => onChange({ ...pro, structure: pro.structure || { ...SOCIETE_VIDE, associes: [] } })}>
+              Pour une société<small>Une SCI, une SARL… dont il est gérant ou associé</small>
+            </button>
+          </div>
+          {pro.structure && (
+            <>
+              <div className={cls.row}>
+                <Champ cls={cls} lib="Nom de la société" ph="SCI AVIENA" v={pro.structure.denomination} onV={x => onChange({ ...pro, structure: { ...pro.structure!, denomination: x } })} />
+                <Champ cls={cls} lib="Son rôle · facultatif" ph="Gérant, associée…" v={pro.structure.qualite} onV={x => onChange({ ...pro, structure: { ...pro.structure!, qualite: x } })} />
+              </div>
+              <div className={c.pills} role="radiogroup" aria-label="La forme de la société">
+                {FORMES_SOCIETE.map(f => (
+                  <button key={f} type="button" role="radio" aria-checked={pro.structure?.forme === f} className={`${c.pill} ${pro.structure?.forme === f ? c.pillOn : ''}`}
+                    onClick={() => onChange({ ...pro, structure: { ...pro.structure!, forme: pro.structure?.forme === f ? '' : f } })}>{f}</button>
+                ))}
+              </div>
+              <div className={c.socAide}>Les associés, le RCS et le siège : sur sa fiche, dans « Sa société ».</div>
+            </>
+          )}
         </div>
       ))}
       {types.includes('partenaire') && bloc('Son activité', (

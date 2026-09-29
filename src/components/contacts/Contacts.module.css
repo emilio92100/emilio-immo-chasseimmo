@@ -23,6 +23,7 @@
 .pill { padding: 7px 13px; border-radius: 99px; border: 1.5px solid #e3e8f0; background: white; color: #64748b; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; }
 .pill small { font-weight: 500; font-size: 11px; color: #94a3b8; }
 .pillOn { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
+.socAide { font-size: 12px; color: #64748b; }
 
 /* ── La pastille d'un type ── */
 .puce { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 800; white-space: nowrap; border: 1px solid transparent; }
@@ -129,6 +130,16 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .heroTxt { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .heroNom { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -.4px; }
 .heroLigne { font-size: 14px; color: rgba(255,255,255,.75); }
+/* « Il agit pour une société (SCI…) ? Ajouter » (V3.31) : dans le bandeau,
+   tant qu'aucune société n'est notée. */
+.heroSoc {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 6px 4px 11px; border-radius: 99px;
+  border: 1px dashed rgba(224, 195, 110, .55); background: rgba(255, 255, 255, .05); color: rgba(255, 255, 255, .82);
+  font: 600 12.5px 'DM Sans', sans-serif; cursor: pointer; text-align: left; transition: background .15s, border-color .15s;
+}
+.heroSoc svg { color: #e0c36e; }
+.heroSoc b { padding: 3px 10px; border-radius: 99px; background: #c9a84c; color: #1a2332; font-size: 11.5px; font-weight: 800; }
+.heroSoc:hover { background: rgba(255, 255, 255, .1); border-color: #e0c36e; }
 .heroCoord { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 /* « > » : sans lui, le mot du bouton « Voir sur la carte » (un <span>)
    prenait lui aussi l'allure d'une pastille, dans la pastille (V3.30). */
@@ -282,6 +293,9 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 /* « Sa société » (V3.30, BlocSociete.tsx). */
 .plein { grid-column: 1 / -1; }
 .socBloc { gap: 12px; }
+/* Sous le bandeau, sur toute la largeur (V3.31) : les associés sur deux colonnes. */
+.socHaut > section { width: 100%; box-sizing: border-box; }
+.socHaut .socListe { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 8px; }
 .socTete { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .socTete > div { min-width: 0; }
 .socTete b { display: flex; align-items: center; gap: 8px; font: 800 17px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
