@@ -1467,6 +1467,12 @@ les cases à cocher, la réponse du vendeur, le certificat.
   MapLibre tient la position par `transform`). Leurs zones scintillent deux fois puis s'éteignent
   (couche `zones-sortie`, opacité animée par `setPaintProperty`). Un bien qui revient avant la fin
   est gardé. Mouvement réduit : un simple fondu.
+- **Fiche d'un bien, des onglets qui glissent** (`src/components/shared/OngletsGlissants.tsx`,
+  `BarreOnglets` et `CorpsOnglet`) : la pastille de l'onglet choisi glisse jusqu'au nouvel onglet
+  (mesurée sur le bouton, suivie par un `ResizeObserver`), et le contenu arrive en fondu, glissé
+  du côté où l'on va. Au téléphone, la barre défile pour montrer l'onglet choisi. La dernière image
+  de l'animation ne garde aucun `transform` (les fenêtres fixes du contenu restent fixes). Prévu
+  pour la future fiche contact en onglets.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
