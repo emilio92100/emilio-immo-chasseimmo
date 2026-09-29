@@ -125,19 +125,21 @@ export async function compterSources(rechercheId: string, clientId: string): Pro
 
 /* Les mandats en cours qui lui correspondent (70 % et plus) : pour le
    bandeau de la Vue d'ensemble, sans rien lancer. */
-export async function mandatsPour(recherche: Ligne, clientId: string): Promise<{ n: number; meilleure: number }> {
+export type MandatOk = { id: string; titre: string; ville: string; note: number };
+export async function mandatsPour(recherche: Ligne, clientId: string): Promise<{ n: number; meilleure: number; liste: MandatOk[] }> {
   const { data, error } = await supabase.from('biens_vente').select('*').eq('archive', false).eq('etape', 'mandat');
-  if (error || !data) return { n: 0, meilleure: 0 };
+  if (error || !data) return { n: 0, meilleure: 0, liste: [] };
   const deja = await dejaDansLeDossier(recherche.id);
   const crit = criteresDepuisRecherche(recherche);
-  let n = 0, meilleure = 0;
+  const liste: MandatOk[] = [];
   for (const b of data as BienVente[]) {
     if (b.client_id === clientId || deja.ventes.has(b.id)) continue;
     if (!typeCompatible(b.donnees?.typeBien, recherche.type_bien)) continue;
     const c = correspondance(versCorrespondance(b), crit);
-    if (c && c.note >= 70) { n++; meilleure = Math.max(meilleure, c.note); }
+    if (c && c.note >= 70) liste.push({ id: b.id, titre: b.titre || titreBien(b.donnees || {}), ville: b.ville || '', note: c.note });
   }
-  return { n, meilleure };
+  liste.sort((a, b) => b.note - a.note);
+  return { n: liste.length, meilleure: liste[0]?.note || 0, liste };
 }
 
 async function dejaDansLeDossier(rechercheId: string): Promise<{ urls: Set<string>; ventes: Set<string> }> {

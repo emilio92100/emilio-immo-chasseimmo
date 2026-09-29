@@ -68,6 +68,11 @@ export type OuvertureFiche = {
   filtre?: 'tout' | 'appel' | 'rdv' | 'note' | 'message' | 'communications' | 'systeme';
   relanceId?: string;
   rechercheId?: string | null;
+  /* V3.29 : depuis la fiche d'un bien, ouvrir le mail d'envoi habituel sur
+     ces biens de son dossier ; depuis une alerte, lancer le rapprochement
+     (ces mandats déjà cochés). */
+  envoi?: string[];
+  rappro?: { source: 'mandats' | 'veilles' | 'deux'; cocher?: string[] };
 };
 const CLE_FICHE = 'emi-fiche';
 
@@ -180,4 +185,30 @@ export function vueDemandee(page: string): string | null {
   const p = new URLSearchParams(window.location.search);
   if (p.get('page') === page && p.get('vue')) return p.get('vue');
   try { return window.sessionStorage.getItem(`vue.${page}`); } catch { return null; }
+}
+
+/* ── Ouvrir la fiche d'un bien sur un onglet (V3.29) ─────────────────
+   « Voir les acheteurs » depuis une alerte : la fiche du bien s'ouvre sur
+   l'onglet Acheteurs. Rangé dans la session, valable une minute, lu une
+   fois par la fiche de ce bien-là. */
+const CLE_ONGLET_BIEN = 'emi-onglet-bien';
+
+export function demanderOngletBien(bienId: string, onglet: string) {
+  try { window.sessionStorage.setItem(CLE_ONGLET_BIEN, JSON.stringify({ bienId, onglet, ts: Date.now() })); } catch { /* la fiche s'ouvrira sur la Vue d'ensemble */ }
+}
+
+/* Lue sans être effacée (le mode strict appelle deux fois les
+   initialisations) : la fiche l'efface une fois montée. */
+export function lireOngletBien(bienId: string): string | null {
+  try {
+    const brut = window.sessionStorage.getItem(CLE_ONGLET_BIEN);
+    if (!brut) return null;
+    const o = JSON.parse(brut) as { bienId?: string; onglet?: string; ts?: number };
+    if (o.bienId !== bienId || !o.ts || Date.now() - o.ts > 60000) return null;
+    return o.onglet || null;
+  } catch { return null; }
+}
+
+export function oublierOngletBien() {
+  try { window.sessionStorage.removeItem(CLE_ONGLET_BIEN); } catch { /* rien à faire */ }
 }
