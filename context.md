@@ -1475,6 +1475,12 @@ les cases à cocher, la réponse du vendeur, le certificat.
   pour la future fiche contact en onglets.
 - **Les fiches qu'on fait glisser sous les cartes : un geste = une fiche** (`scroll-snap-stop:
   always` sur `.fb` et `.carteTel`) : un glissement un peu vif sautait deux ou trois biens.
+- **Accueil de l'espace, au téléphone : la carte monte et coiffe « Vos derniers retours »**
+  (`ApercuCarte` avec `fondu`, dans `DerniersRetours`) : elle était tout en bas, après la visite.
+  Le plan, plus haut, porte l'étiquette « Vos biens sur la carte » ; son bas se fond dans la
+  liste des retours, d'un seul tenant, et le premier retour remonte un peu dessus. Sans retour,
+  l'aperçu seul se pose au même endroit (`.ac-tel`). Sur ordinateur, rien ne change : il reste
+  en haut de la colonne de droite (`.ac-pc`), les retours en trois cartes.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
