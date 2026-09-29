@@ -596,9 +596,10 @@ function cfDe(client: any) {
    ne grandit jamais, quel que soit le nombre de numéros. Dans un couple,
    chaque ligne dit à qui elle est (« Madame », « Monsieur », ou le prénom
    quand les deux ont la même civilité). */
-type Coord = { k: 'tel' | 'mail' | 'adresse'; val: string; qui?: string };
+export type Coord = { k: 'tel' | 'mail' | 'adresse'; val: string; qui?: string };
 
-function Coordonnees({ coords, onModifier, pied }: { coords: Coord[]; onModifier: () => void; pied?: React.ReactNode }) {
+/* Exportées (V3.32) : la fiche des autres contacts a le même panneau. */
+export function Coordonnees({ coords, onModifier, pied }: { coords: Coord[]; onModifier: () => void; pied?: React.ReactNode }) {
   const [ouvert, setOuvert] = useState(false);
   const [copie, setCopie] = useState('');
   const racine = useRef<HTMLDivElement>(null);
