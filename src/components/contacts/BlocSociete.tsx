@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import AvatarContact, { personneDe } from './AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import { FORMES_SOCIETE, ROLES_SOCIETE, lireStructure, type Associe, type Structure } from '@/lib/contacts';
 import { lireClients } from '@/components/biens/ChampsBien';
@@ -177,7 +178,7 @@ export default function BlocSociete({ client, notes, onEnregistrer, onFiche }: {
               const gerant = /g[ée]rant|pr[ée]sident/i.test(a.role);
               return (
                 <div key={a.id} className={c.socL} data-gerant={gerant ? 'oui' : 'non'}>
-                  <span className={c.socInit}>{a.nom.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'}</span>
+                  <AvatarContact c={personneDe(a.nom, a.role)} teinte={{ bg: '', fg: '#34496e' }} className={c.socInit} libre />
                   <div className={c.socNom}>
                     <b>{a.nom || 'Sans nom'}</b>
                     <span>

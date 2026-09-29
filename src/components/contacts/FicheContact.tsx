@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import AvatarContact from './AvatarContact';
 import { supabase, addJournal, type Client } from '@/lib/supabase';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
@@ -212,7 +213,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       </div>
 
       <div className={c.hero}>
-        <span className={c.heroAv} style={{ color: '#e0c36e' }}>{`${(x.prenom || x.nom || '?')[0]}${x.prenom && x.nom ? x.nom[0] : ''}`.toUpperCase()}</span>
+        <AvatarContact c={x} teinte={{ bg: '', fg: '#e0c36e' }} className={c.heroAv} libre />
         <div className={c.heroTxt}>
           <h1 className={c.heroNom}>{nomFoyer(x) || 'Sans nom'}</h1>
           <TypesEnLigne client={x} sombre onMaj={t => { const n = { ...x, types: t } as Client; setX(n); if (t.includes('acheteur')) onNavigate('fiche', n); }} />

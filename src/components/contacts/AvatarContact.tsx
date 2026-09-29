@@ -1,5 +1,5 @@
 'use client';
-import { typesDe, estPro } from '@/lib/contacts';
+import { typesDe, typeDe, estPro } from '@/lib/contacts';
 
 /* ═══ L'avatar d'un contact ═══════════════════════════════════════════════
    Une initiale seule (« R », « H ») ne disait pas grand-chose. L'avatar
@@ -11,15 +11,33 @@ import { typesDe, estPro } from '@/lib/contacts';
      · « silhouette »  sobre, une tête et des épaules ;
      · « personnage »  un petit personnage : visage, cheveux (plus longs pour
        « Madame »), la couleur des cheveux tirée de son nom pour qu'elle ne
-       change pas d'un écran à l'autre. */
+       change pas d'un écran à l'autre.
+
+   V3.31 : il remplace les initiales partout dans le CRM (recherche du haut,
+   fiches, biens, relances, agenda, mail). `libre` laisse la feuille de style
+   de l'endroit décider de la taille et de la forme (utile quand elle change
+   sur le téléphone) ; `societe` dessine la mallette (une SCI qui vend). */
 
 export type Teinte = { bg: string; fg: string; trait?: string };
 export type VarianteAvatar = 'silhouette' | 'personnage' | 'lettre';
 
-type Personne = {
+export type Personne = {
   prenom?: string | null; nom?: string | null; civilite?: string | null;
   couple?: boolean | null; conjoint?: unknown; types?: unknown;
 };
+
+/* La teinte d'un contact d'après son type (acheteur d'abord), comme dans la
+   liste des contacts. */
+export function teinteDe(c: Personne): Teinte {
+  const types = typesDe(c);
+  const t = typeDe(types.includes('acheteur') ? 'acheteur' : types[0]);
+  return { bg: t.fond, fg: t.c, trait: `${t.c}33` };
+}
+/* Une personne dont on n'a que le nom (un associé, une offre) : « Madame »
+   devinée d'après un rôle au féminin (« Gérante », « Associée »…). */
+export const personneDe = (nom: string, role = ''): Personne => ({
+  prenom: nom, civilite: /(ante|ente|ée|ice|esse)$/i.test(role.trim()) || /\b(mme|madame)\b/i.test(nom) ? 'Madame' : '',
+});
 
 const CHEVEUX = ['#3a2c25', '#5b3d27', '#8a5a33', '#b98a4d', '#d8b46a', '#7d828c'];
 function hash(t: string) { let h = 0; for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
@@ -62,11 +80,20 @@ function Mallette({ c }: { c: string }) {
   );
 }
 
-export default function AvatarContact({ c, teinte, taille = 38, variante = 'personnage', className, style }: {
+export default function AvatarContact({ c, teinte, taille = 38, variante = 'personnage', className, style, libre, societe }: {
   c: Personne; teinte: Teinte; taille?: number; variante?: VarianteAvatar;
   className?: string; style?: React.CSSProperties;
+  /* La taille, la forme et le fond viennent de `className` (le fond aussi
+     quand `teinte.bg` est vide). */
+  libre?: boolean;
+  /* Une société (SCI…) : la mallette, comme un professionnel. */
+  societe?: boolean;
 }) {
-  const base: React.CSSProperties = {
+  const base: React.CSSProperties = libre ? {
+    flexShrink: 0, overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    ...(teinte.bg ? { background: teinte.bg } : {}), color: teinte.fg,
+    ...(teinte.trait ? { boxShadow: `inset 0 0 0 2px ${teinte.trait}` } : {}), ...style,
+  } : {
     width: taille, height: taille, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     background: teinte.bg, color: teinte.fg,
@@ -79,7 +106,7 @@ export default function AvatarContact({ c, teinte, taille = 38, variante = 'pers
       </span>
     );
   }
-  const pro = estPro(typesDe(c));
+  const pro = societe || estPro(typesDe(c));
   const couple = !!c.couple;
   const conj = (c.conjoint && typeof c.conjoint === 'object' ? c.conjoint : {}) as { civilite?: unknown; prenom?: unknown };
   const nom = `${c.prenom || ''} ${c.nom || ''}`;
@@ -87,7 +114,7 @@ export default function AvatarContact({ c, teinte, taille = 38, variante = 'pers
   const cheveux2 = CHEVEUX[hash(`${nom}·${String(conj.prenom || '')}`) % CHEVEUX.length];
   return (
     <span className={className} style={base} aria-hidden="true">
-      <svg width={taille} height={taille} viewBox="0 0 40 40">
+      <svg width={libre ? '100%' : taille} height={libre ? '100%' : taille} viewBox="0 0 40 40">
         {pro ? <Mallette c={teinte.fg} />
           : variante === 'silhouette'
             ? (couple
