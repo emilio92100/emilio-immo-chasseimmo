@@ -247,6 +247,8 @@ import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
+import Rapprochement from './Rapprochement';
+import { mandatsPour } from '@/lib/rapprochement';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -692,6 +694,17 @@ function ilYA(iso: string | null | undefined): string {
   return `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
 }
 
+/* « Neuilly, Boulogne » : les villes des secteurs, sans leurs quartiers. */
+function grouperVilles(secteurs: string[]): string {
+  const villes: string[] = [];
+  for (const x of secteurs) {
+    const m = String(x).match(/\(([^()]+)\)\s*$/);
+    const v = (m ? m[1] : String(x)).trim();
+    if (v && !villes.includes(v)) villes.push(v);
+  }
+  return villes.length > 3 ? `${villes.slice(0, 3).join(', ')} et ${villes.length - 3} autre${villes.length > 4 ? 's' : ''}` : villes.join(', ');
+}
+
 /* « 8 jours », « 3 mois », « 1 an et 2 mois » : depuis quand on le suit. */
 function dureeSuivi(j: number): string {
   if (j <= 0) return 'aujourd’hui';
@@ -739,6 +752,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       .then(({ count, error }) => { if (vivant) setNbDocs(error ? null : count ?? 0); });
     return () => { vivant = false; };
   }, [init.id]);
+  /* Le rapprochement (V3.29) : la fenêtre, et les mandats en cours qui
+     correspondent déjà à sa recherche (pour le bandeau de la Vue d'ensemble). */
+  const [rappro, setRappro] = useState(false);
+  const [mandatsOk, setMandatsOk] = useState<{ n: number; meilleure: number } | null>(null);
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -968,6 +985,13 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   /* Monte d'un cran quand un mail de biens est parti : les onglets Sélection
      et Présentés, qui chargent leurs biens eux-mêmes, se rechargent. */
   const [versionBiens, setVersionBiens] = useState(0);
+  useEffect(() => {
+    if (!rechercheActive) { setMandatsOk(null); return; }
+    let vivant = true;
+    mandatsPour(rechercheActive as unknown as Record<string, unknown>, client.id)
+      .then(r => { if (vivant) setMandatsOk(r); }).catch(() => { if (vivant) setMandatsOk(null); });
+    return () => { vivant = false; };
+  }, [rechercheActive, client.id, versionBiens]);
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '' });
   /* La signature et le modèle « Sélection de biens » des Paramètres (V3.20) :
@@ -2841,6 +2865,58 @@ ${signatureMail()}`,
     elimine:        { label: '❌ Éliminé',          color: '#991b1b', bg: '#fef2f2' },
   };
 
+  /* « Appartement · 4 p. et + · Neuilly, Boulogne · jusqu'à 1 250 000 € » */
+  const resumeRecherche = [
+    cr.type_bien ? String(cr.type_bien).split(',').map(x => x.trim()).join(', ') : '',
+    cr.nb_pieces_min ? `${cr.nb_pieces_min} p. et +` : '',
+    cr.surface_min ? `${cr.surface_min} m² et +` : '',
+    cr.secteurs?.length ? grouperVilles(cr.secteurs) : '',
+    cr.budget_max ? `jusqu’à ${budgetLisible(cr.budget_max)}` : '',
+  ].filter(Boolean).join(' · ');
+
+  /* Le bandeau du rapprochement, en Vue d'ensemble. Tant qu'aucun n'a été
+     fait sur cette recherche : grand, avec ce que les mandats donnent déjà.
+     Ensuite : une ligne, avec la date du dernier et « Refaire ». */
+  const dernierRappro = journal
+    .filter(j => j.type === 'rapprochement' && j.recherche_id === rechercheId)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  const bandeauRappro = !rechercheActive ? null : dernierRappro ? (
+    <div className={styles.rapproLigne}>
+      <span className={styles.rapproLigneIc}><Icone nom="etoile" taille={15} epaisseur={2.2} /></span>
+      <span className={styles.rapproLigneTx}>
+        <b>{`Dernier rapprochement le ${new Date(dernierRappro.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`}</b>
+        {` · ${dernierRappro.metadata?.n ?? 0} bien${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''}`}
+        {mandatsOk?.n ? <em>{` · ${mandatsOk.n} de vos mandats lui correspond${mandatsOk.n > 1 ? 'ent' : ''}`}</em> : null}
+      </span>
+      <button type="button" onClick={() => setRappro(true)}>Refaire</button>
+    </div>
+  ) : (
+    <section className={styles.rappro} aria-label={`Des biens pour ${client.prenom}`}>
+      <svg className={styles.rapproIllu} width="150" height="76" viewBox="0 0 150 76" aria-hidden="true">
+        <rect width="150" height="76" rx="14" fill="#fbf6e9" />
+        <path className={styles.rapproTrait} d="M40 38 C 62 28, 78 20, 96 20" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
+        <path className={styles.rapproTrait} d="M40 38 C 62 48, 78 56, 96 56" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
+        <circle className={styles.rapproOnde} cx="36" cy="38" r="19" fill="none" stroke="#c9a84c" strokeWidth="2" />
+        <circle cx="36" cy="38" r="19" fill="#2e4166" />
+        <text x="36" y="43" textAnchor="middle" fill="#e8c96a" style={{ font: "800 12.5px 'Plus Jakarta Sans', sans-serif" }}>{`${client.prenom?.[0] || ''}${client.nom?.[0] || ''}`}</text>
+        <g className={styles.rapproFlotte1}><rect x="94" y="8" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><path d="M108 22l6-5 6 5M110 21v5h8v-5" fill="none" stroke="#34496e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></g>
+        <g className={styles.rapproFlotte2}><rect x="94" y="44" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><circle cx="114" cy="55" r="4.2" fill="none" stroke="#a07c28" strokeWidth="1.6" /><path d="M117.2 58.2l2.8 2.8" stroke="#a07c28" strokeWidth="1.6" strokeLinecap="round" /></g>
+      </svg>
+      <div className={styles.rapproTx}>
+        <div className={styles.rapproTitre}>
+          <h2>{`Des biens pour ${client.prenom}`}</h2>
+          {!!mandatsOk?.n && <span className={styles.rapproNouveau}><i />{mandatsOk.n > 1 ? `${mandatsOk.n} mandats` : '1 mandat'}</span>}
+        </div>
+        <p>{mandatsOk?.n
+          ? <><b>{`${mandatsOk.n > 1 ? `${mandatsOk.n} de vos mandats lui correspondent` : '1 de vos mandats lui correspond'}, jusqu’à ${mandatsOk.meilleure} %`}</b>{' · à comparer aussi : les biens de vos veilles'}</>
+          : 'Comparez sa recherche avec vos mandats en cours et les biens trouvés par vos veilles pour vos autres clients.'}</p>
+      </div>
+      <button type="button" className={styles.rapproCta} onClick={() => setRappro(true)}>
+        <Icone nom="etoile" taille={17} epaisseur={2.2} />Faire un rapprochement
+      </button>
+    </section>
+  );
+
   const ETAPES_LABELS: Record<string, string> = {
     offre: '1 — Offre', negociation: '2 — Négociation',
     offre_acceptee: '3 — Offre acceptée', compromis: '4 — Compromis', acte: '5 — Acte',
@@ -3133,6 +3209,12 @@ ${signatureMail()}`,
           font-family: 'DM Sans', sans-serif; font-size: 11.5px; font-weight: 700;
           color: rgba(255,255,255,.72); transition: background .14s, color .14s, border-color .14s; }
         .fiche-suivi-reinit:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .fiche-suivi-rappro { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+          background: #c9a84c; border: 1px solid #c9a84c; border-radius: 99px; padding: 5px 13px; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; font-size: 11.5px; font-weight: 800; color: #1a2332;
+          transition: background .14s, transform .14s; }
+        .fiche-suivi-rappro:hover { background: #d8b85c; transform: translateY(-1px); }
+        .fiche-suivi-rappro + .fiche-suivi-reinit { margin-left: 0; }
 
         /* ═══════════ La transaction ═══════════
            Cinq étapes empilées à la verticale, chacune avec son formulaire
@@ -3268,6 +3350,7 @@ ${signatureMail()}`,
                 </div>
               );
             })()}
+            {bandeauRappro}
             <div className={styles.ensCols}>
               <div className={styles.ensCol}>
                 {/* Ce qu'Alexandre a noté sur lui (V3.23). */}
@@ -3725,6 +3808,12 @@ ${signatureMail()}`,
           <div className="fiche-suivi-tete">
             <b>Où en est la recherche</b>
             <i>de la veille à la transaction</i>
+            {rechercheActive && (
+              <button type="button" className="fiche-suivi-rappro" onClick={() => setRappro(true)}
+                title="Chercher des biens pour ce client dans vos mandats et vos veilles">
+                <Icone nom="etoile" taille={13} epaisseur={2.2} />{' '}Faire un rapprochement
+              </button>
+            )}
             {rechercheActive && (
               <button type="button" className="fiche-suivi-reinit" onClick={ouvrirReinit}
                 title="Effacer tout le suivi et repartir sur une veille neuve">
@@ -4779,6 +4868,20 @@ ${signatureMail()}`,
       )}
 
       </div>
+
+      {/* ═══ LE RAPPROCHEMENT (V3.29) ═══ */}
+      {rappro && rechercheActive && (
+        <Rapprochement client={client} recherche={rechercheActive as unknown as Record<string, unknown>} resume={resumeRecherche}
+          onFermer={() => { setRappro(false); load(); }}
+          onFicheBien={(id) => { setRappro(false); onNavigate('biens', { bien: id }); }}
+          onFini={async (quoi, ids) => {
+            setRappro(false);
+            await load();
+            setVersionBiens(v => v + 1);
+            if (quoi === 'mail') openEnvoiMulti(ids);
+            else setTab('selection');
+          }} />
+      )}
 
       {/* ═══ MODAL CONFIRM ÉTAPE PRÉCÉDENTE ═══ */}
       {showConfirmEtape && transaction && (
