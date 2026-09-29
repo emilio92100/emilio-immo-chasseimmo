@@ -133,7 +133,7 @@ function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbOffres }: { bien: Bi
         <div className={b.bloc}>
           <div className={b.blocT}><span className={b.blocIc}><Ic n="plan" t={15} /></span><h3>{`Les pièces · ${pieces.length}`}</h3></div>
           <div className={b.tags}>{pieces.map(p => <span key={p.id} className={b.tag}>{`${p.nom || '…'}${p.surface ? ` · ${m2(p.surface)}` : ''}`}</span>)}</div>
-          {total > 0 && <div className={b.pied}>{`Pièces à vivre : ${m2(total)}`}</div>}
+          {total > 0 && <div className={b.pied}>{`Surface habitable : ${m2(total)}`}</div>}
         </div>
       )}
     </div>
