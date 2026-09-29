@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { signalerEchec } from '@/lib/ecritures';
+import { toutLire } from '@/lib/registre';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
@@ -515,11 +516,13 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   async function fetchClients() {
     setLoading(true);
-    const { data: cl } = await supabase
+    /* Par pages de 1 000 (V3.33) : au-delà, Supabase coupait sans rien dire. */
+    const { data: cl, erreur: eCl } = await toutLire<Client>((de, a) => supabase
       .from('clients')
       .select('*')
-      .order('created_at', { ascending: false });
-    const clientsList = cl || [];
+      .order('created_at', { ascending: false }).order('id').range(de, a));
+    if (eCl) console.error('[contacts] lecture', eCl);
+    const clientsList = cl;
 
     // V3 : la source de vérité des critères est la table `recherches`, plus `clients.*`.
     // On fusionne sur chaque client les critères de sa recherche d'affichage
@@ -527,12 +530,11 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     const ids = clientsList.map(c => c.id);
     let recherches: any[] = [];
     if (ids.length) {
-      const { data: rs } = await supabase
+      const { data: rs } = await toutLire<any>((de, a) => supabase
         .from('recherches')
         .select('*')
-        .in('client_id', ids)
-        .order('created_at', { ascending: true });
-      recherches = rs || [];
+        .order('created_at', { ascending: true }).order('id').range(de, a));
+      recherches = rs;
     }
 
     const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur'];
@@ -575,34 +577,55 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     }
 
     /* Les compteurs. Jusqu'ici la liste affichait un tiret : ils n'étaient
-       jamais calculés. Trois lectures légères suffisent. */
+       jamais calculés. Trois lectures légères suffisent.
+       V3.33 : lues par pages de 1 000 — le plafond de Supabase par requête.
+       Au-delà, les lignes en trop disparaissaient sans erreur et les compteurs
+       mentaient. Plus de liste d'identifiants dans l'adresse non plus : ce
+       sont tous les contacts, et avec quelques centaines de fiches l'adresse
+       devenait trop longue pour passer. */
     if (ids.length) {
-      const [bi, vi, re, jo] = await Promise.all([
-        supabase.from('biens').select('client_id, etape, badge_retour').in('client_id', ids),
-        supabase.from('visites').select('client_id').in('client_id', ids),
-        supabase.from('relances').select('client_id, date_echeance, note')
-          .in('client_id', ids).eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
-        supabase.from('journal').select('client_id, created_at, type, titre')
-          .in('client_id', ids).order('created_at', { ascending: false }),
+      const [bi, vi, re] = await Promise.all([
+        toutLire<any>((de, a) => supabase.from('biens').select('client_id, etape, badge_retour')
+          .or('etape.eq.presente,badge_retour.eq.offre_faite').order('id').range(de, a)),
+        toutLire<any>((de, a) => supabase.from('visites').select('client_id').order('id').range(de, a)),
+        toutLire<any>((de, a) => supabase.from('relances').select('client_id, date_echeance, note')
+          .eq('statut', 'en_attente').order('date_echeance', { ascending: true }).order('id').range(de, a)),
       ]);
       const s: Record<string, StatDossier> = {};
       ids.forEach(id => { s[id] = { biens: 0, visites: 0, offres: 0 }; });
-      (bi.data || []).forEach((b: any) => {
+      bi.data.forEach((b: any) => {
         const e = s[b.client_id]; if (!e) return;
         if (b.etape === 'presente') e.biens++;
         if (b.badge_retour === 'offre_faite') e.offres++;
       });
-      (vi.data || []).forEach((v: any) => { const e = s[v.client_id]; if (e) e.visites++; });
-      (re.data || []).forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
-      (jo.data || []).forEach((j: any) => {
+      vi.data.forEach((v: any) => { const e = s[v.client_id]; if (e) e.visites++; });
+      re.data.forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
+      const noter = (j: any) => {
         const e = s[j.client_id];
-        /* Le mail « Où en est votre recherche ? » part tout seul : ce n'est pas
-           un geste sur le dossier, il ne doit pas masquer « Rien depuis… ». */
-        if (!e || e.dernierContact || j.type === 'point_auto') return;
+        if (!e || e.dernierContact) return;
         e.dernierContact = j.created_at;
         e.dernierTitre = j.titre || '';
         e.dernierCote = venantDuClient(j.type, j.titre) ? 'client' : 'moi';
-      });
+      };
+      /* Le dernier geste de chaque dossier : l'historique, du plus récent au
+         plus ancien, page par page, jusqu'à ce que chacun ait le sien (cinq
+         pages au plus). Le mail « Où en est votre recherche ? » part tout
+         seul : ce n'est pas un geste sur le dossier, il ne doit pas masquer
+         « Rien depuis… ». */
+      const sansGeste = () => ids.filter(id => !s[id].dernierContact);
+      for (let de = 0; de < 5000 && sansGeste().length; de += 1000) {
+        const { data, error } = await supabase.from('journal').select('client_id, created_at, type, titre')
+          .neq('type', 'point_auto').order('created_at', { ascending: false }).order('id').range(de, de + 999);
+        if (error || !data) break;
+        data.forEach(noter);
+        if (data.length < 1000) break;
+      }
+      /* Un acheteur actif plus ancien que ces pages-là : c'est lui que
+         « Rien depuis… » doit signaler, on va chercher sa dernière ligne. */
+      const actifsSans = sansGeste().filter(id => { const c = clientsList.find(x => x.id === id); return !!c && c.statut === 'actif' && estAcheteur(c); }).slice(0, 40);
+      const derniers = await Promise.all(actifsSans.map(id => supabase.from('journal').select('client_id, created_at, type, titre')
+        .eq('client_id', id).neq('type', 'point_auto').order('created_at', { ascending: false }).limit(1)));
+      derniers.forEach(r => (r.data || []).forEach(noter));
       setStats(s);
     }
   }
