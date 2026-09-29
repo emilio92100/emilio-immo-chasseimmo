@@ -181,6 +181,10 @@ export const DOSSIER: LigneDossier[] = [
   { k: 'titre', l: 'Titre de propriété', groupe: 'vendeur' },
   { k: 'taxe', l: 'Dernier avis de taxe foncière', groupe: 'vendeur' },
   { k: 'factures', l: 'Factures des travaux récents', groupe: 'vendeur' },
+  /* V3.32 : ce que le notaire demandera selon le bien. */
+  { k: 'bail', l: 'Bail en cours et dernier avis d’échéance', aide: 'Le bien est loué', si: d => d.occupation === 'loue', groupe: 'vendeur' },
+  { k: 'permis', l: 'Permis de construire et certificat de conformité', aide: 'La maison, une extension, une véranda', si: d => estMaison(d), groupe: 'vendeur' },
+  { k: 'piscine', l: 'Dispositif de sécurité de la piscine', aide: 'Sa notice ou son attestation', si: d => Array.isArray(d.annexes) && d.annexes.includes('piscine'), groupe: 'vendeur' },
 ];
 export const lireDossier = (x: unknown): Record<string, PieceDossier> => {
   const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
@@ -688,6 +692,8 @@ export function ligneEtat(b: BienVente, suivi: SuiviVente[]): { t: string; ton: 
   if (b.etape === 'a_suivre') {
     const rdv0 = txt(d, 'rdvEstimation');
     if (rdv0 && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre' };
+    /* Mis en attente à l'estimation (V3.32) : pourquoi, et quand le rappeler. */
+    if (etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation') return { t: ['En attente', ed.raison, ed.reprise ? `à recontacter vers le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre' };
     const delai: Record<string, string> = { vite: 'vendre dès que possible', '3mois': 'vendre sous 3 mois', '6mois': 'vendre sous 6 mois', libre: 'pas pressé' };
     return { t: typeof d.delai === 'string' && delai[d.delai] ? `Projet : ${delai[d.delai]}` : 'Projet de vente à suivre', ton: 'neutre' };
   }
