@@ -89,6 +89,42 @@
   animation: onde 2.2s ease-out infinite;
 }
 @keyframes onde { 0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, .5); } 80%, 100% { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); } }
+/* Un filtre écarte le bien (V3.28) : l'étiquette s'allume à sa couleur,
+   tremble, lance ses étincelles et s'éteint. On anime l'étiquette, jamais
+   l'enveloppe, dont MapLibre tient la position par `transform`. */
+.sort { pointer-events: none; z-index: 6; }
+.sort .pastille { animation: sortie .95s cubic-bezier(.36, .07, .19, .97) forwards !important; }
+@keyframes sortie {
+  0% { transform: scale(1); }
+  16% { transform: scale(1.16); background: var(--c); color: #fff; box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 30%, transparent), 0 0 22px 6px color-mix(in srgb, var(--c) 70%, transparent); }
+  26% { transform: scale(1.14) translateX(-3px) rotate(-4deg); background: var(--c); color: #fff; }
+  36% { transform: scale(1.14) translateX(3px) rotate(4deg); background: var(--c); color: #fff; }
+  46% { transform: scale(1.12) translateX(-2px) rotate(-2deg); background: var(--c); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent), 0 0 16px 4px color-mix(in srgb, var(--c) 55%, transparent); }
+  56% { transform: scale(1.1) translateX(2px) rotate(1deg); background: var(--c); color: #fff; opacity: 1; }
+  100% { transform: scale(.35); background: var(--c); color: #fff; opacity: 0; box-shadow: 0 0 0 0 transparent; }
+}
+.sort .pastille i { background: #fff; }
+.etinc { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.etinc i {
+  position: absolute; left: 0; top: 0; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: var(--c); box-shadow: 0 0 8px var(--c); opacity: 0;
+  animation: etincelle .7s ease-out forwards;
+}
+.etinc .etoile {
+  width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 0; background: var(--c);
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+}
+@keyframes etincelle {
+  0% { transform: translate(0, 0) scale(.3); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1) rotate(90deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sort .pastille { animation: sortieDouce .3s ease forwards !important; }
+  .etinc { display: none; }
+}
+@keyframes sortieDouce { to { opacity: 0; } }
+
 /* De loin, les prix se replient en points : la carte reste lisible. */
 .loin .env:not(.envSel) .pastille { width: 18px; height: 18px; padding: 0; justify-content: center; background: var(--c); border: 2.5px solid #fff; }
 .loin .env:not(.envSel) .pastille b,

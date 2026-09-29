@@ -86,6 +86,11 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
   const liste = useRef<HTMLDivElement>(null);
   const cadre = useRef(false);
   const parBande = useRef(false);
+  /* Les repères qui s'en vont (un filtre les écarte) : ils brillent, tremblent
+     et s'éteignent avant d'être retirés (V3.28). id → minuterie. */
+  const sortants = useRef(new Map<string, number>());
+  const avant = useRef<Place[]>([]);
+  const minuteriesZones = useRef<number[]>([]);
 
   /* ── Les zones, fabriquées par le serveur ── */
   useEffect(() => {
@@ -178,6 +183,11 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
       id: 'zones-l', type: 'line', source: 'zones',
       paint: { 'line-color': ['get', 'c'], 'line-width': ['case', ['==', ['get', 'sel'], 1], 2.4, 1.5], 'line-opacity': 0.8 },
     });
+    /* Les zones qui s'en vont : une lueur à leur couleur, qui scintille puis
+       s'éteint (l'opacité de la couche s'anime, pas celle de chaque zone). */
+    m.addSource('zones-sortie', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    m.addLayer({ id: 'zones-sortie-f', type: 'fill', source: 'zones-sortie', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0 } });
+    m.addLayer({ id: 'zones-sortie-l', type: 'line', source: 'zones-sortie', paint: { 'line-color': ['get', 'c'], 'line-width': 4, 'line-blur': 2.5, 'line-opacity': 0 } });
     const zoom = () => racine.current?.classList.toggle(s.loin, m.getZoom() < ZOOM_PRIX);
     zoom();
     m.on('zoom', zoom);
@@ -205,7 +215,13 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
     });
     m.on('mouseleave', 'zones-f', () => { m.getCanvas().style.cursor = ''; setSurvol(null); });
     setCartePrete(true);
-    return () => { for (const r of reperes.current.values()) r.remove(); reperes.current.clear(); carte.current = null; };
+    return () => {
+      for (const t of sortants.current.values()) window.clearTimeout(t);
+      sortants.current.clear();
+      for (const t of minuteriesZones.current) window.clearTimeout(t);
+      for (const r of reperes.current.values()) r.remove();
+      reperes.current.clear(); carte.current = null;
+    };
   }, [calculerVue, choisir]);
 
   /* Les zones et leurs étiquettes suivent le filtre, le choix et le survol. */
@@ -222,9 +238,66 @@ export default function CarteEspace({ token, biens, focus, ville, onOuvrir, onLi
       })),
     });
     const vus = new Set(visibles.map(p => p.id));
-    for (const [id, r] of reperes.current) if (!vus.has(id)) { r.remove(); reperes.current.delete(id); }
+    /* Un filtre écarte des biens : leur étiquette s'illumine, tremble, lance
+       quelques étincelles et s'éteint, puis on la retire (V3.28). */
+    for (const [id, r] of reperes.current) {
+      if (vus.has(id) || sortants.current.has(id)) continue;
+      const el = r.getElement();
+      el.classList.remove(s.envSel, s.envSurvol);
+      el.classList.add(s.sort);
+      const c = parIdRef.current.get(id);
+      const et = document.createElement('span');
+      et.className = s.etinc;
+      if (c) et.style.setProperty('--c', COULEUR[c.cat]);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + 0.3;
+        const d = 24 + (i % 3) * 7;
+        const pt = document.createElement('i');
+        if (i % 2) pt.className = s.etoile;
+        pt.style.setProperty('--dx', `${Math.round(Math.cos(a) * d)}px`);
+        pt.style.setProperty('--dy', `${Math.round(Math.sin(a) * d)}px`);
+        pt.style.animationDelay = `${160 + (i % 4) * 40}ms`;
+        et.append(pt);
+      }
+      el.append(et);
+      sortants.current.set(id, window.setTimeout(() => {
+        r.remove(); reperes.current.delete(id); sortants.current.delete(id);
+      }, 1000));
+    }
+    /* Les zones de ces biens : une lueur qui scintille deux fois, puis s'éteint. */
+    const partants = avant.current.filter(p => !vus.has(p.id) && !p.z.exact);
+    avant.current = visibles;
+    const srcSortie = m.getSource('zones-sortie') as GeoJSONSource | undefined;
+    if (partants.length && srcSortie && m.getLayer('zones-sortie-f')) {
+      for (const t of minuteriesZones.current) window.clearTimeout(t);
+      srcSortie.setData({
+        type: 'FeatureCollection',
+        features: partants.map(p => ({ type: 'Feature', properties: { c: COULEUR[p.cat] }, geometry: { type: 'Polygon', coordinates: [cercle(p.z.lng, p.z.lat, p.z.r)] } })),
+      });
+      const lueur = (f: number, l: number, ms: number) => {
+        if (!carte.current?.getLayer('zones-sortie-f')) return;
+        m.setPaintProperty('zones-sortie-f', 'fill-opacity-transition', { duration: ms, delay: 0 });
+        m.setPaintProperty('zones-sortie-l', 'line-opacity-transition', { duration: ms, delay: 0 });
+        m.setPaintProperty('zones-sortie-f', 'fill-opacity', f);
+        m.setPaintProperty('zones-sortie-l', 'line-opacity', l);
+      };
+      const etapes: [number, number, number, number][] = [[0, 0.42, 1, 0], [170, 0.16, 0.5, 150], [330, 0.4, 1, 150], [490, 0.14, 0.45, 150], [650, 0, 0, 380]];
+      minuteriesZones.current = etapes.map(([t, f, l, ms]) => window.setTimeout(() => lueur(f, l, ms), t));
+      minuteriesZones.current.push(window.setTimeout(() => {
+        (carte.current?.getSource('zones-sortie') as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] });
+      }, 1100));
+    }
     for (const p of visibles) {
       let r = reperes.current.get(p.id);
+      /* Revenu avant la fin de sa sortie (filtre changé vite) : on le garde. */
+      const t = sortants.current.get(p.id);
+      if (r && t !== undefined) {
+        window.clearTimeout(t);
+        sortants.current.delete(p.id);
+        const el = r.getElement();
+        el.classList.remove(s.sort);
+        el.querySelector(`.${s.etinc}`)?.remove();
+      }
       if (!r) {
         const env = document.createElement('div');
         env.className = s.env;
