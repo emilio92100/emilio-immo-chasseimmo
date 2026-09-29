@@ -48,6 +48,8 @@ export type DonneesSignerDoc = {
      l'agence ou à distance ; jamais un avenant, une offre, un bon de visite). */
   retractation: boolean;
   tel: string;
+  /* Son espace acheteur, quand c'est le client du document (V3.32). */
+  espace?: string | null;
 };
 
 type Reponse = Record<string, unknown> & { ok?: boolean; error?: string };
@@ -158,6 +160,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
             ? `${Maj(d.le)} est signé par tous. Chacun en reçoit l’exemplaire complet par e-mail, avec son certificat de signature.`
             : `Votre exemplaire vient de vous être envoyé par e-mail. Vous recevrez la version complète dès que ${attendus.join(' et ') || 'les autres signataires'} ${attendus.length > 1 ? 'auront' : 'aura'} signé.`}</p>
           <button type="button" className="btn fant mdt-plein" onClick={() => { void telecharger(); }}><Ic n="doc" t={16} /><span>Télécharger le document signé</span></button>
+          {d.espace && <a className="btn or mdt-plein" href={d.espace}>Revenir à mon espace</a>}
           {d.retractation && <p className="mdt-mention">{'Le document rappelle votre délai de rétractation de 14 jours et la façon de l’exercer : le formulaire joint, ou un simple e-mail à l’agence.'}</p>}
           {erreur && <div className="mdt-erreur">{erreur}</div>}
         </div>
