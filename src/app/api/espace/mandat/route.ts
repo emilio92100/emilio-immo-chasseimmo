@@ -370,7 +370,9 @@ export async function POST(req: NextRequest) {
            revenir en arrière et changer d'avis). */
         if (reprise) {
           const { error: eDel } = await sb.from('mandats_cosignataires').delete().eq('signature_id', id).eq('statut', 'prevu');
-          if (eDel && cosV.length) return ko('enregistrement', 500, { detail: eDel.message });
+          /* Seule excuse : la table n'existe pas (SQL pas lancé). Sinon, un
+             ancien co-signataire retiré recevrait quand même l'invitation. */
+          if (eDel && (cosV.length || !/does not exist|schema cache/i.test(eDel.message || ''))) return ko('enregistrement', 500, { detail: eDel.message });
         }
         if (cosV.length) {
           const { error: eCo } = await sb.from('mandats_cosignataires').insert(cosV.map((c, i) => ({
@@ -776,6 +778,15 @@ export async function POST(req: NextRequest) {
         }
         const email = String(body.email || '').replace(/\s+/g, '').toLowerCase().slice(0, 120);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return ko('email', 400);
+        /* V3.33 : cinq corrections par jour au plus. Chacune envoie un mail
+           neuf : sans limite, ce bouton pouvait servir à arroser n'importe
+           quelle adresse depuis la nôtre. */
+        {
+          const depuis = new Date(Date.now() - 86_400_000).toISOString();
+          const { count } = await sb.from('journal').select('id', { count: 'exact', head: true })
+            .eq('recherche_id', recherche.id).eq('type', 'mandat').ilike('titre', '%corrigée par%').gte('created_at', depuis);
+          if ((count || 0) >= 5) return ko('attendre', 429);
+        }
         const pris = [l.mandant.email, ...cosR.filter(c => c.id !== co.id).map(c => c.personne.email)].map(x => String(x).toLowerCase());
         if (pris.includes(email)) return ko('email_pris', 400);
         const le = new Date().toISOString();
