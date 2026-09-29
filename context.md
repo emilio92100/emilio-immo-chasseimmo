@@ -1481,6 +1481,16 @@ les cases à cocher, la réponse du vendeur, le certificat.
   liste des retours, d'un seul tenant, et le premier retour remonte un peu dessus. Sans retour,
   l'aperçu seul se pose au même endroit (`.ac-tel`). Sur ordinateur, rien ne change : il reste
   en haut de la colonne de droite (`.ac-pc`), les retours en trois cartes.
+- **Espace, sur ordinateur : la barre de défilement se voit enfin** (page et fiche d'un bien) :
+  17 px de large, poignée de 11 px en gris ardoise (`#64748b`, plus foncé au survol), 64 px de
+  long au minimum. Avant : une poignée de 8 px gris clair, que les clients ne voyaient pas.
+- **Nouveautés, sur ordinateur : la phrase de la dernière recherche est centrée** (`.relance-pc`),
+  comme le cadre « Rien de nouveau » (`.relance-centre`, dont le cadre est lui aussi centré).
+- **Carte de l'espace, sur ordinateur : les filtres sont posés sur la carte** (`filtresPc`, classes
+  `.filtresPc`, `.fp`, `.fpOn`) : une seule barre blanche en haut au milieu, un trait fin entre
+  chaque choix, et le choix actif à la couleur de sa catégorie (« Tous » en bleu). Le message, le
+  bandeau « pas sur la carte » et le chargement descendent dessous (`.avecFiltres`, top 66 px).
+  Au téléphone, rien ne change.
 - **Espace acheteur, « Nouveautés » a aussi sa carte** (« Liste | Carte », comme « Consultés ») :
   les biens arrivés nouveaux (`idsNouveaux`, lus à l'ouverture) tant qu'ils n'ont pas d'avis. Un
   bien seulement regardé y reste ; un avis donné depuis sa fiche l'en retire au retour sur la
