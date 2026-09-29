@@ -715,3 +715,6 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 .dcCarte .suivi { border: none; background: transparent; }
 .dcCarte .suivi[data-alerte='oui'] { background: #fff5f5; }
 .tSignature, .statutFort.tSignature { background: #fbf1d6; color: #8a6a1f; border-color: #ecdcb0; }
+/* Un avenant rangé sous son mandat (V3.32) : en retrait, relié par un trait. */
+.dcLigne[data-enfant='oui'] { position: relative; padding-left: 26px; }
+.dcLigne[data-enfant='oui']::before { content: ''; position: absolute; left: 12px; top: -8px; width: 11px; height: 30px; border-left: 2px solid #e2e8f0; border-bottom: 2px solid #e2e8f0; border-bottom-left-radius: 8px; }

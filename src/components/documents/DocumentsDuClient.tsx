@@ -44,7 +44,29 @@ export type ElementDoc = {
   ouvrir: string | null;
   /* L'exemplaire signé : un document de la rubrique, ou un mandat en ligne. */
   signe?: { chemin: string; nom?: string; mandat?: boolean };
+  /* V3.32 : son numéro, et le mandat auquel il se rattache (un avenant, un
+     courrier de reconduction, une délégation) : rangé sous lui. */
+  numero?: string | null; rattache?: string | null; enfant?: boolean;
 };
+const RATTACHES = ['avenant_vente', 'avenant_recherche', 'courrier_reconduction', 'delegation'];
+
+/* Le mandat, puis ce qui s'y rattache, dans l'ordre où c'est venu : le
+   récapitulatif de ce qui a été signé (V3.32). */
+function enChaine(l: ElementDoc[]): ElementDoc[] {
+  const out: ElementDoc[] = [];
+  const pris = new Set<string>();
+  const parents = new Set(l.filter(x => !x.rattache && x.numero).map(x => String(x.numero)));
+  for (const el of l) {
+    if (pris.has(el.cle) || (el.rattache && parents.has(el.rattache))) continue;
+    out.push(el); pris.add(el.cle);
+    if (!el.rattache && el.numero) {
+      for (const c of l.filter(c => c.rattache === String(el.numero)).sort((p, q) => p.date.localeCompare(q.date))) {
+        if (!pris.has(c.cle)) { out.push({ ...c, enfant: true }); pris.add(c.cle); }
+      }
+    }
+  }
+  return out;
+}
 
 const jour = (iso?: string | null) => (iso ? jourLong(iso.slice(0, 10)) : '');
 
@@ -64,9 +86,11 @@ export function depuisDoc(d: DocumentRow): ElementDoc {
   return {
     cle: d.id, ouvrir: d.id, categorie: d.categorie, statut: d.statut, courrier,
     titre: d.titre || 'Document sans titre',
-    sous: [d.numero ? `N° ${d.numero}` : d.modele === 'delegation' && d.donnees?.mandatNumero ? `Mandat n° ${String(d.donnees.mandatNumero)}` : '', quand].filter(Boolean).join(' · '),
+    sous: [d.numero ? `N° ${d.numero}` : RATTACHES.includes(d.modele) && d.donnees?.mandatNumero ? `${d.modele === 'delegation' ? 'Mandat' : 'Au mandat'} n° ${String(d.donnees.mandatNumero)}` : '', quand].filter(Boolean).join(' · '),
     date: d.signe_le || d.annule_le || d.finalise_le || d.updated_at,
     signe: d.statut === 'signe' && d.signe_chemin ? { chemin: d.signe_chemin, nom: nomFichier(d, d.signature ? '-signe' : '') } : undefined,
+    numero: d.numero,
+    rattache: RATTACHES.includes(d.modele) && d.donnees?.mandatNumero ? String(d.donnees.mandatNumero) : null,
   };
 }
 
@@ -79,6 +103,7 @@ function depuisMandat(x: MandatRecherche): ElementDoc {
       x.retracte_le ? `Rétracté le ${jour(x.retracte_le)}` : x.signe_le ? `Signé le ${jour(x.signe_le)}, dans son espace` : 'Signature en cours dans son espace'].filter(Boolean).join(' · '),
     date: x.retracte_le || x.signe_le || x.created_at,
     signe: x.statut === 'signe' && !x.retracte_le && x.pdf_chemin ? { chemin: x.pdf_chemin, mandat: true } : undefined,
+    numero: x.numero,
   };
 }
 
@@ -101,7 +126,7 @@ function Ligne({ el, onOuvrir, ouvre, onSigne, enSignature = false }: { el: Elem
     </>
   );
   return (
-    <div className={s.dcLigne}>
+    <div className={s.dcLigne} data-enfant={el.enfant ? 'oui' : undefined}>
       {el.ouvrir
         ? <button type="button" className={s.dcOuvrir} onClick={() => onOuvrir(el.ouvrir!)} title="Ouvrir dans Documents">{dedans}</button>
         : <div className={s.dcOuvrir} style={{ cursor: 'default' }}>{dedans}</div>}
@@ -143,9 +168,10 @@ export function DocsParEtat({ elements, suivis, onOuvrir, onFait }: {
     setOuvre('');
   }
 
-  const attente = elements.filter(x => x.statut === 'pret' && !x.courrier);
-  const prepa = elements.filter(x => x.statut === 'brouillon' || (x.statut === 'pret' && x.courrier));
-  const signes = elements.filter(x => x.statut === 'signe');
+  const attente = enChaine(elements.filter(x => x.statut === 'pret' && !x.courrier));
+  const prepa = enChaine(elements.filter(x => x.statut === 'brouillon' || (x.statut === 'pret' && x.courrier)));
+  /* Signés : chaque mandat suivi de ses avenants (V3.32). */
+  const signes = enChaine(elements.filter(x => x.statut === 'signe'));
   const annules = elements.filter(x => x.statut === 'annule');
   const caches = [...signes.slice(SIGNES_VISIBLES), ...annules];
   const ligne = (el: ElementDoc) => <Ligne key={el.cle} el={el} onOuvrir={onOuvrir} ouvre={ouvre} onSigne={x => { void ouvrirSigne(x); }} enSignature={!!suivis[el.cle]} />;
