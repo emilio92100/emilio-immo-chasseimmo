@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import AvatarContact from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
@@ -2938,7 +2939,7 @@ ${signatureMail()}`,
         <path className={styles.rapproTrait} d="M40 38 C 62 48, 78 56, 96 56" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
         <circle className={styles.rapproOnde} cx="36" cy="38" r="19" fill="none" stroke="#c9a84c" strokeWidth="2" />
         <circle cx="36" cy="38" r="19" fill="#2e4166" />
-        <text x="36" y="43" textAnchor="middle" fill="#e8c96a" style={{ font: "800 12.5px 'Plus Jakarta Sans', sans-serif" }}>{`${client.prenom?.[0] || ''}${client.nom?.[0] || ''}`}</text>
+        <foreignObject x="19" y="21" width="34" height="34"><AvatarContact c={client as never} teinte={{ bg: '#2e4166', fg: '#e8c96a' }} taille={34} /></foreignObject>
         <g className={styles.rapproFlotte1}><rect x="94" y="8" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><path d="M108 22l6-5 6 5M110 21v5h8v-5" fill="none" stroke="#34496e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></g>
         <g className={styles.rapproFlotte2}><rect x="94" y="44" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><circle cx="114" cy="55" r="4.2" fill="none" stroke="#a07c28" strokeWidth="1.6" /><path d="M117.2 58.2l2.8 2.8" stroke="#a07c28" strokeWidth="1.6" strokeLinecap="round" /></g>
       </svg>
@@ -3064,7 +3065,7 @@ ${signatureMail()}`,
               <div className={styles.teteG}>
                 <div className={styles.teteQui}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div className={styles.teteAvatar}>{client.prenom[0]}{client.nom?.[0] || ''}</div>
+                    <AvatarContact c={client as never} teinte={{ bg: '', fg: '#e0c36e' }} className={styles.teteAvatar} libre />
                     <span className={styles.teteEtat} style={{ background: teinte }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
