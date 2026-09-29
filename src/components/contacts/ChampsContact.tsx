@@ -105,6 +105,11 @@ function Champ({ cls, lib, v, onV, ph }: { cls: Cls; lib: string; v?: string; on
     </label>
   );
 }
+/* « Il achète lui-même », « Il vend lui-même »… selon ses types (V3.31). */
+const enSonNom = (t: TypeContact[]) => {
+  const verbes = [t.includes('acheteur') && 'achète', t.includes('vendeur') && 'vend', t.includes('proprietaire') && !t.includes('vendeur') && 'possède son bien'].filter(Boolean) as string[];
+  return `Il ${verbes.length > 1 ? `${verbes.slice(0, -1).join(', ')} et ${verbes[verbes.length - 1]}` : verbes[0] || 'agit'} lui-même`;
+};
 /* Une société cochée « Pour une société », encore vide (V3.31). */
 const SOCIETE_VIDE = { denomination: '', forme: 'SCI', rcs: '', siege: '', qualite: '' };
 
@@ -153,15 +158,16 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
           </div>
         </div>
       ))}
-      {/* Sa société (V3.31) : un vendeur, un propriétaire peut agir pour une
-          SCI, une SARL… On la note dès la création ; les associés, le RCS et
-          le siège se complètent ensuite sur sa fiche (« Sa société »). */}
-      {(types.includes('vendeur') || types.includes('proprietaire')) && bloc('Sa société', (
+      {/* Sa société (V3.31) : un acheteur, un vendeur, un propriétaire peut
+          agir pour une SCI, une SARL… On la note dès la création ; les
+          associés, le RCS et le siège se complètent ensuite sur sa fiche
+          (« Sa société »). */}
+      {(types.includes('acheteur') || types.includes('vendeur') || types.includes('proprietaire')) && bloc('Sa société', (
         <div className={c.pro}>
           <div className={c.pills} role="radiogroup" aria-label="Il agit en son nom ou pour une société">
             <button type="button" role="radio" aria-checked={!pro.structure} className={`${c.pill} ${!pro.structure ? c.pillOn : ''}`}
               onClick={() => onChange({ ...pro, structure: undefined })}>
-              En son nom<small>Il vend ou possède le bien lui-même</small>
+              En son nom<small>{enSonNom(types)}</small>
             </button>
             <button type="button" role="radio" aria-checked={!!pro.structure} className={`${c.pill} ${pro.structure ? c.pillOn : ''}`}
               onClick={() => onChange({ ...pro, structure: pro.structure || { ...SOCIETE_VIDE, associes: [] } })}>
