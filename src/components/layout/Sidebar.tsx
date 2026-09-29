@@ -220,12 +220,13 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       <div className={`${styles.voile} ${ouvert ? styles.voileOuvert : ''}`} onClick={onFermer} aria-hidden="true" />
 
       <aside className={`${styles.sidebar} ${ouvert ? styles.ouvert : ''} ${reduit ? styles.reduit : ''}`}>
+        {/* Le logo de l'agence, en grand (V3.29) ; le « E » seul quand la
+            barre est réduite à ses icônes. Les images sont dans public/logos/. */}
         <div className={styles.logo}>
-          <div className={styles.logoMark}><span>EI</span></div>
-          <div>
-            <div className={styles.logoName}>Emilio</div>
-            <div className={styles.logoSub}>Immobilier</div>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={styles.logoGrand} src="/logos/logo-emilio-800.png" alt="Emilio conseil immobilier" width={800} height={336} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={styles.logoMark} src="/logos/e-192.png" alt="Emilio" width={40} height={40} />
           <button type="button" className={styles.fermer} onClick={onFermer} aria-label="Fermer le menu">
             <Icone nom="fermer" taille={18} epaisseur={2} />
           </button>

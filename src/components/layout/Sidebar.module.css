@@ -18,17 +18,13 @@
   position: relative; z-index: 1; flex-shrink: 0;
 }
 
+/* V3.29 : le logo de l'agence, en grand, à la place de « EI Emilio
+   Immobilier ». Le « E » seul quand la barre est réduite. */
+.logoGrand { display: block; width: 176px; height: auto; margin: 2px auto 0; }
 .logoMark {
-  width: 38px; height: 38px;
-  background: var(--emilio-fond);
-  border-radius: 11px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  display: none; width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
   box-shadow: 0 4px 12px rgba(26,35,50,0.2);
 }
-.logoMark span { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 900; color: #c9a84c; font-size: 13px; }
-.logoName { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px; color: var(--emilio); letter-spacing: -0.3px; line-height: 1.1; }
-.logoSub  { font-size: 9px; color: #c9a84c; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
 
 /* NAV */
 .nav { flex: 1; overflow-y: auto; padding: 10px 12px; position: relative; z-index: 1; }
@@ -180,7 +176,8 @@
   .sidebar { transition: width .28s cubic-bezier(.22,.9,.3,1), min-width .28s cubic-bezier(.22,.9,.3,1); }
   .reduit { width: 76px; min-width: 76px; }
   .reduit .logo { padding: 22px 0 18px; justify-content: center; }
-  .reduit .logo > div:not(.logoMark) { display: none; }
+  .reduit .logoGrand { display: none; }
+  .reduit .logoMark { display: block; }
   .reduit .nav { padding: 10px 11px; }
   .reduit .navSection { height: 10px; padding: 8px 0 0; overflow: hidden; color: transparent; }
   .reduit .navItem { justify-content: center; padding: 11px 0; gap: 0; }
@@ -226,7 +223,8 @@
   }
   .voileOuvert { opacity: 1; pointer-events: auto; }
 
-  .logo { padding: 18px 16px 16px 20px; }
+  .logo { padding: 16px 16px 14px 20px; }
+  .logoGrand { width: 150px; margin: 0; }
   .fermer {
     display: inline-flex; align-items: center; justify-content: center;
     margin-left: auto; width: 38px; height: 38px; border-radius: 12px;
