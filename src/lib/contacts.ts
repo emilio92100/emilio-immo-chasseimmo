@@ -57,12 +57,36 @@ export type Juridique = {
   /* La date de la délégation d'où ça vient (AAAA-MM-JJ). */
   le?: string;
 };
+/* La société qu'un contact représente (V3.30) : une SCI qui vend, dont il
+   est associé ou gérant. Rangée dans sa fiche (clients.pro, pas de SQL),
+   avec ses associés — chacun avec son rôle, son téléphone et son e-mail. */
+export type Associe = { id: string; nom: string; role: string; tel: string; email: string };
+export type Structure = {
+  denomination: string; forme: string; rcs: string; siege: string;
+  /* Son rôle à lui : gérant, associé, interlocuteur pour la vente… */
+  qualite: string; associes: Associe[];
+};
+export const FORMES_SOCIETE = ['SCI', 'SARL', 'SAS', 'SA', 'SNC', 'Autre'];
+export const ROLES_SOCIETE = ['Gérant', 'Gérante', 'Associé', 'Associée', 'Président', 'Mandataire'];
+export function lireStructure(x: unknown): Structure | null {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  const o = x as Record<string, unknown>;
+  const t = (k: string) => (typeof o[k] === 'string' ? String(o[k]) : '');
+  const associes = (Array.isArray(o.associes) ? o.associes : []).map((a, i) => {
+    const y = (a && typeof a === 'object' ? a : {}) as Record<string, unknown>;
+    const u = (k: string) => (typeof y[k] === 'string' ? String(y[k]) : '');
+    return { id: u('id') || `a${i}`, nom: u('nom'), role: u('role'), tel: u('tel'), email: u('email') };
+  }).filter(a => a.nom || a.tel || a.email);
+  const s = { denomination: t('denomination'), forme: t('forme'), rcs: t('rcs'), siege: t('siege'), qualite: t('qualite'), associes };
+  return s.denomination || s.associes.length ? s : null;
+}
 export type InfosPro = {
   agence?: string; statutPro?: 'salarie' | 'mandataire' | 'independant' | ''; reseau?: string; adresseAgence?: string; siteWeb?: string;
   etude?: string; adresseEtude?: string; clerc?: string; clercTel?: string;
   immeuble?: string; horaires?: string; acces?: string;
   metier?: string; societe?: string;
   juridique?: Juridique;
+  structure?: Structure;
 };
 export const lirePro = (x: unknown): InfosPro => (x && typeof x === 'object' && !Array.isArray(x) ? x as InfosPro : {});
 export const STATUTS_PRO: { v: 'salarie' | 'mandataire' | 'independant'; l: string; aide: string }[] = [
@@ -84,6 +108,9 @@ export function ligneContact(c: AvecTypes & { adresse?: string | null }): string
   if (t.includes('notaire')) return [p.etude || 'Notaire', villeDe(p.adresseEtude)].filter(Boolean).join(' · ');
   if (t.includes('gardien')) return [`Gardien${p.immeuble ? ` · ${p.immeuble}` : ''}`, p.horaires].filter(Boolean).join(' · ');
   if (t.includes('partenaire')) return [p.metier || 'Partenaire', p.societe].filter(Boolean).join(' · ');
+  /* Un vendeur qui représente une société : « Associée · SCI AVIENA » (V3.30). */
+  const st = lireStructure(p.structure);
+  if (st?.denomination) return [st.qualite, st.denomination].filter(Boolean).join(' · ');
   return '';
 }
 function villeDe(adr?: string) {

@@ -56,7 +56,7 @@ export type BienVente = {
   created_at: string; updated_at: string;
 };
 export type SuiviVente = {
-  id: string; bien_id: string; type: 'visite' | 'offre' | 'etape' | 'note' | 'prix'; le: string; qui: string | null;
+  id: string; bien_id: string; type: 'visite' | 'offre' | 'etape' | 'note' | 'prix' | 'envoi'; le: string; qui: string | null;
   client_id: string | null; recherche_id: string | null; montant: number | null; statut: string | null;
   avis: string | null; commentaire: string | null; donnees: Record<string, unknown>; created_at: string;
 };
@@ -152,7 +152,9 @@ export const lirePhotos = (x: unknown): Photo[] => (Array.isArray(x) ? x : [])
    `etat` : recu · demande · nc (non concerné). Un fichier déposé va dans le
    bucket privé « mandats », sous biens-vente/<id>/ (voir /api/biens-vente). */
 export type EtatPiece = 'recu' | 'demande' | 'nc' | '';
-export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string };
+/* `taille` (V3.30) : en octets, notée au dépôt — l'envoi par mail dit à
+   l'avance si les fichiers partiront en pièces jointes ou en liens. */
+export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string; taille?: number };
 export type LigneDossier = { k: string; l: string; aide?: string; si?: (d: Donnees) => boolean; groupe: 'diag' | 'copro' | 'vendeur' };
 export const DOSSIER: LigneDossier[] = [
   { k: 'dpe', l: 'DPE', aide: 'Valable 10 ans', groupe: 'diag' },
@@ -183,10 +185,25 @@ export const lireDossier = (x: unknown): Record<string, PieceDossier> => {
   for (const [k, v] of Object.entries(o)) {
     const p = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
     const e = p.etat === 'recu' || p.etat === 'demande' || p.etat === 'nc' ? p.etat : '';
-    out[k] = { etat: e, date: typeof p.date === 'string' ? p.date : '', chemin: typeof p.chemin === 'string' ? p.chemin : '', nom: typeof p.nom === 'string' ? p.nom : '' };
+    out[k] = {
+      etat: e, date: typeof p.date === 'string' ? p.date : '', chemin: typeof p.chemin === 'string' ? p.chemin : '', nom: typeof p.nom === 'string' ? p.nom : '',
+      ...(typeof p.taille === 'number' && p.taille > 0 ? { taille: p.taille } : {}),
+    };
   }
   return out;
 };
+/* Les autres documents du bien (V3.30) : ceux qui ne sont pas une ligne du
+   dossier — un DDT complet, un bail, un plan, un courrier du syndic. Même
+   stockage privé, rangés dans `donnees.fichiers`. */
+export type FichierBien = { id: string; titre: string; chemin: string; nom: string; taille?: number; le: string };
+export const lireFichiers = (x: unknown): FichierBien[] => (Array.isArray(x) ? x : [])
+  .map(f => (f && typeof f === 'object' ? f : {}) as Record<string, unknown>)
+  .filter(o => typeof o.chemin === 'string' && o.chemin)
+  .map((o, i) => ({
+    id: typeof o.id === 'string' && o.id ? o.id : `f${i}`, titre: typeof o.titre === 'string' ? o.titre : '',
+    chemin: String(o.chemin), nom: typeof o.nom === 'string' ? o.nom : '', le: typeof o.le === 'string' ? o.le : '',
+    ...(typeof o.taille === 'number' && o.taille > 0 ? { taille: o.taille } : {}),
+  }));
 export const lignesDossier = (d: Donnees) => DOSSIER.filter(l => !l.si || l.si(d));
 
 /* ── Les champs propres à cette rubrique (en plus de ceux des documents) ── */
