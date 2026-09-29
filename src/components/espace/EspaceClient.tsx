@@ -2014,6 +2014,10 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
   const duJour = passage?.lues ?? null;
   const quandJour = momentRecherche(passage?.quand);
   const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
+  /* La carte de ses biens (V3.27) : un aperçu dessiné, pas une vraie carte. */
+  const surCarte: Bien[] = [...neufs, ...vus, ...donnes];
+  const apercu = surCarte.length > 0 ? <ApercuCarte biens={surCarte} onVoir={() => aller('carte')} /> : null;
+  const apercuFondu = surCarte.length > 0 ? <ApercuCarte biens={surCarte} onVoir={() => aller('carte')} fondu /> : null;
   /* « Aujourd'hui pour vous » ne doit pas afficher 0 · 0 · 0. Une case à zéro
      (plus d'avis à donner, pas de visite prévue) cède sa place à ce que le
      client a déjà : les biens qui lui plaisent, puis tous ses biens
@@ -2137,33 +2141,21 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
             </>
             : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} />}
           {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
-          {retours.length > 0 && <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} />}
+          {/* Au téléphone (V3.28), la carte coiffe « Vos derniers retours » et
+              s'y fond : elle était tout en bas, après la visite. Sans retour,
+              elle se pose seule au même endroit. */}
+          {retours.length > 0
+            ? <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} carte={apercuFondu} />
+            : apercu && <div className="ac-tel">{apercu}</div>}
         </div>
 
         <div className="acc-d">
           {visites?.length > 0 && (
             <VisiteCourte v={visites[0]} autres={visites.length - 1} onVoir={() => aller('visites')} />
           )}
-          {/* La carte de ses biens (V3.27) : un aperçu dessiné, pas une vraie
-              carte — la bibliothèque de carte ne se charge qu'à l'ouverture. */}
-          {(neufs.length + vus.length + donnes.length) > 0 && (
-            <button type="button" className="case large apercu-carte" onClick={() => aller('carte')}>
-              <span className="ac-plan" aria-hidden="true">
-                <svg viewBox="0 0 320 120" preserveAspectRatio="xMidYMid slice">
-                  <path d="M-10 84 C60 70 110 96 180 76 S290 40 340 52" className="ac-fleuve" />
-                  <path d="M20 -10 L70 130 M120 -10 L150 130 M210 -10 L190 130 M-10 30 L330 18 M-10 62 L330 76 M260 -10 L300 130" className="ac-rue" />
-                  <path d="M-10 104 L330 96 M40 -10 L100 130 M170 -10 L240 130" className="ac-ruelle" />
-                </svg>
-                {[...neufs, ...vus, ...donnes].slice(0, 6).map((b: Bien, i: number) => (
-                  <i key={b.id} className={'ac-z ac-' + catCarte(b)} style={{ left: `${[16, 38, 60, 27, 74, 50][i]}%`, top: `${[34, 22, 44, 66, 30, 70][i]}%` }} />
-                ))}
-              </span>
-              <span className="ac-bas">
-                <span><b>Vos biens sur la carte</b><i>Chacun dans sa petite zone, à la couleur de votre avis</i></span>
-                <span className="chev"><Ico n="fleche" t={18} /></span>
-              </span>
-            </button>
-          )}
+          {/* La carte de ses biens : en haut de la colonne de droite, sur
+              ordinateur. Au téléphone, elle est plus haut (voir à gauche). */}
+          {apercu && <div className="ac-pc">{apercu}</div>}
           <div className="acc-cartes">
             <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
               <button className="rech-haut" onClick={() => aller('recherche')}>
@@ -2358,14 +2350,54 @@ function AvisAttendus({ biens, onOuvrir }: { biens: Bien[]; onOuvrir: (b: Bien) 
   );
 }
 
-/* Ses trois derniers retours, avec l'avis en toutes lettres. */
-function DerniersRetours({ biens, onOuvrir, aller }: { biens: Bien[]; onOuvrir: (b: Bien) => void; aller: (v: string) => void }) {
+/* L'aperçu de la carte de ses biens (V3.27) : dessiné, pas une vraie carte —
+   la bibliothèque de carte ne se charge qu'à l'ouverture. « fondu » : la
+   version qui coiffe « Vos derniers retours » au téléphone (V3.28), le plan
+   plus haut, une étiquette posée dessus, et le bas qui se fond dans la liste. */
+function ApercuCarte({ biens, onVoir, fondu }: { biens: Bien[]; onVoir: () => void; fondu?: boolean }) {
+  const plan = (
+    <span className="ac-plan" aria-hidden="true">
+      <svg viewBox="0 0 320 120" preserveAspectRatio="xMidYMid slice">
+        <path d="M-10 84 C60 70 110 96 180 76 S290 40 340 52" className="ac-fleuve" />
+        <path d="M20 -10 L70 130 M120 -10 L150 130 M210 -10 L190 130 M-10 30 L330 18 M-10 62 L330 76 M260 -10 L300 130" className="ac-rue" />
+        <path d="M-10 104 L330 96 M40 -10 L100 130 M170 -10 L240 130" className="ac-ruelle" />
+      </svg>
+      {/* Posées plus bas dans la version fondue : l'étiquette est en haut. */}
+      {biens.slice(0, 6).map((b, i) => (
+        <i key={b.id} className={'ac-z ac-' + catCarte(b)} style={fondu
+          ? { left: `${[20, 44, 66, 86, 34, 76][i]}%`, top: `${[52, 42, 56, 36, 72, 70][i]}%` }
+          : { left: `${[16, 38, 60, 27, 74, 50][i]}%`, top: `${[34, 22, 44, 66, 30, 70][i]}%` }} />
+      ))}
+    </span>
+  );
+  if (fondu) return (
+    <button type="button" className="dr-carte" onClick={onVoir}>
+      {plan}
+      <span className="dr-carte-l"><Ico n="carte" t={14} /><b>Vos biens sur la carte</b><Ico n="fleche" t={14} /></span>
+    </button>
+  );
   return (
-    <section className="dr">
+    <button type="button" className="case large apercu-carte" onClick={onVoir}>
+      {plan}
+      <span className="ac-bas">
+        <span><b>Vos biens sur la carte</b><i>Chacun dans sa petite zone, à la couleur de votre avis</i></span>
+        <span className="chev"><Ico n="fleche" t={18} /></span>
+      </span>
+    </button>
+  );
+}
+
+/* Ses trois derniers retours, avec l'avis en toutes lettres. Au téléphone,
+   la carte de ses biens les coiffe, d'un seul tenant (V3.28). */
+function DerniersRetours({ biens, onOuvrir, aller, carte }: { biens: Bien[]; onOuvrir: (b: Bien) => void; aller: (v: string) => void; carte?: React.ReactNode }) {
+  return (
+    <section className={'dr' + (carte ? ' dr-avec' : '')}>
       <div className="bloc-h">
         <h2>Vos derniers retours</h2>
         <button type="button" className="bloc-lien" onClick={() => aller('consultes')}>Tout voir</button>
       </div>
+      <div className="dr-fus">
+      {carte}
       <div className="dr-l">
         {biens.slice(0, 3).map(b => {
           const a = etiqDe(b);
@@ -2380,6 +2412,7 @@ function DerniersRetours({ biens, onOuvrir, aller }: { biens: Bien[]; onOuvrir: 
             </button>
           );
         })}
+      </div>
       </div>
     </section>
   );
@@ -7412,5 +7445,33 @@ button.auj-c:active{transform:scale(.96)}
 .ac-bas b{font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; color:var(--encre)}
 .ac-bas i{font-style:normal; font-size:13px; color:var(--plume)}
 @media (prefers-reduced-motion:reduce){ .ac-z{animation:none} }
+/* La carte au téléphone (V3.28) : elle coiffe « Vos derniers retours », dans
+   la même carte ; son bas se fond dans la liste, et le premier retour
+   remonte un peu dessus. Sur ordinateur, elle reste à droite, seule. */
+.ac-pc{display:none}
+.ac-tel .apercu-carte{margin-top:22px}
+.dr-avec .dr-fus{background:var(--carte); border:1px solid var(--trait); border-radius:20px; overflow:hidden;
+  box-shadow:0 16px 34px -28px rgba(36,56,92,.55)}
+.dr-carte{position:relative; display:block; width:100%; padding:0; border:none; background:none; text-align:left;
+  font-family:inherit; color:var(--encre); cursor:pointer}
+.dr-carte .ac-plan{height:150px}
+.dr-carte .ac-plan::after{content:''; position:absolute; left:0; right:0; bottom:0; height:64px; pointer-events:none;
+  background:linear-gradient(to bottom, color-mix(in srgb, var(--carte) 0%, transparent), var(--carte) 88%)}
+.dr-carte-l{position:absolute; left:12px; top:12px; display:inline-flex; align-items:center; gap:6px; height:32px;
+  padding:0 10px 0 10px; border-radius:99px; background:rgba(255,255,255,.95); color:var(--encre);
+  box-shadow:0 8px 20px -10px rgba(36,56,92,.55); font-size:12.5px; transition:transform .24s cubic-bezier(.16,1,.3,1)}
+.dr-carte-l b{font-weight:800}
+.dr-carte-l svg:first-child{color:var(--or-fonce)}
+.dr-carte:active .dr-carte-l{transform:scale(.97)}
+.dr-avec .dr-l{position:relative; gap:0; margin-top:-22px; padding:0 6px 6px}
+.dr-avec .dr-c{border:none; border-radius:0; background:none; padding:10px}
+.dr-avec .dr-c + .dr-c{box-shadow:inset 0 1px 0 var(--trait)}
+@media(min-width:1024px){
+  .ac-pc{display:block}
+  .ac-tel, .dr-carte{display:none}
+  .dr-avec .dr-fus{background:none; border:none; border-radius:0; overflow:visible; box-shadow:none}
+  .dr-avec .dr-l{margin-top:0; padding:0; gap:14px}
+  .dr-avec .dr-c, .dr-avec .dr-c + .dr-c{border:1px solid var(--trait); border-radius:16px; background:var(--carte); padding:0; box-shadow:none}
+}
 
 `;
