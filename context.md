@@ -1529,6 +1529,47 @@ Retours d'Alexandre du soir. Rien à passer dans Supabase.
   bloqué. Le mandat signé en ligne depuis l'espace était déjà protégé (/api/espace/mandat,
   « deja »). Avant : rien n'empêchait un second mandat par « Nouveau document » ou « Dupliquer ».
   L'ancienne remarque « Le nouveau le remplacera une fois signé » est retirée.
+- **Où en est la signature, partout** (`src/components/documents/SuiviSignature.tsx`) : une ligne
+  « Signature en ligne · 1 sur 2 · on attend Pierre » avec un point par signataire (vert signé, or
+  attendu, rouge lien expiré), qui se déplie sur chacun : signé quand, lien envoyé, ouvert ou pas,
+  rappels, et « Renvoyer le lien », « Corriger l'e-mail », « Il signera plus tard, par lien »
+  (documents, /api/documents/signature), « Renvoyer le lien » / « Envoyer un lien neuf » / « Copier
+  son lien » (co-signataires du mandat de l'espace, /api/mandat/cosignataire), « Lui renvoyer le
+  mail » (mandat proposé dans l'espace, /api/send-mail mode mandat). `lireSuivis` lit en trois
+  requêtes : `documents_signataires`, `mandats_cosignataires`, et le journal des rappels.
+- **« Ses documents » rangés par état** (`DocumentsDuClient.tsx`, `DocsParEtat`, fiche acheteur et
+  fiche contact) : En attente de signature (chacun dans sa carte, avec son suivi ; pastille « En
+  signature » quand les liens sont partis), En préparation (brouillons, courriers à envoyer),
+  Signés (avec « PDF signé »), les annulés repliés. Le mandat proposé dans l'espace et pas encore
+  commencé y figure aussi (« Proposé dans son espace le … »). Un mandat de l'espace signé par le
+  premier, en attente du second, est « En attente de signature » (il était « Signé »).
+- **Onglet Documents d'un bien** : la ligne « Le mandat de vente » dit « Envoyé pour signature »
+  (ou « Prêt : à faire signer à la main / sur place », « les liens ne sont pas encore partis »)
+  avec le suivi dépliable dessous (`EtapeDoc.suite`) — elle disait « En préparation » jusqu'à la
+  signature, et comptait un mandat annulé comme en préparation. « Tous les documents préparés »
+  utilise la même liste rangée par état (`DocsParEtat`).
+- **Plus de second mandat de recherche par l'espace** : `mandatDocumentEnRoute`
+  (`src/lib/mandat-serveur.ts`) trouve un mandat de recherche de Documents en brouillon ou en
+  signature pour la recherche, et le lien de signature du client (une de ses adresses). Tant qu'il
+  est là : l'espace ne propose pas son mandat en ligne (page.tsx : `etat` à « sans_numero »,
+  `mandat.enRoute`) ; « Mon mandat » dit « Alexandre vous l'a envoyé à signer » avec « Signer mon
+  mandat » ; « Je souhaite le visiter » ouvre « Avant la visite · Votre mandat de recherche vous
+  attend » (`AvantVisiteDocument`) et garde la demande une semaine — elle part toute seule au retour
+  dans l'espace, une fois signé ; le serveur répond « mandat_document » (avec le lien) à une demande
+  de visite, et /api/espace/mandat refuse « document » ; sans lien pour lui (brouillon, lien expiré,
+  autre adresse), la demande passe et le mail d'Alexandre dit pourquoi (`pasDeMandat`). La page du
+  signataire (/signer) propose « Revenir à mon espace » quand c'est le client du document.
+- **Côté CRM** : « Proposer au client » (fenêtre « Mandat de recherche ») est bloqué quand un mandat
+  de Documents est en route ; `mandatRechercheEnCours` compte aussi la proposition dans l'espace
+  (« déjà proposé dans son espace : il ne l'a pas encore signé ») et libère un mandat arrivé à son
+  terme ; le bouton du mandat de la fiche acheteur dit « envoyé, en attente de signature » ou « en
+  préparation dans Documents » au lieu de « non renseigné ».
+- **Rappels du mandat proposé dans l'espace** (cron /api/mandat/relances, `relancerPropositions`) :
+  l'acheteur qui n'a pas signé reçoit un rappel 2 jours après la proposition, un second à 7 jours (au
+  moins 3 jours après le premier) ; Alexandre est prévenu avec le second. Chaque rappel est une ligne
+  du journal (type « mandat », `metadata.rappelMandat` = la date de la proposition) : pas de SQL, et
+  une nouvelle proposition repart de zéro. Rien pour une proposition de plus de 15 jours, une
+  recherche arrêtée ou fermée à l'espace, ou quand un mandat de Documents est en route.
 
 ### V3.31 — 29 septembre 2026 · le dossier de diagnostics, la page Documents, les observations
 
