@@ -3045,7 +3045,7 @@ ${signatureMail()}`,
           ...(client.adresse ? [{ k: 'adresse' as const, val: client.adresse }] : []),
         ];
         const aCarte = !!(client.adresse || (client as unknown as { bien_actuel_adresse?: string | null }).bien_actuel_adresse);
-        const piedCarte = !aCarte ? undefined : <BoutonCarte focus={`c:${client.id}`} onNavigate={onNavigate} sombre />;
+        const piedCarte = !aCarte ? undefined : <BoutonCarte focus={`c:${client.id}`} onNavigate={onNavigate} />;
         const nbFaites = visites.filter(v => v.statut === 'effectuee').length;
         const nbOffres = biens.filter(b => b.badge_retour === 'offre_faite').length;
         /* Une visite prévue peut être annulée : on ne compte que les
