@@ -20,7 +20,7 @@ import {
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerDocument, enregistrerBien,
-  ficheClient, initiales, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
+  ficheClient, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -31,7 +31,7 @@ import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
 import { DossierBien, type DestPropose } from './DossierBien';
 import {
-  ADecrire, BandePhotos, BoutonAct, BtnTuile, CarteAnnonce, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, Haut, HistoriqueBien,
+  ADecrire, BoutonAct, BtnTuile, CarteAnnonce, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, HistoriqueBien,
   Kv, Lettres, ListeDocs, ListeTravaux, ListeVisites, Note, OngletSurfaces, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
@@ -261,40 +261,9 @@ const dateLongueCourt = (ymd: string) => {
   return isNaN(x.getTime()) ? ymd : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
-function BlocProprio({ bien, proprio, recherchesProprio, onFiche, onModifier }: {
-  bien: BienVente; proprio: ClientMini | null; recherchesProprio: ListeBiens['recherches']; onFiche: (id: string) => void; onModifier: () => void;
-}) {
-  const d = bien.donnees || {};
-  const pers = (Array.isArray(d.proprietaires) ? d.proprietaires : []) as Record<string, string>[];
-  const nom = nomProprio(d) || (proprio ? nomClient(proprio) : '');
-  const tel = proprio?.telephones?.[0] || pers.find(p => p?.telephone)?.telephone || '';
-  const mail = proprio?.emails?.[0] || pers.find(p => p?.email)?.email || '';
-  const r = recherchesProprio[0];
-  return (
-    <Bloc ic="personne" titre="Le propriétaire" action={proprio ? <Modifier onClick={() => onFiche(proprio.id)} lib="Ouvrir sa fiche" /> : <Modifier onClick={onModifier} />}>
-      {nom ? (
-        <div className={b.proprio}>
-          <span className={b.avatar}>{initiales(nom)}</span>
-          <div style={{ minWidth: 0 }}><b>{nom}</b><small>{[tel, mail].filter(Boolean).join(' · ') || 'Pas de coordonnées'}</small></div>
-        </div>
-      ) : <div className={b.vide}>Pas encore renseigné.</div>}
-      {(tel || mail) && (
-        <div className={b.contacts}>
-          {tel && <a className={b.contact} href={`tel:${tel.replace(/\s+/g, '')}`}><Ic n="telephone" t={14} />Appeler</a>}
-          {mail && <a className={b.contact} href={`mailto:${mail}`}><Ic n="mail" t={14} />E-mail</a>}
-        </div>
-      )}
-      <div className={b.lignes}>
-        <Li l="Pourquoi il vend" v={lib(d, 'motif')} />
-        <Li l="Son délai" v={lib(d, 'delai')} />
-        <Li l="Venu par" v={lib(d, 'origine')} />
-        <Li l="Son notaire" v={txt(d, 'notaire')} />
-      </div>
-      {r && <div className={b.encart}><b>{proprio?.prenom ? `${proprio.prenom} cherche aussi à acheter` : 'Il cherche aussi à acheter'}</b>{` : ${r.nom || 'une recherche en cours'}${r.budget_max ? `, jusqu’à ${euros(r.budget_max)}` : ''}. Sa recherche est suivie dans le CRM.`}</div>}
-      {!proprio && nom && <div className={b.pied}>Pas de fiche client reliée : « Modifier » pour la créer ou la retrouver.</div>}
-    </Bloc>
-  );
-}
+/* « Le propriétaire » n'a plus de bloc en bas de la Vue d'ensemble (V3.31) :
+   il doublait la carte du haut, qui reprend ce qu'il disait en plus
+   (pourquoi il vend, son délai, venu par, son notaire). */
 
 function BlocVisite({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
   const [copie, setCopie] = useState(false);
@@ -538,7 +507,7 @@ function surfacesDe(d: Donnees): SurfacesBien {
   };
 }
 
-function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVente; onModifier: (etape: string) => void; onPhotos: () => void; onSurfaces: () => void }) {
+function OngletBien({ bien, onModifier, onSurfaces }: { bien: BienVente; onModifier: (etape: string) => void; onSurfaces: () => void }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
@@ -603,10 +572,8 @@ function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVent
   );
   return (
     <Col>
-      <Haut seul={avant}>
-        {!avant && <CarteAnnonce texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} onEcrire={M('annonce')} />}
-        <BandePhotos photos={lirePhotos(d.photos)} onVoir={onPhotos} />
-      </Haut>
+      {/* Plus de bande de photos ici (V3.31) : elles sont dans l'onglet Photos. */}
+      {!avant && <CarteAnnonce texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} onEcrire={M('annonce')} />}
 
       <Familles>
         <Famille ton="bleu" ic="canape" titre="L’intérieur" onModifier={M('interieur')}>
@@ -997,7 +964,24 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const plurielP = d.qui === 'couple' || d.qui === 'indivision' || persP.filter(p => p && (p.nom || p.prenom)).length > 1;
   /* Une société qui vend : on dit qui est l'interlocuteur (V3.30). */
   const interlocuteur = d.qui === 'sci' && proprio && nomP !== nomClient(proprio) ? `${proprio.civilite === 'Madame' ? 'Interlocutrice' : 'Interlocuteur'} : ${nomClient(proprio)}` : '';
-  const sousP = interlocuteur || (recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · '));
+  const motifP = [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · ');
+  const sousP = interlocuteur || (recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : motifP);
+  const mailP = proprio?.emails?.[0] || persP.find(p => p?.email)?.email || '';
+  /* Ce que disait le bloc « Le propriétaire » du bas (retiré en V3.31). */
+  const plusP = [sousP !== motifP ? motifP : '', lib(d, 'origine') ? `Venu par : ${lib(d, 'origine').toLowerCase()}` : '', txt(d, 'notaire') ? `Notaire : ${txt(d, 'notaire')}` : ''].filter(Boolean).join(' · ');
+  /* « Retirer du bien » (V3.31) : comme dans l'éditeur, le bien n'a plus de
+     propriétaire (ni fiche reliée, ni nom, ni coordonnées) ; sa fiche reste
+     dans les contacts. La carte repasse aussitôt à « Pas encore renseigné ». */
+  const retirerProprio = () => {
+    const qui = proprio ? nomClient(proprio) : nomP || 'ce propriétaire';
+    if (!confirm(`Retirer ${qui} de ce bien ?\n\nSa fiche reste dans tes contacts. Le bien n’aura plus de propriétaire : ni fiche reliée, ni nom, ni coordonnées. Tu pourras en relier un autre avec « Relier une fiche ».`)) return;
+    setBien(prev => {
+      const donnees = { ...(prev.donnees || {}), clientId: '', proprietaires: [], proprioNouveau: false, proprioSans: false, qui: '', sciNom: '' };
+      const n = { ...prev, client_id: null, donnees };
+      file.current = file.current.then(() => enregistrerBien(n.id, donnees).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
+      return n;
+    });
+  };
   const faites = visites.filter(v => v.statut !== 'annulee' && passee(v));
   const compte = (x: Issue | null) => faites.filter(v => v.issue === x).length;
   const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
@@ -1225,7 +1209,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
                   signe={txt(d, 'mandatDate')} fin={txt(d, 'mandatFin')} onModifier={() => onModifier('prix')} />}
             <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />
             {!avant && <CarteVisites nbVisites={nbVisites} nbAVenir={visitesAVenir.length} nbOffres={offresOuvertes.length} repartition={repartition} onVoir={() => setOnglet('visites')} />}
-            <CarteProprio nom={nomP} sous={sousP} tel={telP} pluriel={plurielP} onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onModifier={() => onModifier('proprio')} />
+            <CarteProprio nom={nomP} sous={sousP} plus={plusP} tel={telP} mail={mailP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci'} onRetirer={nomP || proprio ? retirerProprio : undefined} onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onModifier={() => onModifier('proprio')} />
           </Kpis>
           {offresOuvertes.map(o => (
             <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
@@ -1234,7 +1218,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               « Acheteurs potentiels » juste au-dessus dit combien, et qui ; la
               liste entière est dans l'onglet Acheteurs. */}
           <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
-          {/* Les observations juste sous le bien en bref (V3.31), plus en bas de page. */}
+          {/* Les observations juste sous le bien en bref (V3.31), et non plus en bas de page. */}
           {blocNotes}
           <div className={b.deuxEgal}>
             <div className={b.col}>
@@ -1245,13 +1229,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             </div>
             <div className={b.col}>
               <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
-              <BlocProprio bien={bien} proprio={proprio} recherchesProprio={recherchesProprio} onFiche={ouvrirClient} onModifier={() => onModifier('proprio')} />
             </div>
           </div>
         </div>
       )}
 
-      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onPhotos={() => setOnglet('photos')} onSurfaces={() => setOnglet('surfaces')} />}
+      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} />}
 
       {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien')} />}
 

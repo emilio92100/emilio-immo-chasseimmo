@@ -392,6 +392,9 @@
 .photo { border: 1px solid #e3e8f0; border-radius: 13px; overflow: hidden; background: white; display: flex; flex-direction: column; }
 .photoImg { position: relative; aspect-ratio: 4 / 3; background: #eef1f6; }
 .photoImg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photoOuvrir { position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; border: none; background: none; cursor: zoom-in; overflow: hidden; }
+.photoOuvrir img { transition: transform .35s cubic-bezier(.16, 1, .3, 1); }
+.photoOuvrir:hover img { transform: scale(1.03); }
 .principale { position: absolute; top: 7px; left: 7px; padding: 3px 8px; border-radius: 99px; background: #c9a84c; color: var(--emilio); font-size: 10.5px; font-weight: 800; letter-spacing: .4px; }
 .photoOutils { position: absolute; top: 6px; right: 6px; display: flex; gap: 3px; }
 .photoOutils button { width: 28px; height: 28px; border-radius: 8px; border: none; background: rgba(255,255,255,.94); color: var(--emilio); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; box-shadow: 0 1px 4px rgba(15,23,42,.18); }

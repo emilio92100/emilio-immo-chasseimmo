@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import AvatarContact from '@/components/contacts/AvatarContact';
+import Visionneuse from './Visionneuse';
 import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
@@ -267,6 +269,8 @@ export function ChampPhotos({ d, maj, off, bienId, grand = false }: { d: Donnees
   const [envoi, setEnvoi] = useState<{ n: number; total: number } | null>(null);
   const [erreur, setErreur] = useState('');
   const [survol, setSurvol] = useState(false);
+  /* La photo ouverte en grand (V3.31), ou null. */
+  const [vue, setVue] = useState<number | null>(null);
 
   async function ajouter(fichiers: FileList | File[]) {
     const fs = Array.from(fichiers).filter(f => /^image\//.test(f.type));
@@ -301,8 +305,11 @@ export function ChampPhotos({ d, maj, off, bienId, grand = false }: { d: Donnees
         {l.map((p, i) => (
           <div key={p.url} className={b.photo}>
             <div className={b.photoImg}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt={p.legende || `Photo ${i + 1}`} loading="lazy" />
+              {/* Un clic l'ouvre en grand, avec les flèches (V3.31). */}
+              <button type="button" className={b.photoOuvrir} onClick={() => setVue(i)} aria-label={`Voir la photo ${i + 1} en grand`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.legende || `Photo ${i + 1}`} loading="lazy" />
+              </button>
               {i === 0 && <span className={b.principale}>PRINCIPALE</span>}
               {!off && (
                 <div className={b.photoOutils}>
@@ -329,6 +336,7 @@ export function ChampPhotos({ d, maj, off, bienId, grand = false }: { d: Donnees
         )}
       </div>
       {erreur && <div className={s.erreur}>{erreur}</div>}
+      {vue !== null && l.length > 0 && <Visionneuse photos={l} depart={vue} onFermer={() => setVue(null)} />}
     </div>
   );
 }
@@ -591,7 +599,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     return (
       <div className={b.lieBloc}>
         <div className={b.lie}>
-          <span className={b.avatar}>{lie ? `${(lie.prenom || ' ')[0]}${(lie.nom || ' ')[0]}`.trim().toUpperCase() : '…'}</span>
+          {lie ? <AvatarContact c={lie} teinte={{ bg: '', fg: '#e7cf8a' }} className={b.avatar} libre /> : <span className={b.avatar}>…</span>}
           <div>
             <b>{lie ? nomClient(lie) : clients ? 'Fiche introuvable' : 'Chargement…'}</b>
             <small>{lie ? [lie.telephones?.[0], lie.emails?.[0]].filter(Boolean).join(' · ') || 'Pas encore de coordonnées sur sa fiche' : ''}</small>

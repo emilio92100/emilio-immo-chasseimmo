@@ -21,10 +21,11 @@ import { euros } from '@/lib/mandat';
 import { dateCourte, titreBien, type BienVente } from '@/lib/biens-vente';
 import { demanderOuvertureFiche } from '@/lib/intentions';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, envoyerDansEspace, initiales, mettreEnSelection, nomClient,
+  SEUIL_CORRESPOND, SEUIL_LISTE, envoyerDansEspace, mettreEnSelection, nomClient,
   type Acheteur, type Copie,
 } from './outils';
 import a from './AcheteursBien.module.css';
+import AvatarContact from '@/components/contacts/AvatarContact';
 
 export type ModeAcheteurs = 'vente' | 'avant' | 'pause' | 'fini';
 export const modeAcheteurs = (etape: string): ModeAcheteurs =>
@@ -58,7 +59,7 @@ export function teinte(id: string) {
 }
 export function Avatar({ acheteur, petit }: { acheteur: Acheteur; petit?: boolean }) {
   const c = teinte(acheteur.client.id);
-  return <span className={petit ? a.avPetit : a.av} style={{ background: c.f, color: c.t }}>{initiales(nomClient(acheteur.client))}</span>;
+  return <AvatarContact c={acheteur.client} teinte={{ bg: c.f, fg: c.t }} className={petit ? a.avPetit : a.av} libre />;
 }
 
 /* Ce qui ne colle pas, en une ligne ; sinon « Tout correspond ». */

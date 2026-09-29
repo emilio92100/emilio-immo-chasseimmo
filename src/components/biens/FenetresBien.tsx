@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import AvatarContact, { personneDe } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
@@ -132,7 +133,7 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
               const on = choix?.mode === 'crm' && choix.o.cle === o.cle;
               return (
                 <button key={o.cle} type="button" className={`${b.quiL} ${on ? b.quiOn : ''}`} onClick={() => onChoix({ mode: 'crm', o })}>
-                  <span className={`${b.avatar} ${b.avatarPetit}`}>{o.nom.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()}</span>
+                  <AvatarContact c={personneDe(o.nom)} teinte={{ bg: '', fg: '#e7cf8a' }} className={`${b.avatar} ${b.avatarPetit}`} libre />
                   <div><b>{o.nom}</b><small>{o.sous}</small></div>
                   {on && <Ic n="check" t={16} e={2.6} />}
                 </button>

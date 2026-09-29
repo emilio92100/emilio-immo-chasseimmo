@@ -6,9 +6,9 @@
    passé dernièrement. Maquettes validées : « La nouvelle fiche bien ». */
 
 import type { ReactNode } from 'react';
+import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import { euros } from '@/lib/mandat';
-import { initiales } from './outils';
 import v from './VueBien.module.css';
 
 const jourMois = (ymd: string) => {
@@ -124,22 +124,27 @@ export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, onVoi
 }
 
 /* ── Le propriétaire : l'appeler en un geste ── */
-export function CarteProprio({ nom, sous, tel, pluriel, onFiche, onModifier }: {
+export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, societe, onFiche, onModifier, onRetirer }: {
   nom: string; sous: string; tel: string; pluriel: boolean; onFiche?: () => void; onModifier: () => void;
+  /* V3.31 : une ligne de plus (délai, venu par, notaire), l'e-mail à la
+     place du SMS, et « Retirer du bien ». */
+  plus?: string; mail?: string; onRetirer?: () => void;
+  /* Sa fiche, pour dessiner son avatar (V3.31) ; une SCI : la mallette. */
+  personne?: Personne | null; societe?: boolean;
 }) {
   const brut = tel.replace(/[\s.]+/g, '');
   return (
     <div className={`${v.kpi} ${v.kpiBlanc} ${v.kpiLarge}`}>
-      <div className={v.kpiT} style={{ color: '#0f766e' }}><span className={v.kpiIc} style={{ background: '#f0fdfa', color: '#0d9488' }}><Ic n="personne" t={17} /></span>{pluriel ? 'Les propriétaires' : 'Le propriétaire'}</div>
+      <div className={v.kpiT} style={{ color: '#0f766e' }}><span className={v.kpiIc} style={{ background: '#f0fdfa', color: '#0d9488' }}><Ic n="personne" t={17} /></span>{pluriel ? 'Les propriétaires' : 'Le propriétaire'}{onRetirer && <button type="button" className={v.retirer} onClick={onRetirer} title="Le bien n’aura plus de propriétaire ; sa fiche reste dans tes contacts"><Ic n="croix" t={11} e={2.6} />Retirer du bien</button>}</div>
       {nom ? (
         <div className={v.proprio}>
-          <span className={v.proprioAv}>{initiales(nom)}</span>
-          <div><b>{nom}</b>{sous && <small>{sous}</small>}</div>
+          <AvatarContact c={{ ...(personne || { prenom: nom }), couple: pluriel }} teinte={{ bg: '', fg: '#e8c96a' }} className={v.proprioAv} libre societe={societe} />
+          <div><b>{nom}</b>{sous && <small>{sous}</small>}{plus && <small className={v.proprioPlus}>{plus}</small>}</div>
         </div>
       ) : <span className={v.kpiSousGris}>Pas encore renseigné.</span>}
       <div className={v.proprioBtns}>
         {tel && <a className={v.pbTel} href={`tel:${brut}`} aria-label="Appeler" title={tel}><Ic n="telephone" t={16} /></a>}
-        {tel && <a className={v.pb} href={`sms:${brut}`} aria-label="SMS" title="SMS"><Ic n="bulle" t={16} /></a>}
+        {mail && <a className={v.pb} href={`mailto:${mail}`} aria-label="E-mail" title={mail}><Ic n="mail" t={16} /></a>}
         {onFiche
           ? <button type="button" className={v.pbTexte} onClick={onFiche}>{pluriel ? 'Leur fiche' : 'Sa fiche'}</button>
           : <button type="button" className={v.pbTexte} onClick={onModifier}>{nom ? 'Relier une fiche' : 'Le renseigner'}</button>}

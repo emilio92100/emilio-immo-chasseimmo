@@ -1,0 +1,71 @@
+/* ═══ Les photos d'un bien, en grand (V3.31) : voir Visionneuse.tsx ═══ */
+
+.fond {
+  position: fixed; inset: 0; z-index: 2000;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  background: rgba(8, 12, 20, .96); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-family: 'DM Sans', sans-serif;
+  animation: vApparait .2s ease both;
+}
+
+.haut {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 12px;
+}
+.compte { padding: 6px 13px; border-radius: 99px; background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .9); font-size: 13.5px; font-weight: 700; letter-spacing: .3px; }
+.fermer {
+  width: 44px; height: 44px; border-radius: 50%; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .1); color: #fff; transition: background .15s;
+}
+.fermer:hover { background: rgba(255, 255, 255, .2); }
+
+/* La photo au centre ; les flèches de chaque côté, centrées par
+   top/bottom/margin (jamais par transform : AGENTS.md §2.7). */
+.scene { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 92px; }
+.img {
+  display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55); user-select: none; -webkit-user-drag: none;
+  animation: vPhoto .25s ease both;
+}
+.cachee { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.fleche {
+  position: absolute; top: 0; bottom: 0; margin: auto 0; width: 58px; height: 58px; padding: 0;
+  border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .12); color: #fff; transition: background .15s;
+}
+.fleche:hover { background: rgba(255, 255, 255, .26); }
+.gauche { left: 18px; }
+.droite { right: 18px; }
+
+.bas {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0;
+  padding: 12px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.legende { color: #fff; font-size: 15px; font-weight: 600; text-align: center; }
+.vignettes { display: flex; gap: 8px; max-width: 100%; overflow-x: auto; padding: 2px; scrollbar-width: none; }
+.vignettes::-webkit-scrollbar { display: none; }
+.vignette {
+  flex-shrink: 0; width: 66px; height: 50px; padding: 0; border-radius: 9px; overflow: hidden; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255, 255, 255, .06); opacity: .5; transition: opacity .15s, border-color .15s;
+}
+.vignette:hover { opacity: .85; }
+.vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vignetteOn { opacity: 1; border-color: #c9a84c; }
+
+@keyframes vApparait { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vPhoto { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+
+/* Le téléphone : la photo de bord à bord, les flèches posées dessus. */
+@media (max-width: 720px) {
+  .haut { padding-left: 12px; padding-right: 12px; }
+  .scene { padding: 0; }
+  .img { border-radius: 0; box-shadow: none; }
+  .fleche { width: 42px; height: 42px; background: rgba(0, 0, 0, .38); }
+  .gauche { left: 8px; }
+  .droite { right: 8px; }
+  .vignette { width: 52px; height: 40px; border-radius: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fond, .img { animation: none; }
+}
