@@ -12,7 +12,7 @@ import {
 } from '@/lib/cosignature';
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
 import { PDFDocument } from 'pdf-lib';
-import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE } from '@/lib/mandat-serveur';
+import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE, mandatDocumentEnRoute, adressesClient } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { ecritServeur } from '@/lib/ecritures';
 import { lireIdentiteAgence } from '@/lib/agence';
@@ -147,6 +147,13 @@ export async function POST(req: NextRequest) {
       ecritServeur('Le suivi de l’espace', sb.from('espace_evenements').insert({ recherche_id: recherche.id, client_id: recherche.client_id, bien_id: null, type, detail }));
     const nomClient = `${client.prenom || ''} ${client.nom || ''}`.trim() || 'Un client';
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(recherche.client_id)}`;
+
+    /* Un mandat de recherche préparé dans Documents (V3.32), pas encore
+       signé : c'est lui qu'il signe. Pas de second mandat par l'espace. */
+    if ((etape === 'afficher' || etape === 'code' || etape === 'signer') && etatMandat(recherche) !== 'valide') {
+      const doc = await mandatDocumentEnRoute(sb, recherche.id, adressesClient(client));
+      if (doc) return ko('document', 409, { lien: doc.lien });
+    }
 
     switch (etape) {
 
