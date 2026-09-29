@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { COOKIE_BADGE, DUREE_BADGE, fabriquerBadge } from '@/lib/badge';
 
 /**
  * Ouvre la porte du CRM.
@@ -10,10 +11,9 @@ import { createClient } from '@supabase/supabase-js';
  * — on ne croit pas le navigateur sur parole — puis on pose le cookie que
  * src/proxy.ts attend.
  *
- * Le cookie ne contient toujours que l'empreinte SHA-256 de
- * `EMILIO_ACCESS_CODE` : c'est lui, désormais, le secret partagé entre cette
- * route et le portail. Il n'est plus tapé par personne, et `proxy.ts` n'a
- * pas eu à changer d'une ligne.
+ * Le cookie est un badge signé et daté (src/lib/badge.ts, V3.33) : il ne
+ * se devine pas et il expire au bout de 30 jours. `EMILIO_ACCESS_CODE` en
+ * reste l'un des secrets : le changer sur Vercel invalide tous les badges.
  *
  * ⚠️ Ce cookie ne donne accès à AUCUNE donnée. Il ne fait qu'autoriser
  * l'affichage des pages. Les données, elles, sont protégées par le RLS
@@ -21,16 +21,8 @@ import { createClient } from '@supabase/supabase-js';
  * les écrans du CRM s'affichent vides. Les deux serrures vont ensemble.
  */
 
-const COOKIE = 'emilio_acces';
-const DUREE = 60 * 60 * 24 * 30; // 30 jours
-
-async function sha256(texte: string): Promise<string> {
-  const data = new TextEncoder().encode(texte);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+const COOKIE = COOKIE_BADGE;
+const DUREE = DUREE_BADGE; // 30 jours
 
 export async function POST(req: NextRequest) {
   const secret = process.env.EMILIO_ACCESS_CODE;
@@ -103,10 +95,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const badge = await fabriquerBadge();
+  if (!badge) {
+    return NextResponse.json({ ok: false, error: "EMILIO_ACCESS_CODE n'est pas configuré sur le serveur." }, { status: 500 });
+  }
   const res = NextResponse.json({ ok: true });
   res.cookies.set({
     name: COOKIE,
-    value: await sha256(secret),
+    value: badge,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
