@@ -802,6 +802,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const texte = nettoie(body.texte, 1500);
         if (!texte) return NextResponse.json({ ok: false, error: 'message vide' }, { status: 400 });
 
+        /* V3.33 : vingt messages par jour au plus, et une seule relance en
+           attente à la fois (les messages suivants sont dans l'historique).
+           Sans ça, un lien pouvait remplir la page Relances. */
+        const depuis24h = new Date(Date.now() - 86_400_000).toISOString();
+        const { count: nbMessages } = await supabase.from('journal').select('id', { count: 'exact', head: true })
+          .eq('recherche_id', recherche.id).eq('type', 'message_client').gte('created_at', depuis24h);
+        if ((nbMessages || 0) >= 20) return NextResponse.json({ ok: false, error: 'trop de messages aujourd’hui' }, { status: 429 });
+        const { count: dejaRelance } = await supabase.from('relances').select('id', { count: 'exact', head: true })
+          .eq('recherche_id', recherche.id).eq('type', 'message_client').eq('statut', 'en_attente');
+
         /* Le message lui-même : vérifié (V3.17), sinon il se perdait sans un mot. */
         if (!(await ecritServeur('[espace/message] journal', supabase.from('journal').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
@@ -811,7 +821,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         /* Colonnes réelles de la table : date_echeance / note / statut « en_attente ».
            C'est ce que lisent le tableau de bord et la page Relances. */
         const demain = new Date(); demain.setDate(demain.getDate() + 1);
-        await ecritServeur('[espace/message] relance', supabase.from('relances').insert({
+        if (!dejaRelance) await ecritServeur('[espace/message] relance', supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'message_client', statut: 'en_attente',
           date_echeance: demain.toISOString(),
@@ -1045,7 +1055,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     <div style="border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc;overflow:hidden">
       ${photo ? `<img src="${echappe(photo)}" alt="" width="510" style="width:100%;max-width:510px;height:auto;display:block;border:0" />` : ''}
       <div style="padding:16px">
-      <div style="font-weight:700;font-size:16px;color:#1a2332">${bien.titre || 'Le bien'}</div>
+      <div style="font-weight:700;font-size:16px;color:#1a2332">${echappe(bien.titre || 'Le bien')}</div>
       ${lieuBien ? `<div style="color:#64748b;margin-top:5px;font-size:13px"><span style="color:#c9a84c">&#9679;</span> ${echappe(lieuBien)}</div>` : ''}
       ${carac ? `<div style="color:#64748b;margin-top:6px;font-size:13px">${carac}</div>` : ''}
       ${prix ? `<div style="font-weight:800;font-size:20px;color:#1a2332;margin-top:10px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
@@ -1053,10 +1063,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Voir la fiche</a>
       </div>
     </div>
-    <p style="margin:20px 0 0">${prenom}</p>
+    <p style="margin:20px 0 0">${echappe(prenom)}</p>
     <hr style="border:none;border-top:1px solid #e3e8f0;margin:24px 0 14px">
     <div style="font-size:12px;color:#94a3b8;line-height:1.6">
-      Fiche transmise par ${prenom}.<br>
+      Fiche transmise par ${echappe(prenom)}.<br>
       Ce bien est présenté par Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32<br>
       Emilio Immobilier — RT Conseils · CPI 9201 2020 000 045 344
     </div>
