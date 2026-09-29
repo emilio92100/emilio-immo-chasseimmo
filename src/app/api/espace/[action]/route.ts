@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
-import { etatServeur, alerteHorsMandat } from '@/lib/mandat-serveur';
+import { etatServeur, alerteHorsMandat, mandatDocumentEnRoute, adressesClient } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
 import { ecritServeur } from '@/lib/ecritures';
@@ -48,7 +48,10 @@ async function prevenirVisite(
   supabase: ReturnType<typeof base>, clientId: string,
   bien: { id: string; titre?: string | null; ville?: string | null; quartier?: string | null; photos?: string[] | null; prix_acquereur?: number | null; prix_vendeur?: number | null },
   dispos: string,
-  sansMandat = false,
+  /* Pas de mandat signé (V3.32 : trois cas). « sans » : aucun ne pouvait lui
+     être proposé ; « prepare » : celui de Documents est encore en brouillon ;
+     « envoye » : parti en signature, mais pas signé (lien expiré, autre adresse). */
+  pasDeMandat: '' | 'sans' | 'prepare' | 'envoye' = '',
 ) {
   const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
   if (!apiKey || !apiSecret) return;
@@ -59,6 +62,13 @@ async function prevenirVisite(
   const echappe = (t: string) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const crm = process.env.NEXT_PUBLIC_CRM_URL || 'https://crm.emilio-immo.com';
   const lien = `${crm}/?page=fiche&client=${encodeURIComponent(clientId)}`;
+  const mandatTexte = pasDeMandat === 'sans'
+    ? 'Il n’a pas pu signer depuis son espace : aucun numéro n’était prêt pour lui. Ajoute des numéros d’avance dans le CRM (bloc Mandat), ou fais-lui signer le sien avant de caler la visite.'
+    : pasDeMandat === 'prepare'
+      ? 'Son mandat de recherche est en préparation dans Documents : envoie-le-lui à signer avant de caler la visite.'
+      : pasDeMandat === 'envoye'
+        ? 'Son mandat de recherche est parti en signature mais il ne l’a pas signé (lien expiré, ou une autre adresse) : renvoie-lui le lien depuis Documents avant la visite.'
+        : '';
   const titre = bien.titre || 'un bien';
   const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
   const prix = bien.prix_acquereur || bien.prix_vendeur;
@@ -79,7 +89,7 @@ async function prevenirVisite(
     </div>
     <div style="margin-top:16px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;font-weight:700">Ses disponibilités</div>
     <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#1a2332">${dispos ? echappe(dispos) : 'Pas précisées : à lui demander.'}</div>
-    ${sansMandat ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.55"><b>Pas de mandat signé.</b> Il n'a pas pu signer depuis son espace : aucun numéro n'était prêt pour lui. Ajoute des numéros d'avance dans le CRM (bloc Mandat), ou fais-lui signer le sien avant de caler la visite.</div>` : ''}
+    ${mandatTexte ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.55"><b>Pas de mandat signé.</b> ${echappe(mandatTexte)}</div>` : ''}
     <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
     <div style="margin-top:14px;font-size:12px;color:#94a3b8">La demande est aussi dans tes Relances, pour aujourd’hui.</div>
   </div>
@@ -93,7 +103,7 @@ async function prevenirVisite(
         From: { Email: FROM_EMAIL, Name: 'Emilio · CRM' },
         To: [{ Email: process.env.ALERTES_EMAIL || FROM_EMAIL }],
         Subject: `👀 ${nom} veut visiter · ${titre}`,
-        TextPart: `${nom} veut visiter : ${titre}${lieu ? ` (${lieu})` : ''}${prix ? ` — ${Number(prix).toLocaleString('fr-FR')} €` : ''}.\n\nSes disponibilités : ${dispos || 'pas précisées, à lui demander.'}${sansMandat ? "\n\n⚠️ Pas de mandat signé : aucun numéro n'était prêt pour lui. Ajoute des numéros d'avance dans le CRM, ou fais-lui signer le sien avant la visite." : ''}\n\nOuvrir sa fiche : ${lien}\n\nLa demande est aussi dans tes Relances, pour aujourd’hui.`,
+        TextPart: `${nom} veut visiter : ${titre}${lieu ? ` (${lieu})` : ''}${prix ? ` — ${Number(prix).toLocaleString('fr-FR')} €` : ''}.\n\nSes disponibilités : ${dispos || 'pas précisées, à lui demander.'}${mandatTexte ? `\n\n⚠️ Pas de mandat signé. ${mandatTexte}` : ''}\n\nOuvrir sa fiche : ${lien}\n\nLa demande est aussi dans tes Relances, pour aujourd’hui.`,
         HTMLPart: html,
         CustomID: `visite-${bien.id}-${Date.now()}`,
         TrackOpens: 'disabled', TrackClicks: 'disabled',
@@ -515,12 +525,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            La recherche est relue en entier : ses colonnes « mandat_ »
            n'existent qu'une fois le SQL passé, et un select('*') ne casse
            jamais sur une colonne absente. */
-        let sansMandat = false;
+        let pasDeMandat: '' | 'sans' | 'prepare' | 'envoye' = '';
         if (avis === 'souhaite_visiter') {
           const { data: rm } = await supabase.from('recherches').select('*').eq('id', recherche.id).maybeSingle();
           const etat = rm ? await etatServeur(supabase, rm) : 'sans_numero';
-          if (etat === 'a_signer') return NextResponse.json({ ok: false, error: 'mandat' }, { status: 409 });
-          sansMandat = etat === 'sans_numero';
+          /* Un mandat préparé dans Documents, pas encore signé (V3.32) : c'est
+             celui-là qu'il signe, jamais un second. Parti avec son lien :
+             l'espace l'y emmène ; sinon la demande passe, Alexandre le sait. */
+          const { data: cl } = etat === 'valide' ? { data: null } : await supabase.from('clients').select('*').eq('id', recherche.client_id).maybeSingle();
+          const doc = etat === 'valide' ? null : await mandatDocumentEnRoute(supabase, recherche.id, adressesClient(cl));
+          if (doc?.lien) return NextResponse.json({ ok: false, error: 'mandat_document', lien: doc.lien }, { status: 409 });
+          if (doc) pasDeMandat = doc.statut === 'pret' ? 'envoye' : 'prepare';
+          else if (etat === 'a_signer') return NextResponse.json({ ok: false, error: 'mandat' }, { status: 409 });
+          else if (etat === 'sans_numero') pasDeMandat = 'sans';
         }
 
         const libelle = avis === 'interesse' ? '👍 Ça lui plaît'
@@ -565,9 +582,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
             client_id: recherche.client_id, recherche_id: recherche.id,
             type: 'rappel_client', statut: 'en_attente',
             date_echeance: new Date().toISOString(),
-            note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}${sansMandat ? ' · ⚠️ mandat non signé' : ''}`.slice(0, 600),
+            note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}${pasDeMandat ? ' · ⚠️ mandat non signé' : ''}`.slice(0, 600),
           }));
-          try { await prevenirVisite(supabase, recherche.client_id, bien, com, sansMandat); } catch { /* le CRM le montre déjà */ }
+          try { await prevenirVisite(supabase, recherche.client_id, bien, com, pasDeMandat); } catch { /* le CRM le montre déjà */ }
         }
 
         await evt('avis', `${libelle}${com ? ' · ' + com : ''}`, bien.id);
