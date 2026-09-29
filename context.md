@@ -1407,6 +1407,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.29 — 29 septembre 2026 · la fiche contact en rubriques
+
+Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
+
+- **La fiche contact se range en cinq rubriques** (`vue` dans `FicheClient.tsx`, barre
+  `BarreOnglets` de `shared/OngletsGlissants`, à cheval sur le bas du bloc bleu) : **Vue
+  d'ensemble**, **Sa recherche** (ou « Ses recherches » s'il en a plusieurs), **Son espace**,
+  **Documents**, **Suivi**. Les étapes du dossier (Veille, Sélection, Présentés, Visites,
+  Transaction) sont les sous-onglets de « Sa recherche », sous « Où en est la recherche ». Le Suivi
+  est sa propre rubrique. `setTab` garde son nom et son usage partout : une étape ouvre « Sa
+  recherche », `'suivi'` ouvre le Suivi (une relance qui mène au Suivi y arrive donc toujours).
+- **Rubrique d'arrivée** : un contact qui n'est qu'acheteur s'ouvre sur « Sa recherche » ; un
+  contact qui est aussi vendeur, propriétaire… sur « Vue d'ensemble ».
+- **Le bloc bleu (variante B)** : le nom et l'état, ses types et sa référence, quatre chiffres
+  sans cadre (en sélection, présentés, visites **effectuées** — une visite prévue peut être
+  annulée —, offres ; un clic ouvre l'étape), « Suivi depuis » dans un petit bloc à droite des
+  chiffres, et « Son espace · ouvert il y a 2 h » (`recherches.espace_ouvert_le`).
+- **Les coordonnées** (`Coordonnees`, en tête du fichier) : un panneau de trois lignes dans le bloc
+  bleu, avec copie en un clic. Dans un couple, chaque ligne dit à qui elle est : « (Madame) »,
+  « (Monsieur) », ou le prénom si les deux ont la même civilité. Au-delà de trois, « Tout voir · N
+  coordonnées » déplie tout **par-dessus les onglets** : le bloc bleu ne grandit jamais.
+- **Vue d'ensemble** : « À venir » (prochaine visite, prochaine relance), « À savoir », « Sa
+  situation » (sortie du bloc bleu, où elle empiétait), ses biens s'il vend, « Sa recherche en
+  bref », « Dernièrement » (les quatre dernières lignes du Suivi).
+- **Son espace** : le lien (`LienEspace`), le mail de bienvenue, le point automatique
+  (`PointAuto`, sorti du bloc des critères). **Documents** : `DocumentsDuClient` ouvert d'emblée
+  (nouvelle option `ouvert`) ; le nombre de documents est compté pour l'onglet.
+- Nouvelles icônes dans `TRAITS` (`ParcoursBien.tsx`) : `copie`, `oeil`, `mobile`, `doc`.
+
 ### V3.28 — 29 septembre 2026 · la carte du CRM sur téléphone, plus de place
 
 - **La barre du haut du CRM s'efface sur la carte, au téléphone** (`.surCarte` dans
