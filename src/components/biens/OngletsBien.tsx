@@ -4,7 +4,7 @@ import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
 import { ETATS_PIECE, etapeDe, m2, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
-import { COULEURS, habitable } from './ChampsBien';
+import { COULEURS, habitable, nbPrincipales } from './ChampsBien';
 import f from '@/components/fiche/FriseSuivi.module.css';
 import o from './OngletsBien.module.css';
 
@@ -210,7 +210,11 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
   const plusGrande = Math.max(1, ...pieces.map(p => p.surface || 0));
   const niveaux = Array.from(new Set(pieces.map(p => p.niveau || '')));
   const plusieurs = niveaux.length > 1;
-  const sous = pieces.length ? `${pieces.length} pièce${pieces.length > 1 ? 's' : ''}${total ? ` · ${m2(total)} habitables` : ''}` : '';
+  /* « 3 pièces principales », comme on dit « un 3 pièces » ; sans séjour ni
+     chambre saisis, le simple nombre de lignes. */
+  const princ = nbPrincipales(pieces);
+  const nombre = princ ? `${princ} pièce${princ > 1 ? 's' : ''} principale${princ > 1 ? 's' : ''}` : `${pieces.length} pièce${pieces.length > 1 ? 's' : ''}`;
+  const sous = pieces.length ? `${nombre}${total ? ` · ${m2(total)} habitables` : ''}` : '';
 
   const ligne = (p: Piece) => {
     const ic = pictoPiece(p.nom);
@@ -280,7 +284,7 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
                   </div>
                 );
               })}
-              {total > 0 && <div className={o.total}><span>{`Pièces à vivre · ${hab.length} pièce${hab.length > 1 ? 's' : ''}`}</span><b>{m2(total)}</b></div>}
+              {total > 0 && <div className={o.total}><span>Surface habitable</span><b>{m2(total)}</b></div>}
             </div>
           )}
     </section>
