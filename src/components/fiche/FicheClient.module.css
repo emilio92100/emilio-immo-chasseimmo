@@ -369,6 +369,17 @@
 .teteHalo2 { position: absolute; bottom: -160px; left: -60px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(125, 185, 255, .12), transparent 66%); }
 .teteG { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-width: 0; }
 .teteQui { display: flex; align-items: flex-start; gap: 17px; min-width: 0; }
+/* « Achète pour SCI … » ou « Pour une société (SCI…) ? Ajouter » (V3.31). */
+.teteSoc {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 11px; border-radius: 99px; cursor: pointer; text-align: left;
+  border: 1px solid rgba(227, 200, 114, .35); background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .82);
+  font: 600 12px 'DM Sans', sans-serif; transition: background .15s, border-color .15s;
+}
+.teteSoc svg { color: #e0c36e; flex-shrink: 0; }
+.teteSoc span b { color: #e8c96a; font-weight: 800; }
+.teteSoc:hover { background: rgba(255, 255, 255, .12); border-color: #e0c36e; }
+.teteSocVide { border-style: dashed; padding-right: 5px; }
+.teteSocVide > b { padding: 2px 9px; border-radius: 99px; background: #c9a84c; color: #1a2332; font-size: 11px; font-weight: 800; }
 .teteAvatar {
   width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: linear-gradient(145deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02));

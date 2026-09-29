@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
+import { lirePro, lireStructure } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
@@ -244,6 +245,7 @@ import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/com
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
+import BlocSociete from '@/components/contacts/BlocSociete';
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
@@ -897,6 +899,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      était coupé en deux. Il s'ouvre maintenant par-dessus la page, à l'aplomb
      du bouton — d'où la position retenue ici. */
   const [menuStatut, setMenuStatut] = useState<{ x: number; y: number } | null>(null);
+  /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
+  const [societeOuverte, setSocieteOuverte] = useState(false);
   /* La carte des critères rogne ce qui dépasse : le menu des recherches se
      pose donc par-dessus la page, à l'aplomb du bouton. */
   const [posRecherche, setPosRecherche] = useState<{ x: number; y: number } | null>(null);
@@ -3152,6 +3156,20 @@ ${signatureMail()}`,
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
                       {/* Ses types de contact : acheteur, et peut-être vendeur, propriétaire… */}
                       <TypesEnLigne client={client} sombre onMaj={t => { if (!t.includes('acheteur')) onNavigate('fiche', { ...client, types: t }); }} />
+                      {/* Il achète pour une société (V3.31) : dit ici, détaillé dans la Vue d'ensemble. */}
+                      {(() => {
+                        const st = lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure);
+                        if (!st && societeOuverte) return null;
+                        return st ? (
+                          <button type="button" className={styles.teteSoc} onClick={() => setVue('ensemble')}>
+                            <Icone nom="immeuble" taille={13} epaisseur={2} /><span>{'Achète pour '}<b>{st.denomination || 'une société'}</b>{st.qualite ? ` · ${st.qualite}` : ''}</span>
+                          </button>
+                        ) : (
+                          <button type="button" className={`${styles.teteSoc} ${styles.teteSocVide}`} onClick={() => { setSocieteOuverte(true); setVue('ensemble'); }}>
+                            <Icone nom="immeuble" taille={13} epaisseur={2} /><span>Pour une société (SCI…) ?</span><b>Ajouter</b>
+                          </button>
+                        );
+                      })()}
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,.42)', fontWeight: 500, letterSpacing: .2 }}>
                         {client.reference}
                       </span>
@@ -3392,6 +3410,16 @@ ${signatureMail()}`,
               );
             })()}
             {bandeauRappro}
+            {(lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure) || societeOuverte) && (
+              <BlocSociete client={client as never} notes={(client as unknown as { notes?: string | null }).notes}
+                ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)} onFiche={cl => onNavigate('fiche', cl)}
+                onEnregistrer={async st => {
+                  const pro = { ...lirePro((client as unknown as { pro?: unknown }).pro), structure: st || undefined };
+                  const ok = await verifie('La société', supabase.from('clients').update({ pro }).eq('id', client.id).select('id'), { ligne: true });
+                  if (ok) setClient(c0 => ({ ...c0, pro } as unknown as Client));
+                  return ok;
+                }} />
+            )}
             <div className={styles.ensCols}>
               <div className={styles.ensCol}>
                 {/* Ce qu'Alexandre a noté sur lui (V3.23). */}
