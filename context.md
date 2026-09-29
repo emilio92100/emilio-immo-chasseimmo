@@ -1479,6 +1479,27 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
   « Voir les acheteurs » ouvre la fiche du bien sur l'onglet Acheteurs, `demanderOngletBien`).
   Rien en base : tout se calcule à la lecture ; « Plus tard » les met de côté une semaine, noté
   dans les `donnees` du bien (`alerteAcheteurs`, `alertesRecherches`).
+- **Les logos de l'agence** sont rangés dans `public/logos/` : les originaux d'Alexandre (le E
+  blanc sur bleu, le E bleu sur blanc, en 1000 px) et leurs déclinaisons — `e-180`, `e-192`,
+  `e-512` (écran d'accueil), `e-maskable-512` (Android découpe l'icône en rond : le E y est
+  réduit), `e-silhouette-96` (la barre d'état d'Android, le E seul sans fond),
+  `logo-emilio-800` et `logo-emilio-blanc-800` (le logo complet, 800 × 336, tiré de
+  `public/logo_high_resolution*.png`). Une nouvelle image d'icône se dépose là, rien d'autre à
+  toucher que les chemins qui la citent.
+- **Le CRM** : l'onglet du navigateur montre le E (`src/app/favicon.ico`, `icon.tsx` — l'image y
+  est écrite en clair, parce que ce fichier est rendu à la construction —, `apple-icon.png` pour
+  l'iPhone). En haut du menu, le logo complet remplace « EI Emilio IMMOBILIER » ; le E seul quand
+  le menu est réduit à ses icônes. La page de connexion affiche le logo blanc.
+- **L'espace acheteur** : l'icône posée sur l'écran d'accueil, celle de l'onglet et celles du
+  manifeste sont le E. `/icone` n'est plus qu'un renvoi vers `public/logos/` (les notifications et
+  les icônes posées avant la V3.29 le connaissent). L'écran d'ouverture (`loading.tsx`) est clair
+  (`#f4f6fa`, le même fond que `background_color` du manifeste, pour qu'Android n'ait pas de
+  coupure), avec le logo et « Chargement en cours… » sur une fine barre qui file.
+- **Espace acheteur, la barre de défilement sur ordinateur** : elle ne s'appliquait pas chez
+  Alexandre, dont l'ordinateur est une tablette Windows à écran tactile — « (pointer:fine) » y est
+  faux. Réglée maintenant sur `(min-width:900px), (any-pointer:fine)`, plus large (20 px) et bleu
+  marine (`#34496e` sur `#dfe4ec`), sur la page comme sur la fiche d'un bien (`.feuille`,
+  `.pop-carte`). ⚠️ Pour viser « l'ordinateur », ne jamais compter sur `pointer:fine` seul.
 
 ### V3.28 — 29 septembre 2026 · la carte du CRM sur téléphone, plus de place
 
