@@ -10,12 +10,13 @@ import Depliant from '@/components/shared/Depliant';
 import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import v from './VueBien.module.css';
+import { jourParis } from '@/lib/mandat';
 
 const jourMois = (ymd: string) => {
   const x = new Date(`${ymd.slice(0, 10)}T12:00:00`);
   return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }).replace(/^1 /, '1er ');
 };
-const jours = (ymd: string) => Math.round((Date.parse(`${ymd.slice(0, 10)}T12:00:00`) - Date.parse(`${new Date().toISOString().slice(0, 10)}T12:00:00`)) / 86400000);
+const jours = (ymd: string) => Math.round((Date.parse(`${ymd.slice(0, 10)}T12:00:00`) - Date.parse(`${jourParis()}T12:00:00`)) / 86400000);
 export function Kpis({ n, children }: { n: number; children: ReactNode }) {
   return <div className={v.kpis} data-n={n}>{children}</div>;
 }

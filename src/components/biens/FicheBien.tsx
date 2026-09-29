@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { euros } from '@/lib/mandat';
+import { euros, jourParis } from '@/lib/mandat';
 import { num, txt, liste, modele, modeSignature } from '@/lib/actes';
 import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
@@ -941,7 +941,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     setDepotMandat(true);
     try {
       const r = await deposerPiece(bien.id, 'mandatsigne', f);
-      majDonnees('mandatFichier', { chemin: r.chemin, nom: r.nom, taille: f.size, le: new Date().toISOString().slice(0, 10) });
+      majDonnees('mandatFichier', { chemin: r.chemin, nom: r.nom, taille: f.size, le: jourParis() });
       setMessage({ t: 'Le mandat signé est joint au bien.', ok: true });
     } catch (e2) { setMessage({ t: (e2 as Error).message, ok: false }); }
     setDepotMandat(false);
@@ -949,7 +949,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
   async function statutOffre(o: SuiviVente, statut: string, contre?: number) {
     try {
-      await majSuivi(o.id, { statut, donnees: { ...o.donnees, reponse_le: new Date().toISOString().slice(0, 10), ...(contre ? { contre } : {}) } });
+      await majSuivi(o.id, { statut, donnees: { ...o.donnees, reponse_le: jourParis(), ...(contre ? { contre } : {}) } });
       await apres();
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }

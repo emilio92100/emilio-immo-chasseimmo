@@ -10,6 +10,7 @@ import {
   type Donnees, type EtatPiece, type FichierBien, type LigneDossier, type PieceDossier,
 } from '@/lib/biens-vente';
 import { Anneau } from './OngletsBien';
+import { jourParis } from '@/lib/mandat';
 import { deposerPiece, envoyerDocuments, ouvrirPiece, retirerPiece, type DestDocuments } from './outils';
 import x from './DossierBien.module.css';
 
@@ -59,7 +60,7 @@ const VIDE: PieceDossier = { etat: '', date: '', chemin: '', nom: '' };
 const AUTRE = '__autre';
 const DDT = '__ddt';
 const TITRE_DDT = 'Dossier de diagnostic technique';
-const aujourdhui = () => new Date().toISOString().slice(0, 10);
+const aujourdhui = () => jourParis();
 const idNeuf = () => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 export const tailleFr = (o?: number) => (!o ? '' : o >= 1_000_000 ? `${String(Math.round(o / 100_000) / 10).replace('.', ',')} Mo` : `${Math.max(1, Math.round(o / 1000))} ko`);

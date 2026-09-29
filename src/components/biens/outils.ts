@@ -4,12 +4,13 @@ import { supabase, genererReference } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
 import { programmerRelance } from '@/lib/relances';
 import { signalerEchec } from '@/lib/ecritures';
+import { toutLire } from '@/lib/registre';
 import { modele, aujourdhui, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import { correspondance, criteresDepuisRecherche, type Correspondance } from '@/lib/correspondance';
 import { conjointDe } from '@/lib/foyer';
 import { colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
-  argentBien, colonnesBien, contexteDocument, lirePhotos, nomProprioActe, personneDepuisClient, referenceSuivante, tableAbsente, titreBien,
+  argentBien, colonnesBien, contexteDocument, lirePhotos, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -64,27 +65,35 @@ export type ListeBiens = {
 };
 
 export async function chargerListe(): Promise<ListeBiens> {
+  /* Par pages de 1 000 (V3.33) : Supabase plafonne chaque requête à 1 000
+     lignes, quoi que dise .limit(). Au-delà, des acheteurs, des visites ou
+     des lignes d'historique manquaient sans le moindre message. */
   const [b, s, c, r, cl] = await Promise.all([
-    supabase.from('biens_vente').select('*').order('updated_at', { ascending: false }).limit(500),
-    supabase.from('biens_vente_suivi').select('*').order('le', { ascending: false }).limit(3000),
-    supabase.from('biens').select('id, bien_vente_id, client_id, recherche_id, etape, envoye_le, badge_retour, created_at, vu_le, retour_client, retour_le').not('bien_vente_id', 'is', null).limit(3000),
-    supabase.from('recherches').select('*').eq('active', true).limit(1000),
-    supabase.from('clients').select(CLIENT_COLS).limit(3000),
+    toutLire<BienVente>((de, a) => supabase.from('biens_vente').select('*').order('updated_at', { ascending: false }).order('id').range(de, a)),
+    toutLire<SuiviVente>((de, a) => supabase.from('biens_vente_suivi').select('*').order('le', { ascending: false }).order('id').range(de, a)),
+    toutLire<Copie>((de, a) => supabase.from('biens').select('id, bien_vente_id, client_id, recherche_id, etape, envoye_le, badge_retour, created_at, vu_le, retour_client, retour_le').not('bien_vente_id', 'is', null).order('id').range(de, a)),
+    toutLire<RechercheMini>((de, a) => supabase.from('recherches').select('*').eq('active', true).order('id').range(de, a)),
+    toutLire<ClientMini>((de, a) => supabase.from('clients').select(CLIENT_COLS).order('id').range(de, a)),
   ]);
-  if (b.error) lever('Les biens n’ont pas pu être lus', b.error.message);
-  if (s.error) lever('Le suivi des biens n’a pas pu être lu', s.error.message);
-  if (c.error) lever('Les acheteurs des biens n’ont pas pu être lus', /bien_vente_id/.test(c.error.message) ? 'biens_vente' : c.error.message);
-  const copies = (c.data || []) as Copie[];
-  let visites: VisiteRow[] = [];
-  if (copies.length) {
-    const v = await supabase.from('visites').select('*').in('bien_id', copies.map(x => x.id).slice(0, 900));
+  if (b.erreur) lever('Les biens n’ont pas pu être lus', b.erreur);
+  if (s.erreur) lever('Le suivi des biens n’a pas pu être lu', s.erreur);
+  if (c.erreur) lever('Les acheteurs des biens n’ont pas pu être lus', /bien_vente_id/.test(c.erreur) ? 'biens_vente' : c.erreur);
+  const copies = c.data;
+  /* Les visites des copies, par paquets de 100 identifiants : une liste plus
+     longue ne tient plus dans l'adresse de la requête. */
+  const ids = copies.map(x => x.id);
+  const paquets: string[][] = [];
+  for (let i = 0; i < ids.length; i += 100) paquets.push(ids.slice(i, i + 100));
+  const lus = await Promise.all(paquets.map(p => supabase.from('visites').select('*').in('bien_id', p)));
+  const visites: VisiteRow[] = [];
+  for (const v of lus) {
     if (v.error) lever('Les visites n’ont pas pu être lues', v.error.message);
-    visites = (v.data || []) as VisiteRow[];
+    visites.push(...((v.data || []) as VisiteRow[]));
   }
   return {
-    biens: (b.data || []) as BienVente[], suivi: (s.data || []) as SuiviVente[], copies, visites,
-    recherches: r.error ? [] : (r.data || []) as RechercheMini[],
-    clients: Object.fromEntries(((cl.data || []) as ClientMini[]).map(x => [x.id, x])),
+    biens: b.data, suivi: s.data, copies, visites,
+    recherches: r.erreur ? [] : r.data,
+    clients: Object.fromEntries(cl.data.map(x => [x.id, x])),
   };
 }
 
@@ -262,7 +271,22 @@ export async function enregistrerBien(id: string, d: Donnees): Promise<BienVente
     donnees: d, ...colonnesBien(d), updated_at: new Date().toISOString(),
   }).eq('id', id).select().single();
   if (error) lever('Le bien n’a pas pu être enregistré', error.message);
+  await repercuterPrix(id, d);
   return data as BienVente;
+}
+
+/* Le prix suit chez les acheteurs (V3.33). Un bien présenté à un acheteur
+   est COPIÉ dans son dossier (table `biens`, versBienAcheteur), prix compris :
+   son espace et la page /bien/<id> lisent la copie. Sans ceci, une baisse de
+   prix restait invisible pour tous ceux qui avaient déjà reçu le bien.
+   Ne touche que les copies dont le prix diffère : quand rien n'a changé (la
+   plupart des enregistrements), aucune ligne n'est écrite. */
+export async function repercuterPrix(id: string, d: Donnees): Promise<void> {
+  const p = prixCopie(d);
+  const differe = (['prix_acquereur', 'prix_vendeur', 'commission_val'] as const)
+    .map(c => (p[c] === null || p[c] === undefined ? `${c}.not.is.null` : `${c}.is.null,${c}.neq.${p[c]}`)).join(',');
+  const { error } = await supabase.from('biens').update(p).eq('bien_vente_id', id).or(differe);
+  if (error && !/bien_vente_id/.test(error.message)) signalerEchec('Le nouveau prix chez les acheteurs qui ont reçu le bien', error.message);
 }
 
 export async function majBien(id: string, patch: Partial<BienVente>): Promise<BienVente> {
@@ -316,7 +340,7 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
     etape, etape_le: maintenant, updated_at: maintenant,
     ...(o.donnees ? { donnees: d, ...colonnesBien(d) } : {}),
     ...(etape === 'mandat' && !b.en_vente_le ? { en_vente_le: maintenant } : {}),
-    ...(etape === 'vendu' ? { vendu_le: o.vendu_le || maintenant.slice(0, 10) } : {}),
+    ...(etape === 'vendu' ? { vendu_le: o.vendu_le || aujourdhui() } : {}),
   };
   const { data, error } = await supabase.from('biens_vente').update(patch).eq('id', b.id).select().single();
   if (error) lever('L’étape n’a pas pu être changée', error.message);

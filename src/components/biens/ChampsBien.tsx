@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import Visionneuse from './Visionneuse';
 import { supabase } from '@/lib/supabase';
-import { euros } from '@/lib/mandat';
+import { euros, jourParis } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
 import { lirePro, lireStructure } from '@/lib/contacts';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
@@ -28,7 +28,7 @@ import b from './Biens.module.css';
    coup sur coup s'ajoutent l'une après l'autre, sans s'écraser. */
 type Maj = (cle: string, v: unknown) => void;
 type Suite<T> = (avant: unknown) => T;
-const aujourdhui = () => new Date().toISOString().slice(0, 10);
+const aujourdhui = () => jourParis();
 
 /* Les couleurs officielles des étiquettes. */
 export const COULEURS: Record<'dpe' | 'ges', Record<string, { f: string; t: string }>> = {
