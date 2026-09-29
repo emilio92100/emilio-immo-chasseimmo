@@ -591,7 +591,8 @@ button.pas:hover .pasIc { transform: translateY(-1px) scale(1.07); }
 .pcNiv:focus { border-color: #c9a84c; }
 .pcOutils { grid-area: out; display: flex; gap: 2px; align-self: center; }
 .pcNivPlace { grid-area: niv; align-self: center; }
-.pcChoix { grid-area: choix; border-top: 1px dashed #e8dcb8; padding-top: 10px; display: flex; flex-direction: column; gap: 9px; }
+.pcChoixZone { grid-area: choix; }
+.pcChoix { border-top: 1px dashed #e8dcb8; padding-top: 10px; display: flex; flex-direction: column; gap: 9px; }
 .pcChoix .chip { display: inline-flex; align-items: center; gap: 6px; }
 .pcBas { grid-area: bas; display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
 .pcSurf { width: 128px; flex-shrink: 0; }
@@ -1176,49 +1177,21 @@ button.pillRouge svg { color: white !important; }
   .npGrille { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Documents d'un bien (V3.31) : « Les documents à signer », une section sur
-   toute la largeur. */
-.signer { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.signerSous { font-size: 11.5px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #7a5d1c; padding-top: 4px; }
-@media (max-width: 720px) { .signer { padding: 14px; border-radius: 18px; } }
-/* Repliés par défaut (V3.32) : l'en-tête dit où l'on en est, garde ses
-   boutons, et la flèche déplie les tuiles. */
-.signer[data-ouvert='non'] { padding-bottom: 18px; }
-.signerTete { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.signerOuvrir {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 0; border: none; background: none;
-  text-align: left; cursor: pointer; font: inherit; color: inherit;
+/* Les documents de la vente (V3.32) : dans l'ordre, puis tous les
+   documents préparés, dépliables. */
+.docsVente { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.docsVenteT h3 { margin: 0; font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
+.docsVenteT p { margin: 4px 0 4px; font-size: 13px; line-height: 1.5; color: #64748b; }
+.docsPrep { border-top: 1px solid #eef2f7; margin-top: 4px; }
+.docsPrepT {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 2px 4px; border: none; background: none; cursor: pointer;
+  font: 700 13.5px 'DM Sans', sans-serif; color: #34496e; text-align: left;
 }
-.signerIc { flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: #fbf1d6; color: #a07c28; }
-.signerIc[data-ton='vert'] { background: #ecfdf3; color: #15803d; }
-.signerIc[data-ton='gris'] { background: #f1f5f9; color: #64748b; }
-.signerTx { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.signerTitre { font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
-.signerEtat { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: #7a5d1c; line-height: 1.4; }
-.signerEtat::before { content: ''; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: #c9a84c; }
-.signerEtat[data-ton='vert'] { color: #15803d; }
-.signerEtat[data-ton='vert']::before { background: #16a34a; }
-.signerEtat[data-ton='gris'] { color: #475569; }
-.signerEtat[data-ton='gris']::before { background: #94a3b8; }
-.signerTx small { font-size: 12.5px; color: #64748b; line-height: 1.45; }
-.signerOuvrir:hover .signerTitre { color: #34496e; }
-.signerActs { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.signerFleche {
-  flex-shrink: 0; width: 38px; height: 38px; padding: 0; border-radius: 50%; border: 1px solid #e3e8f0; background: #fff; color: #34496e;
-  display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .15s, border-color .15s;
-}
-.signerFleche:hover { background: #f8fafc; border-color: #d5deeb; }
-.signerFleche svg { transition: transform .2s ease; }
-.signerFleche[data-ouvert='oui'] svg { transform: rotate(180deg); }
-.signerAide { margin: -4px 0 0; font-size: 13px; color: #64748b; line-height: 1.5; }
-@media (max-width: 720px) {
-  .signerTete { flex-wrap: wrap; align-items: flex-start; }
-  .signerOuvrir { align-items: flex-start; }
-  .signerIc { width: 40px; height: 40px; border-radius: 12px; }
-  .signerTitre { font-size: 16.5px; }
-  .signerActs { order: 3; width: 100%; }
-  .signerActs > * { flex: 1; height: 42px; }
-}
+.docsPrepT:hover { color: #1a2332; }
+.docsPrepFleche { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f1f4f8; transition: transform .32s cubic-bezier(.22, .9, .3, 1), background .2s; }
+.docsPrepFleche[data-ouvert='oui'] { transform: rotate(180deg); background: #e6ecf4; }
+.docsPrepListe { padding-top: 8px; }
+@media (max-width: 720px) { .docsVente { padding: 14px 14px 10px; border-radius: 18px; } }
 
 /* Onglet Le bien, après le mandat (V3.32) : ce qui avait été estimé. */
 .histoEstim { margin-top: 3px; padding-top: 11px; border-top: 1px dashed #ecdcb0; display: flex; flex-direction: column; gap: 8px; }

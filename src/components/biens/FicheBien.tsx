@@ -20,9 +20,10 @@ import {
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerDocument, enregistrerBien,
-  ficheClient, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
+  deposerPiece, ficheClient, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
+import { lienFichier, nomFichier } from '@/components/documents/outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
@@ -32,9 +33,10 @@ import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
 import { DossierBien, type DestPropose } from './DossierBien';
 import { OngletVisitesOffres } from './VisitesOffres';
+import Depliant from '@/components/shared/Depliant';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
-  Kv, Lettres, ListeDocs, ListeTravaux, Note, OngletSurfaces, Puces, Tuile, Tuiles, parcoursDe,
+  EtapesDocs, Kv, Lettres, ListeDocs, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
@@ -843,9 +845,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const [cr, setCr] = useState<VisiteU | null>(null);
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
   const [visite, setVisite] = useState(false);
-  /* Les documents à signer, repliés à l'ouverture (V3.32) : l'en-tête dit où
-     l'on en est, un clic les déplie. */
-  const [signerOuvert, setSignerOuvert] = useState(false);
+  /* Onglet Documents (V3.32) : la liste de tous les documents préparés, repliée. */
+  const [listeDocsOuverte, setListeDocsOuverte] = useState(false);
+  /* Le mandat signé hors du CRM (V3.32) : son scan, joint au bien. */
+  const champMandat = useRef<HTMLInputElement>(null);
+  const [depotMandat, setDepotMandat] = useState(false);
   const d = bien.donnees || {};
 
   const charger = useCallback(async () => {
@@ -899,6 +903,30 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }
   const ouvrirDoc = (id: string) => onNavigate('documents', { ouvrir: id });
+  /* L'exemplaire signé d'un document du CRM (scellé en ligne ou sur place,
+     ou le scan d'une signature à la main), à retélécharger (V3.32). */
+  async function ouvrirSigne(x: { signe_chemin?: string | null; titre: string | null; signature?: { mode?: string } | null }) {
+    if (!x.signe_chemin) return;
+    const onglet = window.open('', '_blank');
+    try {
+      const url = await lienFichier(x.signe_chemin, nomFichier({ titre: x.titre }, x.signature ? '-signe' : ''));
+      (onglet || window).location.assign(url);
+    } catch (e2) {
+      onglet?.close();
+      setMessage({ t: 'L’exemplaire signé n’a pas pu être ouvert : ' + (e2 as Error).message, ok: false });
+    }
+  }
+  /* Le scan d'un mandat signé ailleurs (papier, autre logiciel) : gardé avec
+     le bien, dans `donnees.mandatFichier`. */
+  async function joindreMandat(f: File) {
+    setDepotMandat(true);
+    try {
+      const r = await deposerPiece(bien.id, 'mandatsigne', f);
+      majDonnees('mandatFichier', { chemin: r.chemin, nom: r.nom, taille: f.size, le: new Date().toISOString().slice(0, 10) });
+      setMessage({ t: 'Le mandat signé est joint au bien.', ok: true });
+    } catch (e2) { setMessage({ t: (e2 as Error).message, ok: false }); }
+    setDepotMandat(false);
+  }
 
   async function statutOffre(o: SuiviVente, statut: string, contre?: number) {
     try {
@@ -1090,101 +1118,86 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const rangOffre = (x: SuiviVente) => (x.statut === 'en_attente' || x.statut === 'contre' || !x.statut ? 0 : x.statut === 'acceptee' ? 1 : 2);
   const offresTriees = [...offres].sort((x, y) => rangOffre(x) - rangOffre(y) || y.le.localeCompare(x.le));
 
-  /* ── Documents : une tuile par sorte ── */
+  /* ── Documents de la vente (V3.32) ──
+     Alexandre : « Mandat signé, et il est dans les documents à signer ? Je
+     ne comprends pas le workflow. » Les tuiles côte à côte ne disaient pas
+     l'ordre, ni ce qui était fait. Désormais une liste, dans l'ordre de la
+     vente — le mandat, les bons de visite, les offres, le compromis —, et pour
+     chacun : fait (vert), à faire (or), en cours, ou plus tard (gris), avec
+     ses boutons. */
   const docsDe = (m: string) => docsLies.filter(x => x.modele === m);
   const mandats = docsDe('mandat_vente');
   const mandatSigne = mandats.find(x => x.signe_le) || null;
   const signeLe = mandatSigne?.signe_le || txt(d, 'mandatDate');
   const typeMandat = d.mandatType ? (NOM_MANDAT[String(d.mandatType)] || '').toLowerCase() : '';
   const enMandat = !avant && !!signeLe;
-  /* V3.31 : la tuile porte tout le mandat. Le bloc « Le mandat » posé à
-     droite répétait « Préparer le mandat de vente (prérempli) » à côté du
-     « Préparer » de la tuile — un doublon ; il est fondu ici. */
   const finMandat = txt(d, 'mandatFin');
   const jFin = joursAvant(finMandat);
   const argent = argentBien(d);
-  const detailMandat = enMandat ? [
+  const detailMandat = [
     txt(d, 'mandatNumero') || bien.mandat_numero ? `N° ${txt(d, 'mandatNumero') || bien.mandat_numero}` : '',
     finMandat ? `jusqu’au ${dateCourte(finMandat)}${jFin !== null ? (jFin >= 0 ? ` (dans ${jFin} j)` : ' (terminé)') : ''}` : '',
-    argent.hono !== null ? `honoraires ${euros(argent.hono)} TTC, ${argent.acq ? 'acquéreur' : 'vendeur'}` : '',
-  ].filter(Boolean).join(' · ') : '';
-  const tuileMandat = (
-    <Tuile ton={enMandat ? 'marine' : mandats.length ? 'blanc' : 'or'} ic="plume" icFond={enMandat ? 'rgba(232,201,106,.16)' : '#fbf1d6'} icC={enMandat ? '#e8c96a' : '#a07c28'} titre="Mandat de vente"
-      puce={enMandat ? { l: `Signé le ${dateCourte(signeLe)}${typeMandat ? ` · ${typeMandat}` : ''}`, fond: 'rgba(74,222,128,.16)', c: '#86efac' }
-        : mandats.length ? { l: 'En préparation', fond: '#fbf6e9', c: '#7a5d1c' } : null}
-      note={enMandat ? detailMandat || undefined : mandats.length ? undefined : 'Prérempli avec le bien, le propriétaire, le prix et les honoraires.'}>
-      {mandats.length > 0 && <BtnTuile marine={enMandat} onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>{mandatSigne ? 'Voir le mandat' : 'Continuer'}</BtnTuile>}
-      {!enMandat && !mandats.length && <BoutonAct or onClick={() => faireDocument({ modele: 'mandat_vente' })}><Ic n="plume" t={13} />Préparer le mandat</BoutonAct>}
-      {/* Signé ailleurs (papier, Immofacile) : on le note sans le préparer ici. */}
-      {avant && <BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile>}
-      {enMandat && !mandats.length && <BtnTuile marine onClick={() => onModifier('prix')}>Modifier</BtnTuile>}
-    </Tuile>
-  );
-  /* Avant le mandat, les autres documents s'annoncent sans s'ouvrir : la
-     rangée reste pleine, et l'on sait ce qui viendra. */
-  const tuilesApres = (
-    <>
-      <Tuile ton="vide" ic="euro" icFond="#f1f5f9" icC="#94a3b8" titre="Offres d’achat" note="S’ouvriront avec le mandat : l’offre écrite, préremplie avec l’acheteur." />
-      <Tuile ton="vide" ic="calendrier" icFond="#f1f5f9" icC="#94a3b8" titre="Bons de visite" note="Un par visite, prérempli, dès que le bien est en vente." />
-      <Tuile ton="vide" ic="doc" icFond="#f1f5f9" icC="#94a3b8" titre="Compromis" note="Quand une offre sera acceptée." />
-    </>
-  );
+    argent.hono !== null ? `honoraires ${euros(argent.hono)} TTC, à la charge ${argent.acq ? 'de l’acquéreur' : 'du vendeur'}` : '',
+  ].filter(Boolean).join(' · ');
   const offresDocs = docsDe('offre_achat');
   const bons = docsDe('bon_visite');
   const bonsSignes = bons.filter(x => x.signe_le).length;
   const nbSt = (k: string) => offres.filter(x => (x.statut || 'en_attente') === k).length;
   const resumeOffres = [
-    nbSt('en_attente') + nbSt('contre') ? `${nbSt('en_attente') + nbSt('contre')} en attente` : '',
+    nbSt('en_attente') + nbSt('contre') ? `${nbSt('en_attente') + nbSt('contre')} en attente de réponse` : '',
     nbSt('acceptee') ? `${nbSt('acceptee')} acceptée${nbSt('acceptee') > 1 ? 's' : ''}` : '',
     nbSt('refusee') ? `${nbSt('refusee')} refusée${nbSt('refusee') > 1 ? 's' : ''}` : '',
     nbSt('retiree') ? `${nbSt('retiree')} retirée${nbSt('retiree') > 1 ? 's' : ''}` : '',
   ].filter(Boolean).join(' · ');
   const compromisLe = (detail?.suivi || []).find(x => x.type === 'etape' && x.statut === 'compromis')?.le || '';
   const accepte = offres.some(x => x.statut === 'acceptee');
-  const tuilesVente = (
-    <>
-      <Tuile ton={offresOuvertes.length ? 'or' : 'blanc'} ic="euro" icFond="#fbf1d6" icC="#a07c28" titre="Offres d’achat"
-        puce={resumeOffres ? { l: resumeOffres, fond: '#fbf6e9', c: '#7a5d1c' } : null} note={resumeOffres ? undefined : 'Aucune pour l’instant.'}>
-        {offresDocs.length > 0 && <BtnTuile onClick={() => ouvrirDoc(offresDocs[0].id)}>Voir</BtnTuile>}
-        <BtnTuile onClick={() => faireDocument({ modele: 'offre_achat' })}>Nouvelle</BtnTuile>
-      </Tuile>
-      <Tuile ic="calendrier" icFond="#f5f3ff" icC="#6d28d9" titre="Bons de visite"
-        puce={bons.length ? { l: [bonsSignes ? `${bonsSignes} signé${bonsSignes > 1 ? 's' : ''}` : '', bons.length - bonsSignes ? `${bons.length - bonsSignes} en préparation` : ''].filter(Boolean).join(' · '), fond: '#f5f3ff', c: '#6d28d9' } : null}
-        note={bons.length ? undefined : 'Un par visite, prérempli avec l’acheteur et le bien.'}>
-        {bons.length > 0 && <BtnTuile onClick={() => ouvrirDoc(bons[0].id)}>Voir</BtnTuile>}
-        <BtnTuile onClick={() => faireDocument({ modele: 'bon_visite' })}>Nouveau</BtnTuile>
-      </Tuile>
-      {compromisLe || e === 'compromis' || e === 'vendu' ? (
-        <Tuile ic="doc" icFond="#eff6ff" icC="#1d4ed8" titre="Compromis" puce={{ l: compromisLe ? `Signé le ${dateCourte(compromisLe)}` : 'Signé', fond: '#eff6ff', c: '#1d4ed8' }} />
-      ) : accepte ? (
-        <Tuile ton="or" ic="doc" icFond="#fbf1d6" icC="#a07c28" titre="Compromis" note="Une offre est acceptée : quand le compromis est signé, le bien passe « Sous compromis ».">
-          <BtnTuile onClick={() => setFen({ k: 'compromis' })}>Compromis signé</BtnTuile>
-        </Tuile>
-      ) : (
-        <Tuile ton="vide" ic="doc" icFond="#f1f5f9" icC="#94a3b8" titre="Compromis" note="S’ouvrira quand une offre sera acceptée." />
-      )}
-    </>
-  );
-  /* Replié, l'en-tête des documents à signer dit où l'on en est, et propose
-     la suite ; il suit tout seul l'état du bien (V3.32). */
-  const nbDocs = docsLies.length ? `${docsLies.length} document${docsLies.length > 1 ? 's' : ''} préparé${docsLies.length > 1 ? 's' : ''}` : '';
   const compromisSigne = !!compromisLe || e === 'compromis' || e === 'vendu';
-  const etatSigner: { l: string; ton: 'or' | 'vert' | 'gris'; sous: string } = avant
-    ? mandatSigne ? { l: `Mandat signé le ${dateCourte(mandatSigne.signe_le || '')}`, ton: 'vert', sous: 'Note-le signé : le bien passe en vente.' }
-      : mandats.length ? { l: 'Mandat en préparation, à faire signer', ton: 'or', sous: `Commencé le ${dateCourte(mandats[0].created_at)}` }
-        : { l: 'Mandat de vente à préparer', ton: 'or', sous: signerOuvert ? '' : 'Prérempli avec le bien, le propriétaire, le prix et les honoraires.' }
-    : compromisSigne ? { l: compromisLe ? `Compromis signé le ${dateCourte(compromisLe)}` : 'Compromis signé', ton: 'vert', sous: [signeLe ? `Mandat du ${dateCourte(signeLe)}` : '', nbDocs].filter(Boolean).join(' · ') }
-      : accepte ? { l: 'Offre acceptée : le compromis est à signer', ton: 'or', sous: [signeLe ? `Mandat du ${dateCourte(signeLe)}` : '', nbDocs].filter(Boolean).join(' · ') }
-        : { l: signeLe ? `Mandat signé le ${dateCourte(signeLe)}${typeMandat ? ` · ${typeMandat}` : ''}` : 'En vente', ton: signeLe ? 'vert' : 'gris',
-          sous: [resumeOffres ? `Offres : ${resumeOffres}` : 'Aucune offre pour l’instant', bons.length ? `${bons.length} bon${bons.length > 1 ? 's' : ''} de visite` : ''].filter(Boolean).join(' · ') };
-  const actionsSigner = avant ? (
-    <>
-      {mandats.length > 0
-        ? <BtnTuile onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>{mandatSigne ? 'Voir le mandat' : 'Continuer le mandat'}</BtnTuile>
-        : <BoutonAct or onClick={() => faireDocument({ modele: 'mandat_vente' })}><Ic n="plume" t={13} />Préparer le mandat</BoutonAct>}
-      <BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile>
-    </>
-  ) : accepte && !compromisSigne ? <BtnTuile onClick={() => setFen({ k: 'compromis' })}>Compromis signé</BtnTuile> : null;
+  /* Comment le mandat a été signé, et où retrouver l'exemplaire signé (V3.32). */
+  const modeSig = mandatSigne?.signature?.mode;
+  const fichierMandat = (d.mandatFichier && typeof d.mandatFichier === 'object' ? d.mandatFichier : null) as { chemin?: string; nom?: string } | null;
+  const commentSigne = mandatSigne
+    ? modeSig === 'en_ligne' ? 'Signature électronique' : modeSig === 'sur_place' ? 'Signé sur la tablette' : 'Signé à la main'
+    : fichierMandat?.chemin ? 'Signé hors du CRM · scan joint' : 'Signé hors du CRM';
+  const telechargeMandat = mandatSigne?.signe_chemin ? () => { void ouvrirSigne(mandatSigne); }
+    : fichierMandat?.chemin ? () => { void ouvrirPiece(String(fichierMandat.chemin), String(fichierMandat.nom || 'mandat-signe.pdf')); } : null;
+  const etapesDocs: EtapeDoc[] = [
+    enMandat || mandatSigne ? {
+      k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'fait', puce: commentSigne,
+      statut: `Signé le ${dateCourte(signeLe)}${typeMandat ? ` · ${typeMandat}` : ''}`,
+      detail: [detailMandat, !telechargeMandat && !mandatSigne ? 'Joins le scan du mandat signé pour le retrouver ici.' : ''].filter(Boolean).join(' · ') || undefined,
+      actions: <>
+        {telechargeMandat && <BoutonAct marine onClick={telechargeMandat}><Ic n="telecharger" t={13} />Le mandat signé</BoutonAct>}
+        {mandats.length > 0 && <BtnTuile onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>Voir dans Documents</BtnTuile>}
+        {/* Signé ailleurs : le scan, pour pouvoir le retélécharger. */}
+        {!mandatSigne && <BtnTuile onClick={() => champMandat.current?.click()}>{depotMandat ? 'Envoi…' : fichierMandat?.chemin ? 'Remplacer le scan' : <><Ic n="trombone" t={12} />Joindre le mandat signé</>}</BtnTuile>}
+        {/* Signé dans le CRM mais pas encore noté : le bien passe en vente. */}
+        {avant && <BoutonAct or onClick={() => setFen({ k: 'mandat' })}>Passer le bien en vente</BoutonAct>}
+        {!avant && !mandats.length && <BtnTuile onClick={() => onModifier('prix')}>Modifier</BtnTuile>}
+      </>,
+    } : mandats.length ? {
+      k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'encours',
+      statut: 'En préparation : à faire signer au propriétaire', detail: `Commencé le ${dateCourte(mandats[0].created_at)}`,
+      actions: <><BoutonAct or onClick={() => ouvrirDoc(mandats[0].id)}>Continuer le mandat</BoutonAct><BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile></>,
+    } : {
+      k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'afaire', statut: 'À préparer',
+      detail: 'Prérempli avec le bien, le propriétaire, le prix et les honoraires. Signé ailleurs (papier, autre logiciel) : « Déjà signé ? ».',
+      actions: <><BoutonAct or onClick={() => faireDocument({ modele: 'mandat_vente' })}><Ic n="plume" t={13} />Préparer le mandat</BoutonAct><BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile></>,
+    },
+    avant ? { k: 'bons', ic: 'calendrier', titre: 'Les bons de visite', etat: 'plustard', statut: 'Après le mandat', detail: 'Un par visite, prérempli avec l’acheteur et le bien : il protège tes honoraires.' } : {
+      k: 'bons', ic: 'calendrier', titre: 'Les bons de visite', etat: bons.length ? (bonsSignes === bons.length ? 'fait' : 'encours') : 'libre',
+      statut: bons.length ? [bonsSignes ? `${bonsSignes} signé${bonsSignes > 1 ? 's' : ''}` : '', bons.length - bonsSignes ? `${bons.length - bonsSignes} à faire signer` : ''].filter(Boolean).join(' · ') : 'Aucun pour l’instant',
+      detail: 'Un par visite, prérempli avec l’acheteur et le bien : il protège tes honoraires.',
+      actions: <>{bons.length > 0 && <BtnTuile onClick={() => ouvrirDoc(bons[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'bon_visite' })}><Ic n="plus" t={12} e={2.6} />Nouveau bon</BtnTuile></>,
+    },
+    avant ? { k: 'offres', ic: 'euro', titre: 'Les offres d’achat', etat: 'plustard', statut: 'Après le mandat', detail: 'L’offre écrite, préremplie avec l’acheteur, à signer par lui.' } : {
+      k: 'offres', ic: 'euro', titre: 'Les offres d’achat', etat: offresOuvertes.length ? 'encours' : accepte ? 'fait' : 'libre',
+      statut: resumeOffres || 'Aucune pour l’instant', detail: 'L’offre écrite, préremplie avec l’acheteur, à signer par lui. Les réponses du vendeur se notent dans « Visites et offres ».',
+      actions: <>{offresDocs.length > 0 && <BtnTuile onClick={() => ouvrirDoc(offresDocs[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'offre_achat' })}><Ic n="plus" t={12} e={2.6} />Offre écrite</BtnTuile></>,
+    },
+    compromisSigne ? { k: 'compromis', ic: 'doc', titre: 'Le compromis', etat: 'fait', statut: compromisLe ? `Signé le ${dateCourte(compromisLe)}` : 'Signé', detail: 'Rédigé et signé chez le notaire.' }
+      : accepte ? { k: 'compromis', ic: 'doc', titre: 'Le compromis', etat: 'afaire', statut: 'Une offre est acceptée : à signer chez le notaire', detail: 'Une fois signé, le bien passe « Sous compromis ».', actions: <BoutonAct or onClick={() => setFen({ k: 'compromis' })}>Compromis signé</BoutonAct> }
+        : { k: 'compromis', ic: 'doc', titre: 'Le compromis', etat: 'plustard', statut: 'Quand une offre sera acceptée', detail: 'Rédigé et signé chez le notaire.' },
+  ];
   /* ── Documents : à qui les envoyer (V3.30) — le propriétaire (et son
      conjoint), les autres propriétaires saisis, puis les acheteurs du bien. ── */
   const destsDocs: DestPropose[] = [];
@@ -1402,42 +1415,36 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       {onglet === 'documents' && (
         <div className={b.col}>
-        {/* Les documents à signer (V3.31) : une seule section sur toute la
-            largeur, une tuile par sorte ; plus de colonne à moitié vide. */}
-        <section className={b.signer} data-ouvert={signerOuvert ? 'oui' : 'non'}>
-          {/* Replié par défaut (V3.32) : l'en-tête dit où en est le mandat
-              (ou la vente) et garde ses boutons ; déplié, les tuiles les portent. */}
-          <div className={b.signerTete}>
-            <button type="button" className={b.signerOuvrir} aria-expanded={signerOuvert} onClick={() => setSignerOuvert(v => !v)}>
-              <span className={b.signerIc} data-ton={etatSigner.ton}><Ic n="plume" t={19} /></span>
-              <span className={b.signerTx}>
-                <b className={b.signerTitre}>Les documents à signer</b>
-                <span className={b.signerEtat} data-ton={etatSigner.ton}>{etatSigner.l}</span>
-                {etatSigner.sous && <small>{etatSigner.sous}</small>}
-              </span>
-            </button>
-            {!signerOuvert && actionsSigner && <div className={b.signerActs}>{actionsSigner}</div>}
-            <button type="button" className={b.signerFleche} data-ouvert={signerOuvert ? 'oui' : 'non'} aria-label={signerOuvert ? 'Replier les documents à signer' : 'Déplier les documents à signer'} onClick={() => setSignerOuvert(v => !v)}>
-              <Ic n="bas" t={16} e={2.4} />
-            </button>
+        {/* Les documents de la vente (V3.32) : dans l'ordre, chacun avec son
+            état et ses boutons ; tous les documents préparés, dépliables. */}
+        <section className={b.docsVente}>
+          <div className={b.docsVenteT}>
+            <h3>Les documents de la vente</h3>
+            <p>Dans l’ordre : le mandat, un bon par visite, les offres, le compromis. Chacun se prépare prérempli avec le bien, le propriétaire, le prix et les honoraires, et reste relié au bien.</p>
           </div>
           {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
-          {signerOuvert && <>
-          <p className={b.signerAide}>Préremplis avec le bien, le propriétaire, le prix et les honoraires : ils s’ouvrent dans la rubrique Documents et restent reliés au bien.</p>
-          <Tuiles>
-            {tuileMandat}
-            {avant ? tuilesApres : tuilesVente}
-          </Tuiles>
-          {docsLies.length > 0 && <div className={b.signerSous}>{`Préparés pour ce bien · ${docsLies.length}`}</div>}
-          <ListeDocs docs={docsLies.map(x => {
-              const st = STATUTS[x.statut] || STATUTS.brouillon;
-              return {
-                id: x.id, ic: modele(x.modele)?.ic || 'doc', titre: x.titre || modele(x.modele)?.titre || 'Document',
-                sous: `Créé le ${dateCourte(x.created_at)}${x.signe_le ? ` · signé le ${dateCourte(x.signe_le)}` : ''}`,
-                statut: <span className={`${s.statut} ${s.statutFort} ${s['t_' + st.ton]}`}>{st.l}</span>, ouvrir: () => ouvrirDoc(x.id),
-              };
-          })} />
-          </>}
+          <EtapesDocs etapes={etapesDocs} />
+          <input ref={champMandat} type="file" accept=".pdf,image/*" hidden onChange={ev => { const f = ev.target.files?.[0]; if (f) void joindreMandat(f); ev.target.value = ''; }} />
+          {docsLies.length > 0 && (
+            <div className={b.docsPrep}>
+              <button type="button" className={b.docsPrepT} aria-expanded={listeDocsOuverte} onClick={() => setListeDocsOuverte(v => !v)}>
+                <span>{`Tous les documents préparés pour ce bien · ${docsLies.length}`}</span>
+                <span className={b.docsPrepFleche} data-ouvert={listeDocsOuverte ? 'oui' : 'non'}><Ic n="bas" t={15} e={2.4} /></span>
+              </button>
+              <Depliant ouvert={listeDocsOuverte}>
+                <div className={b.docsPrepListe}>
+                  <ListeDocs docs={docsLies.map(x => {
+                    const st = STATUTS[x.statut] || STATUTS.brouillon;
+                    return {
+                      id: x.id, ic: modele(x.modele)?.ic || 'doc', titre: x.titre || modele(x.modele)?.titre || 'Document',
+                      sous: `Créé le ${dateCourte(x.created_at)}${x.signe_le ? ` · signé le ${dateCourte(x.signe_le)}` : ''}`,
+                      statut: <span className={`${s.statut} ${s.statutFort} ${s['t_' + st.ton]}`}>{st.l}</span>, ouvrir: () => ouvrirDoc(x.id),
+                    };
+                  })} />
+                </div>
+              </Depliant>
+            </div>
+          )}
         </section>
         {/* Le dossier sur toute la largeur, en tuiles (V3.30) : déposer,
             ranger, cocher, envoyer. */}

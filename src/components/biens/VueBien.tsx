@@ -6,6 +6,7 @@
    passé dernièrement. Maquettes validées : « La nouvelle fiche bien ». */
 
 import { useState, type ReactNode } from 'react';
+import Depliant from '@/components/shared/Depliant';
 import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import v from './VueBien.module.css';
@@ -109,9 +110,19 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
         <>
           {lignes.length > 0 && (
             <div className={v.visiteL}>
-              {(tout ? lignes : lignes.slice(0, 3)).map(x => (
+              {lignes.slice(0, 3).map(x => (
                 <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
               ))}
+              {/* Le reste glisse à l'ouverture (V3.32). */}
+              {lignes.length > 3 && (
+                <Depliant ouvert={tout} ecart={7}>
+                  <div className={v.visiteL}>
+                    {lignes.slice(3).map(x => (
+                      <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
+                    ))}
+                  </div>
+                </Depliant>
+              )}
             </div>
           )}
           {encarts.map(x => <div key={x.l} className={`${v.visiteEncart} ${tout ? '' : v.visiteEncartCourt}`}><b>{`${x.l} : `}</b>{x.v}</div>)}

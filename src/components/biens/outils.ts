@@ -40,6 +40,9 @@ export type VisiteRow = Record<string, unknown> & {
 export type DocLie = {
   id: string; modele: string; statut: string; titre: string | null; created_at: string; updated_at: string;
   signe_le: string | null; finalise_le: string | null; client_id: string | null;
+  /* V3.32 : l'exemplaire signé (scellé en ligne ou sur place, ou le scan
+     d'une signature à la main) et le mode de signature. */
+  signe_chemin?: string | null; signature?: { mode?: string } | null;
 };
 
 const CLIENT_COLS = 'id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro';
@@ -85,7 +88,9 @@ export async function chargerListe(): Promise<ListeBiens> {
    son identifiant dans leurs réponses ; le mandat peut aussi y être rattaché
    à la main (biens_vente.document_id). */
 export async function documentsDuBien(b: BienVente): Promise<DocLie[]> {
-  const cols = 'id, modele, statut, titre, created_at, updated_at, signe_le, finalise_le, client_id';
+  /* « * » (V3.32) : la colonne `signature` n'existe que si le SQL de la
+     signature en ligne est passé ; la nommer ferait échouer la lecture. */
+  const cols = '*';
   const [a, m] = await Promise.all([
     supabase.from('documents').select(cols).eq('donnees->>bienVenteId', b.id).order('created_at', { ascending: false }).limit(60),
     b.document_id ? supabase.from('documents').select(cols).eq('id', b.document_id).maybeSingle() : Promise.resolve({ data: null, error: null }),

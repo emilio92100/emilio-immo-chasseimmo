@@ -1,4 +1,5 @@
 'use client';
+import Depliant from '@/components/shared/Depliant';
 import { useEffect, useRef, useState } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import Visionneuse from './Visionneuse';
@@ -135,7 +136,8 @@ function CartePiece({ p, off, ouverte, auto, premier, dernier, onOuvrir, onMaj, 
           <button type="button" className={`${b.icBtn} ${b.icBtnDanger}`} aria-label="Retirer la pièce" title="Retirer" onClick={onRetirer}><Ic n="corbeille" t={16} /></button>
         </div>
       )}
-      {ouverte && !off && (
+      {!off && (
+        <Depliant ouvert={ouverte} className={b.pcChoixZone}>
         <div className={b.pcChoix}>
           {PIECES_GROUPES.map(g => (
             <div key={g.g} className={b.choixG}>
@@ -150,6 +152,7 @@ function CartePiece({ p, off, ouverte, auto, premier, dernier, onOuvrir, onMaj, 
             </div>
           ))}
         </div>
+        </Depliant>
       )}
       <div className={b.pcBas}>
         <div className={b.pcSurf}><SaisieNombre v={p.surface} unite="m²" off={off} auto={auto} ph="Surface" lib={`Surface ${p.nom || 'de la pièce'}`} onChange={x => onMaj('surface', x)} /></div>

@@ -356,3 +356,35 @@
 @media (prefers-reduced-motion: reduce) {
   .sfTuile, .repBarre span { animation: none; }
 }
+
+/* ══ Les documents de la vente, dans l'ordre (V3.32) ══ */
+.edocs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.edoc { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: 14px; align-items: start; padding: 12px 0; }
+.edoc + .edoc { border-top: 1px solid #f1f5f9; }
+.edoc::before { content: ''; position: absolute; left: 19px; top: 52px; bottom: -12px; width: 2px; background: #e8edf4; }
+.edoc:last-child::before { display: none; }
+.edoc[data-etat='fait']::before { background: #bbf7d0; }
+.edocRond {
+  position: relative; z-index: 1; width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #f1f5f9; color: #94a3b8; border: 2px solid #fff; box-shadow: 0 0 0 1px #e3e8f0; box-sizing: border-box;
+}
+.edoc[data-etat='fait'] .edocRond { background: #16a34a; color: #fff; box-shadow: 0 0 0 1px #16a34a; }
+.edoc[data-etat='afaire'] .edocRond { background: #fbf1d6; color: #a07c28; box-shadow: 0 0 0 1px #ecdcb0, 0 0 0 5px rgba(201, 168, 76, .16); }
+.edoc[data-etat='encours'] .edocRond { background: #fff; color: #a07c28; box-shadow: 0 0 0 2px #c9a84c; }
+.edoc[data-etat='libre'] .edocRond { background: #eef2f8; color: #34496e; box-shadow: 0 0 0 1px #dbe3ef; }
+.edocTx { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
+.edocTx b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.edocStatut { font-size: 13.5px; font-weight: 700; color: #475569; }
+.edoc[data-etat='fait'] .edocStatut { color: #15803d; }
+.edoc[data-etat='afaire'] .edocStatut, .edoc[data-etat='encours'] .edocStatut { color: #a07c28; }
+.edoc[data-etat='plustard'] .edocStatut { color: #94a3b8; }
+.edoc[data-etat='plustard'] .edocTx b { color: #64748b; }
+.edocPuce { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 99px; background: #ecfdf3; border: 1px solid #bbf7d0; color: #15803d; font-style: normal; font-size: 12px; font-weight: 700; vertical-align: 1px; }
+.edocTx small { margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: #64748b; }
+.edocActs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-self: center; }
+@media (max-width: 720px) {
+  .edoc { grid-template-columns: 34px minmax(0, 1fr); column-gap: 12px; }
+  .edocRond { width: 34px; height: 34px; }
+  .edoc::before { left: 16px; top: 46px; }
+  .edocActs { grid-column: 2; justify-content: flex-start; margin-top: 10px; }
+}

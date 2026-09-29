@@ -376,6 +376,9 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
   const [taux, setTaux] = useState<number | null>(num(d, 'taux'));
   const [forfait, setForfait] = useState<number | null>(num(d, 'forfait'));
   const [raison, setRaison] = useState('');
+  /* Le mandat signé (scan ou PDF), facultatif (V3.32) : gardé avec le bien,
+     à retélécharger depuis l'onglet Documents. */
+  const [scan, setScan] = useState<File | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const hono: Donnees = { charge, honoMode, ...(honoMode === 'taux' ? { taux } : { forfait }) };
@@ -391,7 +394,9 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
          devient le prix affiché, et l'onglet Le bien montre encore ce qui
          avait été estimé. */
       const conseille = num(d, 'prixConseille') ?? (avantMandat(bien.etape) || (bien.etape === 'retire' && !bien.en_vente_le) ? num(d, 'prix') : null);
-      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono, ...(conseille ? { prixConseille: conseille } : {}) };
+      const f = scan ? await deposerPiece(bien.id, 'mandatsigne', scan) : null;
+      const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono, ...(conseille ? { prixConseille: conseille } : {}),
+        ...(f && scan ? { mandatFichier: { chemin: f.chemin, nom: f.nom, taille: scan.size, le: aujourdhui() } } : {}) };
       const { bien: r } = await changerEtape(bien, 'mandat', { donnees, commentaire: raison.trim() || undefined, infos: { type, numero: numero.trim(), date, fin: finM, prix } });
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
@@ -410,6 +415,13 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
           <Ch lib={type === 'simple' ? 'Mandat jusqu’au' : 'Exclusivité jusqu’au'}><input className={s.input} type="date" value={finM} onChange={e => setFinM(e.target.value)} /></Ch>
         </div>
         {type && type !== 'simple' && !finM && <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => setFinM(plusJours(date, 91))}>Trois mois d’exclusivité : jusqu’au {new Date(`${plusJours(date, 91)}T12:00:00`).toLocaleDateString('fr-FR')}</button>}
+        {!reprise && (
+          <label className={s.fichier}>
+            <Ic n="trombone" t={18} />
+            <span>{scan ? <><b>{scan.name}</b>{' · sera joint au bien'}</> : <>{'Le mandat signé (scan ou PDF) · '}<b>facultatif</b></>}</span>
+            <input type="file" accept=".pdf,image/*" onChange={e => setScan(e.target.files?.[0] || null)} />
+          </label>
+        )}
       </div>
       <div className={b.groupe}>
         <div className={b.groupeT}><Ic n="etiquette" t={14} />Le prix et les honoraires</div>

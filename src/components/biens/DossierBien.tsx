@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import Depliant from '@/components/shared/Depliant';
 import { Ic } from '@/components/documents/ApercuActe';
 import { supabase } from '@/lib/supabase';
 import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
@@ -486,7 +487,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
           return (
             <div key={g.k} className={x.groupe}>
               {teteGroupe(g, autres.length ? autres.length : null, autres.length ? `${autres.length} document${autres.length > 1 ? 's' : ''}` : 'aucun', null)}
-              {!replie(g.k) && <div className={x.grille}>
+              <Depliant ouvert={!replie(g.k)}><div className={x.grille}>
                 {autres.map(f => (
                   <div key={f.id} className={x.tuile} data-etat="recu" data-choisi={choix.includes(f.chemin) ? 'oui' : 'non'}>
                     <div className={x.tuileT}>
@@ -505,7 +506,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
                     <Ic n="plus" t={16} e={2.4} /><span>Ajouter un document<small>un bail, un plan… tu choisis son nom</small></span>
                   </button>
                 )}
-              </div>}
+              </div></Depliant>
             </div>
           );
         }
@@ -518,7 +519,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
         return (
           <div key={g.k} className={x.groupe}>
             {teteGroupe(g, `${ok} sur ${ls.length}`, resumeDe(g.k), ls.length ? ok / ls.length : 0)}
-            {!replie(g.k) && <div className={x.grille}>
+            <Depliant ouvert={!replie(g.k)}><div className={x.grille}>
               {/* Le dossier de diagnostics en un seul fichier : en tête, sur toute la largeur. */}
               {lesDdt.map(f => {
                 const c = couverts(f.id);
@@ -597,7 +598,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
                 );
               })}
               {tuileAjout(g.k)}
-            </div>}
+            </div></Depliant>
           </div>
         );
       })}

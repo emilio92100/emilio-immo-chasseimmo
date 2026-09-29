@@ -4,6 +4,7 @@ import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
 import { ETATS_PIECE, etapeDe, m2, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
+import Depliant from '@/components/shared/Depliant';
 import { COULEURS, habitable, nbPrincipales } from './ChampsBien';
 import f from '@/components/fiche/FriseSuivi.module.css';
 import o from './OngletsBien.module.css';
@@ -171,7 +172,7 @@ export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; men
           </button>
         </div>
       )}
-      {texte && lire && <div className={o.annonceTexte}>{texte}</div>}
+      {texte && <Depliant ouvert={lire} ecart={10}><div className={o.annonceTexte}>{texte}</div></Depliant>}
     </div>
   );
 }
@@ -556,6 +557,32 @@ export function CarteOffreB({ o: x, prix, compromis, onStatut, onContre, onDoc, 
 }
 
 /* ══ DOCUMENTS ══════════════════════════════════════════════════════════ */
+/* Les documents de la vente, dans l'ordre (V3.32) : le mandat, les bons de
+   visite, les offres, le compromis. Chacun dit s'il est fait (vert), à faire
+   (or), en cours, libre (on en fait quand on veut) ou pour plus tard (gris). */
+export type EtapeDoc = {
+  k: string; ic: string; titre: string; etat: 'fait' | 'afaire' | 'encours' | 'libre' | 'plustard';
+  statut: string; detail?: string; actions?: ReactNode;
+  /* Une précision en pastille : « Signature électronique », « Signé à la main »… */
+  puce?: string;
+};
+export function EtapesDocs({ etapes }: { etapes: EtapeDoc[] }) {
+  return (
+    <ol className={o.edocs}>
+      {etapes.map(x => (
+        <li key={x.k} className={o.edoc} data-etat={x.etat}>
+          <span className={o.edocRond} aria-hidden="true">{x.etat === 'fait' ? <Ic n="check" t={15} e={3} /> : <Ic n={x.ic} t={16} />}</span>
+          <div className={o.edocTx}>
+            <b>{x.titre}</b>
+            <span className={o.edocStatut}>{x.statut}{x.puce && <i className={o.edocPuce}>{x.puce}</i>}</span>
+            {x.detail && <small>{x.detail}</small>}
+          </div>
+          {x.actions && <div className={o.edocActs}>{x.actions}</div>}
+        </li>
+      ))}
+    </ol>
+  );
+}
 export function Tuile({ ton = 'blanc', ic, icFond, icC, titre, puce, note, children }: {
   ton?: 'marine' | 'or' | 'blanc' | 'vide'; ic: string; icFond: string; icC: string; titre: string;
   puce?: { l: string; fond: string; c: string } | null; note?: string; children?: ReactNode;
