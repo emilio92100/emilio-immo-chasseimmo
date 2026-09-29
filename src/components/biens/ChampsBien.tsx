@@ -394,7 +394,8 @@ export function ChampDossier({ d, maj, off, bienId }: { d: Donnees; maj: Maj; of
                         <span>Reçu le</span>
                         <input type="date" value={p.date} disabled={off} onChange={e => poser(l.k, { date: e.target.value })} />
                       </>}
-                      {p.chemin
+                      {!p.chemin && p.dans ? <span className={b.fichierNom}><Ic n="dossier" t={13} /><span>Dans le dossier de diagnostics (onglet Documents)</span></span>
+                        : p.chemin
                         ? <>
                           <button type="button" className={b.fichierNom} onClick={() => ouvrirPiece(p.chemin, p.nom)}><Ic n="trombone" t={13} /><span>{p.nom || 'Le fichier'}</span></button>
                           {!off && <button type="button" className={b.icBtn} aria-label="Retirer le fichier" disabled={occupe === l.k} onClick={() => retirer(l.k)}><Croix t={13} /></button>}

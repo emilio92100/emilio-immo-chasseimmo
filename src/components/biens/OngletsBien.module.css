@@ -183,7 +183,7 @@
 .petit:hover { color: #1a2332; }
 
 /* ══ DOCUMENTS ══════════════════════════════════════════════════════════ */
-.tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .tuile { border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1px solid #e3e8f0; min-height: 150px; box-sizing: border-box; min-width: 0; }
 .tuile[data-ton='marine'] { background: linear-gradient(160deg, #34496e 0%, #26375a 100%); border: none; color: #fff; box-shadow: 0 16px 30px -22px rgba(26, 35, 50, .8); }
 .tuile[data-ton='or'] { border: 1.5px solid #ecdcb0; background: #fffcf4; }

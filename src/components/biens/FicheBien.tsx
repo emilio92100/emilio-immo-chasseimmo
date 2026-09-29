@@ -6,8 +6,8 @@ import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
   ETAPES_BIEN, PARCOURS, argentBien, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
-  lireDossier, lignesDossier, lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
-  type BienVente, type Donnees, type EtapeVente, type SuiviVente,
+  lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
+  type BienVente, type Donnees, type EtapeVente, type Observation, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import { NOM_MANDAT, prixCarte } from './CarteBien';
@@ -256,36 +256,6 @@ function BlocBref({ d, onSurfaces, onModifier }: { d: Donnees; onSurfaces: () =>
   );
 }
 
-function BlocMandat({ bien, docs, onDoc, onOuvrirDoc, onMandat }: {
-  bien: BienVente; docs: DetailBien['docs']; onDoc: (x: PourDocument) => void; onOuvrirDoc: (id: string) => void; onMandat: () => void;
-}) {
-  const d = bien.donnees || {};
-  const a = argentBien(d);
-  const mandatDoc = docs.find(x => x.modele === 'mandat_vente') || null;
-  const j = joursAvant(txt(d, 'mandatFin'));
-  const excl = d.mandatType === 'exclusif' || d.mandatType === 'semi';
-  const statut = mandatDoc ? STATUTS[mandatDoc.statut] : null;
-  return (
-    <Bloc ic="dossier" titre="Le mandat"
-      action={mandatDoc ? <Modifier onClick={() => onOuvrirDoc(mandatDoc.id)} lib="Voir le document" /> : avantMandat(bien.etape) ? <Modifier onClick={onMandat} lib="Mandat signé ?" /> : undefined}>
-      <div className={b.lignes}>
-        <Li l="Type" v={d.mandatType ? `${NOM_MANDAT[String(d.mandatType)]}${txt(d, 'mandatNumero') ? ` · n° ${txt(d, 'mandatNumero')}` : ''}` : 'Pas encore signé'} />
-        <Li l="Signé le" v={txt(d, 'mandatDate') ? dateLongueCourt(txt(d, 'mandatDate')) : ''} />
-        <Li l={excl ? 'Exclusivité jusqu’au' : 'Jusqu’au'} v={txt(d, 'mandatFin') ? `${dateLongueCourt(txt(d, 'mandatFin'))}${j !== null ? (j >= 0 ? ` (dans ${j} j)` : ' (terminé)') : ''}` : ''}
-          cls={j !== null && j <= 15 ? b.liAlerte : undefined} />
-        {excl && <Li l="Ensuite" v="résiliable, préavis 15 j" />}
-        <Li l="Honoraires" v={a.hono !== null ? `${euros(a.hono)} TTC · ${a.acq ? 'acquéreur' : 'vendeur'}${a.taux ? ` · ${pourcent(a.taux)}` : ''}` : ''} />
-        <Li l="Net vendeur" v={a.net ? euros(a.net) : ''} />
-        {statut && mandatDoc && <Li l="Le document" v={statut.l} cls={mandatDoc.statut === 'signe' ? b.liVert : undefined} />}
-      </div>
-      {!mandatDoc && (
-        <button type="button" className={b.mini} style={{ alignSelf: 'flex-start' }} onClick={() => onDoc({ modele: 'mandat_vente' })}>
-          <Ic n="plume" t={13} />Préparer le mandat de vente (prérempli)
-        </button>
-      )}
-    </Bloc>
-  );
-}
 const dateLongueCourt = (ymd: string) => {
   const x = new Date(`${ymd}T12:00:00`);
   return isNaN(x.getTime()) ? ymd : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -355,88 +325,101 @@ function BlocVisite({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
   );
 }
 
+/* Une liste de travaux ou de sinistres (V3.31) : chaque ligne numérotée, la
+   nature en gras, la date dans une pastille à droite (dessous, sur le
+   téléphone), la précision en dessous.
+   Déclarée au niveau du module (AGENTS.md §2.4). */
+function ListeObs({ l }: { l: Observation[] }) {
+  return (
+    <ol className={b.obsL}>
+      {l.map((o, i) => (
+        <li key={o.id}>
+          <span className={b.obsN}>{i + 1}</span>
+          <span className={b.obsNom}>
+            <b>{o.nature || 'À préciser'}</b>
+            {o.enCours !== undefined && <em className={`${b.obsTag} ${o.enCours ? b.obsTagRouge : ''}`}>{o.enCours ? 'en cours' : 'réglé'}</em>}
+          </span>
+          {o.quand && <span className={b.obsDate}><Ic n="calendrier" t={13} />{o.quand}</span>}
+          {o.note && <small className={b.obsNote}>{o.note}</small>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /* Les observations (V3.16) : les travaux, les sinistres, les PV d'AG, les
    notes. Pour Alexandre seul ; un sinistre en cours passe en rouge, en haut.
-   V3.30 : sur toute la largeur, sous les deux colonnes, et le texte libre
-   rangé en blocs qui se replient (NoteRiche) — dans la colonne de droite, les
-   notes d'un dossier fourni faisaient un mur de texte d'un mètre de haut. */
+   V3.30 : sur toute la largeur, et le texte libre rangé en blocs qui se
+   replient (NoteRiche).
+   V3.31 : rangées comme dans « Modifier » — « Le logement », « La
+   copropriété », « Tes notes » — chacune dans sa carte, et chaque texte libre
+   sous le même nom que son champ (« Autres remarques sur les travaux ») :
+   un bloc « Travaux » tout seul, sous la liste des travaux réalisés, ne
+   disait pas ce qu'il était. */
 function BlocObservations({ d, onModifier }: { d: Donnees; onModifier: () => void }) {
   const copro = d.copro === 'oui';
   const sinistres = lireObservations(d.sinistres);
   const enCours = sinistres.filter(x => x.enCours);
-  const groupes = [
-    { t: 'Travaux réalisés', ic: 'outil', l: lireObservations(d.travauxFaits) },
-    { t: 'Sinistres', ic: 'eau', l: d.sinistre === 'oui' ? sinistres : [] },
-    { t: 'Copropriété · travaux votés', ic: 'accord', l: copro ? lireObservations(d.coproVotes) : [] },
-    { t: 'Copropriété · travaux réalisés', ic: 'check', l: copro ? lireObservations(d.coproFaits) : [] },
-    { t: 'Copropriété · travaux à venir', ic: 'horloge', l: copro ? lireObservations(d.coproAVenir) : [] },
-  ].filter(g => g.l.length);
+  const faits = lireObservations(d.travauxFaits);
+  const sin = d.sinistre === 'oui' ? sinistres : [];
+  const coproL = copro ? [
+    { t: 'Gros travaux votés', ic: 'accord', l: lireObservations(d.coproVotes) },
+    { t: 'Gros travaux réalisés', ic: 'check', l: lireObservations(d.coproFaits) },
+    { t: 'Gros travaux à venir', ic: 'horloge', l: lireObservations(d.coproAVenir) },
+  ].filter(g => g.l.length) : [];
+  const remT = txt(d, 'travaux');
+  const remC = copro ? txt(d, 'travauxVotes') : '';
   const notes = txt(d, 'notes');
-  const sections = useMemo(() => [
-    { titre: 'Travaux', texte: txt(d, 'travaux') },
-    { titre: 'Copropriété', texte: copro ? txt(d, 'travauxVotes') : '' },
-    { titre: 'Notes', texte: notes },
-  ].filter(x => x.texte), [d, copro, notes]);
-  const vide = !groupes.length && !sections.length && d.sinistre !== 'non';
+  const secT = useMemo(() => [{ texte: remT }], [remT]);
+  const secC = useMemo(() => [{ texte: remC }], [remC]);
+  const secN = useMemo(() => [{ texte: notes }], [notes]);
+  const logement = faits.length > 0 || sin.length > 0 || !!remT || d.sinistre === 'non';
+  const coproOk = coproL.length > 0 || !!remC;
+  /* De longues notes (un dossier fourni) prennent toute la largeur, en colonnes. */
+  const notesLongues = notes.length > 420 || /\n[ \t]*\n/.test(notes);
+  const vide = !logement && !coproOk && !notes;
+  const titre = (t: string, ic: string, n?: number) => (
+    <div className={b.obsT}><Ic n={ic} t={14} /><span>{t}</span>{n ? <i>{n}</i> : null}</div>
+  );
   return (
     <Bloc ic="loupe" titre="Observations et notes" action={<Modifier onClick={onModifier} />} large>
       {d.sinistre === 'oui' && enCours.length > 0 && (
         <div className={b.obsAlerte}><Ic n="info" t={16} /><span>{`Sinistre en cours : ${enCours.map(x => [x.nature || 'à préciser', x.quand].filter(Boolean).join(', ')).join(' ; ')}`}</span></div>
       )}
-      {d.sinistre === 'non' && <span className={b.obsOk}><Ic n="check" t={15} e={2.6} />Aucun sinistre, à sa connaissance</span>}
-      {groupes.length > 0 && (
-        <div className={b.obsGroupes}>
-          {groupes.map(g => (
-            <div key={g.t} className={b.obsG}>
-              <div className={b.obsT}><Ic n={g.ic} t={14} />{g.t}</div>
-              <ul className={b.obsL}>
-                {g.l.map(o => (
-                  <li key={o.id}>
-                    <b>{o.nature || 'À préciser'}</b>
-                    {o.quand && <span>{o.quand}</span>}
-                    {o.enCours !== undefined && <em className={`${b.obsTag} ${o.enCours ? b.obsTagRouge : ''}`}>{o.enCours ? 'en cours' : 'réglé'}</em>}
-                    {o.note && <small>{o.note}</small>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+      {!vide && (
+        <div className={b.obsParts}>
+          {logement && (
+            <section className={b.obsPart}>
+              <div className={b.obsPartT}><span className={b.obsPartIc}><Ic n="outil" t={16} /></span><span><b>Le logement</b><small>Travaux et sinistres</small></span></div>
+              {d.sinistre === 'non' && <span className={b.obsOk}><Ic n="check" t={15} e={2.6} />Aucun sinistre, à sa connaissance</span>}
+              {faits.length > 0 && <div className={b.obsS}>{titre('Travaux réalisés', 'outil', faits.length)}<ListeObs l={faits} /></div>}
+              {sin.length > 0 && <div className={b.obsS}>{titre('Les sinistres', 'eau', sin.length)}<ListeObs l={sin} /></div>}
+              {remT && <div className={b.obsS}>{titre('Autres remarques sur les travaux', 'crayon')}<NoteRiche sections={secT} hauteur={200} colonnes={false} /></div>}
+            </section>
+          )}
+          {coproOk && (
+            <section className={b.obsPart}>
+              <div className={b.obsPartT}><span className={b.obsPartIc}><Ic n="lots" t={16} /></span><span><b>La copropriété</b><small>Ce que disent les PV d’AG</small></span></div>
+              {coproL.map(g => <div key={g.t} className={b.obsS}>{titre(g.t, g.ic, g.l.length)}<ListeObs l={g.l} /></div>)}
+              {remC && <div className={b.obsS}>{titre('Autres remarques sur la copropriété', 'crayon')}<NoteRiche sections={secC} hauteur={200} colonnes={false} /></div>}
+            </section>
+          )}
+          {notes && (
+            <section className={`${b.obsPart} ${notesLongues ? b.obsPartLarge : ''}`}>
+              <div className={b.obsPartT}><span className={b.obsPartIc}><Ic n="cadenas" t={16} /></span><span><b>Tes notes</b><small>Notes internes</small></span></div>
+              <NoteRiche sections={secN} hauteur={notesLongues ? 320 : 200} colonnes={notesLongues} />
+            </section>
+          )}
         </div>
       )}
-      {sections.length > 0 && <NoteRiche sections={sections} hauteur={320} />}
       {vide && <div className={b.vide}>Les travaux, un sinistre, ce que disent les PV d’AG, tes notes : « Modifier » pour les noter.</div>}
       <div className={b.pied}>Visibles par toi seul, jamais dans un espace client ni une annonce. Présentes à chaque étape du bien, de « À suivre » jusqu’à la vente.</div>
     </Bloc>
   );
 }
 
-function BlocDossierResume({ d, onVoir }: { d: Donnees; onVoir: () => void }) {
-  const doss = lireDossier(d.dossier);
-  const lignes = lignesDossier(d);
-  const faits = lignes.filter(l => doss[l.k]?.etat === 'recu' || doss[l.k]?.etat === 'nc').length;
-  const reste = lignes.filter(l => doss[l.k]?.etat !== 'recu' && doss[l.k]?.etat !== 'nc');
-  const pct = lignes.length ? Math.round((faits / lignes.length) * 100) : 0;
-  return (
-    <Bloc ic="dossier" titre={<>{'Le dossier'}<i>{` · ${faits} sur ${lignes.length}`}</i></>} action={<Modifier onClick={onVoir} lib="Tout voir" />}>
-      <div className={b.jauge} aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-      {reste.length === 0 ? <div className={`${b.check}`}><span className={`${b.checkK} ${b.kOk}`}><Ic n="check" t={11} e={3} /></span><span>Tout est réuni.</span></div> : (
-        <div>
-          <div className={b.sectionT} style={{ marginBottom: 4 }}>{`Encore ${reste.length} à réunir`}</div>
-          {reste.slice(0, 6).map(l => {
-            const e = doss[l.k]?.etat || '';
-            return (
-              <div key={l.k} className={`${b.check} ${e === 'demande' ? b.checkAttente : ''}`}>
-                <span className={`${b.checkK} ${e === 'demande' ? b.kAttente : b.kVide}`}>{e === 'demande' ? '!' : ''}</span>
-                <span>{`${l.l}${e === 'demande' ? ' · demandé' : ''}`}</span>
-              </div>
-            );
-          })}
-          {reste.length > 6 && <button type="button" className={b.lien} onClick={onVoir}>{`Et ${reste.length - 6} autres`}</button>}
-        </div>
-      )}
-    </Bloc>
-  );
-}
+/* « Le dossier » n'est plus résumé dans la Vue d'ensemble (V3.31) : il
+   doublait l'onglet Documents, où tout se fait. */
 
 /* Avant le mandat : le rendez-vous, la fourchette, l'avis de valeur. */
 /* ── La visite sur place : l'entrée (chez le propriétaire, tablette en main)
@@ -659,7 +642,7 @@ function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVent
               )}
               {remarquesCopro && (
                 <div className={b.remarques}>
-                  <span className={b.remarquesT}>Remarques</span>
+                  <span className={b.remarquesT}>Autres remarques sur la copropriété</span>
                   <NoteRiche sections={[{ texte: remarquesCopro }]} hauteur={150} colonnes={false} />
                 </div>
               )}
@@ -1064,14 +1047,37 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const signeLe = mandatSigne?.signe_le || txt(d, 'mandatDate');
   const typeMandat = d.mandatType ? (NOM_MANDAT[String(d.mandatType)] || '').toLowerCase() : '';
   const enMandat = !avant && !!signeLe;
+  /* V3.31 : la tuile porte tout le mandat. Le bloc « Le mandat » posé à
+     droite répétait « Préparer le mandat de vente (prérempli) » à côté du
+     « Préparer » de la tuile — un doublon ; il est fondu ici. */
+  const finMandat = txt(d, 'mandatFin');
+  const jFin = joursAvant(finMandat);
+  const argent = argentBien(d);
+  const detailMandat = enMandat ? [
+    txt(d, 'mandatNumero') || bien.mandat_numero ? `N° ${txt(d, 'mandatNumero') || bien.mandat_numero}` : '',
+    finMandat ? `jusqu’au ${dateCourte(finMandat)}${jFin !== null ? (jFin >= 0 ? ` (dans ${jFin} j)` : ' (terminé)') : ''}` : '',
+    argent.hono !== null ? `honoraires ${euros(argent.hono)} TTC, ${argent.acq ? 'acquéreur' : 'vendeur'}` : '',
+  ].filter(Boolean).join(' · ') : '';
   const tuileMandat = (
-    <Tuile ton={enMandat ? 'marine' : 'blanc'} ic="plume" icFond={enMandat ? 'rgba(232,201,106,.16)' : '#eef2f8'} icC={enMandat ? '#e8c96a' : '#34496e'} titre="Mandat de vente"
+    <Tuile ton={enMandat ? 'marine' : mandats.length ? 'blanc' : 'or'} ic="plume" icFond={enMandat ? 'rgba(232,201,106,.16)' : '#fbf1d6'} icC={enMandat ? '#e8c96a' : '#a07c28'} titre="Mandat de vente"
       puce={enMandat ? { l: `Signé le ${dateCourte(signeLe)}${typeMandat ? ` · ${typeMandat}` : ''}`, fond: 'rgba(74,222,128,.16)', c: '#86efac' }
         : mandats.length ? { l: 'En préparation', fond: '#fbf6e9', c: '#7a5d1c' } : null}
-      note={!enMandat && !mandats.length ? 'Prérempli avec le bien, le propriétaire, le prix et les honoraires.' : undefined}>
-      {mandats.length > 0 && <BtnTuile marine={enMandat} onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>Voir</BtnTuile>}
-      <BtnTuile marine={enMandat} onClick={() => faireDocument({ modele: 'mandat_vente' })}>{mandats.length ? 'Nouveau' : 'Préparer'}</BtnTuile>
+      note={enMandat ? detailMandat || undefined : mandats.length ? undefined : 'Prérempli avec le bien, le propriétaire, le prix et les honoraires.'}>
+      {mandats.length > 0 && <BtnTuile marine={enMandat} onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>{mandatSigne ? 'Voir le mandat' : 'Continuer'}</BtnTuile>}
+      {!enMandat && !mandats.length && <BoutonAct or onClick={() => faireDocument({ modele: 'mandat_vente' })}><Ic n="plume" t={13} />Préparer le mandat</BoutonAct>}
+      {/* Signé ailleurs (papier, Immofacile) : on le note sans le préparer ici. */}
+      {avant && <BtnTuile onClick={() => setFen({ k: 'mandat' })}>Déjà signé ?</BtnTuile>}
+      {enMandat && !mandats.length && <BtnTuile marine onClick={() => onModifier('prix')}>Modifier</BtnTuile>}
     </Tuile>
+  );
+  /* Avant le mandat, les autres documents s'annoncent sans s'ouvrir : la
+     rangée reste pleine, et l'on sait ce qui viendra. */
+  const tuilesApres = (
+    <>
+      <Tuile ton="vide" ic="euro" icFond="#f1f5f9" icC="#94a3b8" titre="Offres d’achat" note="S’ouvriront avec le mandat : l’offre écrite, préremplie avec l’acheteur." />
+      <Tuile ton="vide" ic="calendrier" icFond="#f1f5f9" icC="#94a3b8" titre="Bons de visite" note="Un par visite, prérempli, dès que le bien est en vente." />
+      <Tuile ton="vide" ic="doc" icFond="#f1f5f9" icC="#94a3b8" titre="Compromis" note="Quand une offre sera acceptée." />
+    </>
   );
   const offresDocs = docsDe('offre_achat');
   const bons = docsDe('bon_visite');
@@ -1227,21 +1233,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               « Acheteurs potentiels » juste au-dessus dit combien, et qui ; la
               liste entière est dans l'onglet Acheteurs. */}
           <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
+          {/* Les observations juste sous le bien en bref (V3.31), plus en bas de page. */}
+          {blocNotes}
           <div className={b.deuxEgal}>
             <div className={b.col}>
               {avant && <BlocVisiteSurPlace d={d} onOuvrir={() => setVisite(true)} />}
               {avant && <BlocEstimation bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })} onMandat={() => setFen({ k: 'mandat' })} />}
               {!avant && <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={() => setFen({ k: 'visite' })} onFiche={ouvrirClient} />}
               {e !== 'vendu' && <BlocVisite d={d} onModifier={() => onModifier('pratique')} />}
-              {!avant && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
             </div>
             <div className={b.col}>
               <BlocDernierement items={recents} onTout={() => setOnglet('historique')} />
               <BlocProprio bien={bien} proprio={proprio} recherchesProprio={recherchesProprio} onFiche={ouvrirClient} onModifier={() => onModifier('proprio')} />
-              {e === 'estimation' && <BlocDossierResume d={d} onVoir={() => setOnglet('documents')} />}
             </div>
           </div>
-          {blocNotes}
         </div>
       )}
 
@@ -1319,26 +1324,28 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       {onglet === 'documents' && (
         <div className={b.col}>
-        <Deux>
-          <Col gap={12}>
-            <TitreSec>Les documents à signer</TitreSec>
-            {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
-            <Tuiles>
-              {tuileMandat}
-              {!avant && tuilesVente}
-            </Tuiles>
-            <ListeDocs docs={docsLies.map(x => {
+        {/* Les documents à signer (V3.31) : une seule section sur toute la
+            largeur, une tuile par sorte ; plus de colonne à moitié vide. */}
+        <section className={b.signer}>
+          <div className={b.signerT}>
+            <h3>Les documents à signer</h3>
+            <span>Préremplis avec le bien, le propriétaire, le prix et les honoraires. Ils s’ouvrent dans la rubrique Documents et restent reliés au bien.</span>
+          </div>
+          {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
+          <Tuiles>
+            {tuileMandat}
+            {avant ? tuilesApres : tuilesVente}
+          </Tuiles>
+          {docsLies.length > 0 && <div className={b.signerSous}>{`Préparés pour ce bien · ${docsLies.length}`}</div>}
+          <ListeDocs docs={docsLies.map(x => {
               const st = STATUTS[x.statut] || STATUTS.brouillon;
               return {
                 id: x.id, ic: modele(x.modele)?.ic || 'doc', titre: x.titre || modele(x.modele)?.titre || 'Document',
                 sous: `Créé le ${dateCourte(x.created_at)}${x.signe_le ? ` · signé le ${dateCourte(x.signe_le)}` : ''}`,
                 statut: <span className={`${s.statut} ${s.statutFort} ${s['t_' + st.ton]}`}>{st.l}</span>, ouvrir: () => ouvrirDoc(x.id),
               };
-            })} />
-            <div className={b.pied}>Préremplis avec le bien, le propriétaire, le prix et les honoraires. Ils s’ouvrent dans Documents, et restent reliés au bien.</div>
-          </Col>
-          <BlocMandat bien={bien} docs={docsLies} onDoc={faireDocument} onOuvrirDoc={ouvrirDoc} onMandat={() => setFen({ k: 'mandat' })} />
-        </Deux>
+          })} />
+        </section>
         {/* Le dossier sur toute la largeur, en tuiles (V3.30) : déposer,
             ranger, cocher, envoyer. */}
         <DossierBien bienId={bien.id} d={d} maj={majDonnees} destinataires={destsDocs} lieu={lieuDe(d)} onMessage={m => { setMessage(m); void apres(); }} />
