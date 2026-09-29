@@ -246,6 +246,7 @@ import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
 import BlocSociete from '@/components/contacts/BlocSociete';
+import Depliant from '@/components/shared/Depliant';
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
@@ -902,6 +903,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [menuStatut, setMenuStatut] = useState<{ x: number; y: number } | null>(null);
   /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
   const [societeOuverte, setSocieteOuverte] = useState(false);
+  /* Chaque « Ajouter » repart d'un formulaire neuf (le bloc reste monté, V3.32). */
+  const [cleSoc, setCleSoc] = useState(0);
   /* La carte des critères rogne ce qui dépasse : le menu des recherches se
      pose donc par-dessus la page, à l'aplomb du bouton. */
   const [posRecherche, setPosRecherche] = useState<{ x: number; y: number } | null>(null);
@@ -3159,7 +3162,7 @@ ${signatureMail()}`,
                             <Icone nom="immeuble" taille={13} epaisseur={2} /><span>{'Achète pour '}<b>{st.denomination || 'une société'}</b>{st.qualite ? ` · ${st.qualite}` : ''}</span>
                           </button>
                         ) : (
-                          <button type="button" className={`${styles.teteSoc} ${styles.teteSocVide}`} onClick={() => { setSocieteOuverte(true); setVue('ensemble'); }}>
+                          <button type="button" className={`${styles.teteSoc} ${styles.teteSocVide}`} onClick={() => { setCleSoc(k => k + 1); setSocieteOuverte(true); setVue('ensemble'); }}>
                             <Icone nom="immeuble" taille={13} epaisseur={2} /><span>Pour une société (SCI…) ?</span><b>Ajouter</b>
                           </button>
                         );
@@ -3398,8 +3401,9 @@ ${signatureMail()}`,
                 </div>
               );
             })()}
-            {(lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure) || societeOuverte) && (
-              <BlocSociete client={client as never} notes={(client as unknown as { notes?: string | null }).notes}
+            {/* Elle arrive en glissant quand on clique « Ajouter » (V3.32). */}
+            <Depliant ouvert={!!lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure) || societeOuverte} ecart={16}>
+              <BlocSociete key={cleSoc} client={client as never} notes={(client as unknown as { notes?: string | null }).notes}
                 ouvrir={societeOuverte} onFermer={() => setSocieteOuverte(false)} onFiche={cl => onNavigate('fiche', cl)}
                 onEnregistrer={async st => {
                   const pro = { ...lirePro((client as unknown as { pro?: unknown }).pro), structure: st || undefined };
@@ -3407,7 +3411,7 @@ ${signatureMail()}`,
                   if (ok) setClient(c0 => ({ ...c0, pro } as unknown as Client));
                   return ok;
                 }} />
-            )}
+            </Depliant>
             <div className={styles.ensCols}>
               <div className={styles.ensCol}>
                 {/* Ce qu'Alexandre a noté sur lui (V3.23). */}
