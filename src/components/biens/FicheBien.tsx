@@ -32,7 +32,7 @@ import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from
 import { DossierBien, type DestPropose } from './DossierBien';
 import {
   ADecrire, BandePhotos, BoutonAct, BtnTuile, CarteAnnonce, CarteOffreB, CarteVisiteB, Col, Deux, Encart, Famille, Familles, Haut, HistoriqueBien,
-  Kv, Lettres, ListeDocs, ListeTravaux, ListeVisites, Note, OngletSurfaces, Pile, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
+  Kv, Lettres, ListeDocs, ListeTravaux, ListeVisites, Note, OngletSurfaces, Puces, TitreSec, Tuile, Tuiles, parcoursDe,
   type AVenirBien, type EvtBien, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
@@ -616,7 +616,7 @@ function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVent
           <Kv l="Par" v={lib(d, 'chauffageEmetteurs')} />
           <Kv l="Eau chaude" v={lib(d, 'eauChaude')} />
           <Puces l={equip} />
-          {txt(d, 'travaux') && <Note><b>Travaux :</b>{` ${txt(d, 'travaux')}`}</Note>}
+          {txt(d, 'travaux') && <Note><b>Autres remarques sur les travaux :</b>{` ${txt(d, 'travaux')}`}</Note>}
           {txt(d, 'interieurNote') && <Note>{txt(d, 'interieurNote')}</Note>}
           {videInt && <ADecrire />}
         </Famille>
@@ -663,7 +663,8 @@ function OngletBien({ bien, onModifier, onPhotos, onSurfaces }: { bien: BienVent
           {videExt && <ADecrire />}
         </Famille>
         {energie}
-        <Pile>{charges}{prix}</Pile>
+        {charges}
+        {prix}
       </Familles>
 
       <button type="button" className={b.versSurfaces} onClick={onSurfaces}>

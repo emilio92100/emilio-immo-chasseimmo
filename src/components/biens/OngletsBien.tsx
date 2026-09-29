@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
+import { Children, Fragment, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
 import { ETATS_PIECE, etapeDe, m2, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type SuiviVente } from '@/lib/biens-vente';
@@ -795,7 +795,30 @@ export const Col = ({ children, gap }: { children: ReactNode; gap?: number }) =>
 export const TitreSec = ({ children, action }: { children: ReactNode; action?: ReactNode }) => (
   <div className={o.secT}><b className={o.titreSec}>{children}</b>{action}</div>
 );
-export const Familles = ({ children }: { children: ReactNode }) => <div className={o.familles}>{children}</div>;
+/* Les cartes de « Le bien », en colonnes (V3.31). En grille, chaque rangée
+   prenait la hauteur de sa plus haute carte : une carte courte (« L'intérieur »
+   encore à décrire) laissait un grand blanc sous elle. Ici chaque colonne
+   empile ses cartes, distribuées dans l'ordre (1re, 2e, 3e colonne, puis on
+   recommence) : plus de trou, et une carte qu'on déplie ne fait pas sauter
+   les autres d'une colonne à l'autre. 3 colonnes, 2 sous 1 180 px, 1 sous
+   720 px (les mêmes seuils que la feuille de style). */
+const LARGEURS = ['(max-width: 720px)', '(max-width: 1180px)'];
+function suivreLargeur(f: () => void) {
+  const l = LARGEURS.map(q => window.matchMedia(q));
+  l.forEach(m => m.addEventListener('change', f));
+  return () => l.forEach(m => m.removeEventListener('change', f));
+}
+const nbColonnes = () => (window.matchMedia(LARGEURS[0]).matches ? 1 : window.matchMedia(LARGEURS[1]).matches ? 2 : 3);
+export function Familles({ children }: { children: ReactNode }) {
+  const n = useSyncExternalStore(suivreLargeur, nbColonnes, () => 3);
+  const cartes = Children.toArray(children);
+  const colonnes = Array.from({ length: n }, (_, c) => cartes.filter((_, i) => i % n === c));
+  return (
+    <div className={o.familles} style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+      {colonnes.map((c, i) => <div key={i} className={o.pile}>{c}</div>)}
+    </div>
+  );
+}
 export const Pile = ({ children }: { children: ReactNode }) => <div className={o.pile}>{children}</div>;
 export const Haut = ({ seul, children }: { seul?: boolean; children: ReactNode }) => <div className={o.haut} data-seul={seul ? 'oui' : 'non'}>{children}</div>;
 export const BoutonAct = ({ marine, or, onClick, children }: { marine?: boolean; or?: boolean; onClick: () => void; children: ReactNode }) => (
