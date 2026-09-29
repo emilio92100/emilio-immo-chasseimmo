@@ -20,6 +20,9 @@ import CarteASavoir from './CarteASavoir';
 import BlocSociete from './BlocSociete';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
+import { etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
+import { euros } from '@/lib/mandat';
+import { demanderNouveauBien } from '@/lib/intentions';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -78,6 +81,113 @@ function Li({ ic, l, v }: { ic: string; l: string; v?: string | null }) {
   return <div className={c.li}><span><i className={c.liIc}><Ic n={ic} t={14} /></i>{l}</span><b>{v}</b></div>;
 }
 
+/* ═══ Le bandeau d'un contact qui n'est pas acheteur (V3.32) ═════════════
+   Alexandre : « pour l'acheteur tout est dans le bloc bleu ; pour un vendeur,
+   un propriétaire, c'est assez vide ». Comme pour l'acheteur, sous le nom :
+   ses chiffres et depuis quand on le suit. Un vendeur ou un propriétaire :
+   ses biens, ceux en vente, les visites et les offres sur eux, puis chacun
+   de ses biens en une ligne (étape, prix), un clic l'ouvre. Les autres
+   (notaire, confrère, gardien…) : les échanges, les relances, le dernier
+   échange et la prochaine relance. La société reste à droite du nom ; son
+   détail, juste sous le bandeau — comme pour l'acheteur. Au niveau du
+   module (AGENTS.md §2.4). */
+type BienHero = { id: string; etape: string; titre: string | null; prix: number | null; photo?: string | null; donnees?: Record<string, unknown> | null };
+const ECHANGES = ['appel', 'rdv', 'rdv_planifie', 'note', 'email_libre', 'envoi_externe', 'mail_envoye'];
+const LIB_ECHANGE: Record<string, string> = { appel: 'Appel', rdv: 'Rendez-vous', rdv_planifie: 'Rendez-vous', note: 'Note', email_libre: 'E-mail', envoi_externe: 'Envoi', mail_envoye: 'E-mail' };
+function dureeSuivi(j: number): string {
+  if (j <= 0) return 'aujourd’hui';
+  if (j === 1) return '1 jour';
+  if (j < 45) return `${j} jours`;
+  const mois = Math.round(j / 30.44);
+  if (mois < 12) return `${mois} mois`;
+  const ans = Math.floor(mois / 12), reste = mois % 12;
+  return `${ans} an${ans > 1 ? 's' : ''}${reste ? ` et ${reste} mois` : ''}`;
+}
+const jourCourt = (iso: string) => new Date(iso.length <= 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+function ActiviteHero({ proprio, biens, visites, offres, journal, relances, creeLe, onBien, onCreerBien, onSuivi }: {
+  proprio: boolean; biens: BienHero[] | null; visites: number; offres: number;
+  journal: { type: string; created_at: string }[]; relances: { date_echeance: string; note: string | null }[];
+  creeLe: string | null | undefined; onBien: (id: string) => void; onCreerBien: () => void; onSuivi: () => void;
+}) {
+  /* L'heure de l'affichage, lue une fois (un rendu reste pur). */
+  const [maintenant] = useState(() => Date.now());
+  const jours = creeLe ? Math.max(0, Math.floor((maintenant - Date.parse(creeLe)) / 86_400_000)) : null;
+  const echanges = journal.filter(j => ECHANGES.includes(j.type));
+  const dernier = echanges[0];
+  const prochaine = relances[0];
+  const enVente = (biens || []).filter(b => ['mandat', 'offre', 'compromis', 'suspendu'].includes(b.etape)).length;
+  const compteurs = proprio
+    ? [
+      { k: 'biens', n: biens?.length ?? 0, l: (biens?.length ?? 0) > 1 ? 'biens' : 'bien' },
+      { k: 'vente', n: enVente, l: 'en vente' },
+      { k: 'visites', n: visites, l: visites > 1 ? 'visites' : 'visite' },
+      { k: 'offres', n: offres, l: offres > 1 ? 'offres' : 'offre' },
+    ]
+    : [
+      { k: 'echanges', n: echanges.length, l: echanges.length > 1 ? 'échanges' : 'échange' },
+      { k: 'relances', n: relances.length, l: relances.length > 1 ? 'relances à venir' : 'relance à venir' },
+    ];
+  const clic = (k: string) => {
+    if (proprio && biens?.length === 1 && k !== 'biens') onBien(biens[0].id);
+    else if (proprio && biens?.length) document.getElementById('ses-biens')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else onSuivi();
+  };
+  return (
+    <div className={c.activite}>
+      <div className={c.compteursLigne}>
+        <div className={c.compteurs} aria-label="Son activité">
+          {compteurs.map(x => (
+            <button key={x.k} type="button" className={`${c.compteur} ${x.n ? '' : c.compteurVide}`} onClick={() => clic(x.k)}>
+              <b>{x.n}</b><small>{x.l}</small>
+            </button>
+          ))}
+        </div>
+        {jours !== null && (
+          <div className={c.depuis}>
+            <span className={c.depuisIc}><Ic n="horloge" t={17} e={2} /></span>
+            <span className={c.depuisTx}>
+              <small>Suivi depuis</small>
+              <b>{dureeSuivi(jours)}</b>
+              <i>{`le ${jourCourt(String(creeLe))}`}</i>
+            </span>
+          </div>
+        )}
+      </div>
+      {proprio ? (
+        <div className={c.heroBiens}>
+          {(biens || []).slice(0, 3).map(b => {
+            const e = etapeDe(b.etape);
+            const d = (b.donnees || {}) as Record<string, unknown>;
+            const photo = b.photo || lirePhotos(d.photos)[0]?.url || '';
+            return (
+              <button key={b.id} type="button" className={c.heroBien} onClick={() => onBien(b.id)} title="Ouvrir la fiche du bien">
+                <span className={c.heroBienPh}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {photo ? <img src={photo} alt="" /> : <Ic n="maison" t={16} />}
+                </span>
+                <span className={c.heroBienTx}>
+                  <b>{b.titre || titreBien(d as Parameters<typeof titreBien>[0]) || 'Son bien'}</b>
+                  <small><i style={{ background: e.c }} />{e.lib}{b.prix ? ` · ${euros(b.prix)}` : ''}</small>
+                </span>
+                <Ic n="droite" t={14} e={2.2} />
+              </button>
+            );
+          })}
+          {biens && biens.length > 3 && <span className={c.heroBienPlus}>{`+ ${biens.length - 3} autre${biens.length - 3 > 1 ? 's' : ''}, dans « Ses biens »`}</span>}
+          {biens && !biens.length && (
+            <button type="button" className={c.heroBienVide} onClick={onCreerBien}><Ic n="plus" t={14} e={2.4} /><span>Créer son bien : estimation, mandat, tout y est</span></button>
+          )}
+        </div>
+      ) : (
+        <div className={c.heroFaits}>
+          <span><Ic n="bulle" t={14} /><span>{dernier ? `Dernier échange : ${(LIB_ECHANGE[dernier.type] || 'Échange').toLowerCase()} le ${jourCourt(dernier.created_at)}` : 'Aucun échange noté pour l’instant'}</span></span>
+          {prochaine && <span><Ic n="calendrier" t={14} /><span>{`Prochaine relance le ${jourCourt(prochaine.date_echeance)}${prochaine.note ? ` · ${prochaine.note}` : ''}`}</span></span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
   const [x, setX] = useState<Client>(depart);
   const [edit, setEdit] = useState<Form | null>(null);
@@ -103,6 +213,24 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const principal = typeDe(types[0]);
   const archive = estArchive(x);
 
+  /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32). */
+  const [biensH, setBiensH] = useState<BienHero[] | null>(null);
+  const [vo, setVo] = useState({ visites: 0, offres: 0 });
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const { data, error } = await supabase.from('biens_vente').select('*').eq('client_id', depart.id).order('updated_at', { ascending: false });
+      if (!vivant) return;
+      const l = (error ? [] : data || []) as (BienHero & { archive?: boolean | null })[];
+      setBiensH(l.filter(b => !b.archive));
+      if (!l.length) return;
+      const { data: sv } = await supabase.from('biens_vente_suivi').select('type, statut').in('bien_id', l.map(b => b.id)).in('type', ['visite', 'offre']);
+      if (!vivant) return;
+      const rows = (sv || []) as { type: string; statut: string | null }[];
+      setVo({ visites: rows.filter(r => r.type === 'visite' && r.statut !== 'annulee').length, offres: rows.filter(r => r.type === 'offre').length });
+    })();
+    return () => { vivant = false; };
+  }, [depart.id]);
   useEffect(() => {
     let vivant = true;
     supabase.from('journal').select('*').eq('client_id', depart.id).order('created_at', { ascending: false })
@@ -233,6 +361,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       </div>
 
       <div className={`${c.hero} ${c.heroAvecCo}`}>
+        <div className={c.heroG}>
         <div className={c.heroQui}>
           <AvatarContact c={x} teinte={{ bg: '', fg: '#e0c36e' }} className={c.heroAv} libre />
           <div className={c.heroTxt}>
@@ -255,6 +384,11 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
               <div className={c.heroSource}><Ic n="drapeau" t={13} /><span>{'Source : '}<b>{libelleSource((x as AvecSource).source, (x as AvecSource).source_detail)}</b></span></div>
             )}
           </div>
+        </div>
+        <ActiviteHero proprio={types.includes('vendeur') || types.includes('proprietaire')} biens={biensH} visites={vo.visites} offres={vo.offres}
+          journal={journal} relances={relances} creeLe={x.created_at}
+          onBien={id => onNavigate('biens', { bien: id })} onCreerBien={() => { demanderNouveauBien(x.id); onNavigate('biens'); }}
+          onSuivi={() => document.getElementById('suivi-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         </div>
         <Coordonnees coords={coords} onModifier={() => { setErreur(''); setEdit(formDe(x)); }}
           pied={aUneAdresse ? <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} /> : undefined} />
@@ -336,7 +470,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             </section>
           )}
           {(types.includes('vendeur') || types.includes('proprietaire')) && (
-            <BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours ouvertAuDebut />
+            <div id="ses-biens"><BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours ouvertAuDebut /></div>
           )}
           {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
           {(!estPro(types) || types.includes('vendeur') || types.includes('proprietaire')) && (
@@ -365,7 +499,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         const comptes: Record<string, number> = { tout: items.length, systeme: items.filter(i => !manuels.includes(i.data.type)).length };
         for (const [k, t] of Object.entries(GR)) comptes[k] = items.filter(i => t.includes(i.data.type)).length;
         return (
-          <section className={c.suiviBande}>
+          <section id="suivi-contact" className={c.suiviBande}>
             <div className={c.suiviTete}><b>Le suivi</b><span>{`tout ce qui s’est passé avec ${x.prenom || 'ce contact'}`}</span></div>
             <div className={c.suiviCorps}>
               <FriseSuivi titre="Historique" filtresVisibles={['tout', 'appel', 'rdv', 'note', 'communications', 'systeme']}
