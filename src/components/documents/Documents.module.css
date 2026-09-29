@@ -15,21 +15,28 @@
 /* Les deux endroits où descend le sous-menu Documents (V3.18). */
 .ancre { scroll-margin-top: 16px; }
 .listeT { margin: 6px 0 -6px; }
-.modeles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* Des modèles plus ramassés (V3.32) : une ligne chacun, la description en
+   une ligne (entière au survol) ; la liste des documents remonte d'autant. */
+.modeles { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; }
 .modele {
-  position: relative; display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px 16px 14px;
-  background: white; border: 1px solid #e3e8f0; border-radius: 16px; cursor: pointer; font-family: inherit;
+  position: relative; display: flex; flex-direction: row; align-items: center; gap: 12px; text-align: left; padding: 10px 12px;
+  background: white; border: 1px solid #e3e8f0; border-radius: 14px; cursor: pointer; font-family: inherit; min-width: 0;
   transition: border-color .15s, box-shadow .15s, transform .15s;
 }
+.modele > div { min-width: 0; flex: 1 1 auto; }
 .modele:hover { border-color: #c9a84c; box-shadow: 0 6px 18px rgba(26,35,50,.07); transform: translateY(-1px); }
 .modele:focus-visible { outline: 2px solid #c9a84c; outline-offset: 2px; }
 .modeleIc {
-  width: 40px; height: 40px; border-radius: 12px; background: var(--emilio-fond); color: #c9a84c;
+  width: 36px; height: 36px; border-radius: 11px; background: var(--emilio-fond); color: #c9a84c;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.modele b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 800; color: var(--emilio); }
-.modele p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #64748b; }
-.modeleAction { margin-top: auto; padding-top: 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #a07c28; }
+.modele b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 800; color: var(--emilio); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.modele p { margin: 1px 0 0; font-size: 12px; line-height: 1.4; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.modeleAction { flex-shrink: 0; display: inline-flex; align-items: center; font-size: 0; color: #c9a84c; }
+.modeleAction svg { width: 16px; height: 16px; }
+.modele:hover .modeleAction { color: #a07c28; }
+.modeleInfo p { display: none; }
+.modeleInfo .modeleNote { display: block; }
 .modeleInfo { cursor: default; background: #f8fafc; }
 .modeleInfo:hover { border-color: #e3e8f0; box-shadow: none; transform: none; }
 .modeleInfo .modeleIc { background: white; border: 1px solid #e3e8f0; color: #64748b; }
@@ -405,11 +412,14 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 }
 @media (max-width: 760px) {
   .page { padding: 14px 12px 28px; gap: 14px; }
-  .modeles { grid-template-columns: 1fr; gap: 8px; }
-  .modele { flex-direction: row; align-items: center; gap: 12px; padding: 12px 13px; }
+  /* Deux par ligne sur le téléphone (V3.32) : la liste arrive plus vite. */
+  .modeles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .modele { flex-direction: row; align-items: center; gap: 9px; padding: 10px; border-radius: 13px; min-height: 58px; }
   .modele > div { min-width: 0; flex: 1 1 auto; }
+  .modeleIc { width: 32px; height: 32px; border-radius: 10px; }
+  .modele b { white-space: normal; font-size: 13px; line-height: 1.25; }
   .modele p { display: none; }
-  .modeleNote { display: block; }
+  .modeleInfo .modeleNote { display: none; }
   .edApercuT span + span { display: none; }
   .edEtat .statut { display: none; }
   .modeleAction { display: none; }

@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { STATUTS, jourLong, modele, type Categorie, type Statut } from '@/lib/actes';
 import { Ic } from './ApercuActe';
 import BlocRepliable from './BlocRepliable';
+import NouveauDocument from './NouveauDocument';
 import { libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
 import s from './Documents.module.css';
 
@@ -77,6 +79,10 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
   const [erreur, setErreur] = useState('');
   const [tout, setTout] = useState(false);
   const [ouvre, setOuvre] = useState('');
+  /* « + Nouveau document » (V3.32) : la fenêtre du choix s'ouvre ici, sur la
+     fiche, sans changer de rubrique ; on ne part dans Documents qu'une fois
+     le document créé, pour le remplir. */
+  const [nouveau, setNouveau] = useState(false);
 
   useEffect(() => {
     let vivant = true;
@@ -126,6 +132,7 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
   const montres = tout ? liste : liste.slice(0, VISIBLES);
 
   return (
+    <>
     <BlocRepliable ic={confrere ? 'accord' : 'doc'} titre={confrere ? 'Ses délégations' : 'Ses documents'} n={liste.length} ouvertAuDebut={confrere || ouvert}
       resume={liste.length > 0 && (signes > 0 || aSigner > 0) ? (
         <>
@@ -134,8 +141,8 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
         </>
       ) : undefined}
       action={confrere
-        ? <button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { delegation: clientId })}>+ Déléguer<span className={s.rpLong}> un mandat</span></button>
-        : <button type="button" className={s.dcLien} onClick={() => onNavigate('documents', { nouveau: clientId })}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
+        ? <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}>+ Déléguer<span className={s.rpLong}> un mandat</span></button>
+        : <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
       {liste.length ? (
         <div className={s.dcListe}>
           {montres.map(el => (
@@ -164,5 +171,12 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
           : `Aucun document pour ${prenom || 'ce client'} pour l’instant. Un mandat, un avenant, un bon de visite ou une offre rattaché à lui apparaîtra ici, avec son exemplaire signé.`}</div>
       )}
     </BlocRepliable>
+    {/* Hors du bloc : replié, il ne rend pas ses enfants. */}
+    {nouveau && typeof document !== 'undefined' && createPortal(
+      <NouveauDocument modeleId={confrere ? 'delegation' : undefined} clientId={confrere ? undefined : clientId} confrereId={confrere ? clientId : undefined}
+        onFermer={() => setNouveau(false)}
+        onCree={r => { setNouveau(false); onNavigate('documents', { ouvrir: r.id }); }} />,
+      document.body)}
+    </>
   );
 }

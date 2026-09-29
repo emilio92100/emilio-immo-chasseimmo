@@ -654,7 +654,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           <div className={s.blocT}><h2>Créer un document</h2><span>Le texte s’écrit à partir de tes réponses</span></div>
           <div className={s.modeles}>
             {MODELES.map(m => (
-              <button key={m.id} type="button" className={s.modele} onClick={() => setNouveau({ modele: m.id })}>
+              <button key={m.id} type="button" className={s.modele} title={m.description} onClick={() => setNouveau({ modele: m.id })}>
                 <span className={s.modeleIc}><Ic n={m.ic} t={20} /></span>
                 <div>
                   <b>{m.titre}</b>
