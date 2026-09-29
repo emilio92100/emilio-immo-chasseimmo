@@ -46,9 +46,10 @@
     overflow: visible;
     padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
-  /* La bande des fiches ouvertes se pose au-dessus des onglets : on garde
-     de quoi voir le bas de la page derrière elle. */
-  .contentAvecFiches { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+  /* V3.31 : pas de bande des fiches ouvertes au téléphone (elle chargeait
+     l'écran, à la demande d'Alexandre) : le bas de page reste celui des
+     onglets. */
+  .contentAvecFiches { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   /* La carte (V3.28) : pas de barre du haut, la carte monte jusqu'en haut. */
   .surCarte > header { display: none; }
 }

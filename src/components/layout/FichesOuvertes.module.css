@@ -1,6 +1,8 @@
 /* Les fiches ouvertes — voir FichesOuvertes.tsx.
    Ordinateur : une barre au pied de la colonne principale, toujours visible.
-   Téléphone : une bande qui défile au doigt, juste au-dessus des onglets. */
+   Téléphone : plus de barre depuis la V3.31 (« ça crée une surcharge ») ;
+   les règles de la bande ci-dessous restent, masquées, si on la veut un
+   jour sur tablette. */
 
 .barre {
   flex-shrink: 0; display: flex; align-items: center; gap: 12px;
@@ -124,4 +126,9 @@
      sous l'arrondi, et s'y efface. */
   .barre { overflow: hidden; }
   .liste { margin: 0 -6px; padding: 2px 6px; }
+}
+
+/* V3.31 : sur téléphone, pas de barre des fiches ouvertes. */
+@media (max-width: 900px) {
+  .barre { display: none; }
 }
