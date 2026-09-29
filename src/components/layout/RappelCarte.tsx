@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, etatCarte, lireIdentite, type EtatCarte } from '@/lib/agence';
+import { jourParis } from '@/lib/mandat';
 
 /* ═══ Le rappel de la carte professionnelle ═══════════════════════════════
    Deux mois avant l'échéance saisie dans Paramètres › Agence, un bandeau sur
@@ -10,7 +11,7 @@ import { CLE_IDENTITE, etatCarte, lireIdentite, type EtatCarte } from '@/lib/age
    « Plus tard » le range jusqu'au lendemain (ce navigateur seulement). */
 
 const CLE_MASQUE = 'emilio_rappel_carte_masque';
-const auj = () => new Date().toISOString().slice(0, 10);
+const auj = () => jourParis();
 
 export default function RappelCarte({ page, onNavigate }: { page: string; onNavigate: (p: string) => void }) {
   const [carte, setCarte] = useState<(EtatCarte & { fin: string }) | null>(null);
