@@ -7,7 +7,7 @@ import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 import { etatMandat, finRetractationPour, rechercheDepuis, masquerEmail, type Mandant, type Societe } from '@/lib/mandat';
-import { lireReserve, signeSansNumero } from '@/lib/mandat-serveur';
+import { adressesClient, lireReserve, mandatDocumentEnRoute, signeSansNumero } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 import { modele } from '@/lib/actes';
 import type { DocEspace } from '@/components/espace/SignatureMandat';
@@ -343,6 +343,11 @@ export default async function PageEspace({ params, searchParams }: {
   });
   if (etatM === 'sans_numero' && signeSansNumero(reserve, recherche.mandat_propose_le)) etatM = 'a_signer';
   const coord = coordRes.data || null;
+  /* Un mandat de recherche préparé dans Documents, pas encore signé (V3.32) :
+     on ne lui propose pas en plus celui de l'espace — ce serait un second
+     mandat. Il signe celui-là, avec son lien ; sa demande de visite attend. */
+  const enRoute = etatM !== 'valide' ? await mandatDocumentEnRoute(supabase, recherche.id as string, adressesClient(coord)) : null;
+  if (enRoute) etatM = 'sans_numero';
   const prefill: Mandant = derniereSig && derniereSig.statut === 'en_cours' && derniereSig.mandant
     ? derniereSig.mandant as Mandant
     : {
@@ -405,6 +410,7 @@ export default async function PageEspace({ params, searchParams }: {
       id: c.id, prenom: c.personne?.prenom || '', nom: c.personne?.nom || '', email: c.personne?.email || '',
       statut: c.statut, invite: c.invite_le, signe: c.signe_le, expire: c.lien_expire_le,
     })),
+    enRoute: enRoute ? { lien: enRoute.lien } : null,
   };
 
   /* ─── Ses documents signés en ligne (rubrique Documents du CRM) ───
