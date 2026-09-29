@@ -1452,6 +1452,33 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
   bien posé). Le bandeau lit le dernier `rapprochement` de la recherche : grand avant, une ligne
   « Dernier rapprochement le … · Refaire » après. Il annonce aussi, sans rien lancer, les mandats
   qui lui correspondent déjà (`mandatsPour`, 70 % et plus).
+- **Le petit message après l'enregistrement des critères** (`toastRappro`, `FicheClient.tsx`) :
+  si un de vos mandats lui correspond déjà, « Recherche de … enregistrée · « 4 pièces… » lui
+  correspond à 89 % » et « Voir », qui lance le rapprochement sur vos mandats, ceux-là cochés
+  (prop `depart` de `Rapprochement`).
+- **La fiche bien, côté acheteurs** (`biens/AcheteursBien.tsx`) : l'onglet Acheteurs liste les
+  recherches qui correspondent (filtres Tous · Correspondent · En partie), avec appeler, SMS,
+  mail, l'état de chacun (« Nouveau : recherche ouverte hier », « Dans sa sélection depuis… »,
+  « Présenté le … · l'a ouvert · veut visiter ») et **« Sélection ou envoi… »** : le mettre dans
+  leur sélection (`mettreEnSelection`, ligne `biens` à l'étape `selection`, rien ne part), l'envoyer
+  dans leur espace (`envoyerDansEspace`, qui présente maintenant aussi un bien resté en
+  sélection), ou, pour un seul acheteur, **« Envoyer par mail… »** : sa fiche s'ouvre sur le mail
+  d'envoi habituel, ce bien choisi (`OuvertureFiche.envoi`). Avant le mandat (à suivre,
+  estimation) : la même liste sans envoi, « L'envoi s'ouvre au mandat ». En pause, vendu, retiré :
+  en lecture. « Aussi dans leur dossier » garde ceux qui ont le bien sans plus correspondre.
+- **La Vue d'ensemble d'un bien** (`biens/VueBien.tsx`) : quatre cartes (le mandat et le temps
+  qui reste — ou, avant lui, le rendez-vous puis l'estimation —, les acheteurs, les visites et
+  offres avec ce qu'en disent les comptes rendus, le propriétaire à appeler), le bien en bref,
+  les prochaines visites, « Dernièrement » (quatre lignes de l'historique). Avant le mandat,
+  « Qui pourrait l'acheter » s'affiche dès la Vue d'ensemble.
+- **Les alertes de rapprochement** (`src/lib/alertes-rappro.ts`, en tête de la page Relances) :
+  « Un acheteur arrive » (une recherche de moins de trois semaines à qui un de vos mandats
+  correspond, pas encore dans son dossier ; « Voir » ouvre sa fiche et lance le rapprochement, ces
+  mandats cochés ; disparaît dès qu'un rapprochement est fait) et « Un mandat arrive » (un bien en
+  vente depuis moins de trois semaines, et des acheteurs qui lui correspondent sans l'avoir ;
+  « Voir les acheteurs » ouvre la fiche du bien sur l'onglet Acheteurs, `demanderOngletBien`).
+  Rien en base : tout se calcule à la lecture ; « Plus tard » les met de côté une semaine, noté
+  dans les `donnees` du bien (`alerteAcheteurs`, `alertesRecherches`).
 
 ### V3.28 — 29 septembre 2026 · la carte du CRM sur téléphone, plus de place
 
