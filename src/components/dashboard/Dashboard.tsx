@@ -5,6 +5,7 @@ import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
 import { estAcheteur } from '@/lib/contacts';
+import { jourParis } from '@/lib/mandat';
 import { honorairesEncaisses, moisDe, moisCourant, eurosRonds, type Encaisse } from '@/lib/activite';
 
 /* Les étapes d'une transaction, dans l'ordre de la fiche client. */
@@ -127,7 +128,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
   /* Des acheteurs : un notaire ou un vendeur n'est ni actif ni prospect. */
   const actifs    = clients.filter(c => estAcheteur(c) && c.statut === 'actif').length;
   const prospects = clients.filter(c => estAcheteur(c) && c.statut === 'prospect').length;
-  const today     = new Date().toISOString().split('T')[0];
+  const today     = jourParis();
 
   /* Deux familles, et elles ne veulent pas dire la même chose :
        « à faire »  → l'échéance est arrivée ou dépassée, ça appelle un geste
