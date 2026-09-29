@@ -1,0 +1,59 @@
+/* ═══ Un long texte libre, rangé en blocs (V3.30) : voir NoteRiche.tsx ═══ */
+
+.note { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-family: 'DM Sans', sans-serif; }
+
+/* Le corps : il se replie au-delà d'une hauteur, et glisse à l'ouverture. */
+.corps { position: relative; overflow: hidden; transition: max-height .45s cubic-bezier(.22, .9, .3, 1); }
+.replie::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 90px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, var(--note-fond, #fff) 88%);
+}
+
+/* Les blocs : en colonnes quand il y a la place (chacun reste entier), les
+   uns sous les autres sinon. */
+.colonnes { columns: 2 330px; column-gap: 16px; }
+.pile { display: flex; flex-direction: column; gap: 10px; }
+.colonnes > * { break-inside: avoid; margin-bottom: 12px; }
+.pile > * { margin: 0; }
+/* Empilé (dans une carte étroite) : pas de cadre autour de chaque bloc. */
+.pile > .bloc { padding: 0; border: none; background: none; border-radius: 0; }
+.pile > .bloc + .bloc { padding-top: 10px; border-top: 1px dashed #e3e8f0; }
+
+.bloc {
+  display: flex; flex-direction: column; gap: 5px; min-width: 0;
+  padding: 12px 14px 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #eef1f6;
+}
+.titre {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 2px;
+  font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.1px;
+}
+.titre i { width: 6px; height: 6px; border-radius: 50%; background: #c9a84c; flex-shrink: 0; }
+
+.p { margin: 0; font-size: 13.5px; line-height: 1.6; color: #3d4a5c; overflow-wrap: anywhere; }
+.p b, .puces b { color: #1a2332; font-weight: 700; }
+
+.puces { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.puces li {
+  position: relative; padding: 6px 10px 6px 24px; border-radius: 10px; background: #fff; border: 1px solid #eef1f6;
+  font-size: 13px; line-height: 1.5; color: #3d4a5c; overflow-wrap: anywhere;
+}
+.puces li::before { content: ''; position: absolute; left: 11px; top: 14px; width: 5px; height: 5px; border-radius: 50%; background: #94a3b8; }
+
+.lien { color: #2e4166; font-weight: 700; text-decoration: none; border-bottom: 1px dotted #9fb0c9; white-space: nowrap; }
+.lien:hover { color: #1a2332; border-bottom-style: solid; }
+
+.deplier {
+  align-self: center; display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 16px; border-radius: 99px;
+  border: 1px solid #e3e8f0; background: #fff; color: #2e4166; font: 700 13px 'DM Sans', sans-serif; cursor: pointer;
+  box-shadow: 0 6px 16px -12px rgba(26, 35, 50, .45); transition: background .15s, border-color .15s;
+}
+.deplier:hover { background: #f8fafc; border-color: #d5deeb; }
+
+@media (max-width: 640px) {
+  .colonnes { columns: 1; }
+  .bloc { padding: 11px 12px; }
+  .p { font-size: 13.5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .corps { transition: none; }
+}
