@@ -1479,6 +1479,27 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
   « Voir les acheteurs » ouvre la fiche du bien sur l'onglet Acheteurs, `demanderOngletBien`).
   Rien en base : tout se calcule à la lecture ; « Plus tard » les met de côté une semaine, noté
   dans les `donnees` du bien (`alerteAcheteurs`, `alertesRecherches`).
+- **La fiche d'un bien, les autres onglets refaits** (`biens/OngletsBien.tsx`, maquettes 13 à 17
+  du canevas ; FicheBien prépare les données et branche les actions) :
+  - **Le bien** : l'annonce avec un anneau (le texte compte pour 60 %, les mentions obligatoires
+    pour le reste : pas écrite, jamais plus de 40 %), les photos en bande (« + N »), puis une
+    carte par famille, chacune de sa couleur (intérieur bleu, immeuble violet, copropriété
+    sarcelle, extérieur vert, énergie ambre avec les sept lettres, charges ardoise, prix or). « En
+    bref » n'y est plus : il reste dans la Vue d'ensemble.
+  - **Les pièces** : en liste (jauge de surface, exposition, un mot) ou en cartes ; le choix est
+    gardé dans le navigateur (`localStorage`, clé `emilio.pieces.vue`).
+  - **Visites et offres** : la date en pavé (la prochaine en marine), « À venir · Passées ·
+    Toutes » ; chaque offre dit son écart au prix, ses étapes (reçue, réponse, compromis) et le
+    délai de réponse (`donnees.jusquau`). Les offres ouvertes d'abord.
+  - **Documents** : une tuile par sorte (mandat, offres d'achat, bons de visite, compromis — celle-ci
+    s'ouvre quand une offre est acceptée), la liste des documents, le mandat en détail ; à
+    droite le dossier avec un anneau (reçus + non concernés sur le total). « Non concerné »
+    s'allume en gris.
+  - **Historique** : la frise du Suivi d'un contact (mêmes styles, `FriseSuivi.module.css`),
+    « À venir » en haut (visites prévues, réponses d'offre attendues), filtres à pastilles de
+    couleur ; ce que le CRM note tout seul (bien créé, document préparé, fiche ouverte) en ligne
+    discrète. À côté, le parcours du bien (étapes datées d'après l'historique) et « En N jours de
+    vente » (visites faites, offres, acheteurs présentés, fiches ouvertes).
 - **Les logos de l'agence** sont rangés dans `public/logos/` : les originaux d'Alexandre (le E
   blanc sur bleu, le E bleu sur blanc, en 1000 px) et leurs déclinaisons — `e-180`, `e-192`,
   `e-512` (écran d'accueil), `e-maskable-512` (Android découpe l'icône en rond : le E y est
