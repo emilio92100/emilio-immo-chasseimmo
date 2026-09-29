@@ -68,8 +68,10 @@ function depuisMandat(x: MandatRecherche): Element {
 /* `confrere` (V3.19) : sur la fiche d'un confrère, « Ses délégations » —
    les mandats que tu lui as confiés (`donnees.confrereId`), et « Déléguer
    un mandat ». */
-export default function DocumentsDuClient({ clientId, prenom, onNavigate, confrere = false }: {
+export default function DocumentsDuClient({ clientId, prenom, onNavigate, confrere = false, ouvert = false }: {
   clientId: string; prenom?: string; onNavigate: (page: string, data?: unknown) => void; confrere?: boolean;
+  /* Ouvert d'emblée : l'onglet « Documents » de la fiche contact (V3.29). */
+  ouvert?: boolean;
 }) {
   const [liste, setListe] = useState<Element[] | null>(null);
   const [erreur, setErreur] = useState('');
@@ -124,7 +126,7 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
   const montres = tout ? liste : liste.slice(0, VISIBLES);
 
   return (
-    <BlocRepliable ic={confrere ? 'accord' : 'doc'} titre={confrere ? 'Ses délégations' : 'Ses documents'} n={liste.length} ouvertAuDebut={confrere}
+    <BlocRepliable ic={confrere ? 'accord' : 'doc'} titre={confrere ? 'Ses délégations' : 'Ses documents'} n={liste.length} ouvertAuDebut={confrere || ouvert}
       resume={liste.length > 0 && (signes > 0 || aSigner > 0) ? (
         <>
           {signes > 0 && <span className={s.dcOk}><Ic n="check" t={12} e={2.8} />{`${signes} signé${signes > 1 ? 's' : ''}`}</span>}
