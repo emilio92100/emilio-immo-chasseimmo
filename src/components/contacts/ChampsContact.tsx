@@ -11,6 +11,7 @@ import {
 import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import BlocRepliable from '@/components/documents/BlocRepliable';
+import AvatarContact from './AvatarContact';
 import sd from '@/components/documents/Documents.module.css';
 import c from './Contacts.module.css';
 
@@ -233,7 +234,7 @@ export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false,
    joindre, et depuis quand on ne s'est rien dit. L'onglet « Acheteurs »
    garde son tableau détaillé ; « Tous » et les autres types, cette liste. */
 type ContactListe = {
-  id: string; prenom: string; nom: string; reference?: string | null; couple?: boolean | null; conjoint?: unknown;
+  id: string; prenom: string; nom: string; civilite?: string | null; reference?: string | null; couple?: boolean | null; conjoint?: unknown;
   types?: unknown; pro?: unknown; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null; archive?: boolean | null;
   type_bien?: string | null; nb_pieces_min?: number | null; surface_min?: number | null; budget_max?: number | null; secteurs?: string[] | null;
 };
@@ -282,7 +283,6 @@ export function LigneContact({ x, biens, derniere, onOuvrir, onBien }: {
   const t = typeDe(types.find(k => k !== 'acheteur') || types[0]);
   const principal = types.includes('acheteur') ? typeDe('acheteur') : t;
   const tel = x.telephones?.[0], mail = x.emails?.[0];
-  const initiales = `${(x.prenom || x.nom || '?')[0]}${x.prenom && x.nom ? x.nom[0] : ''}`.toUpperCase();
   const pro = ligneContact(x);
   const recherche = types.includes('acheteur') ? resumeRecherche(x) : '';
   const vend = types.includes('vendeur') || types.includes('proprietaire');
@@ -290,7 +290,9 @@ export function LigneContact({ x, biens, derniere, onOuvrir, onBien }: {
   return (
     <div role="button" tabIndex={0} className={`${c.lLigne} ${x.archive ? c.lArchive : ''}`} onClick={onOuvrir} onKeyDown={e => { if (e.key === 'Enter') onOuvrir(); }}>
       <span className={c.lQui}>
-        <span className={c.lAv} style={{ background: principal.fond, color: principal.c, boxShadow: `inset 0 0 0 2px ${principal.c}33` }}>{initiales}</span>
+        {/* Le même petit personnage que dans « Acheteurs » (V3.31), à la couleur
+            de son type ; une mallette pour un professionnel. Avant : ses initiales. */}
+        <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} />
         <span className={c.lNom}>
           <b title={nom}>{nom}</b>
           <span className={c.puces}>{types.map(k => <Puce key={k} k={k} />)}</span>
