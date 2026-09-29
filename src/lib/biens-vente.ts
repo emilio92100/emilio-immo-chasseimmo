@@ -258,9 +258,17 @@ export const ETAPES_BIEN: EtapeBien[] = [
         nomCarte: (d, i) => (d.qui === 'sci' ? 'Le gérant' : d.qui === 'couple' ? `Propriétaire ${i + 1}` : d.qui === 'indivision' ? `Propriétaire ${i + 1}` : 'Le propriétaire'),
         ajouter: () => 'Ajouter un propriétaire' },
       { t: 'titre', cle: 't-projet', lib: 'Son projet', ic: 'drapeau' },
-      { t: 'choix', cle: 'motif', lib: 'Pourquoi il vend', ic: 'drapeau', options: [
-        { v: 'achat', l: 'Il achète ailleurs', ic: 'cle' }, { v: 'succession', l: 'Succession', ic: 'bail' }, { v: 'separation', l: 'Séparation', ic: 'separation' },
-        { v: 'mutation', l: 'Mutation', ic: 'valise' }, { v: 'investissement', l: 'Investissement', ic: 'courbe' }, { v: 'autre', l: 'Autre', ic: 'points' },
+      /* V3.29 : « pour plus grand », « pour plus petit » à part, à la demande
+         d'Alexandre ; « Il achète ailleurs » (valeur `achat`) reste pour le reste. */
+      { t: 'choix', cle: 'motif', lib: 'Pourquoi il vend', ic: 'drapeau', tuiles: true, options: [
+        { v: 'plusGrand', l: 'Pour plus grand', aide: 'La famille s’agrandit', ic: 'agrandir' },
+        { v: 'plusPetit', l: 'Pour plus petit', aide: 'Les enfants partis, la retraite', ic: 'reduire' },
+        { v: 'achat', l: 'Il achète ailleurs', aide: 'Même taille, un autre quartier', ic: 'cle' },
+        { v: 'mutation', l: 'Mutation', aide: 'Un travail dans une autre ville', ic: 'valise' },
+        { v: 'succession', l: 'Succession', aide: 'Un bien reçu en héritage', ic: 'bail' },
+        { v: 'separation', l: 'Séparation', aide: 'Divorce, fin de PACS', ic: 'separation' },
+        { v: 'investissement', l: 'Investissement', aide: 'Il vend un bien qu’il louait', ic: 'courbe' },
+        { v: 'autre', l: 'Autre', ic: 'points' },
       ] },
       { t: 'choix', cle: 'delai', lib: 'Son délai', ic: 'chrono', options: DELAIS },
       { t: 'choix', cle: 'origine', lib: 'Comment il est venu', ic: 'boussole', options: [
