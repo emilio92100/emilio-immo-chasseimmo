@@ -68,6 +68,11 @@ export async function POST(req: NextRequest) {
     if (error || !data?.user) {
       return NextResponse.json({ ok: false, error: 'Session refusée.' }, { status: 401 });
     }
+    /* V3.43 : une session anonyme (si la connexion anonyme était un jour
+       activée dans Supabase) n'ouvre pas le CRM. */
+    if ((data.user as { is_anonymous?: boolean }).is_anonymous) {
+      return NextResponse.json({ ok: false, error: "Ce compte n'a pas accès à ce CRM." }, { status: 403 });
+    }
     utilisateur = { id: data.user.id, email: data.user.email };
   } catch {
     return NextResponse.json(
