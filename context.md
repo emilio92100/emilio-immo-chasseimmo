@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.42 · 30 septembre 2026**
+**Version 3.43 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1432,6 +1432,71 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.43 — 30 septembre 2026 · le diagnostic : sécurité et cohérence
+
+Alexandre : « fais un diagnostic du code, sécurité ou autre ». Trois relectures (accès, fichiers et
+fuites, cohérence des données), chaque constat revérifié dans le code. Rien de critique ni
+d'ouvert au public ; ce qui suit est corrigé.
+- **Les données**
+  - `enregistrerBien(id, d, base)` et `changerEtape` ne réécrivent plus toute la fiche depuis
+    l'écran : seules les clés changées depuis `base` sont posées sur la fiche relue en base
+    (`fusion`, biens/outils.ts). Avant, la fiche ouverte sur l'ordinateur effaçait la visite saisie
+    sur la tablette, ou le mandat noté par la signature en ligne. Les appels passent leur base :
+    FicheBien (`prev.donnees`), EditeurBien et VisiteSurPlace (`vu`, mis à jour à chaque
+    enregistrement), FenDefinirEstimation, FenPrix.
+  - Les photos d'un bien en vente (`photos-vente`) ne sont plus effacées quand des acheteurs ont
+    reçu le bien (`bienPartage`) : leur copie montre les mêmes fichiers. Supprimer un bien : la ligne
+    d'abord, les fichiers ensuite.
+  - V3.42 corrigée : `finDuMandat` prend la limite totale pour tout mandat prorogé (exclusif compris ;
+    la liste disait « Exclusivité terminée » au bout de trois mois) ; `bienConcerne` couvre aussi
+    sous offre et sous compromis (« Ne rien changer » proposé d'office).
+  - Documents : supprimer un brouillon relit d'abord son état, supprime la ligne (vérifiée), puis
+    ses fichiers ; l'action `retirer` de /api/documents refuse les fichiers d'un document qui n'est
+    plus un brouillon.
+  - Listes au-delà de 1 000 lignes (`toutLire`) : recherche de la barre du haut, tableau de bord,
+    Nouveau mail, carte, contacts des biens, Nouveau document, Documents (500 documents et 300
+    mandats en ligne avant), noms des clients par paquets de 150.
+  - `genererReference` : le plus grand numéro de l'année, plus le tri alphabétique (cassé à 1000).
+  - Le mail du point automatique : la ligne du suivi est écrite avant l'envoi, retirée si le mail ne
+    part pas (un échec d'écriture renvoyait le mail chaque jour).
+  - Fin du mandat de recherche : `ajouterMois` (lib/mandat.ts) partout, en mois comme le texte
+    (plus 365 jours ; la saisie manuelle de FicheClient décalait d'un jour au passage de l'heure
+    d'été). `finRetractation` : 23 h 59 à l'heure de Paris du jour (l'été, la limite tombait à
+    0 h 59 le lendemain et « jusqu'au » affichait le lendemain).
+  - Espace : un avis de visite ne s'enregistre qu'une fois (`avis_client_le` encore vide) ; « Je
+    veux visiter » ne prévient Alexandre qu'une fois par jour et par bien.
+  - Honoraires à la charge du vendeur : le pourcentage affiché est sur le prix (5 %, plus 5,26 %).
+- **La signature en ligne**
+  - L'essai du code est réservé avant la comparaison, en une requête qui compare puis écrit
+    (`code_essais` égal à ce qu'on a lu) : documents (`validerSignature`), co-signataires
+    (/api/signer), mandat de recherche (/api/espace/mandat). Des essais lancés tous en même temps
+    passaient la limite de cinq ; un double clic signait deux fois.
+  - Le co-signataire du mandat de recherche reçoit son code à l'adresse qui a reçu son lien, jamais
+    à une adresse tapée sur la page (champ en lecture seule, `Champ lecture`). Le certificat dit
+    « Adresse indiquée par <premier signataire> ».
+  - Un lien de signature qui ne sert plus (expiré, refusé, fini) n'envoie plus le mandat ni les
+    coordonnées des signataires à la page ; un document, plus son texte.
+  - Le certificat ne dit « signature tracée » que si le tracé a été rangé.
+- **Les accès**
+  - proxy.ts : une action du CRM (méthode autre que GET) venue d'un autre site (en-tête Origin d'un
+    autre hôte) est refusée (403). Sans Origin, le badge suffit, comme avant.
+  - /api/login refuse une session anonyme. La page de connexion refuse un « suite » avec blanc,
+    tabulation ou barre inverse (redirection vers un autre site).
+  - /api/point-auto (mode `etat`) ne renvoie plus le lien d'espace de chaque client.
+  - /api/upload-photos : http(s) vers une adresse publique seulement (DNS vérifié, pas de réseau
+    privé ni localhost), redirections revérifiées (trois au plus), une vraie image reconnue à ses
+    premiers octets, 15 Mo au plus, `bien_id` contrôlé. `photos.ts` ne reconnaît « nos » photos
+    qu'à leur adresse complète (notre serveur, le chemin du bucket, sans paramètre).
+  - Les routes publiques de l'espace ne renvoient plus le texte des erreurs internes.
+  - /bien/<id> : `noindex`.
+- **Laissé tel quel, en connaissance de cause**
+  - Le badge de connexion vaut 30 jours et la déconnexion ne l'annule pas ailleurs : changer
+    `EMILIO_ACCESS_CODE` dans Vercel déconnecte tout le monde. `EMILIO_MAILS_AUTORISES` doit contenir
+    l'adresse d'Alexandre (sinon tout compte Supabase du projet entre).
+  - Clore les relances « Veut visiter » se fait sur le titre du bien (deux biens au même titre chez
+    le même client : les deux se closent) ; il faudrait une colonne `relances.bien_id` (SQL).
+  - Le partage d'une fiche depuis l'espace (5 par jour) n'est pas atomique.
 
 ### V3.42 — 30 septembre 2026 · le mandat de vente relié à la fiche du bien
 
