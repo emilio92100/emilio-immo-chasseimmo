@@ -4,6 +4,7 @@ import AvatarContact, { type Personne } from '@/components/contacts/AvatarContac
 import { createPortal } from 'react-dom';
 import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
 import { toutLire } from '@/lib/registre';
+import { libelleVisites } from '@/lib/visites';
 import { nommerRecherche, resumerRecherche } from '@/lib/espace';
 import { prendreDemandeRendezVous, signalerMaj, EVT_NOUVEAU_RDV, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
@@ -380,6 +381,12 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   const premierDuMois = cleDe(new Date(dJour.getFullYear(), dJour.getMonth(), 1)), dernierDuMois = cleDe(new Date(dJour.getFullYear(), dJour.getMonth() + 1, 0));
   const duMois = visibles.filter(e => e.jour <= dernierDuMois && dernierJour(e) >= premierDuMois);
   const compter = (l: Ev[], t: TypeRdv) => l.filter(e => e.type === t).length;
+  /* « 3 visites faites · 2 prévues » (V3.33) : jamais « 5 visites » tout court. */
+  const visitesDe = (l: Ev[]) => {
+    const v = l.filter(e => e.type === 'visite');
+    const f = v.filter(e => e.debut < maintenant).length;
+    return libelleVisites(f, v.length - f) || 'aucune visite';
+  };
 
   let titre = '', sous = '';
   if (vue === 'jour') {
@@ -390,10 +397,10 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   } else if (vue === 'semaine') {
     const a = depuisCle(semaine[0]), b = depuisCle(semaine[6]);
     titre = a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} ${MOIS[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MOIS[a.getMonth()]} – ${b.getDate()} ${MOIS[b.getMonth()]}`;
-    sous = `${deLaSemaine.length} rendez-vous · ${pl(compter(deLaSemaine, 'visite'), 'visite')} · ${pl(compter(deLaSemaine, 'signature'), 'signature')}`;
+    sous = `${deLaSemaine.length} rendez-vous · ${visitesDe(deLaSemaine)} · ${pl(compter(deLaSemaine, 'signature'), 'signature')}`;
   } else {
     titre = maj(`${MOIS[dJour.getMonth()]} ${dJour.getFullYear()}`);
-    sous = `${duMois.length} rendez-vous dans le mois · ${pl(compter(duMois, 'visite'), 'visite')} · ${pl(compter(duMois, 'signature'), 'signature')}`;
+    sous = `${duMois.length} rendez-vous dans le mois · ${visitesDe(duMois)} · ${pl(compter(duMois, 'signature'), 'signature')}`;
   }
 
   const decaler = (sens: number) => {
