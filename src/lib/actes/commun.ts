@@ -316,7 +316,8 @@ export function aRetractation(m: Modele, d: Donnees): boolean {
    pas de rétractation, ou ce cadre n'est pas celui d'un mandant). */
 export const DEMANDE_EXPRESSE = 'Je demande que l’Agence commence sa mission dès ma signature, sans attendre la fin du délai de rétractation de 14 jours. Je sais que je garde mon droit de me rétracter pendant ce délai.';
 export function demandeExpresse(m: Modele, d: Donnees, cle: string): string | null {
-  if (cle === 'agence' || cle === 'conjoint' || !electronique(d) || d.execution !== 'oui') return null;
+  /* Ni l'agence, ni le conjoint, ni les associés d'une société (V3.39) : ils ne sont pas mandants. */
+  if (cle === 'agence' || cle === 'conjoint' || cle.startsWith('associe') || !electronique(d) || d.execution !== 'oui') return null;
   return aRetractation(m, d) ? DEMANDE_EXPRESSE : null;
 }
 
