@@ -11,7 +11,7 @@ import {
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import {
-  ajouterSuivi, changerEtape, deposerPiece, enregistrerBien, enregistrerOffre, majSuivi, nomClient, visiteAcheteur, visiteExterne,
+  ajouterSuivi, annulerMandatNote, changerEtape, deposerPiece, enregistrerBien, enregistrerOffre, majSuivi, nomClient, visiteAcheteur, visiteExterne,
   type ClientMini, type RechercheMini,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -362,7 +362,11 @@ export function FenDefinirEstimation({ bien, onFermer, onFait }: { bien: BienVen
 /* ══ Le mandat est signé (ou : remettre en vente) ═════════════════════════ */
 export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFermer: () => void; onFait: (b: BienVente) => void }) {
   const d = bien.donnees || {};
-  const reprise = !avantMandat(bien.etape);
+  /* Une reprise : le bien a déjà été en vente, mandat signé. Pas quand il
+     est passé « En vente » avant la signature, ni retiré avant tout mandat
+     (V3.42) : c'est alors la signature qu'on note. */
+  const sansMandat = !txt(d, 'mandatDate') && (bien.etape === 'mandat' || (bien.etape === 'retire' && !bien.en_vente_le));
+  const reprise = !avantMandat(bien.etape) && !sansMandat;
   const [type, setType] = useState<'simple' | 'semi' | 'exclusif' | ''>((d.mandatType as 'simple') || '');
   const [numero, setNumero] = useState(txt(d, 'mandatNumero'));
   const [date, setDate] = useState(txt(d, 'mandatDate') || aujourdhui());
@@ -681,6 +685,89 @@ export function FenRaison({ bien, etape, titre, sur, onFermer, onFait }: {
       <Ch lib="La raison"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="En quelques mots" /></Ch>
       {(etape === 'suspendu' || etape === 'a_suivre') && <Ch lib={etape === 'a_suivre' ? 'Le recontacter vers le' : 'Reprise prévue le'}><input className={s.input} type="date" value={reprise} onChange={e => setReprise(e.target.value)} /></Ch>}
       <Ch lib="Commentaire (facultatif)"><textarea className={s.input} rows={2} value={note} onChange={e => setNote(e.target.value)} /></Ch>
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+
+/* ══ Annuler un mandat noté par erreur (V3.42) ═══════════════════════════
+   Alexandre : « pourquoi je n'ai pas de fonction dans mon CRM, pourquoi je
+   suis obligé de passer par Supabase ? ». Un mandat noté sur la fiche pour
+   un test, ou sur le mauvais bien : le n°, le type, les dates et le scan
+   joint quittent la fiche, le bien revient d'où il venait (l'estimation, en
+   général), le prix peut revenir au prix conseillé. L'historique le dit.
+   Un mandat signé dans Documents ne s'annule pas d'ici : c'est « Marquer
+   annulé » dans Documents, qui propose ensuite quoi faire de la fiche. */
+export function FenAnnulerMandat({ bien, depuis, signeDoc, enRoute, onFermer, onFait, onDocuments }: {
+  bien: BienVente;
+  /* L'étape d'où le bien était parti pour le mandat (etapeAvantMandat). */
+  depuis: EtapeVente;
+  /* Le mandat signé dans Documents, encore valable : on renvoie vers lui. */
+  signeDoc: { id: string; numero: string | null } | null;
+  /* Un mandat en préparation dans Documents : il n'est pas touché. */
+  enRoute: boolean;
+  onFermer: () => void; onFait: (b: BienVente) => void; onDocuments: (id: string) => void;
+}) {
+  const d = bien.donnees || {};
+  const numero = txt(d, 'mandatNumero') || bien.mandat_numero || '';
+  const prix = num(d, 'prix');
+  const conseille = num(d, 'prixConseille');
+  const a = argentBien(d);
+  /* Passé « En vente » sans mandat signé noté (créé directement en vente,
+     le mandat encore en préparation) : il n'y a rien à effacer, le bien
+     revient simplement en arrière. */
+  const noteSigne = !!txt(d, 'mandatDate');
+  const [vers, setVers] = useState<EtapeVente>(depuis);
+  const [choixPrix, setChoixPrix] = useState<'conseille' | 'garder'>('conseille');
+  const [hono, setHono] = useState<'garder' | 'effacer'>('garder');
+  const [raison, setRaison] = useState(noteSigne ? 'Saisi par erreur' : 'Le mandat n’est pas encore signé');
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const fichier = !!(d.mandatFichier && typeof d.mandatFichier === 'object');
+  const leMandat = `Le mandat${numero ? ` n° ${numero}` : ''}`;
+
+  if (signeDoc) {
+    return (
+      <Fenetre sur="Le mandat est signé dans Documents" couleur={etapeDe('mandat').c} titre="Annuler ce mandat" sous={resume(bien)} onFermer={onFermer}
+        pied={<><button type="button" className={s.btn} onClick={onFermer}>Fermer</button>
+          <button type="button" className={`${s.btn} ${s.btnNavy}`} onClick={() => onDocuments(signeDoc.id)}><Ic n="plume" t={15} />Ouvrir dans Documents</button></>}>
+        <div className={b.calc}>{`${signeDoc.numero ? `Le mandat n° ${signeDoc.numero}` : 'Ce mandat'} a été signé dans Documents. Pour l’annuler (rétractation, fin du mandat, erreur), ouvre-le dans Documents et choisis « Marquer annulé » : le CRM te demande ensuite quoi faire de cette fiche, la retirer de la vente ou la ramener à l’estimation.`}</div>
+      </Fenetre>
+    );
+  }
+
+  async function valider() {
+    setOccupe(true); setErreur('');
+    try {
+      const r = await annulerMandatNote(bien, { vers, prix: choixPrix, hono, raison });
+      onFait(r);
+    } catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  const etapes: EtapeVente[] = depuis === 'retire' ? ['estimation', 'a_suivre', 'retire'] : ['estimation', 'a_suivre'];
+  const libVers: Record<string, string> = { estimation: 'L’estimation', a_suivre: 'À suivre', retire: 'Retiré' };
+  return (
+    <Fenetre sur={`Le bien revient « ${etapeDe(vers).lib} »`} couleur={etapeDe(vers).c} titre={noteSigne ? 'Annuler ce mandat' : 'Le mandat n’est pas encore signé'} sous={resume(bien)} occupe={occupe} onFermer={onFermer}
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>{noteSigne ? 'Garder le mandat' : 'Laisser en vente'}</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : noteSigne ? 'Retirer le mandat' : 'Revenir en arrière'}</button></>}>
+      <div className={`${b.ventile} ${b.ventileManque}`}>
+        <Ic n="info" t={16} />
+        <span>{noteSigne
+          ? `Pour un mandat noté par erreur : un test, le mauvais bien. ${leMandat}, son type et ses dates${fichier ? ', et le scan joint,' : ''} quittent la fiche. L’historique garde une ligne qui le dit.`
+          : 'Le bien est « En vente » alors qu’aucun mandat signé n’y est noté. Il revient en arrière ; il repassera « En vente » tout seul quand le mandat sera signé dans Documents.'}</span>
+      </div>
+      <ChG lib="Le bien revient à"><Pills options={etapes.map(x => ({ v: x, l: libVers[x] }))} v={vers} onChange={setVers} /></ChG>
+      {conseille && prix && conseille !== prix ? (
+        <ChG lib="Le prix">
+          <Pills options={[{ v: 'conseille', l: `Le prix conseillé : ${euros(conseille)}` }, { v: 'garder', l: `Garder ${euros(prix)}` }]} v={choixPrix} onChange={setChoixPrix} />
+        </ChG>
+      ) : null}
+      {a.hono !== null && (
+        <ChG lib={`Les honoraires notés (${euros(a.hono)})`}>
+          <Pills options={[{ v: 'garder', l: 'Les garder' }, { v: 'effacer', l: 'Les effacer' }]} v={hono} onChange={setHono} />
+        </ChG>
+      )}
+      {enRoute && <div className={s.note}>Le mandat en préparation dans Documents n’est pas touché : tu pourras le finir et le faire signer.</div>}
+      <Ch lib="Pourquoi (pour l’historique)"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex : saisi pour un test" /></Ch>
       <Erreur t={erreur} />
     </Fenetre>
   );
