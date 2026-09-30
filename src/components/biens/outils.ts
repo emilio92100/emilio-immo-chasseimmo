@@ -305,12 +305,33 @@ export async function creerBien(references: (string | null)[], etape: EtapeVente
   return data as BienVente;
 }
 
-export async function enregistrerBien(id: string, d: Donnees): Promise<BienVente> {
+/* Les réponses à écrire : celles de la base, relues maintenant, avec
+   seulement ce que l'écran a changé depuis `base` (V3.43). */
+async function fusion(id: string, d: Donnees, base: Donnees): Promise<Donnees> {
+  const cles = Array.from(new Set([...Object.keys(d), ...Object.keys(base)]));
+  const changees = cles.filter(k => JSON.stringify(d[k]) !== JSON.stringify(base[k]));
+  const { data: frais, error } = await supabase.from('biens_vente').select('donnees').eq('id', id).maybeSingle();
+  if (error) lever('Le bien n’a pas pu être relu avant l’enregistrement', error.message);
+  const out: Donnees = { ...(((frais as { donnees?: Donnees } | null)?.donnees) || base) };
+  for (const k of changees) { if (d[k] === undefined) delete out[k]; else out[k] = d[k]; }
+  return out;
+}
+
+/* Enregistrer la fiche (V3.43). `base` : les réponses telles que cet écran
+   les avait reçues (ou telles qu'il les a enregistrées la dernière fois).
+   Seules les clés qu'il a changées depuis sont posées sur la fiche relue en
+   base ; les autres restent comme elles y sont. Avant, chaque clic réécrivait
+   toutes les réponses depuis l'écran : la fiche ouverte sur l'ordinateur
+   effaçait ce que la tablette venait d'enregistrer (la visite sur place), ou
+   le mandat que la signature en ligne venait d'y noter. Sans `base`, tout est
+   réécrit, comme avant. */
+export async function enregistrerBien(id: string, d: Donnees, base?: Donnees | null): Promise<BienVente> {
+  const aEcrire = base ? await fusion(id, d, base) : d;
   const { data, error } = await supabase.from('biens_vente').update({
-    donnees: d, ...colonnesBien(d), updated_at: new Date().toISOString(),
+    donnees: aEcrire, ...colonnesBien(aEcrire), updated_at: new Date().toISOString(),
   }).eq('id', id).select().single();
   if (error) lever('Le bien n’a pas pu être enregistré', error.message);
-  await repercuterPrix(id, d);
+  await repercuterPrix(id, aEcrire);
   return data as BienVente;
 }
 
@@ -340,15 +361,27 @@ export function bienVide(d: Donnees): boolean {
     && !(Array.isArray(d.proprietaires) && (d.proprietaires as Record<string, unknown>[]).some(p => p && (p.nom || p.prenom)));
 }
 
+/* V3.43 : la ligne d'abord, les fichiers ensuite (un fichier en trop ne
+   gêne personne, un fichier en moins se voit). Et les photos ne partent pas
+   quand des acheteurs ont reçu le bien : leur copie (table biens) montre
+   les mêmes fichiers, dans leur espace et sur la page /bien/<id>. */
 export async function supprimerBien(b: BienVente): Promise<void> {
-  const chemins = lirePhotos(b.donnees?.photos).map(p => p.chemin).filter(Boolean);
-  if (chemins.length) {
-    const { error } = await supabase.storage.from('photos-vente').remove(chemins);
-    if (error) signalerEchec('La suppression des photos du bien', error.message);
-  }
-  try { await api({ action: 'tout', id: b.id }); } catch (e) { signalerEchec('La suppression des pièces du dossier du bien', (e as Error).message); }
+  const partage = await bienPartage(b.id);
   const { error } = await supabase.from('biens_vente').delete().eq('id', b.id);
   if (error) lever('Le bien n’a pas pu être supprimé', error.message);
+  const chemins = lirePhotos(b.donnees?.photos).map(p => p.chemin).filter(Boolean);
+  if (chemins.length && !partage) {
+    const { error: e2 } = await supabase.storage.from('photos-vente').remove(chemins);
+    if (e2) signalerEchec('La suppression des photos du bien', e2.message);
+  }
+  try { await api({ action: 'tout', id: b.id }); } catch (e) { signalerEchec('La suppression des pièces du dossier du bien', (e as Error).message); }
+}
+
+/* Le bien a-t-il été présenté ou mis en sélection chez un acheteur ? Dans
+   le doute (lecture impossible), oui : on garde les photos. */
+async function bienPartage(bienId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('biens').select('id').eq('bien_vente_id', bienId).limit(1);
+  return !!error || !!(data && data.length);
 }
 
 /* ══ Le suivi ══════════════════════════════════════════════════════════ */
@@ -374,7 +407,9 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
   infos?: Record<string, unknown>; commentaire?: string; donnees?: Donnees; vendu_le?: string | null;
 } = {}): Promise<{ bien: BienVente; ligne: SuiviVente }> {
   const maintenant = new Date().toISOString();
-  const d = o.donnees || b.donnees || {};
+  /* Les réponses de la fenêtre sont posées sur la fiche relue en base : seul
+     ce qu'elle a changé part (V3.43). */
+  const d = o.donnees ? await fusion(b.id, o.donnees, b.donnees || {}) : b.donnees || {};
   const patch: Record<string, unknown> = {
     etape, etape_le: maintenant, updated_at: maintenant,
     ...(o.donnees ? { donnees: d, ...colonnesBien(d) } : {}),
@@ -611,8 +646,11 @@ export async function deposerPhoto(bienId: string, f: File): Promise<Photo> {
   return { url: data.publicUrl, chemin, legende: '' };
 }
 
-export async function retirerPhoto(chemin: string): Promise<void> {
+/* Retirer une photo du bien (V3.43) : le fichier reste quand des acheteurs
+   ont déjà reçu le bien — leur copie le montre encore. */
+export async function retirerPhoto(chemin: string, bienId?: string): Promise<void> {
   if (!chemin) return;
+  if (bienId && await bienPartage(bienId)) return;
   const { error } = await supabase.storage.from('photos-vente').remove([chemin]);
   if (error) throw new Error('La photo n’a pas pu être retirée : ' + error.message);
 }
