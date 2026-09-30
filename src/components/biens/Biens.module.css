@@ -32,7 +32,8 @@
 .info { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #64748b; min-width: 0; }
 .info > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .info > svg { color: #94a3b8; }
-.etat { margin: 0 16px 13px; padding: 8px 11px; border-radius: 10px; background: #f7f9fc; border: 1px solid #eef1f6; font-size: 13px; font-weight: 600; color: var(--emilio); line-height: 1.45; }
+.etat { margin: 0 16px 13px; padding: 8px 11px; border-radius: 10px; background: #f7f9fc; border: 1px solid #eef1f6; font-size: 13px; font-weight: 600; color: var(--emilio); line-height: 1.45; display: flex; align-items: flex-start; gap: 8px; }
+.etat > svg { flex-shrink: 0; margin-top: 1.5px; opacity: .75; }
 .etatAlerte { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 .etatOk { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
 .cartePied { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 0 13px; margin: auto 16px 0; border-top: 1px solid #f1f4f8; }
@@ -1126,10 +1127,13 @@ button.pillRouge svg { color: white !important; }
 .ligneLieu { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; color: #475569; }
 .ligneLieu > span { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ligneLieu svg { flex-shrink: 0; color: #94a3b8; }
-.ligneEtat { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
-.ligneEtatT { font-size: 12.5px; font-weight: 700; color: #475569; line-height: 1.35; }
+.ligneEtat { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.ligneEtatT { display: inline-flex; align-items: flex-start; gap: 7px; max-width: 100%; font-size: 13.5px; font-weight: 700; color: var(--emilio); line-height: 1.35; }
+.ligneEtatT > svg { flex-shrink: 0; margin-top: 1px; color: #94a3b8; }
 .ligneAlerte { color: #b45309; }
+.ligneAlerte > svg { color: #d97706; }
 .ligneOk { color: #15803d; }
+.ligneOk > svg { color: #16a34a; }
 .ligneFleche { color: #94a3b8; }
 .ligneB:hover .ligneFleche { color: var(--emilio); }
 @media (max-width: 1100px) {
@@ -1221,3 +1225,20 @@ button.pillRouge svg { color: white !important; }
 .caseHono > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .caseHono b { font-size: 13.5px; color: #1a2332; }
 .caseHono small { font-size: 12px; color: #64748b; line-height: 1.45; }
+
+/* ══ V3.42 : l'état d'un bien en puces ═════════════════════════════════════
+   La liste disait « 1 visite faite · aucune offre » en gris, calé à droite
+   sous l'état. Une puce par chose, avec son dessin ; un zéro reste pâle
+   (bordure en tirets). Avant la vente, le mandat en route. */
+.puces { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.puceL { display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 10px; border-radius: 99px; background: #f4f6fa; border: 1px solid #e5eaf1; color: #334155; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.puceL > svg { flex-shrink: 0; color: #64748b; }
+.puceVide { background: white; border-style: dashed; border-color: #dbe2ec; color: #94a3b8; font-weight: 600; }
+.puceVide > svg { color: #cbd5e1; }
+.puceOr { background: #fbf6e9; border-color: #ecdcb0; color: #8a6a1f; }
+.puceOr > svg { color: #b08d2e; }
+.puceMandat { background: #eef2f8; border-color: #dbe3ef; color: #34496e; }
+.puceMandat > svg { color: #34496e; }
+/* Le mandat pas encore signé, dans le bandeau de la fiche : ses deux liens
+   sur une ligne. */
+.heroMandatLiens { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
