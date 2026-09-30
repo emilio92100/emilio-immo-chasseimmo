@@ -354,7 +354,10 @@ export default function SignatureCosignataire({ d }: { d: DonneesSigner }) {
           <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} err={champs.cp} mode="numeric" auto="postal-code" />
           <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} err={champs.ville} auto="address-level2" />
         </div>
-        <Champ lib="E-mail — votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" />
+        {/* V3.43 : le code part à l'adresse qui a reçu ce lien, pas à une
+            adresse tapée ici. Une erreur d'adresse se corrige depuis
+            l'espace du premier signataire (« Corriger son adresse »). */}
+        <Champ lib="E-mail — l’adresse qui a reçu ce lien, votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" lecture />
         <Champ lib="Téléphone (facultatif)" val={m.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="tel" />
         {erreur && <div className="mdt-erreur">{erreur}</div>}
         <button type="button" className={'mdt-coche' + (champs.certifie ? ' err' : '')} data-on={certifie ? '1' : undefined}
