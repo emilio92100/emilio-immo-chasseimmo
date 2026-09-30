@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.38 · 30 septembre 2026**
+**Version 3.39 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1428,6 +1428,30 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.39 — 30 septembre 2026 · le mandat de vente d'une SCI, signé aussi par ses associés
+
+Pour une SCI familiale aux statuts anciens (le premier cas : huit associés, dont une branche
+venue d'une succession), le gérant signe le mandat pour la société, et les associés le signent **pour accord**. Ils ne
+deviennent pas mandants : la société seule vend.
+- Étape « Qui vend », en mode SCI : **« Les associés signent-ils aussi ? »** (`sciAssocies`, non par
+  défaut). Oui ouvre « Le gérant qui signe est-il aussi associé ? » (`sciGerantAssocie`), la liste
+  **« Les autres associés »** (`associes`, cartes courtes : civilité, nom, adresse, e-mail,
+  téléphone ; 12 au plus), « Avec le gérant, sont-ils tous les associés ? » (`sciTous`) et un
+  **prix net vendeur minimum** facultatif (`sciPrixMin`). Tout dans `mandat-vente.ts`.
+- Le texte : sous les parties, « Interviennent au présent mandat, en qualité d'associés… pour donner
+  leur accord », la liste, puis l'accord (vente autorisée, au prix minimum s'il est donné). Tous
+  les associés : « Cet accord vaut décision unanime des associés (article 1854 du Code civil) ».
+- Les signatures : un cadre par associé (`cle` `associe0`, `associe1`…, « Associé » ou
+  « Associée », « Pour accord »), entre la société et l'agence, sur papier comme en ligne et sur
+  place. Le gérant associé ne signe qu'une fois : son cadre porte « Et en son nom, en qualité
+  d'associé(e), pour accord ». Mention papier : « bon pour accord » pour les associés. Le nombre
+  d'exemplaires les compte.
+- `accepter` : une phrase à part pour les associés. `demandeExpresse` (`commun.ts`) ne leur demande
+  pas de commencer avant les 14 jours : ils ne sont pas mandants.
+- Pas repris dans l'avenant ni dans la délégation : l'avenant reste signé par le gérant seul.
+- Vérifié au banc (éditeur et aperçu, 390 et 1280 px) et en PDF (papier et en ligne, 9 cadres sur
+  deux pages) ; les mandats déjà écrits ne changent pas (`sciAssocies` absent = non).
 
 ### V3.38 — 30 septembre 2026 · les tantièmes sur un autre total ; le site branché
 
