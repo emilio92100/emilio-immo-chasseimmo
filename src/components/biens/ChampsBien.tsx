@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import Visionneuse from './Visionneuse';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import { euros, jourParis } from '@/lib/mandat';
 import { conjointDe } from '@/lib/foyer';
 import { lirePro, lireStructure } from '@/lib/contacts';
@@ -301,7 +302,7 @@ export function ChampPhotos({ d, maj, off, bienId, grand = false }: { d: Donnees
   };
   async function retirer(p: Photo) {
     if (!confirm('Retirer cette photo ?')) return;
-    try { await retirerPhoto(p.chemin); maj('photos', ((avant: unknown) => lirePhotos(avant).filter(x => x.url !== p.url)) as Suite<Photo[]>); }
+    try { await retirerPhoto(p.chemin, bienId); maj('photos', ((avant: unknown) => lirePhotos(avant).filter(x => x.url !== p.url)) as Suite<Photo[]>); }
     catch (e) { setErreur((e as Error).message); }
   }
 
@@ -439,9 +440,10 @@ let CLIENTS: Promise<ClientMini[]> | null = null;
 export const lireClients = (frais = false) => {
   if (!CLIENTS || frais) {
     CLIENTS = (async () => {
-      const { data, error } = await supabase.from('clients').select('id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro')
-        .order('created_at', { ascending: false }).limit(2000);
-      if (error) { CLIENTS = null; throw new Error('Les clients n’ont pas pu être lus : ' + error.message); }
+      /* Par pages de 1 000 (V3.43) : le « limit(2000) » s'arrêtait à 1 000. */
+      const { data, erreur } = await toutLire<ClientMini>((de, a) => supabase.from('clients').select('id, prenom, nom, statut, civilite, couple, conjoint, adresse, emails, telephones, pro')
+        .order('created_at', { ascending: false }).order('id').range(de, a));
+      if (erreur) { CLIENTS = null; throw new Error('Les clients n’ont pas pu être lus : ' + erreur); }
       return (data || []) as ClientMini[];
     })();
   }
