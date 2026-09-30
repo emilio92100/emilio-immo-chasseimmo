@@ -551,15 +551,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            et on ne prévient Alexandre qu'une fois par bien. */
         const { data: avant } = await supabase.from('biens')
           .select('badge_retour, retour_client').eq('id', bien.id).maybeSingle();
-        /* V3.43 : Alexandre n'est prévenu qu'une fois par jour et par bien,
-           même si le client repasse par « Pas pour moi » puis « Je veux
-           visiter » (chaque aller-retour envoyait un mail et une relance). */
+        /* V3.43 : pas de deuxième mail ni de deuxième relance tant que la
+           relance « Veut visiter » de ce bien est encore ouverte, même si le
+           client repasse par « Pas pour moi » puis « Je veux visiter ». Close
+           (visite calée, « Remettre en attente », traitée par Alexandre), une
+           nouvelle demande le prévient de nouveau. Lecture ratée : on prévient. */
         let dejaVisite = avant?.badge_retour === 'souhaite_visiter';
         if (!dejaVisite && avis === 'souhaite_visiter') {
-          const { count } = await supabase.from('journal').select('id', { count: 'exact', head: true })
-            .eq('recherche_id', recherche.id).eq('bien_id', bien.id).eq('type', 'retour_client')
-            .ilike('titre', '%veut visiter%').gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
-          dejaVisite = (count || 0) > 0;
+          const debut = `Veut visiter — ${bien.titre || 'un bien'}`;
+          const { data: ouvertes } = await supabase.from('relances').select('note')
+            .eq('client_id', recherche.client_id).eq('recherche_id', recherche.id)
+            .eq('type', 'rappel_client').eq('statut', 'en_attente').limit(500);
+          dejaVisite = (ouvertes || []).some((r: { note?: string | null }) => {
+            const n = String(r.note || '');
+            return n === debut || n.startsWith(`${debut} · `);
+          });
         }
         const garde = avis === 'souhaite_visiter' && avant?.badge_retour === 'interesse' ? (avant?.retour_client || null) : null;
 
