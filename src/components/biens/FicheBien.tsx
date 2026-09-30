@@ -754,9 +754,11 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
     } else if (x.type === 'envoi') {
       /* Des pièces du dossier envoyées par mail (V3.30). */
       const pieces = Array.isArray(d.pieces) ? (d.pieces as unknown[]).map(String) : [];
-      l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_or', genre: 'documents', titre: `Documents envoyés à ${x.qui || 'un contact'}`,
-        detail: [pieces.join(', '), d.mode === 'liens' ? 'en liens de téléchargement (7 jours)' : ''].filter(Boolean).join(' · '),
-        puce: { l: `${pieces.length} document${pieces.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
+      /* Le projet d'un document, envoyé en relecture avant la signature (V3.40). */
+      const projet = d.projet === true;
+      l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_or', genre: 'documents', titre: `${projet ? 'Projet envoyé' : 'Documents envoyés'} à ${x.qui || 'un contact'}`,
+        detail: [projet ? x.commentaire || '' : pieces.join(', '), d.mode === 'liens' ? 'en liens de téléchargement (7 jours)' : ''].filter(Boolean).join(' · '),
+        puce: projet ? { l: 'Projet non signé', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } : { l: `${pieces.length} document${pieces.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
     } else if (x.type === 'visite') {
       const iss = x.avis && x.avis in ISSUES ? (x.avis as Issue) : null;
       const passe = x.statut === 'faite' || x.le < new Date().toISOString();
