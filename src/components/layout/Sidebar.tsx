@@ -8,6 +8,8 @@ import { typeDe } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
+import { TABLE_DEMANDES } from '@/lib/demandes-site';
+import PictoBoite from '@/components/demandes/PictoBoite';
 
 /* Où se retient l'état plié ou déplié d'un sous-menu : une mémoire pour
    l'ordinateur (« menu.documents » depuis la V3.18), une pour le téléphone. */
@@ -39,7 +41,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 }) {
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0 });
+  const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0, site: 0 });
   /* Les sous-menus (Documents en V3.18 ; Contacts et Biens en V3.24).
      Sur ordinateur, ouverts par défaut ; sur téléphone, tous pliés (le tiroir
      resterait trop long) : c'est la petite flèche qui les ouvre. Dans les
@@ -110,7 +112,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
     /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
        l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
-    const [{ count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }] = await Promise.all([
+    const [{ count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
       supabase.from('relances').select('*', { count: 'exact', head: true })
         .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
       supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
@@ -124,8 +126,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       /* Les biens en vente qui se travaillent : en vente, sous offre, sous
          compromis. Sans la table (outils/sql/biens-vente.sql), pas de pastille. */
       supabase.from('biens_vente').select('*', { count: 'exact', head: true }).in('etape', ['mandat', 'offre', 'compromis']).eq('archive', false),
+      /* Les demandes du site pas encore prises en main (V3.34). Sans la table
+         (outils/sql/demandes-site.sql), pas de pastille. */
+      supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).eq('statut', 'nouveau').eq('archive', false),
     ]);
-    setCounts({ relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0 });
+    setCounts({ relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste
@@ -151,6 +156,10 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     {
       section: 'SUIVI',
       items: [
+        /* Ce que les formulaires du site ont déposé (V3.34) : une demande
+           nouvelle attend une réponse, pastille rouge comme une relance. */
+        { id: 'demandes', label: 'Demandes du site', picto: 'boite', badge: counts.site > 0
+          ? { count: counts.site, type: 'red', pulse: true, titre: `${counts.site} nouvelle${counts.site > 1 ? 's' : ''} demande${counts.site > 1 ? 's' : ''} du site` } : null },
         { id: 'agenda', label: 'Agenda', picto: 'calendrier', badge: null },
         /* Une demande de visite à caler passe avant tout : pastille rouge,
            comme une relance. Sinon, le nombre de visites à venir, en bleu. */
@@ -249,7 +258,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                     title={reduit ? item.label : undefined}
                     aria-label={reduit ? item.label : undefined}
                   >
-                    <span className={styles.navPicto}><Icone nom={item.picto} taille={19} epaisseur={1.9} /></span>
+                    <span className={styles.navPicto}>{item.picto === 'boite' ? <PictoBoite taille={19} epaisseur={1.9} /> : <Icone nom={item.picto} taille={19} epaisseur={1.9} />}</span>
                     <span className={styles.navLabel}>{item.label}</span>
                     {item.badge && (
                       <span className={`${styles.navBadge} ${styles[`badge_${item.badge.type}`]} ${item.badge.pulse ? 'pulse' : ''}`}

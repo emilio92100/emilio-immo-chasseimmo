@@ -16,6 +16,7 @@ import PageDocuments, { type IntentionDocuments } from '@/components/documents/P
 import PageRegistre from '@/components/documents/PageRegistre';
 import PageBiens from '@/components/biens/PageBiens';
 import PageCarte from '@/components/carte/PageCarte';
+import PageDemandesSite from '@/components/demandes/PageDemandesSite';
 import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import Avertissements from '@/components/layout/Avertissements';
@@ -38,7 +39,7 @@ import { signalerMaj } from '@/lib/intentions';
  * L'URL reste volontairement une query string (`/?page=fiche&client=<id>`) :
  * le CRM tient sur une seule route Next, on ne redécoupe pas l'application.
  */
-const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'carte', 'agenda', 'visites',
+const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'carte', 'demandes', 'agenda', 'visites',
   'relances', 'documents', 'registre', 'mail', 'activite', 'parametres'];
 
 function lireUrl(): { page: string; clientId: string | null } {
@@ -265,6 +266,8 @@ export default function AppLayout() {
       case 'clients':    return <Clients onNavigate={handleNavigate} />;
       case 'biens':      return <PageBiens onNavigate={handleNavigate} />;
       case 'carte':      return <PageCarte onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} />;
+      /* Les demandes des formulaires du site emilio-immo.com (V3.34). */
+      case 'demandes':   return <PageDemandesSite onNavigate={handleNavigate} />;
       case 'agenda':     return <PageAgenda onNavigate={handleNavigate} />;
       case 'visites':    return <PageVisites onNavigate={handleNavigate} />;
       case 'relances':   return <PageRelances onNavigate={handleNavigate} />;

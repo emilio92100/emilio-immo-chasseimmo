@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.32 · 29 septembre 2026**
+**Version 3.34 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -338,6 +338,17 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     d'un acheteur y efface les photos. Pièces du dossier et offres signées : bucket privé
     `mandats`, sous `biens-vente/<id>/`, via `/api/biens-vente`.
   - Documents créés depuis la fiche : `documents.donnees.bienVenteId` = l'id du bien.
+- **`contact_submissions`** (`outils/sql/demandes-site.sql`, V3.34) : les demandes déposées par les
+  formulaires du site emilio-immo.com. Colonnes du site, en anglais (le site n'a que son adresse de
+  base à changer) : `form_type` (`estimation` · `mandat_recherche` · `rappel_bien` · `contact`),
+  `name`, `email` (peut être vide), `phone`, `message` (les réponses « Clé : valeur » de l'estimation
+  et de l'accompagnement, une par ligne, relues par `src/lib/demandes-site.ts`), `budget`,
+  `property_type`, `desired_location`, `desired_surface`, `timeline`, `property_ref`,
+  `property_title`, `created_at`. Colonnes du CRM : `statut` (`nouveau` · `en_cours` · `traite`),
+  `statut_le`, `a_rappeler_le` (date), `archive`, `archive_le`, `admin_notes`, `client_id` (le
+  contact créé depuis la demande), `is_called` (hérité de Lovable, suit « Traitée »). RLS +
+  `crm_authentifie` ; **`anon` n'a que `INSERT`, sur les seules colonnes du site** (politique
+  `site_depose` : types connus, tailles bornées) — il ne lit rien et ne touche à aucune colonne du CRM.
 - **`geocodes`** (`outils/sql/carte.sql`, V3.26) : la position de chaque adresse déjà cherchée, pour
   la carte — `cle` (l'adresse sans accents ni ponctuation), `adresse`, `lat`, `lng`, `precision`
   (`housenumber` · `street` · `locality` · `municipality` · `aucun`), `score`, `libelle`,
@@ -1417,6 +1428,47 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.34 — 30 septembre 2026 · les demandes du site arrivent dans le CRM
+
+Le site emilio-immo.com (dépôt `emilio92100/emilio-immo.modernelovable`, fait avec Lovable)
+déposait ses formulaires dans Lovable Cloud. Pour pouvoir arrêter Lovable, ils arrivent désormais
+dans la base du CRM, et se traitent dans une nouvelle rubrique.
+
+- **La table** `contact_submissions` (`outils/sql/demandes-site.sql`, passé le 30 septembre) : voir
+  §2. Les 45 demandes reçues chez Lovable y ont été importées (statut « Traitée » pour celles
+  marquées « appelé », « Nouvelle » sinon). Le fichier d'import contenait des coordonnées de
+  clients : il n'est **pas** dans le dépôt.
+- **Demandes du site** (menu Suivi, `?page=demandes`, `src/components/demandes/PageDemandesSite.tsx`) :
+  en-tête `EnteteRubrique` (Toutes · Nouvelles · En cours · Traitées · Archivées), une pastille par
+  formulaire (Estimations, Accompagnements, Infos sur un bien, Messages), la liste par période, la
+  demande ouverte à droite (≥ 1 200 px) ou dans un tiroir. Dans la demande : téléphone, « Écrire »
+  (mailto, objet selon le formulaire), « Copier » ; le statut ; « À rappeler » (`ChoixDate`) ;
+  l'estimation DVF que le site a montrée ; les réponses en rubriques, codes du site traduits
+  (« pret_obtenu » → « Prêt obtenu ») ; le message ; les notes (enregistrées en quittant le champ) ;
+  « Créer le contact », « Archiver » (avec « Annuler »), « Supprimer définitivement ».
+  `?page=demandes&demande=<id>` ouvre une demande précise.
+- **Les robots** : des formulaires remplis de lettres au hasard (« ncgloKTWasSFnLzKxi »).
+  `robot()` les repère (un mot sans espace dont la casse change sans arrêt), ils sont grisés et
+  marqués « Robot ? », et un bandeau propose de les supprimer d'un coup. Jamais supprimés tout seuls.
+- **« Créer la fiche contact »** (en haut de la demande) : une question d'abord, qui montre ce qui
+  sera repris et les contacts qui lui ressemblent déjà (même e-mail, même téléphone, même nom) —
+  « Relier la demande » évite un doublon. Puis la fenêtre Nouveau contact de Contacts s'ouvre, seule,
+  par-dessus la rubrique (prop `fenetre` de `Clients` : ni liste, ni lecture des contacts), remplie —
+  prénom, nom, téléphone, e-mail, type (vendeur pour une estimation, acheteur pour un accompagnement
+  ou une question sur un bien), source « Site, estimation en ligne · Formulaire « … » », et le
+  résumé de la demande dans les notes (`preRemplissage`). On reste dans la rubrique : « Créer son
+  bien » part décoché. Une fois le contact créé, la demande lui est reliée (`client_id`) et passe
+  « Traitée » ; la demande affiche alors « Voir sa fiche contact ».
+- La rubrique s'ouvre **toujours sur « Nouvelles »**, même vide (demande d'Alexandre).
+- **Le menu** : « Demandes du site » en tête de Suivi, pastille rouge = demandes nouvelles non
+  archivées (`PictoBoite`, dessinée à part : `Icone` n'a pas de boîte de réception).
+- **Reste à faire, côté site** : remplacer dans son `.env` l'adresse et la clé publique de Lovable
+  Cloud par celles de ce projet ; y installer ses 4 fonctions (`send-contact-email` avec les secrets
+  `RESEND_API_KEY` et `CONTACT_EMAIL`, `fetch-properties`, `dvf-estimate`, `sitemap` en
+  `verify_jwt = false`) et changer l'adresse du plan du site dans son `vercel.json` ; reprendre
+  chez Lovable les demandes arrivées entre l'import et la bascule ; puis retirer Lovable Cloud. La
+  page `/admin` du site, qui lisait la table `user_roles` de Lovable, est remplacée par cette rubrique.
 
 ### V3.33 — 30 septembre 2026 · le point complet du code, et ce qu'il a corrigé
 

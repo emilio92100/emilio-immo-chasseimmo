@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { signalerEchec } from '@/lib/ecritures';
+import { signalerEchec, verifie } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
 import { supabase, genererReference, addJournal } from '@/lib/supabase';
 import { jetonEspace } from '@/lib/jeton';
@@ -24,6 +24,7 @@ import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuC
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { Ic } from '@/components/documents/ApercuActe';
 import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
+import { TABLE_DEMANDES, type PreRemplissage } from '@/lib/demandes-site';
 import cc from '@/components/contacts/Contacts.module.css';
 
 const STATUTS = [
@@ -390,7 +391,13 @@ const TEINTE: Record<string, { bg: string; fg: string; trait: string }> = {
 };
 
 /* Le titre d'une section de « Tous » : le type, son icône, combien. */
-export default function Clients({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+export default function Clients({ onNavigate, fenetre }: {
+  onNavigate: (page: string, data?: unknown) => void;
+  /* La fenêtre « Nouveau contact » seule, remplie avec une demande du site
+     (V3.34) : ni liste, ni lecture des contacts. `onFin` reçoit l'identifiant
+     du contact créé, ou null si la fenêtre est fermée sans créer. */
+  fenetre?: { pre: PreRemplissage; onFin: (clientId: string | null) => void };
+}) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -463,7 +470,7 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [search, setSearch] = useState('');
   /* Venue du « + » ou de « Nouveau contact » : la fenêtre est ouverte dès
      le premier affichage, sans montrer la liste une fraction de seconde. */
-  const [showModal, setShowModal] = useState(() => intentions.nouveauClient);
+  const [showModal, setShowModal] = useState(() => !!fenetre || intentions.nouveauClient);
   const [form, setForm] = useState(initForm);
   const [crit, setCrit] = useState<CritForm>(CRIT_VIDE);
   const [step, setStep] = useState(0);
@@ -477,9 +484,26 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
   const [autresCoord, setAutresCoord] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /* La demande du site d'où vient ce contact (« Créer le contact », V3.34),
+     et le contact créé, rendu à la rubrique Demandes du site. */
+  const demandeLiee = useRef<string | null>(null);
+  const cree = useRef<string | null>(null);
 
-  function openModal() {
-    setForm(initForm); setCrit(CRIT_VIDE);
+  function openModal() { ouvrirAvec(null); }
+
+  /* Venu d'une demande du site : la fenêtre s'ouvre remplie avec ce que le
+     client a donné, et la demande sera reliée au contact une fois créé.
+     Depuis la rubrique Demandes du site, « Créer son bien » part décoché :
+     on y reste, sauf si Alexandre le coche. */
+  function ouvrirAvec(pre: PreRemplissage | null) {
+    demandeLiee.current = pre?.demandeId || null;
+    cree.current = null;
+    setForm(pre ? {
+      ...initForm, prenom: pre.prenom, nom: pre.nom, email1: pre.email, tel1: pre.tel,
+      types: pre.types, source: 'site', source_detail: pre.source_detail, notes: pre.notes,
+      creerBien: !fenetre,
+    } : initForm);
+    setCrit(CRIT_VIDE);
     setStep(0); setEtapeCrit(0); setSensCrit(1);
     setError(''); setAdrSug([]); setAutresCoord(false); setShowModal(true);
   }
@@ -490,6 +514,9 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
      page. Il ouvre maintenant le formulaire — qu'on arrive d'ailleurs (le
      drapeau) ou qu'on soit déjà ici (l'événement). */
   useEffect(() => {
+    /* La fenêtre seule (demande du site) : elle s'ouvre sur sa demande, et
+       laisse l'intention « nouveau client » à la page Contacts. */
+    if (fenetre) { ouvrirAvec(fenetre.pre); return; }
     if (prendreIntentionNouveauClient()) openModal();
     const ouvrir = () => openModal();
     window.addEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
@@ -512,7 +539,16 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
     setAdrSug([]);
   }
 
-  useEffect(() => { fetchClients(); }, []);
+  useEffect(() => { if (!fenetre) fetchClients(); }, []);
+
+  /* La fenêtre seule se referme (créé, annulé, croix) : on le dit à la
+     rubrique qui l'a ouverte. */
+  const ouverteUneFois = useRef(false);
+  useEffect(() => {
+    if (!fenetre) return;
+    if (showModal) { ouverteUneFois.current = true; return; }
+    if (ouverteUneFois.current) fenetre.onFin(cree.current);
+  }, [showModal]);
 
   async function fetchClients() {
     setLoading(true);
@@ -793,6 +829,14 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
       const { data, error: err } = r;
 
       if (err) throw err;
+      /* Le contact vient d'une demande du site : elle lui est reliée, et passe
+         en « Traitée » (Demandes du site affiche alors « Voir sa fiche »). */
+      if (data && demandeLiee.current) {
+        await verifie('Le lien entre la demande du site et ce contact', supabase.from(TABLE_DEMANDES)
+          .update({ client_id: data.id, statut: 'traite', statut_le: new Date().toISOString(), is_called: true })
+          .eq('id', demandeLiee.current).select('id'), { ligne: true });
+        demandeLiee.current = null;
+      }
       if (data && !acheteur) {
         await addJournal(data.id, 'creation', 'Contact créé', `${form.types.map(k => typeDe(k).lib).join(', ')} · ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
@@ -852,8 +896,18 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
         if (eRech) signalerEchec('Le contact est créé, mais sa recherche', `${eRech.message}. Ouvre sa fiche et enregistre ses critères : la recherche se crée alors.`);
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
-      setShowModal(false);
       const versBien = !!data && !acheteur && form.creerBien && (form.types.includes('vendeur') || form.types.includes('proprietaire'));
+      if (fenetre) {
+        /* Ouverte depuis une demande du site : on reste dans la rubrique
+           (sauf « Créer son bien » coché, qui mène à Biens). */
+        cree.current = data?.id || null;
+        signalerMaj();
+        if (versBien && data) { demanderNouveauBien(data.id); onNavigate('biens'); return; }
+        setShowModal(false); setForm(initForm); setCrit(CRIT_VIDE);
+        setSaving(false);
+        return;
+      }
+      setShowModal(false);
       setForm(initForm); setCrit(CRIT_VIDE);
       signalerMaj();
       /* Un vendeur : « Nouveau bien » s'ouvre, lui déjà propriétaire. */
@@ -899,6 +953,504 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
 
   const acheteursCat = clients.filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)));
   const nbParStatut = (s: string) => s === 'tous' ? acheteursCat.length : acheteursCat.filter(c => c.statut === s).length;
+
+  /* ═══ NOUVEAU CLIENT ═══════════════════════════════════════════════
+     Trois temps : qui est ce client, ce qu'il cherche, ce qui nous lie.
+     Le deuxième reprend, à l'identique, le formulaire de critères de la
+     fiche — il n'y a plus deux versions à tenir à jour.
+     Bâtie ici, avant la page, pour pouvoir s'ouvrir seule (V3.34) : depuis
+     une demande du site, « Créer le contact » l'ouvre sans quitter la
+     rubrique Demandes du site (prop `fenetre`). */
+  const fenetreCreation = showModal && (() => {
+        /* Les temps de la création suivent le type : un acheteur a sa
+           recherche et son mandat ; un vendeur, un notaire, un confrère… n'ont
+           que « qui » et « comment le joindre ». */
+        const acheteur = form.types.includes('acheteur');
+        const pro = estPro(form.types);
+        /* La couleur du formulaire : celle de son type principal (le premier
+           qui n'est pas « acheteur », sinon acheteur). */
+        const typeP = typeDe(form.types.find(k => k !== 'acheteur') || form.types[0] || 'acheteur');
+        const teinte: Teinte = { c: typeP.c, fond: typeP.fond };
+        const nomTape = nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } });
+        const quiC = form.prenom.trim() || (form.couple && !pro ? 'eux' : form.civilite === 'Madame' ? 'elle' : 'lui');
+        /* La fiche qui se dessine pendant qu'on tape (à gauche ; une bande en
+           haut sur téléphone). Elle ne montre que ce qui est saisi. */
+        const lieuPro = form.pro.immeuble || form.pro.adresseEtude || form.pro.adresseAgence || form.pro.etude || form.pro.agence || form.pro.societe || '';
+        const adresseTapee = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        const srcChoisie = sourceDe(form.source);
+        const apercu = (
+          <aside className="nc-apercu" aria-label="Aperçu de la fiche">
+            <div className="nc-ap-h">
+              <AvatarContact c={{ prenom: form.prenom, nom: form.nom, civilite: form.civilite, couple: form.couple && !pro, conjoint: { civilite: form.c2_civilite, prenom: form.c2_prenom }, types: form.types }}
+                teinte={{ bg: typeP.fond, fg: typeP.c, trait: 'rgba(255,255,255,.18)' }} taille={62} />
+              <div className="nc-ap-txt">
+                <div className={`nc-ap-nom${nomTape ? '' : ' vide'}`}>{nomTape || 'Prénom Nom'}</div>
+                <div className="nc-ap-types">{form.types.map(k => <Puce key={k} k={k} />)}</div>
+              </div>
+            </div>
+            <div className="nc-ap-b">
+              <div className={`nc-ap-l${form.tel1 ? '' : ' vide'}`}><Ic n="telephone" t={15} /><span>{form.tel1 || 'Téléphone'}</span></div>
+              <div className={`nc-ap-l${form.email1 ? '' : ' vide'}`}><Ic n="mail" t={15} /><span>{form.email1 || 'E-mail'}</span></div>
+              {pro
+                ? <div className={`nc-ap-l${lieuPro ? '' : ' vide'}`}><Ic n={IC_PRO[form.types.includes('gardien') ? 'L’immeuble' : form.types.includes('notaire') ? 'Son étude' : form.types.includes('confrere') ? 'Son agence' : 'Son activité']} t={15} /><span>{lieuPro || (form.types.includes('gardien') ? 'Immeuble' : form.types.includes('notaire') ? 'Étude' : form.types.includes('confrere') ? 'Agence' : 'Société')}</span></div>
+                : <div className={`nc-ap-l${adresseTapee ? '' : ' vide'}`}><Ic n="lieu" t={15} /><span>{adresseTapee || 'Adresse'}</span></div>}
+              {srcChoisie && <div className="nc-ap-src"><Ic n={srcChoisie.ic} t={14} /><span>{libelleSource(form.source, form.source_detail)}</span></div>}
+              <div className="nc-aide" style={{ textAlign: 'center' }}>La fiche se dessine au fur et à mesure.</div>
+            </div>
+          </aside>
+        );
+        /* Ce qui est propre au type : l'agence d'un confrère, l'étude d'un
+           notaire… Juste après l'identité pour un professionnel (c'est ce
+           qui compte), après les coordonnées pour un particulier. */
+        const champsPro = (
+          <ChampsPro types={form.types} pro={form.pro} onChange={x => setForm({ ...form, pro: x })}
+            cls={{ row: styles.formRow, group: styles.formGroup, label: styles.label, input: styles.input, bloc: (titre, enfants) => <Bloc key={titre} ic={IC_PRO[titre] || 'dossier'} titre={titre} petit={`ce qui est propre à un ${typeDe(form.types.find(k => k !== 'acheteur') || form.types[0]).lib.toLowerCase()}`} teinte={teinte}>{enfants}</Bloc> }} />
+        );
+        const GRANDES: { cle: 'type' | 'contact' | 'recherche' | 'mandat'; ico: string; nom: string; sous: string }[] = [
+          { cle: 'type', ico: '🏷️', nom: 'Qui est-ce', sous: 'Acheteur, vendeur, notaire, confrère… plusieurs à la fois si besoin' },
+          { cle: 'contact', ico: '👤', nom: pro ? 'Ses coordonnées' : 'Le contact', sous: pro ? 'Qui il est, où il travaille, comment le joindre' : 'Qui il est, comment le joindre' },
+          ...(acheteur ? [
+            { cle: 'recherche' as const, ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
+            { cle: 'mandat' as const, ico: '📋', nom: 'Le mandat', sous: 'Ce qui vous lie' },
+          ] : []),
+        ];
+        const pas = GRANDES[Math.min(step, GRANDES.length - 1)].cle;
+        const etapesCrit = etapesCriteres(crit, setCrit);
+        const nbC = etapesCrit.length;
+        const iC = Math.min(Math.max(etapeCrit, 0), nbC - 1);
+        const surCriteres = pas === 'recherche' && modeCrit === 'etapes' && !form.critPlusTard;
+        const nomRempli = !!(form.prenom.trim() || form.nom.trim());
+
+        const allerC = (n: number) => { setSensCrit(n > iC ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbC - 1, n))); };
+        const changerMode = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
+        const allerGrande = (n: number) => {
+          if (n > 0 && !form.types.length) { setError('Choisissez d’abord qui est ce contact.'); return; }
+          setError(''); setEtapeCrit(0); setSensCrit(1); setStep(Math.max(0, Math.min(GRANDES.length - 1, n)));
+        };
+
+        /* « Continuer » avance d'un cran — un cran, c'est une sous-étape des
+           critères quand on les remplit une par une, sinon une grande étape. */
+        function continuer() {
+          if (surCriteres && iC < nbC - 1) { allerC(iC + 1); return; }
+          allerGrande(step + 1);
+        }
+        function revenir() {
+          if (surCriteres && iC > 0) { allerC(iC - 1); return; }
+          if (step === 0) { setShowModal(false); return; }
+          allerGrande(step - 1);
+        }
+        const dernierCran = step >= GRANDES.length - 1;
+
+        /* Sur <body> : la page qui arrive glisse (animation d'entrée), et la
+           fenêtre, dedans, glissait avec elle avant de sauter à sa place. */
+        return (
+          <Portail>
+          <div className={`${styles.modalOverlay} nc-voile`} style={{ animation: 'crmFadeIn 0.2s ease' }}>
+            <style>{`
+              @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes ncEntre { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+              .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-color: #fff !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9a84c' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding: 11px 38px 11px 14px !important; border-radius: 12px !important; border: 1.5px solid #e3e8f0 !important; font-size: 13.5px !important; font-weight: 600; color: var(--emilio); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+              .crm-select:hover { border-color: #cbd5e1 !important; }
+              .crm-select:focus { border-color: #c9a84c !important; background-color: #fff !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.12); outline: none; }
+
+              /* Le rail des trois temps */
+              .nc-rail { display: flex; gap: 0; margin-top: 18px; }
+              .nc-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0 0 2px; font-family: inherit; text-align: left; cursor: pointer; }
+              .nc-pas:disabled { cursor: default; }
+              .nc-barre { height: 4px; border-radius: 4px; background: #e3e8f0; margin-right: 6px; transition: background .3s ease; }
+              .nc-pas[data-etat="fait"] .nc-barre { background: #c9a84c; }
+              .nc-pas[data-etat="ici"] .nc-barre { background: var(--emilio); }
+              .nc-lig { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; }
+              .nc-lig b { font-size: 11.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
+              .nc-pas[data-etat="fait"] .nc-lig b { color: #a9822f; }
+              .nc-pas[data-etat="ici"] .nc-lig b { color: var(--emilio); }
+              .nc-lig i { font-style: normal; font-size: 11.5px; color: #b4bfcd; }
+              @media (max-width: 720px) { .nc-lig i { display: none; } }
+              .nc-ou { display: none; }
+
+              .nc-corps { animation: ncEntre .26s cubic-bezier(.22,.9,.3,1) both; }
+
+              /* Le statut : cinq cartes plutôt qu'une liste déroulante — on voit
+                 ce que chaque état veut dire au lieu de le deviner. */
+              .nc-etats { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 8px; }
+              .nc-etat { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #e3e8f0; background: #fff; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .14s, background .14s, transform .12s; }
+              .nc-etat:hover { transform: translateY(-1px); }
+              .nc-etat[data-on="true"] { border-color: var(--emilio); background: #f8fafc; }
+              .nc-etat u { text-decoration: none; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+              .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: var(--emilio); }
+              .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
+
+              /* Une personne ou un couple */
+              .nc-qui { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 460px; }
+              .nc-qui-b { justify-content: center; align-items: center; padding: 10px 12px; }
+              .nc-couple { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+              @media (max-width: 720px) { .nc-couple { grid-template-columns: 1fr; } }
+              .nc-pers { border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+              .nc-pers-t { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
+              .nc-civ { display: flex; gap: 6px; }
+              .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
+              .nc-civ button[data-on="true"] { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
+              .nc-note { font-size: 12px; line-height: 1.55; border-radius: 10px; padding: 9px 12px; background: #f8fafc; border: 1px solid #eef1f6; color: #64748b; }
+
+              /* V3.23 — les sections, les champs, l'aperçu */
+              .nc-bloc { background: #fff; border: 1px solid #e6ebf2; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(15,23,42,.02); min-width: 0; }
+              .nc-bloc-t { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; flex-wrap: wrap; }
+              .nc-bloc-ic { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+              .nc-bloc-t b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; color: var(--emilio); }
+              .nc-bloc-t small { font-size: 12.5px; font-weight: 600; color: #94a3b8; }
+              .nc-bloc-corps { display: flex; flex-direction: column; gap: 12px; }
+              .nc-fenetre .${styles.input}, .nc-fenetre .${styles.textarea} { background: #fff; border: 1.5px solid #dfe5ee; border-radius: 11px; padding: 11px 13px; font-size: 14px; }
+              .nc-fenetre .${styles.input}:focus, .nc-fenetre .${styles.textarea}:focus { border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.16); }
+              .nc-fenetre .${styles.label} { font-size: 12.5px; font-weight: 700; color: #3b4a60; }
+              .nc-fenetre .${styles.formRow} { gap: 12px; }
+              .nc-fenetre .${styles.formGroup} { gap: 6px; }
+              .nc-aide { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+              .nc-lien { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 0; font: 700 13px 'DM Sans', sans-serif; color: #a07c28; cursor: pointer; }
+              .nc-lien:hover { text-decoration: underline; text-underline-offset: 3px; }
+              .nc-deux { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px; align-items: start; }
+              .nc-champs { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+              .nc-apercu { position: sticky; top: 0; border-radius: 18px; overflow: hidden; border: 1px solid #e3e8f0; background: #fff; box-shadow: 0 14px 30px -24px rgba(26,35,50,.6); }
+              .nc-ap-h { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 18px 14px 16px; color: #fff; background: linear-gradient(152deg, #3a5178 0%, #27395a 60%, #2e4166 100%); }
+              .nc-ap-txt { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
+              .nc-ap-nom { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+              .nc-ap-nom.vide { color: rgba(255,255,255,.45); font-weight: 700; }
+              .nc-ap-types { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+              .nc-ap-b { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+              .nc-ap-l { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #3b4a60; min-width: 0; }
+              .nc-ap-l svg { color: #a3b0c2; flex-shrink: 0; }
+              .nc-ap-l span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              .nc-ap-l.vide { color: #b4bfcd; }
+              .nc-ap-src { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #fdf8ec; border: 1px solid #efdfb4; font-size: 12.5px; font-weight: 700; color: #7a5d1c; min-width: 0; }
+              .nc-ap-src span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              @media (max-width: 900px) {
+                .nc-deux { grid-template-columns: 1fr; gap: 12px; }
+                .nc-apercu { position: static; border: none; box-shadow: none; background: none; }
+                .nc-ap-h { flex-direction: row; text-align: left; align-items: center; padding: 12px; border-radius: 16px; }
+                .nc-ap-h > span:first-child { width: 46px !important; height: 46px !important; }
+                .nc-ap-h > span:first-child svg { width: 46px; height: 46px; }
+                .nc-ap-txt { align-items: flex-start; }
+                .nc-ap-types { justify-content: flex-start; }
+                .nc-ap-b { display: none; }
+              }
+            `}</style>
+
+            <div className={`${styles.modal} nc-fenetre`} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+
+              {/* ── En-tête ── */}
+              <div className="nc-tete" style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
+                <button className="nc-fermer" aria-label="Fermer" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
+                  <div className="nc-titres" style={{ flexGrow: 1, minWidth: 0 }}>
+                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--emilio)', letterSpacing: -0.4 }}>
+                      {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau contact'}
+                    </h2>
+                    <div className="nc-sous" style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[Math.min(step, GRANDES.length - 1)].sous}</div>
+                    {form.types.length > 0 && step > 0 && <div style={{ marginTop: 6 }} className={`${cc.puces} nc-types`}>{form.types.map(k => <Puce key={k} k={k} />)}</div>}
+                  </div>
+                  {pas === 'recherche' && !form.critPlusTard && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
+                </div>
+
+                <div className="nc-rail">
+                  {GRANDES.map((g, i) => (
+                    <button key={g.nom} type="button" className="nc-pas"
+                      data-etat={i < step ? 'fait' : i === step ? 'ici' : 'avenir'}
+                      disabled={i > step && (i > 1 ? !nomRempli : !form.types.length)}
+                      onClick={() => allerGrande(i)}>
+                      <div className="nc-barre" />
+                      <div className="nc-lig"><b>{g.nom}</b>{i === step && <i>{`${i + 1}/${GRANDES.length}`}</i>}</div>
+                    </button>
+                  ))}
+                </div>
+                {/* Au téléphone, les libellés du rail sont masqués : l'étape en
+                    cours tient sur une ligne. */}
+                <div className="nc-ou">{`${GRANDES[Math.min(step, GRANDES.length - 1)].nom} · ${Math.min(step, GRANDES.length - 1) + 1}/${GRANDES.length}`}</div>
+
+                {/* La frise porte son propre retrait : on annule celui du bloc. */}
+                {surCriteres && <div className="nc-frise" style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
+              </div>
+
+              {/* ── Corps ── */}
+              <div className="nc-defil" style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
+                {error && <div className={styles.errorBox} style={{ marginBottom: 16 }}>{error}</div>}
+
+                <div key={`${step}-${surCriteres ? iC : 'x'}`} className="nc-corps">
+
+                  {/* ═══ 0 · QUI EST-CE ═══ */}
+                  {pas === 'type' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <Bloc ic="personne" titre="Ce contact est…" petit="un ou plusieurs types">
+                        <ChoixTypes v={form.types} onChange={x => { setError(''); setForm({ ...form, types: x }); }} />
+                        <div className="nc-note">
+                          {form.types.length === 0 ? 'Coche un ou plusieurs types : un propriétaire qui vend et rachète est « vendeur » et « acheteur ».'
+                            : form.types.includes('acheteur') ? 'Acheteur : sa recherche et son mandat viennent ensuite. S’il n’a pas encore donné ses critères, il sera « acheteur non filtré ».'
+                              : form.types.includes('vendeur') || form.types.includes('proprietaire') ? (form.creerBien ? 'Vendeur ou propriétaire : après ses coordonnées, « Nouveau bien » s’ouvre, lui déjà propriétaire.' : 'Vendeur ou propriétaire : ses coordonnées d’abord. Son bien pourra se créer juste après si vous cochez « Créer son bien ».')
+                                : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
+                        </div>
+                      </Bloc>
+                      {/* D'où il vient (V3.23) : facultatif, rien de choisi = rien d'enregistré. */}
+                      <Bloc ic="drapeau" titre="D’où vient ce contact ?" petit="facultatif · pour vous rappeler comment vous l’avez eu" teinte={OR}>
+                        <ChoixSource source={form.source} detail={form.source_detail} onChange={(so, de) => setForm({ ...form, source: so, source_detail: de })}
+                          noms={clients.map(x => nomFoyer(x)).filter(Boolean)} />
+                      </Bloc>
+                    </div>
+                  )}
+
+                  {/* ═══ 1 · LE CONTACT ═══
+                      V3.23 : une section par sujet, chacune avec son icône à la
+                      couleur du type ; à gauche, la fiche qui se dessine pendant
+                      qu'on tape. Aucun champ ne porte d'exemple : un « Sophie »
+                      ou un « 06 12 34 56 78 » grisé passait pour déjà rempli. */}
+                  {pas === 'contact' && (
+                    <div className="nc-deux">
+                      {apercu}
+                      <div className="nc-champs">
+                      <Bloc ic="personne" titre="Qui est-ce" teinte={teinte}>
+                        {!pro && <div className="nc-qui">
+                          {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
+                            <button type="button" key={k} className="nc-etat nc-qui-b"
+                              data-on={k === 'couple' ? form.couple : !form.couple && form.civilite === k}
+                              onClick={() => setForm(k === 'couple' ? { ...form, couple: true } : { ...form, couple: false, civilite: k })}>
+                              <b>{lib}</b>
+                            </button>
+                          ))}
+                        </div>}
+                        {pro && <Civilite v={form.civilite} onV={v => setForm({ ...form, couple: false, civilite: v })} />}
+                        {!form.couple || pro ? (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="nc-couple">
+                              <div className="nc-pers">
+                                <div className="nc-pers-t">Personne 1 · contact principal</div>
+                                <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
+                                </div>
+                                {/* Ses coordonnées ici, comme pour la personne 2 : elles
+                                    étaient plus bas, dans « Contact », et on les cherchait. */}
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
+                                </div>
+                              </div>
+                              <div className="nc-pers">
+                                <div className="nc-pers-t">Personne 2</div>
+                                <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} /></div>
+                                </div>
+                                <div className={styles.formRow}>
+                                  <div className={styles.formGroup}><label className={styles.label}>{'Téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} /></div>
+                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} /></div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="nc-note">{'Le mandat en ligne sera préparé à leurs deux noms. La personne 1 reçoit les mails et a l’espace client ; la personne 2 reçoit son propre lien et son propre code pour signer.'}</div>
+                          </>
+                        )}
+                      </Bloc>
+
+                      {/* Le joindre. Un couple a déjà les coordonnées de chacun
+                          au-dessus : ici, seulement un numéro commun ou un autre
+                          e-mail, à la demande. */}
+                      <Bloc ic="telephone" titre="Le joindre" teinte={teinte}>
+                        {!(form.couple && !pro) && (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
+                          </div>
+                        )}
+                        {autresCoord || form.tel2 || form.email2 ? (
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>{'Autre téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>{'Autre e-mail · facultatif'}</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} /></div>
+                          </div>
+                        ) : (
+                          <button type="button" className="nc-lien" onClick={() => setAutresCoord(true)}>
+                            <Ic n="plus" t={14} e={2.4} />{form.couple && !pro ? 'Un numéro commun ou un autre e-mail' : 'Un autre téléphone ou e-mail'}
+                          </button>
+                        )}
+                      </Bloc>
+
+                      {/* Un professionnel se joint à son agence, son étude, son
+                         immeuble : son adresse est dans la section de son métier. */}
+                      {pro ? champsPro : (
+                        <Bloc ic="lieu" titre="Son adresse" teinte={teinte}>
+                          <div className={styles.formGroup} style={{ position: 'relative' }}>
+                            <label className={styles.label}>Adresse</label>
+                            <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} autoComplete="off" />
+                            {adrSug.length > 0 && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
+                                {adrSug.map((f: any, i: number) => (
+                                  <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--emilio)' }}>
+                                    {f.properties?.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <span className="nc-aide">{'Tapez l’adresse : elle se complète toute seule.'}</span>
+                          </div>
+                          <div className={styles.formRow}>
+                            <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} /></div>
+                            <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} /></div>
+                          </div>
+                        </Bloc>
+                      )}
+
+                      {!pro && champsPro}
+
+                      {!acheteur && (form.types.includes('vendeur') || form.types.includes('proprietaire')) && (
+                        <Bloc ic="maison" titre="Son bien" teinte={teinte}>
+                          <button type="button" onClick={() => setForm({ ...form, creerBien: !form.creerBien })} style={{ ...pill(form.creerBien, '#c9a84c', '#fbf6e9', '#8a6a1f'), alignSelf: 'flex-start' }}>
+                            {form.creerBien ? '✓ ' : ''}Créer son bien juste après (rubrique Biens)
+                          </button>
+                          <div className="nc-aide">« Nouveau bien » s’ouvre, lui déjà propriétaire : à suivre, estimation ou mandat signé.</div>
+                        </Bloc>
+                      )}
+
+                      {acheteur && <Bloc ic="drapeau" titre="Où en est ce dossier" teinte={teinte}>
+                        <div className="nc-etats">
+                          {ETATS_NOUVEAU.map(e => (
+                            <button type="button" key={e.cle} className="nc-etat" data-on={form.statut === e.cle}
+                              onClick={() => setForm({ ...form, statut: e.cle as StatutClient })}>
+                              <u style={{ background: e.point }} />
+                              <span style={{ display: 'block' }}>
+                                <b>{e.nom}</b>
+                                <span>{e.quand}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 12, lineHeight: 1.55, borderRadius: 10, padding: '9px 12px',
+                          background: form.statut === 'actif' ? '#ecfdf5' : '#f8fafc',
+                          border: `1px solid ${form.statut === 'actif' ? '#bbf7d0' : '#eef1f6'}`,
+                          color: form.statut === 'actif' ? '#15803d' : '#64748b' }}>
+                          {form.statut === 'actif'
+                            ? 'La veille cherchera pour ce client dès la création du dossier.'
+                            : 'Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
+                        </div>
+                      </Bloc>}
+
+                      {acheteur && <Bloc ic="maison" titre="Sa situation aujourd’hui" teinte={teinte}>
+                        <div className={styles.formGroup}>
+                          <label className={styles.label}>Statut d&apos;occupation</label>
+                          <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
+                            <option value="">Non précisé</option>
+                            <option value="proprietaire">Propriétaire</option>
+                            <option value="locataire">Locataire</option>
+                            <option value="heberge">Hébergé</option>
+                            <option value="autre">Autre</option>
+                          </select>
+                        </div>
+                        <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
+                          {form.bien_actuel_a_vendre ? '✓ ' : ''}Revente possible après l&apos;achat (mandat vendeur potentiel)
+                        </button>
+                        {form.bien_actuel_a_vendre && (
+                          <>
+                            <div className={styles.formRow}>
+                              <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} /></div>
+                            </div>
+                            <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} /></div>
+                            <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={{ ...pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9'), alignSelf: 'flex-start' }}>
+                              {form.bien_actuel_meme_adresse ? '✓ ' : ''}À la même adresse que le contact
+                            </button>
+                            {!form.bien_actuel_meme_adresse && (
+                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à revendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} /></div>
+                            )}
+                            <div className={styles.formGroup}><label className={styles.label}>{'Précisions · facultatif'}</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} rows={2} /></div>
+                          </>
+                        )}
+                      </Bloc>}
+
+                      <Bloc ic="crayon" titre={`À savoir sur ${quiC}`} petit="pour vous seul" teinte={OR}>
+                        <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} />
+                        <span className="nc-aide">{acheteur
+                          ? 'Son projet, ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ». Les précisions que le client verra se remplissent à l’étape « Sa recherche ».'
+                          : 'Ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ».'}</span>
+                      </Bloc>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ═══ 2 · SA RECHERCHE ═══ */}
+                  {pas === 'recherche' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <button type="button" onClick={() => setForm({ ...form, critPlusTard: !form.critPlusTard })} style={{ ...pill(form.critPlusTard, '#64748b', '#f1f5f9', '#34496e'), alignSelf: 'flex-start' }}>
+                        {form.critPlusTard ? '✓ ' : ''}Ses critères plus tard : acheteur non filtré
+                      </button>
+                      {form.critPlusTard ? (
+                        <div className="nc-note">Il sera dans « Acheteurs non filtrés » jusqu’à ce que sa recherche ait ses critères : tu les saisiras depuis sa fiche.</div>
+                      ) : (
+                        <div className={modeCrit === 'etapes' ? classesCrit.critCorps : undefined}
+                          style={modeCrit === 'tout' ? { display: 'flex', flexDirection: 'column', gap: 14 } : undefined}>
+                          <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iC} sens={sensCrit} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ═══ 3 · LE MANDAT ═══ */}
+                  {pas === 'mandat' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <Bloc ic="doc" titre="Mandat de recherche" teinte={teinte}>
+                        <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), alignSelf: 'flex-start' }}>
+                          {form.sans_mandat ? '✓ ' : ''}Recherche sans mandat signé
+                        </button>
+                        {!form.sans_mandat && (
+                          <>
+                            <div className={styles.formRow}>
+                              <div className={styles.formGroup}><label className={styles.label}>Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
+                              <div className={styles.formGroup}><label className={styles.label}>Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} /></div>
+                            </div>
+                            <div className={styles.formGroup}><label className={styles.label}>Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} /></div>
+                          </>
+                        )}
+                      </Bloc>
+
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Pied ── */}
+              <div className="nc-pied" style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+                {/* Au téléphone : « ← » seul, et pas d'« Annuler » (la croix
+                    est en haut) — tout tient sur une ligne. */}
+                {step === 0
+                  ? <button type="button" className={`${styles.btnSecondary} nc-annuler`} onClick={revenir}>Annuler</button>
+                  : <button type="button" className={`${styles.btnSecondary} nc-prec`} onClick={revenir} aria-label="Précédent"><span aria-hidden="true">←</span><span className="nc-mot">{' Précédent'}</span></button>}
+                <span style={{ flexGrow: 1 }} />
+                {!dernierCran && (
+                  <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli || !form.types.length}
+                    style={{ opacity: nomRempli ? 1 : 0.45 }}
+                    title="Crée le dossier avec ce qui est déjà rempli — le reste se complète depuis la fiche"
+                    onClick={handleCreate}>
+                    {saving ? '…' : 'Créer maintenant'}
+                  </button>
+                )}
+                {dernierCran ? (
+                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={saving} onClick={handleCreate}>
+                    {saving ? 'Création…' : acheteur ? '✓ Créer le dossier' : '✓ Créer le contact'}
+                  </button>
+                ) : (
+                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={step === 0 && !form.types.length} style={step === 0 && !form.types.length ? { opacity: 0.5 } : undefined} onClick={continuer}>Continuer →</button>
+                )}
+              </div>
+            </div>
+          </div>
+          </Portail>
+        );
+  })();
+
+  /* Ouverte depuis une demande du site : la fenêtre seule, sans la liste. */
+  if (fenetre) return <>{fenetreCreation}</>;
 
   return (
     <div className={styles.page}>
@@ -1249,497 +1801,8 @@ export default function Clients({ onNavigate }: { onNavigate: (page: string, dat
                   );
       })()}
 
-      {/* ═══ NOUVEAU CLIENT ═══════════════════════════════════════════════
-          Trois temps : qui est ce client, ce qu'il cherche, ce qui nous lie.
-          Le deuxième reprend, à l'identique, le formulaire de critères de la
-          fiche — il n'y a plus deux versions à tenir à jour. */}
-      {showModal && (() => {
-        /* Les temps de la création suivent le type : un acheteur a sa
-           recherche et son mandat ; un vendeur, un notaire, un confrère… n'ont
-           que « qui » et « comment le joindre ». */
-        const acheteur = form.types.includes('acheteur');
-        const pro = estPro(form.types);
-        /* La couleur du formulaire : celle de son type principal (le premier
-           qui n'est pas « acheteur », sinon acheteur). */
-        const typeP = typeDe(form.types.find(k => k !== 'acheteur') || form.types[0] || 'acheteur');
-        const teinte: Teinte = { c: typeP.c, fond: typeP.fond };
-        const nomTape = nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } });
-        const quiC = form.prenom.trim() || (form.couple && !pro ? 'eux' : form.civilite === 'Madame' ? 'elle' : 'lui');
-        /* La fiche qui se dessine pendant qu'on tape (à gauche ; une bande en
-           haut sur téléphone). Elle ne montre que ce qui est saisi. */
-        const lieuPro = form.pro.immeuble || form.pro.adresseEtude || form.pro.adresseAgence || form.pro.etude || form.pro.agence || form.pro.societe || '';
-        const adresseTapee = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-        const srcChoisie = sourceDe(form.source);
-        const apercu = (
-          <aside className="nc-apercu" aria-label="Aperçu de la fiche">
-            <div className="nc-ap-h">
-              <AvatarContact c={{ prenom: form.prenom, nom: form.nom, civilite: form.civilite, couple: form.couple && !pro, conjoint: { civilite: form.c2_civilite, prenom: form.c2_prenom }, types: form.types }}
-                teinte={{ bg: typeP.fond, fg: typeP.c, trait: 'rgba(255,255,255,.18)' }} taille={62} />
-              <div className="nc-ap-txt">
-                <div className={`nc-ap-nom${nomTape ? '' : ' vide'}`}>{nomTape || 'Prénom Nom'}</div>
-                <div className="nc-ap-types">{form.types.map(k => <Puce key={k} k={k} />)}</div>
-              </div>
-            </div>
-            <div className="nc-ap-b">
-              <div className={`nc-ap-l${form.tel1 ? '' : ' vide'}`}><Ic n="telephone" t={15} /><span>{form.tel1 || 'Téléphone'}</span></div>
-              <div className={`nc-ap-l${form.email1 ? '' : ' vide'}`}><Ic n="mail" t={15} /><span>{form.email1 || 'E-mail'}</span></div>
-              {pro
-                ? <div className={`nc-ap-l${lieuPro ? '' : ' vide'}`}><Ic n={IC_PRO[form.types.includes('gardien') ? 'L’immeuble' : form.types.includes('notaire') ? 'Son étude' : form.types.includes('confrere') ? 'Son agence' : 'Son activité']} t={15} /><span>{lieuPro || (form.types.includes('gardien') ? 'Immeuble' : form.types.includes('notaire') ? 'Étude' : form.types.includes('confrere') ? 'Agence' : 'Société')}</span></div>
-                : <div className={`nc-ap-l${adresseTapee ? '' : ' vide'}`}><Ic n="lieu" t={15} /><span>{adresseTapee || 'Adresse'}</span></div>}
-              {srcChoisie && <div className="nc-ap-src"><Ic n={srcChoisie.ic} t={14} /><span>{libelleSource(form.source, form.source_detail)}</span></div>}
-              <div className="nc-aide" style={{ textAlign: 'center' }}>La fiche se dessine au fur et à mesure.</div>
-            </div>
-          </aside>
-        );
-        /* Ce qui est propre au type : l'agence d'un confrère, l'étude d'un
-           notaire… Juste après l'identité pour un professionnel (c'est ce
-           qui compte), après les coordonnées pour un particulier. */
-        const champsPro = (
-          <ChampsPro types={form.types} pro={form.pro} onChange={x => setForm({ ...form, pro: x })}
-            cls={{ row: styles.formRow, group: styles.formGroup, label: styles.label, input: styles.input, bloc: (titre, enfants) => <Bloc key={titre} ic={IC_PRO[titre] || 'dossier'} titre={titre} petit={`ce qui est propre à un ${typeDe(form.types.find(k => k !== 'acheteur') || form.types[0]).lib.toLowerCase()}`} teinte={teinte}>{enfants}</Bloc> }} />
-        );
-        const GRANDES: { cle: 'type' | 'contact' | 'recherche' | 'mandat'; ico: string; nom: string; sous: string }[] = [
-          { cle: 'type', ico: '🏷️', nom: 'Qui est-ce', sous: 'Acheteur, vendeur, notaire, confrère… plusieurs à la fois si besoin' },
-          { cle: 'contact', ico: '👤', nom: pro ? 'Ses coordonnées' : 'Le contact', sous: pro ? 'Qui il est, où il travaille, comment le joindre' : 'Qui il est, comment le joindre' },
-          ...(acheteur ? [
-            { cle: 'recherche' as const, ico: '🎯', nom: 'Sa recherche', sous: 'Ce qu\'il cherche, et où' },
-            { cle: 'mandat' as const, ico: '📋', nom: 'Le mandat', sous: 'Ce qui vous lie' },
-          ] : []),
-        ];
-        const pas = GRANDES[Math.min(step, GRANDES.length - 1)].cle;
-        const etapesCrit = etapesCriteres(crit, setCrit);
-        const nbC = etapesCrit.length;
-        const iC = Math.min(Math.max(etapeCrit, 0), nbC - 1);
-        const surCriteres = pas === 'recherche' && modeCrit === 'etapes' && !form.critPlusTard;
-        const nomRempli = !!(form.prenom.trim() || form.nom.trim());
-
-        const allerC = (n: number) => { setSensCrit(n > iC ? 1 : -1); setEtapeCrit(Math.max(0, Math.min(nbC - 1, n))); };
-        const changerMode = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
-        const allerGrande = (n: number) => {
-          if (n > 0 && !form.types.length) { setError('Choisissez d’abord qui est ce contact.'); return; }
-          setError(''); setEtapeCrit(0); setSensCrit(1); setStep(Math.max(0, Math.min(GRANDES.length - 1, n)));
-        };
-
-        /* « Continuer » avance d'un cran — un cran, c'est une sous-étape des
-           critères quand on les remplit une par une, sinon une grande étape. */
-        function continuer() {
-          if (surCriteres && iC < nbC - 1) { allerC(iC + 1); return; }
-          allerGrande(step + 1);
-        }
-        function revenir() {
-          if (surCriteres && iC > 0) { allerC(iC - 1); return; }
-          if (step === 0) { setShowModal(false); return; }
-          allerGrande(step - 1);
-        }
-        const dernierCran = step >= GRANDES.length - 1;
-
-        /* Sur <body> : la page qui arrive glisse (animation d'entrée), et la
-           fenêtre, dedans, glissait avec elle avant de sauter à sa place. */
-        return (
-          <Portail>
-          <div className={`${styles.modalOverlay} nc-voile`} style={{ animation: 'crmFadeIn 0.2s ease' }}>
-            <style>{`
-              @keyframes crmFadeIn { from { opacity: 0; } to { opacity: 1; } }
-              @keyframes crmPopIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-              @keyframes ncEntre { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-              .crm-select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-color: #fff !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9a84c' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding: 11px 38px 11px 14px !important; border-radius: 12px !important; border: 1.5px solid #e3e8f0 !important; font-size: 13.5px !important; font-weight: 600; color: var(--emilio); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
-              .crm-select:hover { border-color: #cbd5e1 !important; }
-              .crm-select:focus { border-color: #c9a84c !important; background-color: #fff !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.12); outline: none; }
-
-              /* Le rail des trois temps */
-              .nc-rail { display: flex; gap: 0; margin-top: 18px; }
-              .nc-pas { flex: 1 1 0; min-width: 0; background: none; border: none; padding: 0 0 2px; font-family: inherit; text-align: left; cursor: pointer; }
-              .nc-pas:disabled { cursor: default; }
-              .nc-barre { height: 4px; border-radius: 4px; background: #e3e8f0; margin-right: 6px; transition: background .3s ease; }
-              .nc-pas[data-etat="fait"] .nc-barre { background: #c9a84c; }
-              .nc-pas[data-etat="ici"] .nc-barre { background: var(--emilio); }
-              .nc-lig { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; }
-              .nc-lig b { font-size: 11.5px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
-              .nc-pas[data-etat="fait"] .nc-lig b { color: #a9822f; }
-              .nc-pas[data-etat="ici"] .nc-lig b { color: var(--emilio); }
-              .nc-lig i { font-style: normal; font-size: 11.5px; color: #b4bfcd; }
-              @media (max-width: 720px) { .nc-lig i { display: none; } }
-              .nc-ou { display: none; }
-
-              .nc-corps { animation: ncEntre .26s cubic-bezier(.22,.9,.3,1) both; }
-
-              /* Le statut : cinq cartes plutôt qu'une liste déroulante — on voit
-                 ce que chaque état veut dire au lieu de le deviner. */
-              .nc-etats { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 8px; }
-              .nc-etat { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #e3e8f0; background: #fff; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .14s, background .14s, transform .12s; }
-              .nc-etat:hover { transform: translateY(-1px); }
-              .nc-etat[data-on="true"] { border-color: var(--emilio); background: #f8fafc; }
-              .nc-etat u { text-decoration: none; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
-              .nc-etat b { display: block; font-size: 13.5px; font-weight: 700; color: var(--emilio); }
-              .nc-etat span { display: block; font-size: 11.5px; color: #8593a8; margin-top: 1px; line-height: 1.4; }
-
-              /* Une personne ou un couple */
-              .nc-qui { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 460px; }
-              .nc-qui-b { justify-content: center; align-items: center; padding: 10px 12px; }
-              .nc-couple { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-              @media (max-width: 720px) { .nc-couple { grid-template-columns: 1fr; } }
-              .nc-pers { border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-              .nc-pers-t { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
-              .nc-civ { display: flex; gap: 6px; }
-              .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
-              .nc-civ button[data-on="true"] { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
-              .nc-note { font-size: 12px; line-height: 1.55; border-radius: 10px; padding: 9px 12px; background: #f8fafc; border: 1px solid #eef1f6; color: #64748b; }
-
-              /* V3.23 — les sections, les champs, l'aperçu */
-              .nc-bloc { background: #fff; border: 1px solid #e6ebf2; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(15,23,42,.02); min-width: 0; }
-              .nc-bloc-t { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; flex-wrap: wrap; }
-              .nc-bloc-ic { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-              .nc-bloc-t b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; color: var(--emilio); }
-              .nc-bloc-t small { font-size: 12.5px; font-weight: 600; color: #94a3b8; }
-              .nc-bloc-corps { display: flex; flex-direction: column; gap: 12px; }
-              .nc-fenetre .${styles.input}, .nc-fenetre .${styles.textarea} { background: #fff; border: 1.5px solid #dfe5ee; border-radius: 11px; padding: 11px 13px; font-size: 14px; }
-              .nc-fenetre .${styles.input}:focus, .nc-fenetre .${styles.textarea}:focus { border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.16); }
-              .nc-fenetre .${styles.label} { font-size: 12.5px; font-weight: 700; color: #3b4a60; }
-              .nc-fenetre .${styles.formRow} { gap: 12px; }
-              .nc-fenetre .${styles.formGroup} { gap: 6px; }
-              .nc-aide { font-size: 12px; color: #94a3b8; line-height: 1.5; }
-              .nc-lien { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 0; font: 700 13px 'DM Sans', sans-serif; color: #a07c28; cursor: pointer; }
-              .nc-lien:hover { text-decoration: underline; text-underline-offset: 3px; }
-              .nc-deux { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px; align-items: start; }
-              .nc-champs { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-              .nc-apercu { position: sticky; top: 0; border-radius: 18px; overflow: hidden; border: 1px solid #e3e8f0; background: #fff; box-shadow: 0 14px 30px -24px rgba(26,35,50,.6); }
-              .nc-ap-h { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 18px 14px 16px; color: #fff; background: linear-gradient(152deg, #3a5178 0%, #27395a 60%, #2e4166 100%); }
-              .nc-ap-txt { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
-              .nc-ap-nom { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
-              .nc-ap-nom.vide { color: rgba(255,255,255,.45); font-weight: 700; }
-              .nc-ap-types { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
-              .nc-ap-b { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
-              .nc-ap-l { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #3b4a60; min-width: 0; }
-              .nc-ap-l svg { color: #a3b0c2; flex-shrink: 0; }
-              .nc-ap-l span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-              .nc-ap-l.vide { color: #b4bfcd; }
-              .nc-ap-src { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #fdf8ec; border: 1px solid #efdfb4; font-size: 12.5px; font-weight: 700; color: #7a5d1c; min-width: 0; }
-              .nc-ap-src span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-              @media (max-width: 900px) {
-                .nc-deux { grid-template-columns: 1fr; gap: 12px; }
-                .nc-apercu { position: static; border: none; box-shadow: none; background: none; }
-                .nc-ap-h { flex-direction: row; text-align: left; align-items: center; padding: 12px; border-radius: 16px; }
-                .nc-ap-h > span:first-child { width: 46px !important; height: 46px !important; }
-                .nc-ap-h > span:first-child svg { width: 46px; height: 46px; }
-                .nc-ap-txt { align-items: flex-start; }
-                .nc-ap-types { justify-content: flex-start; }
-                .nc-ap-b { display: none; }
-              }
-            `}</style>
-
-            <div className={`${styles.modal} nc-fenetre`} style={{ maxWidth: 940, width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '93vh', animation: 'crmPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-
-              {/* ── En-tête ── */}
-              <div className="nc-tete" style={{ padding: '20px 26px 0', position: 'relative', flexShrink: 0 }}>
-                <button className="nc-fermer" aria-label="Fermer" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 16, right: 18, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', color: '#64748b', fontSize: 15 }}>✕</button>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', paddingRight: 46 }}>
-                  <div className="nc-titres" style={{ flexGrow: 1, minWidth: 0 }}>
-                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--emilio)', letterSpacing: -0.4 }}>
-                      {nomRempli ? nomFoyer({ prenom: form.prenom, nom: form.nom, couple: form.couple, conjoint: { prenom: form.c2_prenom, nom: form.c2_nom } }) : 'Nouveau contact'}
-                    </h2>
-                    <div className="nc-sous" style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>{GRANDES[Math.min(step, GRANDES.length - 1)].sous}</div>
-                    {form.types.length > 0 && step > 0 && <div style={{ marginTop: 6 }} className={`${cc.puces} nc-types`}>{form.types.map(k => <Puce key={k} k={k} />)}</div>}
-                  </div>
-                  {pas === 'recherche' && !form.critPlusTard && <BasculeCriteres mode={modeCrit} onMode={changerMode} />}
-                </div>
-
-                <div className="nc-rail">
-                  {GRANDES.map((g, i) => (
-                    <button key={g.nom} type="button" className="nc-pas"
-                      data-etat={i < step ? 'fait' : i === step ? 'ici' : 'avenir'}
-                      disabled={i > step && (i > 1 ? !nomRempli : !form.types.length)}
-                      onClick={() => allerGrande(i)}>
-                      <div className="nc-barre" />
-                      <div className="nc-lig"><b>{g.nom}</b>{i === step && <i>{`${i + 1}/${GRANDES.length}`}</i>}</div>
-                    </button>
-                  ))}
-                </div>
-                {/* Au téléphone, les libellés du rail sont masqués : l'étape en
-                    cours tient sur une ligne. */}
-                <div className="nc-ou">{`${GRANDES[Math.min(step, GRANDES.length - 1)].nom} · ${Math.min(step, GRANDES.length - 1) + 1}/${GRANDES.length}`}</div>
-
-                {/* La frise porte son propre retrait : on annule celui du bloc. */}
-                {surCriteres && <div className="nc-frise" style={{ margin: '0 -22px' }}><FriseCriteres etapes={etapesCrit} i={iC} onAller={allerC} /></div>}
-              </div>
-
-              {/* ── Corps ── */}
-              <div className="nc-defil" style={{ padding: '20px 26px', overflowY: 'auto', flex: 1 }}>
-                {error && <div className={styles.errorBox} style={{ marginBottom: 16 }}>{error}</div>}
-
-                <div key={`${step}-${surCriteres ? iC : 'x'}`} className="nc-corps">
-
-                  {/* ═══ 0 · QUI EST-CE ═══ */}
-                  {pas === 'type' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <Bloc ic="personne" titre="Ce contact est…" petit="un ou plusieurs types">
-                        <ChoixTypes v={form.types} onChange={x => { setError(''); setForm({ ...form, types: x }); }} />
-                        <div className="nc-note">
-                          {form.types.length === 0 ? 'Coche un ou plusieurs types : un propriétaire qui vend et rachète est « vendeur » et « acheteur ».'
-                            : form.types.includes('acheteur') ? 'Acheteur : sa recherche et son mandat viennent ensuite. S’il n’a pas encore donné ses critères, il sera « acheteur non filtré ».'
-                              : form.types.includes('vendeur') || form.types.includes('proprietaire') ? 'Vendeur ou propriétaire : après ses coordonnées, « Nouveau bien » s’ouvre, lui déjà propriétaire.'
-                                : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
-                        </div>
-                      </Bloc>
-                      {/* D'où il vient (V3.23) : facultatif, rien de choisi = rien d'enregistré. */}
-                      <Bloc ic="drapeau" titre="D’où vient ce contact ?" petit="facultatif · pour vous rappeler comment vous l’avez eu" teinte={OR}>
-                        <ChoixSource source={form.source} detail={form.source_detail} onChange={(so, de) => setForm({ ...form, source: so, source_detail: de })}
-                          noms={clients.map(x => nomFoyer(x)).filter(Boolean)} />
-                      </Bloc>
-                    </div>
-                  )}
-
-                  {/* ═══ 1 · LE CONTACT ═══
-                      V3.23 : une section par sujet, chacune avec son icône à la
-                      couleur du type ; à gauche, la fiche qui se dessine pendant
-                      qu'on tape. Aucun champ ne porte d'exemple : un « Sophie »
-                      ou un « 06 12 34 56 78 » grisé passait pour déjà rempli. */}
-                  {pas === 'contact' && (
-                    <div className="nc-deux">
-                      {apercu}
-                      <div className="nc-champs">
-                      <Bloc ic="personne" titre="Qui est-ce" teinte={teinte}>
-                        {!pro && <div className="nc-qui">
-                          {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
-                            <button type="button" key={k} className="nc-etat nc-qui-b"
-                              data-on={k === 'couple' ? form.couple : !form.couple && form.civilite === k}
-                              onClick={() => setForm(k === 'couple' ? { ...form, couple: true } : { ...form, couple: false, civilite: k })}>
-                              <b>{lib}</b>
-                            </button>
-                          ))}
-                        </div>}
-                        {pro && <Civilite v={form.civilite} onV={v => setForm({ ...form, couple: false, civilite: v })} />}
-                        {!form.couple || pro ? (
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="nc-couple">
-                              <div className="nc-pers">
-                                <div className="nc-pers-t">Personne 1 · contact principal</div>
-                                <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
-                                <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
-                                </div>
-                                {/* Ses coordonnées ici, comme pour la personne 2 : elles
-                                    étaient plus bas, dans « Contact », et on les cherchait. */}
-                                <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
-                                </div>
-                              </div>
-                              <div className="nc-pers">
-                                <div className="nc-pers-t">Personne 2</div>
-                                <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
-                                <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} /></div>
-                                </div>
-                                <div className={styles.formRow}>
-                                  <div className={styles.formGroup}><label className={styles.label}>{'Téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} /></div>
-                                  <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} /></div>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="nc-note">{'Le mandat en ligne sera préparé à leurs deux noms. La personne 1 reçoit les mails et a l’espace client ; la personne 2 reçoit son propre lien et son propre code pour signer.'}</div>
-                          </>
-                        )}
-                      </Bloc>
-
-                      {/* Le joindre. Un couple a déjà les coordonnées de chacun
-                          au-dessus : ici, seulement un numéro commun ou un autre
-                          e-mail, à la demande. */}
-                      <Bloc ic="telephone" titre="Le joindre" teinte={teinte}>
-                        {!(form.couple && !pro) && (
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
-                          </div>
-                        )}
-                        {autresCoord || form.tel2 || form.email2 ? (
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>{'Autre téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>{'Autre e-mail · facultatif'}</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} /></div>
-                          </div>
-                        ) : (
-                          <button type="button" className="nc-lien" onClick={() => setAutresCoord(true)}>
-                            <Ic n="plus" t={14} e={2.4} />{form.couple && !pro ? 'Un numéro commun ou un autre e-mail' : 'Un autre téléphone ou e-mail'}
-                          </button>
-                        )}
-                      </Bloc>
-
-                      {/* Un professionnel se joint à son agence, son étude, son
-                         immeuble : son adresse est dans la section de son métier. */}
-                      {pro ? champsPro : (
-                        <Bloc ic="lieu" titre="Son adresse" teinte={teinte}>
-                          <div className={styles.formGroup} style={{ position: 'relative' }}>
-                            <label className={styles.label}>Adresse</label>
-                            <input className={styles.input} value={form.adresse_rue} onChange={e => searchAdresse(e.target.value)} autoComplete="off" />
-                            {adrSug.length > 0 && (
-                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'white', border: '1px solid #e3e8f0', borderRadius: 12, marginTop: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(15,22,35,.14)' }}>
-                                {adrSug.map((f: any, i: number) => (
-                                  <button type="button" key={i} onClick={() => pickAdresse(f)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 13px', border: 'none', borderBottom: i < adrSug.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--emilio)' }}>
-                                    {f.properties?.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            <span className="nc-aide">{'Tapez l’adresse : elle se complète toute seule.'}</span>
-                          </div>
-                          <div className={styles.formRow}>
-                            <div className={styles.formGroup}><label className={styles.label}>Code postal</label><input className={styles.input} value={form.adresse_cp} onChange={e => setForm({ ...form, adresse_cp: e.target.value })} /></div>
-                            <div className={styles.formGroup}><label className={styles.label}>Ville</label><input className={styles.input} value={form.adresse_ville} onChange={e => setForm({ ...form, adresse_ville: e.target.value })} /></div>
-                          </div>
-                        </Bloc>
-                      )}
-
-                      {!pro && champsPro}
-
-                      {!acheteur && (form.types.includes('vendeur') || form.types.includes('proprietaire')) && (
-                        <Bloc ic="maison" titre="Son bien" teinte={teinte}>
-                          <button type="button" onClick={() => setForm({ ...form, creerBien: !form.creerBien })} style={{ ...pill(form.creerBien, '#c9a84c', '#fbf6e9', '#8a6a1f'), alignSelf: 'flex-start' }}>
-                            {form.creerBien ? '✓ ' : ''}Créer son bien juste après (rubrique Biens)
-                          </button>
-                          <div className="nc-aide">« Nouveau bien » s’ouvre, lui déjà propriétaire : à suivre, estimation ou mandat signé.</div>
-                        </Bloc>
-                      )}
-
-                      {acheteur && <Bloc ic="drapeau" titre="Où en est ce dossier" teinte={teinte}>
-                        <div className="nc-etats">
-                          {ETATS_NOUVEAU.map(e => (
-                            <button type="button" key={e.cle} className="nc-etat" data-on={form.statut === e.cle}
-                              onClick={() => setForm({ ...form, statut: e.cle as StatutClient })}>
-                              <u style={{ background: e.point }} />
-                              <span style={{ display: 'block' }}>
-                                <b>{e.nom}</b>
-                                <span>{e.quand}</span>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 12, lineHeight: 1.55, borderRadius: 10, padding: '9px 12px',
-                          background: form.statut === 'actif' ? '#ecfdf5' : '#f8fafc',
-                          border: `1px solid ${form.statut === 'actif' ? '#bbf7d0' : '#eef1f6'}`,
-                          color: form.statut === 'actif' ? '#15803d' : '#64748b' }}>
-                          {form.statut === 'actif'
-                            ? 'La veille cherchera pour ce client dès la création du dossier.'
-                            : 'Aucune veille tant que le dossier n\'est pas « Actif ». Vous pourrez basculer le statut à tout moment depuis sa fiche.'}
-                        </div>
-                      </Bloc>}
-
-                      {acheteur && <Bloc ic="maison" titre="Sa situation aujourd’hui" teinte={teinte}>
-                        <div className={styles.formGroup}>
-                          <label className={styles.label}>Statut d&apos;occupation</label>
-                          <select className={`${styles.input} crm-select`} value={form.statut_occupation} onChange={e => setForm({ ...form, statut_occupation: e.target.value })}>
-                            <option value="">Non précisé</option>
-                            <option value="proprietaire">Propriétaire</option>
-                            <option value="locataire">Locataire</option>
-                            <option value="heberge">Hébergé</option>
-                            <option value="autre">Autre</option>
-                          </select>
-                        </div>
-                        <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
-                          {form.bien_actuel_a_vendre ? '✓ ' : ''}Revente possible après l&apos;achat (mandat vendeur potentiel)
-                        </button>
-                        {form.bien_actuel_a_vendre && (
-                          <>
-                            <div className={styles.formRow}>
-                              <div className={styles.formGroup}><label className={styles.label}>Type de bien</label><input className={styles.input} value={form.bien_actuel_type} onChange={e => setForm({ ...form, bien_actuel_type: e.target.value })} /></div>
-                              <div className={styles.formGroup}><label className={styles.label}>Surface (m²)</label><input className={styles.input} type="number" value={form.bien_actuel_surface} onChange={e => setForm({ ...form, bien_actuel_surface: e.target.value })} /></div>
-                            </div>
-                            <div className={styles.formGroup}><label className={styles.label}>Valeur estimée (€)</label><input className={styles.input} type="number" value={form.bien_actuel_valeur} onChange={e => setForm({ ...form, bien_actuel_valeur: e.target.value })} /></div>
-                            <button type="button" onClick={() => setForm({ ...form, bien_actuel_meme_adresse: !form.bien_actuel_meme_adresse })} style={{ ...pill(form.bien_actuel_meme_adresse, '#0ea5e9', '#f0f9ff', '#0ea5e9'), alignSelf: 'flex-start' }}>
-                              {form.bien_actuel_meme_adresse ? '✓ ' : ''}À la même adresse que le contact
-                            </button>
-                            {!form.bien_actuel_meme_adresse && (
-                              <div className={styles.formGroup}><label className={styles.label}>Adresse du bien à revendre</label><input className={styles.input} value={form.bien_actuel_adresse} onChange={e => setForm({ ...form, bien_actuel_adresse: e.target.value })} /></div>
-                            )}
-                            <div className={styles.formGroup}><label className={styles.label}>{'Précisions · facultatif'}</label><textarea className={styles.textarea} value={form.bien_actuel_notes} onChange={e => setForm({ ...form, bien_actuel_notes: e.target.value })} rows={2} /></div>
-                          </>
-                        )}
-                      </Bloc>}
-
-                      <Bloc ic="crayon" titre={`À savoir sur ${quiC}`} petit="pour vous seul" teinte={OR}>
-                        <textarea className={styles.textarea} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} />
-                        <span className="nc-aide">{acheteur
-                          ? 'Son projet, ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ». Les précisions que le client verra se remplissent à l’étape « Sa recherche ».'
-                          : 'Ce qu’il vous a dit, comment vous vous êtes connus… S’affiche en haut de sa fiche, dans « À savoir ».'}</span>
-                      </Bloc>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ═══ 2 · SA RECHERCHE ═══ */}
-                  {pas === 'recherche' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <button type="button" onClick={() => setForm({ ...form, critPlusTard: !form.critPlusTard })} style={{ ...pill(form.critPlusTard, '#64748b', '#f1f5f9', '#34496e'), alignSelf: 'flex-start' }}>
-                        {form.critPlusTard ? '✓ ' : ''}Ses critères plus tard : acheteur non filtré
-                      </button>
-                      {form.critPlusTard ? (
-                        <div className="nc-note">Il sera dans « Acheteurs non filtrés » jusqu’à ce que sa recherche ait ses critères : tu les saisiras depuis sa fiche.</div>
-                      ) : (
-                        <div className={modeCrit === 'etapes' ? classesCrit.critCorps : undefined}
-                          style={modeCrit === 'tout' ? { display: 'flex', flexDirection: 'column', gap: 14 } : undefined}>
-                          <CorpsCriteres etapes={etapesCrit} mode={modeCrit} i={iC} sens={sensCrit} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ═══ 3 · LE MANDAT ═══ */}
-                  {pas === 'mandat' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      <Bloc ic="doc" titre="Mandat de recherche" teinte={teinte}>
-                        <button type="button" onClick={() => setForm({ ...form, sans_mandat: !form.sans_mandat })} style={{ ...pill(form.sans_mandat, '#3b82f6', '#eff6ff', '#1e40af'), alignSelf: 'flex-start' }}>
-                          {form.sans_mandat ? '✓ ' : ''}Recherche sans mandat signé
-                        </button>
-                        {!form.sans_mandat && (
-                          <>
-                            <div className={styles.formRow}>
-                              <div className={styles.formGroup}><label className={styles.label}>Date de signature</label><input className={styles.input} type="date" value={form.mandat_date_signature} onChange={e => setForm({ ...form, mandat_date_signature: e.target.value })} /></div>
-                              <div className={styles.formGroup}><label className={styles.label}>Durée (mois)</label><input className={styles.input} type="number" value={form.mandat_duree} onChange={e => setForm({ ...form, mandat_duree: e.target.value })} /></div>
-                            </div>
-                            <div className={styles.formGroup}><label className={styles.label}>Honoraires convenus</label><input className={styles.input} value={form.mandat_honoraires} onChange={e => setForm({ ...form, mandat_honoraires: e.target.value })} /></div>
-                          </>
-                        )}
-                      </Bloc>
-
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Pied ── */}
-              <div className="nc-pied" style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
-                {/* Au téléphone : « ← » seul, et pas d'« Annuler » (la croix
-                    est en haut) — tout tient sur une ligne. */}
-                {step === 0
-                  ? <button type="button" className={`${styles.btnSecondary} nc-annuler`} onClick={revenir}>Annuler</button>
-                  : <button type="button" className={`${styles.btnSecondary} nc-prec`} onClick={revenir} aria-label="Précédent"><span aria-hidden="true">←</span><span className="nc-mot">{' Précédent'}</span></button>}
-                <span style={{ flexGrow: 1 }} />
-                {!dernierCran && (
-                  <button type="button" className={`${styles.btnSecondary} nc-maint`} disabled={saving || !nomRempli || !form.types.length}
-                    style={{ opacity: nomRempli ? 1 : 0.45 }}
-                    title="Crée le dossier avec ce qui est déjà rempli — le reste se complète depuis la fiche"
-                    onClick={handleCreate}>
-                    {saving ? '…' : 'Créer maintenant'}
-                  </button>
-                )}
-                {dernierCran ? (
-                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={saving} onClick={handleCreate}>
-                    {saving ? 'Création…' : acheteur ? '✓ Créer le dossier' : '✓ Créer le contact'}
-                  </button>
-                ) : (
-                  <button type="button" className={`${styles.btnPrimary} nc-suite`} disabled={step === 0 && !form.types.length} style={step === 0 && !form.types.length ? { opacity: 0.5 } : undefined} onClick={continuer}>Continuer →</button>
-                )}
-              </div>
-            </div>
-          </div>
-          </Portail>
-        );
-      })()}
+      {/* La fenêtre « Nouveau contact », bâtie plus haut (fenetreCreation). */}
+      {fenetreCreation}
     </div>
   );
 }

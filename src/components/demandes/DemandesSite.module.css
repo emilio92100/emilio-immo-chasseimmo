@@ -1,0 +1,397 @@
+/* ═══ Demandes du site (V3.34) — voir PageDemandesSite.tsx ════════════════
+   Une boîte de réception : les catégories en pastilles sous l'en-tête, la
+   liste par période, et la demande ouverte à droite (grand écran) ou dans un
+   tiroir (portable, téléphone). Marine et gris ; la couleur d'une catégorie
+   ne sert qu'à la reconnaître, l'or ne souligne que l'estimation DVF. */
+
+/* ── Les catégories ───────────────────────────────────────────────────── */
+.cats {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: -4px;
+}
+.cat {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 11px;
+  border-radius: 99px; border: 1px solid #e3e8f0; background: white; color: #4a5568;
+  font-family: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.cat:hover { border-color: #cfd8e6; box-shadow: 0 6px 16px -12px rgba(30, 45, 75, .5); }
+.catIc {
+  width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fond); color: var(--c); flex: 0 0 auto;
+}
+.catN {
+  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 99px; background: #f1f5f9; color: #64748b;
+  font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.catOn { background: var(--fond); border-color: var(--trait); color: var(--c); box-shadow: 0 6px 16px -12px var(--c); }
+.catOn .catIc { background: white; }
+.catOn .catN { background: white; color: var(--c); }
+.catVide { opacity: .55; }
+
+/* ── La zone : la liste, et la demande ouverte à côté sur grand écran ─── */
+.zone { display: block; }
+@media (min-width: 1200px) {
+  .zone { display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 480px); gap: 20px; align-items: start; }
+}
+
+.liste { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.groupe { display: flex; flex-direction: column; gap: 8px; }
+.groupeTitre {
+  display: flex; align-items: center; gap: 8px; padding: 0 4px;
+  font-size: 11px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: #8896a8;
+}
+.groupeTitre i { font-style: normal; color: #b0bec5; font-weight: 700; }
+
+/* ── Une demande dans la liste ─────────────────────────────────────────── */
+.carte {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 14px;
+  align-items: start; text-align: left; width: 100%; box-sizing: border-box;
+  padding: 14px 16px 14px 18px; border-radius: 14px; border: 1px solid #e3e8f0; background: white;
+  font-family: inherit; cursor: pointer; overflow: hidden;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.carte::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); opacity: .75;
+}
+.carte:hover { border-color: #cfd8e6; box-shadow: 0 10px 24px -18px rgba(30, 45, 75, .55); }
+.carte.carteOn { border-color: #c9a84c; background: #fffdf7; box-shadow: 0 0 0 3px rgba(201, 168, 76, .24), 0 12px 26px -18px rgba(30, 45, 75, .6); }
+.carteNeuve { background: linear-gradient(90deg, #fffdf8 0%, white 60%); }
+.carteRobot { opacity: .62; }
+.carteRobot:hover, .carteRobot.carteOn { opacity: 1; }
+
+.avatar {
+  width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fond); color: var(--c); border: 1px solid var(--trait);
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14.5px; letter-spacing: .3px;
+  grid-row: span 3; margin-top: 1px; position: relative;
+}
+.pointNeuf {
+  position: absolute; top: -1px; right: -1px; width: 11px; height: 11px; border-radius: 50%;
+  background: #ef4444; border: 2px solid white;
+}
+.ligne1 { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.nom {
+  font-weight: 700; font-size: 15px; color: var(--emilio); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.carteNeuve .nom { font-weight: 800; }
+.quand { font-size: 12px; color: #94a3b8; white-space: nowrap; padding-top: 2px; grid-column: 3; grid-row: 1; }
+.resume {
+  grid-column: 2 / 4; font-size: 13.5px; color: #475569; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.resumeVide { color: #b0bec5; font-style: italic; }
+.pied { grid-column: 2 / 4; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Les petites pastilles (catégorie, statut, rappel, DVF, robot). */
+.pastille {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 750; white-space: nowrap; border: 1px solid var(--trait, #e2e8f0);
+  background: var(--fond, #f8fafc); color: var(--c, #64748b);
+}
+.pastilleDvf { --c: #8a6a1f; --fond: #fdf6e3; --trait: rgba(201, 168, 76, .45); }
+.pastilleRappel { --c: #b45309; --fond: #fffbeb; --trait: #fde68a; }
+.pastilleRappelDu { --c: #b91c1c; --fond: #fef2f2; --trait: #fecaca; }
+.pastilleRobot { --c: #64748b; --fond: #f1f5f9; --trait: #e2e8f0; }
+.pastilleContact { --c: #0f7a4f; --fond: #ecfdf5; --trait: #bfe8d3; }
+.pointStatut { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.coord { font-size: 12.5px; color: #8896a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Les robots de la vue : un bandeau discret pour les retirer d'un coup. */
+.bandeauRobots {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 14px; border-radius: 12px; background: #f8fafc; border: 1px dashed #cbd5e1;
+  font-size: 13px; color: #475569;
+}
+.bandeauRobots > span { flex: 1 1 240px; min-width: 0; }
+.lienAction {
+  border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--emilio);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(52, 73, 110, .35);
+}
+.lienAction:hover { text-decoration-color: currentColor; }
+.lienDanger { color: #b91c1c; text-decoration-color: rgba(185, 28, 28, .35); }
+
+/* ── Vide, erreur ──────────────────────────────────────────────────────── */
+.vide {
+  background: white; border-radius: 16px; border: 1px solid #e3e8f0; padding: 54px 24px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.videIc {
+  width: 56px; height: 56px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #eef2f8; color: var(--emilio); margin-bottom: 6px;
+}
+.videTitre { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 750; font-size: 17px; color: var(--emilio); }
+.videSous { font-size: 14px; color: #8896a8; max-width: 460px; line-height: 1.5; }
+.videSous code { background: #f1f5f9; border-radius: 6px; padding: 1px 6px; font-size: 12.5px; color: #334155; }
+
+/* ── La demande ouverte ────────────────────────────────────────────────── */
+.fiche {
+  background: white; border: 1px solid #e3e8f0; border-radius: 18px; overflow: hidden;
+  box-shadow: 0 18px 40px -30px rgba(30, 45, 75, .6);
+}
+@media (min-width: 1200px) {
+  .colonne { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow-y: auto; border-radius: 18px; scrollbar-width: thin; }
+}
+.ficheVide {
+  border: 1px dashed #d0d7e3; border-radius: 18px; padding: 48px 28px; text-align: center; color: #8896a8;
+  font-size: 14px; line-height: 1.55; background: rgba(255, 255, 255, .6);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.ficheVide b { color: var(--emilio); font-size: 15px; }
+
+/* La tête : le bandeau marine des fiches du CRM. */
+.tete {
+  position: relative; overflow: hidden; isolation: isolate; color: white;
+  padding: 18px 20px 18px; background: linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%);
+}
+.tete::before {
+  content: ''; position: absolute; z-index: -1; width: 320px; height: 320px; right: -110px; top: -200px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(201, 168, 76, .22), transparent 64%);
+}
+.teteHaut { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.teteCat {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px 0 8px; border-radius: 99px;
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); font-size: 12px; font-weight: 750;
+}
+.fermer {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .08);
+  color: white; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto;
+}
+.fermer:hover { background: rgba(255, 255, 255, .16); }
+.identite { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.grandAvatar {
+  width: 52px; height: 52px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .95); color: var(--c); border: 2px solid rgba(201, 168, 76, .7);
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 17px;
+}
+.grandNom {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 20px; line-height: 1.2; margin: 0;
+  overflow-wrap: anywhere;
+}
+.recue { font-size: 12.5px; color: rgba(255, 255, 255, .68); margin-top: 3px; }
+.contacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.btnClair {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 10px;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .22); color: white;
+  font-family: inherit; font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.btnClair:hover { background: rgba(255, 255, 255, .18); }
+.btnClair span { overflow: hidden; text-overflow: ellipsis; }
+.btnOr { background: #c9a84c; border-color: #c9a84c; color: #1a2332; }
+.btnOr:hover { background: #d6b75e; }
+.sansCoord { font-size: 12.5px; color: rgba(255, 255, 255, .6); margin-top: 14px; }
+
+.corps { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 18px; }
+
+/* Le statut : trois boutons, le choisi plein. */
+.statuts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px; background: #f1f5f9; border-radius: 12px; }
+.statut {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; border-radius: 9px;
+  border: 1px solid transparent; background: transparent; color: #64748b; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  cursor: pointer; transition: background .15s, color .15s, box-shadow .15s;
+}
+.statut:hover { color: var(--emilio); }
+.statutOn { background: white; color: var(--c); border-color: var(--trait); box-shadow: 0 4px 12px -8px rgba(30, 45, 75, .6); }
+
+.rappel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: #475569; }
+.rappel > b { font-weight: 700; color: var(--emilio); display: inline-flex; align-items: center; gap: 7px; }
+
+.robotAvis {
+  display: flex; gap: 11px; align-items: flex-start; padding: 12px 14px; border-radius: 12px;
+  background: #f8fafc; border: 1px solid #e2e8f0; font-size: 13px; color: #475569; line-height: 1.5;
+}
+.robotAvis > span:last-child { flex: 1; min-width: 0; }
+
+.section { display: flex; flex-direction: column; gap: 9px; }
+.sectionTitre {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; letter-spacing: .9px;
+  text-transform: uppercase; color: #8896a8;
+}
+.champs { display: flex; flex-direction: column; border: 1px solid #eef1f6; border-radius: 12px; overflow: hidden; }
+.champ { display: grid; grid-template-columns: 38% minmax(0, 1fr); gap: 12px; padding: 9px 13px; font-size: 13.5px; }
+.champ + .champ { border-top: 1px solid #f1f4f8; }
+.champ dt { color: #8896a8; font-weight: 600; margin: 0; }
+.champ dd { color: #1f2d44; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
+.puces { display: flex; gap: 6px; flex-wrap: wrap; }
+.puce {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 99px;
+  background: #f8fafc; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 650;
+}
+.puceN {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--emilio); color: white; font-size: 10.5px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* L'estimation DVF du site : le chiffre qui compte, en or. */
+.dvf {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px;
+  background: linear-gradient(135deg, #fdf8ea 0%, #fbf3dc 100%); border: 1px solid rgba(201, 168, 76, .45);
+}
+.dvfIc {
+  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: white; color: #a07c28; border: 1px solid rgba(201, 168, 76, .4);
+}
+.dvfLib { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #a07c28; }
+.dvfVal { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px; color: #1a2332; margin-top: 2px; }
+.dvfSous { font-size: 12px; color: #8a6a1f; margin-top: 2px; }
+.dvfAucune { background: #f8fafc; border-color: #e2e8f0; }
+.dvfAucune .dvfIc { color: #94a3b8; border-color: #e2e8f0; }
+.dvfAucune .dvfLib { color: #8896a8; }
+.dvfAucune .dvfVal { font-size: 14px; font-weight: 700; color: #64748b; }
+
+/* Le bien demandé (info sur un bien). */
+.bien {
+  display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 14px;
+  background: #eef4ff; border: 1px solid #c9daf8; text-decoration: none; color: inherit;
+}
+.bien:hover { border-color: #9dbbf0; }
+.bienIc {
+  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: white; color: #2f5fb3; border: 1px solid #c9daf8;
+}
+.bienTitre { font-weight: 750; font-size: 14px; color: #1f2d44; line-height: 1.35; }
+.bienRef { font-size: 12px; color: #5b7299; margin-top: 2px; }
+.bienFleche { margin-left: auto; color: #2f5fb3; flex: 0 0 auto; }
+
+.message {
+  margin: 0; padding: 12px 14px; border-radius: 12px; background: #f8fafc; border-left: 3px solid #c9a84c;
+  font-size: 14px; color: #1f2d44; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere;
+}
+
+.notes {
+  width: 100%; box-sizing: border-box; min-height: 92px; resize: vertical; padding: 11px 13px; border-radius: 12px;
+  border: 1.5px solid #e3e8f0; background: #f8fafc; font-family: inherit; font-size: 14px; line-height: 1.55; color: var(--emilio);
+  outline: none; transition: border-color .15s, background .15s;
+}
+.notes:focus { border-color: #c9a84c; background: white; }
+.notesPied { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+.enregistre { font-size: 12.5px; color: #0f7a4f; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+.aide { font-size: 12px; color: #94a3b8; }
+
+.actions { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; border-top: 1px solid #f1f4f8; }
+.actionsLigne { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 14px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 15px; border-radius: 11px;
+  border: 1px solid #e3e8f0; background: white; color: #334155; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, filter .15s;
+}
+.btn:hover { background: #f7f9fc; border-color: #d0d7e3; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btnPlein { background: var(--emilio-fond); color: white; border-color: var(--emilio); flex: 1 1 auto; }
+.btnPlein:hover { background: var(--emilio-fond); filter: brightness(1.1); }
+.btnVert { background: #ecfdf5; color: #0f7a4f; border-color: #bfe8d3; flex: 1 1 auto; }
+.btnVert:hover { background: #e0f8ee; border-color: #9fdcbe; }
+.btnPetit { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 9px; }
+.supprimer { align-self: flex-start; }
+
+/* ── Le tiroir (portable, téléphone) ──────────────────────────────────── */
+.voile {
+  position: fixed; inset: 0; z-index: 88; background: rgba(15, 22, 35, .42);
+  animation: voileEntre .2s ease-out;
+}
+.tiroir {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 90; width: min(540px, 100vw);
+  background: #f7f9fc; overflow-y: auto; overscroll-behavior: contain;
+  box-shadow: -24px 0 60px -30px rgba(15, 22, 35, .6);
+  animation: tiroirEntre .32s cubic-bezier(.16, 1, .3, 1);
+}
+.tiroir .fiche { border-radius: 0; border: none; box-shadow: none; min-height: 100%; }
+@keyframes voileEntre { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tiroirEntre { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Les couches : le tiroir (88-90) passe au-dessus des barres du CRM (50 à 60),
+   la question (94-95) au-dessus du tiroir, et la fenêtre Nouveau contact de
+   Contacts (100) au-dessus de tout ça. Le calendrier de ChoixDate est à 300. */
+
+/* ── Le bouton « Créer la fiche contact », dans la tête ───────────────── */
+.ficheContact { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, .14); }
+.btnFiche {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 15px; border-radius: 10px;
+  background: white; border: 1px solid white; color: #27395a; font-family: inherit; font-size: 13.5px; font-weight: 800;
+  cursor: pointer; white-space: nowrap; box-shadow: 0 8px 18px -12px rgba(0, 0, 0, .5);
+}
+.btnFiche:hover { background: #f5f0e1; }
+
+/* ── « Créer la fiche contact ? » ─────────────────────────────────────── */
+.voileQuestion {
+  position: fixed; inset: 0; z-index: 94; background: rgba(15, 22, 35, .45); backdrop-filter: blur(3px);
+  animation: voileEntre .2s ease-out;
+}
+.question {
+  position: fixed; z-index: 95; left: 0; right: 0; top: 0; bottom: 0; margin: auto; height: max-content;
+  width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; box-sizing: border-box;
+  background: white; border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 30px 70px -30px rgba(15, 22, 35, .7);
+  animation: questionEntre .28s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes questionEntre { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+.qTete { display: flex; gap: 14px; align-items: flex-start; }
+.qIc {
+  width: 44px; height: 44px; border-radius: 14px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: #eef2f8; color: var(--emilio);
+}
+.qTitre { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 19px; color: var(--emilio); }
+.qSous { margin: 4px 0 0; font-size: 13.5px; color: #64748b; line-height: 1.5; }
+.qApercu {
+  display: flex; gap: 13px; align-items: center; padding: 14px; border-radius: 14px; background: #f8fafc; border: 1px solid #e8edf4;
+}
+.qApercu > .avatar { flex: 0 0 auto; }
+.qNom { font-weight: 800; font-size: 16px; color: #1f2d44; }
+.qPuces { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.qPuces .pastille { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.qSource { font-size: 12px; color: #8896a8; margin-top: 8px; line-height: 1.4; }
+.qCherche { font-size: 13px; color: #94a3b8; }
+.qProches { display: flex; flex-direction: column; gap: 8px; padding: 13px 14px; border-radius: 14px; background: #fffbeb; border: 1px solid #fde68a; }
+.qProchesTitre { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; color: #92400e; }
+.qProche { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.qProche > span b { display: block; font-size: 14px; color: #1f2d44; }
+.qProche > span i { display: block; font-style: normal; font-size: 12px; color: #92400e; margin-top: 1px; }
+.qPied { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.qPied > .btnPlein { flex: 0 0 auto; }
+
+/* ── L'annonce « Archivée — Annuler » ─────────────────────────────────── */
+.annonce {
+  position: fixed; z-index: 250; left: 0; right: 0; bottom: 24px; margin: 0 auto; width: max-content; max-width: calc(100vw - 24px);
+  display: flex; align-items: center; gap: 16px; padding: 11px 12px 11px 18px; border-radius: 14px;
+  background: #1f2d44; color: white; font-size: 14px; font-weight: 600; box-shadow: 0 18px 40px -18px rgba(15, 22, 35, .8);
+  animation: annonceEntre .3s cubic-bezier(.16, 1, .3, 1);
+}
+.annonce button {
+  border: none; background: rgba(201, 168, 76, .18); color: #e8c96a; font: inherit; font-weight: 800;
+  height: 32px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+}
+@keyframes annonceEntre { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* ═══ Téléphone ═══════════════════════════════════════════════════════════ */
+@media (max-width: 760px) {
+  .cats {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -12px 0; padding: 2px 12px 4px;
+  }
+  .cats::-webkit-scrollbar { display: none; }
+  .cat { height: 36px; font-size: 13px; flex: 0 0 auto; }
+
+  .carte { padding: 13px 13px 13px 15px; gap: 3px 11px; border-radius: 16px; }
+  .avatar { width: 38px; height: 38px; font-size: 13.5px; grid-row: span 2; }
+  .resume { grid-column: 1 / 4; font-size: 13.5px; margin-top: 4px; }
+  .pied { grid-column: 1 / 4; }
+  .nom { font-size: 15px; }
+  .coord { display: none; }
+
+  .tiroir { width: 100vw; }
+  .tete { padding: calc(14px + env(safe-area-inset-top)) 16px 16px; }
+  .corps { padding: 16px 14px 28px; }
+  .contacts { display: grid; grid-template-columns: 1fr 1fr; }
+  .contacts > .btnClair { justify-content: center; height: 42px; }
+  .contacts > .btnClair:only-child, .contacts > .btnClair:nth-child(3) { grid-column: 1 / 3; }
+  .statut { height: 42px; font-size: 13.5px; }
+  .champ { grid-template-columns: 40% minmax(0, 1fr); padding: 10px 12px; font-size: 14px; }
+  .notes { font-size: 16px; }
+  .actionsLigne > .btn { flex: 1 1 calc(50% - 4px); height: 44px; }
+  .annonce { bottom: calc(82px + env(safe-area-inset-bottom)); }
+  .btnFiche { width: 100%; justify-content: center; height: 44px; }
+  .question { top: auto; bottom: 0; margin: 0 auto; width: 100vw; border-radius: 22px 22px 0 0; padding: 20px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .qPied > .btn { flex: 1 1 0; height: 46px; }
+  .qProche { flex-direction: column; align-items: stretch; }
+}
