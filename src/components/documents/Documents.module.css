@@ -775,3 +775,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .edBoutons .btnCourt span { display: none; }
   .edEtat .edEnvoye { display: none; }
 }
+
+/* ══ V3.42 : un mandat de vente annulé, et la fiche de son bien ══════════ */
+.suiteIc { flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; background: #f3f5f9; color: #475569; display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; }
+.suiteIcOn { background: var(--emilio-fond); color: #e3c872; }
