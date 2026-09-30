@@ -16,8 +16,11 @@ import { isIP } from 'net';
    - une vraie image (JPEG, PNG, WebP, GIF, AVIF), reconnue à ses premiers
      octets, de 15 Mo au plus ;
    - un chemin de rangement sans détour possible (`bien_id` contrôlé).
-   Ce qui n'est pas une image (un plan en PDF…) garde son adresse d'origine,
-   comme avant ; une adresse refusée n'est pas gardée. */
+   Ce qui n'est pas rangé chez nous (un plan en PDF, une adresse refusée ou
+   illisible, au-delà de 40 photos) garde son adresse d'origine, comme avant :
+   le serveur ne va simplement pas la chercher.
+   Une entrée = une sortie, dans le même ordre : la fiche d'un bien (FicheClient)
+   apparie les deux listes par leur rang. */
 
 export const maxDuration = 60;
 
@@ -143,10 +146,11 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabaseService();
-    const uploadedUrls: string[] = [];
+    /* Une sortie par entrée, dans l'ordre (voir en tête). */
+    const uploadedUrls: unknown[] = [];
 
-    for (const photoUrl of photos.slice(0, 40)) {
-      if (typeof photoUrl !== 'string' || !photoUrl) continue;
+    for (const photoUrl of photos) {
+      if (uploadedUrls.length >= 40 || typeof photoUrl !== 'string' || !photoUrl) { uploadedUrls.push(photoUrl); continue; }
       try {
         // Déjà dans notre Storage : gardée telle quelle
         if (dejaChezNous(photoUrl)) {
@@ -155,10 +159,9 @@ export async function POST(req: NextRequest) {
         }
 
         const r = await telecharger(photoUrl);
-        /* Une adresse refusée (interne, piégée) n'est pas gardée ; une
-           adresse publique illisible garde son adresse d'origine. */
-        if (r === 'refuse') continue;
-        if (r === 'illisible') { uploadedUrls.push(photoUrl); continue; }
+        /* Refusée (interne, piégée, nom introuvable) ou illisible : pas
+           téléchargée, elle garde son adresse d'origine. */
+        if (r === 'refuse' || r === 'illisible') { uploadedUrls.push(photoUrl); continue; }
         const img = typeImage(r.octets);
         if (!img) { uploadedUrls.push(photoUrl); continue; }
 
