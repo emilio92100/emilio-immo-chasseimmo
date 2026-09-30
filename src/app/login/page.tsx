@@ -34,7 +34,10 @@ function FormulaireAcces() {
   /* Seulement une page du CRM (V3.33) : « ?suite=https://… » renvoyait,
      juste après une vraie connexion, vers n'importe quel site. */
   const demande = params.get('suite') || '/';
-  const suite = /^\/(?![\/\\])/.test(demande) ? demande : '/';
+  /* V3.43 : ni blanc, ni tabulation, ni barre oblique inverse nulle part
+     (« /\t/site.com » passait le premier contrôle, et le navigateur en
+     faisait une adresse vers un autre site). */
+  const suite = /^\/(?![\/\\])[^\s\\]*$/.test(demande) ? demande : '/';
   const erreurConfig = params.get('erreur') === 'config';
 
   const [mail, setMail] = useState('');
