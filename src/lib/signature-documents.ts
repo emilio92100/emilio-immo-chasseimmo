@@ -36,7 +36,6 @@ import { dateLongue, dateCourte, heureParis, masquerEmail, DELAI_COSIGNATURE } f
 import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
-import { ecritServeur } from './ecritures';
 import { noterSignature } from './registre';
 import { mandatSigneSurBien } from './mandat-bien';
 
@@ -263,9 +262,16 @@ export async function validerSignature(sb: SupabaseClient, s: SigDoc, m: Modele,
   if ((s.statut !== 'invite' && s.statut !== 'attendu') || !s.code_hash) return { erreur: 'recommencer', statut: 409 };
   if (s.code_essais >= CODE_ESSAIS) return { erreur: 'trop', statut: 429 };
   if (!s.code_expire_le || Date.parse(s.code_expire_le) < Date.now()) return { erreur: 'expire', statut: 410 };
-  if (!egal(hacher(code, s.id), s.code_hash)) {
-    const essais = s.code_essais + 1;
-    await ecritServeur('Le compte des essais du code', sb.from('documents_signataires').update({ code_essais: essais }).eq('id', s.id));
+  /* V3.43 : l'essai est réservé AVANT de comparer le code, et seulement si
+     personne ne l'a pris entre-temps (compare puis écrit, en une requête).
+     Des essais envoyés tous en même temps lisaient « 0 essai » et passaient
+     tous : la limite de cinq ne tenait pas. Un double clic ne signe plus
+     deux fois non plus. */
+  const essais = s.code_essais + 1;
+  const { data: resa, error: eR } = await sb.from('documents_signataires').update({ code_essais: essais })
+    .eq('id', s.id).eq('code_essais', s.code_essais).select('id');
+  if (eR) return { erreur: 'enregistrement', statut: 500, plus: { detail: eR.message } };
+  if (!resa?.length || !egal(hacher(code, s.id), s.code_hash)) {
     return { erreur: 'code', statut: 400, plus: { restants: Math.max(0, CODE_ESSAIS - essais) } };
   }
   const le = new Date().toISOString();
@@ -278,7 +284,8 @@ export async function validerSignature(sb: SupabaseClient, s: SigDoc, m: Modele,
     code_hash: null, code_essais: s.code_essais + 1,
     deroule: [...(s.deroule || []),
       ...(o.surPlace ? [{ t: le, x: 'Signé sur place, sur l’écran de l’agence' }] : []),
-      ...(png ? [{ t: le, x: 'Signature tracée à l’écran' }] : []),
+      /* V3.43 : le certificat ne dit « tracée » que si le tracé est rangé. */
+      ...(png ? [{ t: le, x: griffe ? 'Signature tracée à l’écran' : 'Signature tracée à l’écran, mais le tracé n’a pas pu être conservé' }] : []),
       { t: le, x: `Code saisi et validé (${tentative})` },
       { t: le, x: `Case cochée : « ${accepte} »` },
       ...(demande ? [{ t: le, x: `Case à part cochée : « ${demande} »` }] : []),
