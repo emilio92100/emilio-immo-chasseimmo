@@ -42,6 +42,10 @@ import { signalerMaj } from '@/lib/intentions';
 const PAGES = ['dashboard', 'clients', 'fiche', 'biens', 'carte', 'demandes', 'agenda', 'visites',
   'relances', 'documents', 'registre', 'mail', 'activite', 'parametres'];
 
+/* Le menu de gauche réduit à ses icônes : le choix se retient dans ce
+   navigateur (V3.35). */
+const CLE_MENU_REDUIT = 'menu.reduit';
+
 function lireUrl(): { page: string; clientId: string | null } {
   if (typeof window === 'undefined') return { page: 'dashboard', clientId: null };
   const p = new URLSearchParams(window.location.search);
@@ -86,10 +90,17 @@ export default function AppLayout() {
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
   const fermerMenu = useCallback(() => setMenuOuvert(false), []);
-  /* Sur ordinateur, le menu de gauche peut se réduire à ses icônes. L'agenda
-     l'ouvre réduit, pour gagner la largeur de la semaine ; le bouton de la
-     barre du haut le remet (ou le réduit) sur n'importe quel écran. */
-  const [menuReduit, setMenuReduit] = useState(false);
+  /* Sur ordinateur, le menu de gauche peut se réduire à ses icônes. Le choix
+     d'Alexandre (le bouton de la barre du haut) est retenu : le menu reste
+     réduit d'un écran à l'autre, et après un rechargement (V3.35 ; avant, il
+     se redépliait à chaque clic). L'agenda l'ouvre réduit quoi qu'il arrive,
+     pour gagner la largeur de la semaine ; l'y déplier ne vaut que le temps
+     d'y rester. */
+  const [prefReduit, setPrefReduit] = useState(false);
+  const [agendaDeplie, setAgendaDeplie] = useState(false);
+  useEffect(() => {
+    try { setPrefReduit(localStorage.getItem(CLE_MENU_REDUIT) === '1'); } catch { /* sans mémoire, le menu part déplié */ }
+  }, []);
   /* Sur téléphone, c'est cette zone-ci qui défile, barre du haut comprise :
      la barre part avec la page quand on descend, et seule la barre d'onglets
      du bas reste à l'écran (voir AppLayout.module.css). Sur ordinateur,
@@ -242,7 +253,29 @@ export default function AppLayout() {
     contenu.current?.scrollTo({ top: 0 });
     zoneBarre.current?.scrollTo({ top: 0 });
   }, [activePage, ficheClient?.id]);
-  useEffect(() => { setMenuReduit(activePage === 'agenda'); }, [activePage]);
+  useEffect(() => { setAgendaDeplie(false); }, [activePage]);
+  const menuReduit = prefReduit || (activePage === 'agenda' && !agendaDeplie);
+  const basculerMenu = useCallback(() => {
+    const reduire = !menuReduit;
+    setPrefReduit(reduire);
+    if (!reduire && activePage === 'agenda') setAgendaDeplie(true);
+    try { localStorage.setItem(CLE_MENU_REDUIT, reduire ? '1' : '0'); } catch { /* retenu pour cette visite seulement */ }
+  }, [menuReduit, activePage]);
+
+  /* Fermer (×) dans la barre des fiches ouvertes la fiche qu'on regarde :
+     on revient à sa liste — Contacts pour un contact, Biens pour un bien
+     (V3.35 ; avant, la fiche restait à l'écran, sortie de la barre). Fermer
+     une autre fiche ne change pas d'écran. */
+  const fermerFiche = useCallback((f: FicheOuverte) => {
+    setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)));
+    if (f.k === 'contact' && activePage === 'fiche' && ficheClient?.id === f.id) handleNavigate('clients');
+    else if (f.k === 'bien' && activePage === 'biens' && bienActif === f.id) handleNavigate('biens');
+  }, [activePage, ficheClient?.id, bienActif, handleNavigate]);
+  const toutFermer = useCallback(() => {
+    setFiches([]);
+    if (activePage === 'fiche' && ficheClient) handleNavigate('clients');
+    else if (activePage === 'biens' && bienActif) handleNavigate('biens');
+  }, [activePage, ficheClient, bienActif, handleNavigate]);
 
   const renderPage = () => {
     if (activePage === 'fiche') {
@@ -286,7 +319,7 @@ export default function AppLayout() {
       {/* Sur la carte, au téléphone, la barre du haut s'efface (V3.28) : la
           carte a sa propre recherche et son bouton de menu. */}
       <div className={`${styles.mainArea} ${activePage === 'carte' ? styles.surCarte : ''}`} ref={zoneBarre}>
-        <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={() => setMenuReduit(r => !r)} />
+        <Topbar onNavigate={handleNavigate} onMenu={() => setMenuOuvert(true)} menuReduit={menuReduit} onBasculerMenu={basculerMenu} />
         <main className={`${styles.content} ${fiches.length ? styles.contentAvecFiches : ''}`} ref={contenu}>
           {/* La carte professionnelle à renouveler (Paramètres › Agence). */}
           <RappelCarte page={activePage} onNavigate={handleNavigate} />
@@ -299,8 +332,8 @@ export default function AppLayout() {
           active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : null}
           onOuvrir={ouvrirFiche}
           onRanger={setFiches}
-          onFermer={f => setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)))}
-          onToutFermer={() => setFiches([])} />
+          onFermer={fermerFiche}
+          onToutFermer={toutFermer} />
       </div>
       {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
           l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}

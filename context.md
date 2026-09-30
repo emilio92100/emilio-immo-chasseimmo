@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.34 · 30 septembre 2026**
+**Version 3.35 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1428,6 +1428,19 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.35 — 30 septembre 2026 · la barre des fiches ouvertes, le menu réduit
+
+Deux gênes du quotidien, signalées par Alexandre (`src/components/layout/AppLayout.tsx`) :
+
+- **Fermer la fiche qu'on regarde** (× dans la barre des fiches ouvertes, ou « tout fermer ») ramène
+  à sa liste : Contacts pour un contact, Biens pour un bien. Avant, la fiche sortait de la barre mais
+  restait à l'écran. Fermer une autre fiche que celle affichée ne change pas d'écran (`fermerFiche`,
+  `toutFermer`).
+- **Le menu réduit reste réduit** : le bouton de la barre du haut enregistre le choix
+  (`localStorage` `menu.reduit`), qui tient d'un écran à l'autre et après un rechargement. Avant,
+  chaque changement d'écran le redépliait. L'agenda s'ouvre toujours réduit ; l'y déplier ne vaut
+  que le temps d'y rester (`agendaDeplie`).
 
 ### V3.34 — 30 septembre 2026 · les demandes du site arrivent dans le CRM
 
