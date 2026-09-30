@@ -2174,7 +2174,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       photosFinales = (editBienForm.photos || []).map((p: string) => {
         if (p.includes('supabase.co/storage')) return p;
         const idx = photosAUploader.indexOf(p);
-        return idx >= 0 ? urlsUploadees[idx] : p;
+        /* Jamais de trou : sans réponse pour cette photo, elle garde son adresse. */
+        return idx >= 0 ? (urlsUploadees[idx] || p) : p;
       });
     }
     const prixAcqEdit = editBienForm.commission_type === 'pourcentage'
@@ -4881,7 +4882,7 @@ ${signatureMail()}`,
                 <div><label className={styles.lbl}>Date expiration (auto ou manuelle)</label><input className={styles.inp} type="date" value={mandat.date_expiration} onChange={e => setMandat(f => ({ ...f, date_expiration: e.target.value }))} /></div>
               </div>
               <div><label className={styles.lbl}>Honoraires convenus</label><input className={styles.inp} value={mandat.honoraires} onChange={e => setMandat(f => ({ ...f, honoraires: e.target.value }))} placeholder="2,5% TTC ou 5 000€ TTC" /></div>
-              {mandat.date_signature && mandat.duree && !mandat.date_expiration && <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>💡 Expiration calculée : {new Date(new Date(mandat.date_signature).setMonth(new Date(mandat.date_signature).getMonth() + parseInt(mandat.duree))).toLocaleDateString('fr-FR')}</div>}
+              {mandat.date_signature && mandat.duree && !mandat.date_expiration && <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>💡 Expiration calculée : {ajouterMois(String(mandat.date_signature).slice(0, 10), parseInt(mandat.duree)).split('-').reverse().join('/')}</div>}
             </div>
             <div className={styles.modalFooter} style={{ justifyContent: 'space-between' }}>
               {cr.mandat_date_signature || cr.mandat_date_expiration ? (
