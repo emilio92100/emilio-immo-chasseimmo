@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { titreBien, type BienVente } from '@/lib/biens-vente';
+import { etapeDe, titreBien, type BienVente } from '@/lib/biens-vente';
 import { lireEtapeAvantMandat, retirerMandatDuBien, terminerMandatDuBien } from '@/lib/mandat-bien';
 import { txt } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
@@ -34,7 +34,10 @@ export default function SuiteMandatBien({ bien, doc, etaitSigne, supprime, onFer
   const bd = bien.donnees || {};
   const noteSigne = !!txt(bd, 'mandatDate');
   const numero = txt(bd, 'mandatNumero') || bien.mandat_numero || '';
-  const [choix, setChoix] = useState<Choix>(etaitSigne ? 'termine' : 'erreur');
+  /* Sous offre ou sous compromis (V3.43) : on ne propose rien d'office. */
+  const avance = bien.etape === 'offre' || bien.etape === 'compromis';
+  const etape = etapeDe(bien.etape).lib;
+  const [choix, setChoix] = useState<Choix>(avance ? 'rien' : etaitSigne ? 'termine' : 'erreur');
   const [travail, setTravail] = useState(false);
   const [erreur, setErreur] = useState('');
   const [fait, setFait] = useState<string | null>(null);
@@ -49,7 +52,7 @@ export default function SuiteMandatBien({ bien, doc, etaitSigne, supprime, onFer
     noteSigne
       ? { v: 'erreur', ic: 'retour', t: 'Il avait été fait par erreur', x: `Un test, le mauvais bien : ${numero ? `le n° ${numero}` : 'le numéro'}, le type et les dates quittent la fiche, et le bien revient à l’estimation.` }
       : { v: 'erreur', ic: 'retour', t: 'Le bien n’est pas encore en vente', x: 'Aucun mandat signé n’y est noté : il revient à l’estimation, et repassera « En vente » tout seul à la signature du prochain mandat.' },
-    { v: 'rien', ic: 'check', t: 'Ne rien changer', x: 'La fiche reste « En vente », telle quelle. Tu pourras la changer depuis le bien.' },
+    { v: 'rien', ic: 'check', t: 'Ne rien changer', x: `La fiche reste « ${etape} », telle quelle. Tu pourras la changer depuis le bien.` },
   ];
 
   async function valider() {
@@ -74,7 +77,7 @@ export default function SuiteMandatBien({ bien, doc, etaitSigne, supprime, onFer
         <div className={s.fenTete}>
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
             <h3>{fait ? 'La fiche du bien est à jour' : 'Et la fiche du bien ?'}</h3>
-            <p>{fait ? lieu : `${lieu} est encore « En vente »${numero && noteSigne ? `, avec le mandat n° ${numero}` : ''}. Que devient-il ?`}</p>
+            <p>{fait ? lieu : `${lieu} est encore « ${etape} »${numero && noteSigne ? `, avec le mandat n° ${numero}` : ''}. Que devient-il ?`}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" disabled={travail} onClick={onFermer}><Croix /></button>
         </div>
