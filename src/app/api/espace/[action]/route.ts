@@ -453,14 +453,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         const prix = issue === 'offre' && Number.isFinite(p) && p >= 10_000 && p <= 50_000_000 ? Math.round(p) : null;
         const le = new Date().toISOString();
 
-        const { error: eVis } = await supabase.from('visites').update({
+        /* V3.43 : seulement si personne n'a répondu entre-temps (un double
+           appui envoyait deux mails et posait deux relances). */
+        const { data: pose, error: eVis } = await supabase.from('visites').update({
           issue, issue_par: 'client', issue_le: le, motifs, mot_client: mot,
           avis_client_le: le, prix_envisage: prix,
-        }).eq('id', v.id);
+        }).eq('id', v.id).is('avis_client_le', null).select('id');
         if (eVis) {
           console.error('[espace/visite] écriture', eVis.message);
           return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
         }
+        if (!pose?.length) return NextResponse.json({ ok: false, error: 'deja' }, { status: 409 });
 
         /* Le bien suit : « non » le sort des mails et le range dans « Pas
            pour lui » ; sa réponse devient le retour lu dans Présentés. */
@@ -548,7 +551,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            et on ne prévient Alexandre qu'une fois par bien. */
         const { data: avant } = await supabase.from('biens')
           .select('badge_retour, retour_client').eq('id', bien.id).maybeSingle();
-        const dejaVisite = avant?.badge_retour === 'souhaite_visiter';
+        /* V3.43 : Alexandre n'est prévenu qu'une fois par jour et par bien,
+           même si le client repasse par « Pas pour moi » puis « Je veux
+           visiter » (chaque aller-retour envoyait un mail et une relance). */
+        let dejaVisite = avant?.badge_retour === 'souhaite_visiter';
+        if (!dejaVisite && avis === 'souhaite_visiter') {
+          const { count } = await supabase.from('journal').select('id', { count: 'exact', head: true })
+            .eq('recherche_id', recherche.id).eq('bien_id', bien.id).eq('type', 'retour_client')
+            .ilike('titre', '%veut visiter%').gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
+          dejaVisite = (count || 0) > 0;
+        }
         const garde = avis === 'souhaite_visiter' && avant?.badge_retour === 'interesse' ? (avant?.retour_client || null) : null;
 
         /* L'écriture principale : vérifiée (V3.17). Pas enregistrée, le client
@@ -895,7 +907,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           description: 'Réponse au mail « Où en est votre recherche ? ».',
           metadata: { reponse: 'toujours' },
         });
-        if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        /* V3.43 : le détail reste dans les journaux du serveur, pas dans la réponse. */
+        if (error) { console.error('[espace/toujours]', error.message); return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 }); }
         await evt('message', 'Je cherche toujours — réponse au mail « Où en est votre recherche ? »');
         return NextResponse.json({ ok: true });
       }
@@ -1106,7 +1119,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         return NextResponse.json({ ok: false, error: 'action inconnue' }, { status: 404 });
     }
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    /* V3.43 : le détail reste dans les journaux du serveur, pas dans la réponse. */
+    console.error('[espace]', e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ ok: false, error: 'erreur' }, { status: 500 });
   }
 }
