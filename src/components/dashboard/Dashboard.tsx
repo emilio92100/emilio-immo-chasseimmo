@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
@@ -80,7 +81,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
     const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
     const debutMoisJour = jour.slice(0, 8) + '01';
     const [{ data: c }, { data: r }, tx, pres, faites, venir, jr, ca] = await Promise.all([
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      /* Tous les contacts, par pages de 1 000 (V3.43 : au-delà, les compteurs étaient faux). */
+      toutLire<Client>((de, a) => supabase.from('clients').select('*').order('created_at', { ascending: false }).order('id').range(de, a)),
       supabase.from('relances').select('*').eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
       supabase.from('transactions').select('*').neq('etape_actuelle', 'finalise'),
       /* Les biens déposés dans l'espace d'un client ce mois-ci, par mail ou
