@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.40 · 30 septembre 2026**
+**Version 3.41 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1432,6 +1432,36 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.41 — 30 septembre 2026 · « Nouveau mail » refait : style, mise en forme, pièces jointes, aperçu
+
+La page Nouveau mail (`PageMail.tsx`, `PageMail.module.css`) ne passait plus par la coque des
+sélections de biens : un simple message partait avec « SÉLECTION PRIVÉE » en en-tête et « Je ne
+suis plus en recherche » en pied, même adressé à un vendeur.
+- **À qui** : tous les contacts non archivés (acheteurs, vendeurs, notaires, confrères…), cherchés
+  par nom, référence ou adresse ; ou une **adresse libre**, tapée puis Entrée. Un contact sans
+  adresse est grisé. Un contact reçoit sur toutes ses adresses, dans un seul mail.
+- **Le style**, au choix : « Simple » (le mail tel qu'on l'écrit dans sa messagerie, par défaut) ou
+  « Avec l'en-tête Emilio » (bandeau marine au logo, nom et téléphone du conseiller en pied,
+  mentions de l'agence dessous ; ni étiquette ni lien de sortie).
+- **Le texte** : un éditeur (gras, italique, souligné, listes, liens, bouton « Prénom »), le
+  collage arrive en texte seul ; messages pré-rédigés gardés (ils proposent aussi un objet). Le
+  message de départ laisse une ligne pour écrire, où le curseur se pose au premier clic.
+- **Pièces jointes** : PDF, images, Word, Excel, texte (25 Mo par fichier), déposées tout de suite
+  dans le bucket privé `mandats`, sous `mails/<aaaa-mm>/` ; jusqu'à 10 Mo jointes, au-delà des
+  liens valables 7 jours.
+- **Aperçu avant envoi** : le mail exact, destinataire par destinataire ({{prénom}} remplacé),
+  en largeur ordinateur ou téléphone ; l'envoi se fait depuis l'aperçu, qui dit ce qui manque.
+- Tout le HTML passe par `src/lib/mail-libre.ts`, commun à l'écran et au serveur :
+  `nettoyerHtml` (ne garde que div, p, br, b, i, u, a[href http/https/mailto/tel], listes,
+  citation), `htmlVersTexte`, `personnaliserHtml` (valeurs échappées ; « Bonjour {{prénom}}, »
+  sans prénom devient « Bonjour, »), `personnaliserObjet`, `mailLibreHtml` (les deux styles).
+- Le serveur : `/api/mail` (`depot` pour une pièce, `envoyer`). Un mail par destinataire, au nom
+  d'Alexandre. Pour chaque contact du CRM, choisi ou retrouvé par son adresse : `envois`
+  (`mail_libre`) et `journal` (`mail_envoye`, « ✉️ Mail envoyé — objet »), rangés dans sa
+  recherche ouverte s'il en a une. Une adresse hors CRM ne laisse aucune trace.
+- `/api/send-mail` : « SÉLECTION PRIVÉE » n'apparaît plus que sur un mail qui porte des biens
+  (le mail simple de l'Agenda passe encore par là).
 
 ### V3.40 — 30 septembre 2026 · envoyer le projet d'un document, avant la signature
 
