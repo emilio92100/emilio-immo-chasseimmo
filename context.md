@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.39 · 30 septembre 2026**
+**Version 3.40 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -282,6 +282,10 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     seul_chemin, scelle_chemin, scelle_le, assemble_chemin, complet_le, envoye_le, classe_le }`.
     Null : signé à la main (tous les documents d'avant). Le document reste `pret` tant que tout le
     monde n'a pas signé, puis passe `signe` avec `signe_chemin` = le PDF scellé.
+  - `documents.envois` (jsonb, `outils/sql/documents-envois.sql`, V3.40) : les projets envoyés en
+    relecture avant la signature, du plus ancien au plus récent — `[{ le, a: [{ email, nom }],
+    sujet, message, fichier, echecs? }]`, 50 au plus. Écrite par `/api/documents` (action
+    `projet`) seulement ; l'éditeur n'y touche pas (son enregistrement ne porte que `donnees`).
   - **`documents_signataires`** (même fichier SQL) : un signataire par ligne, rattaché à
     `document_id`. `cle` = son cadre dans le document (`v0`, `v1`, `sci`, `conjoint`, `a0`…),
     `mode` (`en_ligne` · `sur_place`), `statut` `attendu` (sur place) · `invite` (son lien est parti)
@@ -1428,6 +1432,32 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.40 — 30 septembre 2026 · envoyer le projet d'un document, avant la signature
+
+Un brouillon part en relecture à qui l'on choisit, sans lancer la signature : plus besoin
+d'« annuler, corriger, renvoyer » quand les vendeurs demandent un changement.
+- Deux portes : **« Envoyer le projet »** dans la fiche du document (Documents › un brouillon,
+  sous « Reprendre le brouillon ») et **« Envoyer ce projet »** dans la barre de l'éditeur, à côté
+  de « Aperçu PDF » (au téléphone, l'icône seule). Pas pour les courriers.
+- La fenêtre (`FenetreProjet`, `src/components/documents/EnvoiProjet.tsx`) : les signataires du
+  document (cadres `m.cases`, l'agence mise à part) avec l'adresse saisie dans le document, puis la
+  fiche client ; une adresse ne figure qu'une fois (la gérante qui est aussi associée). Personne
+  n'est coché d'office, sauf un signataire seul. Une adresse manquante se tape sur place ; « Ou une
+  autre adresse » en prend plusieurs, séparées par une virgule. Objet et message proposés
+  (« Bonjour {{prénom}}, … »), modifiables ; « Le voir » ouvre le PDF qui partira.
+- Le serveur (`/api/documents`, action `projet`) relit le brouillon **enregistré** (l'éditeur
+  enregistre d'abord ce qui est en attente), fabrique le PDF « PROJET NON SIGNÉ » (`pdfDocument`,
+  `projet: true`, l'identité de l'agence du jour : le même que « Aperçu PDF »), et envoie **un mail
+  par personne**, la pièce jointe `Projet-<titre>.pdf`, `{{prénom}}` remplacé pour chacun.
+- La trace : `documents.envois` (colonne neuve, SQL à passer) ; l'historique du bien en vente
+  (`biens_vente_suivi`, `type: 'envoi'`, `donnees.projet: true` → « Projet envoyé à … » dans la
+  fiche du bien) ; le Suivi des contacts du CRM retrouvés par leur adresse (`mail_envoye`).
+- La fiche du document gagne une carte **Historique** (créé, projets envoyés, finalisé, signature
+  lancée, signé, annulé ; du plus récent au plus ancien) ; « Informations » ne garde que le
+  modèle, le numéro, « Modifié » et les signataires. Dans l'éditeur, sous le titre : « Projet
+  envoyé le … à … », et « modifié depuis » si le brouillon a changé après.
+- Le document reste un brouillon : rien n'est figé, aucun numéro n'est pris au registre.
 
 ### V3.39 — 30 septembre 2026 · le mandat de vente d'une SCI, signé aussi par ses associés
 
