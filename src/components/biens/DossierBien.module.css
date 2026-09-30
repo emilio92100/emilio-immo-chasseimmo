@@ -86,12 +86,12 @@
 .groupeT i { font-style: normal; letter-spacing: 0; text-transform: none; font-weight: 700; color: #94a3b8; white-space: nowrap; }
 .groupeJauge { width: 70px; height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; flex-shrink: 0; }
 .groupeJauge span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #34d399, #15803d); }
-.groupeResume { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0; text-transform: none; font-weight: 600; font-size: 12.5px; color: #64748b;  animation: resumeEntre .3s ease both;}
+.groupeResume { margin-left: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0; text-transform: none; font-weight: 600; font-size: 12.5px; color: #64748b;  animation: resumeEntre .3s ease both;}
 .groupeFleche { margin-left: auto; width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #64748b; background: #f1f4f8; flex-shrink: 0; transition: transform .25s cubic-bezier(.22, .9, .3, 1); }
 .groupeFleche[data-ouvert='oui'] { transform: rotate(180deg); }
 .groupeT:disabled .groupeFleche { display: none; }
 .outils { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
-.plis { display: inline-flex; gap: 14px; margin-left: auto; }
+.plis { display: inline-flex; gap: 14px; margin-left: 6px; }
 .plis .lien { color: #64748b; }
 .plis .lien:hover { color: #1a2332; }
 

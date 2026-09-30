@@ -121,7 +121,10 @@ function CartePiece({ p, off, ouverte, auto, premier, dernier, onOuvrir, onMaj, 
     <div className={`${b.pc} ${ouverte ? b.pcOuverte : ''} ${!p.nom ? b.pcSansNom : ''}`}>
       <span className={b.pcIc}><Ic n={pictoPiece(p.nom)} t={21} /></span>
       <div className={b.pcNom}>
+        {/* Le champ a la largeur de son nom : « Changer » vient juste à côté,
+            pas tout à droite (V3.33). */}
         <input className={b.pcNomIn} disabled={off} value={p.nom} placeholder="Nom de la pièce" aria-label="Nom de la pièce"
+          style={{ width: p.nom ? `${Math.max(4, p.nom.length + 1.5)}ch` : '16ch' }}
           onChange={e => onMaj('nom', e.target.value)} />
         {!off && <button type="button" className={b.pcChanger} aria-expanded={ouverte} onClick={() => onOuvrir(!ouverte)}>{ouverte ? 'Fermer' : 'Changer'}</button>}
       </div>

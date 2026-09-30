@@ -37,6 +37,7 @@ import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from
 import { DossierBien, type DestPropose } from './DossierBien';
 import { OngletVisitesOffres } from './VisitesOffres';
 import Depliant from '@/components/shared/Depliant';
+import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
   ChaineDocs, EtapesDocs, SyntheseDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
@@ -1535,15 +1536,13 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         <section className={b.docsVente}>
           {/* Repliable (V3.33) : replié, une pastille par étape ; déplié, le
               détail, chacun avec ses boutons, et tous les documents préparés. */}
-          <div className={b.docsVenteHaut}>
-            <div className={b.docsVenteT}>
+          <div className={b.docsVenteT}>
+            {/* « Voir le détail » à côté du titre, pas tout à droite (V3.33). */}
+            <div className={b.docsVenteLigne}>
               <h3>Les documents de la vente</h3>
-              {docsVenteOuvert && <p>Dans l’ordre : le mandat, un bon par visite, les offres, le compromis. Chacun se prépare prérempli avec le bien, le propriétaire, le prix et les honoraires, et reste relié au bien.</p>}
+              <BoutonPli ouvert={docsVenteOuvert} onClick={() => basculerDocsVente(!docsVenteOuvert)} />
             </div>
-            <button type="button" className={b.docsVenteBtn} aria-expanded={docsVenteOuvert} onClick={() => basculerDocsVente(!docsVenteOuvert)}>
-              <span>{docsVenteOuvert ? 'Replier' : 'Voir le détail'}</span>
-              <span className={b.docsPrepFleche} data-ouvert={docsVenteOuvert ? 'oui' : 'non'}><Ic n="bas" t={15} e={2.4} /></span>
-            </button>
+            {docsVenteOuvert && <p>Dans l’ordre : le mandat, un bon par visite, les offres, le compromis. Chacun se prépare prérempli avec le bien, le propriétaire, le prix et les honoraires, et reste relié au bien.</p>}
           </div>
           {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
           <input ref={champMandat} type="file" accept=".pdf,image/*" hidden onChange={ev => { const f = ev.target.files?.[0]; if (f) void joindreMandat(f); ev.target.value = ''; }} />
@@ -1554,7 +1553,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             <div className={b.docsPrep}>
               <button type="button" className={b.docsPrepT} aria-expanded={listeDocsOuverte} onClick={() => setListeDocsOuverte(v => !v)}>
                 <span>{`Tous les documents préparés pour ce bien · ${docsLies.length}`}</span>
-                <span className={b.docsPrepFleche} data-ouvert={listeDocsOuverte ? 'oui' : 'non'}><Ic n="bas" t={15} e={2.4} /></span>
+                <PastillePli ouvert={listeDocsOuverte} voir="Voir la liste" />
               </button>
               <Depliant ouvert={listeDocsOuverte}>
                 <div className={b.docsPrepListe}>

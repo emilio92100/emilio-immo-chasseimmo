@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import Depliant from '@/components/shared/Depliant';
+import { PastillePli } from '@/components/shared/Pli';
 import { Ic } from '@/components/documents/ApercuActe';
 import { supabase } from '@/lib/supabase';
 import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
@@ -348,8 +349,9 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
         <span className={x.groupeNom}>{g.l}</span>
         {compte && <i>{compte}</i>}
         {part !== null && <span className={x.groupeJauge} aria-hidden="true"><span style={{ width: `${Math.round(part * 100)}%` }} /></span>}
+        {/* « Voir le détail » à côté du titre, pas tout à droite (V3.33). */}
+        {filtre === 'tout' && <PastillePli ouvert={!r} />}
         {r && resume && <span className={x.groupeResume}>{resume}</span>}
-        <span className={x.groupeFleche} data-ouvert={r ? 'non' : 'oui'}><Ic n="bas" t={14} e={2.4} /></span>
       </button>
     );
   };

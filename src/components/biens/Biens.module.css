@@ -593,8 +593,8 @@ button.pas:hover .pasIc { transform: translateY(-1px) scale(1.07); }
 .pcOuverte { border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.12); }
 .pcSansNom { border-color: #f3d58a; background: #fffdf6; }
 .pcIc { grid-area: ic; width: 44px; height: 44px; border-radius: 13px; background: var(--emilio-fond); color: #e7cf8a; display: flex; align-items: center; justify-content: center; }
-.pcNom { grid-area: nom; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.pcNomIn { flex: 1 1 160px; min-width: 0; border: none; border-bottom: 1.5px dashed transparent; padding: 4px 0; background: none; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); outline: none; }
+.pcNom { grid-area: nom; display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; min-width: 0; }
+.pcNomIn { flex: 0 1 auto; max-width: 100%; min-width: 0; border: none; border-bottom: 1.5px dashed transparent; padding: 4px 0; background: none; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); outline: none; }
 .pcNomIn:hover { border-bottom-color: #e3e8f0; }
 .pcNomIn:focus { border-bottom-color: #c9a84c; }
 .pcNomIn::placeholder { color: #c3a55a; font-weight: 700; }
@@ -1193,19 +1193,14 @@ button.pillRouge svg { color: white !important; }
 /* Les documents de la vente (V3.32) : dans l'ordre, puis tous les
    documents préparés, dépliables. */
 .docsVente { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.docsVenteHaut { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .docsVenteT { min-width: 0; }
-.docsVenteBtn {
-  flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; height: 36px; border-radius: 99px; cursor: pointer;
-  border: 1px solid #e3e8f0; background: #fff; color: #34496e; font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
-}
-.docsVenteBtn:hover { border-color: #c9a84c; color: #1a2332; }
-.docsVenteBtn .docsPrepFleche { width: 28px; height: 28px; }
+.docsVenteLigne { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.docsVenteLigne > button { margin-left: 0; }
 .docsVenteT h3 { margin: 0; font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
 .docsVenteT p { margin: 4px 0 4px; font-size: 13px; line-height: 1.5; color: #64748b; }
 .docsPrep { border-top: 1px solid #eef2f7; margin-top: 4px; }
 .docsPrepT {
-  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 2px 4px; border: none; background: none; cursor: pointer;
+  width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: 0; padding: 12px 2px 4px; border: none; background: none; cursor: pointer;
   font: 700 13.5px 'DM Sans', sans-serif; color: #34496e; text-align: left;
 }
 .docsPrepT:hover { color: #1a2332; }
