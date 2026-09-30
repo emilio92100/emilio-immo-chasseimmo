@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import {
   redigerMandat, resumeMandat, figerContenu, etatMandat, finRetractation, masquerEmail, validerMandant, validerPersonne, validerSociete,
-  dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS, COSIGNATAIRES_MAX,
+  dateLongue, dateCourte, heureParis, jourParis, titreMandat, honorairesCourt, euros, DUREE, RETRACTATION_JOURS, COSIGNATAIRES_MAX, ajouterMois,
   rechercheDepuis, versionMandat, decrireRecherche, type Mandant, type Contenu, type Societe,
 } from '@/lib/mandat';
 import {
@@ -415,9 +415,14 @@ export async function POST(req: NextRequest) {
         if (versionMandat(l.contenu.recherche) !== versionMandat(actuelle)) return ko('change', 409, { recherche: actuelle });
         if (l.code_essais >= CODE_ESSAIS) return ko('trop', 429);
         if (!l.code_expire_le || Date.parse(l.code_expire_le) < Date.now()) return ko('expire', 410);
-        if (!egal(hacher(code, l.id), l.code_hash)) {
-          const essais = l.code_essais + 1;
-          await ecritServeur('Le compte des essais du code', sb.from('mandats_signatures').update({ code_essais: essais }).eq('id', l.id));
+        /* V3.43 : l'essai est réservé avant de comparer, en une requête
+           (compare puis écrit) : des essais lancés en même temps ne lisent
+           plus tous « 0 essai », et un double clic ne signe pas deux fois. */
+        const essais = l.code_essais + 1;
+        const { data: resa, error: eR } = await sb.from('mandats_signatures').update({ code_essais: essais })
+          .eq('id', l.id).eq('code_essais', l.code_essais).select('id');
+        if (eR) return ko('enregistrement', 500, { detail: eR.message });
+        if (!resa?.length || !egal(hacher(code, l.id), l.code_hash)) {
           return ko('code', 400, { restants: Math.max(0, CODE_ESSAIS - essais) });
         }
 
@@ -459,7 +464,8 @@ export async function POST(req: NextRequest) {
             deroule, contenu: { ...l.contenu, identite }, griffe_chemin: griffeChemin, empreinte: null, societe: null,
           };
           /* Leurs liens sont préparés avant le PDF, qui les dit « en attente ». */
-          const prets: Co[] = cos.map(c => ({ ...c, ...lienNeuf(c, le) }) as Co);
+          /* V3.43 : le certificat dit qui a donné l'adresse du co-signataire. */
+          const prets: Co[] = cos.map(c => ({ ...c, ...lienNeuf(c, le, `Adresse indiquée par ${nomDe(m)}`) }) as Co);
           const sc = await sceller(sb, lp, prets);
           if (!sc.ok) return ko('stockage', 500, { detail: sc.erreur });
           const { error: eLigne } = await sb.from('mandats_signatures').update({
@@ -482,7 +488,7 @@ export async function POST(req: NextRequest) {
           }
 
           const jourP = jourParis(le);
-          const finP = new Date(Date.parse(jourP + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
+          const finP = ajouterMois(jourP, DUREE.mois);
           const { error: eFicheP } = await sb.from('recherches').update({
             mandat_date_signature: jourP, mandat_duree: 12, mandat_honoraires: honorairesCourt(contenu),
             mandat_date_expiration: finP, sans_mandat: false, mandat_numero: l.numero, mandat_type: 'simple',
@@ -599,7 +605,7 @@ export async function POST(req: NextRequest) {
         /* La fiche du CRM se remplit toute seule : le bloc Mandat affiche la
            signature, et l'espace ne redemandera plus rien. */
         const jour = jourParis(le);
-        const fin = new Date(Date.parse(jour + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
+        const fin = ajouterMois(jour, DUREE.mois);
         const { error: eFiche } = await sb.from('recherches').update({
           mandat_date_signature: jour, mandat_duree: 12, mandat_honoraires: honorairesCourt(contenu),
           mandat_date_expiration: fin, sans_mandat: false, mandat_numero: l.numero, mandat_type: 'simple',
