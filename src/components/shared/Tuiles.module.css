@@ -1,0 +1,47 @@
+/* Les tuiles du bandeau bleu (V3.33) — voir Tuiles.tsx. */
+.tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; min-width: 0; }
+.grandit { flex: 1 1 auto; align-content: stretch; }
+.tuile {
+  position: relative; display: flex; align-items: center; gap: 11px; min-width: 0; padding: 10px 12px 10px 10px; border-radius: 15px;
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .13); color: #fff; text-align: left; font-family: inherit;
+}
+.clic { cursor: pointer; transition: background .15s, border-color .15s; }
+.clic:hover { background: rgba(255, 255, 255, .12); border-color: rgba(232, 201, 106, .5); }
+.ic { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(232, 201, 106, .16); color: #e8c96a; }
+.tx { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tx b { font: 800 15px/1.2 'Plus Jakarta Sans', sans-serif; color: #fff; text-wrap: balance; }
+.tx small { font-size: 12px; line-height: 1.3; color: rgba(255, 255, 255, .64); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* La flèche dans le coin : elle dit « ça s'ouvre » sans prendre de largeur au texte. */
+.va { position: absolute; top: 8px; right: 8px; display: inline-flex; color: rgba(255, 255, 255, .34); transition: color .15s; }
+.clic:hover .va { color: #e8c96a; }
+/* À zéro : rien à ouvrir, la tuile s'efface sans disparaître. */
+/* Quatre tuiles (la fiche d'un acheteur) : quatre de front, ou deux et deux
+   quand la place manque — jamais trois et une toute seule. Et un rien plus
+   compactes, pour que « Aucune sélection » tienne sur une ligne. */
+.tuiles:has(> :nth-child(4)) { grid-template-columns: repeat(auto-fit, minmax(clamp(calc(25% - 8px), (700px - 100%) * 999, calc(50% - 5px)), 1fr)); }
+.tuiles:has(> :nth-child(4)) .ic { width: 30px; height: 30px; border-radius: 9px; }
+.tuiles:has(> :nth-child(4)) .tuile { gap: 10px; padding: 10px 10px 10px 9px; }
+.tuiles:has(> :nth-child(4)) .tx b { font-size: 14px; }
+.vide { background: transparent; border-style: dashed; border-color: rgba(255, 255, 255, .15); }
+.vide .ic { background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .38); }
+.vide .tx b { color: rgba(255, 255, 255, .6); }
+.vide .tx small { color: rgba(255, 255, 255, .42); }
+
+.ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: rgba(255, 255, 255, .78); }
+.depuis { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.depuis > svg { color: #e8c96a; flex-shrink: 0; }
+.depuis i { font-style: normal; font-weight: 500; color: rgba(255, 255, 255, .5); }
+
+@media (max-width: 640px) {
+  .grandit { flex: 0 0 auto; }
+  /* Une ligne de tuiles (deux lignes de deux quand il y en a quatre) :
+     l'icône au-dessus, le chiffre, puis ce qui compte. */
+  .tuiles { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+  .tuiles:has(> :nth-child(4)) { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tuile { flex-direction: column; align-items: flex-start; gap: 7px; padding: 10px; }
+  .ic { width: 28px; height: 28px; border-radius: 8px; }
+  .tx b { font-size: 14px; }
+  .tx small { font-size: 11.5px; }
+  .va { display: none; }
+  .ligne { gap: 6px 14px; }
+}
