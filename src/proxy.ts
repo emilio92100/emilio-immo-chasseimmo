@@ -89,7 +89,23 @@ export async function proxy(request: NextRequest) {
   }
 
   // 3. Le badge posé par /api/login : signé, daté (src/lib/badge.ts, V3.33)
-  if (await badgeValide(request.cookies.get(COOKIE)?.value)) return NextResponse.next();
+  if (await badgeValide(request.cookies.get(COOKIE)?.value)) {
+    /* V3.43 : une action du CRM (envoyer un mail, supprimer un fichier…)
+       ne part que depuis le CRM lui-même. Un autre site ouvert dans le même
+       navigateur ne peut pas la déclencher en profitant du badge. Le
+       navigateur dit d'où vient la demande (Origin) ; sans Origin (appel de
+       serveur à serveur), le badge suffit, comme avant. */
+    if (pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      const origine = request.headers.get('origin');
+      if (origine) {
+        let hoteO = '';
+        try { hoteO = new URL(origine).host.toLowerCase(); } catch { /* origine illisible : refusée */ }
+        const hoteR = (request.headers.get('host') || '').toLowerCase();
+        if (!hoteO || hoteO !== hoteR) return NextResponse.json({ error: 'Origine refusée' }, { status: 403 });
+      }
+    }
+    return NextResponse.next();
+  }
 
   // 4. Accès refusé
   //    Les routes API répondent 401 ; les pages redirigent vers /login.
