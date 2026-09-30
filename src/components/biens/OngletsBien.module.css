@@ -417,3 +417,23 @@
   .maillonTx { flex-direction: column; align-items: flex-start; gap: 1px; }
   .maillonTx b, .maillonTx small { white-space: normal; }
 }
+
+/* La synthèse des documents de la vente, repliés (V3.33). */
+.edSyn { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-top: 8px; }
+.edSynC {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 9px 12px 9px 9px; border-radius: 14px; text-align: left; cursor: pointer;
+  border: 1px solid #e3e8f0; background: #fbfcfe; font-family: inherit; transition: border-color .15s, background .15s;
+}
+.edSynC:hover { border-color: #c9a84c; background: #fff; }
+.edSynRond { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #94a3b8; }
+.edSynC[data-etat='fait'] .edSynRond { background: #16a34a; color: #fff; }
+.edSynC[data-etat='afaire'] .edSynRond { background: #fbf1d6; color: #a07c28; box-shadow: 0 0 0 1px #ecdcb0; }
+.edSynC[data-etat='encours'] .edSynRond { background: #fff; color: #a07c28; box-shadow: 0 0 0 2px #c9a84c; }
+.edSynC[data-etat='libre'] .edSynRond { background: #eef2f8; color: #34496e; }
+.edSynTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.edSynTx b { font-size: 13.5px; font-weight: 800; color: #1a2332; }
+.edSynTx small { font-size: 12px; line-height: 1.3; color: #64748b; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.edSynC[data-etat='fait'] .edSynTx small { color: #15803d; }
+.edSynC[data-etat='afaire'] .edSynTx small, .edSynC[data-etat='encours'] .edSynTx small { color: #a07c28; }
+.edSynC[data-etat='plustard'] .edSynTx small { color: #94a3b8; }
+@media (max-width: 640px) { .edSyn { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

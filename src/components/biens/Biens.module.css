@@ -1193,6 +1193,14 @@ button.pillRouge svg { color: white !important; }
 /* Les documents de la vente (V3.32) : dans l'ordre, puis tous les
    documents préparés, dépliables. */
 .docsVente { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.docsVenteHaut { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.docsVenteT { min-width: 0; }
+.docsVenteBtn {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; height: 36px; border-radius: 99px; cursor: pointer;
+  border: 1px solid #e3e8f0; background: #fff; color: #34496e; font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
+}
+.docsVenteBtn:hover { border-color: #c9a84c; color: #1a2332; }
+.docsVenteBtn .docsPrepFleche { width: 28px; height: 28px; }
 .docsVenteT h3 { margin: 0; font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.2px; }
 .docsVenteT p { margin: 4px 0 4px; font-size: 13px; line-height: 1.5; color: #64748b; }
 .docsPrep { border-top: 1px solid #eef2f7; margin-top: 4px; }

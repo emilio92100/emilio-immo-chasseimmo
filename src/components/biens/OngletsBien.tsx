@@ -606,6 +606,23 @@ export function EtapesDocs({ etapes }: { etapes: EtapeDoc[] }) {
     </ol>
   );
 }
+/* La synthèse, quand les documents de la vente sont repliés (V3.33).
+   Alexandre : « pouvoir replier les documents de la vente pour ne pas qu'ils
+   prennent tout, avoir juste une synthèse, et le dossier de diagnostics plus
+   facilement accessible ». Une pastille par étape, la couleur de son état ;
+   un clic déplie le détail. */
+export function SyntheseDocs({ etapes, onOuvrir }: { etapes: EtapeDoc[]; onOuvrir: () => void }) {
+  return (
+    <div className={o.edSyn}>
+      {etapes.map(x => (
+        <button key={x.k} type="button" className={o.edSynC} data-etat={x.etat} onClick={onOuvrir} title="Voir le détail">
+          <span className={o.edSynRond} aria-hidden="true">{x.etat === 'fait' ? <Ic n="check" t={13} e={3} /> : <Ic n={x.ic} t={14} />}</span>
+          <span className={o.edSynTx}><b>{x.titre}</b><small>{x.statut}</small></span>
+        </button>
+      ))}
+    </div>
+  );
+}
 /* ── Le récapitulatif d'une étape (V3.32) ──────────────────────────────
    Alexandre : « le mandat de vente, suivi d'un avenant, un deuxième
    avenant… plusieurs bons de visite, les offres : que ce soit bien à jour ».

@@ -39,7 +39,7 @@ import { OngletVisitesOffres } from './VisitesOffres';
 import Depliant from '@/components/shared/Depliant';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
-  ChaineDocs, EtapesDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
+  ChaineDocs, EtapesDocs, SyntheseDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
   type AVenirBien, type EvtBien, type MaillonDoc, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
@@ -856,6 +856,16 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const [visite, setVisite] = useState(false);
   /* Onglet Documents (V3.32) : la liste de tous les documents préparés, repliée. */
   const [listeDocsOuverte, setListeDocsOuverte] = useState(false);
+  /* Les documents de la vente, repliés en une synthèse (V3.33) : le choix est
+     gardé dans ce navigateur. Replié par défaut : le dossier de diagnostics,
+     juste en dessous, reste à portée. */
+  const [docsVenteOuvert, setDocsVenteOuvert] = useState(() => {
+    try { return typeof window !== 'undefined' && window.localStorage.getItem('emi-docs-vente') === 'ouvert'; } catch { return false; }
+  });
+  const basculerDocsVente = (v: boolean) => {
+    setDocsVenteOuvert(v);
+    try { window.localStorage.setItem('emi-docs-vente', v ? 'ouvert' : 'replie'); } catch { /* le choix ne sera pas gardé, rien de grave */ }
+  };
   /* Le mandat signé hors du CRM (V3.32) : son scan, joint au bien. */
   const champMandat = useRef<HTMLInputElement>(null);
   const [depotMandat, setDepotMandat] = useState(false);
@@ -1523,13 +1533,23 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         {/* Les documents de la vente (V3.32) : dans l'ordre, chacun avec son
             état et ses boutons ; tous les documents préparés, dépliables. */}
         <section className={b.docsVente}>
-          <div className={b.docsVenteT}>
-            <h3>Les documents de la vente</h3>
-            <p>Dans l’ordre : le mandat, un bon par visite, les offres, le compromis. Chacun se prépare prérempli avec le bien, le propriétaire, le prix et les honoraires, et reste relié au bien.</p>
+          {/* Repliable (V3.33) : replié, une pastille par étape ; déplié, le
+              détail, chacun avec ses boutons, et tous les documents préparés. */}
+          <div className={b.docsVenteHaut}>
+            <div className={b.docsVenteT}>
+              <h3>Les documents de la vente</h3>
+              {docsVenteOuvert && <p>Dans l’ordre : le mandat, un bon par visite, les offres, le compromis. Chacun se prépare prérempli avec le bien, le propriétaire, le prix et les honoraires, et reste relié au bien.</p>}
+            </div>
+            <button type="button" className={b.docsVenteBtn} aria-expanded={docsVenteOuvert} onClick={() => basculerDocsVente(!docsVenteOuvert)}>
+              <span>{docsVenteOuvert ? 'Replier' : 'Voir le détail'}</span>
+              <span className={b.docsPrepFleche} data-ouvert={docsVenteOuvert ? 'oui' : 'non'}><Ic n="bas" t={15} e={2.4} /></span>
+            </button>
           </div>
           {detail?.erreurDocs && <div className={s.erreur}>{detail.erreurDocs}</div>}
-          <EtapesDocs etapes={etapesDocs} />
           <input ref={champMandat} type="file" accept=".pdf,image/*" hidden onChange={ev => { const f = ev.target.files?.[0]; if (f) void joindreMandat(f); ev.target.value = ''; }} />
+          {!docsVenteOuvert && <SyntheseDocs etapes={etapesDocs} onOuvrir={() => basculerDocsVente(true)} />}
+          <Depliant ouvert={docsVenteOuvert} ecart={6}>
+          <EtapesDocs etapes={etapesDocs} />
           {docsLies.length > 0 && (
             <div className={b.docsPrep}>
               <button type="button" className={b.docsPrepT} aria-expanded={listeDocsOuverte} onClick={() => setListeDocsOuverte(v => !v)}>
@@ -1547,6 +1567,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               </Depliant>
             </div>
           )}
+          </Depliant>
         </section>
         {/* Le dossier sur toute la largeur, en tuiles (V3.30) : déposer,
             ranger, cocher, envoyer. */}
