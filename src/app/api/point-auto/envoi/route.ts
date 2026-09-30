@@ -59,12 +59,12 @@ export async function GET(req: NextRequest) {
     for (const c of dus) {
       const nom = `${c.prenom} ${c.nom}`.trim();
       const m = mailPoint({ prenom: c.prenom, recherche: c.recherche, tokenClient: c.tokenClient!, site: SITE });
-      const r = await envoyerMailjet({ a: c.email!, nom, sujet: m.sujet, html: m.html, texte: m.texte, id: `point-${c.clientId}-${Date.now()}` });
-      if (!r.ok) { rates.push({ nom, erreur: r.erreur || 'échec' }); continue; }
 
-      /* Écrit seulement après l'accusé de Mailjet : c'est cette ligne qui
-         empêche un deuxième mail le lendemain. */
-      const { error } = await sb.from('journal').insert({
+      /* V3.43 : la ligne du suivi d'abord, le mail ensuite. C'est elle qui
+         empêche un deuxième mail le lendemain : écrite après, un échec
+         d'écriture faisait repartir le mail chaque jour. Le mail ne part
+         pas : la ligne est retirée, il repartira demain. */
+      const { data: note, error } = await sb.from('journal').insert({
         client_id: c.clientId, recherche_id: c.recherche?.id || null,
         type: TYPE_ENVOI,
         titre: '📨 Mail « Où en est votre recherche ? » envoyé automatiquement',
@@ -72,8 +72,15 @@ export async function GET(req: NextRequest) {
           ? `Aucun mouvement sur le dossier depuis le ${new Date(c.dernierMouvement).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}.`
           : 'Aucun mouvement sur le dossier depuis sa création.',
         metadata: { delai: reglages.delai },
-      });
-      if (error) rates.push({ nom, erreur: 'mail parti, mais pas noté dans le suivi : ' + error.message });
+      }).select('id').single();
+      if (error || !note) { rates.push({ nom, erreur: 'pas noté dans le suivi, donc pas envoyé : ' + (error?.message || 'rien n’est revenu') }); continue; }
+      const r = await envoyerMailjet({ a: c.email!, nom, sujet: m.sujet, html: m.html, texte: m.texte, id: `point-${c.clientId}-${Date.now()}` });
+      if (!r.ok) {
+        rates.push({ nom, erreur: r.erreur || 'échec' });
+        const { error: eRetrait } = await sb.from('journal').delete().eq('id', (note as { id: string }).id);
+        if (eRetrait) console.error('[point-auto] ligne du suivi à retirer', eRetrait.message);
+        continue;
+      }
       partis.push({ nom, id: c.clientId, revente: c.revente });
     }
 
