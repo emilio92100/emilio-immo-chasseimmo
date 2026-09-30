@@ -589,7 +589,10 @@ export function argentBien(d: Donnees) {
       if (hono !== null) net = prix - hono;
     }
   }
-  const tauxNet = hono !== null && net ? (hono / net) * 100 : taux;
+  /* Le pourcentage affiché : sur le prix hors honoraires quand l'acquéreur
+     paie (la mention légale de l'annonce), sur le prix quand c'est le vendeur
+     (V3.43 : un mandat à 5 % vendeur s'affichait « 5,26 % »). */
+  const tauxNet = hono !== null && prix && !acq ? (hono / prix) * 100 : hono !== null && net ? (hono / net) * 100 : taux;
   return { prix, net, hono, acq, taux: tauxNet };
 }
 /* Les honoraires pour un autre prix (une offre, un compromis) : le forfait
