@@ -577,8 +577,18 @@ button.pas:hover .pasIc { transform: translateY(-1px) scale(1.07); }
 
 /* Les pièces : une carte par pièce, l'icône d'après le nom */
 .pcGroupe { display: flex; flex-direction: column; gap: 8px; }
-.pcGroupe .niveauT { margin: 4px 0 0; }
+.pcGroupe .niveauT { margin: 14px 0 2px; }
+.pcGroupe:first-child .niveauT { margin-top: 2px; }
 .niveauT i { font-style: normal; letter-spacing: 0; text-transform: none; font-weight: 700; color: #94a3b8; font-size: 12px; order: 3; }
+/* V3.33 (Alexandre : « niveau principal, niveau bas… pour bien le voir, plus
+   gros ») : le même titre doré, juste plus grand, sans rien ajouter. */
+.pcGroupe .niveauT { gap: 14px; font-size: 15px; letter-spacing: 1.4px; }
+.pcGroupe .niveauT::after { height: 2px; background: #eadbb0; }
+.pcGroupe .niveauT i { font-size: 14px; color: #8a6a1f; }
+@media (max-width: 640px) {
+  .pcGroupe .niveauT { font-size: 14px; letter-spacing: 1.1px; gap: 10px; }
+  .pcGroupe .niveauT i { font-size: 13px; }
+}
 .pc { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; grid-template-areas: 'ic nom niv out' 'choix choix choix choix' 'ic2 bas bas bas'; gap: 6px 12px; padding: 12px 14px; border: 1px solid #e3e8f0; border-radius: 16px; background: white; box-shadow: 0 1px 2px rgba(15,23,42,.03); }
 .pcOuverte { border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.12); }
 .pcSansNom { border-color: #f3d58a; background: #fffdf6; }
