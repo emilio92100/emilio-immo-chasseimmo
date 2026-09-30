@@ -444,7 +444,7 @@ a.coLien:hover { color: #1a2332; }
 .coVide { padding: 6px 4px; font-size: 13px; color: #6b5a33; }
 .coVide button { border: none; background: none; padding: 0; cursor: pointer; color: #8a6a1f; font: 700 13px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 2px; }
 .coPlus {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 34px; margin-top: 4px; padding: 0 10px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; height: 34px; margin-top: 4px; padding: 0 10px;
   border: none; border-radius: 10px; background: #fff; color: #1a2332; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif;
   transition: background .15s, box-shadow .15s;
 }
