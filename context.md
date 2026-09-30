@@ -1477,6 +1477,22 @@ Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel)
   prochaine le… ». Sur téléphone, les tuiles tiennent sur une ligne. Côté acheteur, un compteur à
   zéro ne se clique plus non plus (`FicheClient`).
 
+- **Le bandeau bleu de chaque fiche, sans vide** (Alexandre : « que l'espace bleu ne soit pas
+  vide sur le côté, en bas, à gauche »). Les tuiles sont partagées (`src/components/shared/Tuiles.tsx`)
+  entre la fiche d'un contact et celle d'un acheteur : elles se partagent toute la largeur, et
+  prennent la hauteur qui reste quand les coordonnées sont plus hautes (`grandit`). Quatre tuiles :
+  quatre de front, ou deux et deux, jamais trois et une. Le panneau des coordonnées prend toute la
+  hauteur du bandeau, son geste en bas ; chez un acheteur, « Son espace » y passe (tant que les
+  coordonnées tiennent sans dépliage). Les biens d'un vendeur ont leur propre rang, sur toute la
+  largeur, côte à côte ; un seul dit ses visites et offres en pastilles ; sans bien, « Créer son bien »
+  prend toute la largeur. Fiche d'un bien : la carte de droite descend jusqu'aux étapes.
+- **Une visite se dit toujours faite ou prévue** (Alexandre : « 3 visites, on ne comprend pas »).
+  `libelleVisites()` (`lib/visites.ts`) : « 2 visites faites · 1 prévue ». Faite = marquée faite, ou
+  date passée (comme la fiche du bien) ; prévue = à venir. Partout : tuiles vendeur et acheteur,
+  biens du vendeur, cartes et lignes de la page Biens (`nbPrevues`), « Visites et offres » de la
+  fiche d'un bien, résumé de l'agenda, « visites faites » d'un bien chez l'acheteur, critères appris
+  des visites. « N visites » de l'espace d'un acheteur (ses ouvertures) devient « ouvert N fois ».
+
 Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
 `FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
 vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
