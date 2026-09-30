@@ -188,6 +188,9 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
 
   /* ── L'enregistrement automatique ── */
   const dernier = useRef<Donnees>(d);
+  /* Ce que la base avait, vu d'ici (V3.43) : seules les réponses changées
+     depuis partent, les autres (la tablette, une signature) restent. */
+  const vu = useRef<Donnees>({ ...(bien.donnees || {}) });
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVol = useRef<Promise<boolean> | null>(null);
   const aEnregistrer = useRef(false);
@@ -200,7 +203,8 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
     setEnreg('encours');
     const p = (async () => {
       try {
-        const r = await enregistrerBien(row.id, donnees);
+        const r = await enregistrerBien(row.id, donnees, vu.current);
+        vu.current = donnees;
         setRow(r); onMaj(r);
         setEnreg(aEnregistrer.current ? 'attente' : 'ok');
         return true;
