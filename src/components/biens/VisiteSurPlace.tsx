@@ -390,6 +390,9 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
   const corps = useRef<HTMLDivElement>(null);
 
   const dernier = useRef<Donnees>(d);
+  /* Ce que la base avait, vu d'ici (V3.43) : seules les réponses changées
+     depuis partent (un brouillon repris compte comme changé). */
+  const vu = useRef<Donnees>({ ...(bien.donnees || {}) });
   const aEnregistrer = useRef(false);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVol = useRef<Promise<boolean> | null>(null);
@@ -401,7 +404,9 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
     setEnreg('encours');
     const p = (async () => {
       try {
-        const r = await enregistrerBien(row.id, dernier.current);
+        const envoye = dernier.current;
+        const r = await enregistrerBien(row.id, envoye, vu.current);
+        vu.current = envoye;
         setRow(r);
         if (!aEnregistrer.current) { try { localStorage.removeItem(cleDraft(row.id)); } catch { /* rien */ } }
         setEnreg(aEnregistrer.current ? 'attente' : 'ok');
