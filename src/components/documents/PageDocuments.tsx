@@ -285,7 +285,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
          brouillon : on ne touche à rien (ni registre, ni fichiers). */
       const { data: frais, error: eF } = await supabase.from('documents').select('statut').eq('id', d.id).maybeSingle();
       if (eF) throw new Error(eF.message);
-      if (frais && (frais as { statut?: string }).statut !== 'brouillon') throw new Error('ce document n’est plus un brouillon (il a été finalisé entre-temps). Recharge la page.');
+      /* Déjà supprimé ailleurs (un autre onglet) : il quitte la liste, c'est tout. */
+      if (!frais) { onSupprime(d.id); return; }
+      if ((frais as { statut?: string }).statut !== 'brouillon') throw new Error('ce document n’est plus un brouillon (il a été finalisé entre-temps). Recharge la page.');
       if (ligne) {
         const pb = await noterAnnulation(supabase, {
           modele: d.modele, document_id: d.id, titre: d.titre || m?.titre || 'Mandat', etaitSigne: false,
