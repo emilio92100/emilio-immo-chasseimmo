@@ -248,6 +248,7 @@ import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
 import BlocSociete from '@/components/contacts/BlocSociete';
 import Depliant from '@/components/shared/Depliant';
+import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
@@ -3052,13 +3053,40 @@ ${signatureMail()}`,
         const nbOffres = biens.filter(b => b.badge_retour === 'offre_faite').length;
         /* Une visite prévue peut être annulée : on ne compte que les
            visites effectuées. La prochaine est dans « À venir ». */
+        const jourLong = (x: string) => new Date(String(x).length <= 10 ? `${x}T12:00:00` : x).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+        const aVenir = visites.filter(v => v.statut === 'a_venir' && v.date_visite && String(v.date_visite).slice(0, 10) >= jourParis())
+          .sort((a, b) => String(a.date_visite).localeCompare(String(b.date_visite)));
+        const faites = visites.filter(v => v.statut === 'effectuee' && v.date_visite).map(v => String(v.date_visite)).sort();
+        const aimes = presentes.filter(b => b.badge_retour === 'interesse' || b.badge_retour === 'souhaite_visiter').length;
+        const pl = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
         const compteurs = [
-          { k: 'selection', n: enSelection.length, l: 'en sélection' },
-          { k: 'presentes', n: presentes.length, l: presentes.length > 1 ? 'présentés' : 'présenté' },
-          { k: 'visites', n: nbFaites, l: nbFaites > 1 ? 'visites effectuées' : 'visite effectuée' },
-          { k: 'transaction', n: nbOffres, l: nbOffres > 1 ? 'offres' : 'offre' },
+          { k: 'selection', ic: 'etoile', n: enSelection.length,
+            titre: enSelection.length ? `${enSelection.length} en sélection` : 'Aucune sélection',
+            sous: enSelection.length ? 'à lui présenter' : 'pour l’instant' },
+          { k: 'presentes', ic: 'envoyer', n: presentes.length,
+            titre: presentes.length ? pl(presentes.length, 'présenté', 'présentés') : 'Rien présenté',
+            sous: !presentes.length ? 'pour l’instant' : aimes ? `dont ${aimes} qui l’intéresse${aimes > 1 ? 'nt' : ''}` : 'en attente de son avis' },
+          { k: 'visites', ic: 'cle', n: nbFaites + aVenir.length,
+            titre: nbFaites ? pl(nbFaites, 'visite faite', 'visites faites') : aVenir.length ? pl(aVenir.length, 'visite prévue', 'visites prévues') : 'Aucune visite',
+            sous: nbFaites
+              ? (aVenir.length ? `+ ${pl(aVenir.length, 'prévue', 'prévues')}, ${aVenir.length > 1 ? 'la prochaine ' : ''}le ${jourLong(aVenir[0].date_visite)}` : `la dernière le ${jourLong(faites[faites.length - 1] || '')}`)
+              : aVenir.length ? `${aVenir.length > 1 ? 'la prochaine ' : ''}le ${jourLong(aVenir[0].date_visite)}` : 'pour l’instant' },
+          { k: 'transaction', ic: 'euro', n: nbOffres,
+            titre: nbOffres ? pl(nbOffres, 'offre', 'offres') : 'Aucune offre',
+            sous: !nbOffres ? 'pour l’instant' : transaction ? 'transaction ouverte' : 'faite, à suivre' },
         ];
         const espaceLe = (rechercheActive as unknown as { espace_ouvert_le?: string | null } | null)?.espace_ouvert_le;
+        /* « Son espace » (V3.33) : au pied des coordonnées tant qu'elles tiennent
+           sans dépliage — c'est une façon de le joindre, et le panneau crème
+           n'a plus de vide en bas. Sinon, dans la ligne sous les tuiles. */
+        const espaceEnPied = coords.length <= 3;
+        const boutonEspace = (cls: string) => (
+          <button type="button" className={cls} onClick={() => setVue('espace')}>
+            <span className={espaceLe ? styles.teteEspaceOn : styles.teteEspaceOff} />
+            <b>Son espace</b>
+            <span suppressHydrationWarning>{espaceLe ? ` · ouvert ${ilYA(espaceLe)}` : ' · pas encore ouvert'}</span>
+          </button>
+        );
         return (
           <div className={styles.teteZone}>
             <div className={styles.tete}>
@@ -3178,32 +3206,20 @@ ${signatureMail()}`,
                     </div>
                   </div>
                 </div>
-                <div className={styles.compteursLigne}>
-                  <div className={styles.compteurs} aria-label="Où en est son dossier">
-                    {compteurs.map(c => (
-                      <button key={c.k} type="button" className={`${styles.compteur} ${c.n ? '' : styles.compteurVide}`} disabled={!c.n} onClick={() => setTab(c.k)}>
-                        <b>{c.n}</b><small>{c.l}</small>
-                      </button>
-                    ))}
-                  </div>
-                  {/* Depuis quand on le suit : à côté des chiffres du dossier
-                      (V3.29), plus sous le nom où il se perdait. */}
-                  <div className={styles.depuis}>
-                    <span className={styles.depuisIc}><Icone nom="horloge" taille={17} epaisseur={2} /></span>
-                    <span className={styles.depuisTx}>
-                      <small>Suivi depuis</small>
-                      <b>{dureeSuivi(jours)}</b>
-                      <i>{`le ${new Date(client.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: new Date(client.created_at).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}`}</i>
-                    </span>
-                  </div>
-                </div>
-                <button type="button" className={styles.teteEspace} onClick={() => setVue('espace')}>
-                  <span className={espaceLe ? styles.teteEspaceOn : styles.teteEspaceOff} />
-                  <b>Son espace</b>
-                  <span suppressHydrationWarning>{espaceLe ? ` · ouvert ${ilYA(espaceLe)}` : ' · pas encore ouvert'}</span>
-                </button>
+                {/* Où en est son dossier (V3.33) : des tuiles sur toute la largeur,
+                    comme pour un vendeur (src/components/shared/Tuiles.tsx) ; à
+                    zéro, rien à ouvrir. Puis une ligne : depuis quand, son espace. */}
+                <Tuiles label="Où en est son dossier" grandit>
+                  {compteurs.map(t => <Tuile key={t.k} ic={t.ic} titre={t.titre} sous={t.sous} vide={!t.n} onClic={() => setTab(t.k)} />)}
+                </Tuiles>
+                <LigneTuiles>
+                  <Horloge fort={jours <= 0 ? 'Suivi depuis aujourd’hui' : `Suivi depuis ${dureeSuivi(jours)}`}
+                    doux={` · depuis le ${new Date(client.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: new Date(client.created_at).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}`} />
+                  {!espaceEnPied && boutonEspace(styles.teteEspace)}
+                </LigneTuiles>
               </div>
-              <Coordonnees coords={coords} onModifier={() => { setCf(cfDe(client)); setShowContact(true); }} pied={piedCarte} />
+              <Coordonnees coords={coords} onModifier={() => { setCf(cfDe(client)); setShowContact(true); }}
+                pied={espaceEnPied ? <div className={styles.coPiedLigne}>{piedCarte}{boutonEspace(styles.coEspace)}</div> : piedCarte} />
             </div>
             <div className={`${styles.ongletsTete} fc-onglets`}>
               <BarreOnglets<VueFiche> label="Rubriques du contact" actif={vue} onChoisir={setVue}
@@ -3973,7 +3989,7 @@ ${signatureMail()}`,
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#10b981' }}>📋 Compte-rendu de visite</span>
                             {cr.date_visite && <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(cr.date_visite).toLocaleDateString('fr-FR')}</span>}
-                            {visitesBien.length > 1 && <span style={{ fontSize: 11, color: '#94a3b8' }}>· {visitesBien.length} visites</span>}
+                            {visitesBien.length > 1 && <span style={{ fontSize: 11, color: '#94a3b8' }}>{`· ${visitesBien.length} visites faites`}</span>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             {cr.note_etoiles > 0 && <span style={{ fontSize: 13 }}>{'⭐'.repeat(cr.note_etoiles)}<span style={{ fontSize: 11, color: '#94a3b8' }}> {cr.note_etoiles}/5</span></span>}

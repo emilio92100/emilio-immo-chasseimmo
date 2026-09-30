@@ -222,7 +222,7 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 13, color: NAVY }}>
       <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: '50%', background: ok ? '#ecfdf5' : '#fff4ef', color: ok ? '#15803d' : '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{ok ? '✓' : '✕'}</span>
       <span style={{ flex: 1, fontWeight: 600, minWidth: 0 }}>{t}</span>
-      <span style={{ fontSize: 11.5, color: CLAIR, fontWeight: 700, whiteSpace: 'nowrap' }}>{`${n} visite${n > 1 ? 's' : ''}`}</span>
+      <span style={{ fontSize: 11.5, color: CLAIR, fontWeight: 700, whiteSpace: 'nowrap' }}>{`${n} visite${n > 1 ? 's' : ''} faite${n > 1 ? 's' : ''}`}</span>
       <button type="button" onClick={() => masquer(t)} title="Retirer : ne vaut plus pour la recherche" aria-label={`Retirer « ${t} »`}
         style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>✕</button>
     </div>

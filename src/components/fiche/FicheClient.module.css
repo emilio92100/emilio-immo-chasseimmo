@@ -367,7 +367,7 @@
 .teteFond { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
 .teteHalo1 { position: absolute; top: -140px; right: -90px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(201, 168, 76, .2), transparent 64%); }
 .teteHalo2 { position: absolute; bottom: -160px; left: -60px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(125, 185, 255, .12), transparent 66%); }
-.teteG { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-width: 0; }
+.teteG { position: relative; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .teteQui { display: flex; align-items: flex-start; gap: 17px; min-width: 0; }
 /* « Achète pour SCI … » ou « Pour une société (SCI…) ? Ajouter » (V3.31). */
 .teteSoc {
@@ -388,39 +388,10 @@
 }
 .teteEtat { position: absolute; right: 1px; bottom: 1px; width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid #2b3f63; }
 
-/* Où en est son dossier : quatre chiffres, sans cadre, séparés d'un trait,
-   et à côté, depuis quand on le suit. */
-.compteursLigne { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
-.depuis {
-  display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 9px; border-radius: 16px;
-  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12);
-}
-.depuisIc {
-  width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(232, 201, 106, .15); color: #e8c96a;
-}
-.depuisTx { display: flex; flex-direction: column; gap: 1px; }
-.depuisTx small { font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: rgba(255, 255, 255, .55); }
-.depuisTx b { font: 800 16px/1.2 'Plus Jakarta Sans', sans-serif; color: #fff; white-space: nowrap; }
-.depuisTx i { font-style: normal; font-size: 11.5px; color: rgba(255, 255, 255, .5); }
-
-.compteurs { display: flex; align-items: stretch; }
-.compteur {
-  display: flex; flex-direction: column; gap: 4px; padding: 0 15px; text-align: left;
-  border: none; border-left: 1px solid rgba(255, 255, 255, .14); background: none; color: #fff; cursor: pointer;
-  font-family: inherit;
-}
-.compteur:first-child { padding-left: 0; border-left: none; }
-.compteur b { font: 800 27px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: -.6px; font-variant-numeric: tabular-nums; transition: color .18s; }
-.compteur small { font-size: 12px; color: rgba(255, 255, 255, .62); white-space: nowrap; }
-.compteur:hover b { color: #e8c96a; }
-.compteurVide b { color: rgba(255, 255, 255, .36); }
-/* À zéro, rien à ouvrir (V3.33) : le chiffre ne réagit plus. */
-.compteur:disabled { cursor: default; }
-.compteur:disabled:hover b { color: rgba(255, 255, 255, .36); }
+/* Où en est son dossier (V3.33) : les tuiles de src/components/shared/Tuiles.tsx. */
 
 .teteEspace {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 0;
+  display: inline-flex; align-items: center; gap: 8px; padding: 0;
   border: none; background: none; cursor: pointer; font: 500 12.5px 'DM Sans', sans-serif; color: rgba(255, 255, 255, .78);
 }
 .teteEspace b { color: #fff; font-weight: 700; }
@@ -433,7 +404,12 @@
 /* Les coordonnées : trois lignes, puis « Tout voir » par-dessus les onglets.
    V3.29 : sur fond crème doré (choix d'Alexandre, variante C) plutôt qu'en
    bleu transparent, où les numéros se perdaient dans le bloc. */
-.coZone { position: relative; align-self: start; min-width: 0; }
+/* V3.33 : le panneau prend toute la hauteur du bandeau (plus de bleu vide
+   en dessous) ; « Voir sur la carte » ou « Tout voir » se posent en bas. */
+.coZone { position: relative; align-self: stretch; display: flex; flex-direction: column; min-width: 0; }
+.coZone > .coPanneau:first-child { flex: 1 1 auto; }
+.coZone > .coPanneau:first-child > .coPied,
+.coZone > .coPanneau:first-child > .coPlus { margin-top: auto; }
 .coPanneau {
   display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 18px;
   background: #fbf6e9; border: 1px solid #f1e3bd; box-shadow: 0 14px 30px -18px rgba(10, 18, 32, .55);
@@ -477,6 +453,16 @@ a.coLien:hover { color: #1a2332; }
 .coReduire svg { transform: rotate(180deg); }
 .coGroupe { padding: 8px 4px 2px; font-size: 10px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #a8946a; }
 .coPied { padding: 8px 4px 2px; }
+/* Au pied des coordonnées d'un acheteur : la carte, et son espace (V3.33). */
+.coPiedLigne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.coEspace {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 12px 4px 10px; border-radius: 99px; cursor: pointer;
+  border: 1px solid #ecdcae; background: #fff; color: #1a2332; font: 500 12.5px 'DM Sans', sans-serif; white-space: nowrap;
+}
+.coEspace b { font-weight: 800; }
+.coEspace > span:last-child { color: #64748b; }
+.coEspace:hover { border-color: #c9a84c; }
+.coEspace .teteEspaceOff { background: #cbd5e1; }
 
 .ongletsTete { position: relative; z-index: 3; margin: -24px 22px 0; }
 .ongletsTete > nav { box-shadow: 0 14px 30px -16px rgba(26, 35, 50, .45), 0 2px 6px rgba(26, 35, 50, .06); }
@@ -579,12 +565,6 @@ a.coLien:hover { color: #1a2332; }
   .tete { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 14px 44px; border-radius: 18px; }
   .teteQui { gap: 12px; }
   .teteAvatar { width: 44px; height: 44px; font-size: 16px; }
-  .compteursLigne { gap: 14px; }
-  .compteurs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; }
-  .depuis { width: 100%; box-sizing: border-box; }
-  .compteur { padding: 0 8px; }
-  .compteur b { font-size: 21px; }
-  .compteur small { font-size: 10.5px; white-space: normal; line-height: 1.25; }
   .ongletsTete { margin: -24px 8px 0; }
   .ensCols { grid-template-columns: minmax(0, 1fr); }
   .aVenir { flex-direction: column; align-items: stretch; gap: 4px; }

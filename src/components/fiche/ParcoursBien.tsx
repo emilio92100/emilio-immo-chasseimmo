@@ -2775,7 +2775,7 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
           color: derniere ? '#15803d' : '#94a3b8', cursor: 'pointer', fontFamily: 'inherit',
         }}>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: derniere ? '#10b981' : '#cbd5e1' }} />
-        {quand}{ouvertures ? ` · ${ouvertures} visite${ouvertures > 1 ? 's' : ''}` : ''}
+        {quand}{ouvertures ? ` · ouvert ${ouvertures} fois` : ''}
         <span style={{ transition: 'transform .25s', transform: deplie ? 'rotate(180deg)' : 'none', display: 'inline-flex' }}>
           <Icone nom="chevron" taille={13} epaisseur={2.2} />
         </span>
