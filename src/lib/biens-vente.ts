@@ -682,52 +682,74 @@ export const dateCourte = (ymd: string | null | undefined) => {
 };
 export const dateLongue = (ymd: string | null | undefined) => (ymd ? jourLong(ymd.slice(0, 10)) : '');
 
-/* La ligne d'état d'une carte : ce qui compte à cette étape. */
-export function ligneEtat(b: BienVente, suivi: SuiviVente[]): { t: string; ton: 'neutre' | 'alerte' | 'ok' } {
+/* Où en est le mandat de vente du bien dans Documents (V3.42) : le plus
+   avancé de ceux qui ne sont pas annulés. Lu avec la liste des biens. */
+export type EtatMandatDoc = { id: string; statut: 'brouillon' | 'pret' | 'signe'; enSignature: boolean; numero: string | null };
+/* Le même, en deux mots (une puce de la liste, le bandeau de la fiche). */
+export function motMandat(m: EtatMandatDoc): string {
+  return m.statut === 'brouillon' ? 'Mandat en préparation' : m.statut === 'signe' ? 'Mandat signé' : m.enSignature ? 'Mandat en signature' : 'Mandat prêt à signer';
+}
+
+/* La ligne d'état d'une carte : ce qui compte à cette étape, et son dessin.
+   V3.42 : « En vente » sans mandat signé noté, elle dit où en est le mandat
+   dans Documents (en préparation, en signature) au lieu de « Mandat en
+   cours ». */
+export type LigneEtat = { t: string; ton: 'neutre' | 'alerte' | 'ok'; ic: string };
+export function ligneEtat(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc | null = null): LigneEtat {
+  const e = ligneEtatBrute(b, suivi, mandat);
+  return { ...e, ic: e.ic || 'drapeau' };
+}
+function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc | null): { t: string; ton: LigneEtat['ton']; ic?: string } {
   const d = b.donnees || {};
   const derniere = (type: string) => suivi.filter(x => x.type === type).sort((x, y) => y.le.localeCompare(x.le))[0];
   const etapeInfo = derniere('etape');
   const ed = (etapeInfo?.donnees || {}) as Record<string, string>;
-  if (b.etape === 'vendu') return { t: `Vendu${b.vendu_le ? ` le ${dateCourte(b.vendu_le)}` : ''}`, ton: 'ok' };
+  if (b.etape === 'vendu') return { t: `Vendu${b.vendu_le ? ` le ${dateCourte(b.vendu_le)}` : ''}`, ton: 'ok', ic: 'check' };
   if (b.etape === 'a_suivre') {
     const rdv0 = txt(d, 'rdvEstimation');
-    if (rdv0 && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre' };
+    if (rdv0 && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre', ic: 'calendrier' };
     /* Mis en attente à l'estimation (V3.32) : pourquoi, et quand le rappeler. */
-    if (etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation') return { t: ['En attente', ed.raison, ed.reprise ? `à recontacter vers le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre' };
+    if (etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation') return { t: ['En attente', ed.raison, ed.reprise ? `à recontacter vers le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre', ic: 'pause' };
     const delai: Record<string, string> = { vite: 'vendre dès que possible', '3mois': 'vendre sous 3 mois', '6mois': 'vendre sous 6 mois', libre: 'pas pressé' };
     return { t: typeof d.delai === 'string' && delai[d.delai] ? `Projet : ${delai[d.delai]}` : 'Projet de vente à suivre', ton: 'neutre' };
   }
-  if (b.etape === 'retire') return { t: `Retiré de la vente${ed.raison ? ` · ${ed.raison}` : ''}`, ton: 'neutre' };
-  if (b.etape === 'suspendu') return { t: [ed.raison || 'Vente en pause', ed.reprise ? `reprise le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre' };
+  if (b.etape === 'retire') return { t: `Retiré de la vente${ed.raison ? ` · ${ed.raison}` : ''}`, ton: 'neutre', ic: 'archive' };
+  if (b.etape === 'suspendu') return { t: [ed.raison || 'Vente en pause', ed.reprise ? `reprise le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre', ic: 'pause' };
   if (b.etape === 'compromis') {
     const pret = ed.pretLimite ? `fin du délai de prêt le ${dateCourte(ed.pretLimite)}` : '';
     const acte = ed.acte ? `acte le ${dateCourte(ed.acte)}` : '';
     const t = [pret, acte].filter(Boolean).join(' · ');
-    return { t: t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Compromis signé', ton: 'neutre' };
+    return { t: t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Compromis signé', ton: 'neutre', ic: 'accord' };
   }
   if (b.etape === 'offre') {
     const o = suivi.filter(x => x.type === 'offre' && (x.statut === 'en_attente' || x.statut === 'acceptee' || x.statut === 'contre'))
       .sort((x, y) => (y.montant || 0) - (x.montant || 0))[0];
     const jusq = o ? String((o.donnees as Record<string, unknown>).jusquau || '') : '';
-    return { t: o ? `Offre à ${euros(o.montant || 0)}${o.statut === 'acceptee' ? ' · acceptée' : jusq ? ` · réponse attendue le ${dateCourte(jusq)}` : ''}` : 'Sous offre', ton: 'alerte' };
+    return { t: o ? `Offre à ${euros(o.montant || 0)}${o.statut === 'acceptee' ? ' · acceptée' : jusq ? ` · réponse attendue le ${dateCourte(jusq)}` : ''}` : 'Sous offre', ton: 'alerte', ic: 'euro' };
   }
   if (b.etape === 'mandat') {
+    /* En vente sans mandat signé noté (V3.42) : où il en est dans Documents. */
+    const signe = txt(d, 'mandatDate');
+    if (!signe && !b.mandat_fin) {
+      if (mandat) return { t: motMandat(mandat), ton: mandat.statut === 'signe' ? 'ok' : 'neutre', ic: 'plume' };
+      return { t: 'Mandat pas encore signé', ton: 'alerte', ic: 'plume' };
+    }
     const j = joursAvant(b.mandat_fin);
     const excl = b.mandat_type === 'exclusif' || b.mandat_type === 'semi';
-    if (j !== null && j <= 15 && j >= 0) return { t: `${excl ? 'Exclusivité' : 'Mandat'} : fin dans ${j} jour${j > 1 ? 's' : ''}`, ton: 'alerte' };
-    if (j !== null && j < 0) return { t: `${excl ? 'Exclusivité' : 'Mandat'} terminé${excl ? 'e' : ''} depuis le ${dateCourte(b.mandat_fin)}`, ton: 'alerte' };
-    if (b.mandat_fin) return { t: `${excl ? 'Exclusivité' : 'Mandat'} jusqu’au ${dateCourte(b.mandat_fin)}`, ton: 'neutre' };
-    return { t: 'Mandat en cours', ton: 'neutre' };
+    if (j !== null && j <= 15 && j >= 0) return { t: `${excl ? 'Exclusivité' : 'Mandat'} : fin dans ${j} jour${j > 1 ? 's' : ''}`, ton: 'alerte', ic: 'horloge' };
+    if (j !== null && j < 0) return { t: `${excl ? 'Exclusivité' : 'Mandat'} terminé${excl ? 'e' : ''} depuis le ${dateCourte(b.mandat_fin)}`, ton: 'alerte', ic: 'horloge' };
+    if (b.mandat_fin) return { t: `${excl ? 'Exclusivité' : 'Mandat'} jusqu’au ${dateCourte(b.mandat_fin)}`, ton: 'neutre', ic: 'plume' };
+    return { t: `Mandat signé le ${dateCourte(signe)}`, ton: 'neutre', ic: 'plume' };
   }
   /* L'estimation (V3.16) : le rendez-vous, puis le montant, puis l'avis
      de valeur. Le montant lui-même est sur la carte (prixCarte). */
   const a = num(d, 'estimBasse'), h = num(d, 'estimHaute'), p = num(d, 'prix');
   const rdv = txt(d, 'rdvEstimation'), avis = txt(d, 'avisEnvoye');
   const j = joursAvant(rdv);
-  if (avis) return { t: `Avis de valeur envoyé le ${dateCourte(avis)}`, ton: 'ok' };
-  if (rdv && (j ?? -1) >= 0) return { t: j === 0 ? 'Rendez-vous d’estimation aujourd’hui' : `Rendez-vous d’estimation le ${dateCourte(rdv)}`, ton: 'neutre' };
-  if (a || h || p) return { t: p && (a || h) ? `Conseillé ${euros(p)} · avis de valeur à envoyer` : 'Avis de valeur à envoyer', ton: 'neutre' };
-  return { t: rdv ? `Vu le ${dateCourte(rdv)} · montant à définir` : 'Pas encore de rendez-vous', ton: 'neutre' };
+  if (avis) return { t: `Avis de valeur envoyé le ${dateCourte(avis)}`, ton: 'ok', ic: 'check' };
+  if (rdv && (j ?? -1) >= 0) return { t: j === 0 ? 'Rendez-vous d’estimation aujourd’hui' : `Rendez-vous d’estimation le ${dateCourte(rdv)}`, ton: 'neutre', ic: 'calendrier' };
+  if (a || h || p) return { t: p && (a || h) ? `Conseillé ${euros(p)} · avis de valeur à envoyer` : 'Avis de valeur à envoyer', ton: 'neutre', ic: 'etiquette' };
+  return { t: rdv ? `Vu le ${dateCourte(rdv)} · montant à définir` : 'Pas encore de rendez-vous', ton: 'neutre', ic: rdv ? 'etiquette' : 'calendrier' };
 }
 
 /* ══ L'estimation (V3.16) ══════════════════════════════════════════════
