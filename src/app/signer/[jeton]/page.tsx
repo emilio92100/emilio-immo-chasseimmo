@@ -66,6 +66,18 @@ export default async function PageSigner({ params }: { params: Promise<{ jeton: 
     : co.statut === 'prevu' ? 'introuvable'
     : co.statut;
 
+  /* V3.43 : un lien qui ne sert plus (expiré, refusé, mandat fini) montre
+     son message, et rien d'autre : ni le mandat, ni les coordonnées des
+     signataires (naissance, adresse, e-mail, téléphone). Avant, tout partait
+     quand même dans la page, seulement caché à l'écran. */
+  if (etat !== 'invite' && etat !== 'signe') {
+    return <SignatureCosignataire d={{
+      ...introuvable(), etat, numero: l.numero, identite,
+      moi: { ...VIDE, civilite: co.personne.civilite, prenom: co.personne.prenom },
+      premier: { ...VIDE, civilite: l.mandant.civilite, prenom: l.mandant.prenom, nom: l.mandant.nom },
+    }} />;
+  }
+
   const d: DonneesSigner = {
     jeton, etat, numero: l.numero, moi: co.personne, premier: l.mandant, premierLe: l.signe_le as string,
     membres: membres.map(c => c.personne), rang,
@@ -100,7 +112,10 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     : s.statut !== 'invite' || doc.statut === 'annule' || (doc.statut === 'pret' && !doc.signature) ? 'annule'
     : doc.statut !== 'pret' ? 'fin'
     : SD.lienValide(s) ? 'invite' : 'expire';
-  const parties = m.rediger(doc.donnees, identite);
+  /* V3.43 : le texte du document n'est envoyé que s'il y a quelque chose à
+     lire ou à signer (lien valable, ou déjà signé). */
+  const actif = etat === 'invite' || etat === 'signe';
+  const parties = actif ? m.rediger(doc.donnees, identite) : [];
   /* Son espace, s'il en a un et que c'est bien lui (V3.32) : une fois signé,
      « Revenir à mon espace » — sa demande de visite l'y attend peut-être. */
   let espace: string | null = null;
@@ -114,9 +129,9 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     jeton, etat, entete: m.entete(doc.donnees), le: nd.le, court: nd.court, espace,
     moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: masquerEmail(s.personne.email) },
     role: cases.find(c => c.cle === s.cle)?.qui || s.role || 'Signataire',
-    autres: sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })),
+    autres: actif ? sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })) : [],
     parties, cadres: { etats, moi: s.cle },
-    resume: m.resume(doc.donnees), accepter: m.accepter ? m.accepter(doc.donnees, s.cle) : 'J’ai lu le document en entier et je l’accepte.',
+    resume: actif ? m.resume(doc.donnees) : [], accepter: m.accepter ? m.accepter(doc.donnees, s.cle) : 'J’ai lu le document en entier et je l’accepte.',
     expresse: demandeExpresse(m, doc.donnees, s.cle),
     identite,
     code: s.statut === 'invite' && s.code_hash && s.code_envoye_le && recent(s.code_envoye_le) ? { le: s.code_envoye_le, email: masquerEmail(s.personne.email) } : null,
