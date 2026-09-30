@@ -92,6 +92,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+    /* V3.43 : le détail reste dans les journaux du serveur, pas dans la réponse. */
+    console.error('[espace/push]', (e as Error).message);
+    return NextResponse.json({ ok: false, error: 'erreur' }, { status: 500 });
   }
 }
