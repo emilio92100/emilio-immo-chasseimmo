@@ -26,7 +26,7 @@ import { solderRelancesVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
-import { jourParis, joursRestants } from '@/lib/mandat';
+import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
 import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
@@ -1721,7 +1721,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
        expiration restait pourtant en base, et la fiche affichait « expiré »
        indéfiniment. Plus de signature et plus d'expiration saisie : on efface. */
     let exp = mandat.date_expiration;
-    if (mandat.date_signature && mandat.duree && !exp) { const d = new Date(mandat.date_signature); d.setMonth(d.getMonth() + parseInt(mandat.duree)); exp = d.toISOString().split('T')[0]; }
+    /* V3.43 : compté en mois sur la date elle-même (avant : lue en heure
+       universelle puis décalée à l'heure de Paris, un jour de moins au
+       passage de l'heure d'été, et le 31 août + 6 mois donnait le 3 mars). */
+    if (mandat.date_signature && mandat.duree && !exp) exp = ajouterMois(String(mandat.date_signature).slice(0, 10), parseInt(mandat.duree));
     if (!mandat.date_signature && !mandat.date_expiration) exp = '';
 
     const avaitMandat = !!(recherches.find(r => r.id === rechercheId) as any)?.mandat_date_signature;
