@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { CATEGORIES, MODELES, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
@@ -280,6 +281,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       : 'Supprimer ce brouillon ?\n\nIl disparaît pour de bon, avec ses réponses.')) return;
     setTravail('supprimer'); setErreur('');
     try {
+      /* V3.43 : relu d'abord. Finalisé ailleurs entre-temps, il n'est plus un
+         brouillon : on ne touche à rien (ni registre, ni fichiers). */
+      const { data: frais, error: eF } = await supabase.from('documents').select('statut').eq('id', d.id).maybeSingle();
+      if (eF) throw new Error(eF.message);
+      if (frais && (frais as { statut?: string }).statut !== 'brouillon') throw new Error('ce document n’est plus un brouillon (il a été finalisé entre-temps). Recharge la page.');
       if (ligne) {
         const pb = await noterAnnulation(supabase, {
           modele: d.modele, document_id: d.id, titre: d.titre || m?.titre || 'Mandat', etaitSigne: false,
@@ -287,9 +293,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
         });
         if (pb) throw new Error(pb);
       }
-      await retirerFichiers(d.id);
-      const { error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon');
+      /* La ligne d'abord, les fichiers ensuite (V3.43). */
+      const { data: parti, error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon').select('id');
       if (error) throw new Error(error.message);
+      if (!parti?.length) throw new Error('rien n’a été supprimé (la session a peut-être expiré). Recharge la page, puis recommence.');
+      try { await retirerFichiers(d.id); } catch (e2) { console.error('[documents] fichiers du brouillon', (e2 as Error).message); }
       /* Un mandat de vente (V3.42) : son bien était-il passé « En vente » avec lui ? */
       const suite = await suiteBienDe(d, false, true);
       onSupprime(d.id);
@@ -500,11 +508,15 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const refListe = useRef<HTMLDivElement>(null);
 
   const charger = useCallback(async () => {
-    const [a, b] = await Promise.all([
-      supabase.from('documents').select('*').order('updated_at', { ascending: false }).limit(500),
-      supabase.from('mandats_signatures').select('id, numero, statut, signe_le, retracte_le, pdf_chemin, client_id, recherche_id, mandant, created_at')
-        .order('created_at', { ascending: false }).limit(300),
+    /* Tous, par pages de 1 000 (V3.43 : la liste s'arrêtait à 500 documents
+       et 300 mandats en ligne, et ses compteurs avec). */
+    const [ra, rb] = await Promise.all([
+      toutLire<DocumentRow>((de, x) => supabase.from('documents').select('*').order('updated_at', { ascending: false }).order('id').range(de, x)),
+      toutLire<MandatRecherche>((de, x) => supabase.from('mandats_signatures').select('id, numero, statut, signe_le, retracte_le, pdf_chemin, client_id, recherche_id, mandant, created_at')
+        .order('created_at', { ascending: false }).order('id').range(de, x)),
     ]);
+    const a = { data: ra.data, error: ra.erreur ? { message: ra.erreur } : null };
+    const b = { data: rb.data, error: rb.erreur ? { message: rb.erreur } : null };
     if (a.error) {
       if (tableAbsente(a.error.message)) setAbsente(true);
       else setErreur('Les documents n’ont pas pu être lus : ' + a.error.message);
@@ -514,8 +526,12 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     setMandats(ms);
     const ids = Array.from(new Set([...(a.data || []).map(x => (x as DocumentRow).client_id), ...ms.map(x => x.client_id)].filter((x): x is string => !!x)));
     if (ids.length) {
-      const { data } = await supabase.from('clients').select('id, prenom, nom').in('id', ids.slice(0, 300));
-      setNoms(Object.fromEntries((data || []).map(c => [c.id as string, `${c.prenom || ''} ${c.nom || ''}`.trim()])));
+      /* Par paquets de 150 identifiants (V3.43 : au-delà de 300, des noms
+         manquaient ; une liste trop longue ne tient pas dans l'adresse). */
+      const paquets: string[][] = [];
+      for (let i = 0; i < ids.length; i += 150) paquets.push(ids.slice(i, i + 150));
+      const lus = await Promise.all(paquets.map(p => supabase.from('clients').select('id, prenom, nom').in('id', p)));
+      setNoms(Object.fromEntries(lus.flatMap(r => r.data || []).map(c => [c.id as string, `${c.prenom || ''} ${c.nom || ''}`.trim()])));
     }
   }, []);
   useEffect(() => { charger(); }, [charger]);
