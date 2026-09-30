@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import { MODELES, modele, type Contexte } from '@/lib/actes';
 import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
 import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
@@ -71,8 +72,8 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   const [chercheC, setChercheC] = useState('');
   useEffect(() => {
     if (etape !== 2 || !pourDeleguer || confreres) return;
-    supabase.from('clients').select('id, civilite, prenom, nom, emails, telephones, types, pro, archive').order('created_at', { ascending: false }).limit(1000)
-      .then(({ data, error }) => {
+    toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select('id, civilite, prenom, nom, emails, telephones, types, pro, archive').order('created_at', { ascending: false }).order('id').range(de, a))
+      .then(({ data, erreur: error }) => {
         /* Les types de contact pas encore installés : pas de choix, on saisit. */
         if (error) { setConfreres([]); return; }
         const l = ((data || []) as (ContactConfrere & { types?: unknown; archive?: unknown })[])
@@ -90,9 +91,9 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   /* Les clients, une fois, pour chercher sans attendre. */
   useEffect(() => {
     if (etape !== 2 || clients) return;
-    supabase.from('clients').select('id, prenom, nom, adresse, emails, telephones').order('created_at', { ascending: false }).limit(1000)
-      .then(({ data, error }) => {
-        if (error) { setErreur('Les clients n’ont pas pu être lus : ' + error.message); setClients([]); return; }
+    toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select('id, prenom, nom, adresse, emails, telephones').order('created_at', { ascending: false }).order('id').range(de, a))
+      .then(({ data, erreur: error }) => {
+        if (error) { setErreur('Les clients n’ont pas pu être lus : ' + error); setClients([]); return; }
         const l = (data || []) as ClientMini[];
         setClients(l);
         if (clientId) setClient(c => c || l.find(x => x.id === clientId) || null);
