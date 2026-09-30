@@ -36,7 +36,8 @@ export default function SuiteMandatBien({ bien, doc, etaitSigne, supprime, onFer
   const numero = txt(bd, 'mandatNumero') || bien.mandat_numero || '';
   /* Sous offre ou sous compromis (V3.43) : on ne propose rien d'office. */
   const avance = bien.etape === 'offre' || bien.etape === 'compromis';
-  const etape = etapeDe(bien.etape).lib;
+  /* « En vente », « En pause », « Sous offre », « Sous compromis ». */
+  const etape = etapeDe(bien.etape).court;
   const [choix, setChoix] = useState<Choix>(avance ? 'rien' : etaitSigne ? 'termine' : 'erreur');
   const [travail, setTravail] = useState(false);
   const [erreur, setErreur] = useState('');
