@@ -1493,6 +1493,12 @@ Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel)
   fiche d'un bien, résumé de l'agenda, « visites faites » d'un bien chez l'acheteur, critères appris
   des visites. « N visites » de l'espace d'un acheteur (ses ouvertures) devient « ouvert N fois ».
 
+- **Le niveau se voit, dans la saisie des pièces** (`Biens.module.css`, Alexandre : « niveau
+  principal, niveau bas… pour bien le voir, plus gros »). Le même titre doré en capitales, juste plus
+  grand (15 px au lieu de 11), le trait un peu plus marqué, « 4 pièces · 43,27 m² » en 14 px. Un
+  premier essai en bandeau crème avec une icône a été refusé : l'icône faisait doublon avec celles
+  des pièces.
+
 Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
 `FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
 vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
