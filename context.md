@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.41 · 30 septembre 2026**
+**Version 3.42 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1432,6 +1432,48 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.42 — 30 septembre 2026 · le mandat de vente relié à la fiche du bien
+
+Alexandre : « quand j'annule un mandat, il y a toujours les informations du mandat sur les
+fiches, c'est quoi ce bug ? Pourquoi je suis obligé de passer par Supabase ? ». Le mandat vivait à
+deux endroits qui ne se parlaient pas : le document (Documents) et ce qui est noté sur le bien
+(étape, `mandat_type`, `mandat_numero`, `mandat_fin`, `donnees.mandat*`). Signer ou annuler l'un
+laissait l'autre tel quel ; `changerEtape` n'efface jamais les champs du mandat.
+- **`src/lib/mandat-bien.ts`** (nouveau, isomorphe : il reçoit le client Supabase) :
+  `mandatSigneSurBien` (signé dans Documents → le bien passe « En vente » avec le n°, le type, la
+  date, la fin, le prix et les honoraires du document, `document_id` rattaché, une ligne d'étape
+  `source: 'documents'` ; sous offre, en pause ou sous compromis, il garde son étape et reçoit une
+  note ; vendu, rien), `retirerMandatDuBien` (le mandat quitte la fiche : étape choisie,
+  `en_vente_le` vidé, prix conseillé remis si voulu, honoraires effacés si voulu, ligne d'étape
+  `annule: true`), `terminerMandatDuBien` (« Retiré »), `bienConcerne`, `etapeAvantMandat`,
+  `finDuMandat` (simple : la limite totale s'il se prolonge ; exclusif ou semi : la première
+  période, celle de l'exclusivité).
+- **Signé** : à la main (`apresSignature`, documents/outils.ts), en ligne ou sur place
+  (`classer`, signature-documents.ts, côté serveur). Le bouton « Passer le bien en vente » de la
+  fiche reste, si la mise à jour a échoué.
+- **Annulé ou brouillon supprimé** dans Documents : quand la fiche du bien en dépend encore
+  (`bienConcerne` : le bien « En vente » ou en pause, et le mandat signé, ou le même numéro, ou
+  aucun mandat signé noté), la fenêtre « Et la fiche du bien ? » (`SuiteMandatBien.tsx`)
+  propose : le mandat est terminé (« Retiré »), il avait été fait par erreur (retour à
+  l'estimation), ne rien changer.
+- **Sur la fiche** : « Annuler ce mandat… » dans le menu d'étape (en vente ou en pause), et dans la
+  carte du mandat (onglet Documents) quand il a été noté à la main. Fenêtre `FenAnnulerMandat`
+  (FenetresBien.tsx) : revenir à l'estimation ou à « À suivre », le prix conseillé ou le prix
+  actuel, garder ou effacer les honoraires, la raison. Signé dans Documents, elle renvoie vers
+  Documents (« Marquer annulé »). Passé « En vente » sans mandat signé noté : « Le mandat n'est pas
+  encore signé… », même fenêtre, qui ramène le bien en arrière.
+- **Plus de « Mandat en cours » pour un mandat en rédaction** : la liste lit les mandats de vente
+  de Documents (`chargerListe` → `mandats`, quelques colonnes, `mandatsParBien`), et `ligneEtat`
+  dit « Mandat en préparation », « Mandat en signature », « Mandat prêt à signer », « Mandat pas
+  encore signé » ou « Mandat signé le … ». Le bandeau de la fiche (`CoteMandat`), le bouton d'étape
+  et le fil disent pareil (« En vente » tant que rien n'est signé).
+- **La liste, colonne de droite refaite** : l'état avec son dessin, puis des puces (visites
+  faites, prévues, offres, acheteurs ; un zéro en tirets pâles ; avant la vente, le mandat en
+  route). Les cartes ont les mêmes puces.
+- Corrigé au passage : un mandat signé puis annulé comptait encore comme « signé » dans l'onglet
+  Documents de la fiche (`mandatSigne` ignore maintenant les annulés).
+- Aucun SQL : `biens_vente.document_id` et `documents.signature` existent déjà.
 
 ### V3.41 — 30 septembre 2026 · « Nouveau mail » refait : style, mise en forme, pièces jointes, aperçu
 
