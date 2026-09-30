@@ -6,6 +6,7 @@ import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Champ, 
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import { ChampActe, manquesEtape } from './ChampsActe';
 import FilEtapes from './FilEtapes';
+import { FenetreProjet, dernierEnvoi } from './EnvoiProjet';
 import { lireDepart, prochainNumero, type Depart } from '@/lib/registre';
 import {
   colonnesListe, finaliser, identiteDuJour, lienFichier, montrerPdf, nomFichier, quand, type DocumentRow,
@@ -140,6 +141,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const [identite, setIdentite] = useState<IdentiteAgence>(doc.identite || IDENTITE_DEFAUT);
   const [erreurIdentite, setErreurIdentite] = useState('');
   const [fin, setFin] = useState(false);
+  /* « Envoyer ce projet » (V3.40) : le brouillon part en relecture. */
+  const [projet, setProjet] = useState(false);
   const [travail, setTravail] = useState('');
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -384,7 +387,15 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     setMessage(null);
   }
 
+  /* Avant d'envoyer le projet : ce qui est à l'écran doit être enregistré,
+     le serveur fabrique le PDF depuis la base. */
+  async function avantProjet(): Promise<boolean> {
+    if (minuterie.current) clearTimeout(minuterie.current);
+    return aEnregistrer.current ? enregistrer() : true;
+  }
+
   const manques = m.manques(dm);
+  const envoye = row.statut === 'brouillon' ? dernierEnvoi(row) : null;
   const alertes = m.reperes ? etapes.flatMap(e => m.reperes!(dm, e.id).filter(r => r.ton === 'alerte').map(r => ({ ...r, etape: e.titre }))) : [];
   const etat = STATUTS[row.statut] || STATUTS.brouillon;
 
@@ -405,6 +416,11 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           <div className={s.edEtat}>
             <span className={`${s.statut} ${s.statutFort} ${s['t_' + etat.ton]}`}>{etat.l}</span>
             <span className={typeof enreg === 'object' ? s.ko : enreg === 'ok' ? s.ok : undefined}>{texteEnreg}</span>
+            {envoye && (
+              <span className={s.edEnvoye} title={envoye.modifie ? `${envoye.long}. Le document a changé depuis.` : envoye.long}>
+                <Ic n="envoyer" t={12} /><span>{envoye.court}{envoye.modifie && <em>{' · modifié depuis'}</em>}</span>
+              </span>
+            )}
           </div>
         </div>
         <div className={`${s.modes} ${b.modesBarre}`} role="group" aria-label="Affichage des questions">
@@ -419,6 +435,11 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           <button type="button" className={`${s.btn} ${s.btnMasque}`} disabled={travail === 'apercu'} onClick={apercuPdf}>
             <Ic n="doc" t={15} />{row.statut === 'brouillon' ? (travail === 'apercu' ? 'Préparation…' : 'Aperçu PDF') : 'Le PDF'}
           </button>
+          {row.statut === 'brouillon' && !m.courrier && (
+            <button type="button" className={`${s.btn} ${s.btnCourt}`} onClick={() => setProjet(true)} title="Envoyer ce projet pour relecture, sans signature" aria-label="Envoyer ce projet">
+              <Ic n="envoyer" t={15} /><span>Envoyer ce projet</span>
+            </button>
+          )}
           {row.statut === 'brouillon' && (
             <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setFin(true)}><Ic n="check" t={15} e={2.4} />Finaliser</button>
           )}
@@ -499,6 +520,17 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
             ? <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setFin(true)}>Finaliser</button>
             : <button type="button" className={s.btn} onClick={apercuPdf}>Le PDF</button>}
       </div>
+
+      {/* ── Le projet, en relecture (V3.40) ── */}
+      {projet && (
+        <FenetreProjet doc={row} donnees={d} avant={avantProjet} onFermer={() => setProjet(false)}
+          onEnvoye={r => {
+            setProjet(false);
+            if (r.row) { setRow(r.row); onMaj(r.row); }
+            setMessage({ t: r.message, ok: r.ok });
+            formRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          }} />
+      )}
 
       {/* ── La finalisation ── */}
       {fin && (
