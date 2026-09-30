@@ -37,6 +37,8 @@ export type DemandeSite = {
   archive: boolean;
   archive_le: string | null;
   client_id: string | null;
+  /* Quand le mail « Nouvelle demande » est parti (outils/sql/demandes-site-notifier.sql). */
+  notifie_le?: string | null;
 };
 
 export const TABLE_DEMANDES = 'contact_submissions';

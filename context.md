@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.36 · 30 septembre 2026**
+**Version 3.37 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1428,6 +1428,26 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.37 — 30 septembre 2026 · le mail « Nouvelle demande du site »
+
+Le site prévenait Alexandre par Resend, branché par Lovable (clé cachée chez Lovable). Il passe
+par Mailjet, comme le reste du CRM, sans aucune clé nouvelle :
+
+- Le site appelle, après chaque formulaire, la fonction `send-contact-email` du projet Supabase du
+  CRM. Elle ne fait qu'appeler **`POST /api/demandes-site/notifier`** (publique, `src/proxy.ts`).
+- La route lit elle-même les demandes pas encore annoncées (`contact_submissions.notifie_le` vide,
+  reçues depuis moins de deux jours), **se réserve chacune** (mise à jour sous condition « encore
+  vide ») puis envoie le mail avec `envoyerMailjet` (`src/lib/point-auto.ts`). Elle ne reçoit rien :
+  l'appeler en boucle n'envoie rien de plus. Un robot est marqué annoncé sans mail ; un envoi raté
+  remet la demande « à annoncer ».
+- Destinataire : `DEMANDES_EMAIL`, sinon `ALERTES_EMAIL`, sinon `MAILJET_FROM_EMAIL`, sinon
+  arogelet@emilio-immo.com. Lien « Ouvrir dans le CRM » : `CRM_URL` (par défaut l'adresse Vercel)
+  `/?page=demandes&demande=<id>`.
+- Le mail (`src/lib/demandes-site-mail.ts`) : type, nom, coordonnées, réponses rangées comme dans la
+  rubrique, estimation DVF du site, message, « Ouvrir dans le CRM » et « Appeler ». Heure de Paris.
+- `outils/sql/demandes-site-notifier.sql` : la colonne `notifie_le`, et les demandes déjà en base
+  marquées annoncées (sinon le premier appel aurait envoyé les 45 reprises de Lovable).
 
 ### V3.36 — 30 septembre 2026 · le menu en quatre rubriques
 
