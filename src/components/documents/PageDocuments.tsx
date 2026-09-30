@@ -13,6 +13,9 @@ import SignatureSurPlace from './SignatureSurPlace';
 import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProjet';
 import { Pastille } from './DocumentsDuClient';
 import { noterAnnulation, registreAbsent } from '@/lib/registre';
+import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
+import type { BienVente } from '@/lib/biens-vente';
+import SuiteMandatBien from './SuiteMandatBien';
 import {
   apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
@@ -161,7 +164,21 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
 }
 
 /* ── La fiche d'un document ── */
-function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver }: {
+/* Un mandat de vente annulé ou supprimé dont le bien dépend encore (V3.42). */
+type SuiteBien = { bien: BienVente; doc: DocumentRow; etaitSigne: boolean; supprime: boolean };
+
+/* La fiche du bien dépend-elle encore de ce mandat de vente ? Rend de quoi
+   ouvrir la question, ou null (pas de bien, bien non concerné, lecture
+   impossible : rien ne bloque l'annulation elle-même). */
+async function suiteBienDe(d: DocumentRow, etaitSigne: boolean, supprime: boolean): Promise<SuiteBien | null> {
+  if (d.modele !== 'mandat_vente') return null;
+  try {
+    const bien = await bienDuMandat(supabase, d);
+    return bien && bienConcerne(bien, d, etaitSigne) ? { bien, doc: d, etaitSigne, supprime } : null;
+  } catch { return null; }
+}
+
+function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver, onSuiteBien }: {
   it: Item;
   noms: Record<string, string>;
   /* Tous les documents : pour retrouver les courriers déjà préparés. */
@@ -175,6 +192,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   /* Préparer un document à partir d'un mandat (avenant, courrier) : « d-<id> »
      pour un document, « r-<id> » pour un mandat signé en ligne. */
   onDeriver: (cle: string, modeleId: string, o?: { echeance?: string }) => void;
+  /* Un mandat de vente annulé ou supprimé : que devient la fiche du bien ? */
+  onSuiteBien: (x: SuiteBien) => void;
 }) {
   const [travail, setTravail] = useState('');
   const [erreur, setErreur] = useState('');
@@ -239,6 +258,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       if (pb) setErreur(pb);
     }
     onMaj(data as DocumentRow);
+    /* Un mandat de vente (V3.42) : son bien est-il encore « En vente » avec lui ? */
+    if (maj.statut === 'annule') {
+      const suite = await suiteBienDe(d, d.statut === 'signe', false);
+      if (suite) onSuiteBien(suite);
+    }
   }
 
   async function supprimer() {
@@ -266,7 +290,10 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       await retirerFichiers(d.id);
       const { error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon');
       if (error) throw new Error(error.message);
+      /* Un mandat de vente (V3.42) : son bien était-il passé « En vente » avec lui ? */
+      const suite = await suiteBienDe(d, false, true);
       onSupprime(d.id);
+      if (suite) onSuiteBien(suite);
     } catch (e) {
       setErreur('La suppression a échoué : ' + (e as Error).message);
       setTravail('');
@@ -467,6 +494,8 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string; confrereId?: string } | null>(null);
   const [edition, setEdition] = useState<DocumentRow | null>(null);
+  /* Un mandat de vente annulé ou supprimé : la question de sa fiche (V3.42). */
+  const [suiteBien, setSuiteBien] = useState<SuiteBien | null>(null);
   const refCreer = useRef<HTMLElement>(null);
   const refListe = useRef<HTMLDivElement>(null);
 
@@ -742,8 +771,10 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           onMaj={majDoc}
           onSupprime={id => { setDocs(l => (l || []).filter(x => x.id !== id)); setOuvert(null); }}
           onDupliquer={dupliquer}
-          onFiche={ficheClient} />
+          onFiche={ficheClient} onSuiteBien={setSuiteBien} />
       )}
+      {suiteBien && <SuiteMandatBien bien={suiteBien.bien} doc={suiteBien.doc} etaitSigne={suiteBien.etaitSigne} supprime={suiteBien.supprime}
+        onFermer={() => setSuiteBien(null)} onFicheBien={id => { setSuiteBien(null); onNavigate('biens', { bien: id }); }} />}
       {nouveau && (
         <NouveauDocument modeleId={nouveau.modele} clientId={nouveau.clientId} confrereId={nouveau.confrereId} onFermer={() => setNouveau(null)}
           onCree={r => { majDoc(r); setNouveau(null); setEdition(r); }}
