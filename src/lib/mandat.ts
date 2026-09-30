@@ -49,6 +49,21 @@ export const BAREME_VENTE = 5;               // % TTC du prix : le barème du ma
 /* 12 mois au plus, fin à tout moment avec 15 jours de préavis. `total` sert
    aux dates (fin du mandat), en jours. */
 export const DUREE = { mois: 12, total: 365, preavis: 15 } as const;
+/* « AAAA-MM-JJ » plus n mois, le jour ramené à la fin du mois si besoin
+   (31 janvier + 1 mois = 28 ou 29 février). Le même calcul que plusMois
+   (src/lib/actes/commun.ts), ici pour les pages qui ne chargent pas les
+   actes (l'espace). V3.43 : la fin du mandat de recherche se compte en mois,
+   comme le texte (« douze mois »), et plus en 365 jours : un jour d'écart
+   quand un 29 février tombait dedans. */
+export function ajouterMois(ymd: string, n: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  if (!m) return '';
+  const total = Number(m[1]) * 12 + Number(m[2]) - 1 + n;
+  const an = Math.floor(total / 12), mois = total % 12;
+  const fin = new Date(Date.UTC(an, mois + 1, 0)).getUTCDate();
+  const j = Math.min(Number(m[3]), fin);
+  return `${an}-${String(mois + 1).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
+}
 export const RETRACTATION_JOURS = 14;
 /* Un co-signataire (conjoint, co-acquéreur) a quinze jours pour signer à
    son tour, à compter de l'envoi de son lien. Au-delà, le mandat continue
@@ -684,7 +699,20 @@ export function finRetractation(signeLe: string): Date {
     if (js !== 6 && js !== 0 && !jourFerie(fin)) break;
     fin += 86_400_000;
   }
-  return new Date(new Date(fin).toISOString().slice(0, 10) + 'T23:59:59+01:00');
+  const ymd = new Date(fin).toISOString().slice(0, 10);
+  /* V3.43 : 23 h 59 à l'heure de Paris CE jour-là (+01:00 l'hiver, +02:00
+     l'été). Avant, toujours +01:00 : l'été, la limite tombait à 0 h 59 le
+     lendemain, et « jusqu'au … » affichait le lendemain. */
+  return new Date(`${ymd}T23:59:59${decalageParis(ymd)}`);
+}
+/* Le décalage de Paris sur l'heure universelle, un jour donné (« +02:00 »). */
+function decalageParis(ymd: string): string {
+  try {
+    const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', timeZoneName: 'longOffset' })
+      .formatToParts(new Date(`${ymd}T12:00:00Z`)).find(x => x.type === 'timeZoneName')?.value || '';
+    const m = /GMT([+-]\d{2}):?(\d{2})/.exec(t);
+    return m ? `${m[1]}:${m[2]}` : '+01:00';
+  } catch { return '+01:00'; }
 }
 
 /* À plusieurs : son délai part de SA signature, et se prolonge jusqu'à la
