@@ -23,6 +23,8 @@ import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
 import { demanderNouveauBien, demanderOngletBien } from '@/lib/intentions';
+import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
+import { libelleVisites } from '@/lib/visites';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -108,33 +110,22 @@ const jourCourt = (iso: string) => new Date(iso.length <= 10 ? `${iso}T12:00:00`
    dit en dessous (« dont 1 à venir », « en attente de réponse »), et bien
    par bien pour ouvrir le bon. */
 type ActiviteVente = {
-  visites: number; aVenir: number; derniereVisite: string | null;
+  /* Faites (la date est passée) et prévues : jamais « 3 visites » tout court (V3.33). */
+  faites: number; prevues: number; derniereVisite: string | null; prochaineVisite: string | null;
   offres: number; enAttente: number; acceptee: number;
-  parBien: Record<string, { v: number; o: number }>;
+  parBien: Record<string, { f: number; p: number; o: number }>;
 };
-const VENTE_VIDE: ActiviteVente = { visites: 0, aVenir: 0, derniereVisite: null, offres: 0, enAttente: 0, acceptee: 0, parBien: {} };
+const VENTE_VIDE: ActiviteVente = { faites: 0, prevues: 0, derniereVisite: null, prochaineVisite: null, offres: 0, enAttente: 0, acceptee: 0, parBien: {} };
 const pl = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
 
-/* Une tuile du bandeau (V3.33). Alexandre : « 1 en gros, bien en petit
-   dessous… je trouve que c'est moche » ; et « quand il y a zéro, ce n'est
-   pas la peine que ça arrive quelque part ». Le chiffre et son mot sur une
-   ligne (« 3 visites »), ce qui compte en dessous ; à zéro, la tuile est
-   grisée et ne se clique pas. */
-function Tuile({ ic, titre, sous, vide, onClic }: { ic: string; titre: string; sous: string; vide: boolean; onClic?: () => void }) {
-  const corps = (
-    <>
-      <span className={c.tuileIc}><Ic n={ic} t={17} e={2} /></span>
-      <span className={c.tuileTx}><b>{titre}</b><small>{sous}</small></span>
-    </>
-  );
-  if (vide || !onClic) return <div className={`${c.tuile} ${vide ? c.tuileVide : ''}`}>{corps}</div>;
-  return <button type="button" className={`${c.tuile} ${c.tuileClic}`} onClick={onClic}>{corps}<span className={c.tuileVa}><Ic n="droite" t={13} e={2.4} /></span></button>;
-}
-
-function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien, onCreerBien, onSuivi }: {
+/* Le bandeau (V3.33) : les tuiles (src/components/shared/Tuiles.tsx), puis
+   une ligne discrète. Les biens d'un vendeur ont leur propre rang, sur toute
+   la largeur du bandeau (BiensHero) : la colonne de gauche reste à la
+   hauteur des coordonnées, et rien ne reste vide à droite ni en bas. */
+function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien, onSuivi }: {
   proprio: boolean; biens: BienHero[] | null; vente: ActiviteVente;
   journal: { type: string; created_at: string }[]; relances: { date_echeance: string; note: string | null }[];
-  creeLe: string | null | undefined; onBien: (id: string, onglet?: string) => void; onCreerBien: () => void; onSuivi: () => void;
+  creeLe: string | null | undefined; onBien: (id: string, onglet?: string) => void; onSuivi: () => void;
 }) {
   /* L'heure de l'affichage, lue une fois (un rendu reste pur). */
   const [maintenant] = useState(() => Date.now());
@@ -144,11 +135,11 @@ function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien
   const prochaine = relances[0];
   const liste = biens || [];
   const enVente = liste.filter(b => ['mandat', 'offre', 'compromis', 'suspendu'].includes(b.etape)).length;
-  const versListe = () => document.getElementById('ses-biens')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const versListe = () => document.getElementById('biens-hero')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   /* Un seul bien concerné : on l'ouvre, sur « Visites et offres » s'il a
-     cet onglet (après le mandat) ; plusieurs : la liste juste en dessous. */
+     cet onglet (après le mandat) ; plusieurs : le rang de ses biens. */
   const ouvrirSur = (cle: 'v' | 'o') => {
-    const concernes = liste.filter(b => (vente.parBien[b.id]?.[cle] || 0) > 0);
+    const concernes = liste.filter(b => (cle === 'v' ? (vente.parBien[b.id]?.f || 0) + (vente.parBien[b.id]?.p || 0) : vente.parBien[b.id]?.o || 0) > 0);
     if (concernes.length === 1) onBien(concernes[0].id, avantMandat(concernes[0].etape) ? undefined : 'visites');
     else versListe();
   };
@@ -156,8 +147,12 @@ function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien
     : liste.length === 1 ? etapeDe(liste[0].etape).lib
     : enVente === liste.length ? 'tous en vente'
     : enVente ? `dont ${enVente} en vente` : 'aucun en vente pour l’instant';
-  const sousVisites = !vente.visites ? 'pour l’instant'
-    : vente.aVenir ? (vente.aVenir === vente.visites ? (vente.aVenir > 1 ? 'toutes à venir' : 'à venir') : `dont ${vente.aVenir} à venir`)
+  const nbVisites = vente.faites + vente.prevues;
+  const titreVisites = vente.faites ? pl(vente.faites, 'visite faite', 'visites faites') : vente.prevues ? pl(vente.prevues, 'visite prévue', 'visites prévues') : 'Aucune visite';
+  const jourProchaine = vente.prochaineVisite ? jourCourt(vente.prochaineVisite) : '';
+  const sousVisites = !nbVisites ? 'pour l’instant'
+    : vente.faites && vente.prevues ? `+ ${pl(vente.prevues, 'prévue', 'prévues')}${jourProchaine ? `, ${vente.prevues > 1 ? 'la prochaine ' : ''}le ${jourProchaine}` : ''}`
+    : vente.prevues ? (jourProchaine ? `${vente.prevues > 1 ? 'la prochaine ' : ''}le ${jourProchaine}` : 'à venir')
     : vente.derniereVisite ? `la dernière le ${jourCourt(vente.derniereVisite)}` : 'déjà faites';
   const sousOffres = !vente.offres ? 'pour l’instant'
     : vente.acceptee ? (vente.offres === 1 ? 'acceptée' : `dont ${vente.acceptee} acceptée${vente.acceptee > 1 ? 's' : ''}`)
@@ -165,57 +160,73 @@ function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien
     : 'aucune en attente';
   return (
     <div className={c.activite}>
-      <div className={c.tuiles} aria-label="Son activité">
-        {proprio ? (
-          <>
-            <Tuile ic="maison" titre={liste.length ? pl(liste.length, 'bien', 'biens') : 'Aucun bien'} sous={sousBiens} vide={!liste.length}
-              onClic={liste.length === 1 ? () => onBien(liste[0].id) : versListe} />
-            <Tuile ic="cle" titre={vente.visites ? pl(vente.visites, 'visite', 'visites') : 'Aucune visite'} sous={sousVisites} vide={!vente.visites} onClic={() => ouvrirSur('v')} />
-            <Tuile ic="euro" titre={vente.offres ? pl(vente.offres, 'offre', 'offres') : 'Aucune offre'} sous={sousOffres} vide={!vente.offres} onClic={() => ouvrirSur('o')} />
-          </>
-        ) : (
-          <>
-            <Tuile ic="bulle" titre={echanges.length ? pl(echanges.length, 'échange', 'échanges') : 'Aucun échange'}
-              sous={dernier ? `le dernier : ${(LIB_ECHANGE[dernier.type] || 'échange').toLowerCase()}, le ${jourCourt(dernier.created_at)}` : 'noté pour l’instant'} vide={!echanges.length} onClic={onSuivi} />
-            <Tuile ic="calendrier" titre={relances.length ? pl(relances.length, 'relance à venir', 'relances à venir') : 'Aucune relance'}
-              sous={prochaine ? `la prochaine le ${jourCourt(prochaine.date_echeance)}${prochaine.note ? ` · ${prochaine.note}` : ''}` : 'prévue pour l’instant'} vide={!relances.length} onClic={onSuivi} />
-          </>
-        )}
-      </div>
+      {proprio ? (
+        <Tuiles label="Son activité" grandit>
+          <Tuile ic="maison" titre={liste.length ? pl(liste.length, 'bien', 'biens') : 'Aucun bien'} sous={sousBiens} vide={!liste.length}
+            onClic={liste.length === 1 ? () => onBien(liste[0].id) : versListe} />
+          <Tuile ic="cle" titre={titreVisites} sous={sousVisites} vide={!nbVisites} onClic={() => ouvrirSur('v')} />
+          <Tuile ic="euro" titre={vente.offres ? pl(vente.offres, 'offre', 'offres') : 'Aucune offre'} sous={sousOffres} vide={!vente.offres} onClic={() => ouvrirSur('o')} />
+        </Tuiles>
+      ) : (
+        <Tuiles label="Son activité" grandit>
+          <Tuile ic="bulle" titre={echanges.length ? pl(echanges.length, 'échange', 'échanges') : 'Aucun échange'}
+            sous={dernier ? `le dernier : ${(LIB_ECHANGE[dernier.type] || 'échange').toLowerCase()}, le ${jourCourt(dernier.created_at)}` : 'noté pour l’instant'} vide={!echanges.length} onClic={onSuivi} />
+          <Tuile ic="calendrier" titre={relances.length ? pl(relances.length, 'relance à venir', 'relances à venir') : 'Aucune relance'}
+            sous={prochaine ? `la prochaine le ${jourCourt(prochaine.date_echeance)}${prochaine.note ? ` · ${prochaine.note}` : ''}` : 'prévue pour l’instant'} vide={!relances.length} onClic={onSuivi} />
+        </Tuiles>
+      )}
       {/* Depuis quand on le suit : une ligne discrète, plus une tuile de plus. */}
       {jours !== null && (
-        <div className={c.depuisLigne}>
-          <Ic n="horloge" t={13} e={2.2} />
-          <span>{jours <= 0 ? 'Suivi depuis aujourd’hui' : `Suivi depuis ${dureeSuivi(jours)}`}<i>{` · fiche créée le ${jourCourt(String(creeLe))}`}</i></span>
-        </div>
+        <LigneTuiles><Horloge fort={jours <= 0 ? 'Suivi depuis aujourd’hui' : `Suivi depuis ${dureeSuivi(jours)}`} doux={` · fiche créée le ${jourCourt(String(creeLe))}`} /></LigneTuiles>
       )}
-      {proprio && (
-        <div className={c.heroBiens}>
-          {liste.slice(0, 3).map(b => {
-            const e = etapeDe(b.etape);
-            const d = (b.donnees || {}) as Record<string, unknown>;
-            const photo = b.photo || lirePhotos(d.photos)[0]?.url || '';
-            const n = vente.parBien[b.id];
-            const activite = [n?.v ? pl(n.v, 'visite', 'visites') : '', n?.o ? pl(n.o, 'offre', 'offres') : ''].filter(Boolean).join(' · ');
-            return (
-              <button key={b.id} type="button" className={c.heroBien} onClick={() => onBien(b.id)} title="Ouvrir la fiche du bien">
-                <span className={c.heroBienPh}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {photo ? <img src={photo} alt="" /> : <Ic n="maison" t={16} />}
-                </span>
-                <span className={c.heroBienTx}>
-                  <b>{b.titre || titreBien(d as Parameters<typeof titreBien>[0]) || 'Son bien'}</b>
-                  <small><i style={{ background: e.c }} />{`${e.lib}${b.prix ? ` · ${euros(b.prix)}` : ''}${activite ? ` · ${activite}` : ''}`}</small>
-                </span>
-                <Ic n="droite" t={14} e={2.2} />
-              </button>
-            );
-          })}
-          {liste.length > 3 && <span className={c.heroBienPlus}>{`+ ${liste.length - 3} autre${liste.length - 3 > 1 ? 's' : ''}, dans « Ses biens »`}</span>}
-          {biens && !biens.length && (
-            <button type="button" className={c.heroBienVide} onClick={onCreerBien}><Ic n="plus" t={14} e={2.4} /><span>Créer son bien : estimation, mandat, tout y est</span></button>
-          )}
-        </div>
+    </div>
+  );
+}
+
+/* Ses biens, sur toute la largeur du bandeau (V3.33) : côte à côte, à parts
+   égales (un seul prend toute la place et dit tout sur une ligne). */
+function BiensHero({ biens, vente, onBien, onCreerBien }: {
+  biens: BienHero[]; vente: ActiviteVente; onBien: (id: string, onglet?: string) => void; onCreerBien: () => void;
+}) {
+  if (!biens.length) {
+    return (
+      <div className={c.biensRang} id="biens-hero">
+        <button type="button" className={c.heroBienVide} onClick={onCreerBien}><Ic n="plus" t={14} e={2.4} /><span>Créer son bien : estimation, mandat, tout y est</span></button>
+      </div>
+    );
+  }
+  const montres = biens.length > 4 ? biens.slice(0, 3) : biens;
+  return (
+    <div className={`${c.biensRang} ${biens.length === 1 ? c.biensSeul : ''}`} id="biens-hero">
+      {montres.map(b => {
+        const e = etapeDe(b.etape);
+        const d = (b.donnees || {}) as Record<string, unknown>;
+        const photo = b.photo || lirePhotos(d.photos)[0]?.url || '';
+        const n = vente.parBien[b.id];
+        const activite = [libelleVisites(n?.f || 0, n?.p || 0), n?.o ? pl(n.o, 'offre', 'offres') : ''].filter(Boolean);
+        /* Seul, il a la place : ses visites et offres en pastilles à droite.
+           Côte à côte, elles suivent l'étape et le prix. */
+        const seul = biens.length === 1;
+        return (
+          <button key={b.id} type="button" className={c.heroBien} onClick={() => onBien(b.id)} title="Ouvrir la fiche du bien">
+            <span className={c.heroBienPh}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {photo ? <img src={photo} alt="" /> : <Ic n="maison" t={16} />}
+            </span>
+            <span className={c.heroBienTx}>
+              <b>{b.titre || titreBien(d as Parameters<typeof titreBien>[0]) || 'Son bien'}</b>
+              <small><i style={{ background: e.c }} />{`${e.lib}${b.prix ? ` · ${euros(b.prix)}` : ''}${!seul && activite.length ? ` · ${activite.join(' · ')}` : ''}`}</small>
+            </span>
+            {seul && activite.length > 0 && <span className={c.heroBienAct}>{activite.map(a => <em key={a}>{a}</em>)}</span>}
+            <Ic n="droite" t={14} e={2.2} />
+          </button>
+        );
+      })}
+      {biens.length > 4 && (
+        <button type="button" className={`${c.heroBien} ${c.heroBienPlus}`} onClick={() => document.getElementById('ses-biens')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <span className={c.heroBienTx}><b>{`+ ${biens.length - 3} autres biens`}</b><small>dans « Ses biens », plus bas</small></span>
+          <Ic n="bas" t={14} e={2.2} />
+        </button>
       )}
     </div>
   );
@@ -245,6 +256,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
   const principal = typeDe(types[0]);
   const archive = estArchive(x);
+  const proprio = typesDe(x).includes('vendeur') || typesDe(x).includes('proprietaire');
+  const ouvrirBien = (id: string, onglet?: string) => { if (onglet) demanderOngletBien(id, onglet); onNavigate('biens', { bien: id }); };
 
   /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32). */
   const [biensH, setBiensH] = useState<BienHero[] | null>(null);
@@ -262,14 +275,21 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       const rows = (sv || []) as { bien_id: string; type: string; statut: string | null; le: string | null }[];
       const visites = rows.filter(r => r.type === 'visite' && r.statut !== 'annulee');
       const offres = rows.filter(r => r.type === 'offre');
-      const faites = visites.filter(r => r.statut !== 'a_venir' && r.le).map(r => String(r.le)).sort();
+      /* Faite : marquée faite, ou sa date est passée (comme la fiche du bien).
+         Prévue : à venir, et pas encore passée. */
+      const maintenant = Date.now();
+      const passee = (r: { statut: string | null; le: string | null }) => r.statut === 'faite' || (!!r.le && Date.parse(r.le) < maintenant);
+      const faites = visites.filter(passee);
+      const prevues = visites.filter(r => !passee(r));
+      const datesF = faites.filter(r => r.le).map(r => String(r.le)).sort();
+      const datesP = prevues.filter(r => r.le).map(r => String(r.le)).sort();
       const parBien: ActiviteVente['parBien'] = {};
-      for (const r of [...visites, ...offres]) {
-        const e = parBien[r.bien_id] || (parBien[r.bien_id] = { v: 0, o: 0 });
-        if (r.type === 'visite') e.v++; else e.o++;
-      }
+      const de = (id: string) => parBien[id] || (parBien[id] = { f: 0, p: 0, o: 0 });
+      for (const r of faites) de(r.bien_id).f++;
+      for (const r of prevues) de(r.bien_id).p++;
+      for (const r of offres) de(r.bien_id).o++;
       setVo({
-        visites: visites.length, aVenir: visites.filter(r => r.statut === 'a_venir').length, derniereVisite: faites[faites.length - 1] || null,
+        faites: faites.length, prevues: prevues.length, derniereVisite: datesF[datesF.length - 1] || null, prochaineVisite: datesP[0] || null,
         offres: offres.length, enAttente: offres.filter(r => r.statut === 'en_attente' || r.statut === 'contre').length, acceptee: offres.filter(r => r.statut === 'acceptee').length,
         parBien,
       });
@@ -430,13 +450,13 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             )}
           </div>
         </div>
-        <ActiviteHero proprio={types.includes('vendeur') || types.includes('proprietaire')} biens={biensH} vente={vo}
-          journal={journal} relances={relances} creeLe={x.created_at}
-          onBien={(id, onglet) => { if (onglet) demanderOngletBien(id, onglet); onNavigate('biens', { bien: id }); }} onCreerBien={() => { demanderNouveauBien(x.id); onNavigate('biens'); }}
+        <ActiviteHero proprio={proprio} biens={biensH} vente={vo}
+          journal={journal} relances={relances} creeLe={x.created_at} onBien={ouvrirBien}
           onSuivi={() => document.getElementById('suivi-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         </div>
         <Coordonnees coords={coords} onModifier={() => { setErreur(''); setEdit(formDe(x)); }}
           pied={aUneAdresse ? <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} /> : undefined} />
+        {proprio && biensH && <BiensHero biens={biensH} vente={vo} onBien={ouvrirBien} onCreerBien={() => { demanderNouveauBien(x.id); onNavigate('biens'); }} />}
       </div>
 
       {/* Elle arrive en glissant quand on clique « Ajouter » (V3.32). */}
