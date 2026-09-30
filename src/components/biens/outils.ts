@@ -12,9 +12,10 @@ import { colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
   argentBien, colonnesBien, contexteDocument, lirePhotos, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
-  type BienVente, type Donnees, type EtapeVente, type Photo, type SuiviVente,
+  type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
 import { colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
+import { retirerMandatDuBien, type RetraitMandat } from '@/lib/mandat-bien';
 
 /* ═══ Biens en vente : les lectures et les écritures ══════════════════════
    Tout ce qui touche à la base pour la rubrique, au même endroit. Chaque
@@ -62,7 +63,44 @@ const lever = (quoi: string, m: string): never => { throw new Error(tableAbsente
 export type ListeBiens = {
   biens: BienVente[]; suivi: SuiviVente[]; copies: Copie[]; visites: VisiteRow[];
   clients: Record<string, ClientMini>; recherches: RechercheMini[];
+  /* Les mandats de vente de Documents, hors annulés (V3.42). */
+  mandats?: MandatListe[];
 };
+
+/* ── Les mandats de vente de Documents, pour la liste (V3.42) ──
+   La liste disait « Mandat en cours » pour un bien « En vente » dont le
+   mandat était encore en rédaction. Elle lit maintenant où en est celui de
+   chaque bien : quelques colonnes, sans les réponses. Une lecture qui
+   échoue n'empêche pas la liste de s'afficher (elle retombe sur l'étape). */
+export type MandatListe = EtatMandatDoc & { bien: string | null; created_at: string };
+async function lireMandatsListe(): Promise<MandatListe[]> {
+  type Rep = { data: unknown[] | null; error: { message: string } | null };
+  const lire = (cols: string): PromiseLike<Rep> => supabase.from('documents').select(cols)
+    .eq('modele', 'mandat_vente').neq('statut', 'annule').limit(1000) as unknown as PromiseLike<Rep>;
+  /* `signature` n'existe qu'après le SQL de la signature en ligne. */
+  let r = await lire('id, statut, numero, created_at, bien:donnees->>bienVenteId, signature');
+  if (r.error && /signature/.test(r.error.message)) r = await lire('id, statut, numero, created_at, bien:donnees->>bienVenteId');
+  if (r.error) { console.error('[biens] les mandats de Documents :', r.error.message); return []; }
+  return ((r.data || []) as unknown as { id: string; statut: string; numero: string | null; created_at: string; bien: string | null; signature?: unknown }[])
+    .filter(x => x.statut === 'brouillon' || x.statut === 'pret' || x.statut === 'signe')
+    .map(x => ({ id: x.id, statut: x.statut as EtatMandatDoc['statut'], numero: x.numero, created_at: x.created_at, bien: x.bien, enSignature: !!x.signature }));
+}
+
+/* Le mandat de chaque bien : celui qui porte son identifiant, ou celui
+   rattaché au bien (biens_vente.document_id). En route d'abord (à signer,
+   puis en préparation), sinon signé ; à rang égal, le plus récent. */
+export function mandatsParBien(l: ListeBiens): Record<string, EtatMandatDoc> {
+  const RANG: Record<string, number> = { pret: 0, brouillon: 1, signe: 2 };
+  const rattache = new Map(l.biens.filter(x => x.document_id).map(x => [x.document_id as string, x.id]));
+  const out: Record<string, MandatListe> = {};
+  for (const m of l.mandats || []) {
+    const bien = m.bien || rattache.get(m.id);
+    if (!bien) continue;
+    const deja = out[bien];
+    if (!deja || RANG[m.statut] < RANG[deja.statut] || (RANG[m.statut] === RANG[deja.statut] && m.created_at > deja.created_at)) out[bien] = m;
+  }
+  return out;
+}
 
 export async function chargerListe(): Promise<ListeBiens> {
   /* Par pages de 1 000 (V3.33) : Supabase plafonne chaque requête à 1 000
@@ -94,6 +132,7 @@ export async function chargerListe(): Promise<ListeBiens> {
     biens: b.data, suivi: s.data, copies, visites,
     recherches: r.erreur ? [] : r.data,
     clients: Object.fromEntries(cl.data.map(x => [x.id, x])),
+    mandats: await lireMandatsListe(),
   };
 }
 
@@ -349,6 +388,14 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
     donnees: { de: b.etape, ...(o.infos || {}) },
   });
   return { bien: data as BienVente, ligne };
+}
+
+/* Annuler un mandat noté par erreur (V3.42) : le mandat quitte la fiche, le
+   bien revient à l'étape choisie (src/lib/mandat-bien.ts). */
+export async function annulerMandatNote(b: BienVente, o: RetraitMandat): Promise<BienVente> {
+  const r = await retirerMandatDuBien(supabase, b, o);
+  if (r.avertissement) signalerEchec('La fiche du bien', r.avertissement);
+  return r.bien;
 }
 
 /* ══ Les acheteurs suivis ══════════════════════════════════════════════
