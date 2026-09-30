@@ -72,7 +72,9 @@ export async function POST(req: NextRequest) {
       const candidats = await calculerCandidats(sb, reglages);
       return NextResponse.json({
         ok: true, reglages, branche,
-        candidats: candidats.map(({ recherche, ...c }) => ({ ...c, rechercheNom: recherche?.nom || null })),
+        /* V3.43 : sans le lien d'espace de chaque client (l'écran ne s'en
+           sert pas, et la liste entière n'a pas à circuler). */
+        candidats: candidats.map(({ recherche, ...c }) => ({ ...c, tokenClient: null, rechercheNom: recherche?.nom || null })),
       });
     }
 
