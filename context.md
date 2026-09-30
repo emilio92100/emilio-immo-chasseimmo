@@ -1456,6 +1456,13 @@ Lovable Cloud ne reçoit plus rien (45 demandes, toutes reprises, la dernière d
 - `dvf-estimate` répond « pas assez de ventes » sur les codes essayés, **comme chez Lovable** : les
   sources DVF qu'il appelle ne rendent plus rien. Non corrigé (hors demande).
 - Les pages `/admin` du site sont obsolètes : la rubrique « Demandes du site » les remplace.
+- **L'anti-robots du site** (`src/lib/antiBot.ts`, dépôt du site) ne jette plus rien à cause du
+  contenu : l'ancien filtre écartait en silence « Marc Schmitt », « Anne Schwartz » (des mots longs,
+  peu de voyelles). Il n'écarte plus que sur le comportement : le champ piège (renommé `ei_x7q`,
+  un nom neutre que le remplissage automatique du navigateur ne touche pas), moins de 3 secondes,
+  aucun vrai clic ni touche sur la page. Tout le reste arrive : le CRM repère les robots (`robot()`,
+  `demandes-site.ts`), les range à part et n'envoie pas de mail pour eux ; Alexandre fait le tri.
+  Les téléphones étrangers (+32…) sont acceptés.
 
 ### V3.37 — 30 septembre 2026 · le mail « Nouvelle demande du site »
 
