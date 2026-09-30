@@ -120,7 +120,13 @@ export async function POST(req: NextRequest) {
       case 'code': {
         if (!ouvert) return ko('etat', 409, { statut: co.statut });
         if (!lienValide(co)) return ko('lien_expire', 410);
-        const v = validerMandant(body.personne);
+        /* V3.43 : le code part à l'adresse qui a reçu ce lien, jamais à une
+           adresse tapée sur la page. Sinon, qui tenait le lien pouvait
+           recevoir le code ailleurs, et le certificat disait « e-mail
+           vérifié ». Une adresse fausse se corrige depuis l'espace du premier
+           signataire, qui envoie un nouveau lien. */
+        const brut = body.personne && typeof body.personne === 'object' ? body.personne as Record<string, unknown> : {};
+        const v = validerMandant({ ...brut, email: co.personne.email });
         if (!v.ok) return ko('coordonnees', 400, { champs: v.champs });
         const p = v.mandant;
         const pris = [l.mandant.email, ...cos.filter(c => c.id !== co.id && dansLeMandat(c)).map(c => c.personne.email)].map(e => String(e).toLowerCase());
@@ -168,9 +174,14 @@ export async function POST(req: NextRequest) {
         if (!ouvert || !co.code_hash) return ko('recommencer', 409);
         if (co.code_essais >= CODE_ESSAIS) return ko('trop', 429);
         if (!co.code_expire_le || Date.parse(co.code_expire_le) < Date.now()) return ko('expire', 410);
-        if (!egal(hacher(code, co.id), co.code_hash)) {
-          const essais = co.code_essais + 1;
-          await ecritServeur('Le compte des essais du code', sb.from('mandats_cosignataires').update({ code_essais: essais }).eq('id', co.id));
+        /* V3.43 : l'essai est réservé avant de comparer, en une requête
+           (compare puis écrit) : des essais lancés en même temps ne lisent
+           plus tous « 0 essai », et un double clic ne signe pas deux fois. */
+        const essais = co.code_essais + 1;
+        const { data: resa, error: eR } = await sb.from('mandats_cosignataires').update({ code_essais: essais })
+          .eq('id', co.id).eq('code_essais', co.code_essais).select('id');
+        if (eR) return ko('enregistrement', 500, { detail: eR.message });
+        if (!resa?.length || !egal(hacher(code, co.id), co.code_hash)) {
           return ko('code', 400, { restants: Math.max(0, CODE_ESSAIS - essais) });
         }
 
@@ -184,7 +195,7 @@ export async function POST(req: NextRequest) {
           ...co, statut: 'signe', signe_le: le, ip, appareil, email_verifie: co.personne.email, griffe_chemin: griffeChemin,
           code_hash: null, code_essais: co.code_essais + 1, execution_immediate: execution,
           deroule: [...(co.deroule || []),
-            ...(png ? [{ t: le, x: 'Signature tracée à la main sur l’écran' }] : []),
+            ...(png ? [{ t: le, x: griffeChemin ? 'Signature tracée à la main sur l’écran' : 'Signature tracée à la main sur l’écran, mais le tracé n’a pas pu être conservé' }] : []),
             { t: le, x: `Code saisi et validé (${tentative})` },
             { t: le, x: `Cases cochées : « J’ai lu le mandat de recherche et je l’accepte » · « ${execution
               ? 'Je demande que la mission commence dès ma signature, sans attendre la fin de mon délai de rétractation'
