@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.35 · 30 septembre 2026**
+**Version 3.36 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1428,6 +1428,19 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.36 — 30 septembre 2026 · le menu en quatre rubriques
+
+Le menu de gauche (`src/components/layout/Sidebar.tsx`), rangé à la demande d'Alexandre pour qu'on
+s'y retrouve d'un coup d'œil :
+
+- **PRINCIPAL** : Dashboard, Contacts, Biens.
+- **SUIVI** : Demandes du site, Agenda, Visites, Relances — ce qui se traite au jour le jour.
+- **OUTILS** (nouvelle) : Carte, Documents, Nouveau mail — ce qu'on ouvre pour faire quelque chose.
+- **ANALYSE** : Mon activité, Paramètres.
+
+Rien d'autre ne change : mêmes entrées, mêmes pastilles, mêmes sous-menus ; la barre du bas du
+téléphone est la même.
 
 ### V3.35 — 30 septembre 2026 · la barre des fiches ouvertes, le menu réduit
 

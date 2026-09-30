@@ -149,8 +149,6 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
            pastille « actifs » ne voulait plus rien dire ici : partie. */
         { id: 'clients', label: 'Contacts', picto: 'clients', badge: null },
         { id: 'biens', label: 'Biens', picto: 'maison', badge: counts.enVente > 0 ? { count: counts.enVente, type: 'gold', titre: `${counts.enVente} bien${counts.enVente > 1 ? 's' : ''} en vente, sous offre ou sous compromis` } : null },
-        /* Les contacts et les biens, là où ils sont (V3.26). */
-        { id: 'carte', label: 'Carte', picto: 'carteplan', badge: null },
       ]
     },
     {
@@ -167,6 +165,15 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           ? { count: counts.demandes, type: 'red', pulse: true, titre: `${counts.demandes} demande${counts.demandes > 1 ? 's' : ''} de visite à caler` }
           : counts.visites > 0 ? { count: counts.visites, type: 'blue' } : null },
         { id: 'relances', label: 'Relances', picto: 'cloche', badge: counts.relances > 0 ? { count: counts.relances, type: 'red', pulse: true } : null },
+      ]
+    },
+    /* Les outils (V3.36, à la demande d'Alexandre) : ce qu'on ouvre pour faire
+       quelque chose, à part de ce qui se suit au jour le jour. */
+    {
+      section: 'OUTILS',
+      items: [
+        /* Les contacts et les biens, là où ils sont (V3.26). */
+        { id: 'carte', label: 'Carte', picto: 'carteplan', badge: null },
         { id: 'documents', label: 'Documents', picto: 'note', badge: counts.aSigner > 0
           ? { count: counts.aSigner, type: 'blue', titre: `${counts.aSigner} document${counts.aSigner > 1 ? 's' : ''} à faire signer` } : null },
         { id: 'mail', label: 'Nouveau mail', picto: 'mail', badge: null },
