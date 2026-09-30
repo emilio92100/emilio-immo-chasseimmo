@@ -1033,14 +1033,30 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
   /* Le dossier se coche depuis la fiche : chaque clic s'enregistre, dans l'ordre. */
   const file = useRef<Promise<unknown>>(Promise.resolve());
+  /* V3.43 : seules les clés changées partent, posées sur la fiche relue en
+     base. Une clé dont l'enregistrement a échoué (connexion coupée) repart
+     avec le clic suivant : sinon elle restait à l'écran sans jamais
+     atteindre la base, puis disparaissait au retour du clic suivant. */
+  const aReprendre = useRef<Set<string>>(new Set());
+  const enregistrerDansLOrdre = useCallback((id: string, donnees: Donnees, avant: Donnees) => {
+    file.current = file.current.then(() => {
+      const reprises = Array.from(aReprendre.current);
+      const base: Donnees = { ...avant };
+      for (const k of reprises) base[k] = { '\u0000a_reprendre': true };
+      const tentees = Array.from(new Set([...Object.keys(donnees), ...Object.keys(base)]))
+        .filter(k => JSON.stringify(donnees[k]) !== JSON.stringify(base[k]));
+      return enregistrerBien(id, donnees, base)
+        .then(r => { for (const k of reprises) aReprendre.current.delete(k); onMaj(r); })
+        .catch(e => { for (const k of tentees) aReprendre.current.add(k); setMessage({ t: (e as Error).message, ok: false }); });
+    });
+  }, [onMaj]);
   const majDonnees = useCallback((cle: string, v: unknown) => {
     setBien(prev => {
       const n = { ...prev, donnees: { ...(prev.donnees || {}), [cle]: typeof v === 'function' ? (v as (avant: unknown) => unknown)(prev.donnees?.[cle]) : v } };
-      /* V3.43 : seule la clé changée part, posée sur la fiche relue en base. */
-      file.current = file.current.then(() => enregistrerBien(n.id, n.donnees, prev.donnees || {}).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
+      enregistrerDansLOrdre(n.id, n.donnees, prev.donnees || {});
       return n;
     });
-  }, [onMaj]);
+  }, [enregistrerDansLOrdre]);
 
   /* ── Le menu d'étape : ce qui peut arriver ensuite ── */
   type Choix = { t: string; s: string; c: string; go: () => void; danger?: boolean };
@@ -1167,7 +1183,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     setBien(prev => {
       const donnees = { ...(prev.donnees || {}), clientId: '', proprietaires: [], proprioNouveau: false, proprioSans: false, qui: '', sciNom: '' };
       const n = { ...prev, client_id: null, donnees };
-      file.current = file.current.then(() => enregistrerBien(n.id, donnees, prev.donnees || {}).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
+      enregistrerDansLOrdre(n.id, donnees, prev.donnees || {});
       return n;
     });
   };
