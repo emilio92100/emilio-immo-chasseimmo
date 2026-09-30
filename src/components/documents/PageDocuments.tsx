@@ -10,6 +10,7 @@ import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat
 import NouveauDocument from './NouveauDocument';
 import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
+import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProjet';
 import { Pastille } from './DocumentsDuClient';
 import { noterAnnulation, registreAbsent } from '@/lib/registre';
 import {
@@ -179,6 +180,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   const [erreur, setErreur] = useState('');
   const [signe, setSigne] = useState(false);
   const [surPlace, setSurPlace] = useState<{ finaliser?: boolean } | null>(null);
+  /* « Envoyer le projet » (V3.40) : la fenêtre, puis ce qu'elle a fait. */
+  const [projet, setProjet] = useState(false);
+  const [fait, setFait] = useState<{ t: string; ok: boolean } | null>(null);
   const d = it.doc, x = it.mandat;
   const m = d ? modele(d.modele) : null;
   const courrier = !!m?.courrier;
@@ -190,10 +194,10 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     && (c.donnees as Record<string, unknown>).sourceId === d.id && (c.donnees as Record<string, unknown>).echeance === le) : undefined);
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace) onFermer(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace && !projet) onFermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onFermer, signe, surPlace]);
+  }, [onFermer, signe, surPlace, projet]);
 
   /* Relu après la signature sur place : le document a pu passer « Signé ». */
   async function recharger() {
@@ -289,6 +293,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
 
         <div className={s.panCorps}>
           {erreur && <div className={s.erreur}>{erreur}</div>}
+          {fait && <div className={fait.ok ? s.note : s.erreur}>{fait.t}</div>}
 
           {/* ── Ce qu'on peut en faire ── */}
           {d && (
@@ -296,6 +301,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
               {d.statut === 'brouillon' && (
                 <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => onEditer(d)}>
                   <Ic n="plume" t={16} /><span>Reprendre le brouillon</span>
+                </button>
+              )}
+              {d.statut === 'brouillon' && !courrier && (
+                <button type="button" className={s.btn} onClick={() => { setFait(null); setProjet(true); }}>
+                  <Ic n="envoyer" t={16} /><span>Envoyer le projet</span><small>pour relecture, sans signature</small>
                 </button>
               )}
               {d.statut === 'pret' && elec && (
@@ -410,24 +420,25 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
             </div>
           )}
 
+          {/* ── L'historique (V3.40) : créé, projets envoyés, finalisé,
+              signé… du plus récent au plus ancien. Les dates y sont toutes ;
+              les informations gardent ce qui ne bouge pas. ── */}
+          <CarteHistorique evts={evenementsDocument(d, x, courrier)} />
+
           {/* ── Les informations ── */}
           <div className={s.carte}>
             <div className={s.carteT}>Informations</div>
             <dl className={s.infos}>
               {m && <><dt>Modèle</dt><dd>{m.titre}{d?.badge ? ` · ${d.badge}` : ''}</dd></>}
               {(d?.numero || x?.numero) && <><dt>N° registre</dt><dd>{d?.numero || x?.numero}</dd></>}
-              {d && <><dt>Créé</dt><dd>{quand(d.created_at)}</dd></>}
               {d?.statut === 'brouillon' && <><dt>Modifié</dt><dd>{quand(d.updated_at)}</dd></>}
-              {d?.finalise_le && <><dt>Finalisé</dt><dd>{quand(d.finalise_le)}</dd></>}
-              {(d?.signe_le || x?.signe_le) && <><dt>{courrier ? 'Envoyé' : 'Signé'}</dt><dd>{jourLong(String(d?.signe_le || x?.signe_le).slice(0, 10))}</dd></>}
-              {x?.retracte_le && <><dt>Rétracté</dt><dd>{quand(x.retracte_le)}</dd></>}
-              {d?.annule_le && <><dt>Annulé</dt><dd>{quand(d.annule_le)}</dd></>}
               {m && <><dt>{courrier ? 'Signature' : 'Signataires'}</dt><dd>{m.signataires}</dd></>}
             </dl>
           </div>
         </div>
       </aside>
       {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} />}
+      {projet && d && <FenetreProjet doc={d} onFermer={() => setProjet(false)} onEnvoye={r => { setProjet(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
       {surPlace && d && <SignatureSurPlace doc={d} finaliser={!!surPlace.finaliser} onFermer={() => { setSurPlace(null); void recharger(); }} />}
     </>
   );
