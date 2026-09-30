@@ -102,6 +102,11 @@ export async function POST(req: NextRequest) {
     if (action === 'retirer') {
       const id = String(body.id || '');
       if (!UUID.test(id)) return ko('Document inconnu');
+      /* V3.43 : seulement les fichiers d'un brouillon, ou d'un document déjà
+         supprimé. Un document prêt, signé ou annulé garde les siens. */
+      const { data: doc, error: eDoc } = await sb.from('documents').select('statut').eq('id', id).maybeSingle();
+      if (eDoc) return ko(eDoc.message, 500);
+      if (doc && (doc as { statut?: string }).statut !== 'brouillon') return ko('Ce document n’est plus un brouillon : ses fichiers restent.', 409);
       const { data, error } = await sb.storage.from(BUCKET).list(`documents/${id}`, { limit: 100 });
       if (error) return ko(error.message, 500);
       const chemins = (data || []).map(f => `documents/${id}/${f.name}`);
