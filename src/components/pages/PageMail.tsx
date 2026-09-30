@@ -6,6 +6,7 @@ import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { identiteDuJour } from '@/components/documents/outils';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import { signalerEchec } from '@/lib/ecritures';
 import { CLES_MAIL, conseillerDe, signatureDe } from '@/lib/mail-variables';
 import { estArchive, typeDe, typesDe } from '@/lib/contacts';
@@ -375,9 +376,10 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   useEffect(() => {
     let vivant = true;
     remplir(accueil(signatureDe({})));
-    supabase.from('clients').select('*').order('nom').then(({ data, error }) => {
+    /* Par pages de 1 000 (V3.43) : au-delà, les derniers contacts manquaient. */
+    toutLire<Contact>((de, a) => supabase.from('clients').select('*').order('nom').order('id').range(de, a)).then(({ data, erreur: error }) => {
       if (!vivant) return;
-      if (error) { setErreur(`Les contacts n’ont pas pu être lus : ${error.message}`); setContacts([]); return; }
+      if (error) { setErreur(`Les contacts n’ont pas pu être lus : ${error}`); setContacts([]); return; }
       setContacts(((data || []) as Contact[]).filter(c => !estArchive(c as never)));
     });
     supabase.from('parametres').select('cle, valeur').in('cle', CLES_MAIL).then(({ data }) => {
