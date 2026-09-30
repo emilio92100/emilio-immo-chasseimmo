@@ -135,6 +135,14 @@ const estCopro = (d: Donnees) => d.nature !== 'terrain' && d.copro === 'oui';
 /* Une personne mariée qui vend le logement de la famille : son conjoint
    donne son accord (article 215 du Code civil). */
 export const aConjoint = (d: Donnees) => d.qui === 'personne' && d.situation === 'marie' && d.logementFamille === 'oui';
+/* Les associés d'une société qui signent le mandat pour donner leur accord
+   (V3.39) : une SCI familiale, des statuts anciens… Ils interviennent, ils
+   ne deviennent pas mandants : la société seule vend, par son gérant. Tous
+   ensemble, leur accord vaut décision unanime (article 1854 du Code civil). */
+export const avecAssocies = (d: Donnees) => d.qui === 'sci' && d.sciAssocies === 'oui';
+export const associesDe = (d: Donnees): Personne[] => (avecAssocies(d) ? lirePersonnes(d.associes).filter(p => p.nom.trim() || p.prenom.trim()) : []);
+const gerantAssocie = (d: Donnees) => avecAssocies(d) && d.sciGerantAssocie === 'oui';
+const eAssocie = (p: Personne) => (p.civilite === 'Madame' ? 'associée' : 'associé');
 /* Le total des tantièmes : 1 000, 10 000, 100 000, ou celui qu'Alexandre a
    tapé (« Un autre total », V3.38). Un autre total pas encore donné : « … ». */
 export function baseTantiemes(d: Donnees): string {
@@ -194,6 +202,7 @@ function guidePoints(d: Donnees): { ic?: string; x: string }[] {
     { ic: 'immeuble', x: 'Le nom de la société, sa forme, son siège et son numéro RCS : tout est sur l’extrait Kbis (moins de 3 mois).' },
     { ic: 'personne', x: 'L’identité du gérant qui signe (sa date de naissance n’est pas utile ici).' },
     { ic: 'livre', x: 'Les statuts : ils disent qui a le pouvoir de vendre. S’ils exigent l’accord des associés, demande la décision (procès-verbal) et joins-la au mandat.' },
+    { ic: 'groupe', x: 'Ou fais signer les associés avec le gérant, pour accord : « Les associés signent-ils aussi ? », plus bas. S’ils y sont tous, leur accord vaut décision unanime.' },
   ];
   if (d.qui === 'couple') return [
     { ic: 'couple', x: 'L’état civil complet des deux : nom, prénoms, nom de naissance, date et lieu de naissance, adresse.' },
@@ -242,6 +251,18 @@ const ETAPES: Etape[] = [
         nomCarte: (d, i) => (d.qui === 'sci' ? 'Le gérant qui signe' : d.qui === 'personne' ? 'Le vendeur' : d.qui === 'indivision' ? `Propriétaire ${i + 1}` : `Vendeur ${i + 1}`),
         ajouter: d => (d.qui === 'indivision' ? 'Ajouter un propriétaire' : 'Ajouter un vendeur') },
       { t: 'texte', cle: 'sciPouvoir', lib: 'Qualité du signataire', ic: 'plume', large: true, si: d => d.qui === 'sci', exemple: 'gérant, en vertu des statuts', aide: 'Si les statuts l’exigent, joins la décision des associés qui autorise la vente.' },
+      { t: 'titre', cle: 't-associes', lib: 'Les associés', ic: 'groupe', si: d => d.qui === 'sci' },
+      { t: 'choix', cle: 'sciAssocies', lib: 'Les associés signent-ils aussi ?', ic: 'groupe', si: d => d.qui === 'sci', options: [
+        { v: 'non', l: 'Non, le gérant seul', ic: 'personne' }, { v: 'oui', l: 'Oui, pour donner leur accord', ic: 'groupe' },
+      ], aide: 'Chaque associé signe le mandat pour accord, avec le gérant. Ils ne deviennent pas vendeurs : c’est la société qui vend.' },
+      { t: 'choix', cle: 'sciGerantAssocie', lib: 'Le gérant qui signe est-il aussi associé ?', ic: 'plume', si: avecAssocies, options: ouiNon(),
+        aide: 'Oui : il donne aussi son accord d’associé, dans son cadre de gérant. Ne l’ajoute pas une seconde fois ci-dessous.' },
+      { t: 'personnes', cle: 'associes', lib: 'Les autres associés', ic: 'groupe', un: 'Associé', min: 1, max: 12, si: avecAssocies,
+        ajouter: () => 'Ajouter un associé' },
+      { t: 'choix', cle: 'sciTous', lib: 'Avec le gérant, sont-ils tous les associés ?', ic: 'groupe', si: avecAssocies, options: ouiNon(),
+        aide: 'Oui : le mandat dit que tous les associés donnent leur accord, ce qui vaut décision unanime.' },
+      { t: 'euros', cle: 'sciPrixMin', lib: 'Prix net vendeur minimum', ic: 'etiquette', si: avecAssocies,
+        aide: 'Facultatif. Le prix en dessous duquel les associés ne vendent pas. Vide : ils autorisent la vente aux conditions du mandat.' },
     ],
   },
   {
@@ -454,6 +475,19 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   fiches.push(ficheAgence(A, lignesMandataire(A), phraseFonds(A), 'Ci-après « l’Agence » ou « le MANDATAIRE »'));
 
   const entre: Bloc[] = [{ t: 'fiches', items: fiches }];
+  if (avecAssocies(d)) {
+    const g = vs[0];
+    const as = [
+      ...(gerantAssocie(d) ? [`${nomComplet(g)}, gérant${g.civilite === 'Madame' ? 'e' : ''} qui signe pour la société, en son nom personnel`] : []),
+      ...associesDe(d).map(p => `${nomComplet(p)}${p.adresse ? `, demeurant ${p.adresse}` : ''}`),
+    ];
+    const tous = d.sciTous === 'oui';
+    const min = num(d, 'sciPrixMin');
+    const societe = txt(d, 'sciNom') ? `la société ${txt(d, 'sciNom')}` : 'la société';
+    entre.push(P(`Interviennent au présent mandat, en qualité d’associés de ${societe} et pour donner leur accord :`));
+    entre.push({ t: 'l', items: as.length ? as.map((x, i) => `${x}${i === as.length - 1 ? '.' : ' ;'}`) : ['……………'] });
+    entre.push(P(`${tous ? 'Représentant ensemble la totalité des associés, ils' : 'Ils'} approuvent le présent mandat et autorisent la vente du bien désigné ci-après${min ? `, à un prix net revenant à la société d’au moins ${eurosLettres(min)}` : ', aux conditions qui y sont prévues'}.${tous ? ' Cet accord vaut décision unanime des associés (article 1854 du Code civil).' : ''} Ils ne sont pas mandants : la société seule vend, représentée par ${g.civilite === 'Madame' ? 'sa gérante' : 'son gérant'}.`));
+  }
   const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
   if (repr >= 0) {
     entre.push(Pp(`${nomComplet(vs[repr])} agit tant en son nom personnel qu’au nom de ${nomComplet(vs[1 - repr])}, en vertu d’une procuration écrite annexée au présent mandat.`));
@@ -628,10 +662,12 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     }),
   ] });
   if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: [P(txt(d, 'clause'))] });
-  const nbEx = (d.qui === 'sci' ? 1 : vs.length) + 1 + (aConjoint(d) ? 1 : 0);
+  const nbEx = (d.qui === 'sci' ? 1 + associesDe(d).length : vs.length) + 1 + (aConjoint(d) ? 1 : 0);
   sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
     papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`,
-    mention: 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».',
+    mention: associesDe(d).length
+      ? 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat » ; les associés, « Lu et approuvé, bon pour accord ».'
+      : 'Chaque signataire date et signe, précédé de la mention manuscrite « Lu et approuvé, bon pour mandat ».',
     cases: casesVente(d, A),
   }) });
 
@@ -800,7 +836,9 @@ export function casesVente(d: Donnees, A?: IdentiteAgence): CaseSignature[] {
   const vs = vendeursDe(d);
   const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
   const out: CaseSignature[] = d.qui === 'sci'
-    ? [{ cle: 'sci', qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(vs[0])}`], personne: vs[0] }]
+    ? [{ cle: 'sci', qui: 'Le mandant', nom: txt(d, 'sciNom') || 'La société', lignes: [`Représentée par ${nomComplet(vs[0])}`, ...(gerantAssocie(d) ? [`Et en son nom, en qualité d’${eAssocie(vs[0])}, pour accord`] : [])], personne: vs[0] },
+      /* Les associés qui donnent leur accord (V3.39) : un cadre chacun. */
+      ...associesDe(d).map((p, i): CaseSignature => ({ cle: `associe${i}`, qui: p.civilite === 'Madame' ? 'Associée' : 'Associé', nom: nomComplet(p), lignes: ['Pour accord'], personne: p }))]
     : vs.map((p, i): CaseSignature => ({ cle: `v${i}`, qui: 'Le mandant', nom: nomComplet(p), lignes: [] as string[], personne: p }))
       .filter((_, i) => repr < 0 || i === repr)
       .map(c => (repr >= 0 ? { ...c, lignes: [`En son nom et pour ${nomComplet(vs[1 - repr])}, par procuration`] } : c));
@@ -819,6 +857,10 @@ function manques(d: Donnees): string[] {
     else if (d.qui !== 'sci' && !p.adresse) out.push(`L’adresse de ${nomComplet(p)}`);
   });
   if (d.qui === 'sci' && (!txt(d, 'sciNom') || !txt(d, 'sciSiege'))) out.push('Le nom et le siège de la société');
+  if (avecAssocies(d)) {
+    lirePersonnes(d.associes).forEach((p, i) => { if ((p.nom.trim() || p.prenom.trim()) && !(p.nom.trim() && p.prenom.trim())) out.push(`Le prénom et le nom de l’associé ${i + 1}`); });
+    if (!associesDe(d).length && !gerantAssocie(d)) out.push('Les associés qui donnent leur accord (ou « Non, le gérant seul »)');
+  }
   if (d.qui === 'couple' && d.lien === 'maries' && !d.regime) out.push('Le régime matrimonial');
   if (d.qui === 'personne' && !d.situation) out.push('La situation du vendeur (célibataire, marié…)');
   if (aConjoint(d) && !txt(d, 'conjoint')) out.push('Le nom du conjoint qui donne son accord (logement de la famille)');
@@ -844,6 +886,7 @@ function defaut(c: Contexte): Donnees {
   const b = c.bien;
   return {
     qui: 'personne', situation: '', logementFamille: 'oui', conjoint: '', lien: 'maries', regime: 'communaute', represente: 'non', fiscal: 'oui', notaire: '',
+    sciAssocies: 'non', sciGerantAssocie: 'oui', sciTous: 'oui', associes: [],
     vendeurs: [p],
     nature: b?.type_bien && /maison/i.test(b.type_bien) ? 'maison' : 'appartement',
     adresse: b?.adresse || '', cp: b?.code_postal || '', ville: b?.ville || '',
@@ -889,8 +932,11 @@ export const MANDAT_VENTE: Modele = {
   reperes,
   echeances,
   cases: casesVente,
-  /* Le conjoint ne devient pas mandant : il donne son accord (article 215). */
+  /* Le conjoint ne devient pas mandant : il donne son accord (article 215).
+     Les associés d'une société non plus (V3.39). */
   accepter: (d, cle) => (cle === 'conjoint'
     ? 'J’ai lu le mandat en entier et, le bien étant le logement de la famille, je donne mon accord à sa signature (article 215 du Code civil).'
-    : 'J’ai lu le mandat en entier, y compris les clauses écrites en capitales, et je l’accepte : bon pour mandat.'),
+    : cle?.startsWith('associe')
+      ? `J’ai lu le mandat en entier et, en qualité d’${eAssocie(associesDe(d)[Number(cle.slice(7))] || PERSONNE_VIDE)} de la société, je donne mon accord à sa signature et à la vente du bien qu’il désigne.`
+      : `J’ai lu le mandat en entier, y compris les clauses écrites en capitales, et je l’accepte : bon pour mandat.${cle === 'sci' && gerantAssocie(d) ? ` En qualité d’${eAssocie(vendeursDe(d)[0])}, j’y donne aussi mon accord.` : ''}`),
 };
