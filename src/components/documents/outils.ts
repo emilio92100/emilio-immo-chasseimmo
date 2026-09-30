@@ -50,7 +50,16 @@ export type DocumentRow = {
     mode: 'en_ligne' | 'sur_place'; lance_le: string; agence_le: string;
     scelle_chemin?: string; scelle_le?: string; complet_le?: string; envoye_le?: string; classe_le?: string;
   } | null;
+  /* Les projets envoyés en relecture, avant la signature (V3.40), du plus
+     ancien au plus récent. Absente avant outils/sql/documents-envois.sql. */
+  envois?: EnvoiProjet[] | null;
 };
+
+/* Un projet envoyé (V3.40) : le PDF « projet non signé », à qui, quand. */
+export type EnvoiProjet = {
+  le: string; a: { email: string; nom: string }[]; sujet: string; message?: string; fichier: string; echecs?: string[];
+};
+export type DestProjet = { email: string; nom: string; prenom: string; famille: string };
 
 /* Un signataire, tel que le CRM le lit (documents_signataires). */
 export type SignataireRow = {
@@ -168,6 +177,13 @@ export async function deposer(id: string, genre: 'pdf' | 'signe', fichier: Blob,
 export async function lienFichier(chemin: string, nom?: string): Promise<string> {
   const { url } = await api<{ url: string }>({ action: 'lien', chemin, nom });
   return url;
+}
+
+/* Le projet d'un brouillon, en relecture (V3.40) : le serveur fabrique le
+   PDF « projet non signé » depuis les réponses enregistrées, l'envoie à
+   chacun, et rend le document à jour (null si la colonne manque encore). */
+export async function envoyerProjet(o: { id: string; destinataires: DestProjet[]; sujet: string; message: string }) {
+  return api<{ envoyes: string[]; avertissements: string[]; envoi: EnvoiProjet; row: DocumentRow | null }>({ action: 'projet', ...o });
 }
 
 export async function retirerFichiers(id: string): Promise<void> {
