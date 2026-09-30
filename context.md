@@ -1499,6 +1499,17 @@ Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel)
   premier essai en bandeau crème avec une icône a été refusé : l'icône faisait doublon avec celles
   des pièces.
 
+- **Les documents de la vente, repliables** (fiche d'un bien › Documents, Alexandre : « pouvoir
+  replier les documents de la vente pour ne pas qu'ils prennent tout, avoir juste une synthèse, et le
+  dossier de diagnostics plus facilement accessible »). Replié (par défaut, et le choix est gardé dans
+  le navigateur, `emi-docs-vente`) : une pastille par étape — mandat, bons de visite, offres,
+  compromis — dans la couleur de son état (`SyntheseDocs`, `OngletsBien.tsx`) ; un clic déplie.
+  Déplié : le détail avec ses boutons et « Tous les documents préparés ».
+- **« Retirer » un fichier du dossier du bien le supprime vraiment** (vérifié) : `/api/biens-vente`
+  (action `retirer`) l'efface du stockage Supabase avec la clé de service, puis la ligne du bien est
+  vidée et enregistrée. Un brouillon supprimé dans Documents perd aussi ses fichiers
+  (`/api/documents`, action `retirer`) ; un document signé ne se supprime pas.
+
 Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
 `FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
 vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
