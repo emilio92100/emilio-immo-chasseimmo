@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
@@ -122,9 +123,12 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     if (chargement.current) return chargement.current;
     chargement.current = (async () => {
       /* Avec les types de contact (V3.14) ; avant leur SQL, sans eux. */
-      let c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint');
-      if (c.error) c = await supabase.from('clients').select('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
-      if (c.error) { chargement.current = null; return; }
+      /* Par pages de 1 000 (V3.43) : au-delà, Supabase s'arrête sans rien dire,
+         et la recherche ne trouvait plus les derniers contacts. */
+      const lire = (cols: string) => toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select(cols).order('id').range(de, a));
+      let c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint');
+      if (c.erreur) c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
+      if (c.erreur) { chargement.current = null; return; }
       index.current = { le: Date.now(), clients: c.data || [] };
       chargement.current = null;
     })();
