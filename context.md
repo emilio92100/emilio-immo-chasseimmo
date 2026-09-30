@@ -1465,7 +1465,9 @@ d'ouvert au public ; ce qui suit est corrigé.
     d'été). `finRetractation` : 23 h 59 à l'heure de Paris du jour (l'été, la limite tombait à
     0 h 59 le lendemain et « jusqu'au » affichait le lendemain).
   - Espace : un avis de visite ne s'enregistre qu'une fois (`avis_client_le` encore vide) ; « Je
-    veux visiter » ne prévient Alexandre qu'une fois par jour et par bien.
+    veux visiter » ne prévient pas une deuxième fois tant que la relance « Veut visiter » de ce
+    bien est encore ouverte (d'abord « une fois par jour » en lisant le journal : après « Remettre
+    en attente », une vraie nouvelle demande restait muette — corrigé à la relecture).
   - Honoraires à la charge du vendeur : le pourcentage affiché est sur le prix (5 %, plus 5,26 %).
 - **La signature en ligne**
   - L'essai du code est réservé avant la comparaison, en une requête qui compare puis écrit
@@ -1487,9 +1489,26 @@ d'ouvert au public ; ce qui suit est corrigé.
   - /api/upload-photos : http(s) vers une adresse publique seulement (DNS vérifié, pas de réseau
     privé ni localhost), redirections revérifiées (trois au plus), une vraie image reconnue à ses
     premiers octets, 15 Mo au plus, `bien_id` contrôlé. `photos.ts` ne reconnaît « nos » photos
-    qu'à leur adresse complète (notre serveur, le chemin du bucket, sans paramètre).
+    qu'à leur adresse complète (notre serveur, le chemin du bucket, sans paramètre). Une entrée =
+    une sortie, dans l'ordre : ce qui n'est pas rangé chez nous (refusé, illisible, au-delà de 40)
+    garde son adresse d'origine, sans que le serveur aille la chercher.
   - Les routes publiques de l'espace ne renvoient plus le texte des erreurs internes.
   - /bien/<id> : `noindex`.
+- **Relecture après mise en ligne** (deux relectures indépendantes de tout le lot, le soir même)
+  - upload-photos rendait une liste plus courte quand une adresse était refusée : la fiche d'un
+    bien acheteur (`saveFicheBien`, FicheClient), qui apparie par rang, y laissait un trou (`null`),
+    puis plantait au clic suivant. Corrigé dans la route (une sortie par entrée) et chez l'appelant
+    (`urlsUploadees[idx] || p`).
+  - FicheBien : un enregistrement raté (connexion coupée) n'était plus rattrapé par le clic
+    suivant, qui n'envoyait que sa propre clé. `enregistrerDansLOrdre` garde les clés ratées
+    (`aReprendre`) et les renvoie avec le clic suivant.
+  - FicheClient : l'aperçu « Expiration calculée » compte aussi avec `ajouterMois` (il disait le
+    3 mars quand l'enregistrement disait le 28 février).
+  - Documents : supprimer un brouillon déjà supprimé dans un autre onglet le retire de la liste,
+    sans message d'erreur.
+  - « Et la fiche du bien ? » dit « En vente », « Sous offre »… (`etapeDe().court`).
+  - Laissé : un code juste compte pour un essai même si la signature échoue ensuite côté serveur
+    (panne de stockage) ; cinq pannes de suite demandent un nouveau code.
 - **Laissé tel quel, en connaissance de cause**
   - Le badge de connexion vaut 30 jours et la déconnexion ne l'annule pas ailleurs : changer
     `EMILIO_ACCESS_CODE` dans Vercel déconnecte tout le monde. `EMILIO_MAILS_AUTORISES` doit contenir
