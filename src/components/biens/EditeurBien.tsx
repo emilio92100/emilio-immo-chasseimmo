@@ -92,7 +92,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
 }
 
 /* L'aperçu : la carte, les chiffres, l'annonce. */
-function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbOffres }: { bien: BienVente; d: Donnees; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbOffres: number }) {
+function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbPrevues, nbOffres }: { bien: BienVente; d: Donnees; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbPrevues: number; nbOffres: number }) {
   const pseudo: BienVente = { ...bien, donnees: d, ...colonnesBien(d) };
   const a = argentBien(d);
   const surf = num(d, 'carrez') || num(d, 'surface');
@@ -104,7 +104,7 @@ function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbOffres }: { bien: Bi
   return (
     <div className={b.apercu}>
       <div className={s.edApercuT}><span>La carte dans la liste</span></div>
-      <CarteBien bien={pseudo} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbOffres={nbOffres} />
+      <CarteBien bien={pseudo} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} />
       {bien.etape !== 'a_suivre' && <div className={b.bloc}>
         <div className={b.blocT}><span className={b.blocIc}><Ic n="euro" t={15} /></span><h3>Les chiffres</h3></div>
         <div className={b.lignes}>
@@ -154,13 +154,13 @@ function Notice({ id, onFermer }: { id: string; onFermer: () => void }) {
   );
 }
 
-export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbOffres = 0, onMaj, onFermer }: {
+export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbPrevues = 0, nbOffres = 0, onMaj, onFermer }: {
   bien: BienVente;
   etapeDepart?: string;
   nouveau?: boolean;
   suivi: SuiviVente[];
   nbAcheteurs: number;
-  nbVisites?: number;
+  nbVisites?: number; nbPrevues?: number;
   nbOffres?: number;
   onMaj: (b: BienVente) => void;
   /* null : le bien, créé puis laissé vide, a été supprimé. */
@@ -380,7 +380,7 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
           </div>
         </div>
         <div className={`${s.edApercu} ${b.edApercu}`}>
-          <Apercu bien={row} d={dd} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbOffres={nbOffres} />
+          <Apercu bien={row} d={dd} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} />
         </div>
       </div>
 

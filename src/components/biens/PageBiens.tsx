@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { euros } from '@/lib/mandat';
+import { euros, jourParis } from '@/lib/mandat';
 import { EVT_DEMANDE_VUE, EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
 import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
@@ -139,8 +139,10 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
 
   /* Ce que chaque carte affiche : acheteurs, visites, offres. */
   const parBien = useMemo(() => {
-    const m: Record<string, { acheteurs: number; visites: number; offres: number }> = {};
+    const m: Record<string, { acheteurs: number; visites: number; prevues: number; offres: number }> = {};
     if (!liste) return m;
+    /* Prévue : à venir et pas encore passée ; le reste est fait (V3.33). */
+    const auj = jourParis();
     for (const x of liste.biens) {
       const copies = liste.copies.filter(c => c.bien_vente_id === x.id);
       const ids = new Set(copies.map(c => c.id));
@@ -149,6 +151,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         acheteurs: enVente ? acheteursPour(x, liste.recherches, liste.clients, copies).filter(a => a.corr.note >= SEUIL_CORRESPOND).length : 0,
         visites: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'visite' && s2.statut !== 'annulee').length
           + liste.visites.filter(v => ids.has(v.bien_id) && v.statut !== 'annulee').length,
+        prevues: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'visite' && s2.statut === 'a_venir' && (!s2.le || String(s2.le).slice(0, 10) >= auj)).length
+          + liste.visites.filter(v => ids.has(v.bien_id) && v.statut === 'a_venir' && (!v.date_visite || String(v.date_visite).slice(0, 10) >= auj)).length,
         offres: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'offre').length,
       };
     }
@@ -184,7 +188,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const editeur = edition && typeof document !== 'undefined' && createPortal(
     <EditeurBien key={edition.bien.id} bien={edition.bien} etapeDepart={edition.etape} nouveau={edition.nouveau}
       suivi={(liste?.suivi || []).filter(x => x.bien_id === edition.bien.id)} nbAcheteurs={parBien[edition.bien.id]?.acheteurs || 0}
-      nbVisites={parBien[edition.bien.id]?.visites || 0} nbOffres={parBien[edition.bien.id]?.offres || 0}
+      nbVisites={parBien[edition.bien.id]?.visites || 0} nbPrevues={parBien[edition.bien.id]?.prevues || 0} nbOffres={parBien[edition.bien.id]?.offres || 0}
       onMaj={majBien}
       onFermer={r => {
         const etaitNouveau = edition.nouveau;
@@ -252,7 +256,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
             return (
               <Rendu key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
-                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbOffres={parBien[x.id]?.offres || 0}
+                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbOffres={parBien[x.id]?.offres || 0}
                 onClick={() => ouvrir(x.id)} />
             );
           })}

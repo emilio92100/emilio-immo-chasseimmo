@@ -1,4 +1,5 @@
 'use client';
+import { libelleVisites } from '@/lib/visites';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
@@ -51,12 +52,23 @@ export function Anneau({ note, t = 46 }: { note: number; t?: number }) {
 
 type PropsCarte = {
   bien: BienVente; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbOffres: number;
+  /* Parmi nbVisites, celles qui sont encore à venir (V3.33 : on dit
+     toujours « faites » ou « prévues »). */
+  nbPrevues?: number;
   proprio?: string; onClick?: () => void;
 };
 
+/* « 2 visites faites · 1 prévue · 1 offre » ; « Aucune visite ni offre ». */
+function compteVisitesOffres(nbVisites: number, nbPrevues: number, nbOffres: number): string {
+  const v = libelleVisites(nbVisites - nbPrevues, nbPrevues);
+  const o = nbOffres ? `${nbOffres} offre${nbOffres > 1 ? 's' : ''}` : '';
+  if (!v && !o) return 'Aucune visite ni offre';
+  return [v || 'Aucune visite', o || 'aucune offre'].join(' · ');
+}
+
 /* La liste en lignes (V3.17) : la même information qu'une carte, sur une
    ligne, la photo en petit. Au téléphone, deux étages. */
-export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, proprio, onClick }: PropsCarte) {
+export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
@@ -87,14 +99,14 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, propr
       <span className={b.ligneEtat}>
         <span className={`${b.ligneEtatT} ${etat.ton === 'alerte' ? b.ligneAlerte : etat.ton === 'ok' ? b.ligneOk : ''}`}>{etat.t}</span>
         {enVente && nbAcheteurs > 0 && <span className={b.chipOr}><Ic n="cible" t={13} />{`${nbAcheteurs} acheteur${nbAcheteurs > 1 ? 's' : ''}`}</span>}
-        {!avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0) && <span className={b.compteurs}>{`${nbVisites} visite${nbVisites > 1 ? 's' : ''} · ${nbOffres} offre${nbOffres > 1 ? 's' : ''}`}</span>}
+        {!avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0) && <span className={b.compteurs}>{compteVisitesOffres(nbVisites, nbPrevues, nbOffres)}</span>}
       </span>
       <span className={b.ligneFleche}><Ic n="droite" t={16} e={2.4} /></span>
     </button>
   );
 }
 
-export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffres, proprio, onClick }: PropsCarte) {
+export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
@@ -107,7 +119,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbOffre
   const hono = conclu ? honorairesVente(bien, suivi) : null;
   const enVente = !['vendu', 'retire'].includes(bien.etape);
   const compte = !avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0 || bien.etape === 'mandat')
-    ? `${nbVisites} visite${nbVisites > 1 ? 's' : ''} · ${nbOffres} offre${nbOffres > 1 ? 's' : ''}` : '';
+    ? compteVisitesOffres(nbVisites, nbPrevues, nbOffres) : '';
   const Tag = onClick ? 'button' : 'div';
 
   return (

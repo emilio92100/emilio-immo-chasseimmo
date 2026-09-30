@@ -72,7 +72,10 @@
 .heroTxtCote { display: grid; grid-template-columns: minmax(0, 1fr) 236px; column-gap: 22px; row-gap: 6px; align-content: center; }
 .heroTxtCote > * { grid-column: 1; min-width: 0; }
 .heroTxtCote > .stepper, .heroTxtCote > .stepMobile { grid-column: 1 / -1; }
-.heroTxtCote > .heroCote { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
+/* V3.33 : la carte de droite prend toute la hauteur jusqu'aux étapes (plus de
+   bleu vide dessous) ; son geste se pose en bas. */
+.heroTxtCote > .heroCote { grid-column: 2; grid-row: 1 / span 4; align-self: stretch; }
+.heroCote > :last-child:not(:first-child) { margin-top: auto; }
 .heroCote { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.07); border: 1px solid rgba(227,200,114,.35); }
 .heroCoteT { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .heroCoteT > span:last-child { display: flex; flex-direction: column; gap: 1px; min-width: 0; }

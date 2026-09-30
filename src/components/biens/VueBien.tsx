@@ -153,7 +153,8 @@ export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, proch
     <div className={`${v.kpi} ${v.kpiBlanc}`}>
       <div className={v.kpiT} style={{ color: '#6d28d9' }}><span className={v.kpiIc} style={{ background: '#f5f3ff', color: '#7c3aed' }}><Ic n="cle" t={17} /></span>Visites et offres</div>
       <div className={v.chiffres}>
-        <div><b>{nbVisites}</b><small>{nbVisites > 1 ? 'visites' : 'visite'}{nbAVenir ? ` · ${nbAVenir} à venir` : ''}</small></div>
+        {/* Faites (la date est passée) et prévues, jamais « 3 visites » tout court (V3.33). */}
+        <div><b>{nbVisites - nbAVenir}</b><small>{`${nbVisites - nbAVenir > 1 ? 'visites faites' : 'visite faite'}${nbAVenir ? ` · ${nbAVenir} prévue${nbAVenir > 1 ? 's' : ''}` : ''}`}</small></div>
         <div><b className={nbOffres ? v.or : undefined}>{nbOffres}</b><small>{nbOffres > 1 ? 'offres en cours' : 'offre en cours'}</small></div>
       </div>
       {prochaine && <span className={v.voProchaine}><Ic n="calendrier" t={14} /><span><small>Prochaine visite</small><b>{prochaine}</b></span></span>}
