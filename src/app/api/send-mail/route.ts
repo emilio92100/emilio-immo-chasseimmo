@@ -213,7 +213,9 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
     ? singleBloc(biens[0])
     : montres.map((b, i) => multiItem(b, i, montres.length)).join('') + (reste.length ? blocReste(reste) : '');
 
-  return coque({ etiquette: 'SÉLECTION PRIVÉE', corpsHtml, contenu: biens.length > 0 ? propertyRows : '', token });
+  /* « Sélection privée » seulement quand le mail porte des biens : un mail
+     sans bien (rendez-vous, message libre de l'Agenda) n'en est pas une. */
+  return coque({ etiquette: biens.length > 0 ? 'SÉLECTION PRIVÉE' : '', corpsHtml, contenu: biens.length > 0 ? propertyRows : '', token });
 }
 
 /* La feuille commune à tous les mails illustrés : en-tête marine avec le
