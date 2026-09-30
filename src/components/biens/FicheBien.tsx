@@ -1036,7 +1036,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const majDonnees = useCallback((cle: string, v: unknown) => {
     setBien(prev => {
       const n = { ...prev, donnees: { ...(prev.donnees || {}), [cle]: typeof v === 'function' ? (v as (avant: unknown) => unknown)(prev.donnees?.[cle]) : v } };
-      file.current = file.current.then(() => enregistrerBien(n.id, n.donnees).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
+      /* V3.43 : seule la clé changée part, posée sur la fiche relue en base. */
+      file.current = file.current.then(() => enregistrerBien(n.id, n.donnees, prev.donnees || {}).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
       return n;
     });
   }, [onMaj]);
@@ -1166,7 +1167,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     setBien(prev => {
       const donnees = { ...(prev.donnees || {}), clientId: '', proprietaires: [], proprioNouveau: false, proprioSans: false, qui: '', sciNom: '' };
       const n = { ...prev, client_id: null, donnees };
-      file.current = file.current.then(() => enregistrerBien(n.id, donnees).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
+      file.current = file.current.then(() => enregistrerBien(n.id, donnees, prev.donnees || {}).then(r => onMaj(r)).catch(e => setMessage({ t: (e as Error).message, ok: false })));
       return n;
     });
   };
