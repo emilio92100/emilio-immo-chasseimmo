@@ -13,10 +13,22 @@ import { supabase } from '@/lib/supabase';
    bien, ou nouvelle liste de photos). Dans le doute (lecture impossible), on
    garde : un fichier en trop ne gêne personne, un fichier en moins se voit. */
 
-/** Les adresses que nous hébergeons, parmi celles d'un bien. */
+/** Les adresses que nous hébergeons, parmi celles d'un bien. V3.43 :
+    l'adresse est lue en entier (notre serveur Supabase, le chemin public du
+    bucket), plus seulement « contient supabase.co/storage » : une adresse
+    piégée venue d'une annonce (…?u=https://….supabase.co/storage/…/photos-biens/<fichier
+    d'un autre bien>) aurait fait effacer la photo d'un autre bien. */
+const PREFIXE = '/storage/v1/object/public/photos-biens/';
 function hebergees(urls: unknown[]): string[] {
-  return urls.filter((u): u is string => typeof u === 'string' && u.includes('supabase.co/storage') && /photos-biens\//.test(u));
+  let origine = '';
+  try { origine = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || '').origin; } catch { return []; }
+  return urls.filter((u): u is string => {
+    if (typeof u !== 'string') return false;
+    try { const x = new URL(u); return x.origin === origine && x.pathname.startsWith(PREFIXE) && !x.search; } catch { return false; }
+  });
 }
+/* Le chemin du fichier dans le bucket, tiré du chemin de l'adresse. */
+const cheminDe = (u: string) => { try { return decodeURIComponent(new URL(u).pathname.slice(PREFIXE.length)); } catch { return ''; } };
 
 /** Vrai si une ligne de `table` a encore cette photo (ou si on ne peut pas le savoir). */
 async function encoreUtilisee(table: 'biens' | 'veille_propositions', url: string): Promise<boolean> {
@@ -38,7 +50,7 @@ export async function effacerPhotosBien(urls: unknown[]): Promise<void> {
      pour savoir si le lot est partagé. */
   if (await encoreUtilisee('veille_propositions', liste[0])) return;
   if (await encoreUtilisee('biens', liste[0])) return;
-  const chemins = liste.map(u => (u.match(/photos-biens\/(.+)$/) || [])[1]).filter((x): x is string => !!x);
+  const chemins = liste.map(cheminDe).filter(x => !!x && !x.includes('..'));
   for (let i = 0; i < chemins.length; i += 100) {
     const { error } = await supabase.storage.from('photos-biens').remove(chemins.slice(i, i + 100));
     if (error) console.error('[photos] effacement', error.message);
