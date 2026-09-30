@@ -32,7 +32,7 @@ import {
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence,
   PERSONNE_VIDE, plusMois, veille, annexeL215, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
   ouiNon, IC_RYTHME, HONO_MODES, TANTIEMES_BASES, personneRegistre,
-  type Donnees, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance, type CaseSignature,
+  type Donnees, type Champ, type Modele, type Etape, type Contexte, type Personne, type Repere, type Echeance, type CaseSignature,
 } from './commun';
 
 export type TypeMandat = 'simple' | 'semi' | 'exclusif';
@@ -135,13 +135,30 @@ const estCopro = (d: Donnees) => d.nature !== 'terrain' && d.copro === 'oui';
 /* Une personne mariée qui vend le logement de la famille : son conjoint
    donne son accord (article 215 du Code civil). */
 export const aConjoint = (d: Donnees) => d.qui === 'personne' && d.situation === 'marie' && d.logementFamille === 'oui';
-export const baseTantiemes = (d: Donnees) => (d.tantiemesBase === '10000' || d.tantiemesBase === '100000' ? String(d.tantiemesBase) : '1000');
+/* Le total des tantièmes : 1 000, 10 000, 100 000, ou celui qu'Alexandre a
+   tapé (« Un autre total », V3.38). Un autre total pas encore donné : « … ». */
+export function baseTantiemes(d: Donnees): string {
+  if (d.tantiemesBase === 'autre') {
+    const n = Number(String(d.tantiemesTotal ?? '').replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : '…';
+  }
+  return d.tantiemesBase === '10000' || d.tantiemesBase === '100000' ? String(d.tantiemesBase) : '1000';
+}
+/* « 10 000 », « 2 347 » : le total écrit avec ses espaces. */
+export const totalTantiemes = (d: Donnees) => baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 /* « 145/1 000es » ; une saisie complète (« 145/10 000es ») est gardée telle quelle. */
 export function tantiemes(d: Donnees, v: string): string {
   if (!v) return '';
   if (v.includes('/')) return v;
-  return `${v}/${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}es`;
+  const t = totalTantiemes(d);
+  return t === '…' ? `${v}/…` : `${v}/${t}es`;
 }
+/* « Sur combien ? », sous le choix du total quand c'est « Un autre total ». */
+export const champTotalTantiemes = (si: (d: Donnees) => boolean): Champ => ({
+  t: 'nombre', cle: 'tantiemesTotal', lib: 'Sur combien ?', ic: 'pourcent', requis: true,
+  si: d => si(d) && d.tantiemesBase === 'autre',
+  aide: 'Le total de la copropriété, tel qu’il est écrit dans le règlement (par exemple 2 347).',
+});
 export function iconeLot(l: Record<string, string>): string {
   const n = (l.nature || '').toLowerCase();
   if (/cave|cellier/.test(n)) return 'cave';
@@ -293,11 +310,12 @@ const ETAPES: Etape[] = [
       { t: 'titre', cle: 't-lots', lib: 'Les lots', ic: 'lots', si: estCopro },
       { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: estCopro, options: TANTIEMES_BASES,
         aide: 'C’est le règlement de copropriété qui le fixe : regarde sur le titre de propriété ou un appel de charges.' },
-      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 12, large: true, si: estCopro, icone: iconeLot, colonnes: [
+      champTotalTantiemes(estCopro),
+      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 40, large: true, si: estCopro, icone: iconeLot, colonnes: [
         { cle: 'numero', lib: 'N° du lot', exemple: '12' },
         { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
-        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}` },
-      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking…' },
+        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${totalTantiemes(d)}` },
+      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking… Un lot compté sur un autre total : écris-le en entier dans sa case (12/500).' },
       { t: 'titre', cle: 't-carrez', lib: 'La surface Carrez', ic: 'regle', si: estCopro },
       { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: estCopro, aide: 'Celle du lot principal, mesurée par un professionnel.' },
       { t: 'texte', cle: 'carrezPar', lib: 'Mesurée par', ic: 'personne', si: estCopro, exemple: 'Diag Expert, le 3 septembre 2026' },

@@ -131,6 +131,9 @@ export const IC_RYTHME: Record<string, string> = { visite: 'cle', semaine: 'chro
 export const HONO_MODES: Option[] = [{ v: 'taux', l: 'Un pourcentage', ic: 'pourcent' }, { v: 'forfait', l: 'Un forfait', ic: 'euro' }];
 export const TANTIEMES_BASES: Option[] = [
   { v: '1000', l: '1 000 (millièmes)', ic: 'lots' }, { v: '10000', l: '10 000', ic: 'lots' }, { v: '100000', l: '100 000', ic: 'lots' },
+  /* Une copropriété au total moins rond (2 347, 9 856…) : « Sur combien ? »
+     s'ouvre dessous (V3.38, champ `tantiemesTotal`). */
+  { v: 'autre', l: 'Un autre total', ic: 'plume' },
 ];
 
 /* Ce que le CRM connaît déjà au moment de créer un document. */

@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.37 · 30 septembre 2026**
+**Version 3.38 · 30 septembre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1428,6 +1428,34 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.38 — 30 septembre 2026 · les tantièmes sur un autre total ; le site branché
+
+**Tantièmes** (mandat de vente, son avenant, la délégation qui le reprend) : « Les tantièmes sont
+comptés sur » gagne **« Un autre total »** (`TANTIEMES_BASES`, `commun.ts`), qui ouvre **« Sur
+combien ? »** (`tantiemesTotal`, obligatoire, `champTotalTantiemes` dans `mandat-vente.ts`). Pour
+une copropriété au total pas rond (2 347, 9 856…).
+- `baseTantiemes(d)` rend ce total ; `totalTantiemes(d)` l'écrit avec ses espaces (« 2 347 ») ;
+  `tantiemes()` écrit « 145/2 347es », ou « 145/… » tant que le total manque.
+- Un lot compté sur un autre total s'écrit en entier dans sa case (« 12/500 ») : gardé tel quel, et
+  sa case ne montre plus le « / 2 347 » commun (`ChampLignes`, `ChampsActe.tsx`).
+- Jusqu'à 40 lots (12 avant). `tantiemesTotal` suit `tantiemesBase` partout où il est repris
+  (avenant : `REPRIS` et la mise à jour du mandat ; délégation : `REPRIS_VENTE`).
+
+**Le site est branché** (dépôt `emilio92100/emilio-immo.modernelovable`, commit « Site branché sur
+le Supabase du CRM ») : `.env` pointe sur le projet du CRM (`eutxmrdcykztjdyydmuo`, clé publique
+`sb_publishable_…`), `vercel.json` aussi. Les quatre fonctions du site tournent dans le projet du
+CRM, **« Verify JWT » coupé** (une clé `sb_publishable_` n'est pas un jeton) : `send-contact-email`
+(le relais de la V3.37), `fetch-properties` (le flux immo-facile), `dvf-estimate`, `sitemap`.
+Lovable Cloud ne reçoit plus rien (45 demandes, toutes reprises, la dernière du 9 septembre).
+- Vérifié : les quatre formulaires s'enregistrent en visiteur anonyme, qui ne peut rien relire
+  (essai SQL sous `set local role anon`, annulé) ; le site lit ses 29 biens sur le projet du CRM.
+- Le sitemap que lit Google est le fichier `public/sitemap.xml` du site : Vercel sert un fichier
+  existant avant ses réécritures, et la fonction `sitemap` n'a jamais été lue. Rien n'a changé pour
+  Google.
+- `dvf-estimate` répond « pas assez de ventes » sur les codes essayés, **comme chez Lovable** : les
+  sources DVF qu'il appelle ne rendent plus rien. Non corrigé (hors demande).
+- Les pages `/admin` du site sont obsolètes : la rubrique « Demandes du site » les remplace.
 
 ### V3.37 — 30 septembre 2026 · le mail « Nouvelle demande du site »
 

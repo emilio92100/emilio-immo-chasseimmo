@@ -44,7 +44,7 @@ import { lirePro, type Juridique } from '@/lib/contacts';
 
 /* Ce qu'on reprend du mandat, pour le décrire et rappeler ses conditions. */
 const REPRIS_VENTE = ['qui', 'situation', 'lien', 'vendeurs', 'sciNom', 'sciForme', 'sciSiege', 'sciRcs',
-  'adresse', 'cp', 'ville', 'type', 'nature', 'copro', 'description', 'lots', 'tantiemesBase',
+  'adresse', 'cp', 'ville', 'type', 'nature', 'copro', 'description', 'lots', 'tantiemesBase', 'tantiemesTotal',
   'charge', 'honoMode', 'taux', 'forfait', 'prix', 'duree', 'dureeMode', 'periode', 'dureeMax'];
 const REPRIS_RECHERCHE = ['qui', 'acquereurs', 'sciNom', 'sciForme', 'sciSiege', 'sciRcs',
   'types', 'typeAutre', 'pieces', 'chambres', 'surface', 'secteurs', 'criteres', 'usage',

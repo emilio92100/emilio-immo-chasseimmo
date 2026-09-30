@@ -26,12 +26,12 @@ import {
   blocsSignature, manquesSignature, CHAMP_SIGNATURE, IC_RYTHME, HONO_MODES, TANTIEMES_BASES,
   type Donnees, type Modele, type Etape, type Contexte, type Repere, type Source,
 } from './commun';
-import { TYPES, typeDe, argent, vendeursDe, aConjoint, ACTIONS, RYTHMES, baseTantiemes, tantiemes, iconeLot, casesVente } from './mandat-vente';
+import { TYPES, typeDe, argent, vendeursDe, aConjoint, ACTIONS, RYTHMES, totalTantiemes, champTotalTantiemes, tantiemes, iconeLot, casesVente } from './mandat-vente';
 
 /* Les réponses reprises du mandat d'origine. */
 const REPRIS = ['qui', 'situation', 'logementFamille', 'conjoint', 'lien', 'regime', 'vendeurs', 'represente',
   'sciNom', 'sciForme', 'sciSiege', 'sciRcs', 'sciPouvoir', 'adresse', 'cp', 'ville', 'type',
-  'nature', 'copro', 'description', 'lots', 'tantiemesBase', 'actions', 'rythme', 'penale',
+  'nature', 'copro', 'description', 'lots', 'tantiemesBase', 'tantiemesTotal', 'actions', 'rythme', 'penale',
   'charge', 'honoMode', 'taux', 'forfait', 'prix', 'duree', 'dureeMode', 'periode', 'dureeMax',
   /* Le bien du CRM (V3.32) : l'avenant apparaît dans l'onglet Documents du bien. */
   'bienVenteId'];
@@ -114,10 +114,11 @@ const ETAPES: Etape[] = [
       { t: 'titre', cle: 't-bien', lib: 'Le bien', ic: 'maison', si: d => change(d, 'bien') },
       { t: 'zone', cle: 'description', lib: 'Description', ic: 'doc', large: true, si: d => change(d, 'bien'), aide: 'Reprise du mandat : corrige-la ou complète-la.' },
       { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: d => change(d, 'bien') && estCopro(d), options: TANTIEMES_BASES },
-      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 12, large: true, si: d => change(d, 'bien') && estCopro(d), icone: iconeLot, colonnes: [
+      champTotalTantiemes(d => change(d, 'bien') && estCopro(d)),
+      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 40, large: true, si: d => change(d, 'bien') && estCopro(d), icone: iconeLot, colonnes: [
         { cle: 'numero', lib: 'N° du lot', exemple: '12' },
         { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
-        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${baseTantiemes(d).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}` },
+        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${totalTantiemes(d)}` },
       ], aide: 'La liste complète après l’avenant (elle remplace celle du mandat).' },
       { t: 'titre', cle: 't-eng', lib: 'Tes actions', ic: 'etoile', si: d => change(d, 'engagements') },
       { t: 'cases', cle: 'actions', lib: 'Ce que tu t’engages à faire désormais', ic: 'etoile', si: d => change(d, 'engagements'), options: ACTIONS.map(a => ({ v: a.v, l: a.l, ic: a.ic })) },
@@ -339,7 +340,7 @@ function enchainer(d: Donnees, a: Donnees): Donnees {
     x.charge2 = a.charge2; x.honoMode2 = a.honoMode2; x.taux2 = a.taux2; x.forfait2 = a.forfait2;
   }
   if (ch('duree') && txt(a, 'finNouvelle')) { x.finActuelle = txt(a, 'finNouvelle'); x.finNouvelle = plusMois(txt(a, 'finNouvelle'), 3); }
-  if (ch('bien')) { x.description = a.description; x.lots = a.lots; x.tantiemesBase = a.tantiemesBase; }
+  if (ch('bien')) { x.description = a.description; x.lots = a.lots; x.tantiemesBase = a.tantiemesBase; x.tantiemesTotal = a.tantiemesTotal; }
   if (ch('engagements')) { x.actions = a.actions; x.rythme = a.rythme; }
   return x;
 }

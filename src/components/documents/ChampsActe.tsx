@@ -180,7 +180,8 @@ function ChampLignes({ c, d, v, onChange, off }: { c: Extract<Champ, { t: 'ligne
         <div key={i} className={s.lot}>
           <span className={s.lotIc} aria-hidden="true"><Ic n={c.icone ? c.icone(r) : 'lots'} t={18} /></span>
           {c.colonnes.map((col, k) => {
-            const suf = col.suffixe ? col.suffixe(d) : '';
+            /* Une case déjà écrite en entier (« 12/500 ») ne reçoit pas le total commun. */
+            const suf = col.suffixe && !(r[col.cle] || '').includes('/') ? col.suffixe(d) : '';
             return (
               <label key={col.cle} className={`${s.lotCh} ${s['lotCh' + k] || ''}`}>
                 <span>{col.lib}</span>
