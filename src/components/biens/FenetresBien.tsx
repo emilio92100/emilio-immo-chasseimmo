@@ -330,7 +330,7 @@ export function FenDefinirEstimation({ bien, onFermer, onFait }: { bien: BienVen
     if (e.basse && e.haute && e.basse > e.haute) { setErreur('La fourchette basse est au-dessus de la haute.'); return; }
     setOccupe(true); setErreur('');
     let r: BienVente;
-    try { r = await enregistrerBien(bien.id, { ...d, ...versDonnees(e), rdvEstimation: rdv, avisEnvoye: avis }); }
+    try { r = await enregistrerBien(bien.id, { ...d, ...versDonnees(e), rdvEstimation: rdv, avisEnvoye: avis }, d); }
     catch (x) { setErreur((x as Error).message); setOccupe(false); return; }
     if (avant.basse !== e.basse || avant.haute !== e.haute || avant.prix !== e.prix) {
       try { await ajouterSuivi({ bien_id: bien.id, type: 'note', commentaire: texteEstimation(e), donnees: { estimation: true, basse: e.basse, haute: e.haute, prix: e.prix } }); }
@@ -807,7 +807,7 @@ export function FenPrix({ bien, mandatSigne = false, onFermer, onFait }: {
     if (changeHono && apres.hono === null) { setErreur(honoMode === 'taux' ? 'Écris le nouveau taux.' : 'Écris le nouveau forfait.'); return; }
     setOccupe(true); setErreur('');
     try {
-      const r = await enregistrerBien(bien.id, { ...d, prix, ...(hono || {}) });
+      const r = await enregistrerBien(bien.id, { ...d, prix, ...(hono || {}) }, d);
       /* L'historique dit ce qui a changé (FicheBien, « Prix et honoraires changés »). */
       await ajouterSuivi({
         bien_id: bien.id, type: 'prix', montant: prix, commentaire: note.trim() || null,
