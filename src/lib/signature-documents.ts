@@ -38,6 +38,7 @@ import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { ecritServeur } from './ecritures';
 import { noterSignature } from './registre';
+import { mandatSigneSurBien } from './mandat-bien';
 
 export const BUCKET = 'mandats';
 export const SIGNATURE_AGENCE = 'agence/signature.png';
@@ -457,8 +458,9 @@ export async function envoyerExemplaire(o: {
 /* ── Signé par tous : ce que le document écrit ailleurs ────────────────── */
 
 /* Le document passe « Signé », avec son exemplaire scellé ; un mandat de
-   recherche (ou son avenant) met à jour le bloc Mandat de sa recherche ;
-   une ligne va dans le suivi du client. Rend les problèmes rencontrés. */
+   recherche (ou son avenant) met à jour le bloc Mandat de sa recherche, un
+   mandat de vente la fiche de son bien (V3.42) ; une ligne va dans le suivi
+   du client. Rend les problèmes rencontrés. */
 export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDoc, le: string): Promise<string[]> {
   const m = modele(doc.modele);
   const pbs: string[] = [];
@@ -474,6 +476,13 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
     comment: sd.mode === 'sur_place' ? 'sur place' : 'en ligne', quand: `${dateCourte(le)} à ${heureParis(le)}`,
   });
   if (pbR) pbs.push(pbR);
+  /* Un mandat de vente (V3.42) : la fiche de son bien passe « En vente »,
+     avec le n°, le type, les dates, le prix et les honoraires du mandat. */
+  if (doc.modele === 'mandat_vente') {
+    const jourB = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(le));
+    const pbB = await mandatSigneSurBien(sb, doc, jourB);
+    if (pbB) pbs.push(pbB);
+  }
   if (m?.surRecherche && doc.recherche_id) {
     const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(le));
     const { error: e2 } = await sb.from('recherches').update(m.surRecherche(doc.donnees, jour)).eq('id', doc.recherche_id);
