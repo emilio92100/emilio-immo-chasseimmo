@@ -230,15 +230,18 @@ export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau, 
 
 /* ── Un champ du formulaire (au niveau du module : sinon il se remonte à
    chaque frappe et le clavier se referme — AGENTS.md §2.4) ── */
-export function Champ({ lib, val, onChange, err, type = 'text', mode, auto, placeholder }: {
+export function Champ({ lib, val, onChange, err, type = 'text', mode, auto, placeholder, lecture }: {
   lib: string; val: string; onChange: (v: string) => void; err?: string; type?: string;
   mode?: 'text' | 'email' | 'tel' | 'numeric'; auto?: string; placeholder?: string;
+  /* Affiché, pas modifiable (V3.43 : l'adresse du co-signataire). */
+  lecture?: boolean;
 }) {
   return (
     <label className={'mdt-ch' + (err ? ' err' : '')}>
       <span className="l">{lib}</span>
       <input type={type} value={val} onChange={e => onChange(e.target.value)} inputMode={mode}
-        autoComplete={auto} placeholder={placeholder} />
+        autoComplete={auto} placeholder={placeholder} readOnly={lecture}
+        style={lecture ? { background: '#f4f6fa', color: '#475569' } : undefined} />
       {err && <span className="e">{err}</span>}
     </label>
   );
