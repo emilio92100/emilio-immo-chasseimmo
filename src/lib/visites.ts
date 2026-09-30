@@ -169,3 +169,15 @@ export function visitePasseeParis(v: { date_visite?: string | null; heure?: stri
   const h = /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '23:59';
   return `${String(v.date_visite).slice(0, 10)} ${h}` < maintenant;
 }
+
+/* ── « 2 visites faites · 1 prévue » (V3.33) ─────────────────────────────
+   Alexandre : « quand il y a marqué juste 3 visites, on ne comprend pas ;
+   il faut toujours savoir si elles ont été faites ». Un compte de visites
+   dit donc toujours lesquelles : faites (la date est passée) ou prévues.
+   Vide quand il n'y en a aucune. */
+export function libelleVisites(faites: number, prevues: number): string {
+  const s = (n: number) => (n > 1 ? 's' : '');
+  const f = faites ? `${faites} visite${s(faites)} faite${s(faites)}` : '';
+  const p = prevues ? (faites ? `${prevues} prévue${s(prevues)}` : `${prevues} visite${s(prevues)} prévue${s(prevues)}`) : '';
+  return [f, p].filter(Boolean).join(' · ');
+}
