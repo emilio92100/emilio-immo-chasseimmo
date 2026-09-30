@@ -1,9 +1,8 @@
 'use client';
-import { libelleVisites } from '@/lib/visites';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, nomProprio, specsBien, type BienVente, type SuiviVente,
+  argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, motMandat, nomProprio, specsBien, type BienVente, type EtatMandatDoc, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import b from './Biens.module.css';
@@ -55,29 +54,50 @@ type PropsCarte = {
   /* Parmi nbVisites, celles qui sont encore à venir (V3.33 : on dit
      toujours « faites » ou « prévues »). */
   nbPrevues?: number;
+  /* Où en est son mandat de vente dans Documents (V3.42). */
+  mandat?: EtatMandatDoc | null;
   proprio?: string; onClick?: () => void;
 };
 
-/* « 2 visites faites · 1 prévue · 1 offre » ; « Aucune visite ni offre ». */
-function compteVisitesOffres(nbVisites: number, nbPrevues: number, nbOffres: number): string {
-  const v = libelleVisites(nbVisites - nbPrevues, nbPrevues);
-  const o = nbOffres ? `${nbOffres} offre${nbOffres > 1 ? 's' : ''}` : '';
-  if (!v && !o) return 'Aucune visite ni offre';
-  return [v || 'Aucune visite', o || 'aucune offre'].join(' · ');
+/* Les puces de l'état (V3.42) : une par chose, avec son dessin, au lieu de
+   « 1 visite faite · aucune offre » en gris, calé à droite. Un zéro reste
+   pâle. Avant la vente, le mandat en route (« Mandat en préparation »),
+   s'il y en a un ; après, les visites et les offres ; et les acheteurs qui
+   correspondent. */
+function Puces({ bien, mandat, nbAcheteurs, nbVisites, nbPrevues, nbOffres, long }: {
+  bien: BienVente; mandat?: EtatMandatDoc | null; nbAcheteurs: number; nbVisites: number; nbPrevues: number; nbOffres: number; long?: boolean;
+}) {
+  const avant = avantMandat(bien.etape);
+  const enVente = ['mandat', 'suspendu', 'offre'].includes(bien.etape);
+  const faites = Math.max(0, nbVisites - nbPrevues);
+  const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+  const l: { cle: string; ic: string; t: string; ton?: 'vide' | 'or' | 'mandat' }[] = [];
+  if (avant && mandat && mandat.statut !== 'signe') l.push({ cle: 'm', ic: 'plume', t: motMandat(mandat), ton: 'mandat' });
+  if (!avant && (enVente || nbVisites > 0 || nbOffres > 0)) {
+    if (faites || !nbPrevues) l.push({ cle: 'v', ic: 'cle', t: faites ? `${pl(faites, 'visite')} faite${faites > 1 ? 's' : ''}` : 'Aucune visite', ton: faites ? undefined : 'vide' });
+    if (nbPrevues) l.push({ cle: 'p', ic: 'calendrier', t: `${pl(nbPrevues, 'visite')} prévue${nbPrevues > 1 ? 's' : ''}` });
+    l.push({ cle: 'o', ic: 'euro', t: nbOffres ? pl(nbOffres, 'offre') : 'Aucune offre', ton: nbOffres ? undefined : 'vide' });
+  }
+  if (!['vendu', 'retire'].includes(bien.etape) && nbAcheteurs > 0) l.push({ cle: 'a', ic: 'cible', t: `${pl(nbAcheteurs, 'acheteur')}${long ? ' pour ce bien' : ''}`, ton: 'or' });
+  if (!l.length) return null;
+  return (
+    <span className={b.puces}>
+      {l.map(x => <span key={x.cle} className={`${b.puceL} ${x.ton === 'vide' ? b.puceVide : x.ton === 'or' ? b.puceOr : x.ton === 'mandat' ? b.puceMandat : ''}`}><Ic n={x.ic} t={13} /><span>{x.t}</span></span>)}
+    </span>
+  );
 }
 
 /* La liste en lignes (V3.17) : la même information qu'une carte, sur une
    ligne, la photo en petit. Au téléphone, deux étages. */
-export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, proprio, onClick }: PropsCarte) {
+export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
   const prix = prixCarte(bien);
-  const etat = ligneEtat(bien, suivi);
+  const etat = ligneEtat(bien, suivi, mandatDoc);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
   const lieu = [bien.ville || txt(d, 'ville'), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
-  const enVente = !['vendu', 'retire'].includes(bien.etape);
   return (
     <button type="button" className={b.ligneB} onClick={onClick}>
       <span className={b.ligneImg}>
@@ -97,29 +117,25 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, 
         {qui && <span><Ic n="personne" t={14} />{qui}</span>}
       </span>
       <span className={b.ligneEtat}>
-        <span className={`${b.ligneEtatT} ${etat.ton === 'alerte' ? b.ligneAlerte : etat.ton === 'ok' ? b.ligneOk : ''}`}>{etat.t}</span>
-        {enVente && nbAcheteurs > 0 && <span className={b.chipOr}><Ic n="cible" t={13} />{`${nbAcheteurs} acheteur${nbAcheteurs > 1 ? 's' : ''}`}</span>}
-        {!avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0) && <span className={b.compteurs}>{compteVisitesOffres(nbVisites, nbPrevues, nbOffres)}</span>}
+        <span className={`${b.ligneEtatT} ${etat.ton === 'alerte' ? b.ligneAlerte : etat.ton === 'ok' ? b.ligneOk : ''}`}><Ic n={etat.ic} t={15} /><span>{etat.t}</span></span>
+        <Puces bien={bien} mandat={mandatDoc} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} />
       </span>
       <span className={b.ligneFleche}><Ic n="droite" t={16} e={2.4} /></span>
     </button>
   );
 }
 
-export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, proprio, onClick }: PropsCarte) {
+export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
   const prix = prixCarte(bien);
-  const etat = ligneEtat(bien, suivi);
+  const etat = ligneEtat(bien, suivi, mandatDoc);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
   const lieu = [bien.ville || txt(d, 'ville'), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
   const conclu = bien.etape === 'compromis' || bien.etape === 'vendu';
   const hono = conclu ? honorairesVente(bien, suivi) : null;
-  const enVente = !['vendu', 'retire'].includes(bien.etape);
-  const compte = !avantMandat(bien.etape) && (nbVisites > 0 || nbOffres > 0 || bien.etape === 'mandat')
-    ? compteVisitesOffres(nbVisites, nbPrevues, nbOffres) : '';
   const Tag = onClick ? 'button' : 'div';
 
   return (
@@ -140,10 +156,11 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevu
         {lieu && <div className={b.info}><Ic n="lieu" t={14} /><span>{lieu}</span></div>}
         {qui && <div className={b.info}><Ic n="personne" t={14} /><span>{qui}</span></div>}
       </div>
-      <div className={`${b.etat} ${etat.ton === 'alerte' ? b.etatAlerte : etat.ton === 'ok' ? b.etatOk : ''}`}>{etat.t}</div>
+      <div className={`${b.etat} ${etat.ton === 'alerte' ? b.etatAlerte : etat.ton === 'ok' ? b.etatOk : ''}`}><Ic n={etat.ic} t={15} /><span>{etat.t}</span></div>
       <div className={b.cartePied}>
-        {enVente && nbAcheteurs > 0 && <span className={b.chipOr}><Ic n="cible" t={14} />{`${nbAcheteurs} acheteur${nbAcheteurs > 1 ? 's' : ''} pour ce bien`}</span>}
-        {hono ? <span className={b.compteurs}>{`Honoraires : ${euros(hono)}`}</span> : compte ? <span className={b.compteurs}>{compte}</span> : null}
+        {hono
+          ? <span className={b.compteurs}>{`Honoraires : ${euros(hono)}`}</span>
+          : <Puces bien={bien} mandat={mandatDoc} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} long />}
       </div>
     </Tag>
   );
