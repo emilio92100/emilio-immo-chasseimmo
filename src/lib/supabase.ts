@@ -154,21 +154,33 @@ export interface Client {
    espace. « EMI-2026-001 » annonce qu'il est le premier de l'année ; on démarre
    donc à 100, ce qui ne dit rien de la taille du portefeuille.
 
-   Le tri se fait sur la chaîne : avec trois chiffres et un préfixe fixe, c'est
-   exact jusqu'à 999. Au-delà, il faudra passer à quatre chiffres — sinon
-   « 1000 » se rangerait avant « 999 ». */
+   Le numéro suivant est le plus grand numéro de l'année plus un (V3.43 :
+   plus de tri sur la chaîne, qui cassait passé 999). */
 const PREMIER_DOSSIER = 100
 
 export async function genererReference(): Promise<string> {
   const annee = new Date().getFullYear()
-  const { data } = await supabase
-    .from('clients')
-    .select('reference')
-    .like('reference', `EMI-${annee}-%`)
-    .order('reference', { ascending: false })
-    .limit(1)
-  if (!data || data.length === 0) return `EMI-${annee}-${PREMIER_DOSSIER}`
-  const num = parseInt(data[0].reference.split('-')[2], 10) + 1
+  /* V3.43 : le plus grand NUMÉRO de l'année, lu sur toutes les références
+     (par pages de 1 000), et plus la dernière dans l'ordre alphabétique :
+     « 1000 » se rangeait avant « 999 », et la référence suivante aurait
+     resservi un numéro déjà pris. */
+  let max = 0
+  for (let de = 0; de < 50_000; de += 1000) {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('reference')
+      .like('reference', `EMI-${annee}-%`)
+      .order('id')
+      .range(de, de + 999)
+    if (error) break
+    for (const x of data || []) {
+      const n = parseInt(String((x as { reference?: string }).reference || '').split('-')[2], 10)
+      if (Number.isFinite(n) && n > max) max = n
+    }
+    if (!data || data.length < 1000) break
+  }
+  if (!max) return `EMI-${annee}-${PREMIER_DOSSIER}`
+  const num = max + 1
   /* Filet : si d'anciens dossiers sont restés en dessous de 100, le suivant
      repart quand même à 100 au lieu de continuer la vieille série. */
   return `EMI-${annee}-${String(Math.max(num, PREMIER_DOSSIER)).padStart(3, '0')}`
