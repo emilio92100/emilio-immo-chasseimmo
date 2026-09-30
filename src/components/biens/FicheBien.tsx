@@ -15,7 +15,7 @@ import { COULEURS, ChampPhotos } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
-  FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
+  FenAnnulerMandat, FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
   type ChoixA, type OptionAcheteur,
 } from './FenetresBien';
 import {
@@ -27,6 +27,7 @@ import { lienFichier, nomFichier, type DocumentRow } from '@/components/document
 import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
 import { DocsParEtat, depuisDoc } from '@/components/documents/DocumentsDuClient';
 import { mandatVenteEnCours } from '@/lib/coherence';
+import { etapeAvantMandat } from '@/lib/mandat-bien';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/FichesOuvertes';
@@ -69,7 +70,7 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, Cart
 type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
   | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
-  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] };
+  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
 const OPTIONS: Record<string, Record<string, string>> = {};
@@ -182,7 +183,7 @@ function Bandeau({ bien, detail, surCarte, cote }: { bien: BienVente; detail: De
               <span key={k} style={{ display: 'contents' }}>
                 {j > 0 && <span className={b.stepTrait} />}
                 <span className={`${b.step} ${j < i ? b.stepOk : j === i ? b.stepOn : ''}`}>
-                  <span className={b.stepRond}>{j < i && <Ic n="check" t={10} e={3.4} />}</span>{etapeDe(k).lib}
+                  <span className={b.stepRond}>{j < i && <Ic n="check" t={10} e={3.4} />}</span>{k === 'mandat' && j === i && !txt(d, 'mandatDate') ? 'En vente' : etapeDe(k).lib}
                 </span>
               </span>
             ))}
@@ -390,13 +391,39 @@ function CoteVisite({ d, onOuvrir }: { d: Donnees; onOuvrir: () => void }) {
 
 /* Le mandat, dans le bandeau (V3.32) : la grosse carte « Le mandat » de la
    Vue d'ensemble prenait une place entière pour trois lignes. Ici, discret :
-   le type et le numéro, signé le, jusqu'au, et le temps qui reste. */
-function CoteMandat({ bien, d, onModifier }: { bien: BienVente; d: Donnees; onModifier: () => void }) {
+   le type et le numéro, signé le, jusqu'au, et le temps qui reste.
+   V3.42 : pas encore signé, il le dit (« en préparation », « en signature »,
+   d'après Documents) au lieu de « Mandat en cours ». */
+function CoteMandat({ bien, d, enRoute, onModifier, onDoc, onPreparer, onDejaSigne }: {
+  bien: BienVente; d: Donnees; enRoute: DocLie | null;
+  onModifier: () => void; onDoc: (id: string) => void; onPreparer: () => void; onDejaSigne: () => void;
+}) {
   const type = bien.mandat_type ? NOM_MANDAT[bien.mandat_type] || '' : d.mandatType ? NOM_MANDAT[String(d.mandatType)] || '' : '';
   const numero = txt(d, 'mandatNumero') || bien.mandat_numero || '';
   const signe = txt(d, 'mandatDate'), fin = txt(d, 'mandatFin');
   const reste = joursAvant(fin);
   const pause = bien.etape === 'suspendu';
+  if (!signe && bien.etape === 'mandat') {
+    const ed = (enRoute?.donnees || {}) as Donnees;
+    const typeDoc = NOM_MANDAT[String(ed.type || '')] || '';
+    const etat = !enRoute ? 'Mandat pas encore signé' : enRoute.statut === 'brouillon' ? 'Mandat en préparation'
+      : enRoute.signature ? 'Mandat en signature' : 'Mandat prêt à signer';
+    const sous = enRoute ? [typeDoc || 'Mandat', enRoute.numero ? `n° ${enRoute.numero}` : ''].filter(Boolean).join(' · ') : 'Rien dans Documents pour l’instant';
+    return (
+      <div className={`${b.heroCote} ${b.heroMandat}`}>
+        <div className={b.heroCoteT}>
+          <span className={b.heroCoteIc}><Ic n="plume" t={17} /></span>
+          <span><b>{etat}</b><small>{sous}</small></span>
+        </div>
+        <div className={`${b.heroMandatL} ${b.heroMandatLiens}`}>
+          {enRoute
+            ? <button type="button" className={b.heroMandatLien} onClick={() => onDoc(enRoute.id)}>{enRoute.statut === 'brouillon' ? 'Continuer le mandat' : 'Ouvrir dans Documents'}</button>
+            : <button type="button" className={b.heroMandatLien} onClick={onPreparer}>Préparer le mandat</button>}
+          <button type="button" className={b.heroMandatLien} onClick={onDejaSigne}>Déjà signé ?</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`${b.heroCote} ${b.heroMandat}`}>
       <div className={b.heroCoteT}>
@@ -714,13 +741,19 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
       const e = x.statut as EtapeVente;
       let titre = etapeDe(e).lib, detail = '';
       let puce: EvtBien['puce'];
-      if (e === 'mandat') {
-        const signe = d.de === 'estimation' || d.de === 'a_suivre' || d.depuis === 'creation';
+      if (d.annule === true) {
+        /* V3.42 : un mandat retiré de la fiche (noté par erreur), ou le bien
+           revenu en arrière avant la signature. */
+        titre = str('numero') ? `Mandat n° ${str('numero')} retiré de la fiche` : `Revenu « ${etapeDe(e).lib} »`;
+        detail = str('numero') ? `Le bien revient « ${etapeDe(e).lib} »` : '';
+      } else if (e === 'mandat') {
+        /* Signé dans Documents (V3.42) : la fiche a suivi toute seule. */
+        const signe = d.source === 'documents' || d.de === 'estimation' || d.de === 'a_suivre' || d.depuis === 'creation' || (d.de === 'mandat' && !!str('date'));
         titre = signe ? `Mandat signé${str('numero') ? ` · n° ${str('numero')}` : ''}` : 'Remis en vente';
         if (signe && str('type')) puce = str('type') === 'exclusif'
           ? { l: 'Exclusif', c: '#e8c96a', fond: '#1a2332', bord: '#1a2332' }
           : { l: NOM_MANDAT[str('type')] || str('type'), c: '#34496e', fond: '#eef2f8', bord: '#dbe3ef' };
-        detail = [str('fin') ? `jusqu’au ${dateCourte(str('fin'))}` : '', typeof d.prix === 'number' ? `prix ${euros(d.prix)}` : ''].filter(Boolean).join(' · ');
+        detail = [str('fin') ? `jusqu’au ${dateCourte(str('fin'))}` : '', typeof d.prix === 'number' ? `prix ${euros(d.prix)}` : '', d.source === 'documents' ? 'noté depuis Documents' : ''].filter(Boolean).join(' · ');
       } else if (e === 'offre') { titre = 'Passé sous offre'; detail = typeof d.montant === 'number' ? `${str('qui')} · ${euros(d.montant)}` : ''; }
       else if (e === 'compromis') {
         titre = `Compromis signé${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`;
@@ -733,7 +766,7 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
         titre = d.de === 'estimation' ? 'Projet mis en attente' : 'Remis « à suivre »';
         detail = [str('raison'), str('reprise') ? `à recontacter vers le ${dateCourte(str('reprise'))}` : ''].filter(Boolean).join(' · ');
       }
-      l.push({ cle: x.id, le: x.le, ic: e === 'vendu' ? 'check' : e === 'retire' ? 'archive' : e === 'suspendu' || (e === 'a_suivre' && d.de === 'estimation') ? 'pause' : 'drapeau', ton: e === 'vendu' ? 'ic_emilio' : e === 'retire' ? 'ic_rouge' : 'ic_vert', titre, detail: [detail, x.commentaire].filter(Boolean).join('\n'), genre: 'etapes', puce });
+      l.push({ cle: x.id, le: x.le, ic: d.annule === true ? 'retour' : e === 'vendu' ? 'check' : e === 'retire' ? 'archive' : e === 'suspendu' || (e === 'a_suivre' && d.de === 'estimation') ? 'pause' : 'drapeau', ton: d.annule === true ? 'ic_gris' : e === 'vendu' ? 'ic_emilio' : e === 'retire' ? 'ic_rouge' : 'ic_vert', titre, detail: [detail, x.commentaire].filter(Boolean).join('\n'), genre: 'etapes', puce });
     } else if (x.type === 'prix') {
       /* V3.32 : les honoraires peuvent changer avec le prix, ou seuls. */
       const prixBouge = typeof d.ancien !== 'number' || d.ancien !== x.montant;
@@ -1031,6 +1064,14 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     suite.push({ t: 'Changer le prix ou les honoraires…', s: 'Garde l’historique', c: '#8b5cf6', go: () => setFen({ k: 'prix' }) });
     suite.push({ t: 'Mandat terminé sans vente…', s: 'Expiré, retiré, vendu par un autre', c: etapeDe('retire').c, go: raison('retire', 'Mandat terminé sans vente', 'Le bien passe « Retiré »') });
   }
+  /* V3.42 : un mandat noté par erreur (un test, le mauvais bien), ou le bien
+     passé « En vente » avant la signature : il revient en arrière, sans
+     passer par Supabase. */
+  if (e === 'mandat' || e === 'suspendu') {
+    suite.push(txt(d, 'mandatDate')
+      ? { t: 'Annuler ce mandat…', s: 'Noté par erreur : il quitte la fiche', c: '#dc2626', go: () => setFen({ k: 'annulerMandat' }), danger: true }
+      : { t: 'Le mandat n’est pas encore signé…', s: 'Le bien revient à l’estimation', c: etapeDe('estimation').c, go: () => setFen({ k: 'annulerMandat' }) });
+  }
   if (e === 'offre') {
     suite.push({ t: 'Le compromis est signé…', s: 'Le bien passe « Sous compromis »', c: etapeDe('compromis').c, go: () => setFen({ k: 'compromis' }) });
     suite.push({ t: 'Une autre offre…', s: 'Elles s’affichent côte à côte', c: etapeDe('offre').c, go: () => setFen({ k: 'offre' }) });
@@ -1186,7 +1227,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const mandatEnRoute = mandats.find(x => x.statut === 'pret') || mandats.find(x => x.statut === 'brouillon') || null;
   const suiviMandat = mandatEnRoute ? suivis[mandatEnRoute.id] : undefined;
   const prevuMandat = mandatEnRoute ? modeSignature((mandatEnRoute.donnees || {}) as Record<string, unknown>) : 'papier';
-  const mandatSigne = mandats.find(x => x.signe_le) || null;
+  /* Un mandat signé puis annulé ne compte plus (V3.42). */
+  const mandatSigne = mandats.find(x => x.signe_le && x.statut === 'signe') || null;
   const signeLe = mandatSigne?.signe_le || txt(d, 'mandatDate');
   const typeMandat = d.mandatType ? (NOM_MANDAT[String(d.mandatType)] || '').toLowerCase() : '';
   const enMandat = !avant && !!signeLe;
@@ -1270,6 +1312,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         {/* Signé dans le CRM mais pas encore noté : le bien passe en vente. */}
         {avant && <BoutonAct or onClick={() => setFen({ k: 'mandat' })}>Passer le bien en vente</BoutonAct>}
         {!avant && !mandats.length && <BtnTuile onClick={() => onModifier('prix')}>Modifier</BtnTuile>}
+        {/* Noté par erreur (V3.42) : il quitte la fiche. */}
+        {!mandatSigne && ['mandat', 'suspendu'].includes(e) && <BtnTuile onClick={() => setFen({ k: 'annulerMandat' })}>Annuler ce mandat</BtnTuile>}
       </>,
       /* Le mandat, puis ses avenants (V3.32). */
       suite: suitesMandat.length ? <ChaineDocs items={chaineMandat} /> : undefined,
@@ -1370,7 +1414,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           {/* La note, en un clic : elle était cachée dans « ⋯ ». */}
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'note' })}><Ic n="bulle" t={15} />Note</button>
           <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}>
-            <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
+            <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{e === 'mandat' && !txt(d, 'mandatDate') ? 'En vente' : et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
           </button>
           <button type="button" className={s.btn} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
           {menu && <div className={b.voileMenu} onClick={() => setMenu(null)} />}
@@ -1378,7 +1422,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             <div className={b.menu} role="menu">
               <div className={b.menuT}>{suite.length ? 'Ensuite' : 'Étape'}</div>
               {suite.map(x => (
-                <button key={x.t} type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); x.go(); }}>
+                <button key={x.t} type="button" role="menuitem" className={`${b.menuItem} ${x.danger ? b.menuDanger : ''}`} onClick={() => { setMenu(null); x.go(); }}>
                   <span className={b.point} style={{ background: x.c }} /><span><b>{x.t}</b><small>{x.s}</small></span>
                 </button>
               ))}
@@ -1401,7 +1445,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}
         cote={avant ? <CoteVisite d={d} onOuvrir={() => setVisite(true)} />
-          : ['mandat', 'offre', 'compromis', 'suspendu'].includes(e) ? <CoteMandat bien={bien} d={d} onModifier={() => onModifier('prix')} /> : undefined} />
+          : ['mandat', 'offre', 'compromis', 'suspendu'].includes(e) ? <CoteMandat bien={bien} d={d} enRoute={mandatEnRoute} onModifier={() => onModifier('prix')}
+            onDoc={ouvrirDoc} onPreparer={() => { void faireDocument({ modele: 'mandat_vente' }); }} onDejaSigne={() => setFen({ k: 'mandat' })} /> : undefined} />
 
       {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent.
           La pastille glisse d'un onglet à l'autre, le contenu arrive en
@@ -1618,6 +1663,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {fen?.k === 'visite' && <FenVisite bien={bien} options={options} recherches={liste.recherches} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'note' && <FenNote bien={bien} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'raison' && <FenRaison bien={bien} etape={fen.etape} titre={fen.titre} sur={fen.sur} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'annulerMandat' && (
+        <FenAnnulerMandat bien={bien} depuis={etapeAvantMandat(detail?.suivi || [])} enRoute={!!mandatEnRoute}
+          signeDoc={mandatSigne ? { id: mandatSigne.id, numero: mandatSigne.numero || null } : null}
+          onFermer={() => setFen(null)} onFait={r => apres(r)} onDocuments={id => { setFen(null); ouvrirDoc(id); }} />
+      )}
       {fen?.k === 'acheteurs' && (
         <FenEnvoiAcheteurs bien={bien} choisis={fen.liste} onFermer={() => setFen(null)}
           onFait={m => { setMessage(m); void apres(); }}
