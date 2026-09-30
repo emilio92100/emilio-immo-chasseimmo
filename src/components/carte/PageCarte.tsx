@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Map as CarteML, Marker, GeoJSONSource } from 'maplibre-gl';
 import { supabase } from '@/lib/supabase';
+import { toutLire } from '@/lib/registre';
 import FondCarte, { type MapLibre } from './FondCarte';
 import {
   adresseUtile, assezPrecis, cleAdresse, composerAdresse, garderPositions, geocoder, lienItineraire,
@@ -359,7 +360,8 @@ export default function PageCarte({ onNavigate, onMenu }: {
     const arret = new AbortController();
     (async () => {
       const [cl, bv] = await Promise.all([
-        supabase.from('clients').select('*'),
+        /* Par pages de 1 000 (V3.43). */
+        toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select('*').order('id').range(de, a)).then(r => ({ data: r.data, error: r.erreur ? { message: r.erreur } : null })),
         supabase.from('biens_vente').select('id, etape, archive, client_id, titre, adresse, code_postal, ville, prix, photo, gps:donnees->gps, proprietaires:donnees->proprietaires, qui:donnees->qui, sciNom:donnees->sciNom'),
       ]);
       if (!vivant) return;
