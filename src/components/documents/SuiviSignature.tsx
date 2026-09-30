@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { heureParis } from '@/lib/mandat';
 import { HOTE_ESPACE } from '@/lib/jeton';
 import Depliant from '@/components/shared/Depliant';
+import { PastillePli } from '@/components/shared/Pli';
 import { Ic } from './ApercuActe';
 import { appelSignature, nomSignataire, type DocumentRow, type SignataireRow } from './outils';
 import s from './Documents.module.css';
@@ -233,10 +234,8 @@ export default function SuiviSignature({ suivi, onFait, ouvertAuDebut = false }:
           <b>{suivi.titre}</b>
           <small>{suivi.sous}</small>
         </span>
-        <span className={s.suiviVoir}>
-          <span className={s.suiviVoirL}>{ouvert ? 'Masquer' : 'Qui a signé ?'}</span>
-          <span className={s.suiviFleche} data-ouvert={ouvert ? 'oui' : 'non'}><Ic n="bas" t={14} e={2.4} /></span>
-        </span>
+        {/* À côté du titre, pas tout à droite (V3.33). */}
+        <PastillePli ouvert={ouvert} voir="Qui a signé ?" replier="Masquer" className={s.suiviVoir} />
       </button>
       <Depliant ouvert={ouvert}>
         <div className={s.suiviListe}>

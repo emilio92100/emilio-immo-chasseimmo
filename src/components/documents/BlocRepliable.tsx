@@ -1,6 +1,7 @@
 'use client';
 import { useId, useState, type ReactNode } from 'react';
 import { Ic } from './ApercuActe';
+import { PastillePli } from '@/components/shared/Pli';
 import s from './Documents.module.css';
 
 /* ═══ Un bloc qui se replie (V3.17) ═══════════════════════════════════════
@@ -22,8 +23,9 @@ export default function BlocRepliable({ ic, titre, n, resume, action, ouvertAuDe
           <span className={s.rpIc}><Ic n={ic} t={15} /></span>
           <span className={s.rpTitre}>{titre}</span>
           {typeof n === 'number' && <span className={s.rpN}>{n}</span>}
+          {/* « Voir le détail » à côté du titre, pas tout à droite (V3.33). */}
+          <PastillePli ouvert={ouvert} />
           {resume && <span className={s.rpResume}>{resume}</span>}
-          <span className={s.rpChevron} aria-hidden="true"><Ic n="bas" t={16} e={2.4} /></span>
         </button>
         {action}
       </div>
