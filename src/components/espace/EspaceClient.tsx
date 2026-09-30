@@ -7,7 +7,7 @@ import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
 import SignatureMandat, { AvantVisiteDocument, CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
-import { jourParis, DUREE } from '@/lib/mandat';
+import { ajouterMois, jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
 import CarteEspace, { CATS_ESPACE, type BienCarte, type CatEspace } from './CarteEspace';
@@ -1291,7 +1291,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     montrer(<SignatureMandat mandat={mandatRef.current} raison={raison} envoyer={envoyer} tel={AGENT.tel}
       bienId={bienId} onFermer={fermer}
       onSigne={async (r) => {
-        const fin = new Date(Date.parse(jourParis(r.signeLe) + 'T12:00:00Z') + DUREE.total * 86_400_000).toISOString().slice(0, 10);
+        const fin = ajouterMois(jourParis(r.signeLe), DUREE.mois);
         setMandat(x => ({
           ...x, etat: 'valide', numero: r.numero, propose: false, expiration: fin,
           signe: { le: r.signeLe, numero: r.numero, fin: r.finRetractation, execution: r.execution },
