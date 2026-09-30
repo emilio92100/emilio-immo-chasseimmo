@@ -11,7 +11,7 @@ import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenNouveau } from './FenetresBien';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, donneesProprio, marquerVendeur, nomClient, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -159,6 +159,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     return m;
   }, [liste]);
 
+  /* Où en est le mandat de chaque bien dans Documents (V3.42). */
+  const mandats = useMemo(() => (liste ? mandatsParBien(liste) : {}), [liste]);
+
   const biens = liste?.biens || [];
   const actifs = biens.filter(x => !x.archive);
   const archives = biens.filter(x => x.archive);
@@ -257,7 +260,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
             return (
               <Rendu key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
                 nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbOffres={parBien[x.id]?.offres || 0}
-                onClick={() => ouvrir(x.id)} />
+                mandat={mandats[x.id] || null} onClick={() => ouvrir(x.id)} />
             );
           })}
         </div>
