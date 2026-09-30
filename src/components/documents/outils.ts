@@ -22,6 +22,7 @@ import { inscrire, noterAnnulation, noterSignature } from '@/lib/registre';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { lirePro } from '@/lib/contacts';
 import { juridiqueDepuis } from '@/lib/actes/delegation';
+import { mandatSigneSurBien } from '@/lib/mandat-bien';
 
 export type DocumentRow = {
   id: string;
@@ -434,14 +435,17 @@ async function retenirConfrere(d: Donnees, le: string) {
 /* ── Signé : ce que le document écrit ailleurs ──
    Un mandat de recherche papier remplit le bloc Mandat de sa recherche
    (comme une signature en ligne), et laisse une ligne dans le suivi du
-   client. Rend un message d'erreur, ou null. */
+   client. Un mandat de vente fait passer son bien « En vente » (V3.42,
+   src/lib/mandat-bien.ts). Rend un message d'erreur, ou null. */
 export async function apresSignature(row: DocumentRow, m: Modele, jour: string): Promise<string | null> {
   /* Le registre des mandats (V3.18) : « Signé » sur la ligne du mandat, ou
      l'avenant sur celle de son mandat. */
-  const pbRegistre = await noterSignature(supabase, {
+  const pbReg = await noterSignature(supabase, {
     modele: row.modele, document_id: row.id, titre: row.titre || m.titre, comment: 'à la main',
     mandatNumero: typeof row.donnees?.mandatNumero === 'string' ? row.donnees.mandatNumero : undefined, quand: jour.split('-').reverse().join('/'),
   });
+  const pbBien = row.modele === 'mandat_vente' ? await mandatSigneSurBien(supabase, row, jour) : null;
+  const pbRegistre = [pbReg, pbBien].filter(Boolean).join(' ') || null;
   if (!m.surRecherche || !row.recherche_id) return pbRegistre;
   const { error } = await supabase.from('recherches').update(m.surRecherche(row.donnees, jour)).eq('id', row.recherche_id);
   /* Le souci du registre, s'il y en a un, n'est jamais masqué par un autre. */
