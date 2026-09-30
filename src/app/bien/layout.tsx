@@ -1,3 +1,9 @@
+import type { Metadata } from 'next';
+
+/* V3.43 : la fiche d'un bien se partage par son lien, elle n'a rien à faire
+   dans les moteurs de recherche. */
+export const metadata: Metadata = { robots: { index: false, follow: false } };
+
 export default function BienLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
