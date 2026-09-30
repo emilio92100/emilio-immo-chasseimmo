@@ -32,14 +32,15 @@ export type DocMandat = { id: string; modele: string; numero: string | null; don
 const CHAMPS_MANDAT = ['mandatType', 'mandatNumero', 'mandatDate', 'mandatFin', 'mandatFichier'];
 
 /* La fin du mandat, telle que la fiche la montre (« jusqu'au », « fin dans
-   8 jours ») : pour un mandat simple, la dernière date possible (la limite
-   totale s'il se prolonge par périodes) ; pour un exclusif ou un
-   semi-exclusif, la fin de la première période, celle de l'exclusivité —
-   comme « Exclusivité jusqu'au » dans « Le mandat est signé ». */
+   8 jours ») : la dernière date possible. Un mandat qui se prolonge par
+   périodes court jusqu'à sa limite totale, exclusif compris (V3.43 : la
+   V3.42 prenait la première période pour un exclusif, et la liste disait
+   « Exclusivité terminée » en rouge au bout de trois mois, alors qu'il
+   courait encore). Les échéances intermédiaires (le courrier de l'article
+   L215-1) restent dans Documents. */
 export function finDuMandat(d: Donnees, jour: string): string {
   const duree = num(d, 'duree') ?? 3;
-  const simple = d.type !== 'semi' && d.type !== 'exclusif';
-  const mois = simple && d.dureeMode === 'prorogation' ? Math.max(duree, num(d, 'dureeMax') ?? 12) : duree;
+  const mois = d.dureeMode === 'prorogation' ? Math.max(duree, num(d, 'dureeMax') ?? 12) : duree;
   return plusMois(jour, mois);
 }
 
@@ -178,12 +179,12 @@ export async function lireEtapeAvantMandat(sb: SupabaseClient, bienId: string): 
 
 /* ── Annulé ou supprimé dans Documents ───────────────────────────────────
    La fiche du bien dépend-elle de ce mandat ? Oui quand le bien est « En
-   vente » ou en pause, et que ce qu'il porte vient de ce document : il avait
-   été signé, ou le bien porte son numéro, ou aucun mandat signé n'y est
-   noté. Un bien qui porte un AUTRE mandat signé (un autre numéro) n'est pas
-   concerné. */
+   vente », en pause, sous offre ou sous compromis (V3.43), et que ce qu'il
+   porte vient de ce document : il avait été signé, ou le bien porte son
+   numéro, ou aucun mandat signé n'y est noté. Un bien qui porte un AUTRE
+   mandat signé (un autre numéro) n'est pas concerné. */
 export function bienConcerne(b: BienVente, doc: DocMandat, etaitSigne: boolean): boolean {
-  if (b.etape !== 'mandat' && b.etape !== 'suspendu') return false;
+  if (!['mandat', 'suspendu', 'offre', 'compromis'].includes(b.etape)) return false;
   const bd = b.donnees || {};
   const signeNote = !!txt(bd, 'mandatDate');
   const n = (txt(bd, 'mandatNumero') || b.mandat_numero || '').trim();
