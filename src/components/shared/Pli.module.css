@@ -1,0 +1,18 @@
+/* « Voir le détail » / « Replier », à côté du titre (V3.33) — voir Pli.tsx. */
+.pli {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 5px 0 12px; margin-left: 12px;
+  border-radius: 99px; border: 1px solid #e3e8f0; background: #fff; color: #34496e;
+  font: 700 12.5px/1 'DM Sans', sans-serif; letter-spacing: 0; text-transform: none; white-space: nowrap;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.bouton { cursor: pointer; }
+.pli:hover, *:hover > .pli { border-color: #c9a84c; color: #1a2332; }
+.fleche {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #f1f4f8; color: #34496e; transition: transform .3s cubic-bezier(.22, .9, .3, 1), background .2s;
+}
+.pli[data-ouvert='oui'] .fleche { transform: rotate(180deg); background: #e6ecf4; }
+@media (max-width: 640px) {
+  .pli { height: 28px; padding: 0 4px 0 10px; margin-left: 8px; font-size: 12px; }
+  .fleche { width: 20px; height: 20px; }
+}
