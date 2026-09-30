@@ -1510,6 +1510,16 @@ Relecture de tout le dépôt (sécurité, données, santé du code, fonctionnel)
   vidée et enregistrée. Un brouillon supprimé dans Documents perd aussi ses fichiers
   (`/api/documents`, action `retirer`) ; un document signé ne se supprime pas.
 
+- **Ce qui se plie : le bouton à côté du titre, jamais tout à droite** (Alexandre : « voir le
+  détail, il faut qu'il soit à côté du nom, pas collé, un espace ; pareil pour tout ce qui se plie »).
+  Une pastille partagée, `src/components/shared/Pli.tsx` : `BoutonPli` (le bouton, quand le titre ne
+  se clique pas) et `PastillePli` (le repère, dans un en-tête déjà cliquable), « Voir le détail » /
+  « Replier ». Posée : documents de la vente, « Tous les documents préparés » (« Voir la liste »),
+  groupes du dossier de diagnostics (et « Tout replier / Tout déplier » à côté des filtres), « Ses
+  biens » et « Ses documents » d'un contact (`BlocRepliable`), « Qui a signé ? » (`SuiviSignature`),
+  « Tout voir » des coordonnées, « Changer » d'une pièce (le champ du nom a la largeur du nom).
+  Laissés tels quels : les « Lire la suite » / « Voir les N autres » posés sous leur contenu.
+
 Relevé mais pas corrigé (à décider) : fichiers très longs à découper (`EspaceClient` 7 500 lignes,
 `FicheClient` 5 900, `ParcoursBien` 2 900) ; coordonnées de l'agence écrites en dur à une
 vingtaine d'endroits ; ~20 façons d'écrire un prix ; premier chargement du CRM lourd (le PDF du
