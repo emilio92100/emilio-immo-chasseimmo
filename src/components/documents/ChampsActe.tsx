@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { enLettres } from '@/lib/mandat';
 import { PERSONNE_VIDE, type Champ, type Donnees, type Personne } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
@@ -95,6 +95,87 @@ function ChampCases({ c, v, onChange, off }: { c: Extract<Champ, { t: 'cases' }>
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ── Une zone de texte libre (une clause, une précision) ── V3.46
+   Elle grandit avec le texte, jusqu'à HAUT_ZONE : au-delà, elle défile.
+   Dessous, une poignée à tirer (double-clic : retour à la taille d'origine)
+   et « Agrandir », qui montre tout le texte d'un coup — ou donne de la
+   place pour écrire long. */
+const HAUT_ZONE = 260;
+type Taille = 'auto' | 'grand' | number;
+
+function ZoneTexte({ id, v, manque, off, exemple, onChange }: {
+  id: string; v: string; manque: boolean; off: boolean; exemple?: string; onChange: (x: string) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [taille, setTaille] = useState<Taille>('auto');
+  const ajuster = useCallback(() => {
+    const t = ref.current;
+    if (!t) return;
+    if (typeof taille === 'number') { t.style.height = `${taille}px`; return; }
+    const cs = getComputedStyle(t);
+    const bords = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    /* Mesurer oblige à replier la zone un instant : la page qui la porte ne
+       doit pas sauter pour autant (rien n'est dessiné entre-temps). */
+    const gardes: [HTMLElement, number][] = [];
+    for (let el = t.parentElement; el; el = el.parentElement) if (el.scrollTop) gardes.push([el, el.scrollTop]);
+    const dedans = t.scrollTop;
+    t.style.height = 'auto';
+    const plein = t.scrollHeight + bords;
+    t.style.height = `${taille === 'grand' ? Math.max(plein, Math.min(window.innerHeight * 0.6, 560)) : Math.min(plein, HAUT_ZONE)}px`;
+    t.scrollTop = dedans;
+    for (const [el, y] of gardes) el.scrollTop = y;
+  }, [taille]);
+  useLayoutEffect(ajuster, [ajuster, v]);
+  /* La colonne s'élargit ou se resserre : le texte se replie autrement. */
+  useEffect(() => {
+    const t = ref.current;
+    if (!t || typeof ResizeObserver === 'undefined') return;
+    let large = t.clientWidth;
+    const ro = new ResizeObserver(() => { if (t.clientWidth !== large) { large = t.clientWidth; ajuster(); } });
+    ro.observe(t);
+    return () => ro.disconnect();
+  }, [ajuster]);
+
+  const tirer = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const t = ref.current;
+    if (!t || e.button !== 0) return;
+    e.preventDefault();
+    const poignee = e.currentTarget;
+    poignee.setPointerCapture(e.pointerId);
+    const y0 = e.clientY;
+    const h0 = t.getBoundingClientRect().height;
+    let h = h0;
+    const bouger = (ev: PointerEvent) => {
+      h = Math.round(Math.max(88, Math.min(window.innerHeight * 0.85, h0 + ev.clientY - y0)));
+      t.style.height = `${h}px`;
+    };
+    const finir = () => {
+      poignee.removeEventListener('pointermove', bouger);
+      poignee.removeEventListener('pointerup', finir);
+      poignee.removeEventListener('pointercancel', finir);
+      if (h !== h0) setTaille(h);
+    };
+    poignee.addEventListener('pointermove', bouger);
+    poignee.addEventListener('pointerup', finir);
+    poignee.addEventListener('pointercancel', finir);
+  };
+
+  const grand = taille !== 'auto';
+  return (
+    <div className={s.ztCadre}>
+      <textarea id={id} ref={ref} className={`${s.input} ${s.ztTexte} ${manque ? s.inputManque : ''}`} disabled={off} rows={3}
+        value={v} placeholder={exemple ? `Ex : ${exemple}` : undefined} onChange={e => onChange(e.target.value)} />
+      <div className={s.ztBas}>
+        <span className={s.ztPoignee} onPointerDown={tirer} onDoubleClick={() => setTaille('auto')} title="Tirer pour agrandir ou réduire" aria-hidden="true" />
+        <button type="button" className={s.ztBtn} aria-controls={id} aria-expanded={grand}
+          onClick={() => setTaille(grand ? 'auto' : 'grand')}>
+          <Ic n={grand ? 'reduire' : 'agrandir'} t={13} /><span>{grand ? 'Réduire' : 'Agrandir'}</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -255,11 +336,7 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
         onChange={e => maj(c.cle, e.target.value)} />
     );
   } else if (c.t === 'zone') {
-    controle = (
-      <textarea id={id} className={`${s.input} ${manque ? s.inputManque : ''}`} disabled={off} rows={3}
-        value={typeof v === 'string' ? v : ''} placeholder={c.exemple ? `Ex : ${c.exemple}` : undefined}
-        onChange={e => maj(c.cle, e.target.value)} />
-    );
+    controle = <ZoneTexte id={id} v={typeof v === 'string' ? v : ''} manque={manque} off={off} exemple={c.exemple} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'nombre' || c.t === 'euros') {
     controle = <ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={n => maj(c.cle, n)} />;
   } else if (c.t === 'choix') {
@@ -274,7 +351,7 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
 
   const carte = c.t === 'choix' || c.t === 'cases' || (bloc && c.t !== 'personnes');
   return (
-    <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && c.t === 'personnes' ? s.chPers : ''}`}>
+    <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && c.t === 'personnes' ? s.chPers : ''}`} data-cle={c.cle}>
       {sansLib ? null : saisie ? <label className={s.chLib} htmlFor={id}>{libelle}</label> : <div className={s.chLib}>{libelle}</div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}
