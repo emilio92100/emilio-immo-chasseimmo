@@ -50,6 +50,18 @@
 /* « À faire » et « Les prochaines visites », côte à côte quand les deux sont là. */
 .enCours { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; align-items: start; }
 .enCours[data-deux='oui'] .grille { grid-template-columns: minmax(0, 1fr); }
+.offres { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Une rubrique repliable (V3.45) : le titre, le nombre, « Déplier / Replier » à côté, le résumé. */
+.rubrique { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; width: 100%; padding: 4px 0; border: none; background: none; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.rubrique h3 { margin: 0; font: 800 16.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.rubrique > i { font-style: normal; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; background: #eef2f8; color: #34496e; font-size: 12px; font-weight: 800; }
+.rubriqueR { font-size: 13px; font-weight: 600; color: #64748b; }
+.rubrique[data-ouvert='non'] { padding: 12px 16px; border-radius: 16px; background: #fff; border: 1px solid #e3e8f0; }
+.rubrique[data-ouvert='non']:hover { border-color: #c9a84c; }
+.histoT { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.histoT .rubrique { width: auto; flex: 1 1 auto; }
+.sousBloc { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sousBloc h4 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #64748b; }
 .vide { margin: 0; font-size: 13.5px; color: #64748b; }
 
 .seg { margin-left: auto; display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: #eef2f7; }
@@ -68,6 +80,7 @@
 .jour { display: flex; flex-direction: column; align-items: center; padding-top: 4px; line-height: 1.1; }
 .jour b { font: 800 19px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .jour small { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #64748b; }
+.jour em { font-style: normal; font-size: 10.5px; font-weight: 700; color: #94a3b8; }
 .point { position: relative; z-index: 1; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f5f3ff; color: #6d28d9; border: 2px solid #fff; box-shadow: 0 0 0 1px #e9e3ff; }
 .ligne[data-genre='offre'] .point { background: #fbf1d6; color: #a07c28; box-shadow: 0 0 0 1px #ecdcb0; }
 .ligne[data-statut='acceptee'] .point { background: #dcfce7; color: #15803d; box-shadow: 0 0 0 1px #bbf7d0; }

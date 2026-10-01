@@ -5,9 +5,9 @@ import { num, txt, liste, modele, modeSignature } from '@/lib/actes';
 import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
-  ETAPES_BIEN, PARCOURS, argentBien, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
+  ETAPES_BIEN, PARCOURS, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
   lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
-  type BienVente, type Donnees, type EtapeVente, type Observation, type SuiviVente,
+  type BienVente, type Donnees, type EtapeVente, type Observation, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import { NOM_MANDAT, prixCarte } from './CarteBien';
@@ -19,8 +19,8 @@ import {
   type ChoixA, type OptionAcheteur,
 } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, creerAvenantVente, creerDocument, enregistrerBien,
-  deposerPiece, ficheClient, majBien, majSuivi, nomClient, ouvrirPiece, supprimerBien, supprimerSuivi,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
+  deposerPiece, ficheClient, joindreOffreSignee, majBien, majSuivi, nomClient, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type PourDocument, type VisiteRow,
 } from './outils';
 import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -42,7 +42,7 @@ import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
   ChaineDocs, EtapesDocs, SyntheseDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
-  type AVenirBien, type EvtBien, type MaillonDoc, type SurfacesBien, type VisiteCarte,
+  dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
 import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
@@ -69,7 +69,7 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, Cart
 
 type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA } | { k: 'compromis' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -782,7 +782,7 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
         detail: [str('jusquau') ? `Valable jusqu’au ${dateCourte(str('jusquau'))}` : '', str('conditions')].filter(Boolean).join(' · '), genre: 'offres', puce: PUCE_OFFRE[x.statut || 'en_attente'] });
       if (str('reponse_le') && x.statut && x.statut !== 'en_attente') {
         l.push({ cle: x.id + '-r', le: `${str('reponse_le')}T18:00:00`, ic: x.statut === 'acceptee' ? 'check' : 'euro', ton: x.statut === 'acceptee' ? 'ic_vert' : 'ic_gris',
-          titre: `Réponse à l’offre de ${x.qui || 'l’acquéreur'} : ${(PUCE_OFFRE[x.statut]?.l || x.statut).toLowerCase()}`, detail: [typeof d.contre === 'number' ? `Contre-offre du vendeur à ${euros(d.contre)}` : '', x.commentaire || ''].filter(Boolean).join(' · '), genre: 'offres' });
+          titre: `Réponse à l’offre de ${x.qui || 'l’acquéreur'} : ${(PUCE_OFFRE[x.statut]?.l || x.statut).toLowerCase()}`, detail: [x.statut === 'contre' && typeof d.contre === 'number' ? `Contre-offre du vendeur à ${euros(d.contre)}` : '', x.statut === 'acceptee' && montantActuel(x) !== x.montant ? `Accord à ${euros(montantActuel(x))}` : '', x.commentaire || ''].filter(Boolean).join(' · '), genre: 'offres' });
       }
     } else if (x.type === 'envoi') {
       /* Des pièces du dossier envoyées par mail (V3.30). */
@@ -926,7 +926,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     onRecharger();
   }, [charger, onMaj, onRecharger]);
 
-  const acheteurs = useMemo(() => acheteursPour(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
+  /* V3.45 : ceux qui ratent nettement un critère essentiel sont écartés (outils.ts). */
+  const tries = useMemo(() => acheteursTries(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
+  const acheteurs = tries.retenus;
   const proprio = bien.client_id ? liste.clients[bien.client_id] || null : null;
   const recherchesProprio = proprio ? liste.recherches.filter(r => r.client_id === proprio.id) : [];
   const visites = useMemo(() => (detail ? visitesDe(detail, liste.clients) : []), [detail, liste.clients]);
@@ -993,11 +995,22 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     setDepotMandat(false);
   }
 
-  async function statutOffre(o: SuiviVente, statut: string, contre?: number) {
+  /* La réponse à une offre (V3.45) : acceptée, contre-offre, nouvelle
+     proposition, refus… La négociation s'allonge dans la même offre
+     (`apresReponse`, src/lib/biens-vente.ts). Une réponse clôt la relance
+     « réponse à donner » du propriétaire. */
+  async function repondreOffre(o: SuiviVente, r: Reponse) {
     try {
-      await majSuivi(o.id, { statut, donnees: { ...o.donnees, reponse_le: jourParis(), ...(contre ? { contre } : {}) } });
+      const { statut, donnees } = apresReponse(o, r, jourParis());
+      await majSuivi(o.id, { statut, donnees });
+      if (r.k !== 'rouvrir') await cloreRelanceOffre(bien, o);
       await apres();
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
+  }
+  async function joindreOffre(o: SuiviVente, f: File) {
+    setMessage({ t: 'Envoi de l’offre signée…', ok: true });
+    try { await joindreOffreSignee(bien, o, f); setMessage({ t: 'L’offre signée est jointe.', ok: true }); await apres(); }
+    catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }
   async function annulerVisite(v: VisiteU) {
     if (!confirm(`Annuler la visite de ${v.qui} ?`)) return;
@@ -1015,7 +1028,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         : { civilite: '', prenom: reste.length ? prenom : '', nom: reste.length ? reste.join(' ') : v.qui, nomNaissance: '', naissanceDate: '', naissanceLieu: '', adresse: '', email: '', telephone: String(v.libre?.donnees?.tel || '') },
     });
   }
-  function offreEcrite(o: SuiviVente) {
+  /* Le document d'une offre (V3.45) : celui déjà commencé s'ouvre, au lieu
+     d'en créer un nouveau à chaque clic. */
+  function offreEcrite(o: SuiviVente, deja?: DocLie | null) {
+    if (deja) { ouvrirDoc(deja.id); return; }
     const cl = o.client_id ? liste.clients[o.client_id] : null;
     faireDocument({
       modele: 'offre_achat', clientId: o.client_id, rechercheId: o.recherche_id, offre: o,
@@ -1261,6 +1277,42 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const vivants = (l: DocLie[]) => l.filter(x => x.statut !== 'annule');
   const parDate = (p: DocLie, q: DocLie) => p.created_at.localeCompare(q.created_at);
   const offresDocs = vivants(docsDe('offre_achat'));
+  /* V3.45 : le document de chaque offre — relié par `offreSuiviId` ; ceux
+     d'avant, par l'acquéreur et le montant. */
+  const docDeLOffre = (o: SuiviVente): DocLie | null => {
+    const relies = offresDocs.filter(x => x.donnees?.offreSuiviId === o.id).sort((p, q) => q.created_at.localeCompare(p.created_at));
+    if (relies.length) return relies[0];
+    return offresDocs.find(x => !x.donnees?.offreSuiviId && !!o.montant && Number(x.donnees?.prix) === o.montant && (!o.client_id || x.client_id === o.client_id)) || null;
+  };
+  const docOffre = (x: DocLie): DocOffre => {
+    const sv = suivis[x.id];
+    return {
+      etat: x.statut === 'signe' ? 'signe' : x.statut === 'pret' ? 'pret' : 'prepa',
+      detail: x.statut === 'signe' ? `Signée le ${dateAn(x.signe_le || x.updated_at)}`
+        : x.statut === 'pret' ? (sv ? sv.titre : 'Prête, à faire signer à l’acquéreur') : `Commencée le ${dateAn(x.created_at)}`,
+      onOuvrir: () => ouvrirDoc(x.id),
+      onPdf: x.statut === 'signe' && x.signe_chemin ? () => { void ouvrirSigne(x); } : undefined,
+    };
+  };
+  /* Le compromis signé sur cette offre : ses dates, et la vente. */
+  const lignesCompromis = (detail?.suivi || []).filter(x => x.type === 'etape' && x.statut === 'compromis').sort((p, q) => q.le.localeCompare(p.le));
+  const compromisDe = (o: SuiviVente): InfosCompromis | null => {
+    if (e !== 'compromis' && e !== 'vendu') return null;
+    /* Le dernier compromis seulement : un compromis tombé puis refait sur
+       une autre offre ne doit pas laisser deux cartes « Compromis signé ». */
+    const l = lignesCompromis[0];
+    if (!l || (l.donnees?.offre ? l.donnees.offre !== o.id : offres.filter(y => y.statut === 'acceptee').length !== 1)) return null;
+    const c = (l.donnees || {}) as Record<string, unknown>;
+    const t = (k: string) => (typeof c[k] === 'string' && c[k] ? String(c[k]) : undefined);
+    return { signe: t('signe') || l.le, sru: t('sru'), pretLimite: t('pretLimite'), acte: t('acte'), prix: typeof c.prix === 'number' ? c.prix : null, venduLe: e === 'vendu' ? bien.vendu_le : null };
+  };
+  /* Corriger une offre : l'acquéreur déjà choisi. */
+  const choixPour = (o: SuiviVente): ChoixA => {
+    const opt = o.client_id ? options.find(y => y.clientId === o.client_id && (!o.recherche_id || y.rechercheId === o.recherche_id)) : undefined;
+    if (opt) return { mode: 'crm', o: opt };
+    if (o.client_id) return { mode: 'crm', o: { cle: 'c-' + o.client_id, clientId: o.client_id, rechercheId: o.recherche_id, nom: o.qui || 'Acquéreur', sous: 'L’acquéreur de cette offre' } };
+    return { mode: 'libre', nom: o.qui || '', tel: '' };
+  };
   const bons = vivants(docsDe('bon_visite'));
   /* Le récapitulatif de chaque étape (V3.32) : ses documents dans l'ordre,
      l'avenant sous son mandat, chacun avec son état. */
@@ -1364,11 +1416,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       })} /> : undefined,
       actions: <>{bons.length > 0 && <BtnTuile onClick={() => ouvrirDoc(bons[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'bon_visite' })}><Ic n="plus" t={12} e={2.6} />Nouveau bon</BtnTuile></>,
     },
-    avant ? { k: 'offres', ic: 'euro', titre: 'Les offres d’achat', etat: 'plustard', statut: 'Après le mandat', detail: 'L’offre écrite, préremplie avec l’acheteur, à signer par lui.' } : {
+    avant ? { k: 'offres', ic: 'euro', titre: 'Les offres d’achat', etat: 'plustard', statut: 'Après le mandat', detail: 'Le document que l’acquéreur signe, prérempli avec lui et le bien.' } : {
       k: 'offres', ic: 'euro', titre: 'Les offres d’achat', etat: offresOuvertes.length ? 'encours' : accepte ? 'fait' : 'libre',
-      statut: resumeOffres || (offresDocs.length ? `${offresDocs.length} offre${offresDocs.length > 1 ? 's' : ''} écrite${offresDocs.length > 1 ? 's' : ''}` : 'Aucune pour l’instant'), detail: 'L’offre écrite, préremplie avec l’acheteur, à signer par lui. Les réponses du vendeur se notent dans « Visites et offres ».',
+      statut: resumeOffres || (offresDocs.length ? `${offresDocs.length} offre${offresDocs.length > 1 ? 's' : ''} préparée${offresDocs.length > 1 ? 's' : ''}` : 'Aucune pour l’instant'), detail: 'Le document que l’acquéreur signe, prérempli avec lui et le bien. Les réponses du vendeur se notent sur la carte de l’offre, dans « Visites et offres ».',
       suite: offresDocs.length ? <ChaineDocs items={[...offresDocs].sort(parDate).map(x => maillon(x, sansPrefixe(x.titre, /^Offre d’achat\s*·\s*/) || 'Offre d’achat'))} /> : undefined,
-      actions: <>{offresDocs.length > 0 && <BtnTuile onClick={() => ouvrirDoc(offresDocs[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'offre_achat' })}><Ic n="plus" t={12} e={2.6} />Offre écrite</BtnTuile></>,
+      actions: <>{offresDocs.length > 0 && <BtnTuile onClick={() => ouvrirDoc(offresDocs[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'offre_achat' })}><Ic n="plus" t={12} e={2.6} />Préparer une offre</BtnTuile></>,
     },
     compromisSigne ? { k: 'compromis', ic: 'doc', titre: 'Le compromis', etat: 'fait', statut: compromisLe ? `Signé le ${dateCourte(compromisLe)}` : 'Signé', detail: 'Rédigé et signé chez le notaire.' }
       : accepte ? { k: 'compromis', ic: 'doc', titre: 'Le compromis', etat: 'afaire', statut: 'Une offre est acceptée : à signer chez le notaire', detail: 'Une fois signé, le bien passe « Sous compromis ».', actions: <BoutonAct or onClick={() => setFen({ k: 'compromis' })}>Compromis signé</BoutonAct> }
@@ -1546,27 +1598,29 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
                   : () => setFen({ k: 'offre', pour: opt ? { mode: 'crm', o: opt } : { mode: 'libre', nom: v.qui, tel: '' } }),
               };
             }}
-            actOffre={x => ({
-              onStatut: st => statutOffre(x, st),
-              onContre: () => {
-                const r = prompt('Montant de la contre-offre du vendeur, en euros :', x.montant ? String(x.montant) : '');
-                const n = r ? Number(r.replace(/[\s  €]/g, '').replace(',', '.')) : NaN;
-                if (Number.isFinite(n) && n > 0) statutOffre(x, 'contre', n);
-              },
-              onDoc: () => offreEcrite(x),
-              onPiece: typeof x.donnees?.chemin === 'string' && x.donnees.chemin ? () => ouvrirPiece(String(x.donnees.chemin), String(x.donnees.nom || 'offre.pdf')) : undefined,
-            })}
+            actOffre={x => {
+              const doc = docDeLOffre(x);
+              return {
+                onReponse: r => repondreOffre(x, r),
+                onDoc: () => offreEcrite(x, doc),
+                doc: doc ? docOffre(doc) : null,
+                onPiece: typeof x.donnees?.chemin === 'string' && x.donnees.chemin ? () => ouvrirPiece(String(x.donnees.chemin), String(x.donnees.nom || 'offre.pdf')) : undefined,
+                onJoindre: f => joindreOffre(x, f),
+                onModifier: e === 'vendu' ? undefined : () => setFen({ k: 'offre', existante: x, pour: choixPour(x) }),
+                onCompromis: e === 'offre' || e === 'mandat' || e === 'suspendu' ? () => setFen({ k: 'compromis', offre: x.id }) : undefined,
+                onVendu: e === 'compromis' ? () => setFen({ k: 'vendu' }) : undefined,
+                compromis: x.statut === 'acceptee' ? compromisDe(x) : null,
+              };
+            }}
             encart={bien.etape === 'offre' && offres.length > 0 && !offresOuvertes.length && !offres.some(x => x.statut === 'acceptee') ? (
               <>{'Plus aucune offre en cours. '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'mandat' })}>Remettre le bien en vente</button></>
-            ) : bien.etape === 'offre' && offres.some(x => x.statut === 'acceptee') ? (
-              <>{'Une offre est acceptée : quand le compromis est signé, '}<button type="button" className={b.lien} onClick={() => setFen({ k: 'compromis' })}>passe le bien « Sous compromis »</button></>
             ) : undefined} />
         )
       )}
 
       {onglet === 'acheteurs' && (
         <div className={b.col}>
-          <ListeAcheteurs key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} acheteurs={acheteurs} mode={mode}
+          <ListeAcheteurs key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} acheteurs={acheteurs} mode={mode} ecartes={phraseEcartes(tries.ecartes)}
             nbRecherches={liste.recherches.length} onFiche={ouvrirClient}
             onAgir={mode === 'vente' ? l => setFen({ k: 'acheteurs', liste: l }) : undefined} />
           {horsListe.length > 0 && (
@@ -1663,8 +1717,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           else if (suite === 'document') void faireDocument({ modele: 'mandat_vente' });
         });
       }} />}
-      {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
-      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} existante={fen.existante} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={(detail?.suivi || []).find(x => x.type === 'etape' && x.statut === 'compromis') || null} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'prix' && <FenPrix bien={bien} mandatSigne={!!mandatSigne && ['mandat', 'offre', 'suspendu'].includes(e)} onFermer={() => setFen(null)}
         onFait={async (r, x) => {

@@ -114,8 +114,10 @@ function Illu() {
 }
 
 /* ══ LA LISTE ════════════════════════════════════════════════════════════ */
-export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir, max, onTout, titre }: {
+export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir, max, onTout, titre, ecartes }: {
   acheteurs: Acheteur[]; mode: ModeAcheteurs; nbRecherches: number;
+  /* V3.45 : « 3 autres recherches ne sont pas montrées : budget trop court… » */
+  ecartes?: string;
   onFiche: (clientId: string) => void;
   /* Ouvre « Sélection ou envoi » pour ces acheteurs (en vente seulement). */
   onAgir?: (l: Acheteur[]) => void;
@@ -137,7 +139,7 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
   const titreBloc = titre || (mode === 'avant' ? 'Qui pourrait l’acheter' : 'Acheteurs qui correspondent');
   const sous = mode === 'avant'
     ? 'Sur les critères de leur recherche et la surface, les pièces, le secteur du bien. Le prix compte dès qu’il est défini.'
-    : `Parmi vos ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''}, avec la même note que dans leur espace. Mise à jour à chaque nouvel acheteur.`;
+    : `Parmi vos ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''}, avec la même note que dans leur espace. Un budget trop court, un autre secteur, trop petit ou pas assez de chambres : la recherche est écartée.`;
   const verrou = mode === 'avant' ? 'L’envoi s’ouvre au mandat' : mode === 'pause' ? 'Vente en pause : l’envoi reprend avec elle' : mode === 'fini' ? 'Le bien n’est plus en vente' : '';
 
   return (
@@ -215,6 +217,8 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
           {!max && !montres.length && <div className={a.videPetit}>Personne dans ce filtre.</div>}
         </div>
       )}
+
+      {!max && ecartes && <p className={a.ecartes}><Ic n="info" t={14} /><span>{ecartes}</span></p>}
 
       {max && onTout && liste.length > 0 && (
         <button type="button" className={a.tout} onClick={onTout}>{liste.length > montres.length ? `Voir les ${liste.length} dans l’onglet Acheteurs` : 'Ouvrir l’onglet Acheteurs'}</button>

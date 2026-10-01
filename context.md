@@ -1460,6 +1460,75 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.45 — 1er octobre 2026 · les offres : la négociation, la suite, le document ; l'onglet Acheteurs plus juste
+
+Remarques d'Alexandre en reprenant ses fiches d'Immofacile :
+- « Visites et offres, il est où le bouton pour passer en compromis ou dire si l'offre est
+  acceptée ? »
+- « L'offre écrite, on ne comprend pas. »
+- « Il n'y a pas l'année. »
+- « S'il y a quatre contre-offres, ça fait quatre blocs ? »
+- « Les prochaines visites traînent toutes seules : en haut, et qu'on puisse replier. »
+- « L'onglet Acheteurs montre des gens sans rapport. »
+
+- **La carte d'une offre** (`CarteOffreB`, `OngletsBien.tsx`) : un bloc par acquéreur, en deux
+  moitiés quand la place le permet (requête de conteneur à 720 px).
+  - À gauche : le montant sur la table, l'acquéreur, et la négociation ligne à ligne.
+  - À droite : quatre étapes (Reçue · Réponse du vendeur ou Négociation · Acceptée · Compromis
+    signé), une question « Et maintenant ? » avec ses réponses, puis le document.
+  - Les réponses :
+    - « Il accepte / Contre-offre… / Il refuse » ;
+    - puis « Il accepte / Nouvelle proposition… / Il renonce » ;
+    - puis « Le compromis est signé → » (`FenCompromis` s'ouvre sur cette offre) ;
+    - puis les dates du compromis et « La vente est signée → ».
+  - Le montant se tape dans la carte : fini le `prompt()`.
+  - Chaque carte se replie sur une ligne.
+- **La négociation** : `donnees.echanges` (`{ le, par: 'acquereur' | 'vendeur', montant }`).
+  - `apresReponse` (`src/lib/biens-vente.ts`) calcule le statut et les réponses. `'en_attente'` =
+    au vendeur, `'contre'` = à l'acquéreur.
+  - `accepte_a` = le prix convenu, repris par `FenCompromis` (`prixRetenu` → `montantActuel`).
+  - Les offres d'avant se lisent avec `echangesDe` (montant + `contre`).
+- **Le document** de l'offre est relié à elle (`donnees.offreSuiviId`). Ceux d'avant sont
+  retrouvés par l'acquéreur et le prix. La carte rouvre le document au lieu d'en créer un à chaque
+  clic. L'offre signée peut se joindre après coup (`joindreOffreSignee`).
+- **« Corriger l'offre »** : `FenOffre` en mode `existante` (`modifierOffre`). La relance suit le
+  nouveau délai.
+- **« Avec un prêt »** n'est plus coché d'office : le financement reste vide tant qu'on ne le sait
+  pas (les pastilles se décochent d'un second clic).
+- **La relance « réponse à donner »** du propriétaire :
+  - elle garde son id dans l'offre (`relance_id`) ;
+  - elle se clôt à la première réponse et à la signature du compromis (`cloreRelanceOffre` ; pour
+    les anciennes offres, par sa note) ;
+  - elle n'est plus créée quand le délai est déjà passé (une offre notée après coup tombait tout
+    de suite « 231 j de retard »).
+- **L'onglet Visites et offres** (`VisitesOffres.tsx`) :
+  - Trois rubriques dans l'ordre visite → offre, chacune repliable sur une ligne avec son résumé.
+    Le choix est gardé dans ce navigateur : `emilio.visitesOffres.plis`.
+    - Les visites : comptes rendus à faire et prochaines visites.
+    - Les offres : celle de la vente (compromis, vendu) d'abord, puis celles en cours.
+    - L'historique.
+  - L'encart « Une offre est acceptée… » disparaît : le bouton est sur la carte.
+- **L'année partout** dans la fiche d'un bien : `dateCourte` (lib), `dateCourteMois`, les pavés
+  de date, « Reçue le 12 février 2026 ».
+- **L'onglet Acheteurs** : `raisonEcart` (`src/lib/ecart-acheteur.ts`) écarte d'office une
+  recherche qui rate nettement un critère essentiel, quelle que soit sa note. Il sert à
+  `acheteursTries`, aux alertes « Un mandat / un acheteur arrive » (`alertes-rappro.ts`) et aux
+  mandats proposés à un client (`rapprochement.ts`) ; l'espace de l'acheteur garde la note telle
+  quelle. Les cas :
+  - budget dépassé de plus de 10 % ;
+  - une autre ville ;
+  - moins de 90 % de la surface ;
+  - moins de chambres ;
+  - un indispensable absent, seulement si la fiche remplit ses annexes (ou son immeuble) :
+    `equipConnus`.
+
+  Les villes se comparent comme les communes (« Paris 16e » = « Paris 16ème », `cleCommune`).
+
+  La liste le dit en une ligne (`phraseEcartes`). Sur téléphone, l'avatar ne se cachait plus
+  (style en ligne d'`AvatarContact`) et écrasait les noms dans une colonne de 24 px : corrigé.
+- **Le calendrier** (`ChoixDate`) passe au-dessus de toute fenêtre (z-index 20000). Il s'ouvrait
+  derrière « Ajouter une action ».
+
 ### V3.44 — 1er octobre 2026 · « Découvrir » : les nouveaux biens, un par un
 
 Alexandre a validé les maquettes V2 (téléphone et ordinateur) et demandé de les mettre en place

@@ -12,6 +12,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { correspondance, criteresDepuisRecherche, type BienCorr, type Correspondance } from '@/lib/correspondance';
+import { raisonEcart } from '@/lib/ecart-acheteur';
 import { versCorrespondance, typeCompatible, versBienAcheteur, titreBien, lirePhotos, type BienVente } from '@/lib/biens-vente';
 import { SEUIL_LISTE } from '@/components/biens/outils';
 import { signalerEchec } from '@/lib/ecritures';
@@ -135,8 +136,10 @@ export async function mandatsPour(recherche: Ligne, clientId: string): Promise<{
   for (const b of data as BienVente[]) {
     if (b.client_id === clientId || deja.ventes.has(b.id)) continue;
     if (!typeCompatible(b.donnees?.typeBien, recherche.type_bien)) continue;
-    const c = correspondance(versCorrespondance(b), crit);
-    if (c && c.note >= 70) liste.push({ id: b.id, titre: b.titre || titreBien(b.donnees || {}), ville: b.ville || '', note: c.note });
+    const bc = versCorrespondance(b);
+    const c = correspondance(bc, crit);
+    /* V3.45 : un critère essentiel nettement raté écarte le mandat (src/lib/ecart-acheteur.ts). */
+    if (c && c.note >= 70 && !raisonEcart(c, bc, crit)) liste.push({ id: b.id, titre: b.titre || titreBien(b.donnees || {}), ville: b.ville || '', note: c.note });
   }
   liste.sort((a, b) => b.note - a.note);
   return { n: liste.length, meilleure: liste[0]?.note || 0, liste };
@@ -166,8 +169,9 @@ export async function rapprocher(recherche: Ligne, clientId: string, source: Sou
       if (b.client_id === clientId) continue;
       compares++;
       if (!typeCompatible(b.donnees?.typeBien, recherche.type_bien)) continue;
-      const corr = correspondance(versCorrespondance(b), crit);
-      if (!corr || corr.note < SEUIL_LISTE) continue;
+      const bc = versCorrespondance(b);
+      const corr = correspondance(bc, crit);
+      if (!corr || corr.note < SEUIL_LISTE || raisonEcart(corr, bc, crit)) continue;
       if (deja.ventes.has(b.id)) { dejaLa++; continue; }
       const d = b.donnees || {};
       const photos = lirePhotos(d.photos).map(p => p.url).filter(Boolean);

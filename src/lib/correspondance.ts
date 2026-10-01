@@ -16,6 +16,9 @@ export type BienCorr = {
   etage: number | null; etageTotal: number | null; expo: string | null; dpe: string | null; annee: number | null;
   terrasse?: boolean; balcon?: boolean; jardin?: boolean; parking?: boolean; ascenseur?: boolean; cave?: boolean; gardien?: boolean;
   exterieur?: number | null; surfaceTerrasse?: number | null; surfaceBalcon?: number | null;
+  /* V3.45 : la fiche dit-elle ses annexes, son immeuble ? Sinon un équipement
+     « non annoncé » n'écarte personne (src/lib/ecart-acheteur.ts). */
+  equipConnus?: { annexes: boolean; immeuble: boolean };
 };
 /* Ce que la note lit d'une recherche : le sous-ensemble des `Criteres` de l'espace. */
 export type CriteresCorr = {

@@ -144,7 +144,7 @@
 .vis { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 14px; padding: 14px; border-radius: 18px; background: #fff; border: 1px solid #e3e8f0; }
 .vis[data-passee='oui'] { background: #fcfdfe; }
 .vis[data-annulee='oui'] { opacity: .6; }
-.date { width: 56px; height: 62px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3e8f0; color: #1a2332; }
+.date { width: 56px; min-height: 62px; padding: 6px 0; box-sizing: border-box; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3e8f0; color: #1a2332; }
 .date small { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; color: #a07c28; }
 .date small + b + small { color: #94a3b8; }
 .date b { font: 800 22px/1 'Plus Jakarta Sans', sans-serif; }
@@ -153,6 +153,8 @@
 .date[data-sorte='prochaine'] small + b + small { color: rgba(255, 255, 255, .7); }
 .date[data-sorte='passee'] { background: #f1f5f9; border-color: #f1f5f9; color: #475569; }
 .date[data-sorte='passee'] small, .date[data-sorte='passee'] small + b + small { color: #64748b; }
+.date em { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .4px; color: #94a3b8; margin-top: 1px; }
+.date[data-sorte='prochaine'] em { color: rgba(255, 255, 255, .6); }
 .visC { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .visT { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .visNom { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; min-width: 0; overflow-wrap: anywhere; }
@@ -163,12 +165,38 @@
 .pulse { animation: pulse 1.8s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
-.offre { border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #fff; border: 1px solid #e3e8f0; min-width: 0; }
+.offre { border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #fff; border: 1px solid #e3e8f0; min-width: 0; container-type: inline-size; }
+/* V3.45 : deux moitiés sur un écran large — l'offre et sa négociation à
+   gauche, les étapes et la suite à droite ; l'une sous l'autre sinon. */
+/* Repliée, sur une ligne (V3.45). */
+.offreLigne { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; box-shadow: none !important; }
+.offreLigne:hover { border-color: #c9a84c; }
+.offreLigneQui { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.offreLigneM { font: 800 16px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.offreLigneN { font-size: 12.5px; font-weight: 600; color: #64748b; }
+.offreLigneLe { margin-left: auto; font-size: 12.5px; font-weight: 600; color: #64748b; white-space: nowrap; }
+.offreIn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.offreG, .offreD { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@container (min-width: 720px) {
+  .offreIn { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 22px; }
+  .offreD { padding-left: 22px; border-left: 1px solid #eef1f6; }
+}
+/* La négociation, ligne à ligne. */
+.echanges { list-style: none; margin: 2px 0 0; padding: 10px 12px; border-radius: 14px; background: #f8fafc; display: flex; flex-direction: column; gap: 7px; }
+.echanges li { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 12.5px; color: #475569; }
+.echanges li b { font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; white-space: nowrap; }
+.echanges li[data-par='vendeur'] .echL { color: #1d4ed8; }
+.echanges li[data-par='accord'] .echL, .echanges li[data-par='accord'] b { color: #15803d; }
+.echanges li:last-child:not([data-par='accord']) b { color: #a07c28; }
+.echD { color: #94a3b8; font-weight: 600; white-space: nowrap; }
+.echL { font-weight: 700; min-width: 0; }
 .offre[data-ouverte='oui'] { border: 1.5px solid #ecdcb0; box-shadow: 0 16px 34px -26px rgba(160, 124, 40, .7); }
-.offre[data-sorte='acceptee'] { border: 1.5px solid #bbf7d0; box-shadow: 0 16px 34px -26px rgba(22, 163, 74, .6); }
+.offre[data-sorte='acceptee'], .offre[data-sorte='compromis'] { border: 1.5px solid #bbf7d0; box-shadow: 0 16px 34px -26px rgba(22, 163, 74, .6); }
 .offre[data-sorte='fermee'] { opacity: .72; }
-.offreT { display: flex; align-items: center; gap: 10px; }
-.offreT > span:last-child { margin-left: auto; font-size: 12.5px; color: #64748b; white-space: nowrap; }
+.offreT { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.offreLe { margin-left: auto; font-size: 12.5px; font-weight: 600; color: #64748b; white-space: nowrap; }
+.offreModif { margin-left: auto; align-self: center; width: 30px; height: 30px; border-radius: 10px; border: 1px solid #e3e8f0; background: #fff; color: #64748b; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; flex-shrink: 0; }
+.offreModif:hover { color: #1a2332; border-color: #d5deeb; background: #f8fafc; }
 .montant { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .montant b { font: 800 28px/1 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.3px; }
 .offre[data-sorte='fermee'] .montant b { font-size: 22px; color: #475569; }
@@ -188,9 +216,56 @@
 .delai { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 12px; background: #fffbeb; font-size: 12.5px; color: #92400e; font-weight: 700; line-height: 1.4; }
 .delai[data-retard='oui'] { background: #fef2f2; color: #b91c1c; }
 .offreBtns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.offreBtns .act { white-space: normal; height: auto; min-height: 36px; padding: 6px 8px; line-height: 1.2; text-align: center; }
+/* Étroit : « Il accepte » sur toute la largeur, les deux autres dessous. */
+@container (max-width: 420px) {
+  .offreBtns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .offreBtns > :first-child { grid-column: 1 / -1; }
+}
 .petits { display: flex; gap: 14px; flex-wrap: wrap; }
 .petit { border: none; background: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: #64748b; font: 700 12.5px 'DM Sans', sans-serif; }
 .petit:hover { color: #1a2332; }
+
+/* V3.45 : les quatre étapes de l'offre, le mot sous le rond. */
+.frise4 { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ofPas { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 3px; text-align: center; font-size: 11.5px; font-weight: 700; line-height: 1.25; color: #94a3b8; }
+.ofPas::before { content: ''; position: absolute; top: 11px; right: 50%; width: 100%; height: 2px; background: #e3e8f0; }
+.ofPas:first-child::before { display: none; }
+.ofPas[data-etat='fait']::before { background: #86efac; }
+.ofPas[data-etat='ici']::before { background: linear-gradient(90deg, #86efac, #e8c96a); }
+.ofPas > span { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid #dfe5ee; background: #fff; }
+.ofPas > span i { font-style: normal; font-size: 11px; font-weight: 800; }
+.ofPas[data-etat='fait'] { color: #15803d; }
+.ofPas[data-etat='fait'] > span { background: #dcfce7; border-color: #86efac; }
+.ofPas[data-etat='ici'] { color: #7a5d1c; }
+.ofPas[data-etat='ici'] > span { background: #fbf6e9; border-color: #c9a84c; box-shadow: 0 0 0 4px rgba(201, 168, 76, .16); }
+
+/* « Et maintenant ? » : une question, ses réponses. */
+.suite { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #fbfaf6; border: 1px solid #f0e6c8; }
+.suite[data-sorte='contre'] { background: #f5f8ff; border-color: #dbe6fb; }
+.suite[data-sorte='acceptee'], .suite[data-sorte='compromis'], .suite[data-sorte='vendu'] { background: #f4fbf6; border-color: #cdeedb; }
+.suiteQ { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.suiteTx { font-size: 13px; line-height: 1.5; color: #475569; }
+.suiteBtn { align-self: flex-start; padding: 10px 16px; font-size: 13.5px; }
+.dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.dates > div { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 12px; background: #fff; border: 1px solid #e3e8f0; }
+.dates small { font-size: 11.5px; font-weight: 700; color: #64748b; }
+.dates b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.dates > div[data-passe='oui'] b { color: #64748b; }
+.contre { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
+.contre label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 170px; font-size: 12px; font-weight: 700; color: #475569; }
+.contreCh { display: flex; align-items: center; border: 1.5px solid #c9a84c; border-radius: 12px; background: #fff; padding: 0 12px; }
+.contreCh input { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 9px 0; font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.contreCh i { font-style: normal; font-weight: 800; color: #94a3b8; }
+
+/* Le document de l'offre, en une ligne. */
+.docOffre { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px dashed #dfe5ee; }
+.docOffreT { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; color: #2d5c8f; }
+.docOffreT b { font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.docOffreT small { font-size: 12px; color: #64748b; }
+.docOffreL { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: #475569; }
+.docOffreL > span:not(.puce) { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.docOffreBtns { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ══ DOCUMENTS ══════════════════════════════════════════════════════════ */
 .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
@@ -285,9 +360,8 @@
   .piece .expo, .piece .expoVide { grid-column: 2; }
   .piece .pieceMot { grid-column: 2 / -1; margin-top: 0; }
   .vis { grid-template-columns: 48px minmax(0, 1fr); gap: 12px; padding: 12px; }
-  .date { width: 48px; height: 56px; border-radius: 12px; }
+  .date { width: 48px; min-height: 56px; border-radius: 12px; }
   .date b { font-size: 19px; }
-  .offreBtns { grid-template-columns: 1fr 1fr 1fr; }
   .montant b { font-size: 24px; }
   .tuiles { grid-template-columns: minmax(0, 1fr); }
   .tuile { min-height: 0; }

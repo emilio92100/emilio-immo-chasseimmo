@@ -93,9 +93,11 @@ export default function ChoixDate({ valeur, onChange, min, placeholder = 'Choisi
 
       {pos && typeof document !== 'undefined' && createPortal(
         <>
-          <div onClick={() => setPos(null)} style={{ position: 'fixed', inset: 0, zIndex: 300 }} />
+          {/* V3.45 : au-dessus de toute fenêtre. À 300, le calendrier s'ouvrait
+              derrière « Ajouter une action » (fenêtre à 1000) : invisible. */}
+          <div onClick={() => setPos(null)} style={{ position: 'fixed', inset: 0, zIndex: 20000 }} />
           <div style={{
-            position: 'fixed', left: pos.x, top: pos.y, zIndex: 301, width: 268,
+            position: 'fixed', left: pos.x, top: pos.y, zIndex: 20001, width: 268,
             background: 'white', border: '1px solid #e3e8f0', borderRadius: 15,
             boxShadow: '0 3px 8px rgba(15,22,35,.06), 0 18px 44px rgba(15,22,35,.2)',
             padding: 12, animation: 'calEntre .14s cubic-bezier(.16,1,.3,1)',

@@ -11,13 +11,18 @@
    4. « Les prochaines visites » ;
    5. « L'historique » : visites et offres mêlées, par date, en frise.
    Les cartes d'action restent celles de la V3.29 (CarteVisiteB,
-   CarteOffreB, dans OngletsBien.tsx) ; la frise est ici. */
+   CarteOffreB, dans OngletsBien.tsx) ; la frise est ici.
+   V3.45 : trois rubriques repliables, dans l'ordre d'une vente — les
+   visites, les offres (une carte par acquéreur, toute la largeur, avec sa
+   négociation), l'historique. */
 import { useState, type ReactNode } from 'react';
 import { euros } from '@/lib/mandat';
 import { ISSUES } from '@/lib/visites';
-import type { SuiviVente } from '@/lib/biens-vente';
+import { echangesDe, montantActuel, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
-import { CarteOffreB, CarteVisiteB, type VisiteCarte } from './OngletsBien';
+import Depliant from '@/components/shared/Depliant';
+import { PastillePli } from '@/components/shared/Pli';
+import { CarteOffreB, CarteVisiteB, dateAn, type ActionsOffre, type VisiteCarte } from './OngletsBien';
 import x from './VisitesOffres.module.css';
 
 const NBSP = ' ';
@@ -26,7 +31,7 @@ const pct = (v: number) => `${String(Math.round(v * 10) / 10).replace('.', ',')}
 const ouverte = (o: SuiviVente) => !o.statut || o.statut === 'en_attente' || o.statut === 'contre';
 
 export type ActionsVisite = { onCR: () => void; onAnnuler: () => void; onDoc: () => void; onFiche?: () => void; onOffre?: () => void };
-export type ActionsOffre = { onStatut: (st: string) => void; onContre: () => void; onDoc: () => void; onPiece?: () => void };
+export type { ActionsOffre };
 
 const PUCE_OFFRE: Record<string, { l: string; fond: string; c: string }> = {
   en_attente: { l: 'En attente de réponse', fond: '#fbf6e9', c: '#7a5d1c' },
@@ -36,7 +41,7 @@ const PUCE_OFFRE: Record<string, { l: string; fond: string; c: string }> = {
   retiree: { l: 'Retirée', fond: '#f1f5f9', c: '#475569' },
 };
 
-/* La date, en pavé : le jour, le mois. */
+/* La date, en pavé : le jour, le mois, l'année (V3.45). */
 function Jour({ iso }: { iso: string }) {
   const d = jourMidi(iso);
   const ok = !isNaN(d.getTime());
@@ -44,9 +49,28 @@ function Jour({ iso }: { iso: string }) {
     <span className={x.jour} aria-hidden="true">
       <b>{ok ? d.getDate() : '?'}</b>
       <small>{ok ? d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '') : ''}</small>
+      {ok && <em>{d.getFullYear()}</em>}
     </span>
   );
 }
+
+/* Une rubrique, repliable sur une ligne (V3.45) : le titre, le nombre, le
+   « Voir / Replier » juste à côté (V3.33), et ce qu'elle contient en bref. */
+function Rubrique({ titre, n, resume, ouvert, onClick }: { titre: string; n: number; resume?: string; ouvert: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={x.rubrique} data-ouvert={ouvert ? 'oui' : 'non'} aria-expanded={ouvert} onClick={onClick}>
+      <h3>{titre}</h3>
+      <i>{n}</i>
+      <PastillePli ouvert={ouvert} voir="Déplier" replier="Replier" />
+      {resume && <span className={x.rubriqueR}>{resume}</span>}
+    </button>
+  );
+}
+const CLE_PLIS = 'emilio.visitesOffres.plis';
+const lirePlis = (): Record<string, boolean> => {
+  try { const v = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem(CLE_PLIS) || '{}') : {}; return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+};
+const garderPlis = (v: Record<string, boolean>) => { try { localStorage.setItem(CLE_PLIS, JSON.stringify(v)); } catch { /* rien à garder */ } };
 
 type Evt = { cle: string; tri: string; genre: 'visite' | 'offre'; v?: VisiteCarte; o?: SuiviVente };
 
@@ -58,6 +82,13 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
   encart?: ReactNode;
 }) {
   const [filtre, setFiltre] = useState<'tout' | 'visite' | 'offre'>('tout');
+  /* V3.45 : chaque rubrique se replie sur une ligne (gardé dans ce navigateur),
+     et chaque offre aussi — pour rester sur ce qu'on traite. */
+  const [plis, setPlis] = useState<Record<string, boolean>>(lirePlis);
+  const ouvert = (k: string) => !plis[k];
+  const basculer = (k: string) => setPlis(p => { const n = { ...p, [k]: !p[k] }; garderPlis(n); return n; });
+  const [offresRepliees, setOffresRepliees] = useState<string[]>([]);
+  const plierOffre = (id: string) => setOffresRepliees(l => (l.includes(id) ? l.filter(y => y !== id) : [...l, id]));
   const annulee = (v: VisiteCarte) => v.statut === 'annulee';
   const crAFaire = (v: VisiteCarte) => v.passee && !annulee(v) && !v.issue && v.statut !== 'faite';
   const faites = visites.filter(v => v.passee && !annulee(v));
@@ -66,10 +97,15 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
   const enCours = offres.filter(ouverte);
   const accepteeSansCompromis = compromis ? [] : offres.filter(o => o.statut === 'acceptee');
   const aFaireO = [...enCours, ...accepteeSansCompromis];
-  const meilleure = enCours.reduce((m, o) => Math.max(m, o.montant || 0), 0);
+  /* V3.45 : l'offre du compromis reste en haut, avec ses dates et la suite
+     (« La vente est signée »), au lieu de filer dans l'historique sans bouton. */
+  const actions = new Map(offres.map(o => [o.id, actOffre(o)] as const));
+  const vente = compromis ? offres.filter(o => o.statut === 'acceptee' && actions.get(o.id)?.compromis) : [];
+  /* La meilleure : la dernière proposition de chaque acquéreur, pas une contre-offre du vendeur. */
+  const meilleure = enCours.reduce((m, o) => Math.max(m, [...echangesDe(o)].reverse().find(e => e.par === 'acquereur')?.montant || 0), 0);
 
   /* L'historique : ce qui n'est plus « à faire » ni « à venir ». */
-  const dejaHaut = new Set([...aFaireV.map(v => v.cle), ...avenir.map(v => v.cle), ...aFaireO.map(o => 'o-' + o.id)]);
+  const dejaHaut = new Set([...aFaireV.map(v => v.cle), ...avenir.map(v => v.cle), ...aFaireO.map(o => 'o-' + o.id), ...vente.map(o => 'o-' + o.id)]);
   const evts: Evt[] = [
     ...visites.filter(v => !dejaHaut.has(v.cle)).map(v => ({ cle: v.cle, tri: `${v.ymd}${v.heure}`, genre: 'visite' as const, v })),
     ...offres.filter(o => !dejaHaut.has('o-' + o.id)).map(o => ({ cle: 'o-' + o.id, tri: o.le.slice(0, 16).replace('T', ''), genre: 'offre' as const, o })),
@@ -132,56 +168,83 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
         </section>
       )}
 
-      {(aFaireV.length > 0 || aFaireO.length > 0 || avenir.length > 0) && (
-      <div className={x.enCours} data-deux={(aFaireV.length > 0 || aFaireO.length > 0) && avenir.length > 0 ? 'oui' : 'non'}>
-      {/* ── À faire ── */}
-      {(aFaireV.length > 0 || aFaireO.length > 0) && (
+      {/* ── Les visites (en haut : une visite, puis une offre) ── */}
+      {(aFaireV.length > 0 || avenir.length > 0) && (
         <section className={x.bloc}>
-          <div className={x.blocT}><h3>À faire</h3><i>{aFaireV.length + aFaireO.length}</i></div>
-          <div className={x.grille}>
-            {aFaireO.map(o => {
-              const a = actOffre(o);
-              return <CarteOffreB key={o.id} o={o} prix={prix} compromis={compromis} onStatut={a.onStatut} onContre={a.onContre} onDoc={a.onDoc} onPiece={a.onPiece} />;
-            })}
-            {aFaireV.map(v => {
-              const a = actVisite(v.cle);
-              return a ? <CarteVisiteB key={v.cle} v={v} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} /> : null;
-            })}
-          </div>
+          <Rubrique titre="Les visites" n={aFaireV.length + avenir.length} ouvert={ouvert('visites')} onClick={() => basculer('visites')}
+            resume={[
+              avenir.length ? `${avenir.length} à venir` : '',
+              aFaireV.length ? `${aFaireV.length} compte${aFaireV.length > 1 ? 's' : ''} rendu${aFaireV.length > 1 ? 's' : ''} à faire` : '',
+              avenir[0] ? `prochaine le ${dateAn(avenir[0].ymd)}${avenir[0].heure ? ` à ${avenir[0].heure.slice(0, 5).replace(':', ' h ')}` : ''}, ${avenir[0].qui}` : '',
+            ].filter(Boolean).join(' · ')} />
+          <Depliant ouvert={ouvert('visites')} ecart={10}>
+            <div className={x.enCours} data-deux={aFaireV.length > 0 && avenir.length > 0 ? 'oui' : 'non'}>
+              {aFaireV.length > 0 && (
+                <div className={x.sousBloc}>
+                  <h4>{aFaireV.length > 1 ? 'Comptes rendus à faire' : 'Compte rendu à faire'}</h4>
+                  <div className={x.grille}>
+                    {aFaireV.map(v => {
+                      const a = actVisite(v.cle);
+                      return a ? <CarteVisiteB key={v.cle} v={v} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} /> : null;
+                    })}
+                  </div>
+                </div>
+              )}
+              {avenir.length > 0 && (
+                <div className={x.sousBloc}>
+                  <h4>Les prochaines visites</h4>
+                  <div className={x.grille}>
+                    {avenir.map((v, i) => {
+                      const a = actVisite(v.cle);
+                      return a ? <CarteVisiteB key={v.cle} v={v} prochaine={i === 0} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} /> : null;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Depliant>
         </section>
       )}
 
-      {/* ── Les prochaines visites ── */}
-      {avenir.length > 0 && (
+      {/* ── Les offres (V3.45) : une carte par acquéreur, toute la largeur ;
+          d'abord celle de la vente (compromis, vendu), puis celles en cours.
+          Chacune se replie sur une ligne. ── */}
+      {(vente.length > 0 || aFaireO.length > 0) && (
         <section className={x.bloc}>
-          <div className={x.blocT}><h3>Les prochaines visites</h3><i>{avenir.length}</i></div>
-          <div className={x.grille}>
-            {avenir.map((v, i) => {
-              const a = actVisite(v.cle);
-              return a ? <CarteVisiteB key={v.cle} v={v} prochaine={i === 0} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} /> : null;
-            })}
-          </div>
+          <Rubrique titre={vente.length && !aFaireO.length ? 'La vente' : vente.length ? 'La vente et les offres' : aFaireO.length > 1 ? 'Les offres en cours' : 'L’offre en cours'}
+            n={vente.length + aFaireO.length} ouvert={ouvert('offres')} onClick={() => basculer('offres')}
+            resume={[enCours.length ? `${enCours.length} en attente de réponse` : '', meilleure ? `la meilleure : ${euros(meilleure)}` : '', accepteeSansCompromis.length ? 'une offre acceptée' : '', vente.length ? (vente.some(o => actions.get(o.id)?.compromis?.venduLe) ? 'vendu' : 'sous compromis') : ''].filter(Boolean).join(' · ')} />
+          <Depliant ouvert={ouvert('offres')} ecart={10}>
+            <div className={x.offres}>
+              {[...vente, ...aFaireO].map(o => (
+                <CarteOffreB key={o.id} o={o} prix={prix} a={actions.get(o.id)!} replie={offresRepliees.includes(o.id)} onPli={() => plierOffre(o.id)} />
+              ))}
+            </div>
+          </Depliant>
         </section>
-      )}
-      </div>
       )}
 
       {/* ── L'historique, en frise ── */}
       {evts.length > 0 && (
         <section className={x.bloc}>
-          <div className={x.blocT}>
-            <h3>L’historique</h3>
-            <div className={x.seg} role="group" aria-label="Que montrer">
-              <button type="button" aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tout<i>{evts.length}</i></button>
-              <button type="button" aria-pressed={filtre === 'visite'} onClick={() => setFiltre('visite')}>Visites<i>{evts.filter(e => e.genre === 'visite').length}</i></button>
-              <button type="button" aria-pressed={filtre === 'offre'} onClick={() => setFiltre('offre')}>Offres<i>{evts.filter(e => e.genre === 'offre').length}</i></button>
-            </div>
+          <div className={x.histoT}>
+            <Rubrique titre="L’historique" n={evts.length} ouvert={ouvert('histo')} onClick={() => basculer('histo')}
+              resume={[evts.filter(e => e.genre === 'visite').length ? `${evts.filter(e => e.genre === 'visite').length} visite${evts.filter(e => e.genre === 'visite').length > 1 ? 's' : ''}` : '', evts.filter(e => e.genre === 'offre').length ? `${evts.filter(e => e.genre === 'offre').length} offre${evts.filter(e => e.genre === 'offre').length > 1 ? 's' : ''} close${evts.filter(e => e.genre === 'offre').length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} />
+            {ouvert('histo') && (
+              <div className={x.seg} role="group" aria-label="Que montrer">
+                <button type="button" aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tout<i>{evts.length}</i></button>
+                <button type="button" aria-pressed={filtre === 'visite'} onClick={() => setFiltre('visite')}>Visites<i>{evts.filter(e => e.genre === 'visite').length}</i></button>
+                <button type="button" aria-pressed={filtre === 'offre'} onClick={() => setFiltre('offre')}>Offres<i>{evts.filter(e => e.genre === 'offre').length}</i></button>
+              </div>
+            )}
           </div>
-          {montres.length === 0 ? <p className={x.vide}>{filtre === 'visite' ? 'Aucune visite passée pour l’instant.' : 'Aucune offre passée pour l’instant.'}</p> : (
-            <ol className={x.frise}>
-              {montres.map(e => (e.v ? <LigneVisite key={e.cle} v={e.v} a={actVisite(e.v.cle)} /> : e.o ? <LigneOffre key={e.cle} o={e.o} prix={prix} a={actOffre(e.o)} /> : null))}
-            </ol>
-          )}
+          <Depliant ouvert={ouvert('histo')} ecart={10}>
+            {montres.length === 0 ? <p className={x.vide}>{filtre === 'visite' ? 'Aucune visite passée pour l’instant.' : 'Aucune offre passée pour l’instant.'}</p> : (
+              <ol className={x.frise}>
+                {montres.map(e => (e.v ? <LigneVisite key={e.cle} v={e.v} a={actVisite(e.v.cle)} /> : e.o ? <LigneOffre key={e.cle} o={e.o} prix={prix} a={actions.get(e.o.id)!} /> : null))}
+              </ol>
+            )}
+          </Depliant>
         </section>
       )}
     </div>
@@ -223,25 +286,32 @@ function LigneOffre({ o, prix, a }: { o: SuiviVente; prix: number | null; a: Act
   const d = (o.donnees || {}) as Record<string, unknown>;
   const st = o.statut || 'en_attente';
   const p = PUCE_OFFRE[st] || PUCE_OFFRE.en_attente;
-  const ecart = o.montant && prix ? ((o.montant - prix) / prix) * 100 : null;
+  const actuel = montantActuel(o);
+  const ecart = actuel && prix ? ((actuel - prix) / prix) * 100 : null;
   const fin = d.financement === 'comptant' ? 'comptant' : d.financement === 'relais' ? 'prêt relais' : d.financement === 'pret' ? 'avec un prêt' : '';
+  const reponse = typeof d.reponse_le === 'string' && d.reponse_le ? dateAn(d.reponse_le) : '';
+  const ech = echangesDe(o);
+  const negociation = ech.length > 1 ? `${ech.length - 1} contre-proposition${ech.length > 2 ? 's' : ''} (${ech.map(e => euros(e.montant)).join(' → ')})` : '';
   return (
     <li className={x.ligne} data-genre="offre" data-statut={st}>
       <Jour iso={o.le} />
       <span className={x.point}><Ic n={st === 'acceptee' ? 'check' : 'euro'} t={14} /></span>
       <div className={x.carte}>
         <div className={x.carteT}>
-          <b>{`Offre de ${euros(o.montant || 0)}`}</b>
-          <span className={x.puce} style={{ background: p.fond, color: p.c }}>{st === 'contre' && typeof d.contre === 'number' ? `Contre-offre à ${euros(d.contre)}` : p.l}</span>
+          <b>{`Offre de ${euros(actuel)}`}</b>
+          <span className={x.puce} style={{ background: p.fond, color: p.c }}>{p.l}</span>
           {ecart !== null && <span className={x.ecart}>{Math.abs(ecart) < 0.05 ? 'au prix' : ecart < 0 ? `${pct(ecart).replace('-', '−')} du prix` : `+${pct(ecart)}`}</span>}
         </div>
-        <p className={x.qui}>{[o.qui || 'Un acquéreur', fin, typeof d.conditions === 'string' ? d.conditions : ''].filter(Boolean).join(' · ')}</p>
+        <p className={x.qui}>{[o.qui || 'Un acquéreur', fin, typeof d.conditions === 'string' ? d.conditions : '', `reçue le ${dateAn(o.le)}`, reponse && st !== 'en_attente' ? `réponse le ${reponse}` : ''].filter(Boolean).join(' · ')}</p>
+        {negociation && <p className={x.qui}>{negociation}</p>}
         {o.commentaire && <p className={x.citation}>{o.commentaire}</p>}
-        <div className={x.acts}>
-          <button type="button" onClick={a.onDoc}><Ic n="plume" t={13} />L’offre écrite</button>
-          {a.onPiece && <button type="button" onClick={a.onPiece}><Ic n="trombone" t={13} />L’offre signée</button>}
-          {st !== 'acceptee' && <button type="button" onClick={() => a.onStatut('en_attente')}>Remettre en attente</button>}
-        </div>
+        {(a.doc || a.onPiece || st !== 'acceptee') && (
+          <div className={x.acts}>
+            {a.doc && <button type="button" onClick={a.doc.onOuvrir}><Ic n="plume" t={13} />{a.doc.etat === 'signe' ? 'L’offre signée' : 'L’offre écrite'}</button>}
+            {a.onPiece && <button type="button" onClick={a.onPiece}><Ic n="trombone" t={13} />L’offre signée jointe</button>}
+            {st !== 'acceptee' && <button type="button" onClick={() => a.onReponse({ k: 'rouvrir' })}>Remettre en cours</button>}
+          </div>
+        )}
       </div>
     </li>
   );

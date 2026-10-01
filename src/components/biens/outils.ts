@@ -7,6 +7,7 @@ import { signalerEchec } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
 import { modele, aujourdhui, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import { correspondance, criteresDepuisRecherche, type Correspondance } from '@/lib/correspondance';
+import { RAISONS_ECART, raisonEcart, type RaisonEcart } from '@/lib/ecart-acheteur';
 import { conjointDe } from '@/lib/foyer';
 import { colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
@@ -272,21 +273,42 @@ export type Acheteur = { recherche: RechercheMini; client: ClientMini; corr: Cor
 export const SEUIL_CORRESPOND = 70;
 export const SEUIL_LISTE = 50;
 
-export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): Acheteur[] {
-  if (!b.donnees?.typeBien && !b.prix) return [];
+/* V3.45 : un critère essentiel nettement raté écarte l'acheteur, quelle que
+   soit sa note (src/lib/ecart-acheteur.ts). */
+export type Ecarte = { acheteur: Acheteur; raison: RaisonEcart };
+export function acheteursTries(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): { retenus: Acheteur[]; ecartes: Ecarte[] } {
+  if (!b.donnees?.typeBien && !b.prix) return { retenus: [], ecartes: [] };
   const bc = versCorrespondance(b);
-  const out: Acheteur[] = [];
+  const retenus: Acheteur[] = [];
+  const ecartes: Ecarte[] = [];
   for (const r of recherches) {
     if (r.active === false) continue;
     const c = clients[r.client_id];
     if (!c || !['actif', 'prospect'].includes(String(c.statut || ''))) continue;
     if (b.client_id && r.client_id === b.client_id) continue;
     if (!typeCompatible(b.donnees?.typeBien, r.type_bien)) continue;
-    const corr = correspondance(bc, criteresDepuisRecherche(r));
+    const cr = criteresDepuisRecherche(r);
+    const corr = correspondance(bc, cr);
     if (!corr) continue;
-    out.push({ recherche: r, client: c, corr, copie: copies.find(x => x.bien_vente_id === b.id && x.recherche_id === r.id) || null });
+    const x: Acheteur = { recherche: r, client: c, corr, copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null };
+    const raison = raisonEcart(corr, bc, cr);
+    if (raison) ecartes.push({ acheteur: x, raison });
+    else retenus.push(x);
   }
-  return out.sort((x, y) => y.corr.note - x.corr.note);
+  return { retenus: retenus.sort((x, y) => y.corr.note - x.corr.note), ecartes };
+}
+export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): Acheteur[] {
+  return acheteursTries(b, recherches, clients, copies).retenus;
+}
+/* « 4 autres recherches ne sont pas montrées : budget trop court (2), autre secteur (2). » */
+export function phraseEcartes(l: Ecarte[]): string {
+  const parListe = l.filter(x => x.acheteur.corr.note >= SEUIL_LISTE);
+  if (!parListe.length) return '';
+  const n = new Map<RaisonEcart, number>();
+  for (const x of parListe) n.set(x.raison, (n.get(x.raison) || 0) + 1);
+  const raisons = [...n.entries()].sort((p, q) => q[1] - p[1]).map(([r, k]) => (k > 1 ? `${RAISONS_ECART[r]} (${k})` : RAISONS_ECART[r])).join(', ');
+  const k = parListe.length;
+  return `${k} autre${k > 1 ? 's' : ''} recherche${k > 1 ? 's' : ''} ${k > 1 ? 'ne sont' : 'n’est'} pas montrée${k > 1 ? 's' : ''} : ${raisons}.`;
 }
 
 /* ══ Le bien ═══════════════════════════════════════════════════════════ */
@@ -574,12 +596,18 @@ export async function visiteExterne(b: BienVente, qui: string, tel: string, x: C
 /* ══ Les offres ════════════════════════════════════════════════════════ */
 export type SaisieOffre = {
   qui: string; clientId: string | null; rechercheId: string | null;
-  montant: number; recue: string; jusquau: string; financement: 'comptant' | 'pret' | 'relais';
+  /* V3.45 : vide tant qu'on ne le sait pas. « Avec un prêt » était mis
+     d'office, et s'affichait sur des offres où personne ne l'avait dit. */
+  montant: number; recue: string; jusquau: string; financement: 'comptant' | 'pret' | 'relais' | null;
   apport: number | null; pret: number | null; accord: string; conditions: string; fichier: { chemin: string; nom: string } | null;
 };
 
+/* La relance « réponse à donner » du propriétaire, posée avec l'offre. */
+const noteRelanceOffre = (qui: string, montant: number, titre: string) =>
+  `Offre de ${qui} à ${montant.toLocaleString('fr-FR')} € sur ${titre} : réponse à donner aujourd’hui.`;
+
 export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: ClientMini | null): Promise<SuiviVente> {
-  const ligne = await ajouterSuivi({
+  let ligne = await ajouterSuivi({
     bien_id: b.id, type: 'offre', le: new Date(`${o.recue}T12:00:00`).toISOString(), qui: o.qui,
     client_id: o.clientId, recherche_id: o.rechercheId, montant: o.montant, statut: 'en_attente',
     donnees: {
@@ -603,16 +631,96 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
     });
     if (eJ) signalerEchec('L’offre est notée, mais l’historique de l’acheteur', eJ.message);
   }
-  /* Le propriétaire : une relance le jour où l'offre expire. */
-  if (proprio && o.jusquau) {
-    const { error } = await supabase.from('relances').insert({
+  /* Le propriétaire : une relance le jour où l'offre expire. Pas quand le
+     délai est déjà passé (une offre notée après coup) : elle tombait tout
+     de suite « en retard » (V3.45). Son identifiant est gardé avec l'offre,
+     pour la clore dès que le vendeur répond. */
+  if (proprio && o.jusquau && o.jusquau >= aujourdhui()) {
+    const { data, error } = await supabase.from('relances').insert({
       client_id: proprio.id, type: 'manuelle', statut: 'en_attente',
       date_echeance: new Date(`${o.jusquau}T09:00:00`).toISOString(),
-      note: `Offre de ${o.qui} à ${o.montant.toLocaleString('fr-FR')} € sur ${b.titre || 'son bien'} : réponse à donner aujourd’hui.`,
-    });
+      note: noteRelanceOffre(o.qui, o.montant, b.titre || 'son bien'),
+    }).select('id').single();
     if (error) signalerEchec('L’offre est notée, mais la relance du propriétaire', error.message);
+    else if (data?.id) {
+      /* Sans le lien, la note suffit encore à la retrouver : on le signale quand même. */
+      try { ligne = await majSuivi(ligne.id, { donnees: { ...ligne.donnees, relance_id: data.id } }); } catch (e) { signalerEchec('Le lien entre l’offre et sa relance', (e as Error).message); }
+    }
   }
   return ligne;
+}
+
+/* La relance « réponse à donner » d'une offre : par l'identifiant gardé
+   avec elle ; celles d'avant la V3.45, qui ne le gardaient pas, par leur
+   note chez le propriétaire. Seulement celles encore en attente. */
+async function relancesDeLOffre(b: BienVente, o: SuiviVente): Promise<string[]> {
+  const d = (o.donnees || {}) as Record<string, unknown>;
+  if (typeof d.relance_id === 'string' && d.relance_id) return [d.relance_id];
+  if (!b.client_id || !o.montant) return [];
+  const debut = `Offre de ${o.qui || ''} à ${o.montant.toLocaleString('fr-FR')} €`;
+  const { data, error } = await supabase.from('relances').select('id, note').eq('client_id', b.client_id).eq('statut', 'en_attente').limit(50);
+  if (error) throw new Error(error.message);
+  return ((data || []) as { id: string; note: string | null }[]).filter(r => String(r.note || '').startsWith(debut)).map(r => r.id);
+}
+
+/* Le vendeur a répondu, le compromis est signé, l'offre est retirée : la
+   relance n'a plus d'objet (V3.45). Jamais bloquant : un échec se signale,
+   l'action reste faite. */
+export async function cloreRelanceOffre(b: BienVente, o: SuiviVente): Promise<void> {
+  try {
+    const ids = await relancesDeLOffre(b, o);
+    if (!ids.length) return;
+    const { error } = await supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids).eq('statut', 'en_attente');
+    if (error) signalerEchec('La relance de l’offre', error.message);
+  } catch (e) { signalerEchec('La relance de l’offre', (e as Error).message); }
+}
+
+/* Corriger une offre déjà notée (V3.45) : le montant, les dates, le
+   financement, l'acquéreur. La relance suit : retrouvée avec l'offre telle
+   qu'elle était, elle prend le nouveau délai et la nouvelle note ; un délai
+   déjà passé la clôt ; un délai remis dans le futur la recrée. */
+export async function modifierOffre(b: BienVente, o: SuiviVente, x: SaisieOffre): Promise<SuiviVente> {
+  const avant = (o.donnees || {}) as Record<string, unknown>;
+  const ouverte = !o.statut || o.statut === 'en_attente';
+  let ids: string[] = [];
+  if (ouverte) { try { ids = await relancesDeLOffre(b, o); } catch (e) { signalerEchec('La relance de l’offre', (e as Error).message); } }
+  /* La première ligne de la négociation, c'est l'offre elle-même. */
+  const echanges = Array.isArray(avant.echanges) && avant.echanges.length
+    ? (avant.echanges as Record<string, unknown>[]).map((e, i) => (i === 0 ? { ...e, montant: x.montant, le: x.recue } : e)) : undefined;
+  const donnees: Record<string, unknown> = {
+    ...avant, jusquau: x.jusquau, financement: x.financement, apport: x.apport, pret: x.pret, accord: x.accord, conditions: x.conditions,
+    ...(x.fichier ? { chemin: x.fichier.chemin, nom: x.fichier.nom } : {}),
+    ...(echanges ? { echanges } : {}),
+  };
+  let ligne = await majSuivi(o.id, {
+    le: new Date(`${x.recue}T12:00:00`).toISOString(), qui: x.qui, client_id: x.clientId, recherche_id: x.rechercheId, montant: x.montant, donnees,
+  });
+  if (!ouverte) return ligne;
+  const futur = !!x.jusquau && x.jusquau >= aujourdhui();
+  const note = noteRelanceOffre(x.qui, x.montant, b.titre || 'son bien');
+  if (ids.length) {
+    const { error } = await supabase.from('relances').update(futur ? { date_echeance: new Date(`${x.jusquau}T09:00:00`).toISOString(), note } : { statut: 'cloturee' })
+      .in('id', ids).eq('statut', 'en_attente');
+    if (error) signalerEchec('L’offre est corrigée, mais sa relance', error.message);
+    else if (futur && ids.length === 1 && avant.relance_id !== ids[0]) {
+      try { ligne = await majSuivi(o.id, { donnees: { ...ligne.donnees, relance_id: ids[0] } }); } catch (e) { signalerEchec('Le lien entre l’offre et sa relance', (e as Error).message); }
+    }
+  } else if (futur && b.client_id) {
+    const { data, error } = await supabase.from('relances').insert({
+      client_id: b.client_id, type: 'manuelle', statut: 'en_attente', date_echeance: new Date(`${x.jusquau}T09:00:00`).toISOString(), note,
+    }).select('id').single();
+    if (error) signalerEchec('L’offre est corrigée, mais la relance du propriétaire', error.message);
+    else if (data?.id) {
+      try { ligne = await majSuivi(o.id, { donnees: { ...ligne.donnees, relance_id: data.id } }); } catch (e) { signalerEchec('Le lien entre l’offre et sa relance', (e as Error).message); }
+    }
+  }
+  return ligne;
+}
+
+/* L'offre signée par l'acquéreur, jointe après coup (V3.45). */
+export async function joindreOffreSignee(b: BienVente, o: SuiviVente, f: File): Promise<SuiviVente> {
+  const r = await deposerPiece(b.id, 'offre', f);
+  return majSuivi(o.id, { donnees: { ...(o.donnees || {}), chemin: r.chemin, nom: r.nom } });
 }
 
 /* ══ Les photos (bucket public « photos-vente ») ══════════════════════════ */
@@ -779,6 +887,9 @@ export async function creerDocument(b: BienVente, x: PourDocument): Promise<stri
     const od = (o?.donnees || {}) as Record<string, unknown>;
     donnees = {
       ...base, bienVenteId: b.id,
+      /* V3.45 : l'offre du suivi dont il est le document — la carte de
+         l'offre le retrouve, au lieu d'en commencer un autre à chaque clic. */
+      ...(o?.id ? { offreSuiviId: o.id } : {}),
       ...(x.personne ? { acquereurs: [x.personne] } : {}),
       vendeurNom: nomProprioActe(d), agenceVendeur: identite.nom || '',
       prixAffiche: a.prix, forme: a.acq ? 'fai' : 'net', honoVendeur: a.acq ? a.hono : null,

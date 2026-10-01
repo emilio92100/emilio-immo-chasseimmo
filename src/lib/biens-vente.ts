@@ -62,6 +62,64 @@ export type SuiviVente = {
 };
 export const tableAbsente = (m: string) => /biens_vente|relation .* does not exist|schema cache/i.test(m);
 
+/* ── La négociation d'une offre (V3.45) ───────────────────────────────────
+   Alexandre : « s'il y a quatre contre-offres sur la même offre, ça fait
+   quatre blocs ? ». Non : une offre = un acquéreur = un bloc, et ses
+   allers-retours vivent dans `donnees.echanges`, dans l'ordre. Le statut
+   dit qui doit répondre : 'en_attente' (le vendeur), 'contre' (l'acquéreur).
+   Les offres d'avant n'ont pas la liste : elle se déduit du montant et de
+   la dernière contre-offre (`donnees.contre`). */
+export type Echange = { le: string; par: 'acquereur' | 'vendeur'; montant: number };
+export function echangesDe(o: SuiviVente): Echange[] {
+  const d = (o.donnees || {}) as Record<string, unknown>;
+  const l = Array.isArray(d.echanges)
+    ? (d.echanges as unknown[]).filter((x): x is Echange => !!x && typeof x === 'object' && typeof (x as Echange).montant === 'number' && ((x as Echange).par === 'acquereur' || (x as Echange).par === 'vendeur'))
+    : [];
+  if (l.length) return l;
+  /* Avant la V3.45, `contre` restait posé après « Remettre en attente » ou
+     « Acceptée » : il ne compte que tant que l'offre attend l'acquéreur. */
+  const out: Echange[] = [{ le: (o.le || '').slice(0, 10), par: 'acquereur', montant: o.montant || 0 }];
+  if (o.statut === 'contre' && typeof d.contre === 'number' && d.contre > 0) out.push({ le: typeof d.reponse_le === 'string' ? d.reponse_le : (o.le || '').slice(0, 10), par: 'vendeur', montant: d.contre });
+  return out;
+}
+/* Le montant sur la table : celui convenu, sinon la dernière proposition. */
+export function montantActuel(o: SuiviVente): number {
+  const d = (o.donnees || {}) as Record<string, unknown>;
+  if (o.statut === 'acceptee' && typeof d.accepte_a === 'number' && d.accepte_a > 0) return d.accepte_a;
+  const l = echangesDe(o);
+  return l[l.length - 1]?.montant || o.montant || 0;
+}
+export type Reponse =
+  | { k: 'accepte' } | { k: 'refuse' } | { k: 'renonce' } | { k: 'retire' } | { k: 'rouvrir' }
+  | { k: 'contre'; montant: number } | { k: 'propose'; montant: number };
+/* Ce que devient l'offre après une réponse, sans rien écrire : le statut et
+   les réponses à poser. `jour` : la date du jour (AAAA-MM-JJ). */
+export function apresReponse(o: SuiviVente, r: Reponse, jour: string): { statut: string; donnees: Record<string, unknown> } {
+  const avant = { ...((o.donnees || {}) as Record<string, unknown>) };
+  delete avant.accepte_a;
+  /* `contre` : la contre-offre qui attend l'acquéreur, rien d'autre. */
+  delete avant.contre;
+  const l = echangesDe(o);
+  const dernier = l[l.length - 1];
+  const tour = dernier?.par === 'vendeur' ? 'contre' : 'en_attente';
+  switch (r.k) {
+    case 'contre': {
+      const echanges = [...l, { le: jour, par: 'vendeur' as const, montant: r.montant }];
+      return { statut: 'contre', donnees: { ...avant, echanges, contre: r.montant, reponse_le: jour } };
+    }
+    case 'propose': {
+      const echanges = [...l, { le: jour, par: 'acquereur' as const, montant: r.montant }];
+      return { statut: 'en_attente', donnees: { ...avant, echanges, reponse_le: jour } };
+    }
+    case 'accepte':
+      return { statut: 'acceptee', donnees: { ...avant, echanges: l, reponse_le: jour, ...(dernier && dernier.montant !== o.montant ? { accepte_a: dernier.montant } : {}) } };
+    case 'refuse': case 'renonce': case 'retire':
+      return { statut: r.k === 'refuse' ? 'refusee' : 'retiree', donnees: { ...avant, echanges: l, reponse_le: jour } };
+    case 'rouvrir':
+      return { statut: tour, donnees: { ...avant, echanges: l, ...(tour === 'contre' ? { contre: dernier.montant } : {}) } };
+  }
+}
+
 /* ── Les listes de choix ───────────────────────────────────────────────── */
 export const TYPES_BIEN: Option[] = [
   { v: 'appartement', l: 'Appartement', ic: 'immeuble' }, { v: 'maison', l: 'Maison', ic: 'maison' },
@@ -678,10 +736,13 @@ export const joursAvant = (ymd: string | null | undefined) => {
   const t = Date.parse(`${ymd}T12:00:00`);
   return Number.isFinite(t) ? Math.ceil((t - Date.now()) / 86_400_000) : null;
 };
+/* V3.45 : avec l'année (« 12 février 2026 ») — Alexandre : « il n'y a pas
+   l'année, il faut la mettre ». Les fiches reprises d'Immofacile ont des
+   dates d'autres années. */
 export const dateCourte = (ymd: string | null | undefined) => {
   if (!ymd) return '';
   const x = new Date(ymd.length <= 10 ? `${ymd}T12:00:00` : ymd);
-  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }).replace(/^1 /, '1er ');
+  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/^1 /, '1er ');
 };
 export const dateLongue = (ymd: string | null | undefined) => (ymd ? jourLong(ymd.slice(0, 10)) : '');
 
@@ -728,7 +789,7 @@ function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc
     const o = suivi.filter(x => x.type === 'offre' && (x.statut === 'en_attente' || x.statut === 'acceptee' || x.statut === 'contre'))
       .sort((x, y) => (y.montant || 0) - (x.montant || 0))[0];
     const jusq = o ? String((o.donnees as Record<string, unknown>).jusquau || '') : '';
-    return { t: o ? `Offre à ${euros(o.montant || 0)}${o.statut === 'acceptee' ? ' · acceptée' : jusq ? ` · réponse attendue le ${dateCourte(jusq)}` : ''}` : 'Sous offre', ton: 'alerte', ic: 'euro' };
+    return { t: o ? `Offre à ${euros(montantActuel(o))}${o.statut === 'acceptee' ? ' · acceptée' : jusq ? ` · réponse attendue le ${dateCourte(jusq)}` : ''}` : 'Sous offre', ton: 'alerte', ic: 'euro' };
   }
   if (b.etape === 'mandat') {
     /* En vente sans mandat signé noté (V3.42) : où il en est dans Documents. */
@@ -895,6 +956,7 @@ export function versCorrespondance(b: BienVente): BienCorr {
     parking: ann.some(x => ['parking', 'box', 'garage'].includes(x)), cave: ann.includes('cave'),
     ascenseur: imm.includes('ascenseur'), gardien: imm.includes('gardien'),
     exterieur: ext || null, surfaceTerrasse: nb(d, 'surfTerrasse'), surfaceBalcon: nb(d, 'surfBalcon'),
+    equipConnus: { annexes: ann.length > 0, immeuble: imm.length > 0 },
   };
 }
 /* Le type de bien tel que les recherches l'écrivent (« Appartement, Maison »). */

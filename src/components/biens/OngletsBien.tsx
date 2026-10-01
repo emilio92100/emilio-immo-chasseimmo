@@ -2,9 +2,10 @@
 import { Children, Fragment, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
-import { ETATS_PIECE, etapeDe, m2, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type SuiviVente } from '@/lib/biens-vente';
+import { ETATS_PIECE, echangesDe, etapeDe, m2, montantActuel, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type Reponse, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import Depliant from '@/components/shared/Depliant';
+import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import { COULEURS, habitable, nbPrincipales } from './ChampsBien';
 import f from '@/components/fiche/FriseSuivi.module.css';
 import o from './OngletsBien.module.css';
@@ -36,7 +37,8 @@ const joursDepuis = (iso: string) => {
 };
 const dateCourteMois = (iso: string) => {
   const x = jourMidi(iso);
-  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  /* V3.45 : avec l'année (« 12 févr. 2026 ») — Alexandre : « il n'y a pas l'année ». */
+  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 /* « aujourd'hui », « hier », « il y a 4 jours », « le 20 sept. » */
 export const ilYa = (iso: string) => {
@@ -453,9 +455,10 @@ function Pave({ ymd, sorte }: { ymd: string; sorte: 'prochaine' | 'avenir' | 'pa
   const ok = !!ymd && !isNaN(x.getTime());
   const jour = ok ? x.toLocaleDateString('fr-FR', { weekday: 'short' }).toUpperCase() : '';
   const mois = ok ? x.toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase() : '';
+  /* V3.45 : l'année sous le mois. */
   return (
-    <div className={o.date} data-sorte={sorte} aria-label={ok ? x.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Date à fixer'}>
-      <small>{jour}</small><b>{ok ? x.getDate() : '?'}</b><small>{mois}</small>
+    <div className={o.date} data-sorte={sorte} aria-label={ok ? x.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Date à fixer'}>
+      <small>{jour}</small><b>{ok ? x.getDate() : '?'}</b><small>{mois}</small>{ok && <em>{x.getFullYear()}</em>}
     </div>
   );
 }
@@ -497,82 +500,305 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche }: 
   );
 }
 
-/* Une offre : le montant, l'écart au prix, ses étapes, le délai. */
-export function CarteOffreB({ o: x, prix, compromis, onStatut, onContre, onDoc, onPiece }: {
-  o: SuiviVente; prix: number | null; compromis: boolean;
-  onStatut: (statut: string) => void; onContre: () => void; onDoc: () => void; onPiece?: () => void;
+/* ── Une offre (refaite en V3.45) ───────────────────────────────────────
+   Alexandre : « il est où le bouton pour la faire passer en compromis, ou
+   dire si l'offre a été acceptée ? », « l'offre écrite, on ne comprend
+   pas », puis « s'il y a quatre contre-offres, ça fait quatre blocs ? ».
+   Un bloc par acquéreur. À gauche : le montant sur la table, l'acquéreur, la
+   négociation ligne à ligne. À droite : les quatre étapes, UNE question
+   « Et maintenant ? » et ses réponses, puis le document que l'acquéreur
+   signe — facultatif, l'offre est déjà notée. Sur un écran étroit, les deux
+   moitiés se suivent. */
+export type DocOffre = { etat: 'prepa' | 'pret' | 'signe'; detail: string; onOuvrir: () => void; onPdf?: () => void };
+export type InfosCompromis = { signe?: string; sru?: string; pretLimite?: string; acte?: string; prix?: number | null; venduLe?: string | null };
+export type ActionsOffre = {
+  /* Une réponse : accepte, contre-offre, nouvelle proposition, refus… */
+  onReponse: (r: Reponse) => void;
+  /* Préparer le document (ou rouvrir celui déjà commencé : `doc`). */
+  onDoc: () => void;
+  doc?: DocOffre | null;
+  /* L'offre signée jointe (scan, PDF) : la voir, en joindre une. */
+  onPiece?: () => void;
+  onJoindre?: (f: File) => void;
+  onModifier?: () => void;
+  onCompromis?: () => void;
+  onVendu?: () => void;
+  /* Cette offre est celle du compromis : ses dates. */
+  compromis?: InfosCompromis | null;
+};
+
+export const dateAn = (iso: string | null | undefined) => {
+  if (!iso) return '';
+  const x = jourMidi(iso);
+  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/^1 /, '1er ');
+};
+const dateAnCourt = (iso: string) => {
+  const x = jourMidi(iso);
+  return isNaN(x.getTime()) ? '' : x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+const finDe = (d: Record<string, unknown>) => [
+  d.financement === 'comptant' ? 'comptant' : d.financement === 'relais' ? 'prêt relais' : d.financement === 'pret' ? 'avec un prêt' : '',
+  typeof d.apport === 'number' && d.apport > 0 ? `apport ${euros(d.apport)}` : '',
+  typeof d.pret === 'number' && d.pret > 0 ? `prêt ${euros(d.pret)}` : '',
+].filter(Boolean).join(', ');
+const sorteOffre = (st: string, compromis: boolean, vendu: boolean) =>
+  st === 'acceptee' ? (vendu ? 'vendu' : compromis ? 'compromis' : 'acceptee') : st === 'contre' ? 'contre' : st === 'refusee' || st === 'retiree' ? 'fermee' : 'attente';
+/* « 495 000 », « 495.000 », « 495 000 € » : 495000. Un point suivi de trois
+   chiffres sépare des milliers ; moins de 1 000 €, c'est une faute de frappe. */
+const lireMontant = (t: string) => {
+  const n = Number(t.replace(/[\s\u00a0\u202f€]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'));
+  return Number.isFinite(n) && n >= 1000 ? n : NaN;
+};
+
+export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
+  o: SuiviVente; prix: number | null; a: ActionsOffre;
+  /* Repliée sur une ligne (V3.45) : l'acquéreur, le montant, où elle en est. */
+  replie?: boolean; onPli?: () => void;
 }) {
   const d = (x.donnees || {}) as Record<string, unknown>;
   const st = x.statut || 'en_attente';
-  const ouverte = st === 'en_attente' || st === 'contre';
-  const acceptee = st === 'acceptee';
-  const ecart = x.montant && prix ? ((x.montant - prix) / prix) * 100 : null;
+  const c = a.compromis || null;
+  const sorte = sorteOffre(st, !!c, !!c?.venduLe);
+  const ouverte = sorte === 'attente' || sorte === 'contre';
+  const echanges = echangesDe(x);
+  const negocie = echanges.length > 1;
+  /* Sous compromis ou vendu : le prix noté au compromis. */
+  const actuel = (sorte === 'compromis' || sorte === 'vendu') && c?.prix ? c.prix : montantActuel(x);
+  const ecart = actuel && prix ? ((actuel - prix) / prix) * 100 : null;
   const jusquau = typeof d.jusquau === 'string' ? d.jusquau : '';
   const j = jusquau ? -(joursDepuis(jusquau) ?? 0) : null;
-  const fin = d.financement === 'comptant' ? 'comptant' : d.financement === 'relais' ? 'prêt relais' : d.financement === 'pret' ? 'avec un prêt' : '';
-  const fin2 = [fin, typeof d.apport === 'number' ? `apport ${euros(d.apport)}` : '', typeof d.pret === 'number' ? `prêt ${euros(d.pret)}` : ''].filter(Boolean).join(', ');
+  const fin = finDe(d);
+  /* La saisie d'un montant : la contre-offre du vendeur, ou la nouvelle
+     proposition de l'acquéreur. */
+  const [saisie, setSaisie] = useState<{ k: 'contre' | 'propose'; v: string } | null>(null);
   const PUCE: Record<string, { l: string; fond: string; c: string }> = {
-    en_attente: { l: 'En attente de réponse', fond: '#fbf6e9', c: '#7a5d1c' },
-    contre: { l: typeof d.contre === 'number' ? `Contre-offre à ${euros(d.contre)}` : 'Contre-offre', fond: '#eff6ff', c: '#1d4ed8' },
+    attente: { l: negocie ? 'Au vendeur de répondre' : 'En attente de la réponse du vendeur', fond: '#fbf6e9', c: '#7a5d1c' },
+    contre: { l: 'À l’acquéreur de répondre', fond: '#eff6ff', c: '#1d4ed8' },
     acceptee: { l: 'Acceptée', fond: '#dcfce7', c: '#15803d' },
-    refusee: { l: 'Refusée', fond: '#f1f5f9', c: '#475569' },
-    retiree: { l: 'Retirée', fond: '#f1f5f9', c: '#475569' },
+    compromis: { l: 'Compromis signé', fond: '#dcfce7', c: '#15803d' },
+    vendu: { l: 'Vendu', fond: '#dcfce7', c: '#15803d' },
+    fermee: { l: st === 'retiree' ? 'Retirée par l’acquéreur' : 'Refusée', fond: '#f1f5f9', c: '#475569' },
   };
-  const p = PUCE[st] || PUCE.en_attente;
-  const reponse = acceptee ? 'fait' : st === 'refusee' || st === 'retiree' ? 'non' : 'ici';
+  const p = PUCE[sorte];
+  /* Les quatre étapes : reçue, réponse (ou négociation), acceptée, compromis. */
+  const rang = { attente: 1, contre: 1, acceptee: 3, compromis: 4, vendu: 4, fermee: 0 }[sorte];
+  const pas = ['Reçue', negocie || sorte === 'contre' ? 'Négociation' : 'Réponse du vendeur', 'Acceptée', 'Compromis signé'];
+  function valider() {
+    if (!saisie) return;
+    const n = lireMontant(saisie.v);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setSaisie(null);
+    a.onReponse({ k: saisie.k, montant: n });
+  }
+  const dernier = echanges[echanges.length - 1];
+  const pieceJointe = typeof d.chemin === 'string' && !!d.chemin;
+  const puceEcart = ecart !== null && (
+    <span className={o.puce} style={ecart < 0 ? (ouverte ? { background: '#fef2f2', color: '#b91c1c' } : { background: '#f1f5f9', color: '#475569' }) : { background: '#dcfce7', color: '#15803d' }}>
+      {Math.abs(ecart) < 0.05 ? 'au prix' : ecart < 0 ? `−${pctFr(-ecart)} du prix` : `+${pctFr(ecart)} au-dessus du prix`}
+    </span>
+  );
+  if (replie && onPli) {
+    return (
+      <button type="button" className={`${o.offre} ${o.offreLigne}`} data-ouverte={ouverte ? 'oui' : 'non'} data-sorte={sorte} aria-expanded={false} onClick={onPli}>
+        <span className={`${o.puce} ${sorte === 'attente' ? o.pulse : ''}`} style={{ background: p.fond, color: p.c }}>{p.l}</span>
+        <b className={o.offreLigneQui}>{x.qui || 'Un acquéreur'}</b>
+        <b className={o.offreLigneM}>{euros(actuel)}</b>
+        {puceEcart}
+        {negocie && <span className={o.offreLigneN}>{`${echanges.length - 1} contre-proposition${echanges.length > 2 ? 's' : ''}`}</span>}
+        <PastillePli ouvert={false} voir="Déplier" />
+        <span className={o.offreLigneLe}>{`Reçue le ${dateAn(x.le)}`}</span>
+      </button>
+    );
+  }
   return (
-    <div className={o.offre} data-ouverte={ouverte ? 'oui' : 'non'} data-sorte={acceptee ? 'acceptee' : ouverte ? 'ouverte' : 'fermee'}>
-      <div className={o.offreT}>
-        <span className={`${o.puce} ${st === 'en_attente' ? o.pulse : ''}`} style={{ background: p.fond, color: p.c }}>{p.l}</span>
-        <span>{`reçue ${ilYa(x.le)}`}</span>
-      </div>
-      <div className={o.montant}>
-        <b>{euros(x.montant || 0)}</b>
-        {ecart !== null && (
-          <span className={o.puce} style={ecart < 0 ? (ouverte ? { background: '#fef2f2', color: '#b91c1c' } : { background: '#f1f5f9', color: '#475569' }) : { background: '#dcfce7', color: '#15803d' }}>
-            {Math.abs(ecart) < 0.05 ? 'au prix' : ecart < 0 ? `−${pctFr(-ecart)} du prix` : `+${pctFr(ecart)} au-dessus du prix`}
-          </span>
-        )}
-      </div>
-      <span className={o.qui}><b>{x.qui || 'Un acquéreur'}</b>{fin2 ? ` · ${fin2}` : ''}{typeof d.conditions === 'string' && d.conditions ? ` · ${d.conditions}` : ''}</span>
-      {x.commentaire && !ouverte && <span className={o.qui}>{x.commentaire}</span>}
-      {(ouverte || acceptee) && (
-        <div className={o.etapes}>
-          <span className={o.etape} data-etat="fait"><span><Ic n="check" t={11} e={3} /></span>Reçue</span>
-          <span className={o.trait} data-fait={acceptee ? 'oui' : 'non'} />
-          <span className={o.etape} data-etat={reponse}><span>{reponse === 'fait' && <Ic n="check" t={11} e={3} />}</span>{acceptee ? 'Acceptée' : st === 'contre' ? 'Contre-offre' : 'Réponse'}</span>
-          <span className={o.trait} data-fait={compromis ? 'oui' : 'non'} />
-          <span className={o.etape} data-etat={compromis ? 'fait' : acceptee ? 'ici' : 'apres'}><span>{compromis && <Ic n="check" t={11} e={3} />}</span>Compromis</span>
-        </div>
-      )}
-      {ouverte && jusquau && j !== null && (
-        <div className={o.delai} data-retard={j < 0 ? 'oui' : 'non'}>
-          <Ic n="horloge" t={15} />
-          <span>{j < 0 ? `Réponse attendue le ${jourMidi(jusquau).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} · délai dépassé de ${-j} jour${-j > 1 ? 's' : ''}`
-            : `Réponse attendue avant le ${jourMidi(jusquau).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} · ${j === 0 ? 'aujourd’hui' : j === 1 ? 'demain' : `dans${NBSP}${j}${NBSP}jours`}`}</span>
-        </div>
-      )}
-      {ouverte ? (
-        <>
-          <div className={o.offreBtns}>
-            <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => onStatut('acceptee')}><Ic n="check" t={13} e={2.6} />Acceptée</button>
-            <button type="button" className={o.act} onClick={onContre}>Contre-offre…</button>
-            <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => onStatut('refusee')}>Refusée</button>
+    <div className={o.offre} data-ouverte={ouverte ? 'oui' : 'non'} data-sorte={sorte}>
+      <div className={o.offreIn}>
+        {/* ── À gauche : l'offre, et sa négociation ── */}
+        <div className={o.offreG}>
+          <div className={o.offreT}>
+            <span className={`${o.puce} ${sorte === 'attente' ? o.pulse : ''}`} style={{ background: p.fond, color: p.c }}>{p.l}</span>
+            {onPli && <BoutonPli ouvert onClick={onPli} />}
+            <span className={o.offreLe}>{`Reçue le ${dateAn(x.le)}`}</span>
           </div>
-          <div className={o.petits}>
-            <button type="button" className={o.petit} onClick={() => onStatut('retiree')}>Retirée par l’acquéreur</button>
-            <button type="button" className={o.petit} onClick={onDoc}><Ic n="plume" t={13} />L’offre écrite</button>
-            {onPiece && <button type="button" className={o.petit} onClick={onPiece}><Ic n="trombone" t={13} />L’offre signée</button>}
+          <div className={o.montant}>
+            <b>{euros(actuel)}</b>
+            {puceEcart}
+            {a.onModifier && <button type="button" className={o.offreModif} onClick={a.onModifier} aria-label="Corriger l’offre" title="Corriger l’offre"><Ic n="crayon" t={14} /></button>}
           </div>
-        </>
-      ) : (
-        <div className={o.petits}>
-          <button type="button" className={o.petit} onClick={() => onStatut('en_attente')}>Remettre en attente</button>
-          <button type="button" className={o.petit} onClick={onDoc}><Ic n="plume" t={13} />L’offre écrite</button>
-          {onPiece && <button type="button" className={o.petit} onClick={onPiece}><Ic n="trombone" t={13} />L’offre signée</button>}
+          <span className={o.qui}><b>{x.qui || 'Un acquéreur'}</b>{fin ? ` · ${fin}` : ''}{typeof d.conditions === 'string' && d.conditions ? ` · ${d.conditions}` : ''}</span>
+          {x.commentaire && <span className={o.qui}>{x.commentaire}</span>}
+          {negocie && (
+            <ol className={o.echanges} aria-label="La négociation">
+              {echanges.map((e, i) => (
+                <li key={i} data-par={e.par}>
+                  <span className={o.echD}>{dateAnCourt(e.le)}</span>
+                  <span className={o.echL}>{i === 0 ? 'Offre de l’acquéreur' : e.par === 'vendeur' ? 'Contre-offre du vendeur' : 'Nouvelle proposition de l’acquéreur'}</span>
+                  <b>{euros(e.montant)}</b>
+                </li>
+              ))}
+              {(sorte === 'acceptee' || sorte === 'compromis' || sorte === 'vendu') && (
+                <li data-par="accord"><span className={o.echD}>{typeof d.reponse_le === 'string' ? dateAnCourt(d.reponse_le) : ''}</span><span className={o.echL}>Accord</span><b>{euros(actuel)}</b></li>
+              )}
+            </ol>
+          )}
         </div>
-      )}
+
+        {/* ── À droite : où on en est, et la suite ── */}
+        <div className={o.offreD}>
+          {rang > 0 && (
+            <ol className={o.frise4} aria-label="Où en est l’offre">
+              {pas.map((t, i) => {
+                const etat = i < rang ? 'fait' : i === rang ? 'ici' : 'apres';
+                return (
+                  <li key={t} className={o.ofPas} data-etat={etat}>
+                    <span>{etat === 'fait' ? <Ic n="check" t={12} e={3} /> : <i>{i + 1}</i>}</span>
+                    {t}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+          {sorte !== 'fermee' && (
+            <div className={o.suite} data-sorte={sorte}>
+              {sorte === 'attente' && (
+                <>
+                  <b className={o.suiteQ}>{negocie ? `Le vendeur accepte ${euros(dernier.montant)} ?` : 'Le vendeur a répondu ?'}</b>
+                  {jusquau && j !== null && !negocie && (
+                    <span className={o.delai} data-retard={j < 0 ? 'oui' : 'non'}>
+                      <Ic n="horloge" t={15} />
+                      <span>{j < 0 ? `Réponse attendue le ${dateAn(jusquau)} · délai dépassé de ${-j} jour${-j > 1 ? 's' : ''}`
+                        : `Réponse attendue avant le ${dateAn(jusquau)} · ${j === 0 ? 'aujourd’hui' : j === 1 ? 'demain' : `dans${NBSP}${j}${NBSP}jours`}`}</span>
+                    </span>
+                  )}
+                  {saisie ? <SaisieMontant k={saisie.k} v={saisie.v} onChange={v => setSaisie({ ...saisie, v })} onValider={valider} onAnnuler={() => setSaisie(null)} /> : (
+                    <div className={o.offreBtns}>
+                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => a.onReponse({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
+                      <button type="button" className={o.act} onClick={() => setSaisie({ k: 'contre', v: '' })}>Contre-offre…</button>
+                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => a.onReponse({ k: 'refuse' })}>Il refuse</button>
+                    </div>
+                  )}
+                  <div className={o.petits}>
+                    <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'retire' })}>L’acquéreur retire son offre</button>
+                  </div>
+                </>
+              )}
+              {sorte === 'contre' && (
+                <>
+                  <b className={o.suiteQ}>{`L’acquéreur accepte ${euros(dernier.montant)} ?`}</b>
+                  {saisie ? <SaisieMontant k={saisie.k} v={saisie.v} onChange={v => setSaisie({ ...saisie, v })} onValider={valider} onAnnuler={() => setSaisie(null)} /> : (
+                    <div className={o.offreBtns}>
+                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => a.onReponse({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
+                      <button type="button" className={o.act} onClick={() => setSaisie({ k: 'propose', v: '' })}>Nouvelle proposition…</button>
+                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => a.onReponse({ k: 'renonce' })}>Il renonce</button>
+                    </div>
+                  )}
+                </>
+              )}
+              {sorte === 'acceptee' && (
+                <>
+                  <b className={o.suiteQ}>Prochaine étape : le compromis, chez le notaire</b>
+                  <span className={o.suiteTx}>Une fois signé, le bien passe « Sous compromis » et le CRM calcule les dates : rétractation, prêt, acte.</span>
+                  {a.onCompromis && <button type="button" className={`${o.act} ${o.actOr} ${o.suiteBtn}`} onClick={a.onCompromis}>Le compromis est signé<Ic n="fleche" t={14} e={2.4} /></button>}
+                  <div className={o.petits}>
+                    <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'rouvrir' })}>Annuler l’acceptation</button>
+                  </div>
+                </>
+              )}
+              {(sorte === 'compromis' || sorte === 'vendu') && c && (
+                <>
+                  <b className={o.suiteQ}>{sorte === 'vendu' ? `Vendu le ${dateAn(c.venduLe)}` : 'Le compromis est signé'}</b>
+                  <div className={o.dates}>
+                    {[
+                      { l: 'Compromis signé le', v: c.signe },
+                      { l: 'Rétractation jusqu’au', v: c.sru },
+                      { l: 'Condition de prêt jusqu’au', v: c.pretLimite },
+                      { l: sorte === 'vendu' ? 'Acte signé le' : 'Acte prévu le', v: sorte === 'vendu' ? c.venduLe || c.acte : c.acte },
+                    ].filter(y => y.v).map(y => {
+                      const passe = (joursDepuis(String(y.v)) ?? -1) > 0;
+                      return <div key={y.l} data-passe={passe ? 'oui' : 'non'}><small>{y.l}</small><b>{dateAn(String(y.v))}</b></div>;
+                    })}
+                  </div>
+                  {sorte === 'compromis' && a.onVendu && <button type="button" className={`${o.act} ${o.actOr} ${o.suiteBtn}`} onClick={a.onVendu}>La vente est signée<Ic n="fleche" t={14} e={2.4} /></button>}
+                </>
+              )}
+            </div>
+          )}
+          {sorte === 'fermee' && (
+            <div className={o.petits}>
+              <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'rouvrir' })}>Remettre en attente</button>
+            </div>
+          )}
+
+          {/* ── Le document, à part : facultatif, l'offre est déjà notée. ── */}
+          <DocDeLOffre a={a} piece={pieceJointe ? String(d.nom || 'Offre signée') : ''} />
+        </div>
+      </div>
     </div>
+  );
+}
+
+function SaisieMontant({ k, v, onChange, onValider, onAnnuler }: { k: 'contre' | 'propose'; v: string; onChange: (t: string) => void; onValider: () => void; onAnnuler: () => void }) {
+  const n = lireMontant(v);
+  return (
+    <div className={o.contre}>
+      <label>
+        <span>{k === 'contre' ? 'La contre-offre du vendeur' : 'La nouvelle proposition de l’acquéreur'}</span>
+        <span className={o.contreCh}>
+          <input inputMode="numeric" autoFocus value={v} placeholder="Ex : 495 000" onChange={e => onChange(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') onValider(); if (e.key === 'Escape') onAnnuler(); }} />
+          <i>€</i>
+        </span>
+      </label>
+      <button type="button" className={`${o.act} ${o.actMarine}`} disabled={!Number.isFinite(n) || n <= 0} onClick={onValider}><Ic n="check" t={13} e={2.6} />Noter</button>
+      <button type="button" className={o.act} onClick={onAnnuler}>Annuler</button>
+    </div>
+  );
+}
+
+/* Le document de l'offre, en une ligne : facultatif. */
+function DocDeLOffre({ a, piece }: { a: ActionsOffre; piece: string }) {
+  const doc = a.doc || null;
+  const ETAT = { prepa: { l: 'En préparation', c: '#7a5d1c', f: '#fbf6e9' }, pret: { l: 'À faire signer', c: '#1d4ed8', f: '#eff6ff' }, signe: { l: 'Signée', c: '#15803d', f: '#dcfce7' } };
+  return (
+    <div className={o.docOffre}>
+      <div className={o.docOffreT}>
+        <Ic n="plume" t={15} />
+        <b>L’offre écrite</b>
+        <small>{piece || doc?.etat === 'signe' ? 'signée par l’acquéreur' : doc ? 'à faire signer par l’acquéreur' : 'à faire signer par l’acquéreur · facultatif'}</small>
+      </div>
+      {piece && (
+        <div className={o.docOffreL}>
+          <span className={o.puce} style={{ background: '#dcfce7', color: '#15803d' }}>Jointe</span>
+          <span>{piece}</span>
+          {a.onPiece && <button type="button" className={o.act} onClick={a.onPiece}><Ic n="oeil" t={13} />Voir</button>}
+        </div>
+      )}
+      {doc && (
+        <div className={o.docOffreL}>
+          <span className={o.puce} style={{ background: ETAT[doc.etat].f, color: ETAT[doc.etat].c }}>{ETAT[doc.etat].l}</span>
+          <span>{doc.detail}</span>
+          <button type="button" className={o.act} onClick={doc.onOuvrir}>Ouvrir</button>
+          {doc.onPdf && <button type="button" className={o.act} onClick={doc.onPdf}><Ic n="telecharger" t={13} />PDF</button>}
+        </div>
+      )}
+      {!piece && !doc ? (
+        <div className={o.docOffreBtns}>
+          <button type="button" className={o.act} onClick={a.onDoc}><Ic n="plume" t={13} />La préparer</button>
+          {a.onJoindre && <JoindreOffre onJoindre={a.onJoindre} t="Joindre la version signée" />}
+        </div>
+      ) : a.onJoindre && doc?.etat !== 'signe' ? (
+        <div className={o.petits}><JoindreOffre onJoindre={a.onJoindre} t={piece ? 'Remplacer le fichier joint' : 'Joindre la version signée sur papier'} petit /></div>
+      ) : null}
+    </div>
+  );
+}
+function JoindreOffre({ onJoindre, t, petit }: { onJoindre: (f: File) => void; t: string; petit?: boolean }) {
+  return (
+    <label className={petit ? o.petit : o.act} style={{ cursor: 'pointer' }}>
+      <Ic n="trombone" t={13} />{t}
+      <input type="file" accept=".pdf,image/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onJoindre(f); }} />
+    </label>
   );
 }
 

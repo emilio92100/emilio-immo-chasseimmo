@@ -15,6 +15,7 @@
 import { supabase } from '@/lib/supabase';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { correspondance, criteresDepuisRecherche } from '@/lib/correspondance';
+import { raisonEcart } from '@/lib/ecart-acheteur';
 import { titreBien, typeCompatible, versCorrespondance, type BienVente } from '@/lib/biens-vente';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,7 +54,11 @@ export async function chargerAlertesRappro(): Promise<AlerteRappro[]> {
   const note = (b: BienVente, x: Ligne) => {
     if (b.client_id && b.client_id === x.client_id) return 0;
     if (!typeCompatible(b.donnees?.typeBien, x.type_bien)) return 0;
-    return correspondance(versCorrespondance(b), critDe(x))?.note || 0;
+    const bc = versCorrespondance(b);
+    const corr = correspondance(bc, critDe(x));
+    /* V3.45 : comme l'onglet Acheteurs du bien — un critère essentiel
+       nettement raté ne compte pas (src/lib/ecart-acheteur.ts). */
+    return corr && !raisonEcart(corr, bc, critDe(x)) ? corr.note : 0;
   };
   const out: AlerteRappro[] = [];
 

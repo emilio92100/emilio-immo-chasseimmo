@@ -5,13 +5,13 @@ import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, estimationFaite, etapeDe, honorairesPour, pourcent, pretPourEstimer, texteEstimation, titreBien,
+  argentBien, avantMandat, estimationFaite, etapeDe, honorairesPour, montantActuel, pourcent, pretPourEstimer, texteEstimation, titreBien,
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import {
-  ajouterSuivi, annulerMandatNote, changerEtape, deposerPiece, enregistrerBien, enregistrerOffre, majSuivi, nomClient, visiteAcheteur, visiteExterne,
+  ajouterSuivi, annulerMandatNote, changerEtape, cloreRelanceOffre, deposerPiece, enregistrerBien, enregistrerOffre, majSuivi, modifierOffre, nomClient, visiteAcheteur, visiteExterne,
   type ClientMini, type RechercheMini,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -94,7 +94,7 @@ const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
   options: OptionAcheteur[]; recherches: RechercheMini[]; choix: ChoixA; onChoix: (c: ChoixA) => void; libre: string;
 }) {
-  const [mode, setMode] = useState<'crm' | 'libre'>(choix?.mode === 'libre' || !options.length ? 'libre' : 'crm');
+  const [mode, setMode] = useState<'crm' | 'libre'>(choix?.mode === 'crm' ? 'crm' : choix?.mode === 'libre' || !options.length ? 'libre' : 'crm');
   const [q, setQ] = useState('');
   const [clients, setClients] = useState<ClientMini[] | null>(null);
   useEffect(() => {
@@ -105,7 +105,8 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
   }, [mode, clients]);
   const liste = useMemo(() => {
     const t = sansAccent(q.trim());
-    if (t.length < 2) return options.slice(0, 8);
+    /* L'acquéreur déjà choisi (une offre qu'on corrige, V3.45) reste en tête. */
+    if (t.length < 2) return choix?.mode === 'crm' && !options.some(o => o.cle === choix.o.cle) ? [choix.o, ...options.slice(0, 7)] : options.slice(0, 8);
     const dejaLa = options.filter(o => sansAccent(o.nom).includes(t));
     const autres = (clients || []).filter(c => !options.some(o => o.clientId === c.id) && sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom}`).includes(t)).slice(0, 6)
       .map(c => {
@@ -113,7 +114,7 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
         return { cle: `c-${c.id}`, clientId: c.id, rechercheId: r?.id || null, nom: nomClient(c), sous: r ? `Recherche : ${r.nom || 'en cours'}` : 'Aucune recherche active' };
       });
     return [...dejaLa, ...autres];
-  }, [q, options, clients, recherches]);
+  }, [q, options, clients, recherches, choix]);
   const libreNom = choix?.mode === 'libre' ? choix.nom : '';
   const libreTel = choix?.mode === 'libre' ? choix.tel : '';
 
@@ -463,30 +464,39 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
 }
 
 /* ══ Une offre est arrivée ═════════════════════════════════════════════ */
-export function FenOffre({ bien, pour, options, recherches, proprio, onFermer, onFait }: {
+export function FenOffre({ bien, pour, existante, options, recherches, proprio, onFermer, onFait }: {
   bien: BienVente; options: OptionAcheteur[]; recherches: RechercheMini[]; proprio: ClientMini | null;
   onFermer: () => void; onFait: (b: BienVente | null) => void;
   /* Depuis une visite (« Enregistrer son offre », V3.32) : l'acheteur est choisi. */
   pour?: ChoixA;
+  /* V3.45 : corriger une offre déjà notée (« Modifier l'offre »). */
+  existante?: SuiviVente | null;
 }) {
   const a = argentBien(bien.donnees || {});
+  const ex = (existante?.donnees || {}) as Record<string, unknown>;
+  const nb = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const tx = (v: unknown) => (typeof v === 'string' ? v : '');
   const [choix, setChoix] = useState<ChoixA>(pour ?? null);
-  const [montant, setMontant] = useState<number | null>(null);
-  const [recue, setRecue] = useState(aujourdhui());
-  const [jusquau, setJusquau] = useState(plusJours(aujourdhui(), 5));
-  const [fin, setFin] = useState<'comptant' | 'pret' | 'relais'>('pret');
-  const [apport, setApport] = useState<number | null>(null);
-  const [pret, setPret] = useState<number | null>(null);
-  const [accord, setAccord] = useState('');
-  const [conditions, setConditions] = useState('');
+  const [montant, setMontant] = useState<number | null>(existante?.montant ?? null);
+  const [recue, setRecue] = useState(existante ? existante.le.slice(0, 10) : aujourdhui());
+  const [jusquau, setJusquau] = useState(existante ? tx(ex.jusquau) : plusJours(aujourdhui(), 5));
+  /* V3.45 : rien par défaut. « Prêt » était coché d'office et finissait sur
+     la carte (« avec un prêt ») sans que personne ne l'ait dit. */
+  const [fin, setFin] = useState<'comptant' | 'pret' | 'relais' | ''>(ex.financement === 'comptant' || ex.financement === 'pret' || ex.financement === 'relais' ? ex.financement : '');
+  const [apport, setApport] = useState<number | null>(nb(ex.apport));
+  const [pret, setPret] = useState<number | null>(nb(ex.pret));
+  const [accord, setAccord] = useState(tx(ex.accord));
+  const [conditions, setConditions] = useState(tx(ex.conditions));
   const [fichier, setFichier] = useState<File | null>(null);
-  const [passer, setPasser] = useState(bien.etape === 'mandat' || bien.etape === 'suspendu');
+  const [passer, setPasser] = useState(!existante && (bien.etape === 'mandat' || bien.etape === 'suspendu'));
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const ecart = montant && a.prix ? a.prix - montant : null;
   const honoSi = honorairesPour(bien.donnees || {}, montant);
   const netSi = montant && honoSi !== null ? montant - honoSi : null;
   const qui = choix?.mode === 'crm' ? choix.o.nom : choix?.mode === 'libre' ? choix.nom.trim() : '';
+  const avecPret = fin === 'pret' || fin === 'relais';
+  const dejaPasse = !!jusquau && jusquau < aujourdhui();
 
   async function valider() {
     if (!qui) { setErreur('Qui fait l’offre ?'); return; }
@@ -494,10 +504,12 @@ export function FenOffre({ bien, pour, options, recherches, proprio, onFermer, o
     setOccupe(true); setErreur('');
     try {
       const f = fichier ? await deposerPiece(bien.id, 'offre', fichier) : null;
-      const ligne = await enregistrerOffre(bien, {
+      const saisie = {
         qui, clientId: choix?.mode === 'crm' ? choix.o.clientId : null, rechercheId: choix?.mode === 'crm' ? choix.o.rechercheId : null,
-        montant, recue, jusquau, financement: fin, apport, pret: fin === 'comptant' ? null : pret, accord: accord.trim(), conditions: conditions.trim(), fichier: f,
-      }, proprio);
+        montant, recue, jusquau, financement: fin || null, apport, pret: avecPret ? pret : null, accord: avecPret ? accord.trim() : '', conditions: conditions.trim(), fichier: f,
+      };
+      if (existante) { await modifierOffre(bien, existante, saisie); onFait(null); return; }
+      const ligne = await enregistrerOffre(bien, saisie, proprio);
       if (passer && bien.etape !== 'offre') {
         const { bien: r } = await changerEtape(bien, 'offre', { infos: { offre: ligne.id, montant, qui } });
         onFait(r);
@@ -505,11 +517,12 @@ export function FenOffre({ bien, pour, options, recherches, proprio, onFermer, o
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
   const proprioNom = proprio ? proprio.prenom || nomClient(proprio) : 'le propriétaire';
+  const dejaJointe = !!tx(ex.chemin);
   return (
-    <Fenetre sur={passer && bien.etape !== 'offre' ? 'Le bien passe « Sous offre »' : 'Une offre de plus'} couleur={etapeDe('offre').c}
-      titre="Une offre est arrivée" sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
+    <Fenetre sur={existante ? `L’offre de ${existante.qui || 'l’acquéreur'}` : passer && bien.etape !== 'offre' ? 'Le bien passe « Sous offre »' : 'Une offre de plus'} couleur={etapeDe('offre').c}
+      titre={existante ? 'Corriger l’offre' : 'Une offre est arrivée'} sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
-        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Enregistrer l’offre'}</button></>}>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : existante ? 'Enregistrer les corrections' : 'Enregistrer l’offre'}</button></>}>
       <ChoixAcheteur options={options} recherches={recherches} choix={choix} onChoix={setChoix} libre="L’acquéreur" />
       <div className={b.groupe}>
         <div className={b.groupeT}><Ic n="euro" t={14} />L’offre</div>
@@ -524,43 +537,54 @@ export function FenOffre({ bien, pour, options, recherches, proprio, onFermer, o
             {netSi !== null && <>{' '}Net vendeur si les honoraires ne bougent pas : <b>{euros(netSi)}</b>.</>}
           </div>
         )}
-        <Ch lib="Financement"><Pills options={[{ v: 'comptant', l: 'Comptant' }, { v: 'pret', l: 'Prêt' }, { v: 'relais', l: 'Prêt relais' }]} v={fin} onChange={setFin} /></Ch>
+        <ChG lib="Financement"><Pills options={[{ v: 'comptant', l: 'Comptant' }, { v: 'pret', l: 'Prêt' }, { v: 'relais', l: 'Prêt relais' }]} v={fin} onChange={x => setFin(fin === x ? '' : x)} /></ChG>
+        {!fin && <div className={b.calc}>Pas encore dit ? Laisse vide : rien ne s’affichera sur l’offre.</div>}
         <div className={b.g3}>
           <Ch lib="Apport"><SaisieNombre v={apport} euros unite="€" off={false} onChange={setApport} /></Ch>
-          {fin !== 'comptant' && <Ch lib="Prêt demandé"><SaisieNombre v={pret} euros unite="€" off={false} onChange={setPret} /></Ch>}
-          {fin !== 'comptant' && <Ch lib="Accord de principe"><input className={s.input} value={accord} onChange={e => setAccord(e.target.value)} placeholder="Ex : oui, reçu le 20/09" /></Ch>}
+          {avecPret && <Ch lib="Prêt demandé"><SaisieNombre v={pret} euros unite="€" off={false} onChange={setPret} /></Ch>}
+          {avecPret && <Ch lib="Accord de principe"><input className={s.input} value={accord} onChange={e => setAccord(e.target.value)} placeholder="Ex : oui, reçu le 20/09" /></Ch>}
         </div>
         <Ch lib="Conditions particulières"><input className={s.input} value={conditions} onChange={e => setConditions(e.target.value)} placeholder="Ex : aucune ; vente de son bien actuel…" /></Ch>
         <label className={s.fichier}>
           <Ic n="trombone" t={18} />
-          <span>{fichier ? <><b>{fichier.name}</b> · sera déposée avec l’offre</> : <>Déposer l’offre signée (PDF ou photo) · <b>facultatif</b></>}</span>
+          <span>{fichier ? <><b>{fichier.name}</b>{' · sera déposée avec l’offre'}</> : dejaJointe ? <>{'L’offre signée est jointe · '}<b>{'la remplacer'}</b></> : <>{'Joindre l’offre signée par l’acquéreur (PDF ou photo) · '}<b>facultatif</b></>}</span>
           <input type="file" accept=".pdf,image/*" onChange={e => setFichier(e.target.files?.[0] || null)} />
         </label>
       </div>
-      {bien.etape !== 'offre' && (
+      {!existante && bien.etape !== 'offre' && (
         <label className={b.caseL}><input type="checkbox" checked={passer} onChange={e => setPasser(e.target.checked)} />Le bien passe « Sous offre » dans la liste</label>
       )}
-      <div className={b.reste}>
-        <div className={b.resteT}>Le CRM s’occupe du reste</div>
-        {proprio && jusquau && <div><Ic n="calendrier" t={15} />{`Une relance le ${new Date(`${jusquau}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} si ${proprioNom} n’a pas répondu`}</div>}
-        {!proprio && <div><Ic n="info" t={15} />Relie le propriétaire à sa fiche client pour recevoir une relance à la fin du délai.</div>}
-        {choix?.mode === 'crm' && <div><Ic n="personne" t={15} />{`Une ligne dans le suivi de ${choix.o.nom}, son bien passe « offre faite »`}</div>}
-        <div><Ic n="historique" t={15} />Les offres s’affichent côte à côte sur la fiche, pour comparer</div>
-      </div>
+      {!existante && (
+        <div className={b.reste}>
+          <div className={b.resteT}>Le CRM s’occupe du reste</div>
+          {proprio && jusquau && !dejaPasse && <div><Ic n="calendrier" t={15} />{`Une relance le ${new Date(`${jusquau}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })} si ${proprioNom} n’a pas répondu`}</div>}
+          {proprio && dejaPasse && <div><Ic n="info" t={15} />Le délai de réponse est déjà passé : pas de relance.</div>}
+          {!proprio && <div><Ic n="info" t={15} />Relie le propriétaire à sa fiche client pour recevoir une relance à la fin du délai.</div>}
+          {choix?.mode === 'crm' && <div><Ic n="personne" t={15} />{`Une ligne dans le suivi de ${choix.o.nom}, son bien passe « offre faite »`}</div>}
+          <div><Ic n="historique" t={15} />Ensuite, sur la carte de l’offre : la réponse du vendeur, puis le compromis</div>
+        </div>
+      )}
       <Erreur t={erreur} />
     </Fenetre>
   );
 }
 
 /* ══ Le compromis est signé ═════════════════════════════════════════════ */
-export function FenCompromis({ bien, offres, onFermer, onFait }: { bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente) => void }) {
+/* Le prix d'une offre : celui convenu au bout de la négociation (V3.45),
+   sinon la dernière proposition. */
+export const prixRetenu = (o: SuiviVente | null | undefined): number | null => (o ? montantActuel(o) || null : null);
+export function FenCompromis({ bien, offres, choisie, onFermer, onFait }: {
+  bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente) => void;
+  /* V3.45 : depuis la carte d'une offre, c'est elle. */
+  choisie?: string;
+}) {
   const d = bien.donnees || {};
   const a = argentBien(d);
   const candidates = offres.filter(o => o.statut !== 'refusee' && o.statut !== 'retiree');
-  const meilleure = candidates.find(o => o.statut === 'acceptee') || candidates.sort((x, y) => (y.montant || 0) - (x.montant || 0))[0];
+  const meilleure = candidates.find(o => o.id === choisie) || candidates.find(o => o.statut === 'acceptee') || [...candidates].sort((x, y) => (prixRetenu(y) || 0) - (prixRetenu(x) || 0))[0];
   const [offreId, setOffreId] = useState(meilleure?.id || '');
   const offre = offres.find(o => o.id === offreId) || null;
-  const [prix, setPrix] = useState<number | null>(offre?.montant || a.prix);
+  const [prix, setPrix] = useState<number | null>(prixRetenu(offre) || a.prix);
   const [signe, setSigne] = useState(aujourdhui());
   const [sru, setSru] = useState(plusJours(aujourdhui(), 11));
   const [pretL, setPretL] = useState(plusJours(aujourdhui(), 45));
@@ -572,8 +596,8 @@ export function FenCompromis({ bien, offres, onFermer, onFait }: { bien: BienVen
   const [erreur, setErreur] = useState('');
   const changerOffre = (id: string) => {
     setOffreId(id);
-    const o = offres.find(x => x.id === id);
-    if (o?.montant) { setPrix(o.montant); setHono(hDefaut(o.montant)); }
+    const p = prixRetenu(offres.find(x => x.id === id));
+    if (p) { setPrix(p); setHono(hDefaut(p)); }
   };
   const majSigne = (x: string) => { setSigne(x); setSru(plusJours(x, 11)); setPretL(plusJours(x, 45)); setActe(plusJours(x, 90)); };
   async function valider() {
@@ -584,6 +608,8 @@ export function FenCompromis({ bien, offres, onFermer, onFait }: { bien: BienVen
       const { bien: r } = await changerEtape(bien, 'compromis', {
         infos: { offre: offre?.id || null, acquereur: offre?.qui || null, prix, signe, sru, pretLimite: pretL, acte, notaireAcq: notaire.trim(), hono },
       });
+      /* La relance « réponse à donner » de cette offre n'a plus d'objet (V3.45). */
+      if (offre) await cloreRelanceOffre(bien, offre);
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
@@ -597,7 +623,7 @@ export function FenCompromis({ bien, offres, onFermer, onFait }: { bien: BienVen
           <div className={b.qui}>
             {candidates.map(o => (
               <button key={o.id} type="button" className={`${b.quiL} ${offreId === o.id ? b.quiOn : ''}`} onClick={() => changerOffre(o.id)}>
-                <div><b>{`${o.qui || 'Acquéreur'} · ${euros(o.montant || 0)}`}</b><small>{`Reçue le ${new Date(o.le).toLocaleDateString('fr-FR')}`}</small></div>
+                <div><b>{`${o.qui || 'Acquéreur'} · ${euros(prixRetenu(o) || 0)}`}</b><small>{`Reçue le ${new Date(o.le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${o.statut === 'acceptee' ? ' · acceptée' : ''}`}</small></div>
                 {offreId === o.id && <Ic n="check" t={16} e={2.6} />}
               </button>
             ))}
