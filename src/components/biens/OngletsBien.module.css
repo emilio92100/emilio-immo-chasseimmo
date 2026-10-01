@@ -35,7 +35,16 @@
 .annonceTx { flex: 1; min-width: 0; }
 .annonceTx b { display: block; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .annonceTx span { display: block; margin-top: 3px; font-size: 13px; line-height: 1.5; color: #64748b; }
-.annonceTexte { font-size: 13.5px; line-height: 1.65; color: #3d4a5c; white-space: pre-wrap; padding: 12px 14px; border-radius: 14px; background: #f8fafc; max-height: 420px; overflow: auto; }
+.annonceTexte { font-size: 13.5px; line-height: 1.65; color: #3d4a5c; white-space: pre-wrap; padding: 12px 14px; border-radius: 14px; background: #f8fafc; max-height: 420px; overflow: auto; min-width: 0; }
+/* V3.45 : le texte affiché d'office, les mentions en petit à côté. */
+.annonceCorps { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: start; }
+.mentions { display: flex; flex-direction: column; gap: 7px; padding: 11px 12px; border-radius: 14px; border: 1px solid #eef1f6; }
+.mentions > b { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #64748b; }
+.mentions ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.mentions li { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.35; color: #475569; }
+.mentions li > span { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; background: #dcfce7; color: #15803d; }
+.mentions li[data-ok='non'] { color: #9a3412; font-weight: 600; }
+.mentions li[data-ok='non'] > span { background: #fee2e2; color: #b91c1c; }
 .lienOr { align-self: flex-start; border: none; background: none; padding: 0; cursor: pointer; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; }
 .lienOr:hover { text-decoration: underline; text-underline-offset: 3px; }
 .anneau { flex-shrink: 0; display: block; }
@@ -249,7 +258,9 @@
 .suiteBtn { align-self: flex-start; padding: 10px 16px; font-size: 13.5px; }
 .dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .dates > div { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 12px; background: #fff; border: 1px solid #e3e8f0; }
-.dates small { font-size: 11.5px; font-weight: 700; color: #64748b; }
+.dates small { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #64748b; }
+.dates small svg { color: var(--c, #64748b); }
+.dates > div[data-vide='oui'] { border-style: dashed; background: #fbfcfe; }
 .dates b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .dates > div[data-passe='oui'] b { color: #64748b; }
 .contre { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
@@ -257,6 +268,31 @@
 .contreCh { display: flex; align-items: center; border: 1.5px solid #c9a84c; border-radius: 12px; background: #fff; padding: 0 12px; }
 .contreCh input { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 9px 0; font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .contreCh i { font-style: normal; font-weight: 800; color: #94a3b8; }
+
+/* Le compromis (V3.45) : « Compléter », les notaires, les rappels, le PDF. */
+.suiteTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.suiteModif { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 10px; border: 1px solid #cdeedb; background: #fff; color: #15803d; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+.suiteModif:hover { border-color: #86efac; background: #f0fdf4; }
+.aRenseigner { border: none; background: none; padding: 0; text-align: left; cursor: pointer; font: italic 600 13px 'DM Sans', sans-serif; color: #a07c28; text-decoration: underline dotted; text-underline-offset: 3px; }
+i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
+.rappelsC { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: #9a3412; font-weight: 600; }
+.rappelsC svg { margin-top: 2px; flex-shrink: 0; }
+.notairesC { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: #f8fafc; }
+.notairesT { display: flex; align-items: center; gap: 7px; font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.notaireL { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; background: #fff; border: 1px solid #e8edf3; }
+.notaireL[data-vide='oui'] { border-style: dashed; }
+.notaireAv { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--c); background: color-mix(in srgb, var(--c) 12%, #fff); }
+.notaireTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.notaireTx small { font-size: 11.5px; font-weight: 800; color: var(--c); }
+.notaireTx b { font-size: 13.5px; color: #1a2332; overflow-wrap: anywhere; }
+.notaireTx span { font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
+.notaireActs { display: flex; gap: 5px; flex-shrink: 0; }
+.rondC { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e3e8f0; background: #fff; color: #34496e; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; text-decoration: none; }
+.rondC:hover { border-color: #c9a84c; color: #1a2332; }
+.compromisPdf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 2px 0; font-size: 12.5px; color: #475569; }
+.compromisPdf > svg { color: #2d5c8f; }
+.compromisPdf > span { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; }
+.compromisPdf b { color: #1a2332; }
 
 /* Le document de l'offre, en une ligne. */
 .docOffre { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px dashed #dfe5ee; }
@@ -345,6 +381,7 @@
   .haut { grid-template-columns: minmax(0, 1fr); }
   .annonce, .pieces, .dossier { padding: 14px; border-radius: 18px; }
   .annonceL { align-items: center; flex-wrap: wrap; gap: 12px 14px; }
+  .annonceCorps { grid-template-columns: minmax(0, 1fr); }
   .annonceL > button { flex: 1 1 100%; height: 40px; }
   .familles { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .pile { gap: 12px; }

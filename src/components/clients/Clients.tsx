@@ -45,7 +45,7 @@ type Categorie = 'tous' | 'acheteur' | 'non_filtre' | Exclude<TypeContact, 'ache
 /* Les pastilles des tuiles, sur le bandeau bleu : les couleurs des types,
    éclaircies pour qu'on les voie (le bleu d'un notaire disparaissait). */
 const TEINTE_BANDEAU: Record<TypeContact, string> = {
-  acheteur: '#34d399', vendeur: '#e0c57a', proprietaire: '#fb923c', notaire: '#a9bce0',
+  acheteur: '#34d399', vendeur: '#e0c57a', vendeur_signe: '#86efac', proprietaire: '#fb923c', notaire: '#a9bce0',
   confrere: '#b79cff', gardien: '#5fd4e8', partenaire: '#cbd5e1',
 };
 /* L'ordre des tuiles (V3.24) : « Tous », puis les trois du menu de gauche

@@ -45,6 +45,20 @@ const FAMILLES: Record<string, Famille> = {
   affaire:  { ic: 'euro',     c: '#a07c28', bg: '#fbf4e2', carte: false },
   systeme:  { ic: 'point',    c: '#94a3b8', bg: '#f1f4f8', carte: false },
 };
+/* Les grandes étapes d'une vente (V3.47) : mandat, offre, offre acceptée,
+   compromis, compromis tombé, acte. Écrites par le CRM, mais ce sont les
+   moments qu'on vient chercher : une carte à leur couleur, pas une ligne
+   discrète (`metadata.jalon`, posé par noterJalon dans biens/outils.ts). */
+const JALONS: Record<string, Famille> = {
+  mandat:          { ic: 'mandat',    c: '#2e4166', bg: '#e8eef8', carte: true },
+  offre_faite:     { ic: 'euro',      c: '#a07c28', bg: '#fbf4e2', carte: true },
+  offre_recue:     { ic: 'euro',      c: '#a07c28', bg: '#fbf4e2', carte: true },
+  offre_acceptee:  { ic: 'accord',    c: '#0f766e', bg: '#e5f4f1', carte: true },
+  compromis:       { ic: 'signature', c: '#1d4ed8', bg: '#eaf2fb', carte: true },
+  compromis_tombe: { ic: 'retour',    c: '#b91c1c', bg: '#fef2f2', carte: true },
+  acte:            { ic: 'cle',       c: '#15803d', bg: '#eaf7ef', carte: true },
+};
+const jalonDe = (it: LigneSuivi): Famille | null => (it.kind === 'event' && typeof it.data?.metadata?.jalon === 'string' ? JALONS[it.data.metadata.jalon] || null : null);
 const ICONE_SYSTEME: Record<string, string> = {
   statut_change: 'tourne', bien_ajoute: 'maison', bien_modifie: 'maison', bien_supprime: 'corbeille',
   creation: 'etincelle', recherche_creee: 'etincelle', recherche_renommee: 'crayon', recherche_reinitialisee: 'tourne',
@@ -97,6 +111,9 @@ const TRAITS: Record<string, string[]> = {
   loupe: ['c:11,11,7', 'm21 21-4.3-4.3'],
   bas: ['m6 9 6 6 6-6'],
   point: ['c:12,12,3'],
+  cle: ['m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4', 'm21 2-9.6 9.6', 'c:7.5,15.5,5.5'],
+  signature: ['m21 17-2.2-1.9a.5.5 0 0 0-.8.4v.5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1c0-2.5-4-4-8.5-4a1 1 0 0 0 0 5c4.2 0 4.7-11.3 5.7-13.5a2.5 2.5 0 1 1 3.3 3.3', 'M3 21h18'],
+  accord: ['m11 17 2 2a1 1 0 1 0 3-3', 'm14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7.1-.9l.5.3a2 2 0 0 0 1.4.3L21 4', 'm21 3 1 11h-2', 'M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3', 'M3 4h8'],
 };
 export function IcSuivi({ n, t = 16, e = 2 }: { n: string; t?: number; e?: number }) {
   const tr = TRAITS[n] || TRAITS.point;
@@ -233,7 +250,8 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
             const nouveauMois = m !== moisCourant;
             moisCourant = m;
             const famK = familleDe(it);
-            const fam = FAMILLES[famK];
+            const jalon = jalonDe(it);
+            const fam = jalon || FAMILLES[famK];
             const cle = it.kind === 'comm' ? `c-${it.data.id}` : `e-${it.data.id}`;
             const mois = nouveauMois ? (
               <li key={`m-${cle}`} className={s.repere}><span className={s.repereRond} /><span className={s.repereTexte}>{m}</span></li>
@@ -311,9 +329,9 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
             }
 
             return (<Fragment key={cle}>{mois}
-              <li key={cle} id={`suivi-${j.id}`} className={`${s.ligne} suivi-ligne${surligne === j.id ? ' suivi-surligne' : ''}`} data-famille={famK}>
+              <li key={cle} id={`suivi-${j.id}`} className={`${s.ligne} suivi-ligne${surligne === j.id ? ' suivi-surligne' : ''}`} data-famille={jalon ? 'jalon' : famK}>
                 <span className={s.noeud} style={{ color: fam.c, background: fam.bg }}><IcSuivi n={fam.ic} t={16} /></span>
-                <div className={s.carte}>
+                <div className={`${s.carte} ${jalon ? s.carteJalon : ''}`} style={jalon ? { ['--jc' as string]: fam.c, ['--jf' as string]: fam.bg } as React.CSSProperties : undefined}>
                   <div className={s.carteTete}>
                     <span className={s.titre}>{titre}</span>
                     {issue && issue.k !== 'recu' && <span className={s.pastille} style={{ color: issue.c, background: issue.bg, borderColor: issue.bord }}>{issue.lib}</span>}

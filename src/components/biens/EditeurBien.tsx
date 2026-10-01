@@ -72,7 +72,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
       {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que le propriétaire est choisi, créé, ou laissé pour plus tard.</div>}
       <div className={verrou ? b.suiteVerrou : champProprio && nouveau ? b.suiteNouveau : b.suite} inert={verrou || undefined} aria-disabled={verrou || undefined}>
         {groupes(reste, d).map((g, k) => (
-          <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect}>
+          <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect} data-sect={g.titre?.cle || undefined}>
             {g.titre && (
               <div className={b.sectT}>
                 <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
@@ -154,7 +154,7 @@ function Notice({ id, onFermer }: { id: string; onFermer: () => void }) {
   );
 }
 
-export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbPrevues = 0, nbOffres = 0, onMaj, onFermer }: {
+export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbPrevues = 0, nbOffres = 0, onMaj, onFermer }: {
   bien: BienVente;
   etapeDepart?: string;
   nouveau?: boolean;
@@ -170,6 +170,9 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
   const [d, setD] = useState<Donnees>(() => ({ ...(bien.donnees || {}) }));
   /* Les étapes du formulaire pour cette étape de vente. */
   const ETAPES = useMemo(() => etapesDuBien(row.etape), [row.etape]);
+  /* « bien:t-surf » (V3.45) : l'étape « Le bien », ouverte sur « Les surfaces ».
+     Alexandre : « Modifier » des surfaces renvoyait au début du formulaire. */
+  const [etapeDepart, sectDepart] = (depart || '').split(':');
   const [etape, setEtape] = useState(() => Math.max(0, etapesDuBien(bien.etape).findIndex(e => e.id === etapeDepart)));
   /* « Modifier » d'un bloc qui n'est pas encore ouvert à cette étape de
      vente (le prix d'un bien à suivre) : on le dit, au lieu d'ouvrir
@@ -288,14 +291,18 @@ export default function EditeurBien({ bien, etapeDepart, nouveau = false, suivi,
   }, [mode]);
 
   /* Ouvert sur une étape précise (« Modifier » d'un bloc de la fiche), en
-     mode « tout sur une page » : on y descend. */
+     mode « tout sur une page » : on y descend. Sur une partie d'une étape
+     (« bien:t-surf »), on descend jusqu'à elle dans les deux modes, et elle
+     s'éclaire un instant (V3.45). */
   useEffect(() => {
-    if (mode !== 'tout' || !etapeDepart) return;
+    if (!etapeDepart || (mode !== 'tout' && !sectDepart)) return;
     const t = setTimeout(() => {
       const zone = formRef.current;
-      const x = zone?.querySelector<HTMLElement>(`[data-etape="${etapeDepart}"]`);
-      if (zone && x) zone.scrollTo({ top: x.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 12 });
-    }, 50);
+      const x = (sectDepart ? zone?.querySelector<HTMLElement>(`[data-sect="${sectDepart}"]`) : null) || zone?.querySelector<HTMLElement>(`[data-etape="${etapeDepart}"]`);
+      if (zone && x && zone.scrollHeight > zone.clientHeight + 4) zone.scrollTo({ top: x.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 12 });
+      else if (x) x.scrollIntoView({ block: 'start' });
+      if (x && sectDepart) { x.setAttribute('data-eclaire', 'oui'); setTimeout(() => x.removeAttribute('data-eclaire'), 1800); }
+    }, sectDepart ? 380 : 50);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

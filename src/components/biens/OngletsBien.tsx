@@ -164,7 +164,10 @@ export function Lettres({ genre, v, titre }: { genre: 'dpe' | 'ges'; v: string; 
 
 /* L'annonce : où elle en est, en un anneau. */
 export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; mentions: { ok: boolean; l: string }[]; onEcrire: () => void }) {
-  const [lire, setLire] = useState(false);
+  /* V3.45 — Alexandre : « il faut que le texte soit déjà affiché, pas
+     appuyer sur Lire le texte ». Il s'affiche d'office, les mentions
+     obligatoires en petit à côté ; « Replier le texte » le range. */
+  const [replie, setReplie] = useState(false);
   const [copie, setCopie] = useState(false);
   const manque = mentions.filter(x => !x.ok);
   /* Le texte compte pour 60 %, les mentions obligatoires pour le reste :
@@ -175,7 +178,7 @@ export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; men
   const phrase = !texte
     ? `Pas encore écrite. L’éditeur en propose un brouillon à partir de la fiche.${manque.length ? ` Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''} : ${liste}.` : ''}`
     : manque.length
-      ? `Texte prêt, ${texte.length} caractères. Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''} : ${liste}.`
+      ? `Texte prêt, ${texte.length} caractères. Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''}.`
       : `Prête à publier : le texte, ${texte.length} caractères, et toutes les mentions obligatoires.`;
   return (
     <div className={o.annonce}>
@@ -186,15 +189,31 @@ export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; men
         <button type="button" className={`${o.act} ${texte ? '' : o.actMarine}`} onClick={onEcrire}>{texte ? 'Modifier' : 'Écrire l’annonce'}</button>
       </div>
       {texte && (
+        <Depliant ouvert={!replie} ecart={10}>
+          <div className={o.annonceCorps}>
+            <div className={o.annonceTexte}>{texte}</div>
+            {mentions.length > 0 && (
+              <div className={o.mentions}>
+                <b>Mentions obligatoires</b>
+                <ul>
+                  {mentions.map(x => (
+                    <li key={x.l} data-ok={x.ok ? 'oui' : 'non'}><span><Ic n={x.ok ? 'check' : 'croix'} t={11} e={3} /></span>{x.l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Depliant>
+      )}
+      {texte && (
         <div className={o.acts}>
-          <button type="button" className={o.lienOr} onClick={() => setLire(!lire)}>{lire ? 'Masquer le texte' : 'Lire le texte'}</button>
+          <BoutonPli ouvert={!replie} onClick={() => setReplie(!replie)} voir="Afficher le texte" replier="Replier le texte" />
           <span style={{ flex: 1 }} />
           <button type="button" className={o.act} onClick={() => { navigator.clipboard?.writeText(texte).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1600); }).catch(() => {}); }}>
             <Ic n={copie ? 'check' : 'copier'} t={13} />{copie ? 'Copié' : 'Copier le texte'}
           </button>
         </div>
       )}
-      {texte && <Depliant ouvert={lire} ecart={10}><div className={o.annonceTexte}>{texte}</div></Depliant>}
     </div>
   );
 }
@@ -510,7 +529,14 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche }: 
    signe — facultatif, l'offre est déjà notée. Sur un écran étroit, les deux
    moitiés se suivent. */
 export type DocOffre = { etat: 'prepa' | 'pret' | 'signe'; detail: string; onOuvrir: () => void; onPdf?: () => void };
-export type InfosCompromis = { signe?: string; sru?: string; pretLimite?: string; acte?: string; prix?: number | null; venduLe?: string | null };
+export type NotaireCarte = { role: 'vendeur' | 'acquereur'; nom: string; etude?: string; tel?: string; email?: string; onFiche?: () => void };
+export type InfosCompromis = {
+  signe?: string; sru?: string; pretLimite?: string; acte?: string; prix?: number | null; venduLe?: string | null;
+  /* V3.45 : ce que le compromis porte aussi — les deux notaires, les rappels
+     programmés, l'exemplaire signé — et « Compléter le compromis ». */
+  hono?: number | null; notaires?: NotaireCarte[]; rappels?: { cle: string; le: string }[];
+  piece?: string; onPiece?: () => void; onJoindre?: (f: File) => void; onCompleter?: () => void;
+};
 export type ActionsOffre = {
   /* Une réponse : accepte, contre-offre, nouvelle proposition, refus… */
   onReponse: (r: Reponse) => void;
@@ -577,7 +603,8 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
     acceptee: { l: 'Acceptée', fond: '#dcfce7', c: '#15803d' },
     compromis: { l: 'Compromis signé', fond: '#dcfce7', c: '#15803d' },
     vendu: { l: 'Vendu', fond: '#dcfce7', c: '#15803d' },
-    fermee: { l: st === 'retiree' ? 'Retirée par l’acquéreur' : 'Refusée', fond: '#f1f5f9', c: '#475569' },
+    /* V3.47 : l'offre d'un compromis tombé (compromisTombe). */
+    fermee: { l: st === 'retiree' ? (d.compromisTombe ? 'Compromis tombé' : 'Retirée par l’acquéreur') : 'Refusée', fond: '#f1f5f9', c: '#475569' },
   };
   const p = PUCE[sorte];
   /* Les quatre étapes : reçue, réponse (ou négociation), acceptée, compromis. */
@@ -641,6 +668,7 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
               )}
             </ol>
           )}
+          {(sorte === 'compromis' || sorte === 'vendu') && c && <NotairesCompromis c={c} />}
         </div>
 
         {/* ── À droite : où on en est, et la suite ── */}
@@ -707,18 +735,29 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
               )}
               {(sorte === 'compromis' || sorte === 'vendu') && c && (
                 <>
-                  <b className={o.suiteQ}>{sorte === 'vendu' ? `Vendu le ${dateAn(c.venduLe)}` : 'Le compromis est signé'}</b>
+                  <div className={o.suiteTete}>
+                    <b className={o.suiteQ}>{sorte === 'vendu' ? `Vendu le ${dateAn(c.venduLe)}` : 'Le compromis est signé'}</b>
+                    {c.onCompleter && <button type="button" className={o.suiteModif} onClick={c.onCompleter}><Ic n="crayon" t={13} />{manque(c) ? 'Compléter' : 'Modifier'}</button>}
+                  </div>
                   <div className={o.dates}>
                     {[
-                      { l: 'Compromis signé le', v: c.signe },
-                      { l: 'Rétractation jusqu’au', v: c.sru },
-                      { l: 'Condition de prêt jusqu’au', v: c.pretLimite },
-                      { l: sorte === 'vendu' ? 'Acte signé le' : 'Acte prévu le', v: sorte === 'vendu' ? c.venduLe || c.acte : c.acte },
-                    ].filter(y => y.v).map(y => {
-                      const passe = (joursDepuis(String(y.v)) ?? -1) > 0;
-                      return <div key={y.l} data-passe={passe ? 'oui' : 'non'}><small>{y.l}</small><b>{dateAn(String(y.v))}</b></div>;
+                      { ic: 'doc', col: '#2d5c8f', l: 'Compromis signé le', v: c.signe },
+                      { ic: 'bouclier', col: '#b45309', l: 'Rétractation jusqu’au', v: c.sru },
+                      { ic: 'banque', col: '#1d4ed8', l: 'Condition de prêt jusqu’au', v: c.pretLimite },
+                      { ic: 'plume', col: '#6d28d9', l: sorte === 'vendu' ? 'Acte signé le' : 'Acte prévu le', v: sorte === 'vendu' ? c.venduLe || c.acte : c.acte },
+                    ].map(y => {
+                      const passe = !!y.v && (joursDepuis(String(y.v)) ?? -1) > 0;
+                      return (
+                        <div key={y.l} data-passe={passe ? 'oui' : 'non'} data-vide={y.v ? 'non' : 'oui'} style={{ ['--c' as string]: y.col } as CSSProperties}>
+                          <small><Ic n={y.ic} t={12} />{y.l}</small>
+                          {y.v ? <b>{dateAn(String(y.v))}</b> : c.onCompleter ? <button type="button" className={o.aRenseigner} onClick={c.onCompleter}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
+                        </div>
+                      );
                     })}
                   </div>
+                  {!!c.rappels?.length && sorte === 'compromis' && (
+                    <span className={o.rappelsC}><Ic n="horloge" t={13} />{`Rappels dans tes Relances : ${c.rappels.map(r => `${RAPPEL_MOT[r.cle] || r.cle} le ${dateAnCourt(r.le)}`).join(' · ')}`}</span>
+                  )}
                   {sorte === 'compromis' && a.onVendu && <button type="button" className={`${o.act} ${o.actOr} ${o.suiteBtn}`} onClick={a.onVendu}>La vente est signée<Ic n="fleche" t={14} e={2.4} /></button>}
                 </>
               )}
@@ -733,6 +772,57 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
           {/* ── Le document, à part : facultatif, l'offre est déjà notée. ── */}
           <DocDeLOffre a={a} piece={pieceJointe ? String(d.nom || 'Offre signée') : ''} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+const RAPPEL_MOT: Record<string, string> = { sru: 'rétractation', pret: 'prêt', acte: 'acte' };
+const manque = (c: InfosCompromis) => !c.sru || !c.pretLimite || !c.acte || (c.notaires || []).length < 2;
+const sansEsp = (t: string) => t.replace(/[\s.]+/g, '');
+
+/* Les deux notaires du compromis, et l'exemplaire signé (V3.45). */
+function NotairesCompromis({ c }: { c: InfosCompromis }) {
+  const ROLES: { role: NotaireCarte['role']; l: string; col: string }[] = [
+    { role: 'vendeur', l: 'Notaire du vendeur', col: '#a07c28' },
+    { role: 'acquereur', l: 'Notaire de l’acquéreur', col: '#1d4ed8' },
+  ];
+  return (
+    <div className={o.notairesC}>
+      <b className={o.notairesT}><Ic n="balance" t={14} />Les notaires</b>
+      {ROLES.map(r => {
+        const n = (c.notaires || []).find(x => x.role === r.role);
+        return (
+          <div key={r.role} className={o.notaireL} style={{ ['--c' as string]: r.col } as CSSProperties} data-vide={n ? 'non' : 'oui'}>
+            <span className={o.notaireAv}><Ic n="balance" t={15} /></span>
+            <div className={o.notaireTx}>
+              <small>{r.l}</small>
+              {n ? <b>{n.nom}</b> : c.onCompleter ? <button type="button" className={o.aRenseigner} onClick={c.onCompleter}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
+              {n && (n.etude || n.tel) && <span>{[n.etude, n.tel].filter(Boolean).join(' · ')}</span>}
+            </div>
+            {n && (
+              <div className={o.notaireActs}>
+                {n.tel && <a className={o.rondC} href={`tel:${sansEsp(n.tel)}`} aria-label={`Appeler ${n.nom}`} title={n.tel}><Ic n="telephone" t={14} /></a>}
+                {n.email && <a className={o.rondC} href={`mailto:${n.email}`} aria-label={`Écrire à ${n.nom}`} title={n.email}><Ic n="mail" t={14} /></a>}
+                {n.onFiche && <button type="button" className={o.rondC} onClick={n.onFiche} aria-label={`La fiche de ${n.nom}`} title="Sa fiche"><Ic n="personne" t={14} /></button>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className={o.compromisPdf}>
+        <Ic n="doc" t={14} />
+        {c.piece ? (
+          <>
+            <span><b>Le compromis signé</b>{` · ${c.piece}`}</span>
+            {c.onPiece && <button type="button" className={o.act} onClick={c.onPiece}><Ic n="oeil" t={13} />Voir</button>}
+          </>
+        ) : (
+          <>
+            <span><b>Le compromis signé</b>{' · pas encore joint'}</span>
+            {c.onJoindre && <JoindreOffre onJoindre={c.onJoindre} t="Joindre le PDF" />}
+          </>
+        )}
       </div>
     </div>
   );

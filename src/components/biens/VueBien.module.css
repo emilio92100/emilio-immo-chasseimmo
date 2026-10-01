@@ -127,6 +127,9 @@ li[data-etat='encours'] .jTx b { color: #a07c28; }
 /* V3.32 : les trois premières indications côte à côte. */
 .visiteGrille { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px 10px; }
 .visiteGrille .visiteLi b { font-weight: 700; }
+.visiteGrille .visiteLi[data-large='oui'] { grid-column: 1 / -1; }
+.visiteTel { margin-top: 2px; font-size: 13px; font-weight: 700; color: #1d4ed8; text-decoration: none; white-space: nowrap; }
+.visiteTel:hover { text-decoration: underline; }
 /* Visites et offres (V3.32) : la prochaine visite, et les deux gestes. */
 .voProchaine { display: flex; align-items: flex-start; gap: 9px; padding: 8px 10px; border-radius: 11px; background: #f5f3ff; border: 1px solid #ede9fe; color: #6d28d9; }
 .voProchaine svg { margin-top: 2px; flex-shrink: 0; }

@@ -5,7 +5,7 @@ import { euros } from '@/lib/mandat';
 import { nomFoyer } from '@/lib/foyer';
 import { demanderNouveauBien } from '@/lib/intentions';
 import {
-  FORMES_SOCIETE, METIERS, STATUTS_PRO, TYPES_CONTACT, colonneContactAbsente, ligneContact, typeDe, typesDe,
+  FORMES_SOCIETE, METIERS, STATUTS_PRO, TYPES_CONTACT, aUnBien, colonneContactAbsente, ligneContact, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
@@ -162,7 +162,7 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
           agir pour une SCI, une SARL… On la note dès la création ; les
           associés, le RCS et le siège se complètent ensuite sur sa fiche
           (« Sa société »). */}
-      {(types.includes('acheteur') || types.includes('vendeur') || types.includes('proprietaire')) && bloc('Sa société', (
+      {(types.includes('acheteur') || aUnBien(types)) && bloc('Sa société', (
         <div className={c.pro}>
           <div className={c.pills} role="radiogroup" aria-label="Il agit en son nom ou pour une société">
             <button type="button" role="radio" aria-checked={!pro.structure} className={`${c.pill} ${!pro.structure ? c.pillOn : ''}`}
@@ -326,7 +326,7 @@ export function LigneContact({ x, biens, derniere, onOuvrir, onBien }: {
   const tel = x.telephones?.[0], mail = x.emails?.[0];
   const pro = ligneContact(x);
   const recherche = types.includes('acheteur') ? resumeRecherche(x) : '';
-  const vend = types.includes('vendeur') || types.includes('proprietaire');
+  const vend = aUnBien(types);
   const nom = nomFoyer(x) || 'Sans nom';
   return (
     <div role="button" tabIndex={0} className={`${c.lLigne} ${x.archive ? c.lArchive : ''}`} onClick={onOuvrir} onKeyDown={e => { if (e.key === 'Enter') onOuvrir(); }}>

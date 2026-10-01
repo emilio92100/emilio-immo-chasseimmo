@@ -48,7 +48,11 @@ type Bien = {
   visitePrevue?: { date: string; heure: string | null } | null;
   visiteFaite?: { date: string | null; commentaire: string | null; etoiles: number | null } | null;
   etat: string;
+  /* Un bien de l'agence sous compromis ou vendu (V3.47) ; `vous` : c'est le
+     sien, il l'achète. */
+  vente?: { etat: 'compromis' | 'vendu'; vous: boolean } | null;
 };
+const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis') : v.etat === 'vendu' ? 'Vendu' : 'Sous compromis');
 /* Une visite, telle que « Vos visites » la lit (voir page.tsx). `passee` :
    faite, ou calée à une heure déjà passée. `issue` : sa réponse ou celle de
    son conseiller, null tant que personne n'a rien dit. */
@@ -303,6 +307,9 @@ const ETIQ: Record<string, { e: string; n: string; c: string }> = {
   ...AVIS,
   visite_prevue: { e: '📅', n: 'Visite à venir', c: 'prevue' },
   visite: { e: '🏠', n: 'Visite effectuée', c: 'fait' },
+  /* V3.47 : pour les cartes ; jamais un avis du client (voir `repondu`). */
+  votre_achat: { e: '🔑', n: 'Votre achat', c: 'fait' },
+  plus_dispo: { e: '🔒', n: 'Plus disponible', c: 'vu' },
 };
 /* Après le clic sur un avis, on ne laisse pas un champ vide et muet :
    on dit au client à quoi servira ce qu'il écrit, et ce qu'on attend de lui.
@@ -399,7 +406,13 @@ const GROUPES: { id: string; e: string; court: string; titre: string; ton: strin
     note: 'Ce que vous gardez de côté. Dites-nous si vous voulez en visiter un, votre conseiller s’en occupe.' },
   { id: 'refuse', e: '👎', court: 'Pas pour moi', titre: 'Pas pour moi', ton: 'c-brique',
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
+  /* V3.47 : les biens de l'agence vendus ou sous compromis. Celui qu'il
+     achète passe en tête, les autres à la fin : ils ne demandent plus rien. */
+  { id: 'plus_dispo', e: '🔒', court: 'Plus disponibles', titre: 'Sous compromis ou vendus', ton: 'c-net',
+    note: 'Ces biens ne sont plus disponibles. Vos retours restent gardés : ils affinent la suite de la recherche.' },
 ];
+GROUPES.unshift({ id: 'votre_achat', e: '🔑', court: 'Votre achat', titre: 'Votre achat', ton: 'c-or',
+  note: 'Le bien que vous achetez. Votre conseiller vous accompagne jusqu’à la signature de l’acte.' });
 /* Les filtres de « Consultés » (V3.27) : une visite calée et une visite
    souhaitée tombent sous le même « À visiter » — deux filtres pour la même
    intention faisaient double emploi. Les deux cadres restent distincts
@@ -418,6 +431,7 @@ const filtreDe = (g: string) => FILTRES_C.find(f => f.groupes.includes(g))?.id |
    et seulement ensuite l'avis que le client a donné. C'est ce qui évite
    d'écrire « Visite effectuée » sur un bien que personne n'a encore vu. */
 const groupeDe = (b: Bien) => {
+  if (b.vente) return b.vente.vous ? 'votre_achat' : 'plus_dispo';
   if (b.visiteFaite) return 'visite';
   if (b.visitePrevue) return 'visite_prevue';
   if (b.avis === 'visite') return 'visite';
@@ -432,6 +446,7 @@ const etiqDe = (b: Bien) => ETIQ[groupeDe(b)] || null;
    bien pas encore ouvert attend son avis comme les autres. */
 const catCarte = (b: Bien): CatEspace => {
   const g = groupeDe(b);
+  if (g === 'votre_achat') return 'interesse';
   if (g === 'visite') return 'visite';
   if (g === 'visite_prevue' || g === 'souhaite_visiter') return 'a_visiter';
   if (g === 'interesse' || g === 'refuse') return g;
@@ -1095,10 +1110,15 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }, []);
   useEchap(ouvert, fermerRef);
 
-  const parEtat = (e: string) => biens.filter(b => b.etat === e);
+  /* V3.47 : un bien vendu (ou sous compromis) à quelqu'un d'autre ne
+     demande plus d'avis ni de visite : il sort des nouveautés, des avis à
+     donner et de la carte, et se range dans « Sous compromis ou vendus ». */
+  const libre = (b: Bien) => !b.vente || b.vente.vous;
+  const parEtat = (e: string) => biens.filter(b => b.etat === e && (e === 'avis' || libre(b)));
   const neufs = parEtat('neuf'), vus = parEtat('vu'), donnes = parEtat('avis');
+  const plusDispo = biens.filter(b => !libre(b) && b.etat !== 'avis');
   /* Les biens tels que la carte les montre (voir CarteEspace.tsx). */
-  const biensCarte = useMemo(() => biens.map(pourCarte), [biens]);
+  const biensCarte = useMemo(() => biens.filter(b => !b.vente || b.vente.vous).map(pourCarte), [biens]);
   const nouveautesCarte = useMemo(() => biensCarte.filter(b => idsNouveaux.has(b.id) && b.cat === 'attente'), [biensCarte, idsNouveaux]);
   const [filtreC, setFiltreC] = useState('tout');   // filtre de « Mes derniers biens consultés »
   /* Les filtres de « Consultés » sont repliés d'office : la place va aux biens. */
@@ -1287,7 +1307,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      milieu retrouve ses nouveautés intactes, et la file reprend au premier
      bien sans réponse — même après un rechargement (sessionStorage). */
   const CLE_DECOUVERTE = 'emilio_decouverte';
-  const aDecouvrir = (b: Bien) => b.etat === 'neuf' && (!b.avis || b.avis === 'propose') && !b.visitePrevue && !b.visiteFaite;
+  /* Un bien déjà sous compromis ou vendu ne se « découvre » pas (V3.47) : sa fiche le dit. */
+  const aDecouvrir = (b: Bien) => b.etat === 'neuf' && (!b.avis || b.avis === 'propose') && !b.visitePrevue && !b.visiteFaite && !b.vente;
   function ouvrirDecouverte(depuisId?: string, silencieux = false) {
     if (decouverteRef.current) return;
     const ids = biensRef.current.filter(aDecouvrir).map(b => b.id);
@@ -2004,7 +2025,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
             </Vue>
           )}
           {vue === 'consultes' && (() => {
-            const ouverts = [...vus, ...donnes];
+            const ouverts = [...vus, ...donnes, ...plusDispo];
             const par: Record<string, Bien[]> = {};
             ouverts.forEach(b => { const g = groupeDe(b); (par[g] ||= []).push(b); });
             const visibles = GROUPES.filter(g => (par[g.id] || []).length > 0);
@@ -2817,6 +2838,7 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
                 </span>
               ))}
               {corr && <span className="an-badge"><b className="tab">{corr.note}&nbsp;%</b><i>correspondance</i></span>}
+              {b.vente && <span className={'ruban-vente' + (b.vente.vous ? ' vous' : '')}>{motVente(b.vente)}</span>}
             </span>
             <span className="corps-bien">
               <span className="haut-bien">
@@ -4135,7 +4157,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
       {bientot && <ModaleBientot onFermer={() => setBientot(false)}
         onPartager={() => { setBientot(false); setPartage(true); }} />}
       {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
-      <div className="fiche-droite" data-barre={!envoye && !dec ? '1' : undefined}>
+      <div className="fiche-droite" data-barre={!envoye && !dec && !b.vente ? '1' : undefined}>
       {dec?.colonne && (
         <div className="dec-f-haut">
           <button type="button" className="dec-f-retour col" onClick={dec.onRetour}>
@@ -4154,6 +4176,14 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             {onCarte && <button type="button" className="voir-carte" onClick={onCarte}><Ico n="carte" t={13} /><span>Voir sur la carte</span></button>}</div>}</div>
       </div>
       <div className="corps-f">
+        {b.vente && (
+          <div className={'avis-vente' + (b.vente.vous ? ' vous' : '')}>
+            <Ico n={b.vente.vous ? 'check' : 'maison'} t={17} />
+            <span>{b.vente.vous
+              ? (b.vente.etat === 'vendu' ? 'La vente est signée : félicitations pour votre achat.' : 'Votre compromis est signé. Prochaine étape : l’acte, chez le notaire.')
+              : (b.vente.etat === 'vendu' ? 'Ce bien a été vendu.' : 'Ce bien est sous compromis de vente : il n’est plus proposé à la visite pour l’instant.')}</span>
+          </div>
+        )}
         {corr && (
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
             <AnneauNote note={corr.note} />
@@ -4379,7 +4409,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           </button>
         </div>
       )}
-      {!envoye && !dec && (
+      {!envoye && !dec && !b.vente && (
         <div className="rail-avis" style={hBarre ? { height: hBarre } : undefined}>
           {panneau && (
             <button type="button" className="voile-avis" aria-label="Fermer"
@@ -6230,6 +6260,11 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
   background:rgba(26,35,50,.82); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); color:#fff; border-radius:99px; padding:5px 11px; pointer-events:none}
 .an-badge b{font-size:14px; font-weight:800; color:var(--or)}
 .an-badge i{font-style:normal; font-size:11px; opacity:.82}
+.ruban-vente{position:absolute; top:10px; left:10px; z-index:2; padding:5px 10px; border-radius:99px; background:rgba(26,35,50,.88); color:#fff; font-size:12px; font-weight:800; letter-spacing:.2px}
+.ruban-vente.vous{background:var(--or); color:#1a2332}
+.avis-vente{display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:14px; background:#f1f5f9; color:#334155; font-size:14px; line-height:1.5; margin-bottom:14px}
+.avis-vente svg{flex-shrink:0; margin-top:2px}
+.avis-vente.vous{background:#fbf6e9; color:#5c4a1a}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
 .specs{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px; margin:16px 0 4px}

@@ -285,7 +285,8 @@ function LigneVisite({ v, a }: { v: VisiteCarte; a: ActionsVisite | null }) {
 function LigneOffre({ o, prix, a }: { o: SuiviVente; prix: number | null; a: ActionsOffre }) {
   const d = (o.donnees || {}) as Record<string, unknown>;
   const st = o.statut || 'en_attente';
-  const p = PUCE_OFFRE[st] || PUCE_OFFRE.en_attente;
+  /* V3.47 : l'offre d'un compromis tombé (compromisTombe). */
+  const p = st === 'retiree' && d.compromisTombe ? { ...PUCE_OFFRE.retiree, l: 'Compromis tombé' } : PUCE_OFFRE[st] || PUCE_OFFRE.en_attente;
   const actuel = montantActuel(o);
   const ecart = actuel && prix ? ((actuel - prix) / prix) * 100 : null;
   const fin = d.financement === 'comptant' ? 'comptant' : d.financement === 'relais' ? 'prêt relais' : d.financement === 'pret' ? 'avec un prêt' : '';

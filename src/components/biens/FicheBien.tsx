@@ -15,13 +15,13 @@ import { COULEURS, ChampPhotos } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
-  FenAnnulerMandat, FenCompromis, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
+  FenAnnulerMandat, FenCompromis, FenCompromisTombe, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
   type ChoixA, type OptionAcheteur,
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
-  deposerPiece, ficheClient, joindreOffreSignee, majBien, majSuivi, nomClient, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
-  type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type PourDocument, type VisiteRow,
+  deposerPiece, ficheClient, joindreCompromis, joindreOffreSignee, lireNotaire, majBien, majSuivi, nomClient, noterOffreAcceptee, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
+  type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
 import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
@@ -42,7 +42,7 @@ import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import {
   ADecrire, BoutonAct, BtnTuile, CarteAnnonce, Col, Encart, Famille, Familles, HistoriqueBien,
   ChaineDocs, EtapesDocs, SyntheseDocs, Kv, Lettres, ListeTravaux, Note, OngletSurfaces, Puces, parcoursDe, type EtapeDoc,
-  dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type SurfacesBien, type VisiteCarte,
+  dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type NotaireCarte, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
 import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
@@ -69,7 +69,7 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, Cart
 
 type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -446,7 +446,9 @@ function visitePourCarte(d: Donnees): { lignes: LigneVisite[]; encarts: { l: str
     { ic: 'porte', l: 'Le bien est', v: [lib(d, 'occupation'), txt(d, 'disponible') ? `disponible ${txt(d, 'disponible')}` : ''].filter(Boolean).join(' · ') },
     { ic: 'cle', l: 'Clés', v: cles },
     { ic: 'clavier', l: 'Digicode', v: txt(d, 'digicode') },
-    { ic: 'telephone', l: 'Contact sur place', v: [txt(d, 'contactNom'), txt(d, 'contactTel')].filter(Boolean).join(' · ') },
+    /* Le nom, puis le numéro sur sa ligne, cliquable (V3.45) : collés, ils se
+       coupaient en morceaux dans une colonne étroite. */
+    { ic: 'telephone', l: 'Contact sur place', v: txt(d, 'contactNom') || txt(d, 'contactTel'), tel: txt(d, 'contactNom') ? txt(d, 'contactTel') : '' },
     { ic: 'horloge', l: 'Heures de visite', v: txt(d, 'creneaux') },
     { ic: 'immeuble', l: 'En bas', v: libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase()) },
     { ic: 'interphone', l: 'Interphone', v: txt(d, 'interphone') },
@@ -1002,10 +1004,17 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   async function repondreOffre(o: SuiviVente, r: Reponse) {
     try {
       const { statut, donnees } = apresReponse(o, r, jourParis());
-      await majSuivi(o.id, { statut, donnees });
+      const maj = await majSuivi(o.id, { statut, donnees });
       if (r.k !== 'rouvrir') await cloreRelanceOffre(bien, o);
+      /* Acceptée : une ligne dans le Suivi du vendeur et de l'acquéreur (V3.47). */
+      if (r.k === 'accepte') await noterOffreAcceptee(bien, maj);
       await apres();
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
+  }
+  async function joindreLeCompromis(l: SuiviVente, f: File) {
+    setMessage({ t: 'Envoi du compromis signé…', ok: true });
+    try { await joindreCompromis(bien, l, f); setMessage({ t: 'Le compromis signé est joint.', ok: true }); await apres(); }
+    catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }
   async function joindreOffre(o: SuiviVente, f: File) {
     setMessage({ t: 'Envoi de l’offre signée…', ok: true });
@@ -1113,7 +1122,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   }
   if (e === 'compromis') {
     suite.push({ t: 'La vente est signée…', s: 'Le bien passe « Vendu »', c: etapeDe('vendu').c, go: () => setFen({ k: 'vendu' }) });
-    suite.push({ t: 'Le compromis est tombé…', s: 'Le bien repasse « En vente »', c: etapeDe('mandat').c, go: () => setFen({ k: 'mandat' }) });
+    /* V3.47 : sa propre fenêtre — le bien repasse en vente ou il est retiré,
+       la recherche de l'acquéreur reprend, reste en pause ou s'arrête. */
+    suite.push({ t: 'Le compromis est tombé…', s: 'En vente ou retiré ; et l’acquéreur ?', c: '#dc2626', go: () => setFen({ k: 'tombe' }) });
   }
   /* Retiré avant tout mandat (le vendeur avait renoncé à l'estimation) : on
      reprend l'estimation, ou le mandat est signé ; « Remettre en vente » ne
@@ -1304,7 +1315,32 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     if (!l || (l.donnees?.offre ? l.donnees.offre !== o.id : offres.filter(y => y.statut === 'acceptee').length !== 1)) return null;
     const c = (l.donnees || {}) as Record<string, unknown>;
     const t = (k: string) => (typeof c[k] === 'string' && c[k] ? String(c[k]) : undefined);
-    return { signe: t('signe') || l.le, sru: t('sru'), pretLimite: t('pretLimite'), acte: t('acte'), prix: typeof c.prix === 'number' ? c.prix : null, venduLe: e === 'vendu' ? bien.vendu_le : null };
+    /* Les notaires (V3.45) : les contacts choisis ; sinon le texte d'avant
+       (« Son notaire » du bien, le notaire de l'acquéreur écrit à la main). */
+    const carte = (role: NotaireCarte['role'], n: NotaireChoisi | null): NotaireCarte | null => {
+      if (!n) return null;
+      const vif = n.id ? liste.clients[n.id] : null;
+      return {
+        role, nom: n.nom, etude: n.etude, tel: (vif?.telephones || []).find(Boolean) || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
+        onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
+      };
+    };
+    const notaires = [
+      carte('vendeur', lireNotaire(c.notaireVendeur) || (txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null)),
+      carte('acquereur', lireNotaire(c.notaireAcquereur) || (t('notaireAcq') ? { id: null, nom: t('notaireAcq')! } : null)),
+    ].filter((x): x is NotaireCarte => !!x);
+    const ids = (c.rappels && typeof c.rappels === 'object' ? c.rappels : {}) as Record<string, unknown>;
+    const dates = (c.rappelsLe && typeof c.rappelsLe === 'object' ? c.rappelsLe : {}) as Record<string, unknown>;
+    const rappels = Object.keys(ids).filter(k => typeof dates[k] === 'string').map(k => ({ cle: k, le: String(dates[k]) })).sort((p, q) => p.le.localeCompare(q.le));
+    const chemin = t('chemin');
+    return {
+      signe: t('signe') || l.le.slice(0, 10), sru: t('sru'), pretLimite: t('pretLimite'), acte: t('acte'), prix: typeof c.prix === 'number' ? c.prix : null,
+      venduLe: e === 'vendu' ? bien.vendu_le : null, hono: typeof c.hono === 'number' ? c.hono : null, notaires, rappels,
+      piece: chemin ? String(c.nom || 'compromis.pdf') : undefined,
+      onPiece: chemin ? () => ouvrirPiece(chemin, String(c.nom || 'compromis.pdf')) : undefined,
+      onJoindre: f => { void joindreLeCompromis(l, f); },
+      onCompleter: () => setFen({ k: 'compromis', existant: l }),
+    };
   };
   /* Corriger une offre : l'acquéreur déjà choisi. */
   const choixPour = (o: SuiviVente): ChoixA => {
@@ -1570,7 +1606,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} onEstimation={() => setFen({ k: 'estim' })} />}
 
-      {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien')} />}
+      {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien:t-surf')} />}
 
       {onglet === 'photos' && (
         <Bloc ic="photo" titre={<>{'Les photos'}<i>{nbPhotos ? ` · ${nbPhotos}` : ''}</i></>}>
@@ -1718,8 +1754,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         });
       }} />}
       {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} existante={fen.existante} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
-      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
-      {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={(detail?.suivi || []).find(x => x.type === 'etape' && x.statut === 'compromis') || null} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} existant={fen.existant} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'tombe' && <FenCompromisTombe bien={bien} compromis={lignesCompromis[0] || null} offres={offres} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={lignesCompromis[0] || null} offres={offres} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'prix' && <FenPrix bien={bien} mandatSigne={!!mandatSigne && ['mandat', 'offre', 'suspendu'].includes(e)} onFermer={() => setFen(null)}
         onFait={async (r, x) => {
           await apres(r);

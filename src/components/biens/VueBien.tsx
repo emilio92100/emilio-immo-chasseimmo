@@ -95,7 +95,23 @@ export function ParcoursEstimation({ titre, jalons, ensuite, action, onDejaSigne
 /* ── Pour la visite (V3.31) : les indications de visite en carte, à côté du
    propriétaire. Les trois premières lignes, le chemin et les consignes ;
    « Tout voir » déplie le reste. ── */
-export type LigneVisite = { ic: string; l: string; v: string };
+export type LigneVisite = { ic: string; l: string; v: string; tel?: string };
+/* Une ligne longue (un nom et un numéro, un créneau détaillé) prend toute la
+   largeur de la carte (V3.45) : dans une colonne de 100 px, elle se coupait
+   mot à mot. */
+const large = (x: LigneVisite) => x.v.length + (x.tel?.length || 0) > 20;
+function LiVisite({ x }: { x: LigneVisite }) {
+  return (
+    <div className={v.visiteLi} data-large={large(x) ? 'oui' : 'non'}>
+      <Ic n={x.ic} t={14} />
+      <span>
+        <small>{x.l}</small>
+        <b>{x.v}</b>
+        {x.tel && <a className={v.visiteTel} href={`tel:${x.tel.replace(/[\s.]+/g, '')}`}>{x.tel}</a>}
+      </span>
+    </div>
+  );
+}
 export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: LigneVisite[]; encarts: { l: string; v: string }[]; onModifier: () => void }) {
   const [tout, setTout] = useState(false);
   const vide = !lignes.length && !encarts.length;
@@ -114,17 +130,13 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
               {/* Les trois premières côte à côte (V3.32) : la carte ne dépasse
                   plus ses voisines, plus de grand blanc à côté d'elle. */}
               <div className={v.visiteGrille}>
-                {lignes.slice(0, 3).map(x => (
-                  <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
-                ))}
+                {lignes.slice(0, 3).map(x => <LiVisite key={x.l} x={x} />)}
               </div>
               {/* Le reste glisse à l'ouverture (V3.32). */}
               {lignes.length > 3 && (
                 <Depliant ouvert={tout} ecart={7}>
                   <div className={v.visiteL}>
-                    {lignes.slice(3).map(x => (
-                      <div key={x.l} className={v.visiteLi}><Ic n={x.ic} t={14} /><span><small>{x.l}</small><b>{x.v}</b></span></div>
-                    ))}
+                    {lignes.slice(3).map(x => <LiVisite key={x.l} x={x} />)}
                   </div>
                 </Depliant>
               )}

@@ -1242,3 +1242,55 @@ button.pillRouge svg { color: white !important; }
 /* Le mandat pas encore signé, dans le bandeau de la fiche : ses deux liens
    sur une ligne. */
 .heroMandatLiens { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
+
+/* V3.45 : la partie ouverte depuis « Modifier » (les surfaces) s'éclaire un instant. */
+.sect[data-eclaire='oui'] { animation: eclaireSect 1.8s ease; }
+@keyframes eclaireSect { 0%, 35% { box-shadow: 0 0 0 3px rgba(201, 168, 76, .55); } 100% { box-shadow: 0 0 0 3px rgba(201, 168, 76, 0); } }
+@media (prefers-reduced-motion: reduce) { .sect[data-eclaire='oui'] { animation: none; } }
+
+/* ══ La fenêtre du compromis (V3.45) : des rubriques aux couleurs de ce qu'elles portent ══ */
+.fsec { border: 1px solid #e8edf3; border-radius: 16px; background: #fff; padding: 14px 15px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 3px rgba(15, 23, 42, .035); }
+.fsecT { display: flex; align-items: center; gap: 9px; font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.fsecIc { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--f); color: var(--c); flex-shrink: 0; }
+/* Les trois dates, chacune avec sa couleur. */
+.datesC { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.dateC { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border-radius: 14px; background: var(--f); border: 1px solid color-mix(in srgb, var(--c) 18%, transparent); min-width: 0; cursor: text; }
+.dateC small { font-size: 11.5px; color: #64748b; line-height: 1.35; }
+.dateCIc { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: #fff; color: var(--c); box-shadow: 0 1px 2px rgba(15, 23, 42, .08); flex-shrink: 0; }
+.dateCL { font-size: 12.5px; font-weight: 800; color: var(--c); line-height: 1.25; }
+.dateCT { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Les notaires. */
+.notaire { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 11px 12px; border-radius: 14px; background: #fafbfd; border: 1px solid #e8edf3; }
+.notaireT { font-size: 12px; font-weight: 800; color: var(--c); letter-spacing: .2px; }
+.notaireChoisi { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border-radius: 12px; background: #fff; border: 1.5px solid color-mix(in srgb, var(--c) 35%, #e3e8f0); }
+.notaireChoisi > div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.notaireChoisi b { font-size: 14px; color: #1a2332; overflow-wrap: anywhere; }
+.notaireChoisi small { font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
+.notaireAv { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #eef2f8; color: #34496e; flex-shrink: 0; }
+.notaireChanger { border: none; background: none; padding: 4px 2px; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif; color: #64748b; flex-shrink: 0; }
+.notaireChanger:hover { color: #1a2332; }
+.notaireNouveau { display: flex; flex-direction: column; gap: 10px; }
+.notaireBtns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.notaireAjout { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 1px dashed #cbd5e1; background: #fff; border-radius: 10px; padding: 6px 11px; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif; color: #34496e; }
+.notaireAjout:hover { border-color: #c9a84c; color: #1a2332; }
+/* Les rappels. */
+.rappels { display: flex; flex-direction: column; gap: 8px; }
+.rappel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px; border: 1px solid #e8edf3; background: #fff; transition: background .2s, border-color .2s; }
+.rappel[data-on='oui'] { background: var(--f); border-color: color-mix(in srgb, var(--c) 25%, transparent); }
+.rappelCase { flex: 1 1 260px; display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
+.rappelCase input { width: 17px; height: 17px; accent-color: #34496e; flex-shrink: 0; }
+.rappelTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rappelTx b { font-size: 13.5px; color: #1a2332; }
+.rappelTx small { font-size: 12px; color: #64748b; line-height: 1.35; }
+.rappel[data-on='non'] .rappelTx b { color: #64748b; }
+.rappelDate { width: 170px !important; flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .datesC { grid-template-columns: minmax(0, 1fr); }
+  .rappelDate { width: 100% !important; }
+}
+/* « Le vendeur a déjà accepté » (V3.45). */
+.caseAccord { padding: 11px 13px; border-radius: 14px; border: 1.5px solid #e3e8f0; background: #fff; transition: border-color .2s, background .2s; }
+.caseAccord[data-on='oui'] { border-color: #86efac; background: #f0fdf4; }
+.caseAccord > span { display: flex; flex-direction: column; gap: 2px; }
+.caseAccord b { font-size: 13.5px; color: #1a2332; }
+.caseAccord small { font-size: 12px; color: #64748b; line-height: 1.4; }

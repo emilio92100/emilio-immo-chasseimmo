@@ -192,6 +192,22 @@ export default async function PageEspace({ params, searchParams }: {
       });
     });
 
+  /* Un bien de l'agence sous compromis ou vendu (V3.47) : l'espace le dit, au
+     lieu de le montrer encore comme disponible. Pour celui qui l'achète,
+     c'est « Votre achat » : son offre acceptée porte sa recherche. */
+  const idsVente = Array.from(new Set((biensRes.data || []).map((b) => b.bien_vente_id).filter(Boolean))) as string[];
+  const venteParBien = new Map<string, { etat: 'compromis' | 'vendu'; vous: boolean }>();
+  if (idsVente.length) {
+    const [ventes, acceptees] = await Promise.all([
+      supabase.from('biens_vente').select('id, etape').in('id', idsVente),
+      supabase.from('biens_vente_suivi').select('bien_id').in('bien_id', idsVente).eq('type', 'offre').eq('statut', 'acceptee').eq('recherche_id', recherche.id),
+    ]);
+    const miennes = new Set(((acceptees.data || []) as { bien_id: string }[]).map((x) => x.bien_id));
+    for (const v of (ventes.data || []) as { id: string; etape: string }[]) {
+      if (v.etape === 'compromis' || v.etape === 'vendu') venteParBien.set(v.id, { etat: v.etape, vous: miennes.has(v.id) });
+    }
+  }
+
   const biens = (biensRes.data || []).map((b) => ({
     id: b.id,
     titre: b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`,
@@ -228,6 +244,7 @@ export default async function PageEspace({ params, searchParams }: {
     visitePrevue: prevueParBien.get(b.id) || null,
     visiteFaite: faiteParBien.get(b.id) || null,
     etat: ETAT(b),
+    vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || null,
   }));
 
   /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre

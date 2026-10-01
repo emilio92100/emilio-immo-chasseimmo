@@ -5,14 +5,16 @@ import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, estimationFaite, etapeDe, honorairesPour, montantActuel, pourcent, pretPourEstimer, texteEstimation, titreBien,
+  argentBien, avantMandat, dateLongue as jourSuivi, estimationFaite, etapeDe, honorairesPour, montantActuel, pourcent, pretPourEstimer, texteEstimation, titreBien,
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
+import { signalerEchec } from '@/lib/ecritures';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import {
-  ajouterSuivi, annulerMandatNote, changerEtape, cloreRelanceOffre, deposerPiece, enregistrerBien, enregistrerOffre, majSuivi, modifierOffre, nomClient, visiteAcheteur, visiteExterne,
-  type ClientMini, type RechercheMini,
+  ajouterSuivi, annulerMandatNote, changerEtape, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
+  finaliserAcquereur, ligneNotaires, lireNotaire, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
+  type CleRappel, type ClientMini, type ContactNotaire, type NotaireChoisi, type Rappel, type RechercheMini, type SuiteTombe,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -403,6 +405,18 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
       const donnees: Donnees = { ...d, mandatType: type, mandatNumero: numero.trim(), mandatDate: date, mandatFin: finM, prix, ...hono, ...(conseille ? { prixConseille: conseille } : {}),
         ...(f && scan ? { mandatFichier: { chemin: f.chemin, nom: f.nom, taille: scan.size, le: aujourdhui() } } : {}) };
       const { bien: r } = await changerEtape(bien, 'mandat', { donnees, commentaire: raison.trim() || undefined, infos: { type, numero: numero.trim(), date, fin: finM, prix } });
+      const titre = bien.titre || titreBien(d);
+      /* Le compromis est tombé : ses rappels se closent (V3.45), la recherche
+         de l'acquéreur reprend, les deux Suivis le disent (V3.47). */
+      if (bien.etape === 'compromis') { await cloreRappelsCompromis(bien.id); await compromisTombe(bien, titre, raison); }
+      /* Le mandat signé, dans le Suivi du vendeur (V3.47). */
+      if (!reprise && bien.client_id) {
+        const sorte = type === 'exclusif' ? 'exclusif' : type === 'semi' ? 'semi-exclusif' : 'simple';
+        await noterJalon(bien, 'mandat', { vendeur: {
+          clientId: bien.client_id, titre: `📋 Mandat de vente signé le ${jourSuivi(date)}`,
+          texte: [titre, `Mandat ${sorte}${numero.trim() ? ` n° ${numero.trim()}` : ''}${finM ? ` · jusqu’au ${jourSuivi(finM)}` : ''}`, `Prix affiché : ${eurosSuivi(prix)}`],
+        } });
+      }
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
@@ -489,6 +503,7 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
   const [conditions, setConditions] = useState(tx(ex.conditions));
   const [fichier, setFichier] = useState<File | null>(null);
   const [passer, setPasser] = useState(!existante && (bien.etape === 'mandat' || bien.etape === 'suspendu'));
+  const [dejaAcceptee, setDejaAcceptee] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const ecart = montant && a.prix ? a.prix - montant : null;
@@ -507,6 +522,7 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
       const saisie = {
         qui, clientId: choix?.mode === 'crm' ? choix.o.clientId : null, rechercheId: choix?.mode === 'crm' ? choix.o.rechercheId : null,
         montant, recue, jusquau, financement: fin || null, apport, pret: avecPret ? pret : null, accord: avecPret ? accord.trim() : '', conditions: conditions.trim(), fichier: f,
+        dejaAcceptee: !existante && dejaAcceptee,
       };
       if (existante) { await modifierOffre(bien, existante, saisie); onFait(null); return; }
       const ligne = await enregistrerOffre(bien, saisie, proprio);
@@ -551,17 +567,24 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
           <input type="file" accept=".pdf,image/*" onChange={e => setFichier(e.target.files?.[0] || null)} />
         </label>
       </div>
+      {!existante && (
+        <label className={`${b.caseL} ${b.caseAccord}`} data-on={dejaAcceptee ? 'oui' : 'non'}>
+          <input type="checkbox" checked={dejaAcceptee} onChange={e => setDejaAcceptee(e.target.checked)} />
+          <span><b>Le vendeur a déjà accepté</b><small>Une offre convenue avant d’être notée : elle arrive acceptée, sans relance. Il restera « Le compromis est signé ».</small></span>
+        </label>
+      )}
       {!existante && bien.etape !== 'offre' && (
         <label className={b.caseL}><input type="checkbox" checked={passer} onChange={e => setPasser(e.target.checked)} />Le bien passe « Sous offre » dans la liste</label>
       )}
       {!existante && (
         <div className={b.reste}>
           <div className={b.resteT}>Le CRM s’occupe du reste</div>
-          {proprio && jusquau && !dejaPasse && <div><Ic n="calendrier" t={15} />{`Une relance le ${new Date(`${jusquau}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })} si ${proprioNom} n’a pas répondu`}</div>}
-          {proprio && dejaPasse && <div><Ic n="info" t={15} />Le délai de réponse est déjà passé : pas de relance.</div>}
+          {dejaAcceptee && <div><Ic n="check" t={15} />L’offre arrive acceptée : sur sa carte, le bouton « Le compromis est signé → »</div>}
+          {proprio && jusquau && !dejaPasse && !dejaAcceptee && <div><Ic n="calendrier" t={15} />{`Une relance le ${new Date(`${jusquau}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })} si ${proprioNom} n’a pas répondu`}</div>}
+          {proprio && dejaPasse && !dejaAcceptee && <div><Ic n="info" t={15} />Le délai de réponse est déjà passé : pas de relance.</div>}
           {!proprio && <div><Ic n="info" t={15} />Relie le propriétaire à sa fiche client pour recevoir une relance à la fin du délai.</div>}
           {choix?.mode === 'crm' && <div><Ic n="personne" t={15} />{`Une ligne dans le suivi de ${choix.o.nom}, son bien passe « offre faite »`}</div>}
-          <div><Ic n="historique" t={15} />Ensuite, sur la carte de l’offre : la réponse du vendeur, puis le compromis</div>
+          {!dejaAcceptee && <div><Ic n="historique" t={15} />Ensuite, sur la carte de l’offre : la réponse du vendeur, puis le compromis</div>}
         </div>
       )}
       <Erreur t={erreur} />
@@ -573,25 +596,155 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
 /* Le prix d'une offre : celui convenu au bout de la négociation (V3.45),
    sinon la dernière proposition. */
 export const prixRetenu = (o: SuiviVente | null | undefined): number | null => (o ? montantActuel(o) || null : null);
-export function FenCompromis({ bien, offres, choisie, onFermer, onFait }: {
-  bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente) => void;
-  /* V3.45 : depuis la carte d'une offre, c'est elle. */
+/* ── Choisir un notaire (V3.45) : parmi les contacts « Notaire », ou créé ici. ── */
+function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
+  lib: string; couleur: string; v: NotaireChoisi | null; onChange: (n: NotaireChoisi | null) => void;
+  notaires: ContactNotaire[] | null; onCree: (c: ContactNotaire) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [nouveau, setNouveau] = useState<{ prenom: string; nom: string; etude: string; tel: string; email: string } | null>(null);
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const t = sansAccent(q.trim());
+  const liste = (notaires || []).filter(c => !t || sansAccent(`${c.prenom || ''} ${c.nom || ''} ${(c.pro as { etude?: string } | null)?.etude || ''}`).includes(t)).slice(0, 5);
+  async function creer() {
+    if (!nouveau || !nouveau.nom.trim()) { setErreur('Son nom ?'); return; }
+    setOccupe(true); setErreur('');
+    try { const c = await creerNotaire(nouveau); onCree(c); onChange(notaireDepuisContact(c)); setNouveau(null); setQ(''); }
+    catch (e) { setErreur((e as Error).message); }
+    setOccupe(false);
+  }
+  return (
+    <div className={b.notaire} style={{ ['--c' as string]: couleur } as React.CSSProperties}>
+      <div className={b.notaireT}>{lib}</div>
+      {v ? (
+        <div className={b.notaireChoisi}>
+          <span className={b.notaireAv}><Ic n="balance" t={17} /></span>
+          <div>
+            <b>{v.nom}</b>
+            <small>{[v.etude, v.tel, v.email].filter(Boolean).join(' · ') || (v.id ? 'Contact du CRM' : 'Pas encore dans tes contacts')}</small>
+          </div>
+          <button type="button" className={b.notaireChanger} onClick={() => onChange(null)}>Changer</button>
+        </div>
+      ) : nouveau ? (
+        <div className={b.notaireNouveau}>
+          <div className={b.g2}>
+            <Ch lib="Prénom"><input className={s.input} value={nouveau.prenom} onChange={e => setNouveau({ ...nouveau, prenom: e.target.value })} placeholder="Facultatif" /></Ch>
+            <Ch lib="Nom"><input className={s.input} value={nouveau.nom} onChange={e => setNouveau({ ...nouveau, nom: e.target.value })} placeholder="Ex : Durand" autoFocus /></Ch>
+            <Ch lib="Étude" large><input className={s.input} value={nouveau.etude} onChange={e => setNouveau({ ...nouveau, etude: e.target.value })} placeholder="Ex : Étude Durand & Associés, Boulogne" /></Ch>
+            <Ch lib="Téléphone"><input className={s.input} value={nouveau.tel} inputMode="tel" onChange={e => setNouveau({ ...nouveau, tel: e.target.value })} /></Ch>
+            <Ch lib="E-mail"><input className={s.input} value={nouveau.email} inputMode="email" onChange={e => setNouveau({ ...nouveau, email: e.target.value })} /></Ch>
+          </div>
+          <Erreur t={erreur} />
+          <div className={b.notaireBtns}>
+            <button type="button" className={s.btn} disabled={occupe} onClick={() => setNouveau(null)}>Annuler</button>
+            <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={creer}><Ic n="check" t={14} e={2.4} />{occupe ? 'Création…' : 'Créer le contact'}</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <input className={s.cherche} value={q} onChange={e => setQ(e.target.value)} placeholder={notaires === null ? 'Chargement des notaires…' : 'Chercher dans tes notaires…'} aria-label={`Chercher : ${lib}`} />
+          <div className={b.qui}>
+            {liste.map(c => {
+              const n = notaireDepuisContact(c);
+              return (
+                <button key={c.id} type="button" className={b.quiL} onClick={() => onChange(n)}>
+                  <span className={b.notaireAv}><Ic n="balance" t={15} /></span>
+                  <div><b>{n.nom}</b><small>{[n.etude, n.tel].filter(Boolean).join(' · ') || 'Notaire'}</small></div>
+                </button>
+              );
+            })}
+            {notaires !== null && !liste.length && <div className={b.vide}>{t ? 'Aucun notaire à ce nom dans tes contacts.' : 'Aucun notaire dans tes contacts pour l’instant.'}</div>}
+          </div>
+          <button type="button" className={b.notaireAjout} onClick={() => setNouveau({ prenom: '', nom: q.trim(), etude: '', tel: '', email: '' })}><Ic n="plus" t={13} e={2.6} />Nouveau notaire</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+const dateLongue = (ymd: string) => (ymd ? new Date(`${ymd}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+
+/* ══ Le compromis est signé — ou on le complète (V3.45) ══════════════════
+   Alexandre : « comment je retrouve les éléments des notaires et tout ? »
+   et « si on veut modifier, un pop-up qui s'affiche, joli, avec des
+   icônes ». La même fenêtre sert aux deux : la signature (le bien passe
+   « Sous compromis ») et, ensuite, « Compléter le compromis » depuis la
+   carte (`existant` : la ligne du compromis). */
+export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onFermer, onFait }: {
+  bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente | null) => void;
+  /* Depuis la carte d'une offre, c'est elle. */
   choisie?: string;
+  /* Le compromis déjà enregistré, qu'on complète. */
+  existant?: SuiviVente | null;
+  /* Les noms des contacts (propriétaire, acquéreur), pour dire où vont les rappels. */
+  clientsNoms?: Record<string, string>;
 }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
+  const ex = (existant?.donnees || {}) as Record<string, unknown>;
+  const tx = (k: string) => (typeof ex[k] === 'string' ? String(ex[k]) : '');
   const candidates = offres.filter(o => o.statut !== 'refusee' && o.statut !== 'retiree');
-  const meilleure = candidates.find(o => o.id === choisie) || candidates.find(o => o.statut === 'acceptee') || [...candidates].sort((x, y) => (prixRetenu(y) || 0) - (prixRetenu(x) || 0))[0];
+  const meilleure = candidates.find(o => o.id === (tx('offre') || choisie)) || candidates.find(o => o.statut === 'acceptee') || [...candidates].sort((x, y) => (prixRetenu(y) || 0) - (prixRetenu(x) || 0))[0];
   const [offreId, setOffreId] = useState(meilleure?.id || '');
   const offre = offres.find(o => o.id === offreId) || null;
-  const [prix, setPrix] = useState<number | null>(prixRetenu(offre) || a.prix);
-  const [signe, setSigne] = useState(aujourdhui());
-  const [sru, setSru] = useState(plusJours(aujourdhui(), 11));
-  const [pretL, setPretL] = useState(plusJours(aujourdhui(), 45));
-  const [acte, setActe] = useState(plusJours(aujourdhui(), 90));
-  const [notaire, setNotaire] = useState('');
+  const [prix, setPrix] = useState<number | null>(typeof ex.prix === 'number' ? ex.prix : prixRetenu(offre) || a.prix);
+  const [signe, setSigne] = useState(tx('signe') || aujourdhui());
+  const [sru, setSru] = useState(existant ? tx('sru') : plusJours(aujourdhui(), 11));
+  const [pretL, setPretL] = useState(existant ? tx('pretLimite') : plusJours(aujourdhui(), 45));
+  const [acte, setActe] = useState(existant ? tx('acte') : plusJours(aujourdhui(), 90));
   const hDefaut = (p: number | null) => honorairesPour(d, p) ?? a.hono;
-  const [hono, setHono] = useState<number | null>(hDefaut(prix));
+  const [hono, setHono] = useState<number | null>(typeof ex.hono === 'number' ? ex.hono : hDefaut(prix));
+  /* Les notaires : ceux déjà choisis ; sinon le texte d'avant (« Son notaire » du bien, le notaire de l'acquéreur écrit à la main). */
+  const [notV, setNotV] = useState<NotaireChoisi | null>(lireNotaire(ex.notaireVendeur) || (txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null));
+  const [notA, setNotA] = useState<NotaireChoisi | null>(lireNotaire(ex.notaireAcquereur) || (tx('notaireAcq') ? { id: null, nom: tx('notaireAcq') } : null));
+  const [notaires, setNotaires] = useState<ContactNotaire[] | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    lireNotaires().then(l => { if (vivant) setNotaires(l); }).catch(() => { if (vivant) setNotaires([]); });
+    return () => { vivant = false; };
+  }, []);
+  const ajouteNotaire = (c: ContactNotaire) => setNotaires(l => [...(l || []), c]);
+
+  /* Les rappels : proposés d'après les dates, cochés d'office s'ils sont à venir. */
+  const acquereur = offre?.qui || tx('acquereur') || 'l’acquéreur';
+  const titre = bien.titre || titreBien(d);
+  const pourProprio = bien.client_id || null;
+  const pourAcq = offre?.client_id || null;
+  const comptant = (offre?.donnees as Record<string, unknown> | undefined)?.financement === 'comptant';
+  const rappelsAvant = (ex.rappels && typeof ex.rappels === 'object' ? ex.rappels : {}) as Record<string, string>;
+  const rappelsLe = (ex.rappelsLe && typeof ex.rappelsLe === 'object' ? ex.rappelsLe : {}) as Record<string, string>;
+  type Def = { cle: CleRappel; ic: string; c: string; f: string; t: string; base: string; ecart: number; client: string | null; note: (le: string) => string };
+  const defs: Def[] = [
+    { cle: 'sru', ic: 'bouclier', c: '#b45309', f: '#fff7ed', t: 'Vérifier la fin de la rétractation', base: sru, ecart: 1, client: pourProprio || pourAcq,
+      note: () => `Compromis ${titre} : le délai de rétractation de ${acquereur} est terminé (${dateLongue(sru)}). Vérifier qu’il ne s’est pas rétracté.` },
+    { cle: 'pret', ic: 'banque', c: '#1d4ed8', f: '#eff6ff', t: 'Demander l’accord de prêt', base: pretL, ecart: -7, client: pourAcq || pourProprio,
+      note: () => `Compromis ${titre} : la condition de prêt de ${acquereur} expire le ${dateLongue(pretL)}. Demander l’accord de prêt.` },
+    { cle: 'acte', ic: 'plume', c: '#6d28d9', f: '#f5f3ff', t: 'Confirmer le rendez-vous de l’acte', base: acte, ecart: -7, client: pourProprio || pourAcq,
+      note: () => `Compromis ${titre} : acte prévu le ${dateLongue(acte)}. Confirmer le rendez-vous chez le notaire.` },
+  ];
+  const [choixR, setChoixR] = useState<Record<string, { on?: boolean; le?: string }>>(() => {
+    const o: Record<string, { on?: boolean; le?: string }> = {};
+    /* Un compromis qui a déjà ses rappels : on reprend ses choix. Sinon (un
+       compromis d'avant, ou noté sans dates), les propositions par défaut. */
+    if (existant && Object.keys(rappelsAvant).length) {
+      for (const k of ['sru', 'pret', 'acte']) o[k] = { on: !!rappelsAvant[k], ...(rappelsLe[k] ? { le: rappelsLe[k] } : {}) };
+    }
+    return o;
+  });
+  const rappels = defs.map(x => {
+    const c = choixR[x.cle] || {};
+    const le = c.le || (x.base ? plusJours(x.base, x.ecart) : '');
+    const passe = !!le && le < aujourdhui();
+    const on = c.on ?? (!!le && !passe && !!x.client && !(x.cle === 'pret' && comptant));
+    return { ...x, le, passe, on };
+  });
+  const majR = (k: string, v: { on?: boolean; le?: string }) => setChoixR(o => ({ ...o, [k]: { ...o[k], ...v } }));
+  /* Et ensuite (V3.47) : la recherche de l'acquéreur en pause, les autres offres refusées. */
+  const autresOuvertes = offres.filter(o => o.id !== offreId && (!o.statut || o.statut === 'en_attente' || o.statut === 'contre'));
+  const [pauseAcq, setPauseAcq] = useState(true);
+  const [refuserAutres, setRefuserAutres] = useState(true);
+
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const changerOffre = (id: string) => {
@@ -602,24 +755,61 @@ export function FenCompromis({ bien, offres, choisie, onFermer, onFait }: {
   const majSigne = (x: string) => { setSigne(x); setSru(plusJours(x, 11)); setPretL(plusJours(x, 45)); setActe(plusJours(x, 90)); };
   async function valider() {
     if (!prix) { setErreur('Le prix de vente ?'); return; }
+    if (!signe) { setErreur('La date de signature ?'); return; }
     setOccupe(true); setErreur('');
     try {
+      const infos = {
+        offre: offre?.id || null, acquereur: offre?.qui || tx('acquereur') || null, prix, signe, sru, pretLimite: pretL, acte, hono,
+        notaireVendeur: notV, notaireAcquereur: notA, notaireAcq: notA?.nom || '',
+      };
+      const liste: Rappel[] = rappels.map(r => ({ cle: r.cle, on: r.on && !!r.le, le: r.le, clientId: r.client, note: r.note(r.le) }));
+      const rappelsLeNouv = Object.fromEntries(rappels.filter(r => r.on && r.le).map(r => [r.cle, r.le]));
+      if (existant) {
+        const ids = await poserRappels(liste, rappelsAvant);
+        await majSuivi(existant.id, { donnees: { ...ex, ...infos, rappels: ids, rappelsLe: rappelsLeNouv } });
+        if (offre && offre.statut !== 'acceptee') await majSuivi(offre.id, { statut: 'acceptee', donnees: { ...offre.donnees, reponse_le: aujourdhui() } });
+        onFait(null);
+        return;
+      }
       if (offre && offre.statut !== 'acceptee') await majSuivi(offre.id, { statut: 'acceptee', donnees: { ...offre.donnees, reponse_le: aujourdhui() } });
-      const { bien: r } = await changerEtape(bien, 'compromis', {
-        infos: { offre: offre?.id || null, acquereur: offre?.qui || null, prix, signe, sru, pretLimite: pretL, acte, notaireAcq: notaire.trim(), hono },
-      });
-      /* La relance « réponse à donner » de cette offre n'a plus d'objet (V3.45). */
+      const { bien: r, ligne } = await changerEtape(bien, 'compromis', { infos });
+      const ids = await poserRappels(liste, {});
+      const pause = offre && offre.client_id && pauseAcq ? await pauseAcquereur(offre) : null;
+      if (Object.keys(ids).length || pause) {
+        try { await majSuivi(ligne.id, { donnees: { ...ligne.donnees, rappels: ids, rappelsLe: rappelsLeNouv, ...(pause ? { acqPause: pause } : {}) } }); }
+        catch (e) { signalerEchec('Le compromis : ses rappels et la recherche de l’acquéreur', (e as Error).message); }
+      }
+      if (refuserAutres && autresOuvertes.length) await refuserAutresOffres(bien, offres, offre?.id || null);
+      /* La relance « réponse à donner » de cette offre n'a plus d'objet. */
       if (offre) await cloreRelanceOffre(bien, offre);
+      /* Le compromis, dans le Suivi du vendeur et de l'acquéreur (V3.47) :
+         la date de signature, le prix, les dates qui comptent, les notaires. */
+      const dates = [sru ? `fin de la rétractation le ${jourSuivi(sru)}` : '', pretL ? `condition de prêt jusqu’au ${jourSuivi(pretL)}` : '', acte ? `acte prévu le ${jourSuivi(acte)}` : '']
+        .filter(Boolean).join(' · ');
+      const lesDates = dates ? dates.charAt(0).toUpperCase() + dates.slice(1) : null;
+      const not = ligneNotaires(notV, notA);
+      const quiAcq = offre?.qui || tx('acquereur');
+      await noterJalon(bien, 'compromis', {
+        vendeur: pourProprio ? { clientId: pourProprio, titre: `✍️ Compromis signé le ${jourSuivi(signe)}`, texte: [`${titre} · ${eurosSuivi(prix)}${quiAcq ? ` · acquéreur : ${quiAcq}` : ''}`, lesDates, not] } : null,
+        acquereur: offre?.client_id ? { clientId: offre.client_id, rechercheId: offre.recherche_id, titre: `✍️ Compromis signé le ${jourSuivi(signe)}`,
+          texte: [`${titre} · ${eurosSuivi(prix)}`, lesDates, not, pause ? 'Sa recherche est en pause pendant le compromis : la veille s’arrête. Elle reprend si le compromis tombe.' : null] } : null,
+      });
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
+  const nomDe = (id: string | null) => (id && clientsNoms?.[id]) || '';
+  const DATES = [
+    { ic: 'bouclier', c: '#b45309', f: '#fff7ed', lib: 'Fin de la rétractation', aide: '10 jours après la remise du compromis', v: sru, set: setSru },
+    { ic: 'banque', c: '#1d4ed8', f: '#eff6ff', lib: 'Condition de prêt jusqu’au', aide: 'En général 45 à 60 jours', v: pretL, set: setPretL },
+    { ic: 'plume', c: '#6d28d9', f: '#f5f3ff', lib: 'Acte prévu le', aide: 'Environ trois mois après', v: acte, set: setActe },
+  ];
   return (
-    <Fenetre sur="Le bien passe « Sous compromis »" couleur={etapeDe('compromis').c} titre="Le compromis est signé" sous={resume(bien)} occupe={occupe} onFermer={onFermer}
+    <Fenetre sur={existant ? `Le compromis · ${acquereur}` : 'Le bien passe « Sous compromis »'} couleur={etapeDe('compromis').c}
+      titre={existant ? 'Compléter le compromis' : 'Le compromis est signé'} sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
-        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Enregistrer le compromis'}</button></>}>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : existant ? 'Enregistrer' : 'Enregistrer le compromis'}</button></>}>
       {candidates.length > 0 && (
-        <div className={b.groupe}>
-          <div className={b.groupeT}><Ic n="personne" t={14} />L’offre retenue</div>
+        <Section ic="personne" c="#a07c28" f="#fbf6e9" titre="L’offre retenue">
           <div className={b.qui}>
             {candidates.map(o => (
               <button key={o.id} type="button" className={`${b.quiL} ${offreId === o.id ? b.quiOn : ''}`} onClick={() => changerOffre(o.id)}>
@@ -628,53 +818,270 @@ export function FenCompromis({ bien, offres, choisie, onFermer, onFait }: {
               </button>
             ))}
           </div>
-        </div>
+        </Section>
       )}
-      <div className={b.groupe}>
-        <div className={b.groupeT}><Ic n="plume" t={14} />Le compromis</div>
-        <div className={b.g2}>
-          <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={x => { setPrix(x); setHono(hDefaut(x)); }} /></Ch>
+      <Section ic="doc" c="#2d5c8f" f="#eff4fb" titre="Le compromis">
+        <div className={b.g3}>
           <Ch lib="Signé le"><input className={s.input} type="date" value={signe} onChange={e => majSigne(e.target.value)} /></Ch>
-          <Ch lib="Fin du délai de rétractation"><input className={s.input} type="date" value={sru} onChange={e => setSru(e.target.value)} /></Ch>
-          <Ch lib="Condition de prêt jusqu’au"><input className={s.input} type="date" value={pretL} onChange={e => setPretL(e.target.value)} /></Ch>
-          <Ch lib="Acte prévu le"><input className={s.input} type="date" value={acte} onChange={e => setActe(e.target.value)} /></Ch>
-          <Ch lib="Notaire de l’acquéreur"><input className={s.input} value={notaire} onChange={e => setNotaire(e.target.value)} placeholder="Facultatif" /></Ch>
+          <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={x => { setPrix(x); setHono(hDefaut(x)); }} /></Ch>
           <Ch lib="Honoraires de l’agence"><SaisieNombre v={hono} euros unite="€ TTC" off={false} onChange={setHono} /></Ch>
         </div>
-        <div className={b.calc}>Les dates se calculent depuis la signature : 10 jours de rétractation après la remise de l’acte, 45 jours pour le prêt, l’acte trois mois après. Ajuste-les à ce qui est écrit.</div>
+      </Section>
+      <Section ic="calendrier" c="#15803d" f="#f0fdf4" titre="Les dates">
+        <div className={b.datesC}>
+          {DATES.map(x => (
+            <label key={x.lib} className={b.dateC} style={{ ['--c' as string]: x.c, ['--f' as string]: x.f } as React.CSSProperties}>
+              <span className={b.dateCT}><span className={b.dateCIc}><Ic n={x.ic} t={15} /></span><span className={b.dateCL}>{x.lib}</span></span>
+              <input className={s.input} type="date" value={x.v} onChange={e => x.set(e.target.value)} />
+              <small>{x.aide}</small>
+            </label>
+          ))}
+        </div>
+        {!existant ? <div className={b.calc}>Calculées depuis la signature : ajuste-les à ce qui est écrit dans le compromis.</div>
+          : (!sru || !pretL || !acte) && signe ? (
+            <button type="button" className={b.notaireAjout} onClick={() => { if (!sru) setSru(plusJours(signe, 11)); if (!pretL) setPretL(plusJours(signe, 45)); if (!acte) setActe(plusJours(signe, 90)); }}>
+              <Ic n="calendrier" t={13} />{`Calculer depuis la signature du ${dateLongue(signe)}`}
+            </button>
+          ) : null}
+      </Section>
+      <Section ic="balance" c="#34496e" f="#eef2f8" titre="Les notaires">
+        <div className={b.g2}>
+          <ChoixNotaire lib="Notaire du vendeur" couleur="#a07c28" v={notV} onChange={setNotV} notaires={notaires} onCree={ajouteNotaire} />
+          <ChoixNotaire lib="Notaire de l’acquéreur" couleur="#1d4ed8" v={notA} onChange={setNotA} notaires={notaires} onCree={ajouteNotaire} />
+        </div>
+      </Section>
+      <Section ic="horloge" c="#c2410c" f="#fff7ed" titre="Les rappels, dans tes Relances">
+        <div className={b.rappels}>
+          {rappels.map(r => (
+            <div key={r.cle} className={b.rappel} data-on={r.on ? 'oui' : 'non'} style={{ ['--c' as string]: r.c, ['--f' as string]: r.f } as React.CSSProperties}>
+              <label className={b.rappelCase}>
+                <input type="checkbox" checked={r.on} disabled={!r.client || !r.le} onChange={e => majR(r.cle, { on: e.target.checked })} />
+                <span className={b.dateCIc}><Ic n={r.ic} t={15} /></span>
+                <span className={b.rappelTx}>
+                  <b>{r.t}</b>
+                  <small>{!r.le ? 'Mets d’abord la date au-dessus.' : !r.client ? 'Relie le propriétaire ou l’acquéreur à une fiche du CRM pour recevoir ce rappel.'
+                    : r.passe ? 'Cette date est déjà passée.' : r.cle === 'pret' && comptant ? 'Achat comptant : pas forcément utile.' : `Chez ${nomDe(r.client) || 'le contact'}`}</small>
+                </span>
+              </label>
+              <input className={`${s.input} ${b.rappelDate}`} type="date" value={r.le} disabled={!r.on} onChange={e => majR(r.cle, { le: e.target.value })} aria-label={`Date : ${r.t}`} />
+            </div>
+          ))}
+        </div>
+      </Section>
+      {!existant && (pourProprio || offre?.client_id || autresOuvertes.length > 0) && (
+        <Section ic="fleche" c="#0f766e" f="#f0fdfa" titre="Et ensuite">
+          <div className={b.rappels}>
+            {offre?.client_id && (
+              <Suite on={pauseAcq} onChange={setPauseAcq} ic="pause" c="#b45309" f="#fff7ed"
+                t={`Mettre la recherche de ${acquereur} en pause`}
+                s="Il passe « Suspendu » : la veille s’arrête, il n’est plus proposé sur tes autres biens. Si le compromis tombe, sa recherche reprend." />
+            )}
+            {autresOuvertes.length > 0 && (
+              <Suite on={refuserAutres} onChange={setRefuserAutres} ic="croix" c="#b91c1c" f="#fef2f2"
+                t={autresOuvertes.length > 1 ? `Les ${autresOuvertes.length} autres offres passent en refusées` : `L’offre de ${autresOuvertes[0].qui || 'l’autre acquéreur'} passe en refusée`}
+                s={autresOuvertes.map(o => `${o.qui || 'Acquéreur'} · ${euros(prixRetenu(o) || 0)}`).join(' · ')} />
+            )}
+            {(pourProprio || offre?.client_id) && (
+              <Trace t={pourProprio && offre?.client_id ? 'Une ligne datée dans leur suivi' : 'Une ligne datée dans son suivi'}
+                s={`« Compromis signé le ${jourSuivi(signe)} », avec le prix, les dates et les notaires, chez ${[pourProprio ? nomDe(pourProprio) || 'le vendeur' : '', offre?.client_id ? nomDe(offre.client_id) || acquereur : ''].filter(Boolean).join(' et chez ')}.`} />
+            )}
+          </div>
+        </Section>
+      )}
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+/* Une case « et ensuite » (V3.47) : ce que la fenêtre fait en plus, coché d'office. */
+function Suite({ on, onChange, ic, c, f, t, s: sous }: { on: boolean; onChange: (v: boolean) => void; ic: string; c: string; f: string; t: string; s: string }) {
+  return (
+    <div className={b.rappel} data-on={on ? 'oui' : 'non'} style={{ ['--c' as string]: c, ['--f' as string]: f } as React.CSSProperties}>
+      <label className={b.rappelCase}>
+        <input type="checkbox" checked={on} onChange={e => onChange(e.target.checked)} />
+        <span className={b.dateCIc}><Ic n={ic} t={15} /></span>
+        <span className={b.rappelTx}><b>{t}</b><small>{sous}</small></span>
+      </label>
+    </div>
+  );
+}
+/* ══ Le compromis est tombé (V3.47) ═════════════════════════════════════
+   Alexandre : « quand on clique sur le compromis est tombé : soit reprendre
+   la recherche de l'acheteur — peut-être qu'il n'est plus en recherche —,
+   soit le vendeur ne veut plus vendre ». Avant, c'était la fenêtre du mandat
+   (« Remettre en vente »), sans autre choix. Maintenant : le pourquoi, ce que
+   devient le bien, ce que devient l'acquéreur (compromisTombe). */
+const RAISONS_TOMBE = ['Refus de prêt', 'Rétractation de l’acquéreur', 'Condition suspensive non levée', 'Le vendeur se retire'];
+export function FenCompromisTombe({ bien, compromis, offres, clientsNoms, onFermer, onFait }: {
+  bien: BienVente; compromis: SuiviVente | null; offres: SuiviVente[]; clientsNoms?: Record<string, string>;
+  onFermer: () => void; onFait: (b: BienVente) => void;
+}) {
+  const c = (compromis?.donnees || {}) as Record<string, unknown>;
+  const enPause = !!(c.acqPause && typeof c.acqPause === 'object' && (c.acqPause as Record<string, unknown>).clientId);
+  const offre = offres.find(o => o.id === c.offre) || null;
+  const acqId = (enPause ? String((c.acqPause as Record<string, unknown>).clientId) : '') || offre?.client_id || null;
+  const acquereur = (acqId && clientsNoms?.[acqId]) || offre?.qui || (typeof c.acquereur === 'string' ? c.acquereur : '') || 'l’acquéreur';
+  const vendeur = (bien.client_id && clientsNoms?.[bien.client_id]) || 'le vendeur';
+  const prix = argentBien(bien.donnees || {}).prix;
+  const titre = bien.titre || titreBien(bien.donnees || {});
+  const [raison, setRaison] = useState('');
+  const [suiteBien, setSuiteBien] = useState<SuiteTombe['bien']>('mandat');
+  const [suiteAcq, setSuiteAcq] = useState<SuiteTombe['acq']>('reprend');
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const choisirRaison = (x: string) => { setRaison(x); if (x === 'Le vendeur se retire') setSuiteBien('retire'); };
+  async function valider() {
+    setOccupe(true); setErreur('');
+    try {
+      const { bien: r } = await changerEtape(bien, suiteBien, { infos: { raison: raison.trim(), compromisTombe: true } });
+      await cloreRappelsCompromis(bien.id);
+      await compromisTombe(bien, titre, raison, { bien: suiteBien, acq: suiteAcq }, compromis);
+      onFait(r);
+    } catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  return (
+    <Fenetre sur={suiteBien === 'retire' ? 'Le bien passe « Retiré »' : 'Le bien repasse « En vente »'} couleur="#dc2626"
+      titre="Le compromis est tombé" sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Valider'}</button></>}>
+      <Section ic="info" c="#b91c1c" f="#fef2f2" titre="Pourquoi">
+        <Pills options={RAISONS_TOMBE.map(x => ({ v: x, l: x }))} v={RAISONS_TOMBE.includes(raison) ? raison : ''} onChange={choisirRaison} />
+        <Ch lib="En quelques mots"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex : refus de prêt de la deuxième banque" /></Ch>
+      </Section>
+      <Section ic="maison" c="#a07c28" f="#fbf6e9" titre="Le bien">
+        <div className={b.rappels}>
+          <Option nom="bien" on={suiteBien === 'mandat'} onChange={() => setSuiteBien('mandat')} ic="etiquette" c="#15803d" f="#f0fdf4"
+            t="Il repasse « En vente »" s={`Le mandat continue${prix ? `, au prix affiché de ${euros(prix)}` : ''}. Tu pourras le changer avec « Changer le prix ».`} />
+          <Option nom="bien" on={suiteBien === 'retire'} onChange={() => setSuiteBien('retire')} ic="archive" c="#64748b" f="#f1f5f9"
+            t={`${vendeur === 'le vendeur' ? 'Le vendeur' : vendeur} ne veut plus vendre`} s="Le bien passe « Retiré », gardé dans l’historique. Il se remet en vente d’un clic." />
+        </div>
+      </Section>
+      {acqId && (
+        <Section ic="personne" c="#1d4ed8" f="#eff6ff" titre={`${acquereur}, l’acquéreur`}>
+          <div className={b.rappels}>
+            <Option nom="acq" on={suiteAcq === 'reprend'} onChange={() => setSuiteAcq('reprend')} ic="loupe" c="#15803d" f="#f0fdf4"
+              t="Sa recherche reprend" s={enPause ? 'Il redevient comme avant le compromis : la veille repart et il est de nouveau proposé sur tes biens.' : 'Sa recherche n’avait pas été mise en pause : elle continue.'} />
+            <Option nom="acq" on={suiteAcq === 'pause'} onChange={() => setSuiteAcq('pause')} ic="pause" c="#b45309" f="#fff7ed"
+              t="Laisser sa recherche en pause" s="Il reste « Suspendu » : tu décideras plus tard, depuis sa fiche." />
+            <Option nom="acq" on={suiteAcq === 'arrete'} onChange={() => setSuiteAcq('arrete')} ic="croix" c="#b91c1c" f="#fef2f2"
+              t="Il arrête sa recherche" s="Dossier clos, « A renoncé » : la veille s’arrête, ses relances en attente sont soldées. Il se rouvre depuis sa fiche." />
+          </div>
+        </Section>
+      )}
+      <div className={b.rappels}>
+        <Trace t={bien.client_id && acqId ? 'Une ligne datée dans leur suivi' : 'Une ligne datée dans le suivi'}
+          s={`« Compromis tombé », avec le pourquoi${[bien.client_id ? `, chez ${vendeur}` : '', acqId ? `${bien.client_id ? ' et' : ','} chez ${acquereur}` : ''].join('')}. ${offre ? `L’offre de ${offre.qui || acquereur} passe « Compromis tombé ».` : ''}`.trim()} />
       </div>
       <Erreur t={erreur} />
     </Fenetre>
   );
 }
+/* Un choix parmi plusieurs (V3.47), dans le style des cases « Et ensuite ». */
+function Option({ nom, on, onChange, ic, c, f, t, s: sous }: { nom: string; on: boolean; onChange: () => void; ic: string; c: string; f: string; t: string; s: string }) {
+  return (
+    <div className={b.rappel} data-on={on ? 'oui' : 'non'} style={{ ['--c' as string]: c, ['--f' as string]: f } as React.CSSProperties}>
+      <label className={b.rappelCase}>
+        <input type="radio" name={nom} checked={on} onChange={onChange} />
+        <span className={b.dateCIc}><Ic n={ic} t={15} /></span>
+        <span className={b.rappelTx}><b>{t}</b><small>{sous}</small></span>
+      </label>
+    </div>
+  );
+}
+/* Ce que la fenêtre note toujours, sans case : la ligne du Suivi (V3.47). */
+function Trace({ t, s: sous }: { t: string; s: string }) {
+  return (
+    <div className={b.rappel} data-on="oui" style={{ ['--c' as string]: '#475569', ['--f' as string]: '#f8fafc' } as React.CSSProperties}>
+      <div className={b.rappelCase} style={{ cursor: 'default' }}>
+        {/* La place de la case, pour que l'icône s'aligne sur celles du dessus. */}
+        <span style={{ width: 17, flexShrink: 0 }} aria-hidden="true" />
+        <span className={b.dateCIc}><Ic n="historique" t={15} /></span>
+        <span className={b.rappelTx}><b>{t}</b><small>{sous}</small></span>
+      </div>
+    </div>
+  );
+}
+function Section({ ic, c, f, titre, children }: { ic: string; c: string; f: string; titre: string; children: ReactNode }) {
+  return (
+    <div className={b.fsec} style={{ ['--c' as string]: c, ['--f' as string]: f } as React.CSSProperties}>
+      <div className={b.fsecT}><span className={b.fsecIc}><Ic n={ic} t={15} /></span>{titre}</div>
+      {children}
+    </div>
+  );
+}
 
 /* ══ Vendu : l'acte est signé ══════════════════════════════════════════ */
-export function FenVendu({ bien, compromis, onFermer, onFait }: { bien: BienVente; compromis: SuiviVente | null; onFermer: () => void; onFait: (b: BienVente) => void }) {
+/* La vente est signée (V3.47 : en rubriques, comme le compromis, et la fin
+   du parcours — l'acquéreur « Bien trouvé », le vendeur « Vendeur signé »). */
+export function FenVendu({ bien, compromis, offres = [], proprio = null, onFermer, onFait }: {
+  bien: BienVente; compromis: SuiviVente | null; onFermer: () => void; onFait: (b: BienVente) => void;
+  offres?: SuiviVente[]; proprio?: ClientMini | null;
+}) {
   const c = (compromis?.donnees || {}) as Record<string, unknown>;
   const a = argentBien(bien.donnees || {});
   const [date, setDate] = useState(typeof c.acte === 'string' && c.acte <= aujourdhui() ? c.acte : aujourdhui());
   const [prix, setPrix] = useState<number | null>(typeof c.prix === 'number' ? c.prix : a.prix);
   const [hono, setHono] = useState<number | null>(typeof c.hono === 'number' ? c.hono : a.hono);
+  const offre = offres.find(o => o.id === c.offre) || (offres.filter(o => o.statut === 'acceptee').length === 1 ? offres.find(o => o.statut === 'acceptee') : undefined) || null;
+  const acquereur = offre?.qui || (typeof c.acquereur === 'string' ? c.acquereur : '') || 'l’acquéreur';
+  const [finAcq, setFinAcq] = useState(true);
+  const [signeV, setSigneV] = useState(true);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
+  const titre = bien.titre || titreBien(bien.donnees || {});
+  const nomProprio = proprio ? nomClient(proprio) : '';
+  const traces = [proprio || bien.client_id ? `« Vente signée — acte authentique le ${jourSuivi(date)} » chez ${nomProprio || 'le vendeur'}` : '', offre?.client_id ? `« Achat signé » chez ${acquereur}` : ''].filter(Boolean);
   async function valider() {
     setOccupe(true); setErreur('');
     try {
-      const { bien: r } = await changerEtape(bien, 'vendu', { vendu_le: date, infos: { prix, hono, acte: date, acquereur: c.acquereur || null } });
+      const { bien: r } = await changerEtape(bien, 'vendu', { vendu_le: date, infos: { prix, hono, acte: date, acquereur: c.acquereur || offre?.qui || null } });
+      /* Les rappels du compromis encore en attente n'ont plus d'objet (V3.45). */
+      await cloreRappelsCompromis(bien.id);
+      const fini = finAcq && offre?.client_id ? await finaliserAcquereur(offre.client_id) : false;
+      const vSigne = signeV && proprio ? await vendeurSigne(proprio.id) : false;
+      /* L'acte authentique, dans le Suivi des deux (V3.47) : « Vente signée »
+         chez le vendeur, « Achat signé » chez l'acquéreur, avec la date. */
+      const not = ligneNotaires(lireNotaire(c.notaireVendeur), lireNotaire(c.notaireAcquereur));
+      const lePrix = prix ? ` · ${eurosSuivi(prix)}` : '';
+      const quiAcq = offre?.qui || (typeof c.acquereur === 'string' ? c.acquereur : '');
+      const vendeurId = proprio?.id || bien.client_id;
+      await noterJalon(bien, 'acte', {
+        vendeur: vendeurId ? { clientId: vendeurId, titre: `🔑 Vente signée — acte authentique le ${jourSuivi(date)}`,
+          texte: [`${titre}${lePrix}${quiAcq ? ` · acquéreur : ${quiAcq}` : ''}`, not, vSigne ? 'Il passe en « Vendeur signé ».' : null] } : null,
+        acquereur: offre?.client_id ? { clientId: offre.client_id, rechercheId: offre.recherche_id, type: fini ? 'dossier_finalise' : undefined,
+          titre: `🔑 Achat signé — acte authentique le ${jourSuivi(date)}`,
+          texte: [`${titre}${lePrix}`, not, fini ? 'Dossier finalisé (« Bien trouvé ») : la veille s’arrête, ses relances en attente sont soldées.' : null] } : null,
+      });
       onFait(r);
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
   return (
-    <Fenetre sur="Le bien passe « Vendu »" couleur={etapeDe('vendu').c} titre="La vente est signée" sous={resume(bien)} occupe={occupe} onFermer={onFermer}
+    <Fenetre sur="Le bien passe « Vendu »" couleur={etapeDe('vendu').c} titre="La vente est signée" sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
         <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'C’est vendu'}</button></>}>
-      <div className={b.groupe}>
+      <Section ic="plume" c="#6d28d9" f="#f5f3ff" titre="L’acte">
         <div className={b.g3}>
           <Ch lib="Acte signé le"><input className={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} /></Ch>
           <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={setPrix} /></Ch>
           <Ch lib="Honoraires encaissés"><SaisieNombre v={hono} euros unite="€ TTC" off={false} onChange={setHono} /></Ch>
         </div>
-      </div>
+      </Section>
+      {(offre?.client_id || proprio || bien.client_id) && (
+        <Section ic="fleche" c="#0f766e" f="#f0fdfa" titre="Et ensuite">
+          <div className={b.rappels}>
+            {offre?.client_id && (
+              <Suite on={finAcq} onChange={setFinAcq} ic="check" c="#1d4ed8" f="#eff6ff"
+                t={`Dossier de ${acquereur} finalisé : il passe « Bien trouvé »`}
+                s="Rangé dans « Finalisés » : la veille s’arrête, ses relances en attente sont soldées." />
+            )}
+            {proprio && (
+              <Suite on={signeV} onChange={setSigneV} ic="cle" c="#15803d" f="#f0fdf4"
+                t={`${nomProprio} passe en « Vendeur signé »`}
+                s="Il quitte les vendeurs en cours, sans être archivé : un ancien client, pour une recommandation ou un prochain projet." />
+            )}
+            <Trace t={traces.length > 1 ? 'Une ligne datée dans leur suivi' : 'Une ligne datée dans son suivi'} s={`${traces.join(' · ')}.`} />
+          </div>
+        </Section>
+      )}
       <div className={b.calc}>Le bien reste dans la liste, rangé dans « Vendu ». Tu pourras l’archiver quand tu voudras.</div>
       <Erreur t={erreur} />
     </Fenetre>

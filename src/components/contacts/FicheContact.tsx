@@ -6,7 +6,7 @@ import { supabase, addJournal, type Client } from '@/lib/supabase';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import { jetonEspace } from '@/lib/jeton';
 import {
-  colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, lireStructure, structurePropre, typeDe, typesDe,
+  aUnBien, colonneContactAbsente, estAcheteur, estArchive, estPro, ligneContact, lirePro, lireStructure, structurePropre, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -256,7 +256,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
   const principal = typeDe(types[0]);
   const archive = estArchive(x);
-  const proprio = typesDe(x).includes('vendeur') || typesDe(x).includes('proprietaire');
+  const proprio = aUnBien(typesDe(x));
   const ouvrirBien = (id: string, onglet?: string) => { if (onglet) demanderOngletBien(id, onglet); onNavigate('biens', { bien: id }); };
 
   /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32). */
@@ -399,7 +399,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   /* Sa société (V3.30) : pour un vendeur, un propriétaire, un contact sans
      métier ; pas pour un notaire ou un confrère, qui ont déjà la leur. */
   const structure = lireStructure(pro.structure);
-  const peutSociete = !estPro(types) || types.includes('vendeur') || types.includes('proprietaire');
+  const peutSociete = !estPro(types) || aUnBien(types);
   /* V3.31 : juste sous le bandeau bleu (et non plus en bas de la fiche),
      dès qu'elle est notée ; sinon « Sa société (SCI…) » dans le bandeau
      l'ouvre là, prête à remplir. */
@@ -534,14 +534,14 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
               {!pro.metier && <div className={c.pied}>Son métier, sa société : « Modifier » pour les noter.</div>}
             </section>
           )}
-          {(types.includes('vendeur') || types.includes('proprietaire')) && (
+          {aUnBien(types) && (
             <div id="ses-biens"><BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours ouvertAuDebut /></div>
           )}
           {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
-          {(!estPro(types) || types.includes('vendeur') || types.includes('proprietaire')) && (
+          {(!estPro(types) || aUnBien(types)) && (
             <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} />
           )}
-          {!estPro(types) || types.includes('vendeur') || types.includes('proprietaire') ? (
+          {!estPro(types) || aUnBien(types) ? (
             <div className={c.aussi}>
               <span className={c.blocIc} style={{ width: 36, height: 36 }}><Ic n="cible" t={17} /></span>
               <div><b>Il cherche aussi à acheter ?</b>Ouvre-lui une recherche : il passe sur la fiche d’acheteur, avec son espace et la veille.</div>

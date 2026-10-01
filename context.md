@@ -1460,6 +1460,108 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.47 — 1er octobre 2026 · le compromis complet, la fin du parcours (vendeur signé, acheteur finalisé), les étapes de la vente dans le Suivi ; l'annonce, les surfaces
+
+Alexandre, devant un compromis repris d'Immofacile : « comment je retrouve les notaires et
+tout ? Il y a juste « La vente est signée » ». Puis : « si on veut modifier, un pop-up joli, avec
+des icônes, des petites couleurs ».
+- **La carte d'un compromis** (`CarteOffreB`, `NotairesCompromis`, `OngletsBien.tsx`) :
+  - à gauche, les deux notaires (vendeur, acquéreur) avec Appeler · Mail · Sa fiche, et le
+    compromis signé (« Joindre le PDF » / « Voir ») ;
+  - à droite, les quatre dates, « À renseigner » quand l'une manque, les rappels programmés et
+    « Compléter » / « Modifier ».
+- **La fenêtre du compromis** (`FenCompromis`, `FenetresBien.tsx`) sert aussi à le compléter
+  (`existant` : la ligne « compromis » du suivi). Elle a des rubriques colorées :
+  - l'offre retenue ;
+  - le compromis (signé le, prix, honoraires) ;
+  - les dates, chacune sa couleur, avec « Calculer depuis la signature » quand elles manquent ;
+  - les notaires (`ChoixNotaire` : contacts « Notaire », ou créés sur place par `creerNotaire`) ;
+  - les rappels.
+- **Les rappels** (`poserRappels`) sont proposés d'après les dates, cochés d'office s'ils sont à
+  venir, et vont dans les Relances. Il y en a trois :
+  - le lendemain de la fin de rétractation ;
+  - 7 jours avant la condition de prêt (décoché pour un achat comptant) ;
+  - 7 jours avant l'acte.
+
+  Ils vont chez le propriétaire (ou l'acquéreur pour le prêt). Leurs ids et leurs dates sont
+  gardés dans le compromis (`rappels`, `rappelsLe`) : une date qui bouge les déplace. Ils se
+  closent à la vente signée (`FenVendu`) et quand le compromis tombe (`FenMandat` depuis
+  « Sous compromis ») : `cloreRappelsCompromis`.
+- **Le compromis, dans `donnees`** (rien en SQL) : `notaireVendeur` et `notaireAcquereur`
+  (`{ id, nom, etude, tel, email }`). `notaireAcq` (le texte d'avant) reste écrit.
+- **« Le vendeur a déjà accepté »** dans « Une offre est arrivée… » : l'offre arrive acceptée,
+  sans relance.
+- **L'annonce** (`CarteAnnonce`) : le texte s'affiche d'office, avec les mentions obligatoires en
+  petit à côté ; « Replier le texte ».
+- **Les surfaces** : « Modifier » ouvre l'éditeur sur « Les surfaces » (`etapeDepart`
+  `bien:t-surf`, la partie s'éclaire), au lieu du haut de l'étape « Le bien ».
+- **« Pour la visite »** : une ligne longue (contact sur place) prend toute la largeur, le
+  numéro sur sa ligne et cliquable. Dans une colonne de 100 px, il se coupait mot à mot.
+
+**La fin du parcours** (Alexandre : « au vendeur qui a signé, avoir un choix : vendeur signé ;
+l'acheteur pareil, finalisé »). Chaque geste est une case cochée d'office dans la fenêtre, et
+jamais bloquant.
+- **Au compromis** (`FenCompromis`, rubrique « Et ensuite ») :
+  - « Mettre la recherche de X en pause » (`pauseAcquereur`) : l'acquéreur passe « Suspendu »
+    et sa recherche `active = false`. Ce qu'il était avant est gardé dans le compromis
+    (`acqPause`). Si le compromis tombe, `compromisTombe` le rend (si on le choisit, voir
+    ci-dessous).
+  - « Les autres offres passent en refusées » (`refuserAutresOffres`).
+- **À l'acte** (`FenVendu`, refaite en rubriques) :
+  - « Dossier de X finalisé » (`finaliserAcquereur`) : « Bien trouvé », toutes ses recherches
+    arrêtées, ses relances en attente soldées, comme « L'acte est signé » d'une chasse ;
+  - « X passe en « Vendeur signé » » (`vendeurSigne`).
+  Ces fonctions n'écrivent plus de ligne au journal : la ligne de l'étape le dit (ci-dessous).
+- **Nouveau type de contact `vendeur_signe`** (« Vendeur signé », `src/lib/contacts.ts`) : il
+  remplace « vendeur » dans `clients.types`, en gardant les autres types. Il a sa tuile dans
+  Contacts. Pas de SQL : `types` est un `text[]` sans contrainte. `aUnBien()` : vendeur, vendeur
+  signé ou propriétaire. Ses biens, sa société et ses documents restent sur sa fiche.
+- **Le compromis est tombé** (`FenCompromisTombe`, menu d'étape « Le compromis est tombé… » ;
+  avant, c'était la fenêtre du mandat). Alexandre : « soit reprendre la recherche de l'acheteur,
+  peut-être qu'il n'est plus en recherche ; soit le vendeur ne veut plus vendre ».
+  - Le pourquoi (refus de prêt, rétractation, condition non levée, le vendeur se retire…).
+  - Le bien : « Il repasse En vente » (le mandat continue, même prix) ou « Le vendeur ne veut
+    plus vendre » (« Retiré »).
+  - L'acquéreur : sa recherche reprend (ce qu'il était avant), reste en pause (« Suspendu »), ou
+    s'arrête (dossier clos « A renoncé », `perdu`, comme « Clôturer » sur sa fiche).
+  - L'offre retenue passe `retiree` + `donnees.compromisTombe { le, raison }` : la carte et la
+    ligne disent « Compromis tombé », elle ne se propose plus pour un compromis.
+- **L'espace acheteur** : un bien de l'agence sous compromis ou vendu le dit.
+  - `page.tsx` lit l'étape du bien en vente (`vente` : `{ etat, vous }`). `vous` : l'offre
+    acceptée porte sa recherche.
+  - Sur la carte, un ruban : « Sous compromis » / « Vendu » ; « Votre compromis » / « Votre
+    achat » pour celui qui l'achète.
+  - Sur la fiche, une phrase, et plus de barre « Qu'en pensez-vous ? ».
+  - Dans « Consultés », deux rubriques : « Votre achat » en tête, « Sous compromis ou vendus » à
+    la fin.
+  - Un bien vendu à un autre sort des nouveautés, des avis à donner, de « Découvrir » et de la
+    carte.
+  - Seulement pour les biens des mandats de l'agence. Les annonces de la veille, le CRM ne sait
+    pas quand elles se vendent.
+
+**Les étapes de la vente dans le Suivi** (Alexandre : « achat signé, acte authentique ; pareil
+pour le vendeur, avec la date et tout, pour qu'on le retrouve dans le suivi »). `noterJalon`
+(`biens/outils.ts`) écrit une ligne chez le vendeur (son Suivi général : ni recherche, ni bien)
+et chez l'acquéreur suivi (sa recherche, `bien_id` = sa copie du bien). Toujours, sans case à
+cocher ; jamais bloquant.
+
+| Étape | Où | Vendeur | Acquéreur |
+|---|---|---|---|
+| Mandat signé (pas une remise en vente) | `FenMandat` | « 📋 Mandat de vente signé le … » : type, n°, fin, prix | — |
+| Offre notée | `enregistrerOffre` | « 💶 Offre reçue — X € » | « 💶 Offre à X € — bien » (la ligne d'avant, datée) |
+| Offre acceptée | « Il accepte » (`noterOffreAcceptee`), ou « déjà acceptée » | « 🤝 Offre acceptée — X € », l'offre de départ si négociée | pareil |
+| Compromis | `FenCompromis` (nouveau, pas « Compléter ») | « ✍️ Compromis signé le … » : prix, acquéreur, les trois dates, les notaires | pareil, + « recherche en pause » si cochée |
+| Compromis tombé | `FenCompromisTombe` (`compromisTombe`) | « ↩️ Compromis tombé » + le pourquoi, remis en vente ou retiré | pareil, + reprend / en pause / arrête |
+| Acte | `FenVendu` | « 🔑 Vente signée — acte authentique le … » : prix, acquéreur, notaires, « Vendeur signé » | « 🔑 Achat signé — acte authentique le … » (`dossier_finalise` si finalisé) |
+
+- La date de l'étape est **dans le titre** : la ligne s'écrit le jour où on la note.
+- Type `etape_transaction` (`mandat` pour le mandat) ; `metadata.jalon` (+ `cote`,
+  `bien_vente_id`). Pas de SQL.
+- `FriseSuivi` : une ligne qui porte `metadata.jalon` est une **carte** à la couleur de l'étape
+  (`JALONS`, liseré à gauche, `.carteJalon`), plus une ligne « Système » discrète coupée à deux
+  lignes. Icônes ajoutées : `cle`, `signature`, `accord`.
+- Les fenêtres le disent : « Une ligne datée dans leur suivi » (`Trace`) dans « Et ensuite ».
+
 ### V3.46 — 1er octobre 2026 · l'éditeur des documents : l'aperçu qui mène à la question, deux colonnes à régler, les zones de texte qui s'agrandissent
 
 Demandes d'Alexandre en reprenant le mandat SCI AVIENA :

@@ -10,11 +10,15 @@
    Avant le SQL, la colonne n'existe pas : tout contact est un acheteur,
    comme avant. Ce fichier est isomorphe (CRM et bancs d'essai). */
 
-export type TypeContact = 'acheteur' | 'vendeur' | 'proprietaire' | 'notaire' | 'confrere' | 'gardien' | 'partenaire';
+export type TypeContact = 'acheteur' | 'vendeur' | 'vendeur_signe' | 'proprietaire' | 'notaire' | 'confrere' | 'gardien' | 'partenaire';
 
 export const TYPES_CONTACT: { k: TypeContact; lib: string; pluriel: string; ic: string; c: string; fond: string; aide: string }[] = [
   { k: 'acheteur', lib: 'Acheteur', pluriel: 'Acheteurs', ic: 'cible', c: '#0f7a4f', fond: '#ecfdf5', aide: 'Il cherche à acheter : sa recherche, son espace, la veille.' },
   { k: 'vendeur', lib: 'Vendeur', pluriel: 'Vendeurs', ic: 'etiquette', c: '#a07c28', fond: '#fbf6e9', aide: 'Il vend un bien : estimation, mandat, dans la rubrique Biens.' },
+  /* V3.47 : sa vente est signée chez le notaire. Il quitte les vendeurs en
+     cours, sans être archivé : un ancien client, une recommandation, un
+     prochain projet. Proposé dans « La vente est signée ». */
+  { k: 'vendeur_signe', lib: 'Vendeur signé', pluriel: 'Vendeurs signés', ic: 'check', c: '#15803d', fond: '#f0fdf4', aide: 'Sa vente est signée : un ancien client, pour une recommandation ou un prochain projet.' },
   { k: 'proprietaire', lib: 'Propriétaire', pluriel: 'Propriétaires', ic: 'cle', c: '#b45309', fond: '#fff7ed', aide: 'Il possède un bien sans le vendre pour l’instant : un vendeur de demain.' },
   { k: 'notaire', lib: 'Notaire', pluriel: 'Notaires', ic: 'balance', c: '#34496e', fond: '#eef2f8', aide: 'Son étude, son clerc : pour les compromis et les actes.' },
   { k: 'confrere', lib: 'Confrère ou agence', pluriel: 'Confrères', ic: 'agence', c: '#7c3aed', fond: '#f5f3ff', aide: 'Un agent, un mandataire, une agence : pour les biens partagés.' },
@@ -35,7 +39,9 @@ export const estAcheteur = (c: AvecTypes | null | undefined) => typesDe(c).inclu
 export const estArchive = (c: AvecTypes | null | undefined) => c?.archive === true;
 /* Les contacts « particuliers » (on les suit pour un achat ou une vente)
    par opposition aux professionnels. */
-export const PARTICULIERS: TypeContact[] = ['acheteur', 'vendeur', 'proprietaire'];
+export const PARTICULIERS: TypeContact[] = ['acheteur', 'vendeur', 'vendeur_signe', 'proprietaire'];
+/* Vend, a vendu ou possède un bien : ses biens, sa société s'affichent (V3.47). */
+export const aUnBien = (t: TypeContact[]) => t.includes('vendeur') || t.includes('vendeur_signe') || t.includes('proprietaire');
 export const estPro = (types: TypeContact[]) => !types.some(t => PARTICULIERS.includes(t));
 
 /* Un acheteur « non filtré » : sa recherche n'a encore aucun critère. On lit
