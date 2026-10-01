@@ -11,7 +11,7 @@ import { RAISONS_ECART, raisonEcart, type RaisonEcart } from '@/lib/ecart-achete
 import { conjointDe } from '@/lib/foyer';
 import { TYPES_CONTACT, colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
-  apresReponse, argentBien, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
+  ETAPES_BIEN, apresReponse, argentBien, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -325,6 +325,42 @@ export async function creerBien(references: (string | null)[], etape: EtapeVente
   if (error) lever('Le bien n’a pas pu être créé', error.message);
   if (etape === 'mandat') await ajouterSuivi({ bien_id: (data as BienVente).id, type: 'etape', statut: 'mandat', donnees: { de: 'creation', depuis: 'creation' } });
   return data as BienVente;
+}
+
+/* ══ Une nouvelle vente d'un bien déjà vendu (V3.47) ═══════════════════
+   Alexandre : « si dans 5 ans le bien revient à la vente, est-ce qu'il faut
+   recréer un bien ou partir de celui-là ? ». Une nouvelle fiche, qui reprend
+   la description du bien (adresse, surfaces, pièces, intérieur, extérieur,
+   diagnostics, copropriété, observations) ; le propriétaire, le prix, le
+   mandat, les infos de visite, l'annonce et les photos repartent de zéro.
+   La vente d'avant reste telle quelle — son historique, ses honoraires —
+   et les deux fiches se citent (`venteAvant`, `venteSuivante`). */
+const PARTIES_REPRISES = ['bien', 'interieur', 'exterieur', 'pieces', 'energie', 'copro', 'observations'];
+export async function nouvelleVente(b: BienVente, references: (string | null)[], o: { proprio: ClientMini | null; etape: 'a_suivre' | 'estimation' }): Promise<BienVente> {
+  const ancien = (b.donnees || {}) as Donnees;
+  const cles = new Set<string>(['gps', ...ETAPES_BIEN.filter(e => PARTIES_REPRISES.includes(e.id)).flatMap(e => e.champs.map(c => (c as { cle?: string }).cle || '')).filter(Boolean)]);
+  const d: Donnees = {};
+  for (const k of Object.keys(ancien)) if (cles.has(k) && !k.startsWith('t-')) d[k] = ancien[k];
+  if (o.proprio) Object.assign(d, donneesProprio(o.proprio));
+  d.venteAvant = { id: b.id, reference: b.reference || null, venduLe: b.vendu_le || null };
+  const maintenant = new Date().toISOString();
+  const { data, error } = await supabase.from('biens_vente').insert({
+    reference: referenceSuivante(references), etape: o.etape, etape_le: maintenant, ...colonnesBien(d), donnees: d,
+  }).select().single();
+  if (error) lever('La nouvelle vente n’a pas pu être créée', error.message);
+  const neuf = data as BienVente;
+  try { await ajouterSuivi({ bien_id: neuf.id, type: 'etape', statut: o.etape, donnees: { de: 'creation', depuis: 'revente', venteAvant: b.reference || '' } }); }
+  catch (e) { signalerEchec('L’historique de la nouvelle vente', (e as Error).message); }
+  if (o.proprio) await marquerVendeur(o.proprio.id);
+  /* L'ancienne fiche dit qu'il y a une suite. */
+  try {
+    const { data: frais, error: e1 } = await supabase.from('biens_vente').select('donnees').eq('id', b.id).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    const dd = { ...(((frais as { donnees?: Donnees } | null)?.donnees) || ancien), venteSuivante: { id: neuf.id, reference: neuf.reference || null } };
+    const { error: e2 } = await supabase.from('biens_vente').update({ donnees: dd }).eq('id', b.id);
+    if (e2) throw new Error(e2.message);
+  } catch (e) { signalerEchec('Le lien vers la nouvelle vente', (e as Error).message); }
+  return neuf;
 }
 
 /* Les réponses à écrire : celles de la base, relues maintenant, avec
@@ -862,6 +898,21 @@ export async function noterJalon(b: BienVente, jalon: Jalon, l: { vendeur?: Lign
     } catch (e) { signalerEchec('Le suivi du contact', (e as Error).message); }
   }
 }
+/* « Annuler l'acceptation » (V3.47) : les deux Suivis le disent, sous la
+   ligne « Offre acceptée » qui reste. */
+export async function noterAcceptationAnnulee(b: BienVente, o: SuiviVente): Promise<void> {
+  const m = montantActuel(o);
+  const titre = b.titre || titreBien(b.donnees || {});
+  const ligne = (clientId: string, rechercheId?: string | null) => ({ clientId, rechercheId, titre: `↩️ Acceptation annulée — ${eurosSuivi(m)}`, texte: [`${titre} · l’offre de ${o.qui || 'l’acquéreur'} est de nouveau en discussion`] });
+  /* Pas de `jalon` connu de la frise : une ligne discrète. */
+  const cotes: [string | null, string | null | undefined][] = [[b.client_id, null], [o.client_id, o.recherche_id]];
+  for (const [id, rech] of cotes) {
+    if (!id) continue;
+    const x = ligne(id, rech);
+    try { await addJournal(id, 'etape_transaction', x.titre, x.texte.join('\n'), { jalon: 'annulation', bien_vente_id: b.id }, { rechercheId: rech || null }); }
+    catch (e) { signalerEchec('Le suivi du contact', (e as Error).message); }
+  }
+}
 /* Le vendeur accepte une offre (« Accepter », sur sa carte). */
 export async function noterOffreAcceptee(b: BienVente, o: SuiviVente): Promise<void> {
   const m = montantActuel(o);
@@ -882,7 +933,7 @@ export async function noterOffreAcceptee(b: BienVente, o: SuiviVente): Promise<v
 /* Au compromis : la recherche de l'acquéreur se met en pause — il passe
    « Suspendu », la veille s'arrête, il n'est plus proposé sur les autres
    biens. Ce qu'il était avant est rendu, pour reprendre si le compromis tombe. */
-export type PauseAcquereur = { clientId: string; rechercheId: string | null; statutAvant: string | null };
+export type PauseAcquereur = { clientId: string; rechercheId: string | null; statutAvant: string | null; activeAvant?: boolean | null };
 export async function pauseAcquereur(o: SuiviVente): Promise<PauseAcquereur | null> {
   if (!o.client_id) return null;
   try {
@@ -893,12 +944,17 @@ export async function pauseAcquereur(o: SuiviVente): Promise<PauseAcquereur | nu
       const r = await supabase.from('clients').update({ statut: 'suspendu' }).eq('id', o.client_id);
       if (r.error) signalerEchec('Le statut « Suspendu » de l’acquéreur', r.error.message);
     }
+    /* Ce qu'était sa recherche avant (V3.47) : si le compromis tombe, elle
+       revient exactement comme avant — déjà en pause, elle y reste. */
+    let activeAvant: boolean | null = null;
     if (o.recherche_id) {
+      const r0 = await supabase.from('recherches').select('active').eq('id', o.recherche_id).maybeSingle();
+      if (!r0.error) activeAvant = (r0.data as { active?: boolean | null } | null)?.active ?? null;
       const r = await supabase.from('recherches').update({ active: false, updated_at: new Date().toISOString() }).eq('id', o.recherche_id);
       if (r.error) signalerEchec('La pause de la recherche de l’acquéreur', r.error.message);
     }
     /* Pas de ligne à part au Suivi : la ligne « Compromis signé » le dit (noterJalon). */
-    return { clientId: o.client_id, rechercheId: o.recherche_id || null, statutAvant };
+    return { clientId: o.client_id, rechercheId: o.recherche_id || null, statutAvant, activeAvant };
   } catch (e) { signalerEchec('La recherche de l’acquéreur', (e as Error).message); return null; }
 }
 /* Le compromis est tombé (V3.47). Alexandre : « soit reprendre la recherche
@@ -943,13 +999,17 @@ export async function compromisTombe(b: BienVente, titre: string, raison: string
     let finalise = false;
     if (acq) {
       if (suite.acq === 'reprend' && p?.clientId) {
-        const r = await supabase.from('clients').update({ statut: p.statutAvant && p.statutAvant !== 'suspendu' ? p.statutAvant : 'actif' }).eq('id', p.clientId).eq('statut', 'suspendu');
-        if (r.error) signalerEchec('Le statut de l’acquéreur', r.error.message);
-        if (p.rechercheId) {
+        /* Comme avant le compromis : déjà « Suspendu », il le reste ; une
+           recherche déjà arrêtée ne repart pas (V3.47). */
+        if (p.statutAvant !== 'suspendu') {
+          const r = await supabase.from('clients').update({ statut: p.statutAvant || 'actif' }).eq('id', p.clientId).eq('statut', 'suspendu');
+          if (r.error) signalerEchec('Le statut de l’acquéreur', r.error.message);
+        }
+        if (p.rechercheId && p.activeAvant !== false) {
           const r2 = await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).eq('id', p.rechercheId);
           if (r2.error) signalerEchec('La reprise de la recherche de l’acquéreur', r2.error.message);
         }
-        phraseAcq = 'Sa recherche reprend : la veille repart.';
+        phraseAcq = p.statutAvant === 'suspendu' || p.activeAvant === false ? 'Il revient comme avant le compromis (sa recherche était déjà en pause).' : 'Sa recherche reprend : la veille repart.';
       } else if (suite.acq === 'pause') {
         const r = await supabase.from('clients').update({ statut: 'suspendu' }).eq('id', acq.clientId).in('statut', ['actif', 'prospect', 'suspendu']);
         if (r.error) signalerEchec('Le statut « Suspendu » de l’acquéreur', r.error.message);
@@ -966,8 +1026,7 @@ export async function compromisTombe(b: BienVente, titre: string, raison: string
           finalise = true;
           const r2 = await supabase.from('recherches').update({ active: false }).eq('client_id', acq.clientId);
           if (r2.error) signalerEchec('L’arrêt de la veille de l’acquéreur', r2.error.message);
-          const r3 = await supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', acq.clientId).eq('statut', 'en_attente');
-          if (r3.error) signalerEchec('Les relances de l’acquéreur', r3.error.message);
+          await solderRelancesAcheteur(acq.clientId);
           phraseAcq = 'Il arrête sa recherche : dossier clos (« A renoncé »), la veille s’arrête, ses relances en attente sont soldées.';
         }
       }
@@ -982,6 +1041,18 @@ export async function compromisTombe(b: BienVente, titre: string, raison: string
     });
   } catch (e) { signalerEchec('Le compromis tombé', (e as Error).message); }
 }
+/* Les relances d'un acquéreur dont le dossier se clôt. S'il vend aussi un
+   bien avec nous, ses relances de vendeur (réponse à une offre, rappels du
+   compromis, notes sans recherche) restent : seules celles de ses
+   recherches se soldent (V3.47). */
+async function solderRelancesAcheteur(clientId: string): Promise<void> {
+  const v = await supabase.from('biens_vente').select('id').eq('client_id', clientId).not('etape', 'in', '(vendu,retire)').limit(1);
+  if (v.error) signalerEchec('Les biens en vente de l’acquéreur', v.error.message);
+  let q = supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', clientId).eq('statut', 'en_attente');
+  if (v.data?.length) q = q.not('recherche_id', 'is', null);
+  const { error } = await q;
+  if (error) signalerEchec('Les relances de l’acquéreur', error.message);
+}
 /* À l'acte : le dossier de l'acquéreur est finalisé (« Bien trouvé »), comme
    « L'acte est signé » d'une chasse (FicheClient) — la veille s'arrête, ses
    relances en attente sont soldées. Sa ligne au Suivi : « Achat signé —
@@ -992,8 +1063,7 @@ export async function finaliserAcquereur(clientId: string): Promise<boolean> {
     if (a.error) { signalerEchec('Le statut « Bien trouvé » de l’acquéreur', a.error.message); return false; }
     const b = await supabase.from('recherches').update({ active: false }).eq('client_id', clientId);
     if (b.error) signalerEchec('L’arrêt de la veille de l’acquéreur', b.error.message);
-    const c = await supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', clientId).eq('statut', 'en_attente');
-    if (c.error) signalerEchec('Les relances de l’acquéreur', c.error.message);
+    await solderRelancesAcheteur(clientId);
     return true;
   } catch (e) { signalerEchec('Le dossier de l’acquéreur', (e as Error).message); return false; }
 }
@@ -1001,16 +1071,44 @@ export async function finaliserAcquereur(clientId: string): Promise<boolean> {
    cours, garde ses autres types : acheteur, propriétaire…). La ligne
    « Vente signée — acte authentique » le dit (noterJalon). */
 const TYPES_CONTACT_ORDRE = TYPES_CONTACT.map(t => t.k);
-export async function vendeurSigne(clientId: string): Promise<boolean> {
+export async function vendeurSigne(clientId: string, bienId: string): Promise<boolean> {
   try {
     const { data, error } = await supabase.from('clients').select('types').eq('id', clientId).maybeSingle();
     if (error || !data) { signalerEchec('Le type « Vendeur signé »', error?.message || 'contact introuvable'); return false; }
-    const t: string[] = typesDe(data).filter(x => x !== 'vendeur');
+    /* Un autre de ses biens encore en vente : il reste aussi « Vendeur ». */
+    const autres = await supabase.from('biens_vente').select('id').eq('client_id', clientId).neq('id', bienId).not('etape', 'in', '(vendu,retire)').limit(1);
+    if (autres.error) signalerEchec('Les autres biens du vendeur', autres.error.message);
+    const encore = !!autres.data?.length;
+    const t: string[] = typesDe(data).filter(x => encore || x !== 'vendeur');
     const types = TYPES_CONTACT_ORDRE.filter(k => k === 'vendeur_signe' || t.includes(k));
     const r = await supabase.from('clients').update({ types }).eq('id', clientId);
     if (r.error) { signalerEchec('Le type « Vendeur signé »', r.error.message); return false; }
     return true;
   } catch (e) { signalerEchec('Le type « Vendeur signé »', (e as Error).message); return false; }
+}
+/* Au compromis : une autre offre restée « acceptée » (une offre tombée, ou
+   le compromis signé avec un autre) passe « retirée » — deux offres
+   acceptées, l'espace de l'acheteur ne saurait plus qui achète (V3.47). */
+export async function retirerAutresAcceptees(b: BienVente, offres: SuiviVente[], gardee: string | null): Promise<void> {
+  for (const o of offres) {
+    if (o.id === gardee || o.statut !== 'acceptee') continue;
+    try {
+      const { statut, donnees } = apresReponse(o, { k: 'retire' }, aujourdhui());
+      await majSuivi(o.id, { statut, donnees });
+    } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
+  }
+}
+/* « L'offre est tombée » (V3.47) : les offres encore en jeu passent
+   « retirées », leurs relances « réponse à donner » se closent. */
+export async function offresTombees(b: BienVente, offres: SuiviVente[]): Promise<void> {
+  for (const o of offres) {
+    if (!(o.statut === 'acceptee' || o.statut === 'en_attente' || o.statut === 'contre' || !o.statut)) continue;
+    try {
+      const { statut, donnees } = apresReponse(o, { k: 'retire' }, aujourdhui());
+      await majSuivi(o.id, { statut, donnees });
+      await cloreRelanceOffre(b, o);
+    } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
+  }
 }
 /* Au compromis : les autres offres encore ouvertes passent « refusées ». */
 export async function refuserAutresOffres(b: BienVente, offres: SuiviVente[], gardee: string | null): Promise<void> {
@@ -1145,7 +1243,9 @@ export async function marquerVendeur(clientId: string): Promise<void> {
   if (error || !data) return;
   const t = typesDe(data);
   if (t.includes('vendeur')) return;
-  const { error: e2 } = await supabase.from('clients').update({ types: [...t, 'vendeur'] }).eq('id', clientId);
+  /* Un « Vendeur signé » qui revend (V3.47) : il redevient « Vendeur ». Sa
+     vente d'avant reste dans son Suivi et dans la liste de ses biens. */
+  const { error: e2 } = await supabase.from('clients').update({ types: [...t.filter(x => x !== 'vendeur_signe'), 'vendeur'] }).eq('id', clientId);
   if (e2 && !colonneContactAbsente(e2.message)) signalerEchec('Le type « vendeur » du contact', e2.message);
 }
 

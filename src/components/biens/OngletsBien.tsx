@@ -1047,12 +1047,23 @@ export function parcoursDe(bien: BienVente, suivi: SuiviVente[]): PasParcours[] 
   const quandEtape = (k: string) => suivi.filter(x => x.type === 'etape' && x.statut === k).map(x => x.le).sort()[0] || '';
   const ici = arret ? 'mandat' : e;
   const idx = ORDRE.findIndex(x => x.k === ici);
+  /* V3.47 : les vraies dates quand on les a — le mandat signé, la première
+     offre reçue, la signature du dernier compromis, l'acte (vendu_le) ;
+     sinon le jour où l'étape a été notée. */
+  const dn = (bien.donnees || {}) as Record<string, unknown>;
+  const ymd = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? `${v.slice(0, 10)}T12:00:00` : '');
+  const dernierCompromis = suivi.filter(x => x.type === 'etape' && x.statut === 'compromis').sort((p, q) => q.le.localeCompare(p.le))[0];
+  const premiereOffre = suivi.filter(x => x.type === 'offre').map(x => x.le).sort()[0] || '';
+  const vraie: Record<string, string> = {
+    mandat: ymd(dn.mandatDate), offre: premiereOffre, compromis: ymd((dernierCompromis?.donnees as Record<string, unknown> | undefined)?.signe), vendu: ymd(bien.vendu_le),
+  };
   const pas: PasParcours[] = ORDRE.map((x, i) => {
-    let quand = x.k === 'a_suivre' ? bien.created_at : quandEtape(x.k);
+    let quand = x.k === 'a_suivre' ? bien.created_at : vraie[x.k] || quandEtape(x.k);
     if (x.k === 'mandat' && !quand) quand = bien.en_vente_le || '';
     const etat: PasParcours['etat'] = i < idx || (arret && i === idx) ? 'fait' : i === idx ? 'ici' : 'apres';
     let t = quand ? dateCourteMois(quand) : '';
-    if (etat === 'ici' && quand) {
+    if (etat === 'ici' && quand && x.k === 'vendu') t = `le ${dateCourteMois(quand)}`;
+    else if (etat === 'ici' && quand) {
       const n = joursDepuis(quand);
       t = `depuis le ${dateCourteMois(quand)}${n !== null && n > 0 ? `, ${n} jour${n > 1 ? 's' : ''}` : ''}`;
     }

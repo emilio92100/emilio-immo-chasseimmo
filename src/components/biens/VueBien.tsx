@@ -275,7 +275,7 @@ export function BlocDernierement({ items, onTout }: { items: Recent[]; onTout: (
           {items.map(x => (
             <div key={x.cle} className={v.recent}>
               <span className={v.point} style={{ background: x.c }} />
-              <span className={v.recentTx}><b>{x.titre}</b>{x.detail ? ` · ${x.detail}` : ''}</span>
+              <span className={v.recentTx}><b>{x.titre}</b>{x.detail ? ` · ${x.detail.split('\n')[0]}` : ''}</span>
               <span className={v.recentLe}>{jourMois(x.le)}</span>
             </div>
           ))}

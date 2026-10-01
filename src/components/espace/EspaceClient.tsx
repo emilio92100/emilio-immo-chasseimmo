@@ -50,9 +50,9 @@ type Bien = {
   etat: string;
   /* Un bien de l'agence sous compromis ou vendu (V3.47) ; `vous` : c'est le
      sien, il l'achète. */
-  vente?: { etat: 'compromis' | 'vendu'; vous: boolean } | null;
+  vente?: { etat: 'compromis' | 'vendu' | 'retire'; vous: boolean } | null;
 };
-const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis') : v.etat === 'vendu' ? 'Vendu' : 'Sous compromis');
+const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis') : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : 'Sous compromis');
 /* Une visite, telle que « Vos visites » la lit (voir page.tsx). `passee` :
    faite, ou calée à une heure déjà passée. `issue` : sa réponse ou celle de
    son conseiller, null tant que personne n'a rien dit. */
@@ -408,7 +408,7 @@ const GROUPES: { id: string; e: string; court: string; titre: string; ton: strin
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
   /* V3.47 : les biens de l'agence vendus ou sous compromis. Celui qu'il
      achète passe en tête, les autres à la fin : ils ne demandent plus rien. */
-  { id: 'plus_dispo', e: '🔒', court: 'Plus disponibles', titre: 'Sous compromis ou vendus', ton: 'c-net',
+  { id: 'plus_dispo', e: '🔒', court: 'Plus disponibles', titre: 'Plus disponibles : sous compromis, vendus ou retirés de la vente', ton: 'c-net',
     note: 'Ces biens ne sont plus disponibles. Vos retours restent gardés : ils affinent la suite de la recherche.' },
 ];
 GROUPES.unshift({ id: 'votre_achat', e: '🔑', court: 'Votre achat', titre: 'Votre achat', ton: 'c-or',
@@ -4181,7 +4181,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             <Ico n={b.vente.vous ? 'check' : 'maison'} t={17} />
             <span>{b.vente.vous
               ? (b.vente.etat === 'vendu' ? 'La vente est signée : félicitations pour votre achat.' : 'Votre compromis est signé. Prochaine étape : l’acte, chez le notaire.')
-              : (b.vente.etat === 'vendu' ? 'Ce bien a été vendu.' : 'Ce bien est sous compromis de vente : il n’est plus proposé à la visite pour l’instant.')}</span>
+              : (b.vente.etat === 'vendu' ? 'Ce bien a été vendu.' : b.vente.etat === 'retire' ? 'Ce bien n’est plus en vente : son propriétaire l’a retiré.' : 'Ce bien est sous compromis de vente : il n’est plus proposé à la visite pour l’instant.')}</span>
           </div>
         )}
         {corr && (

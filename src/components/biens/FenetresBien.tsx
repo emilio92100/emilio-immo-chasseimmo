@@ -13,7 +13,7 @@ import { signalerEchec } from '@/lib/ecritures';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
-  finaliserAcquereur, ligneNotaires, lireNotaire, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
+  finaliserAcquereur, ligneNotaires, lireNotaire, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
   type CleRappel, type ClientMini, type ContactNotaire, type NotaireChoisi, type Rappel, type RechercheMini, type SuiteTombe,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -363,8 +363,12 @@ export function FenDefinirEstimation({ bien, onFermer, onFait }: { bien: BienVen
 }
 
 /* ══ Le mandat est signé (ou : remettre en vente) ═════════════════════════ */
-export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFermer: () => void; onFait: (b: BienVente) => void }) {
+export function FenMandat({ bien, offres = [], onFermer, onFait }: { bien: BienVente; offres?: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente) => void }) {
   const d = bien.donnees || {};
+  /* « L'offre est tombée » (V3.47) : les offres encore en jeu passent
+     « retirées » (case cochée d'office), leurs relances se closent. */
+  const enJeu = bien.etape === 'offre' ? offres.filter(o => o.statut === 'acceptee' || o.statut === 'en_attente' || o.statut === 'contre' || !o.statut) : [];
+  const [retirerOffres, setRetirerOffres] = useState(true);
   /* Une reprise : le bien a déjà été en vente, mandat signé. Pas quand il
      est passé « En vente » avant la signature, ni retiré avant tout mandat
      (V3.42) : c'est alors la signature qu'on note. */
@@ -409,6 +413,7 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
       /* Le compromis est tombé : ses rappels se closent (V3.45), la recherche
          de l'acquéreur reprend, les deux Suivis le disent (V3.47). */
       if (bien.etape === 'compromis') { await cloreRappelsCompromis(bien.id); await compromisTombe(bien, titre, raison); }
+      if (enJeu.length && retirerOffres) await offresTombees(bien, enJeu);
       /* Le mandat signé, dans le Suivi du vendeur (V3.47). */
       if (!reprise && bien.client_id) {
         const sorte = type === 'exclusif' ? 'exclusif' : type === 'semi' ? 'semi-exclusif' : 'simple';
@@ -472,6 +477,13 @@ export function FenMandat({ bien, onFermer, onFait }: { bien: BienVente; onFerme
         </div>
       </div>
       {reprise && <Ch lib="Pourquoi (pour l’historique)"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex : l’offre est tombée, le vendeur reprend la vente" /></Ch>}
+      {enJeu.length > 0 && (
+        <div className={b.rappels}>
+          <Suite on={retirerOffres} onChange={setRetirerOffres} ic="croix" c="#b91c1c" f="#fef2f2"
+            t={enJeu.length > 1 ? `Les ${enJeu.length} offres en cours passent « retirées »` : `L’offre de ${enJeu[0].qui || 'l’acquéreur'} passe « retirée »`}
+            s={enJeu.map(o => `${o.qui || 'Acquéreur'} · ${euros(prixRetenu(o) || 0)}${o.statut === 'acceptee' ? ' · acceptée' : ''}`).join(' · ')} />
+        </div>
+      )}
       <Erreur t={erreur} />
     </Fenetre>
   );
@@ -728,15 +740,22 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
     /* Un compromis qui a déjà ses rappels : on reprend ses choix. Sinon (un
        compromis d'avant, ou noté sans dates), les propositions par défaut. */
     if (existant && Object.keys(rappelsAvant).length) {
-      for (const k of ['sru', 'pret', 'acte']) o[k] = { on: !!rappelsAvant[k], ...(rappelsLe[k] ? { le: rappelsLe[k] } : {}) };
+      for (const k of ['sru', 'pret', 'acte']) o[k] = { on: !!rappelsAvant[k] };
     }
     return o;
   });
+  /* Le bien déjà vendu (un compromis d'avant qu'on complète après coup) :
+     plus aucun rappel à poser (V3.47). */
+  const dejaVendu = bien.etape === 'vendu';
+  /* Une date changée en complétant : le rappel la suit, au lieu de garder
+     l'échéance d'avant (V3.47). */
+  const basesAvant: Record<string, string> = { sru: tx('sru'), pret: tx('pretLimite'), acte: tx('acte') };
   const rappels = defs.map(x => {
     const c = choixR[x.cle] || {};
-    const le = c.le || (x.base ? plusJours(x.base, x.ecart) : '');
+    const garde = existant && rappelsLe[x.cle] && x.base === basesAvant[x.cle] ? rappelsLe[x.cle] : '';
+    const le = c.le || garde || (x.base ? plusJours(x.base, x.ecart) : '');
     const passe = !!le && le < aujourdhui();
-    const on = c.on ?? (!!le && !passe && !!x.client && !(x.cle === 'pret' && comptant));
+    const on = !dejaVendu && (c.on ?? (!!le && !passe && !!x.client && !(x.cle === 'pret' && comptant)));
     return { ...x, le, passe, on };
   });
   const majR = (k: string, v: { on?: boolean; le?: string }) => setChoixR(o => ({ ...o, [k]: { ...o[k], ...v } }));
@@ -768,11 +787,13 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
         const ids = await poserRappels(liste, rappelsAvant);
         await majSuivi(existant.id, { donnees: { ...ex, ...infos, rappels: ids, rappelsLe: rappelsLeNouv } });
         if (offre && offre.statut !== 'acceptee') await majSuivi(offre.id, { statut: 'acceptee', donnees: { ...offre.donnees, reponse_le: aujourdhui() } });
+        if (offre) await retirerAutresAcceptees(bien, offres, offre.id);
         onFait(null);
         return;
       }
-      if (offre && offre.statut !== 'acceptee') await majSuivi(offre.id, { statut: 'acceptee', donnees: { ...offre.donnees, reponse_le: aujourdhui() } });
+      /* L'étape d'abord : si elle échoue, l'offre ne reste pas « acceptée » sans compromis (V3.47). */
       const { bien: r, ligne } = await changerEtape(bien, 'compromis', { infos });
+      if (offre && offre.statut !== 'acceptee') await majSuivi(offre.id, { statut: 'acceptee', donnees: { ...offre.donnees, reponse_le: aujourdhui() } });
       const ids = await poserRappels(liste, {});
       const pause = offre && offre.client_id && pauseAcq ? await pauseAcquereur(offre) : null;
       if (Object.keys(ids).length || pause) {
@@ -780,6 +801,7 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
         catch (e) { signalerEchec('Le compromis : ses rappels et la recherche de l’acquéreur', (e as Error).message); }
       }
       if (refuserAutres && autresOuvertes.length) await refuserAutresOffres(bien, offres, offre?.id || null);
+      if (offre) await retirerAutresAcceptees(bien, offres, offre.id);
       /* La relance « réponse à donner » de cette offre n'a plus d'objet. */
       if (offre) await cloreRelanceOffre(bien, offre);
       /* Le compromis, dans le Suivi du vendeur et de l'acquéreur (V3.47) :
@@ -850,7 +872,7 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
           <ChoixNotaire lib="Notaire de l’acquéreur" couleur="#1d4ed8" v={notA} onChange={setNotA} notaires={notaires} onCree={ajouteNotaire} />
         </div>
       </Section>
-      <Section ic="horloge" c="#c2410c" f="#fff7ed" titre="Les rappels, dans tes Relances">
+      {!dejaVendu && <Section ic="horloge" c="#c2410c" f="#fff7ed" titre="Les rappels, dans tes Relances">
         <div className={b.rappels}>
           {rappels.map(r => (
             <div key={r.cle} className={b.rappel} data-on={r.on ? 'oui' : 'non'} style={{ ['--c' as string]: r.c, ['--f' as string]: r.f } as React.CSSProperties}>
@@ -867,7 +889,7 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
             </div>
           ))}
         </div>
-      </Section>
+      </Section>}
       {!existant && (pourProprio || offre?.client_id || autresOuvertes.length > 0) && (
         <Section ic="fleche" c="#0f766e" f="#f0fdfa" titre="Et ensuite">
           <div className={b.rappels}>
@@ -975,6 +997,51 @@ export function FenCompromisTombe({ bien, compromis, offres, clientsNoms, onFerm
     </Fenetre>
   );
 }
+/* ══ Une nouvelle vente de ce bien (V3.47) ═════════════════════════════
+   Le bien vendu revient à la vente, des années plus tard : une nouvelle
+   fiche reprend sa description ; le propriétaire proposé est celui qui
+   l'avait acheté (nouvelleVente, outils.ts). */
+export function FenNouvelleVente({ bien, references, acquereur, onFermer, onFait }: {
+  bien: BienVente; references: (string | null)[]; acquereur: ClientMini | null;
+  onFermer: () => void; onFait: (b: BienVente) => void;
+}) {
+  const [qui, setQui] = useState<'acq' | 'autre'>(acquereur ? 'acq' : 'autre');
+  const [etape, setEtape] = useState<'a_suivre' | 'estimation'>('estimation');
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const vendu = bien.vendu_le ? jourSuivi(bien.vendu_le) : '';
+  async function valider() {
+    setOccupe(true); setErreur('');
+    try { onFait(await nouvelleVente(bien, references, { proprio: qui === 'acq' ? acquereur : null, etape })); }
+    catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  return (
+    <Fenetre sur={`Vendu${vendu ? ` le ${vendu}` : ''}`} couleur={etapeDe('estimation').c} titre="Une nouvelle vente de ce bien" sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Création…' : 'Créer la nouvelle vente'}</button></>}>
+      <Section ic="doc" c="#2d5c8f" f="#eff4fb" titre="Ce qui est repris">
+        <div className={b.rappels}>
+          <Trace seul ic="check" c="#15803d" f="#f0fdf4" t="La description du bien" s="Adresse, surfaces, pièces, intérieur, extérieur, diagnostics, copropriété et observations : tu n’as qu’à vérifier ce qui a changé." />
+          <Trace seul ic="boucle" c="#64748b" f="#f8fafc" t="Ce qui repart de zéro" s={`Le prix, le mandat, les infos de visite, l’annonce et les photos. Cette vente-ci reste telle quelle, avec son historique et ses honoraires${bien.reference ? ` (réf. ${bien.reference})` : ''}.`} />
+        </div>
+      </Section>
+      <Section ic="personne" c="#a07c28" f="#fbf6e9" titre="Le propriétaire">
+        <div className={b.rappels}>
+          {acquereur && (
+            <Option nom="qui" on={qui === 'acq'} onChange={() => setQui('acq')} ic="cle" c="#15803d" f="#f0fdf4"
+              t={nomClient(acquereur)} s={`Celui qui l’avait acheté${vendu ? ` le ${vendu}` : ''}. Il passe « Vendeur ».`} />
+          )}
+          <Option nom="qui" on={qui === 'autre'} onChange={() => setQui('autre')} ic="personne" c="#475569" f="#f8fafc"
+            t="Quelqu’un d’autre" s="Tu le choisiras dans la fiche, à l’étape « Le propriétaire »." />
+        </div>
+      </Section>
+      <Section ic="drapeau" c="#7c3aed" f="#f5f3ff" titre="Où en est-on">
+        <Pills options={[{ v: 'a_suivre', l: 'Un projet à suivre' }, { v: 'estimation', l: 'Une estimation' }]} v={etape} onChange={setEtape} />
+      </Section>
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
 /* Un choix parmi plusieurs (V3.47), dans le style des cases « Et ensuite ». */
 function Option({ nom, on, onChange, ic, c, f, t, s: sous }: { nom: string; on: boolean; onChange: () => void; ic: string; c: string; f: string; t: string; s: string }) {
   return (
@@ -988,13 +1055,13 @@ function Option({ nom, on, onChange, ic, c, f, t, s: sous }: { nom: string; on: 
   );
 }
 /* Ce que la fenêtre note toujours, sans case : la ligne du Suivi (V3.47). */
-function Trace({ t, s: sous }: { t: string; s: string }) {
+function Trace({ t, s: sous, ic = 'historique', c = '#475569', f = '#f8fafc', seul = false }: { t: string; s: string; ic?: string; c?: string; f?: string; seul?: boolean }) {
   return (
-    <div className={b.rappel} data-on="oui" style={{ ['--c' as string]: '#475569', ['--f' as string]: '#f8fafc' } as React.CSSProperties}>
+    <div className={b.rappel} data-on="oui" style={{ ['--c' as string]: c, ['--f' as string]: f } as React.CSSProperties}>
       <div className={b.rappelCase} style={{ cursor: 'default' }}>
         {/* La place de la case, pour que l'icône s'aligne sur celles du dessus. */}
-        <span style={{ width: 17, flexShrink: 0 }} aria-hidden="true" />
-        <span className={b.dateCIc}><Ic n="historique" t={15} /></span>
+        {!seul && <span style={{ width: 17, flexShrink: 0 }} aria-hidden="true" />}
+        <span className={b.dateCIc}><Ic n={ic} t={15} /></span>
         <span className={b.rappelTx}><b>{t}</b><small>{sous}</small></span>
       </div>
     </div>
@@ -1013,7 +1080,9 @@ function Section({ ic, c, f, titre, children }: { ic: string; c: string; f: stri
 /* La vente est signée (V3.47 : en rubriques, comme le compromis, et la fin
    du parcours — l'acquéreur « Bien trouvé », le vendeur « Vendeur signé »). */
 export function FenVendu({ bien, compromis, offres = [], proprio = null, onFermer, onFait }: {
-  bien: BienVente; compromis: SuiviVente | null; onFermer: () => void; onFait: (b: BienVente) => void;
+  bien: BienVente; compromis: SuiviVente | null; onFermer: () => void;
+  /* `texte` : ce qui a été fait, pour le bandeau de la liste (V3.47). */
+  onFait: (b: BienVente, texte: string) => void;
   offres?: SuiviVente[]; proprio?: ClientMini | null;
 }) {
   const c = (compromis?.donnees || {}) as Record<string, unknown>;
@@ -1033,11 +1102,15 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, onFerme
   async function valider() {
     setOccupe(true); setErreur('');
     try {
-      const { bien: r } = await changerEtape(bien, 'vendu', { vendu_le: date, infos: { prix, hono, acte: date, acquereur: c.acquereur || offre?.qui || null } });
+      /* Ce que l'historique du bien dira (V3.47) : l'acte, le vendeur, l'acquéreur, les notaires. */
+      const { bien: r } = await changerEtape(bien, 'vendu', { vendu_le: date, infos: {
+        prix, hono, acte: date, acquereur: c.acquereur || offre?.qui || null, vendeur: nomProprio || null,
+        notaireVendeur: lireNotaire(c.notaireVendeur), notaireAcquereur: lireNotaire(c.notaireAcquereur),
+      } });
       /* Les rappels du compromis encore en attente n'ont plus d'objet (V3.45). */
       await cloreRappelsCompromis(bien.id);
       const fini = finAcq && offre?.client_id ? await finaliserAcquereur(offre.client_id) : false;
-      const vSigne = signeV && proprio ? await vendeurSigne(proprio.id) : false;
+      const vSigne = signeV && proprio ? await vendeurSigne(proprio.id, bien.id) : false;
       /* L'acte authentique, dans le Suivi des deux (V3.47) : « Vente signée »
          chez le vendeur, « Achat signé » chez l'acquéreur, avec la date. */
       const not = ligneNotaires(lireNotaire(c.notaireVendeur), lireNotaire(c.notaireAcquereur));
@@ -1051,7 +1124,12 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, onFerme
           titre: `🔑 Achat signé — acte authentique le ${jourSuivi(date)}`,
           texte: [`${titre}${lePrix}`, not, fini ? 'Dossier finalisé (« Bien trouvé ») : la veille s’arrête, ses relances en attente sont soldées.' : null] } : null,
       });
-      onFait(r);
+      /* Le bandeau de la liste : ce qui vient de se passer, en une phrase. */
+      onFait(r, [
+        `Acte authentique le ${jourSuivi(date)}${prix ? `, ${euros(prix)}` : ''}${quiAcq ? `, à ${quiAcq}` : ''}. Le bien est rangé dans « Vendus ».`,
+        vSigne ? `${nomProprio} passe « Vendeur signé ».` : '',
+        fini ? `Le dossier de ${acquereur} est finalisé.` : '',
+      ].filter(Boolean).join(' '));
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
   return (

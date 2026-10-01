@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
 import { EVT_DEMANDE_VUE, EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
-import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, type BienVente, type EtapeVente } from '@/lib/biens-vente';
+import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
 import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
@@ -43,6 +43,24 @@ function ecrireBienUrl(id: string | null) {
 const lireFiltre = (v: string | null): Filtre =>
   v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'tout';
 
+/* « C'est vendu » : le bandeau qui le confirme, en haut de la liste (V3.47). */
+export function BandeauVendu({ titre, texte, onFiche, onVendus, onFermer }: { titre: string; texte: string; onFiche: () => void; onVendus: () => void; onFermer: () => void }) {
+  return (
+    <div className={b.annonceVente} role="status">
+      <span className={b.annonceVenteIc}><Ic n="cle" t={20} /></span>
+      <div className={b.annonceVenteTx}>
+        <b>{`Vendu ! ${titre}`}</b>
+        <span>{texte || 'Le bien est rangé dans « Vendus ».'}</span>
+      </div>
+      <div className={b.annonceVenteBtns}>
+        <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={onFiche}>Voir la fiche</button>
+        <button type="button" className={s.btn} onClick={onVendus}>Voir les vendus</button>
+        <button type="button" className={b.annonceVenteX} aria-label="Fermer" onClick={onFermer}><Ic n="croix" t={14} /></button>
+      </div>
+    </div>
+  );
+}
+
 export default function PageBiens({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const [liste, setListe] = useState<ListeBiens | null>(null);
   const [erreur, setErreur] = useState('');
@@ -78,6 +96,15 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [erreurDepart, setErreurDepart] = useState('');
   /* « Créer son bien » depuis la fiche d'un contact : le propriétaire est déjà choisi. */
   const [pour, setPour] = useState<string | null>(null);
+  /* V3.47 : « C'est vendu » ramène sur les mandats en cours, avec ce bandeau
+     qui confirme la vente (Alexandre : « qu'on ait l'impression que l'action
+     a bien été prise en compte »). Il s'efface seul au bout de 20 s. */
+  const [annonce, setAnnonce] = useState<{ id: string; titre: string; texte: string } | null>(null);
+  useEffect(() => {
+    if (!annonce) return;
+    const t = window.setTimeout(() => setAnnonce(null), 20000);
+    return () => window.clearTimeout(t);
+  }, [annonce]);
 
   const charger = useCallback(async () => {
     try {
@@ -209,7 +236,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       <>
         <FicheBien key={bienOuvert.id} bien={bienOuvert} liste={liste} onRetour={() => ouvrir(null)} onMaj={majBien}
           onSupprime={id => { setListe(l => (l ? { ...l, biens: l.biens.filter(x => x.id !== id) } : l)); ouvrir(null); }}
-          onModifier={etape => setEdition({ bien: bienOuvert, etape })} onNavigate={onNavigate} onRecharger={() => { void charger(); }} />
+          onModifier={etape => setEdition({ bien: bienOuvert, etape })} onNavigate={onNavigate} onRecharger={() => { void charger(); }}
+          onOuvrir={id => ouvrir(id)}
+          onVendu={(r, texte) => { setAnnonce({ id: r.id, titre: r.titre || titreBien(r.donnees || {}), texte }); setFiltre('mandat'); ouvrir(null); }} />
         {editeur}
       </>
     );
@@ -229,6 +258,11 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           ...(archives.length ? [{ cle: 'archives', lib: 'Archivés', n: archives.length, couleur: '#cbd5e1' }] : []),
         ]} />
 
+      {annonce && (
+        <BandeauVendu titre={annonce.titre} texte={annonce.texte}
+          onFiche={() => { const id = annonce.id; setAnnonce(null); ouvrir(id); }}
+          onVendus={() => { setAnnonce(null); setFiltre('vendu'); }} onFermer={() => setAnnonce(null)} />
+      )}
       {installer && (
         <div className={s.erreur}><b>Une étape avant de commencer</b>{MESSAGE_SQL}</div>
       )}

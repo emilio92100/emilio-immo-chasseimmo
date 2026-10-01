@@ -192,19 +192,39 @@ export default async function PageEspace({ params, searchParams }: {
       });
     });
 
-  /* Un bien de l'agence sous compromis ou vendu (V3.47) : l'espace le dit, au
-     lieu de le montrer encore comme disponible. Pour celui qui l'achète,
-     c'est « Votre achat » : son offre acceptée porte sa recherche. */
+  /* Un bien de l'agence sous compromis, vendu ou retiré de la vente (V3.47) :
+     l'espace le dit, au lieu de le montrer encore comme disponible. Pour
+     celui qui l'achète, c'est « Votre achat » : l'offre retenue au dernier
+     compromis porte sa recherche (à défaut, pour un compromis d'avant, la
+     seule offre acceptée du bien). Une autre offre acceptée puis tombée ne
+     compte pas. */
   const idsVente = Array.from(new Set((biensRes.data || []).map((b) => b.bien_vente_id).filter(Boolean))) as string[];
-  const venteParBien = new Map<string, { etat: 'compromis' | 'vendu'; vous: boolean }>();
+  const venteParBien = new Map<string, { etat: 'compromis' | 'vendu' | 'retire'; vous: boolean }>();
   if (idsVente.length) {
-    const [ventes, acceptees] = await Promise.all([
+    const [ventes, compromis, offres] = await Promise.all([
       supabase.from('biens_vente').select('id, etape').in('id', idsVente),
-      supabase.from('biens_vente_suivi').select('bien_id').in('bien_id', idsVente).eq('type', 'offre').eq('statut', 'acceptee').eq('recherche_id', recherche.id),
+      supabase.from('biens_vente_suivi').select('bien_id, le, donnees').in('bien_id', idsVente).eq('type', 'etape').eq('statut', 'compromis'),
+      supabase.from('biens_vente_suivi').select('id, bien_id, client_id, recherche_id, statut').in('bien_id', idsVente).eq('type', 'offre'),
     ]);
-    const miennes = new Set(((acceptees.data || []) as { bien_id: string }[]).map((x) => x.bien_id));
+    const dernier = new Map<string, { le: string; offre: string | null }>();
+    for (const c of (compromis.data || []) as { bien_id: string; le: string; donnees: Record<string, unknown> | null }[]) {
+      const o = c.donnees?.offre;
+      const avant = dernier.get(c.bien_id);
+      if (!avant || c.le > avant.le) dernier.set(c.bien_id, { le: c.le, offre: typeof o === 'string' && o ? o : null });
+    }
+    const lesOffres = (offres.data || []) as { id: string; bien_id: string; client_id: string | null; recherche_id: string | null; statut: string | null }[];
+    /* La sienne : faite pour cette recherche, ou par lui (une autre de ses recherches). */
+    const sienne = (o: { client_id: string | null; recherche_id: string | null }) => o.recherche_id === recherche.id || (!!o.client_id && o.client_id === client.id);
+    const estAMoi = (bienId: string) => {
+      const c = dernier.get(bienId);
+      const retenue = c?.offre ? lesOffres.find((o) => o.id === c.offre) : null;
+      if (retenue) return sienne(retenue);
+      const acceptees = lesOffres.filter((o) => o.bien_id === bienId && o.statut === 'acceptee');
+      return acceptees.length === 1 && sienne(acceptees[0]);
+    };
     for (const v of (ventes.data || []) as { id: string; etape: string }[]) {
-      if (v.etape === 'compromis' || v.etape === 'vendu') venteParBien.set(v.id, { etat: v.etape, vous: miennes.has(v.id) });
+      if (v.etape === 'compromis' || v.etape === 'vendu') venteParBien.set(v.id, { etat: v.etape, vous: estAMoi(v.id) });
+      else if (v.etape === 'retire') venteParBien.set(v.id, { etat: 'retire', vous: false });
     }
   }
 

@@ -5,7 +5,7 @@ import { num, txt, liste, modele, modeSignature } from '@/lib/actes';
 import { ISSUES, issueDe, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
-  ETAPES_BIEN, PARCOURS, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, dateCourte, etapeDe, etageTexte, joursAvant,
+  ETAPES_BIEN, PARCOURS, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
   lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type Observation, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -15,12 +15,12 @@ import { COULEURS, ChampPhotos } from './ChampsBien';
 import VisiteSurPlace from './VisiteSurPlace';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
-  FenAnnulerMandat, FenCompromis, FenCompromisTombe, FenDefinirEstimation, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
+  FenAnnulerMandat, FenCompromis, FenCompromisTombe, FenDefinirEstimation, FenNouvelleVente, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
   type ChoixA, type OptionAcheteur,
 } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
-  deposerPiece, ficheClient, joindreCompromis, joindreOffreSignee, lireNotaire, majBien, majSuivi, nomClient, noterOffreAcceptee, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
+  deposerPiece, ficheClient, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -69,7 +69,7 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, Cart
 
 type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'revente' } | { k: 'vendu' } | { k: 'prix' } | { k: 'visite' } | { k: 'note' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -135,7 +135,7 @@ const joursDepuisIso = (iso: string) => {
 const passee = (v: VisiteU) => v.statut === 'faite' || (!!v.ymd && `${v.ymd}T${v.heure || '23:59'}` < new Date().toISOString().slice(0, 16));
 
 /* ══ LE BANDEAU ═══════════════════════════════════════════════════════════ */
-function Bandeau({ bien, detail, surCarte, cote }: { bien: BienVente; detail: DetailBien | null; surCarte?: () => void; cote?: ReactNode }) {
+export function Bandeau({ bien, detail, surCarte, cote }: { bien: BienVente; detail: DetailBien | null; surCarte?: () => void; cote?: ReactNode }) {
   const d = bien.donnees || {};
   const photos = lirePhotos(d.photos);
   const a = argentBien(d);
@@ -385,6 +385,36 @@ function CoteVisite({ d, onOuvrir }: { d: Donnees; onOuvrir: () => void }) {
         <span><b>{le ? 'La visite sur place' : 'Chez le propriétaire ?'}</b><small>{le ? `Faite le ${dateLongueCourt(le)}` : 'Pièce par pièce, tablette en main'}</small></span>
       </div>
       <button type="button" className={b.heroCoteBtn} onClick={onOuvrir}>{le ? 'Reprendre la visite' : 'Commencer la visite'}</button>
+    </div>
+  );
+}
+
+/* ══ Le bien vendu, dans le bandeau (V3.47) ═══════════════════════════════
+   Alexandre : « avoir une mention : vendu le, par, pour — qu'on le voie
+   d'entrée de jeu ». La date de l'acte, le prix, le vendeur et l'acquéreur ;
+   et la suite : une nouvelle vente du même bien, des années plus tard. */
+export function CoteVendu({ bien, ligne, vendeur, suite, onRevente, onSuite }: {
+  bien: BienVente; ligne: SuiviVente | null; vendeur: string;
+  suite: { id: string; reference: string | null } | null; onRevente: () => void; onSuite: (id: string) => void;
+}) {
+  const d = (ligne?.donnees || {}) as Record<string, unknown>;
+  const acte = (typeof d.acte === 'string' && d.acte) || bien.vendu_le || '';
+  const prix = typeof d.prix === 'number' ? d.prix : null;
+  const acq = typeof d.acquereur === 'string' ? d.acquereur : '';
+  const v = (typeof d.vendeur === 'string' && d.vendeur) || vendeur;
+  return (
+    <div className={`${b.heroCote} ${b.heroMandat} ${b.heroVendu}`}>
+      <div className={b.heroCoteT}>
+        <span className={b.heroCoteIc}><Ic n="cle" t={17} /></span>
+        <span><b>{acte ? `Vendu le ${dateLongue(acte)}` : 'Vendu'}</b><small>{prix ? `${euros(prix)} · acte authentique` : 'Acte authentique'}</small></span>
+      </div>
+      <div className={b.heroMandatL}>
+        {v && <span>{`Vendeur : ${v}`}</span>}
+        {acq && <span>{`Acquéreur : ${acq}`}</span>}
+        {suite
+          ? <button type="button" className={b.heroMandatLien} onClick={() => onSuite(suite.id)}>{`Revendu : voir la nouvelle fiche${suite.reference ? ` (${suite.reference})` : ''}`}</button>
+          : <button type="button" className={b.heroMandatLien} onClick={onRevente}>Une nouvelle vente de ce bien…</button>}
+      </div>
     </div>
   );
 }
@@ -733,8 +763,9 @@ const PUCE_OFFRE: Record<string, EvtBien['puce']> = {
 const PUCE_CR: EvtBien['puce'] = { l: 'Compte rendu à faire', c: '#c2410c', fond: '#fff7ed', bord: '#fed7aa' };
 const puceIssue = (i: Issue | null): EvtBien['puce'] => (i ? { l: ISSUES[i].crm, c: ISSUES[i].couleur, fond: ISSUES[i].fond, bord: ISSUES[i].trait } : undefined);
 
-function evenements(bien: BienVente, det: DetailBien, clients: Record<string, ClientMini>): Evt[] {
+export function evenements(bien: BienVente, det: DetailBien, clients: Record<string, ClientMini>): Evt[] {
   const l: Evt[] = [];
+  const maj = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   l.push({ cle: 'creation', le: bien.created_at, ic: 'plus', ton: 'ic_gris', titre: `Bien créé${bien.reference ? ` · ${bien.reference}` : ''}`, genre: 'etapes', discret: true });
   for (const x of det.suivi) {
     const d = (x.donnees || {}) as Record<string, unknown>;
@@ -748,6 +779,14 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
            revenu en arrière avant la signature. */
         titre = str('numero') ? `Mandat n° ${str('numero')} retiré de la fiche` : `Revenu « ${etapeDe(e).lib} »`;
         detail = str('numero') ? `Le bien revient « ${etapeDe(e).lib} »` : '';
+      } else if (d.depuis === 'revente') {
+        /* V3.47 : la nouvelle vente d'un bien déjà vendu. */
+        titre = 'Nouvelle vente de ce bien';
+        detail = str('venteAvant') ? `La description reprend la fiche ${str('venteAvant')}, vendue avant.` : '';
+      } else if ((e === 'mandat' || e === 'retire') && (d.compromisTombe === true || d.de === 'compromis' || d.de === 'offre')) {
+        /* V3.47 : le compromis (ou l'offre) est tombé ; le bien repart en vente, ou il est retiré. */
+        titre = `${d.de === 'offre' ? 'Offre tombée' : 'Compromis tombé'} — ${e === 'retire' ? 'retiré de la vente' : 'remis en vente'}`;
+        detail = str('raison') ? `Pourquoi : ${str('raison')}` : '';
       } else if (e === 'mandat') {
         /* Signé dans Documents (V3.42) : la fiche a suivi toute seule. */
         const signe = d.source === 'documents' || d.de === 'estimation' || d.de === 'a_suivre' || d.depuis === 'creation' || (d.de === 'mandat' && !!str('date'));
@@ -758,9 +797,23 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
         detail = [str('fin') ? `jusqu’au ${dateCourte(str('fin'))}` : '', typeof d.prix === 'number' ? `prix ${euros(d.prix)}` : '', d.source === 'documents' ? 'noté depuis Documents' : ''].filter(Boolean).join(' · ');
       } else if (e === 'offre') { titre = 'Passé sous offre'; detail = typeof d.montant === 'number' ? `${str('qui')} · ${euros(d.montant)}` : ''; }
       else if (e === 'compromis') {
-        titre = `Compromis signé${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`;
-        detail = [str('acquereur'), str('pretLimite') ? `prêt jusqu’au ${dateCourte(str('pretLimite'))}` : '', str('acte') ? `acte le ${dateCourte(str('acte'))}` : ''].filter(Boolean).join(' · ');
-      } else if (e === 'vendu') { titre = `Vendu${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`; detail = typeof d.hono === 'number' ? `Honoraires : ${euros(d.hono)}` : ''; }
+        /* V3.47 : la date de signature, l'acquéreur, les dates qui comptent, les notaires. */
+        titre = `Compromis signé${str('signe') ? ` le ${dateLongue(str('signe'))}` : ''}${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`;
+        detail = [
+          str('acquereur') ? `Acquéreur : ${str('acquereur')}` : '',
+          maj([str('sru') ? `rétractation jusqu’au ${dateCourte(str('sru'))}` : '', str('pretLimite') ? `prêt jusqu’au ${dateCourte(str('pretLimite'))}` : '', str('acte') ? `acte prévu le ${dateCourte(str('acte'))}` : ''].filter(Boolean).join(' · ')),
+          ligneNotaires(lireNotaire(d.notaireVendeur), lireNotaire(d.notaireAcquereur)) || '',
+        ].filter(Boolean).join('\n');
+      } else if (e === 'vendu') {
+        /* V3.47 : l'acte authentique, qui a vendu, qui a acheté — comme dans le Suivi des contacts. */
+        const vendeur = str('vendeur') || (bien.client_id && clients[bien.client_id] ? nomClient(clients[bien.client_id]) : '');
+        titre = `Vendu — acte authentique${str('acte') ? ` le ${dateLongue(str('acte'))}` : ''}${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`;
+        detail = [
+          [vendeur ? `Vendeur : ${vendeur}` : '', str('acquereur') ? `Acquéreur : ${str('acquereur')}` : ''].filter(Boolean).join(' · '),
+          ligneNotaires(lireNotaire(d.notaireVendeur), lireNotaire(d.notaireAcquereur)) || '',
+          typeof d.hono === 'number' ? `Honoraires : ${euros(d.hono)}` : '',
+        ].filter(Boolean).join('\n');
+      }
       else if (e === 'suspendu') { titre = 'Vente en pause'; detail = [str('raison'), str('reprise') ? `reprise le ${dateCourte(str('reprise'))}` : ''].filter(Boolean).join(' · '); }
       else if (e === 'retire') { titre = 'Retiré de la vente'; detail = str('raison'); }
       else if (e === 'estimation') { titre = d.de === 'a_suivre' ? 'Passé à l’estimation' : 'Revenu à l’estimation'; detail = str('rdv') ? `rendez-vous le ${dateCourte(str('rdv'))}` : ''; }
@@ -860,10 +913,14 @@ function evenements(bien: BienVente, det: DetailBien, clients: Record<string, Cl
 }
 
 /* ══ LA FICHE ═════════════════════════════════════════════════════════════ */
-export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupprime, onModifier, onNavigate, onRecharger }: {
+export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupprime, onModifier, onNavigate, onRecharger, onVendu, onOuvrir }: {
   bien: BienVente; liste: ListeBiens;
   onRetour: () => void; onMaj: (b: BienVente) => void; onSupprime: (id: string) => void;
   onModifier: (etape?: string) => void; onNavigate: (page: string, data?: unknown) => void; onRecharger: () => void;
+  /* V3.47 : la vente signée ramène à la liste, avec un bandeau qui le dit. */
+  onVendu?: (b: BienVente, texte: string) => void;
+  /* V3.47 : ouvrir une autre fiche (la nouvelle vente d'un bien vendu). */
+  onOuvrir?: (id: string) => void;
 }) {
   const [bien, setBien] = useState<BienVente>(depart);
   useEffect(() => { setBien(depart); }, [depart]);
@@ -1006,8 +1063,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       const { statut, donnees } = apresReponse(o, r, jourParis());
       const maj = await majSuivi(o.id, { statut, donnees });
       if (r.k !== 'rouvrir') await cloreRelanceOffre(bien, o);
-      /* Acceptée : une ligne dans le Suivi du vendeur et de l'acquéreur (V3.47). */
+      /* Acceptée : une ligne dans le Suivi du vendeur et de l'acquéreur ;
+         l'acceptation annulée aussi (V3.47). */
       if (r.k === 'accepte') await noterOffreAcceptee(bien, maj);
+      if (r.k === 'rouvrir' && o.statut === 'acceptee') await noterAcceptationAnnulee(bien, maj);
       await apres();
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }
@@ -1137,6 +1196,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     suite.push({ t: 'Remettre en vente…', s: 'Le bien repasse « En vente »', c: etapeDe('mandat').c, go: () => setFen({ k: 'mandat' }) });
     if (e === 'suspendu') suite.push({ t: 'Mandat terminé sans vente…', s: 'Expiré, retiré, vendu par un autre', c: etapeDe('retire').c, go: raison('retire', 'Mandat terminé sans vente', 'Le bien passe « Retiré »') });
   }
+  /* V3.47 : le bien revient à la vente, des années plus tard. */
+  if (e === 'vendu') suite.push({ t: 'Une nouvelle vente de ce bien…', s: 'Nouvelle fiche, même description', c: etapeDe('estimation').c, go: () => setFen({ k: 'revente' }) });
   if (e === 'vendu' || e === 'retire') suite.push({ t: bien.archive ? 'Sortir des archives' : 'Archiver', s: bien.archive ? 'Il revient dans la liste' : 'Il quitte la liste, retrouvable dans « Archivés »', c: '#94a3b8', go: archiverBien });
 
   const et = etapeDe(e);
@@ -1307,6 +1368,15 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   };
   /* Le compromis signé sur cette offre : ses dates, et la vente. */
   const lignesCompromis = (detail?.suivi || []).filter(x => x.type === 'etape' && x.statut === 'compromis').sort((p, q) => q.le.localeCompare(p.le));
+  /* V3.47 : la vente signée (le bandeau), l'acquéreur retenu (une nouvelle vente le propose comme propriétaire). */
+  const ligneVendu = (detail?.suivi || []).filter(x => x.type === 'etape' && x.statut === 'vendu').sort((p, q) => q.le.localeCompare(p.le))[0] || null;
+  const offreRetenue = (() => {
+    const id = (lignesCompromis[0]?.donnees as Record<string, unknown> | undefined)?.offre;
+    const acc = offres.filter(y => y.statut === 'acceptee');
+    return offres.find(y => y.id === id) || (acc.length === 1 ? acc[0] : null);
+  })();
+  const vs = (d as Record<string, unknown>).venteSuivante as { id?: string; reference?: string | null } | undefined;
+  const venteSuivante = vs?.id && liste.biens.some(x => x.id === vs.id) ? { id: vs.id, reference: vs.reference || null } : null;
   const compromisDe = (o: SuiviVente): InfosCompromis | null => {
     if (e !== 'compromis' && e !== 'vendu') return null;
     /* Le dernier compromis seulement : un compromis tombé puis refait sur
@@ -1551,7 +1621,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}
         cote={avant ? <CoteVisite d={d} onOuvrir={() => setVisite(true)} />
           : ['mandat', 'offre', 'compromis', 'suspendu'].includes(e) ? <CoteMandat bien={bien} d={d} enRoute={mandatEnRoute} onModifier={() => onModifier('prix')}
-            onDoc={ouvrirDoc} onPreparer={() => { void faireDocument({ modele: 'mandat_vente' }); }} onDejaSigne={() => setFen({ k: 'mandat' })} /> : undefined} />
+            onDoc={ouvrirDoc} onPreparer={() => { void faireDocument({ modele: 'mandat_vente' }); }} onDejaSigne={() => setFen({ k: 'mandat' })} />
+          : e === 'vendu' ? <CoteVendu bien={bien} ligne={ligneVendu} vendeur={proprio ? nomClient(proprio) : nomProprio(d)} suite={venteSuivante}
+            onRevente={() => setFen({ k: 'revente' })} onSuite={id => onOuvrir?.(id)} /> : undefined} />
 
       {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent.
           La pastille glisse d'un onglet à l'autre, le contenu arrive en
@@ -1740,7 +1812,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       </CorpsOnglet>
 
       {/* ── Les fenêtres ── */}
-      {fen?.k === 'mandat' && <FenMandat bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'mandat' && <FenMandat bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estimation' && <FenEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estim' && <FenDefinirEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {/* La visite sur place : à sa sortie, la fiche se recharge, et la suite
@@ -1755,8 +1827,14 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       }} />}
       {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} existante={fen.existante} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} existant={fen.existant} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'revente' && <FenNouvelleVente bien={bien} references={liste.biens.map(x => x.reference)} acquereur={offreRetenue?.client_id ? liste.clients[offreRetenue.client_id] || null : null}
+        onFermer={() => setFen(null)} onFait={r => { setFen(null); onMaj(r); onRecharger(); onOuvrir?.(r.id); }} />}
       {fen?.k === 'tombe' && <FenCompromisTombe bien={bien} compromis={lignesCompromis[0] || null} offres={offres} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
-      {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={lignesCompromis[0] || null} offres={offres} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'vendu' && <FenVendu bien={bien} compromis={lignesCompromis[0] || null} offres={offres} proprio={proprio} onFermer={() => setFen(null)}
+        onFait={(r, texte) => {
+          if (!onVendu) { void apres(r); return; }
+          setFen(null); onMaj(r); onRecharger(); onVendu(r, texte);
+        }} />}
       {fen?.k === 'prix' && <FenPrix bien={bien} mandatSigne={!!mandatSigne && ['mandat', 'offre', 'suspendu'].includes(e)} onFermer={() => setFen(null)}
         onFait={async (r, x) => {
           await apres(r);

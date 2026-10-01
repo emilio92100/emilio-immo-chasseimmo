@@ -1460,6 +1460,69 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.48 — 1er octobre 2026 · le bien vendu : retour à la liste, « Vendu le … à … », une nouvelle vente du même bien ; huit bugs du parcours de vente
+
+Rien à passer dans Supabase.
+
+**Après « C'est vendu »** (Alexandre : « il ne se passe rien ; qu'on ait l'impression que
+l'action a été prise en compte »). La fiche se ferme et ramène sur « Mes mandats en cours », avec
+un bandeau vert : la date de l'acte, le prix, l'acquéreur, et ce qui a suivi (« Vendeur signé »,
+dossier finalisé). Il propose « Voir la fiche » et « Voir les vendus », et s'efface au bout de
+20 s. Code : `BandeauVendu` dans `PageBiens.tsx`, `FicheBien.onVendu`, et `FenVendu.onFait(b,
+texte)`.
+
+**Le bien vendu se lit d'entrée** :
+- **Le bandeau bleu** (`CoteVendu`) : « Vendu le 22 mai 2026 », le prix de l'acte, le vendeur et
+  l'acquéreur.
+- **L'historique du bien**, comme le Suivi des contacts :
+  - « Vendu — acte authentique le … · prix » donne le vendeur, l'acquéreur, les notaires et les
+    honoraires. `FenVendu` les garde dans l'étape : `vendeur`, `notaireVendeur`,
+    `notaireAcquereur`.
+  - « Compromis signé le … » donne l'acquéreur, les dates et les notaires.
+  - « Compromis tombé — remis en vente / retiré » et « Offre tombée » donnent le pourquoi.
+- **Le parcours** prend les vraies dates : signature du mandat, première offre, signature du
+  dernier compromis, et l'acte (`vendu_le`) au lieu du jour où l'étape a été notée.
+- « Dernièrement » ne montre que la première ligne du détail.
+
+**Une nouvelle vente de ce bien** (Alexandre : « si dans 5 ans le bien revient à la vente ? »).
+Elle se lance depuis le menu d'étape d'un bien vendu, ou le lien du bandeau.
+- `nouvelleVente` (`outils.ts`) crée une **nouvelle fiche**. Elle reprend la description : les
+  parties `bien`, `interieur`, `exterieur`, `pieces`, `energie`, `copro`, `observations` de
+  `ETAPES_BIEN`, plus `gps`.
+- Le propriétaire, le prix, le mandat, les infos de visite, l'annonce et les photos repartent de
+  zéro.
+- Propriétaire proposé : l'ancien acquéreur, qui passe « Vendeur ».
+- L'ancienne fiche ne bouge pas (historique, honoraires). Les deux se citent : `venteAvant` dans
+  la nouvelle, `venteSuivante` dans l'ancienne, dont le bandeau dit « Revendu : voir la nouvelle
+  fiche ».
+- **Un « Vendeur signé » qui revend** redevient « Vendeur » (`marquerVendeur` retire
+  `vendeur_signe`). On peut aussi changer son type à la main sur sa fiche.
+
+**Huit bugs trouvés en relisant tout le parcours de vente**, corrigés :
+1. **« Votre achat » dans le mauvais espace.** L'espace d'un autre acheteur pouvait l'afficher
+   (son offre acceptée puis tombée). `page.tsx` lit maintenant l'offre retenue au dernier
+   compromis ; à défaut, la seule offre acceptée du bien. Une autre recherche du même client
+   compte aussi (`client_id`). Au compromis, une autre offre restée « acceptée » passe « retirée »
+   (`retirerAutresAcceptees`).
+2. **Les relances de vendeur soldées à l'achat.** L'acte d'achat (ou « Il arrête ») soldait aussi
+   ses relances de vendeur. S'il vend un bien avec nous, seules les relances de ses recherches se
+   soldent (`solderRelancesAcheteur`).
+3. **« Compléter le compromis » : les rappels ne suivaient pas une date changée.** Ils la suivent
+   maintenant. Sur un bien déjà vendu, plus aucun rappel n'est posé.
+4. **« Vendeur signé » trop tôt.** Ce type n'enlève plus « Vendeur » s'il a un autre bien en vente.
+5. **« L'offre est tombée » laissait les offres en jeu.** `FenMandat` propose (case cochée) de les
+   passer « retirées » et clôt leurs relances (`offresTombees`).
+6. **« Annuler l'acceptation » ne laissait pas de trace.** Une ligne « Acceptation annulée »
+   s'écrit dans les deux Suivis (`noterAcceptationAnnulee`).
+7. **Compromis tombé : l'acquéreur ne revenait pas exactement comme avant.** Il revient tel
+   qu'avant le compromis : `pauseAcquereur` garde `activeAvant`. Déjà « Suspendu », il le reste ;
+   une recherche déjà arrêtée ne repart pas.
+8. **Ordre des écritures au compromis.** `FenCompromis` change l'étape avant d'accepter l'offre :
+   une étape qui échoue ne laisse plus une offre « acceptée » sans compromis.
+
+**Un bien retiré de la vente** ne s'affiche plus comme disponible dans les espaces acheteurs :
+ruban « Plus en vente », rangé dans « Plus disponibles ».
+
 ### V3.47 — 1er octobre 2026 · le compromis complet, la fin du parcours (vendeur signé, acheteur finalisé), les étapes de la vente dans le Suivi ; l'annonce, les surfaces
 
 Alexandre, devant un compromis repris d'Immofacile : « comment je retrouve les notaires et
