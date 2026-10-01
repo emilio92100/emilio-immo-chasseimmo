@@ -406,12 +406,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       case 'vue': {
         const bien = await bienDeLaRecherche(body.bien_id);
         if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
+        /* V3.44 : « apercu » — la fiche ouverte depuis « Découvrir » (les
+           nouveaux biens un par un). Le conseiller voit l'ouverture dans
+           l'historique, mais le bien n'est pas marqué vu : il reste dans les
+           nouveautés du client jusqu'à sa réponse (la route « retour » pose
+           alors vu_le et compte la vue). */
+        const apercu = body.apercu === true;
         /* On compte CHAQUE ouverture. « vu_le » garde la toute première :
            c'est elle qui dit combien de temps il a mis à regarder. */
-        await ecritServeur('[espace/vue] bien', supabase.from('biens').update({
-          vu_le: bien.vu_le || new Date().toISOString(),
-          nb_vues: (bien.nb_vues || 0) + 1,
-        }).eq('id', bien.id));
+        if (!apercu) {
+          await ecritServeur('[espace/vue] bien', supabase.from('biens').update({
+            vu_le: bien.vu_le || new Date().toISOString(),
+            nb_vues: (bien.nb_vues || 0) + 1,
+          }).eq('id', bien.id));
+        }
 
         /* Le journal, lui, ne se répète pas : une ligne par bien et par
            demi-heure, comme pour l'ouverture de l'espace. */
@@ -571,9 +579,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
         /* L'écriture principale : vérifiée (V3.17). Pas enregistrée, le client
            le voit et peut réessayer, au lieu d'un « c'est noté » qui ment. */
+        /* V3.44 : répondre, c'est avoir vu. Depuis « Découvrir », le client
+           répond sans avoir ouvert la fiche : sans « vu_le », le bien
+           resterait « nouveau » (page.tsx, ETAT) et reviendrait dans ses
+           nouveautés et dans la pastille des notifications. La première
+           vue, si elle existe, n'est pas touchée. */
+        const premiereVue = bien.vu_le ? {} : { vu_le: new Date().toISOString(), nb_vues: (bien.nb_vues || 0) + 1 };
         if (!(await ecritServeur('[espace/retour] bien', supabase.from('biens').update({
           badge_retour: avis, retour_client: com || garde || null,
           retour_le: new Date().toISOString(), retour_par: 'client',
+          ...premiereVue,
         }).eq('id', bien.id)))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });
 
         await ecritServeur('[espace/retour] journal', supabase.from('journal').insert({
