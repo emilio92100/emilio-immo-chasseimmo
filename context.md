@@ -1460,6 +1460,47 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.46 — 1er octobre 2026 · l'éditeur des documents : l'aperçu qui mène à la question, deux colonnes à régler, les zones de texte qui s'agrandissent
+
+Demandes d'Alexandre en reprenant le mandat SCI AVIENA :
+- « Quand on clique sur un paragraphe de l'aperçu, que ça amène directement à la modif » ;
+- « une ligne au milieu pour réduire soit le champ de texte, soit l'aperçu » ;
+- « un petit bouton qui permet de masquer l'aperçu » ;
+- « la clause particulière est toute petite : un petit truc en bas pour l'étendre ».
+
+Ce qui a été fait :
+- `versQuestion.ts` (nouveau, pur) : le passage cliqué → la question. Aucun modèle n'a rien à
+  déclarer : on cherche dans le texte du passage les réponses déjà données (noms, adresses,
+  montants mis en forme, dates en toutes lettres, cases des lots) ; la plus longue gagne (un
+  texte compte dès 6 signes, un nombre dès 4 : « 75016 » ou « 3 mois » ne désignent rien).
+  Sinon la rubrique décide : une question au même nom (« Clause particulière », « Durée »),
+  une petite table (`RUBRIQUES` : « Il a été convenu… » → le type de mandat, « Pouvoirs »,
+  « Droit de rétractation », « Informations »), l'étape dont `vers` est la rubrique, et à
+  défaut la rubrique d'avant. Testé sur les 8 modèles.
+- `ApercuActe.tsx` : `data-bloc` sur chaque passage, `data-si` (rang de la rubrique, toutes
+  parties confondues) et `data-titre` sur les cartes du résumé ; `cliquable` : contour or au
+  survol.
+- `ChampsActe.tsx` : `data-cle` sur chaque question (l'éditeur la retrouve) ; `ZoneTexte` pour
+  les champs `zone` (clause particulière, précisions, et les notes de l'éditeur des biens, qui
+  réutilise `ChampActe`) : la zone grandit avec le texte jusqu'à 260 px puis défile ; dessous,
+  une poignée à tirer (double-clic : taille d'origine) et « Agrandir » / « Réduire ». La mesure
+  garde la page en place (pas de saut en tapant).
+- `EditeurDocument.tsx` : au clic, l'étape s'ouvre, les questions défilent jusqu'à la bonne,
+  qui s'allume (`.vise`), et le curseur s'y pose (souris seulement) ; l'aperçu ne bouge pas
+  pendant 1,6 s (`calme`). Barre entre les colonnes (`--part`, de 340 px à l'une comme à
+  l'autre ; clavier ← → ; double-clic : moitié-moitié), retenue dans `documents.partage`.
+  « Masquer » (en-tête de l'aperçu, collé en haut) : les questions prennent toute la largeur,
+  un rail « Afficher l'aperçu » à droite, retenu dans `documents.apercu` ; masqué, l'aperçu
+  n'est plus rédigé (la frappe va plus vite). Au téléphone, rien ne change : les onglets
+  Questions / Aperçu, et toucher un passage ouvre sa question.
+- Les styles sont portés par `.edCorpsDoc` : l'éditeur des biens partage `.edCorps`,
+  `.edApercu` et `.edApercuT` et ne doit rien en voir.
+- Banc d'essai : 41 vérifications en 1280 et 390 px (personne, prix, clause, lot, carte du
+  résumé, étape par étape, document figé, barre, clavier, masquer, zone longue, poignée) ; une
+  relecture indépendante, ses constats corrigés (styles qui débordaient sur l'éditeur des biens,
+  rubrique cachée sous l'en-tête collé, « 1 000 » trouvé dans « 51 000 », titre de partie,
+  réglage venu d'un écran plus large, aperçu masqué puis fenêtre élargie).
+
 ### V3.45 — 1er octobre 2026 · les offres : la négociation, la suite, le document ; l'onglet Acheteurs plus juste
 
 Remarques d'Alexandre en reprenant ses fiches d'Immofacile :
