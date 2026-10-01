@@ -50,9 +50,41 @@ type Bien = {
   etat: string;
   /* Un bien de l'agence sous compromis ou vendu (V3.47) ; `vous` : c'est le
      sien, il l'achète. */
-  vente?: { etat: 'compromis' | 'vendu' | 'retire'; vous: boolean } | null;
+  vente?: { etat: 'compromis' | 'vendu' | 'retire' | 'pause'; vous: boolean } | null;
+  /* V3.48 : son offre sur un bien de l'agence, telle que le CRM la tient. */
+  offre?: { statut: string; tombe: boolean } | null;
 };
-const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis') : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : 'Sous compromis');
+const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis')
+  : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : v.etat === 'pause' ? 'En pause' : 'Sous compromis');
+/* La phrase de la fiche pour un bien de l'agence qui n'est plus disponible
+   (V3.48 : « l'acte » devient la signature chez le notaire ; « retiré » ne
+   dit plus qui l'a décidé). */
+const phraseVente = (v: NonNullable<Bien['vente']>) => (v.vous
+  ? (v.etat === 'vendu' ? 'La vente est signée : félicitations pour votre achat.' : 'Votre compromis est signé. Prochaine étape : la signature définitive chez le notaire.')
+  : v.etat === 'vendu' ? 'Ce bien a été vendu.'
+    : v.etat === 'retire' ? 'Ce bien n’est plus proposé à la vente.'
+      : v.etat === 'pause' ? 'La vente de ce bien est en pause pour le moment. Nous vous dirons s’il revient.'
+        : 'Ce bien est sous compromis de vente. Si la vente ne se fait pas, il redeviendra disponible ici.');
+/* Où en est son offre (V3.48). Avant, la fiche disait « Offre envoyée » pour
+   toujours, même acceptée, refusée ou après le compromis. */
+function etatOffre(b: Bien): { etiq: string; ton: string; ligne: string } | null {
+  if (b.vente?.vous) {
+    return b.vente.etat === 'vendu' ? { etiq: 'Votre achat', ton: 'fait', ligne: 'La vente est signée : félicitations pour votre achat.' }
+      : { etiq: 'Compromis signé', ton: 'fait', ligne: 'Votre compromis est signé. Prochaine étape : la signature définitive chez le notaire.' };
+  }
+  const o = b.offre;
+  if (!o && b.avis !== 'offre_faite') return null;
+  const st = o?.statut || 'en_attente';
+  if (st === 'acceptee') return { etiq: 'Offre acceptée', ton: 'fait', ligne: 'Le vendeur a accepté votre offre. Prochaine étape : le compromis chez le notaire ; votre conseiller organise la suite avec vous.' };
+  if (st === 'refusee') return { etiq: 'Offre non retenue', ton: 'non', ligne: 'Le vendeur n’a pas retenu votre offre. Votre conseiller en parle avec vous.' };
+  if (st === 'retiree') return o?.tombe
+    ? { etiq: 'Vente non conclue', ton: 'non', ligne: 'La vente ne s’est finalement pas faite. Votre conseiller fait le point avec vous.' }
+    : { etiq: 'Offre retirée', ton: 'non', ligne: 'Votre offre a été retirée.' };
+  return { etiq: 'Offre envoyée', ton: 'fait', ligne: 'Votre offre est chez le vendeur. Votre conseiller vous prévient dès sa réponse.' };
+}
+/* Un bien de l'agence qu'il ne peut plus visiter ni acheter (vendu à un
+   autre, retiré, sous compromis, en pause). */
+const indispo = (b: Bien) => !!b.vente && !b.vente.vous;
 /* Une visite, telle que « Vos visites » la lit (voir page.tsx). `passee` :
    faite, ou calée à une heure déjà passée. `issue` : sa réponse ou celle de
    son conseiller, null tant que personne n'a rien dit. */
@@ -408,11 +440,11 @@ const GROUPES: { id: string; e: string; court: string; titre: string; ton: strin
     note: 'Ce que vous écartez compte autant que ce que vous gardez : c’est ce qui affine vos critères.' },
   /* V3.47 : les biens de l'agence vendus ou sous compromis. Celui qu'il
      achète passe en tête, les autres à la fin : ils ne demandent plus rien. */
-  { id: 'plus_dispo', e: '🔒', court: 'Plus disponibles', titre: 'Plus disponibles : sous compromis, vendus ou retirés de la vente', ton: 'c-net',
-    note: 'Ces biens ne sont plus disponibles. Vos retours restent gardés : ils affinent la suite de la recherche.' },
+  { id: 'plus_dispo', e: '🔒', court: 'Plus disponibles', titre: 'Plus disponibles', ton: 'c-net',
+    note: 'Sous compromis, vendus, retirés de la vente ou en pause. Vos retours comptent toujours : ils affinent la suite de la recherche.' },
 ];
 GROUPES.unshift({ id: 'votre_achat', e: '🔑', court: 'Votre achat', titre: 'Votre achat', ton: 'c-or',
-  note: 'Le bien que vous achetez. Votre conseiller vous accompagne jusqu’à la signature de l’acte.' });
+  note: 'Le bien que vous achetez. Votre conseiller vous accompagne jusqu’à la signature définitive chez le notaire.' });
 /* Les filtres de « Consultés » (V3.27) : une visite calée et une visite
    souhaitée tombent sous le même « À visiter » — deux filtres pour la même
    intention faisaient double emploi. Les deux cadres restent distincts
@@ -1013,6 +1045,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const fermer = () => { setOuvert(false); setTimeout(() => { setFeuille(null); setVariante(''); }, 320); };
   /* Ce n'est pas parti (V3.17) : on le dit, au lieu d'un « c'est noté » qui
      ne serait pas vrai. */
+  /* V3.48 : le serveur refuse une visite ou une offre sur un bien qui n'est
+     plus disponible (vendu, retiré, sous compromis) : on le dit simplement. */
+  const plusDispoMsg = () => montrer(<GrandOk titre="Ce bien n’est plus disponible"
+    texte="Il vient d’être réservé ou retiré de la vente. Votre conseiller vous en parle, et la recherche continue pour vous."
+    rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
+    onFermer={fermer} />, 'pleine');
   const pasParti = (titre = 'Ce n’est pas parti') => montrer(<GrandOk titre={titre}
     texte="Un souci de connexion, sans doute. Réessayez dans un instant, ou appelez directement votre conseiller."
     rappel={'Son numéro\u00a0: <b>' + AGENT.tel + '</b>'}
@@ -1353,6 +1391,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       ouvrirMandatDocument(b, commentaire, lien);
       return false;
     }
+    if (r?.error === 'plus_dispo') { plusDispoMsg(); return false; }
     if (!r?.ok) { pasParti('Votre réponse n’est pas partie'); return false; }
     const le = new Date().toISOString();
     setBiens(l => l.map(x => x.id === b.id
@@ -1478,6 +1517,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       ouvrirMandatDocument(b, commentaire, lien);
       return;
     }
+    if (r?.error === 'plus_dispo') { plusDispoMsg(); return; }
     if (!r?.ok) { pasParti('Votre réponse n’est pas partie'); return; }
     setBiens(l => l.map(x => x.id === b.id
       ? { ...x, avis, commentaire, etat: 'avis', retourLe: new Date().toISOString() } : x));
@@ -1500,6 +1540,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      écartés). Renvoie false si rien n'est parti : le bouton le dit. */
   async function repondreVisite(v: VisiteE, issue: Issue, motifs: string[], mot: string, prix: number | null): Promise<boolean> {
     const r = await envoyer('visite', { visite_id: v.id, issue, motifs, mot, prix });
+    if (r?.error === 'plus_dispo') { plusDispoMsg(); return false; }
     if (!r?.ok) return false;
     const le = r.le || new Date().toISOString();
     setMesV(l => l.map(x => x.id === v.id
@@ -1925,7 +1966,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       <div className={'page' + (vue === 'carte' ? ' p-carte' : '')} inert={decouverte ? true : undefined}>
         <div className="vue" key={vue}>
           {vue === 'accueil' && (
-            <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
+            <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes} nbPlusDispo={plusDispo.length}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
               onOuvrir={ouvrirBien} onAvis={allerAvis}
               /* « Découvrir » : les nouveaux biens un par un (V3.44). Le
@@ -1997,7 +2038,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                 <div className="vide-neuf">
                   <span className="vn-ic"><Ico n="loupe" t={22} /></span>
                   <b>Rien de nouveau pour le moment</b>
-                  <span>{'Nous cherchons pour vous tous les jours : dès qu’un bien correspond à ce que vous voulez, il s’affiche ici.'}<br />{'Vous n’êtes pas en attente.'}</span>
+                  {enCours && !finDite
+                    ? <span>{'Nous cherchons pour vous tous les jours : dès qu’un bien correspond à ce que vous voulez, il s’affiche ici.'}<br />{'Vous n’êtes pas en attente.'}</span>
+                    : <span>{'Votre recherche est en pause : les nouveautés reprendront avec elle.'}</span>}
                 </div>
               )}
               {/* Le détail du travail de la veille n'a de sens que s'il a donné
@@ -2227,7 +2270,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite, onDecouvrir, nbDecouvrir }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite, onDecouvrir, nbDecouvrir }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   /* La dernière recherche : son chiffre à elle, et son moment (« aujourd'hui
      à 14 h 34 »). C'est ce que « Aujourd'hui pour vous » doit montrer. */
@@ -2235,7 +2278,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
   const quandJour = momentRecherche(passage?.quand);
   const retours = [...donnes].sort((a: Bien, b: Bien) => String(b.retourLe || '').localeCompare(String(a.retourLe || '')));
   /* La carte de ses biens (V3.27) : un aperçu dessiné, pas une vraie carte. */
-  const surCarte: Bien[] = [...neufs, ...vus, ...donnes];
+  /* V3.48 : comme la vraie carte, sans les biens vendus à un autre ou retirés. */
+  const surCarte: Bien[] = [...neufs, ...vus, ...donnes].filter((b: Bien) => !b.vente || b.vente.vous);
+  const achat = [...vus, ...donnes].find((b: Bien) => b.vente?.vous) as Bien | undefined;
   const apercu = surCarte.length > 0 ? <ApercuCarte biens={surCarte} onVoir={() => aller('carte')} /> : null;
   const apercuFondu = surCarte.length > 0 ? <ApercuCarte biens={surCarte} onVoir={() => aller('carte')} fondu /> : null;
   /* « Aujourd'hui pour vous » ne doit pas afficher 0 · 0 · 0. Une case à zéro
@@ -2245,7 +2290,8 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
      prévue » en toutes lettres, jamais « 0 ». */
   type Case = { cle: string; cls: string; ico: string; n: number; l: string; go: () => void; aucun?: string };
   const plait = donnes.filter((b: Bien) => groupeDe(b) === 'interesse').length;
-  const ouverts = vus.length + donnes.length;
+  /* V3.48 : le même total que « Tout » dans Consultés (les biens plus disponibles compris). */
+  const ouverts = vus.length + donnes.length + nbPlusDispo;
   const reserve: Case[] = [];
   if (plait) reserve.push({ cle: 'plait', cls: 'c-plait', ico: 'pouce', n: plait,
     l: plait > 1 ? 'biens qui vous plaisent' : 'bien qui vous plaît', go: () => onFiltre('interesse') });
@@ -2361,7 +2407,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
                   ligne : il y en a toujours un, et un seul, sur l'accueil. */}
               {!!passage?.lues && <RecapRecherche aller={aller} />}
             </>
-            : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} />}
+            : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} enCours={enCours} achat={achat || null} />}
           {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
           {/* Au téléphone (V3.28), la carte coiffe « Vos derniers retours » et
               s'y fond : elle était tout en bas, après la visite. Sans retour,
@@ -2506,14 +2552,19 @@ function RecapRecherche({ aller }: { aller: (v: string) => void }) {
 }
 
 /* Rien de nouveau : on le dit, et on dit pourquoi — jamais un bloc vide. */
-function RienDeNeuf({ passage, aVoir, aller }: { passage: Props['passage']; aVoir: boolean; aller: (v: string) => void }) {
+function RienDeNeuf({ passage, aVoir, aller, enCours = true, achat = null }: { passage: Props['passage']; aVoir: boolean; aller: (v: string) => void; enCours?: boolean; achat?: Bien | null }) {
+  /* V3.48 : sous compromis, la recherche est souvent en pause — on ne dit plus « elle continue ». */
+  const etat = achat?.vente
+    ? (achat.vente.etat === 'vendu' ? 'Votre achat est signé : félicitations.'
+      : enCours ? 'Votre compromis est signé ; la recherche continue en attendant la signature définitive.' : 'Votre compromis est signé : la recherche est en pause jusqu’à la signature définitive.')
+    : enCours ? 'Votre recherche continue, rien n’est bloqué.' : 'Votre recherche est en pause pour le moment.';
   return (
     <section className="calme">
       <div className="calme-h">
         <span className="calme-ic"><Ico n="loupe" t={21} /></span>
         <div>
           <h2>Rien de nouveau depuis votre dernière visite</h2>
-          <p>Votre recherche continue, rien n’est bloqué.</p>
+          <p>{etat}</p>
         </div>
       </div>
       <div className="calme-l">
@@ -3660,7 +3711,7 @@ function visiteSansAvis(mesV: VisiteE[], biens: Bien[]): { v: VisiteE; b: Bien }
   for (const v of l) {
     const b = biens.find(x => x.id === v.bienId);
     /* Une visite plus récente du même bien, ou une offre déjà en cours : pas de question. */
-    if (!b || b.avis === 'offre_faite') continue;
+    if (!b || etatOffre(b) || indispo(b)) continue;
     if (mesV.some(x => x.bienId === v.bienId && x.id !== v.id && `${x.date}${x.heure || ''}` > `${v.date}${v.heure || ''}`)) continue;
     return { v, b };
   }
@@ -3668,7 +3719,9 @@ function visiteSansAvis(mesV: VisiteE[], biens: Bien[]): { v: VisiteE; b: Bien }
 }
 
 /* Les quatre choix, puis la question qui va avec. */
-function AvisVisite({ v, onRepondre, sansNote }: { v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; sansNote?: boolean }) {
+function AvisVisite({ v, onRepondre, sansNote, sansSuite }: { v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; sansNote?: boolean;
+  /* V3.48 : le bien n'est plus disponible — ni offre, ni deuxième visite. */
+  sansSuite?: boolean }) {
   const [choix, setChoix] = useState<Issue | null>(null);
   const [motifs, setMotifs] = useState<string[]>([]);
   const [ecrire, setEcrire] = useState(false);
@@ -3691,7 +3744,7 @@ function AvisVisite({ v, onRepondre, sansNote }: { v: VisiteE; onRepondre: (v: V
       <div className="vv-q">
         <div className="vv-q-t">{'Alors, qu’en avez-vous pensé ?'}</div>
         <div className="vv-choix">
-          {ISSUES_OK.map(i => (
+          {ISSUES_OK.filter(i => !sansSuite || (i !== 'offre' && i !== 'revoir')).map(i => (
             <button key={i} type="button" className="vv-c" data-a={i}
               onClick={() => { setChoix(i); setMotifs([]); setEcrire(false); }}>
               <i><Ico n={ICO_ISSUE[i]} t={17} /></i><span>{ISSUES[i].choix}</span>
@@ -3751,9 +3804,10 @@ function AvisVisite({ v, onRepondre, sansNote }: { v: VisiteE; onRepondre: (v: V
 /* Où en est un bien visité : l'étiquette, la phrase qui dit la suite, ses
    raisons, et qui a donné l'avis. */
 function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
-  const offreFaite = b.avis === 'offre_faite';
+  const eo = etatOffre(b);
+  const offreFaite = !!eo;
   const i = v.issue;
-  const ligne = offreFaite ? 'Votre offre est chez le vendeur. Votre conseiller vous prévient dès sa réponse.'
+  const ligne = eo ? eo.ligne
     : i === 'offre' ? `Votre conseiller vous appelle pour préparer l’offre avec vous.${v.prix ? ` Votre prix en tête : ${EUR(v.prix)}.` : ''}`
     : i === 'revoir' ? 'Votre conseiller cale une 2e visite : le rendez-vous s’affichera dans « À venir ».'
     : i === 'reflexion' ? 'Votre conseiller fait le point avec vous dans les prochains jours.'
@@ -3778,7 +3832,8 @@ function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
   );
 }
 function EtiqVisite({ b, v }: { b: Bien; v: VisiteE }) {
-  if (b.avis === 'offre_faite') return <span className="etiq fait"><Ico n="euro" t={13} />Offre envoyée</span>;
+  const eo = etatOffre(b);
+  if (eo) return <span className={'etiq ' + eo.ton}><Ico n={b.vente?.vous ? 'maison' : 'euro'} t={13} />{eo.etiq}</span>;
   if (!v.issue) return <span className="etiq neuf"><Ico n="note" t={13} />Votre avis ?</span>;
   return <span className={'etiq ' + ETIQ_ISSUE[v.issue]}><Ico n={ICO_ISSUE[v.issue]} t={13} />{ISSUES[v.issue].client}</span>;
 }
@@ -3795,7 +3850,7 @@ function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOu
           <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur, quand].filter(Boolean).join(' · ')}</span>
         </span>
       </button>
-      {v.issue || b.avis === 'offre_faite' ? <EtatVisite b={b} v={v} /> : <AvisVisite v={v} onRepondre={onRepondre} sansNote />}
+      {v.issue || etatOffre(b) ? <EtatVisite b={b} v={v} /> : <AvisVisite v={v} onRepondre={onRepondre} sansNote sansSuite={indispo(b)} />}
       {v.compteRendu && (
         <button type="button" className="vv-cr" onClick={onOuvrir}>
           <Ico n="note" t={14} /><span>{'Le compte rendu de votre conseiller'}</span><Ico n="fleche" t={14} />
@@ -3850,7 +3905,7 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
     const future = tri.find(v => !v.passee);
     if (future) { aVenir.push({ b, v: future }); return; }
     const v = tri[tri.length - 1];
-    if (b.avis === 'offre_faite') retenus.push({ b, v });
+    if (etatOffre(b)) retenus.push({ b, v });
     else if (!v.issue) avis.push({ b, v });
     else if (v.issue === 'non') non.push({ b, v });
     else retenus.push({ b, v });
@@ -4003,7 +4058,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   /* Visité, le bien a sa propre question (l'issue de la visite) : la barre
      « Qu'en pensez-vous ? » d'avant la visite ne revient pas, même quand le
      badge n'est pas un avis connu (une offre en cours, par exemple). */
-  const repondu = (!!b.avis && !!ETIQ[b.avis]) || !!b.visiteFaite;
+  const repondu = (!!b.avis && !!ETIQ[b.avis]) || !!b.visiteFaite || !!etatOffre(b);
   const [avis, setAvis] = useState<string | null>(b.avis && AVIS[b.avis] ? b.avis : null);
   const [com, setCom] = useState(b.commentaire || '');
   /* Un avis déjà parti a été lu, et il a peut-être déjà orienté une
@@ -4070,7 +4125,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   /* « Ça me plaît » déjà envoyé : le client peut encore dire qu'il veut le
      visiter, sans rien défaire. Ses disponibilités partent avec, et Alexandre
      est prévenu (une relance du jour dans le CRM, et un mail). */
-  const peutVisiter = envoye && b.avis === 'interesse' && !b.visitePrevue && !b.visiteFaite;
+  const peutVisiter = envoye && b.avis === 'interesse' && !b.visitePrevue && !b.visiteFaite && !indispo(b);
   const [versVisite, setVersVisite] = useState(false);
   const envoyerVisite = async () => {
     setEnvoiAvis(true);
@@ -4179,9 +4234,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
         {b.vente && (
           <div className={'avis-vente' + (b.vente.vous ? ' vous' : '')}>
             <Ico n={b.vente.vous ? 'check' : 'maison'} t={17} />
-            <span>{b.vente.vous
-              ? (b.vente.etat === 'vendu' ? 'La vente est signée : félicitations pour votre achat.' : 'Votre compromis est signé. Prochaine étape : l’acte, chez le notaire.')
-              : (b.vente.etat === 'vendu' ? 'Ce bien a été vendu.' : b.vente.etat === 'retire' ? 'Ce bien n’est plus en vente : son propriétaire l’a retiré.' : 'Ce bien est sous compromis de vente : il n’est plus proposé à la visite pour l’instant.')}</span>
+            <span>{phraseVente(b.vente)}</span>
           </div>
         )}
         {corr && (
@@ -4319,9 +4372,9 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           return (
             <div className="apres-avis fini">
               <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
-              {v && (v.issue || b.avis === 'offre_faite')
+              {v && (v.issue || etatOffre(b))
                 ? <div style={{ marginTop: 8 }}><EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} /></div>
-                : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} /> : null}
+                : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} /> : null}
               {b.visiteFaite.etoiles ? (
                 <p className="aa-p" style={{ marginTop: 10 }}>{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
               ) : null}

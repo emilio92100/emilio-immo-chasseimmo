@@ -45,6 +45,42 @@ export const etapeDe = (k: string | null | undefined) => ETAPES_VENTE.find(e => 
 /* « En cours » : ce qui se travaille (le compteur du menu). */
 export const EN_COURS: EtapeVente[] = ['mandat', 'offre', 'compromis'];
 
+/* ══ Ce qu'on peut faire d'un bien, selon son étape (V3.48) ══════════════
+   Alexandre : « est-ce qu'on peut faire des visites quand le bien est
+   vendu ? ». Avant, tout était possible à toute étape : une offre notée sur
+   un bien vendu le repassait « Sous offre », une visite se calait sur un
+   bien retiré. Un seul endroit décide, pour la fiche, ses fenêtres, l'onglet
+   Acheteurs et les cartes d'offre :
+     · avant le mandat : ni visite, ni offre, ni prix (c'est l'estimation) ;
+     · en vente, sous offre : tout ;
+     · sous compromis, en pause : on peut encore, mais on le confirme ;
+     · vendu, retiré, archivé : plus de visite, d'offre, de prix ni de
+       réponse aux offres — on archive, on remet en vente, on revend. */
+export type PermisBien = {
+  visite: boolean; offre: boolean; prix: boolean; repondreOffre: boolean; presenter: boolean;
+  /* Sous compromis, en pause : la phrase de la confirmation avant une visite,
+     une offre ou un envoi à un acheteur. */
+  attention: string | null;
+  /* « Une offre est arrivée » peut faire passer le bien « Sous offre ». */
+  passerSousOffre: boolean;
+  archiver: boolean;
+  /* Le prix et les honoraires ne se changent plus dans l'éditeur (FenPrix). */
+  prixFige: boolean;
+};
+export function permisBien(b: { etape: EtapeVente; archive?: boolean | null }): PermisBien {
+  const e = b.etape;
+  const ferme = e === 'vendu' || e === 'retire' || !!b.archive;
+  const ouvert = !ferme && !avantMandat(e);
+  return {
+    visite: ouvert, offre: ouvert, prix: ouvert, repondreOffre: !ferme, presenter: ouvert,
+    attention: e === 'compromis' ? 'Le bien est sous compromis. Continuer quand même ?'
+      : e === 'suspendu' ? 'La vente est en pause. Continuer quand même ?' : null,
+    passerSousOffre: e === 'mandat' || e === 'suspendu',
+    archiver: e === 'vendu' || e === 'retire' || !!b.archive,
+    prixFige: e === 'offre' || e === 'compromis' || e === 'vendu',
+  };
+}
+
 /* ── Les lignes de la base ─────────────────────────────────────────────── */
 export type BienVente = {
   id: string; reference: string | null; etape: EtapeVente; archive: boolean;
@@ -771,7 +807,9 @@ function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc
   if (b.etape === 'vendu') return { t: `Vendu${b.vendu_le ? ` le ${dateCourte(b.vendu_le)}` : ''}`, ton: 'ok', ic: 'check' };
   if (b.etape === 'a_suivre') {
     const rdv0 = txt(d, 'rdvEstimation');
-    if (rdv0 && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre', ic: 'calendrier' };
+    /* V3.48 : mis en attente, il ne montre plus son ancien rendez-vous. */
+    const enAttente = etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation';
+    if (rdv0 && !enAttente && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre', ic: 'calendrier' };
     /* Mis en attente à l'estimation (V3.32) : pourquoi, et quand le rappeler. */
     if (etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation') return { t: ['En attente', ed.raison, ed.reprise ? `à recontacter vers le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre', ic: 'pause' };
     const delai: Record<string, string> = { vite: 'vendre dès que possible', '3mois': 'vendre sous 3 mois', '6mois': 'vendre sous 6 mois', libre: 'pas pressé' };
@@ -836,7 +874,8 @@ export function pretPourEstimer(d: Donnees): { l: string; ic: string; ok: boolea
     ...(!terr ? [{ l: 'Le DPE', ic: 'eclair', ok: !!d.dpe || d.dpeStatut === 'vierge' || d.dpeStatut === 'non' }] : []),
     ...(d.copro === 'oui' ? [{ l: 'Les charges', ic: 'lots', ok: !!num(d, 'chargesAn') }] : []),
     { l: 'La taxe foncière', ic: 'fiscal', ok: !!num(d, 'taxeFonciere') },
-    { l: 'La visite', ic: 'tablette', ok: !!txt(d, 'visiteLe') || lirePieces(d.detailPieces).length > 0 },
+    /* V3.48 : une nouvelle vente reprend les pièces d'avant ; seule la visite de cette vente-ci compte. */
+    { l: 'La visite', ic: 'tablette', ok: !!txt(d, 'visiteLe') || (!d.venteAvant && lirePieces(d.detailPieces).length > 0) },
   ];
 }
 /* Une ligne d'historique : « Estimation : 850 000 € à 900 000 €, prix
@@ -925,7 +964,10 @@ export function brouillonAnnonce(d: Donnees): string {
   const legal: string[] = [];
   if (a.prix) {
     if (a.acq && a.net && a.hono !== null && a.taux !== null) legal.push(`Prix : ${euros(a.prix)} honoraires inclus, dont ${pourcent(a.taux)} TTC à la charge de l’acquéreur (${euros(a.net)} hors honoraires).`);
-    else legal.push(`Prix : ${euros(a.prix)}, honoraires à la charge du vendeur.`);
+    /* V3.48 : « à la charge du vendeur » seulement quand c'est vrai — à la
+       charge de l'acquéreur sans taux saisi, on ne l'invente pas. */
+    else if (d.charge === 'vendeur') legal.push(`Prix : ${euros(a.prix)}, honoraires à la charge du vendeur.`);
+    else legal.push(`Prix : ${euros(a.prix)} honoraires inclus (le pourcentage à la charge de l’acquéreur est à compléter).`);
   }
   if (d.copro === 'oui') {
     legal.push(`Copropriété de ${nb(d, 'lots') || '…'} lots${nb(d, 'chargesAn') ? `, charges annuelles de ${euros(nb(d, 'chargesAn') as number)}` : ''}. ${d.procedure === 'oui' ? `Procédure en cours${txt(d, 'procedureNature') ? ` : ${txt(d, 'procedureNature')}` : ''}.` : 'Aucune procédure en cours.'}`);

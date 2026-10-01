@@ -235,13 +235,13 @@ export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, so
 /* ── Les prochaines visites ── */
 export type ProchaineVisite = { cle: string; ymd: string; heure: string; qui: string; sous: string; etat: string; ton: 'bleu' | 'or' | 'gris'; clientId: string | null };
 export function BlocProchaines({ items, onVoir, onAjouter, onFiche }: {
-  items: ProchaineVisite[]; onVoir: () => void; onAjouter: () => void; onFiche: (clientId: string) => void;
+  items: ProchaineVisite[]; onVoir: () => void; onAjouter?: () => void; onFiche: (clientId: string) => void;
 }) {
   return (
     <section className={v.bloc}>
       <div className={v.blocT}>
         <h3>Les prochaines visites</h3>
-        <button type="button" className={v.lien} onClick={onAjouter}>+ Visite</button>
+        {onAjouter && <button type="button" className={v.lien} onClick={onAjouter}>+ Visite</button>}
       </div>
       {items.length === 0 ? <div className={v.vide}>Aucune visite prévue. « + Visite » : un acheteur suivi, ou quelqu’un hors du CRM.</div> : items.map((x, i) => {
         const d = new Date(`${x.ymd}T12:00:00`);

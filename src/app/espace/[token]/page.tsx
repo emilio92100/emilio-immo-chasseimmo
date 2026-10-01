@@ -199,12 +199,15 @@ export default async function PageEspace({ params, searchParams }: {
      seule offre acceptée du bien). Une autre offre acceptée puis tombée ne
      compte pas. */
   const idsVente = Array.from(new Set((biensRes.data || []).map((b) => b.bien_vente_id).filter(Boolean))) as string[];
-  const venteParBien = new Map<string, { etat: 'compromis' | 'vendu' | 'retire'; vous: boolean }>();
+  const venteParBien = new Map<string, { etat: 'compromis' | 'vendu' | 'retire' | 'pause'; vous: boolean }>();
+  /* V3.48 : où en est SON offre sur un bien de l'agence (acceptée, refusée,
+     retirée, compromis tombé) — l'espace ne disait que « Offre envoyée ». */
+  const offreParBien = new Map<string, { statut: string; tombe: boolean }>();
   if (idsVente.length) {
     const [ventes, compromis, offres] = await Promise.all([
       supabase.from('biens_vente').select('id, etape').in('id', idsVente),
       supabase.from('biens_vente_suivi').select('bien_id, le, donnees').in('bien_id', idsVente).eq('type', 'etape').eq('statut', 'compromis'),
-      supabase.from('biens_vente_suivi').select('id, bien_id, client_id, recherche_id, statut').in('bien_id', idsVente).eq('type', 'offre'),
+      supabase.from('biens_vente_suivi').select('id, bien_id, client_id, recherche_id, statut, le, donnees').in('bien_id', idsVente).eq('type', 'offre'),
     ]);
     const dernier = new Map<string, { le: string; offre: string | null }>();
     for (const c of (compromis.data || []) as { bien_id: string; le: string; donnees: Record<string, unknown> | null }[]) {
@@ -212,7 +215,7 @@ export default async function PageEspace({ params, searchParams }: {
       const avant = dernier.get(c.bien_id);
       if (!avant || c.le > avant.le) dernier.set(c.bien_id, { le: c.le, offre: typeof o === 'string' && o ? o : null });
     }
-    const lesOffres = (offres.data || []) as { id: string; bien_id: string; client_id: string | null; recherche_id: string | null; statut: string | null }[];
+    const lesOffres = (offres.data || []) as { id: string; bien_id: string; client_id: string | null; recherche_id: string | null; statut: string | null; le: string; donnees: Record<string, unknown> | null }[];
     /* La sienne : faite pour cette recherche, ou par lui (une autre de ses recherches). */
     const sienne = (o: { client_id: string | null; recherche_id: string | null }) => o.recherche_id === recherche.id || (!!o.client_id && o.client_id === client.id);
     const estAMoi = (bienId: string) => {
@@ -225,8 +228,21 @@ export default async function PageEspace({ params, searchParams }: {
     for (const v of (ventes.data || []) as { id: string; etape: string }[]) {
       if (v.etape === 'compromis' || v.etape === 'vendu') venteParBien.set(v.id, { etat: v.etape, vous: estAMoi(v.id) });
       else if (v.etape === 'retire') venteParBien.set(v.id, { etat: 'retire', vous: false });
+      else if (v.etape === 'suspendu') venteParBien.set(v.id, { etat: 'pause', vous: false });
+    }
+    for (const o of lesOffres.filter(sienne).sort((x, y) => String(x.le).localeCompare(String(y.le)))) {
+      offreParBien.set(o.bien_id, { statut: o.statut || 'en_attente', tombe: !!o.donnees?.compromisTombe });
     }
   }
+  /* V3.48 : un bien vendu à un autre, ou retiré de la vente, ne montre plus de
+     visite à venir (le CRM propose de les annuler ; celles d'avant restent
+     masquées ici). Sous compromis, une visite reste : une contre-visite, un
+     acheteur de secours. */
+  const copiesIndispo = new Set((biensRes.data || []).filter((b) => {
+    const v = b.bien_vente_id ? venteParBien.get(b.bien_vente_id) : null;
+    return !!v && !v.vous && (v.etat === 'vendu' || v.etat === 'retire');
+  }).map((b) => b.id as string));
+  for (const id of copiesIndispo) prevueParBien.delete(id);
 
   const biens = (biensRes.data || []).map((b) => ({
     id: b.id,
@@ -265,13 +281,14 @@ export default async function PageEspace({ params, searchParams }: {
     visiteFaite: faiteParBien.get(b.id) || null,
     etat: ETAT(b),
     vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || null,
+    offre: (b.bien_vente_id && offreParBien.get(b.bien_vente_id)) || null,
   }));
 
   /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre
      prochaine visite » : son bien est rangé dans « Visités » (voir faiteParBien),
      et la section « Déjà visités » de l'onglet Visites le montre. */
   const visites = toutesVisites
-    .filter((v) => v.statut === 'a_venir' && v.date_visite && !estPassee(v))
+    .filter((v) => v.statut === 'a_venir' && v.date_visite && !estPassee(v) && !copiesIndispo.has(v.bien_id))
     .map((v) => {
       const b = (biensRes.data || []).find((x) => x.id === v.bien_id);
       return {
@@ -291,7 +308,8 @@ export default async function PageEspace({ params, searchParams }: {
      l'avis du client tant que personne n'a posé d'issue. Le compte rendu
      d'Alexandre n'arrive qu'une fois la visite marquée « effectuée ». */
   const idsBiens = new Set((biensRes.data || []).map((b) => b.id));
-  const vivantes = toutesVisites.filter((v) => v.bien_id && idsBiens.has(v.bien_id));
+  const vivantes = toutesVisites.filter((v) => v.bien_id && idsBiens.has(v.bien_id)
+    && !(copiesIndispo.has(v.bien_id) && v.statut === 'a_venir' && !estPassee(v)));
   const mesVisites = vivantes.map((v) => {
     const issue = issueDe(v);
     return {

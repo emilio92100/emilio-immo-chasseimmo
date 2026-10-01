@@ -455,7 +455,7 @@ export function OngletSurfaces({ s: x, pieces, onPieces, onBien }: { s: Surfaces
         <section className={o.sf}>
           <div className={o.sfT}><b className={o.titreSec}>Les annexes</b><span className={o.sfNote}>Hors surface habitable</span></div>
           <div className={o.annexes}>
-            {x.annexes.map(a => <div key={a.l} className={o.annexe}><span><Ic n={a.ic} t={17} /></span><div><b>{a.v}</b><small>{a.l}</small></div></div>)}
+            {x.annexes.map((a, i) => <div key={`${i}-${a.v}`} className={o.annexe}><span><Ic n={a.ic} t={17} /></span><div><b>{a.v}</b><small>{a.l}</small></div></div>)}
           </div>
         </section>
       )}
@@ -539,7 +539,8 @@ export type InfosCompromis = {
 };
 export type ActionsOffre = {
   /* Une réponse : accepte, contre-offre, nouvelle proposition, refus… */
-  onReponse: (r: Reponse) => void;
+  /* V3.48 : absent quand le bien est vendu, retiré ou archivé — la carte se fige. */
+  onReponse?: (r: Reponse) => void;
   /* Préparer le document (ou rouvrir celui déjà commencé : `doc`). */
   onDoc: () => void;
   doc?: DocOffre | null;
@@ -585,6 +586,8 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
   const st = x.statut || 'en_attente';
   const c = a.compromis || null;
   const sorte = sorteOffre(st, !!c, !!c?.venduLe);
+  const fige = !a.onReponse;
+  const rep = (r: Reponse) => a.onReponse?.(r);
   const ouverte = sorte === 'attente' || sorte === 'contre';
   const echanges = echangesDe(x);
   const negocie = echanges.length > 1;
@@ -615,7 +618,7 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
     const n = lireMontant(saisie.v);
     if (!Number.isFinite(n) || n <= 0) return;
     setSaisie(null);
-    a.onReponse({ k: saisie.k, montant: n });
+    rep({ k: saisie.k, montant: n });
   }
   const dernier = echanges[echanges.length - 1];
   const pieceJointe = typeof d.chemin === 'string' && !!d.chemin;
@@ -687,7 +690,12 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
             </ol>
           )}
 
-          {sorte !== 'fermee' && (
+          {fige && (sorte === 'attente' || sorte === 'contre' || sorte === 'acceptee') && (
+            <div className={o.suite} data-sorte="fermee">
+              <span className={o.suiteTx}>Le bien n’est plus en vente : cette offre n’appelle plus de réponse.</span>
+            </div>
+          )}
+          {sorte !== 'fermee' && !(fige && (sorte === 'attente' || sorte === 'contre' || sorte === 'acceptee')) && (
             <div className={o.suite} data-sorte={sorte}>
               {sorte === 'attente' && (
                 <>
@@ -701,13 +709,13 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
                   )}
                   {saisie ? <SaisieMontant k={saisie.k} v={saisie.v} onChange={v => setSaisie({ ...saisie, v })} onValider={valider} onAnnuler={() => setSaisie(null)} /> : (
                     <div className={o.offreBtns}>
-                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => a.onReponse({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
+                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => rep({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
                       <button type="button" className={o.act} onClick={() => setSaisie({ k: 'contre', v: '' })}>Contre-offre…</button>
-                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => a.onReponse({ k: 'refuse' })}>Il refuse</button>
+                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => rep({ k: 'refuse' })}>Il refuse</button>
                     </div>
                   )}
                   <div className={o.petits}>
-                    <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'retire' })}>L’acquéreur retire son offre</button>
+                    <button type="button" className={o.petit} onClick={() => rep({ k: 'retire' })}>L’acquéreur retire son offre</button>
                   </div>
                 </>
               )}
@@ -716,9 +724,9 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
                   <b className={o.suiteQ}>{`L’acquéreur accepte ${euros(dernier.montant)} ?`}</b>
                   {saisie ? <SaisieMontant k={saisie.k} v={saisie.v} onChange={v => setSaisie({ ...saisie, v })} onValider={valider} onAnnuler={() => setSaisie(null)} /> : (
                     <div className={o.offreBtns}>
-                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => a.onReponse({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
+                      <button type="button" className={`${o.act} ${o.actVert}`} onClick={() => rep({ k: 'accepte' })}><Ic n="check" t={13} e={2.6} />Il accepte</button>
                       <button type="button" className={o.act} onClick={() => setSaisie({ k: 'propose', v: '' })}>Nouvelle proposition…</button>
-                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => a.onReponse({ k: 'renonce' })}>Il renonce</button>
+                      <button type="button" className={`${o.act} ${o.actRouge}`} onClick={() => rep({ k: 'renonce' })}>Il renonce</button>
                     </div>
                   )}
                 </>
@@ -729,7 +737,7 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
                   <span className={o.suiteTx}>Une fois signé, le bien passe « Sous compromis » et le CRM calcule les dates : rétractation, prêt, acte.</span>
                   {a.onCompromis && <button type="button" className={`${o.act} ${o.actOr} ${o.suiteBtn}`} onClick={a.onCompromis}>Le compromis est signé<Ic n="fleche" t={14} e={2.4} /></button>}
                   <div className={o.petits}>
-                    <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'rouvrir' })}>Annuler l’acceptation</button>
+                    <button type="button" className={o.petit} onClick={() => rep({ k: 'rouvrir' })}>Annuler l’acceptation</button>
                   </div>
                 </>
               )}
@@ -763,9 +771,9 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
               )}
             </div>
           )}
-          {sorte === 'fermee' && (
+          {sorte === 'fermee' && !fige && (
             <div className={o.petits}>
-              <button type="button" className={o.petit} onClick={() => a.onReponse({ k: 'rouvrir' })}>Remettre en attente</button>
+              <button type="button" className={o.petit} onClick={() => rep({ k: 'rouvrir' })}>Remettre en attente</button>
             </div>
           )}
 
@@ -1045,7 +1053,9 @@ export function parcoursDe(bien: BienVente, suivi: SuiviVente[]): PasParcours[] 
   const arret = e === 'suspendu' || e === 'retire';
   /* La première fois que le bien est arrivé à chaque étape. */
   const quandEtape = (k: string) => suivi.filter(x => x.type === 'etape' && x.statut === k).map(x => x.le).sort()[0] || '';
-  const ici = arret ? 'mandat' : e;
+  /* Retiré avant tout mandat (V3.48) : le parcours s'arrête à l'estimation, pas au mandat. */
+  const jamaisEnVente = e === 'retire' && !bien.en_vente_le && !(bien.donnees || {}).mandatDate;
+  const ici = arret ? (jamaisEnVente ? 'estimation' : 'mandat') : e;
   const idx = ORDRE.findIndex(x => x.k === ici);
   /* V3.47 : les vraies dates quand on les a — le mandat signé, la première
      offre reçue, la signature du dernier compromis, l'acte (vendu_le) ;
@@ -1073,7 +1083,7 @@ export function parcoursDe(bien: BienVente, suivi: SuiviVente[]): PasParcours[] 
   /* Une étape passée sans trace (bien créé directement en vente) : pas de date. */
   if (arret) {
     const q = bien.etape_le || quandEtape(e);
-    const pos = Math.max(0, ORDRE.findIndex(x => x.k === 'mandat')) + 1;
+    const pos = Math.max(0, ORDRE.findIndex(x => x.k === ici)) + 1;
     pas.splice(pos, 0, { l: etapeDe(e).lib, quand: q ? `depuis le ${dateCourteMois(q)}` : '', etat: 'arret' });
   }
   return pas;

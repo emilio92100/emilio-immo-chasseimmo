@@ -260,6 +260,46 @@ export async function annulerVisiteLibre(v: SuiviVente): Promise<void> {
     if (error) signalerEchec('La visite est annulée, mais son rendez-vous dans l’agenda', error.message);
   }
 }
+/* Les visites encore prévues d'un bien qui se vend ou se retire (V3.48) :
+   celles des acheteurs suivis (table visites, sur leur copie du bien) et
+   celles hors CRM (le suivi du bien). Elles s'annulent — le rendez-vous de
+   l'agenda aussi —, l'acheteur le lit dans son Suivi et ne la voit plus dans
+   son espace. Rend le nombre de visites annulées ; jamais bloquant. */
+export async function annulerVisitesPrevues(b: BienVente, pourquoi: string): Promise<number> {
+  const auj = aujourdhui();
+  let n = 0;
+  try {
+    const { data: libres, error } = await supabase.from('biens_vente_suivi').select('*').eq('bien_id', b.id).eq('type', 'visite').eq('statut', 'a_venir');
+    if (error) signalerEchec('Les visites prévues', error.message);
+    for (const v of (libres || []) as SuiviVente[]) {
+      if ((v.le || '').slice(0, 10) < auj) continue;
+      try { await annulerVisiteLibre(v); n++; } catch (e) { signalerEchec('Une visite prévue', (e as Error).message); }
+    }
+    const { data: copies, error: e1 } = await supabase.from('biens').select('id').eq('bien_vente_id', b.id);
+    if (e1) signalerEchec('Les visites des acheteurs', e1.message);
+    const ids = ((copies || []) as { id: string }[]).map(x => x.id);
+    if (ids.length) {
+      const { data: vis, error: e2 } = await supabase.from('visites').select('id, client_id, recherche_id, date_visite, heure').in('bien_id', ids).eq('statut', 'a_venir');
+      if (e2) signalerEchec('Les visites des acheteurs', e2.message);
+      const aVenir = ((vis || []) as { id: string; client_id: string | null; recherche_id: string | null; date_visite: string | null; heure: string | null }[])
+        .filter(v => !v.date_visite || v.date_visite.slice(0, 10) >= auj);
+      if (aVenir.length) {
+        const { error: e3 } = await supabase.from('visites').update({ statut: 'annulee' }).in('id', aVenir.map(v => v.id));
+        if (e3) signalerEchec('Les visites des acheteurs', e3.message);
+        else {
+          n += aVenir.length;
+          const titre = b.titre || titreBien(b.donnees || {});
+          for (const v of aVenir) {
+            if (!v.client_id) continue;
+            await addJournal(v.client_id, 'visite_annulee', `✕ Visite annulée — ${titre}`,
+              `${v.date_visite ? `Prévue le ${dateLongue(v.date_visite)}${v.heure ? ` à ${String(v.heure).slice(0, 5).replace(':', ' h ')}` : ''}. ` : ''}${pourquoi}`, undefined, { rechercheId: v.recherche_id });
+          }
+        }
+      }
+    }
+  } catch (e) { signalerEchec('Les visites prévues', (e as Error).message); }
+  return n;
+}
 export async function ficheClient(id: string): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
   if (error || !data) throw new Error('La fiche du client n’a pas pu être ouverte.' + (error ? ` ${error.message}` : ''));
@@ -340,7 +380,8 @@ export async function nouvelleVente(b: BienVente, references: (string | null)[],
   const ancien = (b.donnees || {}) as Donnees;
   const cles = new Set<string>(['gps', ...ETAPES_BIEN.filter(e => PARTIES_REPRISES.includes(e.id)).flatMap(e => e.champs.map(c => (c as { cle?: string }).cle || '')).filter(Boolean)]);
   const d: Donnees = {};
-  for (const k of Object.keys(ancien)) if (cles.has(k) && !k.startsWith('t-')) d[k] = ancien[k];
+  /* Les notes de l'ancien vendeur (« pas sous… ») restent sur l'ancienne fiche. */
+  for (const k of Object.keys(ancien)) if (cles.has(k) && !k.startsWith('t-') && k !== 'notes') d[k] = ancien[k];
   if (o.proprio) Object.assign(d, donneesProprio(o.proprio));
   d.venteAvant = { id: b.id, reference: b.reference || null, venduLe: b.vendu_le || null };
   const maintenant = new Date().toISOString();
@@ -390,7 +431,48 @@ export async function enregistrerBien(id: string, d: Donnees, base?: Donnees | n
   }).eq('id', id).select().single();
   if (error) lever('Le bien n’a pas pu être enregistré', error.message);
   await repercuterPrix(id, aEcrire);
+  /* V3.48 : un autre propriétaire relié (ou plus personne). */
+  const ancien = base && typeof base.clientId === 'string' && base.clientId ? base.clientId : null;
+  const nouveau = (data as BienVente).client_id || null;
+  if (ancien && ancien !== nouveau) await changementProprio(data as BienVente, ancien, nouveau);
   return data as BienVente;
+}
+
+/* Le propriétaire change en cours de route (V3.48) : les relances en
+   attente de ce bien (réponse à une offre, rappels du compromis) passent au
+   nouveau ; l'ancien n'est plus « vendeur » s'il n'a pas d'autre bien en
+   vente ; les deux Suivis le disent. Jamais bloquant. */
+async function changementProprio(b: BienVente, ancien: string, nouveau: string | null): Promise<void> {
+  const titre = b.titre || titreBien(b.donnees || {});
+  try {
+    if (nouveau) {
+      const { data: lignes, error } = await supabase.from('biens_vente_suivi').select('type, statut, donnees').eq('bien_id', b.id).in('type', ['offre', 'etape']);
+      if (error) signalerEchec('Les relances du bien', error.message);
+      const ids = new Set<string>();
+      for (const l of (lignes || []) as { type: string; statut: string | null; donnees: Record<string, unknown> | null }[]) {
+        const d = l.donnees || {};
+        if (l.type === 'offre' && typeof d.relance_id === 'string' && d.relance_id) ids.add(d.relance_id);
+        if (l.type === 'etape' && l.statut === 'compromis' && d.rappels && typeof d.rappels === 'object') {
+          for (const v of Object.values(d.rappels as Record<string, unknown>)) if (typeof v === 'string' && v) ids.add(v);
+        }
+      }
+      if (ids.size) {
+        const r = await supabase.from('relances').update({ client_id: nouveau }).in('id', Array.from(ids)).eq('client_id', ancien).eq('statut', 'en_attente');
+        if (r.error) signalerEchec('Les relances du bien, chez le nouveau propriétaire', r.error.message);
+      }
+    }
+    const autres = await supabase.from('biens_vente').select('id').eq('client_id', ancien).neq('id', b.id).not('etape', 'in', '(vendu,retire)').limit(1);
+    if (!autres.error && !autres.data?.length) {
+      const { data: c } = await supabase.from('clients').select('types').eq('id', ancien).maybeSingle();
+      const t = c ? typesDe(c) : [];
+      if (t.includes('vendeur') && t.length > 1) {
+        const r = await supabase.from('clients').update({ types: t.filter(x => x !== 'vendeur') }).eq('id', ancien);
+        if (r.error) signalerEchec('Le type de l’ancien propriétaire', r.error.message);
+      }
+    }
+    await addJournal(ancien, 'statut_change', `🏠 N’est plus le propriétaire de ${titre}`, nouveau ? 'Un autre propriétaire a été relié au bien.' : 'Le bien n’a plus de propriétaire relié.');
+    if (nouveau) await addJournal(nouveau, 'statut_change', `🏠 Propriétaire de ${titre}`, 'Relié au bien en cours de route : les relances du bien passent chez lui.');
+  } catch (e) { signalerEchec('Le changement de propriétaire', (e as Error).message); }
 }
 
 /* Le prix suit chez les acheteurs (V3.33). Un bien présenté à un acheteur
@@ -407,6 +489,19 @@ export async function repercuterPrix(id: string, d: Donnees): Promise<void> {
   if (error && !/bien_vente_id/.test(error.message)) signalerEchec('Le nouveau prix chez les acheteurs qui ont reçu le bien', error.message);
 }
 
+/* Le prix a changé (V3.48) : le texte de l'annonce chez les acheteurs qui
+   ont reçu le bien (leur copie, `description`) le cite peut-être encore. */
+export async function majPrixDansAnnonces(bienId: string, vieux: string, neuf: string): Promise<void> {
+  if (!vieux || vieux === neuf) return;
+  const { data, error } = await supabase.from('biens').select('id, description').eq('bien_vente_id', bienId);
+  if (error) { if (!/bien_vente_id/.test(error.message)) signalerEchec('Le prix dans l’annonce des acheteurs', error.message); return; }
+  for (const c of (data || []) as { id: string; description: string | null }[]) {
+    if (!c.description || !c.description.includes(vieux)) continue;
+    const r = await supabase.from('biens').update({ description: c.description.split(vieux).join(neuf) }).eq('id', c.id);
+    if (r.error) signalerEchec('Le prix dans l’annonce des acheteurs', r.error.message);
+  }
+}
+
 export async function majBien(id: string, patch: Partial<BienVente>): Promise<BienVente> {
   const { data, error } = await supabase.from('biens_vente').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
   if (error) lever('Le bien n’a pas pu être modifié', error.message);
@@ -414,9 +509,15 @@ export async function majBien(id: string, patch: Partial<BienVente>): Promise<Bi
 }
 
 /* Un bien tout juste créé et refermé sans rien dedans ne reste pas. */
+/* Un nouveau bien laissé vide se supprime à la fermeture. V3.48 : « vide »
+   veut dire vraiment rien — avant, des pièces détaillées, un document du
+   dossier ou une note ne comptaient pas, et le bien partait avec. Seuls les
+   réglages par défaut (qui vend, à la charge de qui…) ne comptent pas. */
+const CLES_SANS_CONTENU = ['qui', 'proprioNouveau', '_stade', 'charge', 'honoMode', 'dpeStatut'];
+const rempli = (v: unknown): boolean => v === true || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && !!v.trim())
+  || (Array.isArray(v) && v.some(rempli)) || (!!v && typeof v === 'object' && !Array.isArray(v) && Object.values(v as Record<string, unknown>).some(rempli));
 export function bienVide(d: Donnees): boolean {
-  return !d.typeBien && !d.adresse && !d.ville && !d.prix && !d.clientId && !lirePhotos(d.photos).length
-    && !(Array.isArray(d.proprietaires) && (d.proprietaires as Record<string, unknown>[]).some(p => p && (p.nom || p.prenom)));
+  return !Object.entries(d).some(([k, v]) => !CLES_SANS_CONTENU.includes(k) && !k.startsWith('t-') && rempli(v));
 }
 
 /* V3.43 : la ligne d'abord, les fichiers ensuite (un fichier en trop ne
@@ -1107,6 +1208,7 @@ export async function offresTombees(b: BienVente, offres: SuiviVente[]): Promise
       const { statut, donnees } = apresReponse(o, { k: 'retire' }, aujourdhui());
       await majSuivi(o.id, { statut, donnees });
       await cloreRelanceOffre(b, o);
+      await noterOffreFermee(b, o, '↩️ Offre tombée', 'Le bien repasse en vente.');
     } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
   }
 }
@@ -1118,8 +1220,17 @@ export async function refuserAutresOffres(b: BienVente, offres: SuiviVente[], ga
       const { statut, donnees } = apresReponse(o, { k: 'refuse' }, aujourdhui());
       await majSuivi(o.id, { statut, donnees });
       await cloreRelanceOffre(b, o);
+      /* V3.48 : l'acquéreur suivi le lit dans son Suivi. */
+      await noterOffreFermee(b, o, '✕ Offre non retenue', 'Le vendeur s’est engagé avec un autre acquéreur.');
     } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
   }
+}
+/* Une ligne dans le Suivi de l'acquéreur suivi dont l'offre se ferme (V3.48). */
+async function noterOffreFermee(b: BienVente, o: SuiviVente, titre: string, phrase: string): Promise<void> {
+  if (!o.client_id) return;
+  const t = b.titre || titreBien(b.donnees || {});
+  await addJournal(o.client_id, 'etape_transaction', `${titre} — ${eurosSuivi(montantActuel(o))}`, `${t} · ${phrase}`,
+    { jalon: 'annulation', cote: 'acquereur', bien_vente_id: b.id }, { rechercheId: o.recherche_id || null });
 }
 
 /* L'offre signée par l'acquéreur, jointe après coup (V3.45). */

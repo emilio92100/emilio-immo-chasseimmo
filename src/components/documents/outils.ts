@@ -446,6 +446,16 @@ export async function apresSignature(row: DocumentRow, m: Modele, jour: string):
   });
   const pbBien = row.modele === 'mandat_vente' ? await mandatSigneSurBien(supabase, row, jour) : null;
   const pbRegistre = [pbReg, pbBien].filter(Boolean).join(' ') || null;
+  /* V3.48 : un mandat de vente signé à la main laisse aussi sa ligne dans le
+     Suivi du vendeur (comme la signature en ligne et « Le mandat est signé »). */
+  if (row.modele === 'mandat_vente' && row.client_id) {
+    const { error: eV } = await supabase.from('journal').insert({
+      client_id: row.client_id, type: 'mandat', titre: `📋 Mandat de vente signé le ${jour.split('-').reverse().join('/')} (papier)`,
+      description: [row.titre || m.titre, row.numero ? `n° ${row.numero}` : '', row.badge || ''].filter(Boolean).join(' · '),
+      metadata: { document_id: row.id, jalon: 'mandat', cote: 'vendeur' },
+    });
+    if (eV) return [pbRegistre, 'La ligne du suivi du vendeur n’a pas pu être ajoutée : ' + eV.message].filter(Boolean).join(' ');
+  }
   if (!m.surRecherche || !row.recherche_id) return pbRegistre;
   const { error } = await supabase.from('recherches').update(m.surRecherche(row.donnees, jour)).eq('id', row.recherche_id);
   /* Le souci du registre, s'il y en a un, n'est jamais masqué par un autre. */

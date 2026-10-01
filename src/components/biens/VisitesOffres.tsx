@@ -76,7 +76,8 @@ type Evt = { cle: string; tri: string; genre: 'visite' | 'offre'; v?: VisiteCart
 
 export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite, onOffre, actVisite, actOffre, encart }: {
   visites: VisiteCarte[]; offres: SuiviVente[]; prix: number | null; compromis: boolean;
-  onVisite: () => void; onOffre: () => void;
+  /* V3.48 : absents quand l'étape ne le permet plus (vendu, retiré, avant le mandat). */
+  onVisite?: () => void; onOffre?: () => void;
   actVisite: (cle: string) => ActionsVisite | null; actOffre: (o: SuiviVente) => ActionsOffre;
   /* Un mot d'étape (« plus aucune offre en cours », « une offre est acceptée ») */
   encart?: ReactNode;
@@ -129,10 +130,12 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
             <h2>Visites et offres</h2>
             <p>Chaque visite, son compte rendu, puis les offres et la réponse du vendeur : tout ce qui mène au compromis.</p>
           </div>
-          <div className={x.gestes}>
-            <button type="button" className={x.gesteVisite} onClick={onVisite}><Ic n="calendrier" t={17} />Organiser une visite</button>
-            <button type="button" className={x.gesteOffre} onClick={onOffre}><Ic n="euro" t={17} />Enregistrer une offre</button>
-          </div>
+          {(onVisite || onOffre) && (
+            <div className={x.gestes}>
+              {onVisite && <button type="button" className={x.gesteVisite} onClick={onVisite}><Ic n="calendrier" t={17} />Organiser une visite</button>}
+              {onOffre && <button type="button" className={x.gesteOffre} onClick={onOffre}><Ic n="euro" t={17} />Enregistrer une offre</button>}
+            </div>
+          )}
         </div>
         {!rien && (
           <div className={x.chiffres}>
@@ -310,7 +313,7 @@ function LigneOffre({ o, prix, a }: { o: SuiviVente; prix: number | null; a: Act
           <div className={x.acts}>
             {a.doc && <button type="button" onClick={a.doc.onOuvrir}><Ic n="plume" t={13} />{a.doc.etat === 'signe' ? 'L’offre signée' : 'L’offre écrite'}</button>}
             {a.onPiece && <button type="button" onClick={a.onPiece}><Ic n="trombone" t={13} />L’offre signée jointe</button>}
-            {st !== 'acceptee' && <button type="button" onClick={() => a.onReponse({ k: 'rouvrir' })}>Remettre en cours</button>}
+            {st !== 'acceptee' && a.onReponse && <button type="button" onClick={() => a.onReponse?.({ k: 'rouvrir' })}>Remettre en cours</button>}
           </div>
         )}
       </div>

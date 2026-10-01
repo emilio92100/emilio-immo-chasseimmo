@@ -1317,3 +1317,11 @@ button.pillRouge svg { color: white !important; }
 .heroVendu .heroCoteIc { background: rgba(134, 239, 172, .18); color: #86efac; }
 .heroVendu .heroCoteT b { font-size: 15px; }
 .heroVendu .heroMandatLien { text-align: left; margin-top: 4px; }
+
+/* L'accompagnement (V3.48) : ce qui se passe, et les gestes qui y mènent. */
+.guideTx { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #f5f7fb; border: 1px solid #e3e8f0; color: #334155; font-size: 14px; line-height: 1.55; }
+.guideTx > svg { color: #2d5c8f; margin-top: 2px; }
+.guideChoix { width: 100%; text-align: left; font-family: inherit; cursor: pointer; flex-wrap: nowrap; transition: transform .12s, box-shadow .12s, border-color .12s; }
+.guideChoix:hover { border-color: color-mix(in srgb, var(--c) 45%, transparent); box-shadow: 0 8px 18px -14px color-mix(in srgb, var(--c) 70%, transparent); }
+.guideChoix .rappelTx { flex: 1 1 auto; }
+.guideFleche { color: var(--c); flex-shrink: 0; display: inline-flex; }

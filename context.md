@@ -1460,6 +1460,109 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.49 — 2 octobre 2026 · un bien cohérent d'un bout à l'autre : chaque étape dit ce qu'elle permet, et accompagne
+
+Rien à passer dans Supabase.
+
+Alexandre : « est-ce qu'on peut faire des visites quand le bien est vendu ? […] tout doit être
+bridé, mais je dois être accompagné : qu'un message me dise quoi faire ». Un diagnostic complet
+(trois relectures : le parcours du bien, le formulaire de l'estimation au mandat, l'espace
+acheteur) a trouvé qu'avant, toute action était possible à toute étape.
+
+**Les règles, en un seul endroit** (`permisBien`, `lib/biens-vente.ts`) et **l'accompagnement**
+(`garde` dans `FicheBien`, fenêtre `FenGuide`). Une visite, une offre, un changement de prix, un
+envoi aux acheteurs ou un archivage que l'étape ne permet pas ouvre une fenêtre : ce qui se passe,
+et les boutons qui y mènent.
+
+| Étape | Visite, offre, envoi | Prix | Archiver |
+|---|---|---|---|
+| À suivre, estimation | « Pas encore en vente » → Le mandat est signé… / Préparer le mandat | → Définir l'estimation / Le mandat est signé… | → Le propriétaire renonce… |
+| En vente, sous offre | oui | oui | → Mandat terminé sans vente… / L'offre est tombée… |
+| Sous compromis | « Continuer quand même » (offre de secours, contre-visite) ou Le compromis est tombé… | idem | → Le compromis est tombé… |
+| En pause | Remettre en vente… ou continuer | idem | → Mandat terminé sans vente… |
+| Vendu | → Une nouvelle vente de ce bien… | figé (celui de l'acte) | oui |
+| Retiré | → Remettre en vente… (ou « Le mandat est signé… » s'il ne l'a jamais été) | idem | oui |
+| Archivé | → Sortir des archives | idem | — |
+
+Le reste du parcours :
+- **« Une offre est arrivée »** ne fait passer « Sous offre » que depuis « En vente » ou « En
+  pause » ; sous compromis, c'est « Une offre de secours », sans toucher au compromis.
+- **Les cartes d'offre se figent** sur un bien vendu, retiré ou archivé : « Le bien n'est plus en
+  vente : cette offre n'appelle plus de réponse. »
+- **Une seule offre acceptée à la fois.** En accepter une autre demande confirmation, et la
+  première passe « retirée ».
+- **« Déjà signé ? »** (Documents) ne ramène plus un bien sous offre, sous compromis ou vendu à
+  « En vente » : à ces étapes, il ouvre l'éditeur sur le mandat.
+- **Le Documents dit « compromis signé » seulement pour le compromis en cours** (pas un compromis
+  tombé), avec sa date de signature.
+- **Les visites prévues s'annulent** (case cochée d'office) quand le bien est vendu, retiré, ou
+  quand le compromis tombe avec retrait. En pause, la case est décochée.
+  - Concerné : les visites des acheteurs suivis et les visites hors CRM, rendez-vous de l'agenda
+    compris (`annulerVisitesPrevues`).
+  - L'acheteur le lit dans son Suivi.
+- **À la vente, les offres restées ouvertes passent « refusées »**, leurs relances closes.
+- **Au retrait, les offres en jeu passent « retirées »** (case cochée). « Le vendeur retire le
+  bien… » se fait aussi directement depuis « Sous offre ».
+- **Les offres qui se ferment** (refusées au compromis, tombées) laissent une ligne au Suivi de
+  l'acheteur suivi.
+- **Changer de propriétaire en cours de route** (`changementProprio`, déclenché par
+  `enregistrerBien`) :
+  - les relances du bien (réponse à une offre, rappels du compromis) passent au nouveau ;
+  - l'ancien perd « Vendeur » s'il n'a pas d'autre bien en vente ;
+  - les deux Suivis le disent.
+  - Dans l'éditeur, « Changer de fiche » ne délie plus l'ancien avant le choix du nouveau (avant :
+    ses noms restaient, prêts à créer un doublon). Le nouveau remplace noms et coordonnées.
+- **Un mandat de vente signé à la main** laisse sa ligne au Suivi du vendeur, comme la signature
+  en ligne.
+
+**L'éditeur du bien**
+- **Fermer pendant un enregistrement l'attend** : avant, s'il échouait, rien ne le disait et la
+  saisie était perdue.
+- **Un nouveau bien à moitié rempli ne se supprime plus** à la fermeture (`bienVide` : tout
+  contenu compte, pas seulement le type, l'adresse ou le prix).
+- **Sous offre, sous compromis ou vendu, le prix et les honoraires sont figés dans l'éditeur.**
+  Un mot renvoie à « Changer le prix ».
+- **Le brouillon d'annonce n'invente plus « honoraires à la charge du vendeur »** quand ils sont à
+  la charge de l'acquéreur sans taux saisi.
+- **« Changer le prix » remplace l'ancien prix dans le texte de l'annonce**, chez nous et dans la
+  description des copies chez les acheteurs (`majPrixDansAnnonces`). La note de la fenêtre disait
+  à tort que les acheteurs gardaient l'ancien prix.
+- **La loggia montre sa surface** ; box, garage et piscine ne disent plus « Surface non saisie ».
+- **Un bien créé directement « En vente »** ne se dit plus « Mandat signé » dans l'historique.
+  Un mandat noté après un retrait avant tout mandat ne se dit plus « Remis en vente » (`reprise`
+  dans l'étape) ; son parcours s'arrête à l'estimation.
+- **Un projet mis en attente** ne montre plus son ancien rendez-vous d'estimation.
+- **Une nouvelle vente** ne reprend pas les notes de l'ancien vendeur, et la case « La visite »
+  attend la visite de cette vente-ci.
+
+**L'espace acheteur**
+- **Son offre, telle que le CRM la tient** (`offreParBien` dans `page.tsx`, `etatOffre`) : offre
+  envoyée, acceptée, non retenue, retirée, vente non conclue (compromis tombé), compromis signé,
+  votre achat. Avant : « Offre envoyée » pour toujours.
+- **Le serveur refuse** (`409 plus_dispo`, route `/api/espace/[action]`) :
+  - une demande de visite sur un bien sous compromis, vendu, retiré ou en pause ;
+  - « Je veux faire une offre » ou « le revoir » après une visite d'un bien vendu ou retiré.
+
+  L'écran le dit (« Ce bien n'est plus disponible »). Avant, une page restée ouverte envoyait le
+  mail, la relance, et ouvrait même le mandat.
+- **« Pas pour moi » n'efface plus une offre faite** (`badge_retour` reste `offre_faite`).
+- **Un bien vendu à un autre ou retiré ne montre plus de visite à venir.** Sous compromis, une
+  visite reste (contre-visite, acheteur de secours).
+- **Plus de « Je veux le visiter », « Je veux faire une offre » ni « le revoir »** sur un bien qui
+  n'est plus disponible.
+- **Un bien en pause** a son ruban « En pause » et se range dans « Plus disponibles ».
+- **Des chiffres qui s'additionnent :**
+  - « biens consultés » à l'accueil = « Tout » dans Consultés ;
+  - l'aperçu de la carte ne montre plus les biens vendus à un autre ;
+  - le compteur « nouveaux » du sélecteur de recherches ne compte plus les biens indisponibles
+    (`lib/espace.ts`).
+- **Sous compromis, la recherche est souvent en pause** : « Rien de nouveau » et « Nouveautés »
+  ne disent plus « votre recherche continue » quand elle est arrêtée.
+- **Les mots :**
+  - « la signature définitive chez le notaire » au lieu de « l'acte » ;
+  - « Ce bien n'est plus proposé à la vente » (sans dire qui l'a retiré) ;
+  - « Plus disponibles » court, avec la note qui explique.
+
 ### V3.48 — 1er octobre 2026 · le bien vendu : retour à la liste, « Vendu le … à … », une nouvelle vente du même bien ; huit bugs du parcours de vente
 
 Rien à passer dans Supabase.

@@ -146,16 +146,29 @@ export async function ouvrirEspace(
   const ids = recherches.map((r) => r.id);
   const { data: apercu } = await supabase
     .from('biens')
-    .select('recherche_id, vu_le, envoye_le')
+    .select('recherche_id, vu_le, envoye_le, bien_vente_id')
     .in('recherche_id', ids)
     .eq('etape', 'presente');
+
+  /* V3.48 : un bien de l'agence sous compromis, vendu, retiré ou en pause
+     n'est pas une nouveauté (l'espace ne le range plus dans « Nouveaux ») :
+     le compteur du sélecteur ne le compte pas non plus. */
+  const lignes = (apercu || []) as { recherche_id: string; vu_le: string | null; envoye_le: string | null; bien_vente_id?: string | null }[];
+  const bv = Array.from(new Set(lignes.filter((b) => !b.vu_le && b.bien_vente_id).map((b) => b.bien_vente_id as string)));
+  const indispo = new Set<string>();
+  if (bv.length) {
+    const { data: ventes } = await supabase.from('biens_vente').select('id, etape').in('id', bv);
+    for (const v of (ventes || []) as { id: string; etape: string }[]) {
+      if (['compromis', 'vendu', 'retire', 'suspendu'].includes(v.etape)) indispo.add(v.id);
+    }
+  }
 
   const nonLus: Record<string, number> = {};
   const dernierEnvoi: Record<string, number> = {};
   for (const id of ids) { nonLus[id] = 0; dernierEnvoi[id] = 0; }
 
-  for (const b of (apercu || []) as { recherche_id: string; vu_le: string | null; envoye_le: string | null }[]) {
-    if (!b.vu_le) nonLus[b.recherche_id] = (nonLus[b.recherche_id] || 0) + 1;
+  for (const b of lignes) {
+    if (!b.vu_le && !(b.bien_vente_id && indispo.has(b.bien_vente_id))) nonLus[b.recherche_id] = (nonLus[b.recherche_id] || 0) + 1;
     const t = b.envoye_le ? new Date(b.envoye_le).getTime() : 0;
     if (t > (dernierEnvoi[b.recherche_id] || 0)) dernierEnvoi[b.recherche_id] = t;
   }

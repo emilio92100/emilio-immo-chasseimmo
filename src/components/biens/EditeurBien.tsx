@@ -3,8 +3,8 @@ import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, us
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, colonnesBien, controleAnnonce, etapeDe, etapesDuBien, lirePieces, lirePhotos, m2, pourcent, titreBien,
-  type BienVente, type ChampBien as TChamp, type Donnees, type EtapeBien, type SuiviVente,
+  argentBien, avantMandat, colonnesBien, controleAnnonce, etapeDe, etapesDuBien, lirePieces, lirePhotos, m2, permisBien, pourcent, titreBien,
+  type BienVente, type ChampBien as TChamp, type Donnees, type EtapeBien, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { ChampBien, habitable, manquesBien, proprioOuvert } from './ChampsBien';
@@ -33,6 +33,7 @@ type Enreg = 'ok' | 'attente' | 'encours' | { erreur: string };
 /* Les questions d'une étape, en blocs : un bloc par titre de section. Les
    pièces, les photos, le dossier ont déjà leurs propres cartes : pas de cadre. */
 const SANS_CADRE = ['pieces', 'photos', 'dossier'];
+const PRIX_FIGES = ['prix', 'charge', 'honoMode', 'taux', 'forfait'];
 type Groupe = { titre: Extract<TChamp, { t: 'titre' }> | null; champs: TChamp[] };
 function groupes(champs: TChamp[], d: Donnees): Groupe[] {
   const out: Groupe[] = [];
@@ -54,6 +55,10 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
   const reste = champProprio ? e.champs.filter(c => c !== champProprio) : e.champs;
   const verrou = !!champProprio && !proprioOuvert(d);
   const nouveau = d.proprioNouveau === true && !txt(d, 'clientId');
+  /* V3.48 : sous offre, sous compromis, vendu, le prix et les honoraires ne se
+     changent plus ici (« Changer le prix » garde l'historique et prévient les
+     acheteurs) ; vendus, ils sont ceux de l'acte. */
+  const fige = permisBien({ etape: String(d._stade || '') as EtapeVente }).prixFige && e.champs.some(c => PRIX_FIGES.includes(c.cle));
   return (
     <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
       <div className={s.etapeTete}>
@@ -69,6 +74,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
           suite reste grisée tant qu'elle n'est ni trouvée ni à créer, puis
           s'ouvre sur fond clair pour une fiche nouvelle. */}
       {champProprio && <ChampBien c={champProprio} d={d} maj={maj} off={false} bienId={bienId} />}
+      {fige && <div className={b.verrouMot}><Ic n="cadenas" t={14} />{d._stade === 'vendu' ? 'Le bien est vendu : le prix et les honoraires sont ceux de l’acte.' : 'Le prix et les honoraires se changent avec « Changer le prix », sur la fiche : l’ancien reste dans l’historique.'}</div>}
       {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que le propriétaire est choisi, créé, ou laissé pour plus tard.</div>}
       <div className={verrou ? b.suiteVerrou : champProprio && nouveau ? b.suiteNouveau : b.suite} inert={verrou || undefined} aria-disabled={verrou || undefined}>
         {groupes(reste, d).map((g, k) => (
@@ -82,7 +88,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
             <div className={s.grille}>
               {/* Une même clé peut avoir deux libellés selon le type (« etages » :
                   les niveaux d'une maison, les étages d'un immeuble). */}
-              {g.champs.map(c => <Fragment key={`${c.cle}:${"lib" in c ? c.lib : ""}`}><ChampBien c={c} d={d} maj={maj} off={false} bienId={bienId} /></Fragment>)}
+              {g.champs.map(c => <Fragment key={`${c.cle}:${"lib" in c ? c.lib : ""}`}><ChampBien c={c} d={d} maj={maj} off={fige && PRIX_FIGES.includes(c.cle)} bienId={bienId} /></Fragment>)}
             </div>
           </div>
         ))}
@@ -197,6 +203,9 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVol = useRef<Promise<boolean> | null>(null);
   const aEnregistrer = useRef(false);
+  /* La ligne la plus fraîche, pour la fermeture (V3.48) : l'état `row` n'est
+     pas encore à jour juste après un enregistrement. */
+  const rowRef = useRef(row);
 
   const enregistrer = useCallback(async (): Promise<boolean> => {
     if (enVol.current) await enVol.current;
@@ -208,6 +217,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
       try {
         const r = await enregistrerBien(row.id, donnees, vu.current);
         vu.current = donnees;
+        rowRef.current = r;
         setRow(r); onMaj(r);
         setEnreg(aEnregistrer.current ? 'attente' : 'ok');
         return true;
@@ -250,8 +260,12 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
     return () => window.removeEventListener('keydown', esc);
   }, []);
 
+  /* V3.48 : un enregistrement en cours est attendu avant de fermer. Avant,
+     fermer pendant qu'il partait ne l'attendait pas : s'il échouait, rien ne
+     le disait, et la saisie était perdue. */
   async function vider(): Promise<boolean> {
     if (minuterie.current) clearTimeout(minuterie.current);
+    if (enVol.current) await enVol.current;
     if (!aEnregistrer.current) return true;
     return enregistrer();
   }
@@ -262,7 +276,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
       try { await supprimerBien({ ...row, donnees: dernier.current }); onFermer(null); return; } catch { /* on le garde */ }
     }
     if (!ok && !confirm('La dernière modification n’a pas pu être enregistrée.\n\nFermer quand même ?')) return;
-    onFermer(row);
+    onFermer(rowRef.current);
   }
   fermerRef.current = () => { void fermer(); };
 
@@ -270,7 +284,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
     const ok = await vider();
     if (!ok) return;
     if (nouveau && bienVide(dernier.current)) { await fermer(); return; }
-    onFermer(row);
+    onFermer(rowRef.current);
   }
 
   /* Les données vues par les questions : avec l'étape de vente (`_stade`),

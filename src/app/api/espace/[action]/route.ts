@@ -379,9 +379,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     async function bienDeLaRecherche(id: unknown) {
       if (typeof id !== 'string' || !id) return null;
       const { data } = await supabase.from('biens')
-        .select('id, titre, surface, nb_pieces, nb_chambres, ville, quartier, photos, prix_acquereur, prix_vendeur, nb_vues, vu_le, recherche_id')
+        .select('id, titre, surface, nb_pieces, nb_chambres, ville, quartier, photos, prix_acquereur, prix_vendeur, nb_vues, vu_le, recherche_id, bien_vente_id')
         .eq('id', id).eq('recherche_id', recherche!.id).maybeSingle();
       return data || null;
+    }
+    /* V3.48 : l'étape du bien de l'agence derrière sa copie (null pour un bien
+       trouvé ailleurs). Une visite ou une offre sur un bien vendu, retiré ou
+       sous compromis est refusée ici, pas seulement cachée à l'écran : une
+       page restée ouverte la laissait passer (mail, relance, mandat). */
+    async function etapeVente(b: { bien_vente_id?: string | null } | null): Promise<string | null> {
+      if (!b?.bien_vente_id) return null;
+      const { data } = await supabase.from('biens_vente').select('etape').eq('id', b.bien_vente_id).maybeSingle();
+      return (data as { etape?: string } | null)?.etape || null;
     }
 
     switch (action) {
@@ -454,6 +463,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
         const bien = await bienDeLaRecherche(v.bien_id);
         if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
+        if ((issue === 'offre' || issue === 'revoir') && ['vendu', 'retire'].includes((await etapeVente(bien)) || '')) {
+          return NextResponse.json({ ok: false, error: 'plus_dispo' }, { status: 409 });
+        }
 
         const motifs = raisonsValides(issue, body.motifs);
         const mot = nettoie(body.mot, 500) || null;
@@ -525,6 +537,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         if (!bien) return NextResponse.json({ ok: false, error: 'bien inconnu' }, { status: 404 });
         const avis = AVIS_OK.includes(body.avis) ? body.avis : null;
         if (!avis) return NextResponse.json({ ok: false, error: 'avis inconnu' }, { status: 400 });
+        if (avis === 'souhaite_visiter' && ['compromis', 'vendu', 'retire', 'suspendu'].includes((await etapeVente(bien)) || '')) {
+          return NextResponse.json({ ok: false, error: 'plus_dispo' }, { status: 409 });
+        }
         const com = nettoie(body.commentaire, 500);
 
         /* ── Pas de visite sans mandat ──
@@ -585,8 +600,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            nouveautés et dans la pastille des notifications. La première
            vue, si elle existe, n'est pas touchée. */
         const premiereVue = bien.vu_le ? {} : { vu_le: new Date().toISOString(), nb_vues: (bien.nb_vues || 0) + 1 };
+        /* V3.48 : une offre faite reste l'état du bien : un « Pas pour moi »
+           ne l'efface pas (son avis part quand même dans le journal). */
         if (!(await ecritServeur('[espace/retour] bien', supabase.from('biens').update({
-          badge_retour: avis, retour_client: com || garde || null,
+          badge_retour: avant?.badge_retour === 'offre_faite' ? 'offre_faite' : avis, retour_client: com || garde || null,
           retour_le: new Date().toISOString(), retour_par: 'client',
           ...premiereVue,
         }).eq('id', bien.id)))) return NextResponse.json({ ok: false, error: 'enregistrement' }, { status: 500 });

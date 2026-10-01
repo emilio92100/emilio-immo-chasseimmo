@@ -519,6 +519,11 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const [erreur, setErreur] = useState('');
   const [cree, setCree] = useState(false);
   const [form, setForm] = useState<Personne | null>(null);
+  /* V3.48 : « Changer de fiche » ouvre la recherche sans délier tout de suite
+     l'ancien propriétaire (avant, la fiche se déliait aussitôt et ses noms
+     restaient, prêts à créer un doublon). Le nouveau remplace l'ancien, noms
+     et coordonnées compris. */
+  const [enChange, setEnChange] = useState(false);
   useEffect(() => {
     let vivant = true;
     lireClients().then(l => { if (vivant) setClients(l); }).catch(e => { if (vivant) { setErreur((e as Error).message); setClients([]); } });
@@ -540,8 +545,9 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses contacts. */
     void marquerVendeur(c.id);
     /* Ses coordonnées remplacent ce qui est saisi : d'office si rien ne
-       l'est, sinon après accord (un autre nom avait été tapé). */
-    const deja = saisis.length > 0;
+       l'est (ou si l'on change de propriétaire), sinon après accord (un
+       autre nom avait été tapé). */
+    const deja = saisis.length > 0 && !enChange;
     const memeNom = deja && sansAccent(`${premier?.prenom || ''} ${premier?.nom || ''}`).trim() === sansAccent(`${c.prenom || ''} ${c.nom || ''}`).trim();
     if (!deja || (!memeNom && confirm(`Reprendre les coordonnées de la fiche de ${nomClient(c)} à la place de celles déjà saisies ?`))) {
       const j = c.couple ? conjointDe(c.conjoint) : null;
@@ -558,6 +564,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       maj('sciNom', st.denomination);
     }
     setQ('');
+    setEnChange(false);
   }
   /* « Nouveau contact » : le petit formulaire, prérempli de ce qui a été
      tapé dans la recherche (le premier mot en prénom s'il y en a deux). */
@@ -581,14 +588,15 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       maj('proprioSans', false);
       /* La personne créée devient la première des propriétaires ; les autres
          (un couple, une indivision) restent derrière elle. */
-      maj('proprietaires', [net, ...personnes.filter(x => (x.nom || x.prenom) && sansAccent(`${x.prenom} ${x.nom}`) !== sansAccent(`${net.prenom} ${net.nom}`)).slice(0, 5)]);
-      if (!d.qui) maj('qui', 'personne');
+      maj('proprietaires', enChange ? [net] : [net, ...personnes.filter(x => (x.nom || x.prenom) && sansAccent(`${x.prenom} ${x.nom}`) !== sansAccent(`${net.prenom} ${net.nom}`)).slice(0, 5)]);
+      if (!d.qui || enChange) maj('qui', 'personne');
       setForm(null);
+      setEnChange(false);
     } catch (e) { setErreur((e as Error).message); }
     setCree(false);
   }
   function changer() {
-    maj('clientId', '');
+    setEnChange(true);
     setQ('');
   }
   function retirer() {
@@ -603,7 +611,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     setQ('');
   }
 
-  if (id) {
+  if (id && !enChange) {
     return (
       <div className={b.lieBloc}>
         <div className={b.lie}>
@@ -617,13 +625,13 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
         {sci && <div className={b.lieNote}>{`${lie?.civilite === 'Madame' ? 'Elle' : 'Il'} vend pour ${sci} : la société est notée plus bas, dans « Qui vend ? ».`}</div>}
         {!off && (
           <div className={b.lieActs}>
-            <button type="button" className={b.mini} onClick={changer} title="Relier une autre fiche. Ce qui est saisi plus bas ne bouge pas.">
+            <button type="button" className={b.mini} onClick={changer} title="Relier une autre fiche : le nouveau propriétaire remplace celui-ci, nom et coordonnées compris.">
               <Ic n="personne" t={13} />Changer de fiche
             </button>
             <button type="button" className={`${b.mini} ${b.miniDanger}`} onClick={retirer} title="Le bien n’aura plus de propriétaire. Sa fiche reste dans tes contacts.">
               <Ic n="croix" t={12} e={2.4} />Retirer du bien
             </button>
-            <span className={b.lieAide}>{'« Changer de fiche » relie quelqu’un d’autre ; « Retirer du bien » enlève aussi le nom et les coordonnées. Sa fiche, elle, reste dans tes contacts.'}</span>
+            <span className={b.lieAide}>{'« Changer de fiche » relie quelqu’un d’autre à sa place ; « Retirer du bien » enlève aussi le nom et les coordonnées. Sa fiche, elle, reste dans tes contacts.'}</span>
           </div>
         )}
       </div>
@@ -636,10 +644,15 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     <div className={b.question}>
       <div className={b.questionT}>
         <span className={b.questionIc}><Ic n="loupe" t={18} /></span>
-        <div><b>Qui est le propriétaire ?</b><small>S’il est déjà dans tes contacts, tape son nom : sa fiche se relie au bien et ses coordonnées se remplissent.</small></div>
+        <div>{enChange
+          ? <><b>Qui est le nouveau propriétaire ?</b><small>{`${lie ? nomClient(lie) : 'Le propriétaire actuel'} reste relié tant que tu n’en choisis pas un autre.`}</small></>
+          : <><b>Qui est le propriétaire ?</b><small>S’il est déjà dans tes contacts, tape son nom : sa fiche se relie au bien et ses coordonnées se remplissent.</small></>}</div>
       </div>
+      {enChange && (
+        <button type="button" className={b.questionLien} onClick={() => { setEnChange(false); setQ(''); }}>{`Garder ${lie ? nomClient(lie) : 'le propriétaire actuel'}`}</button>
+      )}
       {/* Des noms saisis sans fiche (les biens d'avant la V3.30) : on les garde, et on propose la fiche. */}
-      {saisis.length > 0 && (
+      {saisis.length > 0 && !enChange && (
         <div className={b.sansFiche}>
           <span><b>{nomPremier}</b>{saisis.length > 1 ? ` et ${saisis.length - 1} autre${saisis.length > 2 ? 's' : ''}` : ''}{' est saisi sur le bien, sans fiche dans tes contacts.'}</span>
           {!off && (
@@ -668,7 +681,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
           <button type="button" className={`${b.questionBtn} ${b.questionBtnOr}`} onClick={ouvrirForm}>
             <Ic n="plus" t={15} e={2.4} />{q.trim().length >= 2 ? `Nouveau contact : « ${q.trim()} »` : 'Nouveau contact'}
           </button>
-          {!saisis.length && d.proprioSans !== true && (
+          {!saisis.length && d.proprioSans !== true && !enChange && (
             <button type="button" className={b.questionLien} onClick={() => maj('proprioSans', true)}>Continuer sans propriétaire pour l’instant</button>
           )}
         </div>
