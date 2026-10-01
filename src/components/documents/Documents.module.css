@@ -779,3 +779,62 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
 /* ══ V3.42 : un mandat de vente annulé, et la fiche de son bien ══════════ */
 .suiteIc { flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; background: #f3f5f9; color: #475569; display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; }
 .suiteIcOn { background: var(--emilio-fond); color: #e3c872; }
+
+/* ═══ V3.46 · l'éditeur : deux colonnes à régler, l'aperçu qui se masque,
+   un passage de l'aperçu qui ouvre sa question, des zones de texte qui
+   s'agrandissent ═══════════════════════════════════════════════════════ */
+/* Portées par `.edCorpsDoc` : l'éditeur des biens partage `.edCorps`,
+   `.edApercu` et `.edApercuT`, et n'en voit rien. */
+@media (min-width: 1101px) {
+  /* `--part` : la largeur des questions, posée par l'éditeur ; chaque
+     colonne garde au moins 340 px, même avec un réglage fait sur un écran
+     plus large. */
+  .edCorpsDoc { grid-template-columns: minmax(0, clamp(340px, calc(var(--part, 50%) - 6px), calc(100% - 352px))) 12px minmax(0, 1fr); }
+  .edCorpsDoc[data-apercu='cache'] { grid-template-columns: minmax(0, 1fr) 48px; }
+  .edCorpsDoc[data-apercu='cache'] > .edApercu { display: none; }
+  .edCorpsDoc > .edApercu { border-left: none; }
+  /* L'en-tête de l'aperçu reste en haut : « Masquer » toujours à portée. */
+  .edCorpsDoc .edApercuT { position: sticky; top: -22px; z-index: 3; margin: -22px auto 12px; padding: 12px 0 10px; background: #e7ebf1; }
+}
+.edCorpsDoc[data-tire] { cursor: col-resize; }
+.edCorpsDoc[data-tire] .edForm, .edCorpsDoc[data-tire] .edApercu { pointer-events: none; user-select: none; }
+.edSep { position: relative; display: flex; align-items: center; justify-content: center; background: #e3e8ef; cursor: col-resize; touch-action: none; outline: none; transition: background .15s; }
+.edSep::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; right: -5px; z-index: 2; }
+.edSep span { width: 4px; height: 46px; border-radius: 3px; background: #b6c0cf; transition: background .15s, height .15s; }
+.edSep:hover, .edSep:focus-visible, .edCorpsDoc[data-tire] .edSep { background: #d8dfe9; }
+.edSep:hover span, .edSep:focus-visible span, .edCorpsDoc[data-tire] .edSep span { background: #c9a84c; height: 64px; }
+.edRail { display: flex; justify-content: center; align-items: flex-start; padding-top: 14px; background: #eef1f6; border-left: 1px solid #dfe4ec; }
+.edRail button { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 12px 7px; border-radius: 12px; border: 1px solid #dbe3ee; background: white; color: var(--emilio); font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; box-shadow: 0 2px 8px rgba(46,65,102,.06); }
+.edRail button span { writing-mode: vertical-rl; letter-spacing: .2px; }
+.edRail button:hover { border-color: #c9a84c; color: #a07c28; }
+.edCorpsDoc .edApercuT > span:first-child { white-space: nowrap; flex-shrink: 0; }
+.edApercuQui { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edMasquer { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 9px; border: 1px solid #d5dce6; background: white; color: var(--emilio); font: 700 12px 'DM Sans', sans-serif; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.edMasquer:hover { border-color: #c9a84c; color: #a07c28; }
+@media (max-width: 1100px) {
+  .edSep, .edRail, .edMasquer { display: none; }
+  .edApercuQui { margin-left: 0; }
+}
+
+/* Un passage de l'aperçu répond au survol : un clic ouvre sa question. */
+.papierClic [data-bloc] { cursor: pointer; }
+@media (hover: hover) {
+  .papierClic [data-bloc]:hover { outline: 2px solid rgba(201,168,76,.55); outline-offset: 3px; }
+}
+/* La question retrouvée s'allume un instant. */
+.vise { animation: vise 1.8s ease; }
+@keyframes vise {
+  0%, 40% { box-shadow: 0 0 0 3px rgba(201,168,76,.6), 0 0 0 10px rgba(201,168,76,.16); border-color: #c9a84c; }
+  100% { box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+}
+
+/* Une zone de texte libre : elle grandit avec le texte ; dessous, une
+   poignée à tirer et « Agrandir ». */
+.ztCadre { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+textarea.ztTexte { resize: none; overflow-y: auto; }
+.ztBas { position: relative; display: flex; justify-content: flex-end; align-items: center; min-height: 24px; }
+.ztPoignee { position: absolute; left: 50%; top: 2px; width: 60px; height: 18px; margin-left: -30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
+.ztPoignee::before { content: ''; width: 36px; height: 4px; border-radius: 3px; background: #cfd7e3; transition: background .15s; }
+.ztPoignee:hover::before { background: #c9a84c; }
+.ztBtn { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: none; border-radius: 7px; background: none; color: #a07c28; font: 700 12px 'DM Sans', sans-serif; cursor: pointer; }
+.ztBtn:hover { background: #fbf6e9; }
