@@ -574,6 +574,33 @@ qui reste, ou voit l'écran de préparation.
 Accueil : la prochaine visite (avec ajout à l'agenda) · trois chiffres avec leur « ? » ·
 Nouveaux biens · Mes derniers biens consultés · Le marché sur vos critères · Rappel de ma recherche.
 
+**Découvrir — les nouveaux biens, un par un** (V3.44, `src/components/espace/Decouverte.tsx`). Un
+bien nouveau, sans réponse et sans visite (`aDecouvrir`), ne s'ouvre plus en fiche : tous les
+chemins passent par `ouvrirBien`, qui l'envoie dans « Découvrir », à sa place dans la file
+(l'accueil et son bouton doré « Les découvrir un par un », la case « nouveaux biens », le bouton en
+tête de « Nouveautés », les cartes de la liste et de la carte, `?bien=` et `?vue=neufs` des mails
+et des notifications). Une carte à la fois : photos qui glissent, prix, « Voir le bien » (la fiche
+de l'espace, en mode `decouverte` : galerie qui glisse, « Retour », trois grands boutons), puis le
+curseur (« Pas pour moi » / « Ça me plaît », les mots se touchent aussi) et « Je veux le visiter »
+au-dessus. La question qui suit reprend les PASTILLES ; le commentaire part sous la même forme.
+- La réponse ne part qu'au bout de **cinq secondes** (« Annuler mon dernier choix ? », l'anneau
+  doré) — ou tout de suite à la réponse suivante, à la fermeture, ou quand la page passe en
+  arrière-plan (`envoyer(…, garder)` : keepalive).
+- **Rien n'est noté « vu » tant qu'il n'a pas répondu** : celui qui s'en va au milieu retrouve ses
+  nouveautés, et la file reprend au premier bien sans réponse, même après un rechargement
+  (`sessionStorage` `emilio_decouverte`). C'est la route `retour` qui pose `vu_le` (et compte la
+  vue) quand il répond ; « Voir le bien » envoie `vue` avec `apercu` : la ligne « Fiche consultée
+  par le client » du CRM, sans toucher `vu_le`.
+- Pas de rechargement automatique pendant la question ni pendant les cinq secondes
+  (`dataset.decouverte`, comme `dataset.saisie` pendant la signature).
+- La visite garde le mandat : `visiteBloquee()` reprend les conditions d'`enregistrerAvis`, qui
+  ouvre la signature ; le bien reste à l'écran et s'en va de lui-même quand la demande est partie.
+- Ordinateur (≥ 1024 px) : deux colonnes, les photos et leurs vignettes à gauche ; « Voir le bien »
+  remplace la colonne de droite. Pas de « mot du conseiller » par bien : la colonne de droite
+  montre le début de la description (aucun champ du CRM ne porte un mot par bien pour le client).
+- Les classes sont préfixées `dec-` / `dg-` : la feuille de style de l'espace définit des classes
+  génériques (`.plein`, `.fait`…) qui avaient d'abord noirci l'écran au banc d'essai.
+
 **Mes derniers biens consultés** — regroupés par réponse, chaque groupe dans un cadre de couleur :
 En attente · À visiter · Visités · Ça me plaît · Pas pour moi. Le client donne son avis
 (`interesse` / `souhaite_visiter` / `refuse`), puis une question adaptée lui est posée
@@ -1432,6 +1459,28 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.44 — 1er octobre 2026 · « Découvrir » : les nouveaux biens, un par un
+
+Alexandre a validé les maquettes V2 (téléphone et ordinateur) et demandé de les mettre en place
+pour les nouveaux biens, « sans rien casser ». Le détail est au §3, « L'espace acheteur ».
+- `Decouverte.tsx` (nouveau) : l'écran, le curseur, la question, « Annuler mon dernier choix ? »,
+  l'écran de fin ; il exporte aussi `GalerieGlisse`, reprise par la fiche ouverte d'ici.
+- `EspaceClient.tsx` : `ouvrirBien` envoie les biens `aDecouvrir` dans « Découvrir » ; les
+  entrées (bouton doré de l'accueil et de « Nouveautés », case « nouveaux biens », `?vue=neufs`),
+  la reprise après rechargement, `enregistrerDecouverte` (route `retour`, sans le grand « C'est
+  noté » ; erreurs `mandat` / `mandat_document` comme `poserAvis`), `envoyer(…, garder)`,
+  `FicheBien` en mode `decouverte`, la page `inert` sous l'écran.
+- Route `/api/espace/retour` : pose `vu_le` (et `nb_vues` + 1) si le bien n'avait jamais été
+  ouvert. Sans ça, un bien répondu depuis « Découvrir » restait « nouveau » (ETAT de page.tsx,
+  pastille des notifications). Route `vue` : `apercu` compte l'ouverture dans l'historique sans
+  poser `vu_le`.
+- Notification de plusieurs nouveaux biens : `?vue=neufs` ouvre directement « Découvrir ».
+- Banc d’essai : 45 vérifications (5 secondes mesurées, annulation, arrière-plan, rechargement,
+  échec d'envoi, mandat, clavier, Échap) en 390, 375 × 553, 768, 1024, 1280 et 1440 px ; deux
+  relectures indépendantes, leurs constats corrigés (pastille qui restait après un envoi anticipé,
+  carte coupée sur un petit téléphone, compteur doublé après un échec, rechargement pendant les
+  cinq secondes, ouverture de fiche invisible pour le conseiller).
 
 ### V3.43 — 30 septembre 2026 · le diagnostic : sécurité et cohérence
 
