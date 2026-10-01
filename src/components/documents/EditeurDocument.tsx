@@ -6,6 +6,7 @@ import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Champ, 
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import { ChampActe, manquesEtape } from './ChampsActe';
 import FilEtapes from './FilEtapes';
+import { chercherQuestion, type Cible } from './versQuestion';
 import { FenetreProjet, dernierEnvoi } from './EnvoiProjet';
 import { lireDepart, prochainNumero, type Depart } from '@/lib/registre';
 import {
@@ -22,7 +23,22 @@ import b from '@/components/biens/Biens.module.css';
    Tout s'enregistre seul, 0,8 s après la dernière frappe. « Finaliser »
    vérifie ce qui manque, fige le PDF avec l'identité de l'agence du jour,
    et passe le document « À faire signer ». Un document finalisé ne se
-   modifie plus : on le repasse en brouillon (tant qu'il n'est pas signé). */
+   modifie plus : on le repasse en brouillon (tant qu'il n'est pas signé).
+
+   V3.46 : un clic sur un passage de l'aperçu ouvre la question qui l'a
+   écrit (versQuestion.ts) ; une barre entre les deux colonnes se tire pour
+   donner plus de place à l'une ou à l'autre ; l'aperçu se masque (les
+   questions prennent toute la largeur, et la saisie va plus vite : le
+   texte n'est plus réécrit à chaque frappe). Les deux réglages sont
+   retenus dans ce navigateur. */
+
+/* La part des questions dans la largeur, quand l'aperçu est là. */
+const PART_DEFAUT = 0.5;
+/* Chaque colonne garde au moins 340 px (la barre en prend 12). */
+function bornesPart(largeur: number): [number, number] {
+  const l = Math.max(largeur, 1);
+  return [Math.max(0.22, 346 / l), Math.min(0.8, 1 - 346 / l)];
+}
 
 type Enreg = 'ok' | 'attente' | 'encours' | { erreur: string };
 
@@ -147,7 +163,29 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const apercuRef = useRef<HTMLDivElement>(null);
+  const corpsRef = useRef<HTMLDivElement>(null);
   const off = row.statut !== 'brouillon';
+
+  /* ── La largeur des deux colonnes, et l'aperçu masqué (V3.46) ── */
+  const [part, setPart] = useState<number>(() => {
+    try { const x = Number(localStorage.getItem('documents.partage')); return x >= 0.2 && x <= 0.8 ? x : PART_DEFAUT; } catch { return PART_DEFAUT; }
+  });
+  const [cache, setCache] = useState<boolean>(() => {
+    try { return localStorage.getItem('documents.apercu') === 'cache'; } catch { return false; }
+  });
+  const garderPart = (x: number) => {
+    setPart(x);
+    try { localStorage.setItem('documents.partage', x.toFixed(3)); } catch { /* sans mémoire, tant pis */ }
+  };
+  const montrerApercu = (oui: boolean) => {
+    setCache(!oui);
+    try { localStorage.setItem('documents.apercu', oui ? 'montre' : 'cache'); } catch { /* sans mémoire, tant pis */ }
+  };
+  /* Au téléphone, l'onglet « Aperçu » le montre toujours. */
+  const voirApercu = !cache || vue === 'apercu';
+  /* Après un clic dans l'aperçu, il ne doit pas se déplacer tout seul
+     pendant que les questions défilent jusqu'à la bonne. */
+  const calme = useRef(0);
 
   /* Le registre des mandats (V3.18) : démarré, il donne le numéro. */
   /* `regLu` : l'état du registre est connu (démarré ou non) ; tant qu'il ne
@@ -253,13 +291,13 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   /* ── Le texte, recalculé à chaque réponse (sans ralentir la frappe) ── */
   const dd = useDeferredValue(d);
   const rendu = useMemo(() => {
-    if (!m) return null;
+    if (!m || !voirApercu) return null;
     try {
       return { parties: m.rediger(dd, identite), garde: m.garde(dd), pour: m.pour(dd), resume: m.resume(dd), erreur: '' };
     } catch (e) {
       return { parties: [], garde: m.garde({}), pour: '', resume: [], erreur: (e as Error).message };
     }
-  }, [m, dd, identite]);
+  }, [m, dd, identite, voirApercu]);
 
   /* L'aperçu suit l'étape : il montre la rubrique dont on parle. */
   /* Les étapes telles qu'on les montre (le numéro remplacé quand le
@@ -271,17 +309,21 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const vers = etapes[etape]?.vers || '';
   useEffect(() => {
     const zone = apercuRef.current;
-    if (!zone) return;
+    if (!zone || Date.now() < calme.current) return;
     /* La première étape montre la page de garde : c'est le haut du document. */
     if (etape === 0 || !vers) { zone.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const t = setTimeout(() => {
       const cible = zone.querySelector<HTMLElement>(`[data-sec="${vers.replace(/"/g, '\\"')}"]`);
       if (!cible) return;
-      const haut = cible.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 16;
+      /* Sur l'ordinateur, l'en-tête de l'aperçu reste collé en haut : la
+         rubrique s'arrête juste dessous. */
+      const tete = zone.querySelector<HTMLElement>(`.${s.edApercuT}`);
+      const dessous = tete && getComputedStyle(tete).position === 'sticky' ? tete.offsetHeight : 0;
+      const haut = cible.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 16 - dessous;
       zone.scrollTo({ top: Math.max(0, haut), behavior: 'smooth' });
     }, 60);
     return () => clearTimeout(t);
-  }, [vers, vue, etape]);
+  }, [vers, vue, etape, cache]);
 
   const manquesParEtape = useMemo(() => etapes.map(e => manquesEtape(e.champs, dm)), [etapes, dm]);
   const reperesParEtape: Repere[][] = useMemo(() => (m ? etapes.map(e => (m.reperes ? m.reperes(dm, e.id) : [])) : []), [m, etapes, dm]);
@@ -299,7 +341,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     setEtape(i);
   }, [mode]);
 
-  if (!m || !rendu) {
+  if (!m) {
     return (
       <div className={s.ed}>
         <div className={s.edBarre}>
@@ -321,6 +363,104 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         if (zone && b) zone.scrollTo({ top: b.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - 12, behavior: 'smooth' });
       });
     } else formRef.current?.scrollTo({ top: 0 });
+  };
+
+  /* ── De l'aperçu à la question (V3.46) ──
+     L'étape s'ouvre, les questions défilent jusqu'à la bonne, qui
+     s'allume un instant ; à la souris, le curseur s'y pose. */
+  const viser = (c: Cible) => {
+    const k = Math.max(0, Math.min(etapes.length - 1, c.etape));
+    calme.current = Date.now() + 1600;
+    setEtape(k);
+    setVue('form');
+    const id = etapes[k].id;
+    let essais = 0;
+    const chercher = () => {
+      const zone = formRef.current;
+      const bloc = zone?.querySelector<HTMLElement>(`[data-etape="${id}"]`);
+      if (!zone || !bloc) { if (essais++ < 8) requestAnimationFrame(chercher); return; }
+      const champ = c.cle ? bloc.querySelector<HTMLElement>(`[data-cle="${c.cle}"]`) : null;
+      /* La saisie exacte : la case d'une personne, d'un lot, ou le champ seul. */
+      let saisie: HTMLElement | null = null;
+      if (champ && c.sous) {
+        saisie = document.getElementById(`${c.cle}-${c.sous.i}-${c.sous.k}`);
+        if (!saisie) {
+          /* Un lot : sa ligne, puis la case de la colonne. */
+          const def = etapes[k].champs.find(x => x.cle === c.cle);
+          const col = def && def.t === 'lignes' ? def.colonnes.findIndex(x => x.cle === c.sous!.k) : -1;
+          const lot = champ.querySelectorAll<HTMLElement>(`.${s.lot}`)[c.sous.i];
+          saisie = (lot && col >= 0 ? lot.querySelectorAll<HTMLInputElement>('input')[col] : null) || null;
+        }
+      } else if (champ && c.cle) saisie = document.getElementById(`ch-${c.cle}`);
+      /* Ce qu'on montre : la carte de la personne ou le lot, sinon la question. */
+      const cadre = (saisie?.closest<HTMLElement>(`.${s.perso}, .${s.lot}`)) || champ || bloc;
+      const marge = champ ? Math.min(140, zone.clientHeight * 0.22) : 12;
+      const haut = cadre.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - marge;
+      zone.scrollTo({ top: Math.max(0, haut), behavior: 'smooth' });
+      if (champ || cadre !== bloc) {
+        cadre.classList.remove(s.vise);
+        void cadre.offsetWidth;
+        cadre.classList.add(s.vise);
+        setTimeout(() => cadre.classList.remove(s.vise), 1900);
+      }
+      if (saisie && !off && window.matchMedia('(pointer: fine)').matches) {
+        (saisie as HTMLInputElement).focus({ preventScroll: true });
+      }
+    };
+    requestAnimationFrame(chercher);
+  };
+  const rubriques = rendu ? rendu.parties.flatMap(p => p.sections.map(x => x.titre || '')) : [];
+  const cliquerApercu = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !rendu) return;
+    /* Un mot sélectionné à la souris : on lit, on ne part pas. */
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('button, a, input, textarea')) return;
+    const bloc = el.closest<HTMLElement>('[data-bloc]');
+    if (!bloc) return;
+    /* Le texte du passage, ses morceaux séparés (un résumé, une fiche). */
+    const morceaux: string[] = [];
+    const parcours = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
+    for (let n = parcours.nextNode(); n; n = parcours.nextNode()) if (n.textContent?.trim()) morceaux.push(n.textContent);
+    const sec = bloc.closest<HTMLElement>('[data-si]');
+    const ou = sec ? Number(sec.dataset.si) : -1;
+    viser(chercherQuestion(etapes, dm, morceaux.join(' '), rubriques, Number.isFinite(ou) ? ou : -1, bloc.dataset.titre));
+  };
+
+  /* ── La barre entre les deux colonnes ── */
+  const tirerBarre = (e: React.PointerEvent<HTMLDivElement>) => {
+    const corps = corpsRef.current;
+    if (!corps || e.button !== 0) return;
+    e.preventDefault();
+    const barre = e.currentTarget;
+    barre.setPointerCapture(e.pointerId);
+    const r = corps.getBoundingClientRect();
+    const [min, max] = bornesPart(r.width);
+    let x = part;
+    corps.dataset.tire = '1';
+    const bouger = (ev: PointerEvent) => {
+      x = Math.max(min, Math.min(max, (ev.clientX - r.left) / r.width));
+      corps.style.setProperty('--part', `${(x * 100).toFixed(2)}%`);
+    };
+    const finir = () => {
+      barre.removeEventListener('pointermove', bouger);
+      barre.removeEventListener('pointerup', finir);
+      barre.removeEventListener('pointercancel', finir);
+      delete corps.dataset.tire;
+      garderPart(x);
+    };
+    barre.addEventListener('pointermove', bouger);
+    barre.addEventListener('pointerup', finir);
+    barre.addEventListener('pointercancel', finir);
+  };
+  const toucheBarre = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const [min, max] = bornesPart(corpsRef.current?.getBoundingClientRect().width || 1200);
+    const pas = e.shiftKey ? 0.1 : 0.04;
+    const x = e.key === 'ArrowLeft' ? part - pas : e.key === 'ArrowRight' ? part + pas : e.key === 'Home' ? min : e.key === 'End' ? max : null;
+    if (x === null) return;
+    e.preventDefault();
+    garderPart(Math.max(min, Math.min(max, x)));
   };
 
   /* ── Les actions ── */
@@ -469,7 +609,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         <button type="button" aria-pressed={vue === 'apercu'} onClick={() => setVue('apercu')}><Ic n="doc" t={15} />Aperçu</button>
       </div>
 
-      <div className={s.edCorps} data-vue={vue}>
+      <div className={`${s.edCorps} ${s.edCorpsDoc}`} data-vue={vue} data-apercu={cache ? 'cache' : undefined} ref={corpsRef}
+        style={{ ['--part' as string]: `${(part * 100).toFixed(2)}%` } as React.CSSProperties}>
         {/* ── Les questions ── */}
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
           <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive} ${s.saisieDoc}`}>
@@ -498,17 +639,39 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           </div>
         </div>
 
-        {/* ── Le document ── */}
-        <div className={s.edApercu} ref={apercuRef}>
-          <div className={s.edApercuT}>
-            <span>{off ? 'Le document figé' : 'Aperçu en direct'}</span>
-            <span>{m.signataires}</span>
+        {/* ── La barre à tirer entre les deux (V3.46) ── */}
+        {!cache && (
+          <div className={s.edSep} role="separator" aria-orientation="vertical" aria-label="Largeur des questions et de l’aperçu"
+            aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(part * 100)} tabIndex={0}
+            title="Tirer pour donner plus de place aux questions ou à l’aperçu (double-clic : moitié-moitié)"
+            onPointerDown={tirerBarre} onKeyDown={toucheBarre} onDoubleClick={() => garderPart(PART_DEFAUT)}>
+            <span aria-hidden="true" />
           </div>
-          {rendu.erreur
-            ? <div className={s.erreur}>{`L’aperçu n’a pas pu être rédigé : ${rendu.erreur}`}</div>
-            : <ApercuActe parties={rendu.parties} garde={rendu.garde} pour={rendu.pour} resume={rendu.resume} projet={row.statut === 'brouillon'}
-                pied={`${identite.nom} · ${identite.societe}, ${identite.forme} · carte professionnelle ${identite.carte}`} />}
-        </div>
+        )}
+        {cache && (
+          <div className={s.edRail}>
+            <button type="button" onClick={() => montrerApercu(true)} title="Afficher l’aperçu du document">
+              <Ic n="oeil" t={16} /><span>Afficher l’aperçu</span>
+            </button>
+          </div>
+        )}
+
+        {/* ── Le document : un clic sur un passage ouvre sa question ── */}
+        {voirApercu && (
+          <div className={s.edApercu} ref={apercuRef} onClick={cliquerApercu}>
+            <div className={s.edApercuT}>
+              <span>{off ? 'Le document figé' : 'Aperçu en direct'}</span>
+              <span className={s.edApercuQui}>{m.signataires}</span>
+              <button type="button" className={s.edMasquer} onClick={() => montrerApercu(false)} title="Masquer l’aperçu : les questions prennent toute la largeur">
+                <Ic n="oeilBarre" t={14} /><span>Masquer</span>
+              </button>
+            </div>
+            {rendu && (rendu.erreur
+              ? <div className={s.erreur}>{`L’aperçu n’a pas pu être rédigé : ${rendu.erreur}`}</div>
+              : <ApercuActe parties={rendu.parties} garde={rendu.garde} pour={rendu.pour} resume={rendu.resume} projet={row.statut === 'brouillon'} cliquable
+                  pied={`${identite.nom} · ${identite.societe}, ${identite.forme} · carte professionnelle ${identite.carte}`} />)}
+          </div>
+        )}
       </div>
 
       {/* ── Téléphone : précédent / suivant sous le pouce ── */}
