@@ -11,6 +11,7 @@ import { ajouterMois, jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
 import CarteEspace, { CATS_ESPACE, type BienCarte, type CatEspace } from './CarteEspace';
+import Decouverte, { GalerieGlisse, CSS_DECOUVERTE, type ActionsFiche, type AvisDecouverte } from './Decouverte';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -944,6 +945,9 @@ const SANS_APPRIS: string[] = [];
 export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS }: Props) {
   const [vue, setVue] = useState('accueil');
   const [biens, setBiens] = useState(biensInit);
+  /* Pour les rappels qui partent après coup (« Découvrir ») : la liste du moment. */
+  const biensRef = useRef(biens);
+  biensRef.current = biens;
   /* Pas de valeur par défaut dans la signature : un [] neuf à chaque rendu
      relancerait cet effet sans fin. */
   const [mesV, setMesV] = useState<VisiteE[]>(mesVisites || []);
@@ -952,6 +956,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   const [feuille, setFeuille] = useState<React.ReactNode>(null);
   const [ouvert, setOuvert] = useState(false);
   const [variante, setVariante] = useState('');
+  /* « Découvrir » (V3.44) : les nouveaux biens, un par un. `ids` : la file,
+     figée à l'ouverture ; `cle` : une nouvelle ouverture repart de zéro. */
+  const [decouverte, setDecouverte] = useState<{ ids: string[]; cle: number } | null>(null);
+  const decouverteRef = useRef(decouverte);
+  decouverteRef.current = decouverte;
   /* Sur téléphone, hors de l'accueil : dès qu'on a un peu descendu, une
      petite pastille « Accueil » apparaît en haut à gauche. Le client n'a pas
      à chercher le chemin du retour dans la barre du bas. */
@@ -970,11 +979,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      le serveur qui tranche — il lit le journal (voir page.tsx). */
   const [finDite, setFinDite] = useState(false);
 
-  const envoyer = useCallback(async (route: string, corps: Record<string, unknown>) => {
+  /* `garder` (V3.44) : la requête survit à la fermeture de la page. Pour une
+     réponse de « Découvrir » qui part au moment où le téléphone met l'espace
+     en arrière-plan. Jamais pour un envoi lourd (une signature) : le
+     navigateur refuse au-delà de 64 Ko. */
+  const envoyer = useCallback(async (route: string, corps: Record<string, unknown>, garder = false) => {
     try {
       const r = await fetch('/api/espace/' + route, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, ...corps }),
+        ...(garder ? { keepalive: true } : {}),
       });
       return await r.json();
     } catch { return { ok: false }; }
@@ -1153,7 +1167,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      ouverte, on attend qu'il l'ait refermée. Deux fenêtres coup sur coup, on
      n'en lit aucune. */
   useEffect(() => {
-    if (!aDemander || ouvert) return;
+    if (!aDemander || ouvert || decouverte) return;
     /* Le garde-fou : entre le moment où la question est programmée et celui où
        elle s'affiche, la réponse a pu arriver. On ne redemande jamais à
        quelqu'un qui a déjà accepté. */
@@ -1181,7 +1195,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     }, 1200);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aDemander, ouvert, notif.etat]);
+  }, [aDemander, ouvert, notif.etat, decouverte]);
 
   /* ── se remettre à jour tout seul au retour ──
      Une application posée sur l'écran d'accueil ne se relance pas quand on y
@@ -1216,6 +1230,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       /* Pas pendant une signature : le client revient de sa messagerie avec
          son code, il doit retrouver l'écran tel qu'il l'a laissé. */
       try { if (document.documentElement.dataset.saisie) return; } catch { /* sans effet */ }
+      /* Ni pendant qu'il répond à la question d'un nouveau bien (V3.44). */
+      try { if (document.documentElement.dataset.decouverte) return; } catch { /* sans effet */ }
       if (Date.now() - dernierRefresh.current < 15000) return;
       dernierRefresh.current = Date.now();
       try { window.location.reload(); } catch { router.refresh(); }
@@ -1261,8 +1277,77 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     } catch { /* tous les appareils ne savent pas le faire */ }
   }, [neufs.length]);
 
+  /* ── « Découvrir » : les nouveaux biens, un par un (V3.44) ──
+     Un bien nouveau, sans réponse et sans visite, ne s'ouvre plus en fiche :
+     il arrive dans « Découvrir », à sa place dans la file des nouveautés.
+     Tous les chemins y mènent (accueil, « Nouveautés », la carte, un lien
+     ?bien= d'un mail ou d'une notification) parce qu'ils passent tous par
+     ouvrirBien. La fiche reste à un geste : « Voir le bien ».
+     Rien n'est noté « vu » tant qu'il n'a pas répondu : celui qui s'en va au
+     milieu retrouve ses nouveautés intactes, et la file reprend au premier
+     bien sans réponse — même après un rechargement (sessionStorage). */
+  const CLE_DECOUVERTE = 'emilio_decouverte';
+  const aDecouvrir = (b: Bien) => b.etat === 'neuf' && (!b.avis || b.avis === 'propose') && !b.visitePrevue && !b.visiteFaite;
+  function ouvrirDecouverte(depuisId?: string, silencieux = false) {
+    if (decouverteRef.current) return;
+    const ids = biensRef.current.filter(aDecouvrir).map(b => b.id);
+    if (!ids.length) {
+      try { sessionStorage.removeItem(CLE_DECOUVERTE); } catch { /* sans effet */ }
+      if (!silencieux) aller('neufs');
+      return;
+    }
+    const file = depuisId && ids.includes(depuisId) ? [depuisId, ...ids.filter(x => x !== depuisId)] : ids;
+    try { sessionStorage.setItem(CLE_DECOUVERTE, '1'); } catch { /* sans effet */ }
+    ecran.eveiller();
+    const d = { ids: file, cle: Date.now() };
+    decouverteRef.current = d;
+    setDecouverte(d);
+  }
+  function fermerDecouverte(vers?: string) {
+    try { sessionStorage.removeItem(CLE_DECOUVERTE); } catch { /* sans effet */ }
+    decouverteRef.current = null;
+    setDecouverte(null);
+    if (vers) aller(vers);
+  }
+  /* La réponse donnée dans « Découvrir », une fois passées les cinq secondes
+     où il pouvait l'annuler. Même envoi que la fiche (route « retour »), mais
+     sans le grand « C'est noté » : l'écran passe au bien suivant. Pas partie,
+     on le dit, et le bien reste sans réponse. */
+  async function enregistrerDecouverte(id: string, avis: AvisDecouverte, commentaire: string, garder: boolean): Promise<boolean> {
+    const b = biensRef.current.find(x => x.id === id);
+    if (!b) return false;
+    const r = await envoyer('retour', { bien_id: b.id, avis, commentaire }, garder);
+    /* Le serveur réclame un mandat que l'écran ne savait pas nécessaire :
+       la signature s'ouvre, et la demande repart juste après (poserAvis). */
+    if (r?.error === 'mandat') {
+      setMandat(x => ({ ...x, etat: 'a_signer' }));
+      mandatRef.current = { ...mandatRef.current, etat: 'a_signer' };
+      ouvrirMandatPourVisite(b, avis, commentaire);
+      return false;
+    }
+    if (r?.error === 'mandat_document' && typeof r.lien === 'string') {
+      const lien = r.lien;
+      setMandat(x => ({ ...x, etat: 'sans_numero', propose: false, enRoute: { lien } }));
+      mandatRef.current = { ...mandatRef.current, etat: 'sans_numero', propose: false, enRoute: { lien } };
+      ouvrirMandatDocument(b, commentaire, lien);
+      return false;
+    }
+    if (!r?.ok) { pasParti('Votre réponse n’est pas partie'); return false; }
+    const le = new Date().toISOString();
+    setBiens(l => l.map(x => x.id === b.id
+      ? { ...x, avis, commentaire, etat: 'avis', retourLe: le, vuLe: x.vuLe || le } : x));
+    return true;
+  }
+  /* Le même mandat que dans la fiche : avant une demande de visite, il faut
+     signer celui qu'on lui propose ou celui qu'Alexandre lui a envoyé. */
+  const visiteBloquee = () => {
+    const m = mandatRef.current;
+    return (m.etat !== 'valide' && !!m.enRoute?.lien) || m.etat === 'a_signer';
+  };
+
   /* ── ouverture d'une fiche ── */
   function ouvrirBien(b: Bien) {
+    if (aDecouvrir(b)) { ouvrirDecouverte(b.id); return; }
     if (b.etat === 'neuf') {
       setBiens(l => l.map(x => x.id === b.id ? { ...x, etat: 'vu', vuLe: new Date().toISOString() } : x));
     }
@@ -1441,6 +1526,31 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return () => clearTimeout(t);
   }, [ouvrirBienvenue]);
 
+  /* « Découvrir » était ouvert quand l'espace s'est rechargé (retour d'une
+     autre application, nouveau bien arrivé) : il le retrouve, au premier
+     bien sans réponse. Pas quand l'adresse demande autre chose (un bien, un
+     mandat, une question) : c'est elle qui décide. */
+  const repriseDecouverte = useRef(false);
+  /* L'adresse d'arrivée, lue une fois : les effets suivants la nettoient, et
+     le mode strict rejoue celui-ci après eux. */
+  const adresseDepart = useRef<string | null>(null);
+  useEffect(() => {
+    if (repriseDecouverte.current) return;
+    let veut = false;
+    try {
+      if (adresseDepart.current === null) adresseDepart.current = window.location.search;
+      veut = sessionStorage.getItem(CLE_DECOUVERTE) === '1'
+        && !/[?&](bien|vue|mandat|point|fin)=/.test(adresseDepart.current);
+    } catch { return; }
+    if (!veut) return;
+    const t = setTimeout(() => {
+      repriseDecouverte.current = true;
+      ouvrirDecouverte(undefined, true);
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* « Je ne suis plus en recherche », depuis le pied de page des mails.
      Le lien n'annule rien : il amène ici, sur la question, et c'est le client
      qui répond — a-t-il trouvé avec nous, ailleurs, ou met-il en pause. Rien
@@ -1547,6 +1657,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     vueOuverte.current = true;
     try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
     setVue('neufs');
+    /* V3.44 : et « Découvrir » s'ouvre par-dessus. En le refermant, il
+       retrouve la liste de ce qu'il reste. Le minuteur n'est pas annulé au
+       démontage : l'adresse est déjà nettoyée, un second passage (mode
+       strict) ne le reposerait pas. */
+    setTimeout(() => ouvrirDecouverte(undefined, true), 450);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* Le mail « Où en est votre recherche ? » (point automatique) : chaque
@@ -1710,14 +1826,18 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   return (
     <>
-      <style>{CSS + CSS_MANDAT}</style>
+      <style>{CSS + CSS_MANDAT + CSS_DECOUVERTE}</style>
 
       {/* L'en-tête. Sur téléphone : la marque et la date, le bonjour, la
           recherche en une ligne et son badge vivant. Sur ordinateur, le menu
           se loge dans la même bande, et le conseiller à droite. Le bleu est
           celui d'Emilio, en plus clair que l'ancien : le marine presque noir
           faisait austère. */}
-      <div className={'chapeau' + (vue === 'accueil' ? ' ch-acc' : '') + (vue === 'carte' ? ' ch-carte' : '')}>
+      {/* Sous « Découvrir » (V3.44), la page est inerte : ni le clavier ni un
+          lecteur d'écran ne s'y promènent. La feuille et son voile, eux,
+          restent vivants (le mandat s'ouvre par-dessus). */}
+      <div className={'chapeau' + (vue === 'accueil' ? ' ch-acc' : '') + (vue === 'carte' ? ' ch-carte' : '')}
+        inert={decouverte ? true : undefined}>
         <div className="dedans">
           <div className="marque">
             <span className="motmarque">EMILIO IMMOBILIER</span>
@@ -1781,12 +1901,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         </div>
       </div>
 
-      <div className={'page' + (vue === 'carte' ? ' p-carte' : '')}>
+      <div className={'page' + (vue === 'carte' ? ' p-carte' : '')} inert={decouverte ? true : undefined}>
         <div className="vue" key={vue}>
           {vue === 'accueil' && (
             <Accueil client={client} crit={crit} neufs={neufs} vus={vus} donnes={donnes}
               passage={passage} semaine={semaine} maxLues={maxLues} aller={aller} visites={visites}
               onOuvrir={ouvrirBien} onAvis={allerAvis}
+              /* « Découvrir » : les nouveaux biens un par un (V3.44). Le
+                 bouton doré se compte sur les biens qu'il fera passer. */
+              onDecouvrir={neufs.some(aDecouvrir) ? () => ouvrirDecouverte() : undefined}
+              nbDecouvrir={neufs.filter(aDecouvrir).length}
               onFiltre={(f: string) => { setFiltreC(f); aller('consultes'); }}
               /* Avec plusieurs recherches, « ma recherche » devient ambigu :
                  l'accueil dit alors « cette recherche ». */
@@ -1838,6 +1962,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
               sous={neufs.length
                 ? `${neufs.length} bien${neufs.length > 1 ? 's' : ''} retenu${neufs.length > 1 ? 's' : ''} pour vous depuis votre dernière visite, du plus récent au plus ancien. Ouvrez-les, puis dites-moi ce que vous en pensez.`
                 : undefined}>
+              {/* V3.44 : en tête de liste, le chemin le plus court — un bien à la
+                  fois, les photos puis l'avis. Toucher une carte de la liste
+                  y mène aussi, à ce bien-là (voir ouvrirBien). */}
+              {neufs.some(aDecouvrir) && (
+                <button type="button" className="decouvrir-b" onClick={() => ouvrirDecouverte()}>
+                  <span className="db-i"><Ico n="pouce" t={20} /></span>
+                  <span className="db-t"><b>Les découvrir un par un</b><i>{'Les photos, puis votre avis d’un geste.'}</i></span>
+                  <span className="db-f"><Ico n="fleche" t={18} /></span>
+                </button>
+              )}
               {neufs.length ? <Liste biens={neufs} onOuvrir={ouvrirBien} crit={crit} vide="" /> : (
                 <div className="vide-neuf">
                   <span className="vn-ic"><Ico n="loupe" t={22} /></span>
@@ -1984,11 +2118,12 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           sous les fiches et les fenêtres (z-index plus bas que la feuille). */}
       {vue !== 'accueil' && !ouvert && (
         <button type="button" className={'retour-flot' + (descendu ? ' vu' : '')} onClick={() => aller('accueil')}
+          inert={decouverte ? true : undefined}
           aria-label="Retour à l'accueil" tabIndex={descendu ? 0 : -1}>
           <Ico n="retour" t={16} /><span>Accueil</span>
         </button>
       )}
-      <nav className="barre-bas" aria-label="Menu">
+      <nav className="barre-bas" aria-label="Menu" inert={decouverte ? true : undefined}>
         {ONGLETS.filter(o => !o.pc).map(o => {
           const n = compte[o.id] || 0;
           /* La carte est une façon de voir « Consultés » : l'onglet reste allumé. */
@@ -2009,7 +2144,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
       {/* La proposition d'écran d'accueil. Elle ne s'affiche jamais par-dessus
           une fiche ouverte : on ne coupe pas la parole. */}
-      {ecran.appareil && ecran.auto && ecran.visible && !ouvert && vue !== 'carte' && (
+      {ecran.appareil && ecran.auto && ecran.visible && !ouvert && !decouverte && vue !== 'carte' && (
         <div className="ecran">
           <div className="ecran-dedans">
             <span className="ecran-sceau"><Ico n={dansUneAppli ? 'partage' : 'maison'} t={19} /></span>
@@ -2031,6 +2166,31 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         </div>
       )}
 
+      {/* « Découvrir » (V3.44) : par-dessus la page (z-index 56), sous la
+          feuille (61) — la signature du mandat, « Ce n'est pas parti » et la
+          présentation passent devant. */}
+      {decouverte && (
+        <Decouverte key={decouverte.cle} biens={biens} depart={decouverte.ids}
+          pastilles={PASTILLES} Ico={Ico} useEchap={useEchap}
+          note={id => { const b = biens.find(x => x.id === id); return b ? correspondance(b, crit)?.note ?? null : null; }}
+          quand={id => { const q = depuis(biens.find(x => x.id === id)?.envoyeLe); return q ? `Nouveau · ${q}` : 'Nouveau'; }}
+          fiche={(id, actions) => {
+            const b = biens.find(x => x.id === id);
+            return b ? <FicheBien b={b} client={client} crit={crit} onFermer={actions.onRetour}
+              onAvis={enregistrerAvis} onPartager={partagerBien} decouverte={actions} /> : null;
+          }}
+          /* « Voir le bien » : la ligne « a ouvert la fiche » du conseiller,
+             sans marquer le bien vu (il reste dans ses nouveautés). */
+          onVoir={id => { void envoyer('vue', { bien_id: id, apercu: true }); }}
+          enregistrer={enregistrerDecouverte}
+          visiteBloquee={visiteBloquee}
+          demanderVisite={(id, commentaire) => {
+            const b = biensRef.current.find(x => x.id === id);
+            if (b) void enregistrerAvis(b, 'souhaite_visiter', commentaire);
+          }}
+          onFermer={fermerDecouverte} />
+      )}
+
       <div className={'voile' + (ouvert ? ' on' : '')} onClick={fermer} />
       <div className={'feuille' + (ouvert ? ' on' : '') + (variante ? ' ' + variante : '')}
         role="dialog" aria-modal="true">
@@ -2046,7 +2206,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite, onDecouvrir, nbDecouvrir }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   /* La dernière recherche : son chiffre à elle, et son moment (« aujourd'hui
      à 14 h 34 »). C'est ce que « Aujourd'hui pour vous » doit montrer. */
@@ -2084,7 +2244,9 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         </div>
         <div className="auj-g">
           {/* Rien de neuf : pas de « 0 », on dit qu'il est à jour. */}
-          <button type="button" className={'auj-c c-neuf' + (neufs.length ? ' on' : ' ajour')} onClick={() => aller('neufs')}>
+          {/* Des nouveautés : « Découvrir » s'ouvre directement (V3.44). */}
+          <button type="button" className={'auj-c c-neuf' + (neufs.length ? ' on' : ' ajour')}
+            onClick={() => (neufs.length && onDecouvrir ? onDecouvrir() : aller('neufs'))}>
             <span className="auj-ic"><Ico n={neufs.length ? 'etoile' : 'check'} t={17} /></span>
             <span className="auj-tx">
               {neufs.length
@@ -2173,7 +2335,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
         <div className="acc-g">
           {neufs.length > 0
             ? <>
-              <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} />
+              <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} onDecouvrir={onDecouvrir} nbDecouvrir={nbDecouvrir} />
               {/* Le même récapitulatif que dans « Rien de nouveau », en une
                   ligne : il y en a toujours un, et un seul, sur l'accueil. */}
               {!!passage?.lues && <RecapRecherche aller={aller} />}
@@ -2260,7 +2422,7 @@ function Accueil({ client, crit, neufs, vus, donnes, passage, semaine, maxLues, 
 
 /* Les nouveaux biens, en grand : la photo, le prix, et ce qui compte. Sur
    téléphone ils défilent au doigt ; sur ordinateur, deux par ligne. */
-function CarrouselNeufs({ biens, crit, onOuvrir, aller }: { biens: Bien[]; crit: Criteres; onOuvrir: (b: Bien) => void; aller: (v: string) => void }) {
+function CarrouselNeufs({ biens, crit, onOuvrir, aller, onDecouvrir, nbDecouvrir = 0 }: { biens: Bien[]; crit: Criteres; onOuvrir: (b: Bien) => void; aller: (v: string) => void; onDecouvrir?: () => void; nbDecouvrir?: number }) {
   return (
     <section className="bloc-n">
       <div className="bloc-h">
@@ -2296,6 +2458,14 @@ function CarrouselNeufs({ biens, crit, onOuvrir, aller }: { biens: Bien[]; crit:
           );
         })}
       </div>
+      {/* V3.44 : un bien à la fois, les photos puis l'avis d'un geste. Une
+          carte touchée y mène aussi, en commençant par elle. */}
+      {onDecouvrir && (
+        <button type="button" className="cn-decouvrir" onClick={onDecouvrir}>
+          <span>{nbDecouvrir > 1 ? 'Les découvrir un par un' : 'Le découvrir'}</span>
+          <Ico n="fleche" t={17} />
+        </button>
+      )}
     </section>
   );
 }
@@ -3797,7 +3967,13 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
   );
 }
 
-function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite }: any) {
+/* `decouverte` (V3.44) : la fiche ouverte depuis « Découvrir » (« Voir le
+   bien »). Même contenu, avec la galerie qui glisse, un « Retour » vers la
+   carte, et en bas trois grands boutons de réponse à la place de la barre
+   « Qu'en pensez-vous ? ». `colonne` : sur ordinateur, elle prend la colonne
+   de droite — les photos restent à gauche, la galerie n'est pas répétée. */
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte }: any) {
+  const dec = decouverte as ActionsFiche | undefined;
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
      de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
@@ -3931,12 +4107,21 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
 
   return (
     <>
-      <div className="barre-retour">
-        <button type="button" className="retour-f" onClick={onFermer} aria-label="Revenir à la liste">
-          <Ico n="retour" t={18} />
-        </button>
-      </div>
-      <Galerie photos={photos} onAgrandir={setPlein} />
+      {dec ? (dec.colonne ? null : (
+        <div className="barre-retour">
+          <button type="button" className="dec-f-retour" onClick={dec.onRetour}>
+            <Ico n="retour" t={18} /><span>Retour</span>
+          </button>
+        </div>
+      )) : (
+        <div className="barre-retour">
+          <button type="button" className="retour-f" onClick={onFermer} aria-label="Revenir à la liste">
+            <Ico n="retour" t={18} />
+          </button>
+        </div>
+      )}
+      {dec ? (dec.colonne ? null : <GalerieGlisse photos={photos} variante="fiche" onTouche={setPlein} />)
+        : <Galerie photos={photos} onAgrandir={setPlein} />}
       {plein !== null && (
         <PleinEcran photos={photos} depart={plein} onFermer={() => setPlein(null)} />
       )}
@@ -3950,7 +4135,14 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
       {bientot && <ModaleBientot onFermer={() => setBientot(false)}
         onPartager={() => { setBientot(false); setPartage(true); }} />}
       {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
-      <div className="fiche-droite" data-barre={!envoye ? '1' : undefined}>
+      <div className="fiche-droite" data-barre={!envoye && !dec ? '1' : undefined}>
+      {dec?.colonne && (
+        <div className="dec-f-haut">
+          <button type="button" className="dec-f-retour col" onClick={dec.onRetour}>
+            <Ico n="retour" t={18} /><span>Retour</span>
+          </button>
+        </div>
+      )}
       <div className="bandeau-prix">
         <span className="p tab">{EUR(b.prix)}</span>
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
@@ -4172,7 +4364,22 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           voit dès la première seconde, il n'a plus à descendre jusqu'au bout
           de la fiche pour donner son avis. Une fois le retour parti, elle
           disparaît pour de bon sur ce bien. */}
-      {!envoye && (
+      {/* Depuis « Découvrir » : trois grands boutons, qui ramènent à l'écran
+          des nouveautés pour la question qui suit (V3.44). */}
+      {dec && !envoye && (
+        <div className="dec-f-bas">
+          <button type="button" className="non" onClick={() => dec.onRepondre('refuse')}>
+            <Ico n="croix" t={20} /><span>Pas pour moi</span>
+          </button>
+          <button type="button" className="vis" onClick={() => dec.onRepondre('souhaite_visiter')}>
+            <Ico n="calendrier" t={20} /><span>Je veux visiter</span>
+          </button>
+          <button type="button" className="oui" onClick={() => dec.onRepondre('interesse')}>
+            <Ico n="check" t={20} /><span>Ça me plaît</span>
+          </button>
+        </div>
+      )}
+      {!envoye && !dec && (
         <div className="rail-avis" style={hBarre ? { height: hBarre } : undefined}>
           {panneau && (
             <button type="button" className="voile-avis" aria-label="Fermer"
@@ -7155,6 +7362,21 @@ button.auj-c:active{transform:scale(.96)}
   animation:cn-jauge 1.1s cubic-bezier(.16,1,.3,1) .4s backwards}
 @keyframes cn-jauge{from{width:0}}
 .cn-j b{font-size:11.5px; font-weight:700; color:var(--or-fonce); white-space:nowrap}
+/* — « Les découvrir un par un » (V3.44) : le chemin vers « Découvrir ». Sur
+   l'accueil, sous les nouveaux biens ; en tête de « Nouveautés ». — */
+.cn-decouvrir{margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+  min-height:52px; padding:0 22px; border-radius:16px; background:var(--or); color:#1a2332;
+  font-size:15.5px; font-weight:800; box-shadow:0 12px 24px -14px rgba(169,130,47,.9)}
+@media(min-width:760px){ .cn-decouvrir{width:auto; display:inline-flex} }
+.decouvrir-b{width:100%; display:flex; align-items:center; gap:12px; padding:14px 16px; margin-bottom:14px;
+  border-radius:18px; background:var(--carte); border:1px solid var(--or-trait); text-align:left;
+  color:var(--encre); box-shadow:var(--ombre)}
+.db-i{flex:0 0 auto; width:44px; height:44px; border-radius:14px; display:flex; align-items:center;
+  justify-content:center; background:var(--or); color:#1a2332}
+.db-t{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px}
+.db-t b{font-family:'Plus Jakarta Sans',sans-serif; font-size:15.5px; font-weight:800}
+.db-t i{font-style:normal; font-size:13px; color:var(--plume)}
+.db-f{flex:0 0 auto; display:flex; color:var(--or-fonce)}
 
 .calme{background:var(--carte); border:1px solid var(--trait); border-radius:22px; padding:18px;
   display:flex; flex-direction:column; gap:13px}
