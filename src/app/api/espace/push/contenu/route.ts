@@ -118,7 +118,9 @@ export async function POST(req: NextRequest) {
        réparti sur plusieurs, on n'en choisit aucune : le client arrive sur
        celle où il y a le plus récent, et le sélecteur lui montre le reste. */
     const memeRecherche = n > 0 && liste.every((b) => b.recherche_id === liste[0].recherche_id);
-    const vers = memeRecherche ? `${lien}?r=${liste[0].recherche_id}` : lien;
+    /* V3.44 : « vue=neufs » ouvre directement « Découvrir », les nouveaux
+       biens un par un. Un seul bien : « bien= » y mène aussi, sur lui. */
+    const vers = memeRecherche ? `${lien}?r=${liste[0].recherche_id}&vue=neufs` : `${lien}?vue=neufs`;
 
     /* Il a déjà tout ouvert entre l'envoi et maintenant. Rare, mais ça arrive :
        on ne lui annonce pas un bien qu'il vient de lire. */
