@@ -13,6 +13,7 @@
    Isomorphe : aucune dépendance au navigateur. */
 
 import type { TypeContact } from '@/lib/contacts';
+import { lireMontant } from '@/lib/montant';
 
 export type DemandeSite = {
   id: string;
@@ -390,7 +391,75 @@ export type PreRemplissage = {
   types: TypeContact[];
   source_detail: string;
   notes: string;
+  /* V3.50 : les critères d'une demande « Accompagnement acheteur », dans
+     les clés du formulaire de critères (CritForm) ; seulement ceux qu'on
+     sait lire sans se tromper. */
+  criteres?: CriteresDemande;
 };
+
+/* ── Les critères d'une demande d'accompagnement (V3.50) ───────────────────
+   Avant, « Créer le contact » ouvrait une recherche vide : l'acheteur
+   devenait « non filtré », ses réponses n'étaient que dans les notes. On
+   reprend ce qui se lit sans risque d'erreur :
+     · le type (appartement, maison, terrain : les mêmes mots que le CRM) ;
+     · le budget, la surface (un nombre, ou « de … à … ») ;
+     · les pièces (le minimum), le financement, le délai (sauf « plus de 6
+       mois », que le CRM n'a pas), l'extérieur souhaité, pas de RDC ou
+       dernier étage.
+   Le secteur reste dans les notes : écrit librement sur le site, il ne
+   correspond pas forcément aux secteurs de la veille. */
+export type CriteresDemande = {
+  types_bien?: string[]; budget_min?: string; budget_max?: string; surface_min?: string; surface_max?: string;
+  nb_pieces_min?: string; urgence?: string; financement?: string;
+  balcon?: boolean; terrasse?: boolean; jardin?: boolean; rdc_exclu?: boolean; dernier_etage?: boolean;
+  exigences?: Record<string, 'souhaite'>;
+};
+const TYPE_CRM: Record<string, string> = { appartement: 'Appartement', maison: 'Maison', terrain: 'Terrain' };
+const FINANCEMENT_CRM: Record<string, string> = { pret_obtenu: 'pret_valide', pret_en_cours: 'pret_en_cours', comptant: 'cash', non_commence: 'a_monter' };
+const URGENCE_CRM: Record<string, string> = { urgent: 'immediate', '1-3mois': '3_mois', '3-6mois': '6_mois' };
+/* « 350000 - 400000 », « jusqu'à 1 100 000 », « 480k » : un ou deux nombres
+   plausibles, sinon rien (une phrase qu'on ne comprend pas reste en notes). */
+function bornes(v: string | null | undefined, lire: (t: string) => number | null, mini: number, maxi: number): [number | null, number | null] | null {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  const parties = t.split(/\s*[-–à]\s*(?=\d)|\s+-\s+/).filter(p => /\d/.test(p));
+  const nombres = parties.map(lire);
+  if (!nombres.length || nombres.length > 2 || nombres.some(n => n === null || n < mini || n > maxi)) return null;
+  const l = (nombres as number[]).map(n => Math.round(n)).sort((a, b) => a - b);
+  return l.length === 1 ? [null, l[0]] : [l[0], l[1]];
+}
+const entier = (t: string) => (/^\d+([.,]\d+)?$/.test(t.replace(/\s|m²|m2/gi, '')) ? Number(t.replace(/\s|m²|m2/gi, '').replace(',', '.')) : null);
+export function criteresDemande(d: DemandeSite): CriteresDemande | undefined {
+  if (cleCategorie(d) !== 'mandat_recherche') return undefined;
+  const c = lireMessage(d.message).champs;
+  const out: CriteresDemande = {};
+  const type = TYPE_CRM[String(d.property_type || '').trim().toLowerCase()];
+  if (type) out.types_bien = [type];
+  const budget = bornes(d.budget, lireMontant, 10_000, 100_000_000);
+  if (budget) { if (budget[0] !== null) out.budget_min = String(budget[0]); if (budget[1] !== null) out.budget_max = String(budget[1]); }
+  /* Une surface seule est un minimum ; « 30 à 35 », une fourchette. */
+  const surf = bornes(d.desired_surface, entier, 9, 2000);
+  if (surf) {
+    if (surf[0] === null && surf[1] !== null) out.surface_min = String(surf[1]);
+    else if (surf[0] !== null && surf[1] !== null) { out.surface_min = String(surf[0]); out.surface_max = String(surf[1]); }
+  }
+  const pieces = /^([1-9])\+?$/.exec(trouver(c, 'pieces').trim());
+  if (pieces) out.nb_pieces_min = pieces[1];
+  const fin = FINANCEMENT_CRM[trouver(c, 'financement').trim().toLowerCase()];
+  if (fin) out.financement = fin;
+  const urg = URGENCE_CRM[String(d.timeline || '').trim().toLowerCase()];
+  if (urg) out.urgence = urg;
+  const ext = trouver(c, 'exterieur').toLowerCase().split(/[\s,;/]+/).filter((x): x is 'balcon' | 'terrasse' | 'jardin' => x === 'balcon' || x === 'terrasse' || x === 'jardin');
+  if (ext.length) {
+    out.exigences = {};
+    for (const k of ext) { out[k] = true; out.exigences[k] = 'souhaite'; }
+  }
+  const etage = trouver(c, 'etage').trim().toLowerCase();
+  if (etage === 'tout_sauf_rdc') out.rdc_exclu = true;
+  if (etage === 'dernier') out.dernier_etage = true;
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function preRemplissage(d: DemandeSite): PreRemplissage {
   const cat = categorieDe(d.form_type);
   const p = presenter(d);
@@ -410,6 +479,7 @@ export function preRemplissage(d: DemandeSite): PreRemplissage {
     types: cat.type ? [cat.type] : [],
     source_detail: `Formulaire « ${cat.lib} »`,
     notes: lignes.join('\n'),
+    criteres: criteresDemande(d),
   };
 }
 

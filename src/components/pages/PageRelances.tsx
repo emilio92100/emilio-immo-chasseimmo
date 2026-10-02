@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { delaiRelance, echeanceDans } from '@/lib/relances';
+import { verifie } from '@/lib/ecritures';
 import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOngletBien } from '@/lib/intentions';
 import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } from '@/lib/alertes-rappro';
 import ChoixDate from '@/components/shared/ChoixDate';
@@ -147,9 +148,11 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     setLiens(m);
   }
 
+  /* V3.50 : chaque écriture doit toucher sa relance (`.select('id')`) : sur
+     une session expirée, la base fermée ne modifiait rien sans un mot, et
+     « C'est fait » avait l'air enregistré. L'échec s'affiche en rouge. */
   async function fait(r: any) {
-    const { error } = await supabase.from('relances').update({ statut: 'cloturee' }).eq('id', r.id);
-    if (error) { alert(`La relance n'a pas pu être clôturée.\n\n${error.message}`); return; }
+    if (!(await verifie('La relance clôturée', supabase.from('relances').update({ statut: 'cloturee' }).eq('id', r.id).select('id'), { ligne: true }))) return;
     setPartantes(p => ({ ...p, [r.id]: true }));
     setAnnulable({ id: r.id, nom: r.clients ? `${r.clients.prenom} ${r.clients.nom}`.trim() : 'la relance' });
     if (minuterie.current) clearTimeout(minuterie.current);
@@ -159,8 +162,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
 
   async function annuler() {
     if (!annulable) return;
-    const { error } = await supabase.from('relances').update({ statut: 'en_attente' }).eq('id', annulable.id);
-    if (error) { alert(`La relance n'a pas pu être rétablie.\n\n${error.message}`); return; }
+    if (!(await verifie('La relance rétablie', supabase.from('relances').update({ statut: 'en_attente' }).eq('id', annulable.id).select('id'), { ligne: true }))) return;
     setAnnulable(null);
     setPartantes(p => { const c = { ...p }; delete c[annulable.id]; return c; });
     charger();
@@ -176,9 +178,8 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
 
   async function reporter(id: string, jour: string) {
     if (!jour) return;
-    const { error } = await supabase.from('relances')
-      .update({ date_echeance: new Date(`${jour}T12:00:00`).toISOString() }).eq('id', id);
-    if (error) { alert(`La relance n'a pas pu être reportée.\n\n${error.message}`); return; }
+    if (!(await verifie('Le report de la relance', supabase.from('relances')
+      .update({ date_echeance: new Date(`${jour}T12:00:00`).toISOString() }).eq('id', id).select('id'), { ligne: true }))) return;
     setReport(null);
     charger();
   }

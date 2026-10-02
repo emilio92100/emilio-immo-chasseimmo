@@ -37,12 +37,20 @@ export function typesDe(c: AvecTypes | null | undefined): TypeContact[] {
 }
 export const estAcheteur = (c: AvecTypes | null | undefined) => typesDe(c).includes('acheteur');
 export const estArchive = (c: AvecTypes | null | undefined) => c?.archive === true;
+/* V3.50 : à qui parlent les automatismes d'achat (point automatique, alertes
+   de rapprochement) : un acheteur, pas archivé. Sans la colonne des types
+   (avant le SQL) ou vide, un contact reste un acheteur, comme avant. */
+export const acheteurEnCours = (c: AvecTypes | null | undefined) => estAcheteur(c) && !estArchive(c);
 /* Les contacts « particuliers » (on les suit pour un achat ou une vente)
    par opposition aux professionnels. */
 export const PARTICULIERS: TypeContact[] = ['acheteur', 'vendeur', 'vendeur_signe', 'proprietaire'];
 /* Vend, a vendu ou possède un bien : ses biens, sa société s'affichent (V3.47). */
 export const aUnBien = (t: TypeContact[]) => t.includes('vendeur') || t.includes('vendeur_signe') || t.includes('proprietaire');
 export const estPro = (types: TypeContact[]) => !types.some(t => PARTICULIERS.includes(t));
+/* V3.50 : « Revente possible » (bien_actuel_a_vendre). Un vendeur signé a
+   vendu : la case, restée cochée d'avant sa vente, ne veut plus rien dire. */
+export const reventePossible = (c: (AvecTypes & { bien_actuel_a_vendre?: unknown }) | null | undefined) =>
+  !!c?.bien_actuel_a_vendre && !typesDe(c).includes('vendeur_signe');
 
 /* Un acheteur « non filtré » : sa recherche n'a encore aucun critère. On lit
    les colonnes fusionnées sur le contact par la liste (la recherche

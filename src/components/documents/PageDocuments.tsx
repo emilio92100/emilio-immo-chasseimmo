@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
-import { CATEGORIES, MODELES, aujourdhui, jourLong, modele, electronique, type Categorie, type Statut } from '@/lib/actes';
+import { CATEGORIES, MODELES, aujourdhui, jourLong, modele, electronique, type Categorie, type Donnees, type Statut } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import EditeurDocument from './EditeurDocument';
 import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat } from '@/lib/coherence';
@@ -13,12 +13,14 @@ import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
 import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProjet';
 import { Pastille } from './DocumentsDuClient';
-import { noterAnnulation, registreAbsent } from '@/lib/registre';
+import { RAISONS_FIN, noterAnnulation, registreAbsent, type RaisonFin } from '@/lib/registre';
+import { jourParis } from '@/lib/mandat';
 import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
 import type { BienVente } from '@/lib/biens-vente';
 import SuiteMandatBien from './SuiteMandatBien';
 import {
-  apresAnnulation, apresSignature, colonnesListe, deposer, identiteDuJour, libStatut, lienFichier, mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
+  apresAnnulation, apresSignature, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, deposer, etatMandatEnLigne, identiteDuJour, libStatut, lienFichier,
+  mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
 } from './outils';
 import s from './Documents.module.css';
@@ -44,9 +46,15 @@ type Item = {
   mandat?: MandatRecherche;
   /* Un courrier : « À envoyer », « Envoyé ». */
   courrier?: boolean;
+  /* V3.50 : un mandat en ligne signé par une partie seulement : « En
+     signature », comme sur la fiche client. */
+  enSignature?: boolean;
 };
 
 const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle', delegations: 'accord' };
+
+/* V3.50 : le document a bougé depuis l'ouverture de la page. */
+const CHANGE_ENTRE_TEMPS = 'Ce document a changé entre-temps (signé ou modifié ailleurs). Recharge la page pour voir où il en est.';
 
 function itemDoc(d: DocumentRow): Item {
   return {
@@ -58,11 +66,15 @@ function itemDoc(d: DocumentRow): Item {
 }
 function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
   const nom = [x.mandant?.prenom, x.mandant?.nom].filter(Boolean).join(' ') || (x.client_id ? noms[x.client_id] : '') || 'Client';
+  /* V3.50 : signé par une partie seulement, il attend encore une signature
+     (il passait « Signé » ici, « En attente de signature » sur la fiche). */
+  const statut = etatMandatEnLigne(x);
   return {
-    cle: 'r-' + x.id, categorie: 'mandats_recherche',
-    statut: x.retracte_le ? 'annule' : x.statut === 'signe' || x.statut === 'partiel' ? 'signe' : 'pret',
-    titre: `Mandat de recherche · ${nom}`, sous: [x.numero ? `N° ${x.numero}` : '', 'signé en ligne', x.statut === 'partiel' ? 'une signature attendue' : ''].filter(Boolean).join(' · '),
+    cle: 'r-' + x.id, categorie: 'mandats_recherche', statut,
+    titre: `Mandat de recherche · ${nom}`,
+    sous: [x.numero ? `N° ${x.numero}` : '', x.statut === 'partiel' ? 'en ligne, une signature attendue' : x.statut === 'en_cours' ? 'en ligne, signature en cours' : 'signé en ligne'].filter(Boolean).join(' · '),
     badge: 'En ligne', date: x.retracte_le || x.signe_le || x.created_at, mandat: x,
+    enSignature: !x.retracte_le && (x.statut === 'partiel' || x.statut === 'en_cours'),
   };
 }
 
@@ -77,11 +89,11 @@ function Ligne({ it, on, onClick }: { it: Item; on: boolean; onClick: () => void
         </span>
         <span className={s.ligneS}>{it.sous || '—'}</span>
         <span className={s.ligneMobile} style={{ display: 'none', marginTop: 6, gap: 8, alignItems: 'center' }}>
-          <Pastille statut={it.statut} courrier={it.courrier} /><span style={{ fontSize: 11.5, color: '#94a3b8' }}>{quand(it.date)}</span>
+          <Pastille statut={it.statut} courrier={it.courrier} enSignature={it.enSignature} /><span style={{ fontSize: 11.5, color: '#94a3b8' }}>{quand(it.date)}</span>
         </span>
       </span>
       <span className={s.ligneMeta}>
-        <Pastille statut={it.statut} courrier={it.courrier} />
+        <Pastille statut={it.statut} courrier={it.courrier} enSignature={it.enSignature} />
         <span>{quand(it.date)}</span>
       </span>
     </button>
@@ -93,7 +105,7 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
   const dejaSigne = doc.statut === 'signe';
   const m = modele(doc.modele);
   const courrier = !!m?.courrier;
-  const [jour, setJour] = useState(doc.signe_le ? doc.signe_le.slice(0, 10) : aujourdhui());
+  const [jour, setJour] = useState(doc.signe_le ? jourParis(doc.signe_le) : aujourdhui());
   const [fichier, setFichier] = useState<File | null>(null);
   const [travail, setTravail] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -108,10 +120,12 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
         const ext = (fichier.name.split('.').pop() || '').toLowerCase() || (fichier.type === 'application/pdf' ? 'pdf' : 'jpg');
         chemin = await deposer(doc.id, 'signe', fichier, ext);
       }
+      /* V3.50 : seulement s'il est toujours dans l'état que la page montre. */
       const { data, error } = await supabase.from('documents').update({
         statut: 'signe', signe_le: `${jour}T12:00:00Z`, signe_chemin: chemin || null, updated_at: new Date().toISOString(),
-      }).eq('id', doc.id).select().single();
+      }).eq('id', doc.id).eq('statut', doc.statut).select().maybeSingle();
       if (error) throw new Error(error.message);
+      if (!data) throw new Error(CHANGE_ENTRE_TEMPS.charAt(0).toLowerCase() + CHANGE_ENTRE_TEMPS.slice(1));
       /* Un mandat de recherche papier remplit le bloc Mandat de sa recherche
          (une seule fois : à la première signature). */
       if (!dejaSigne && m) {
@@ -137,7 +151,9 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
                 ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. Le bloc Mandat de sa recherche se remplit tout seul : son espace ne lui proposera plus de signer en ligne.'
                 : m?.surRecherche && doc.recherche_id
                   ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. S’il change la fin du mandat ou les honoraires, sa recherche se met à jour toute seule.'
-                  : 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde : il reste ici, rangé avec le document.'}</p>
+                  : doc.modele === 'avenant_vente'
+                    ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. S’il change le prix, les honoraires ou la fin du mandat, la fiche du bien se met à jour toute seule.'
+                    : 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde : il reste ici, rangé avec le document.'}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
         </div>
@@ -164,6 +180,41 @@ function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: (
   );
 }
 
+/* ── « Marquer annulé » un mandat signé : pourquoi il s'arrête (V3.50) ──
+   Le registre des mandats notait toujours « Annulé », même pour une
+   rétractation ou une fin de mandat. On le demande, et le registre note
+   Rétracté, Fin du mandat ou Annulé. */
+const IC_RAISON: Record<RaisonFin, string> = { retracte: 'retour', fin: 'drapeau', annule: 'croix' };
+function FenetreFinMandat({ vide, onFermer, onChoix }: { vide: boolean; onFermer: () => void; onChoix: (r: RaisonFin) => void }) {
+  const [raison, setRaison] = useState<RaisonFin | null>(null);
+  return (
+    <div className={s.fenetre} onClick={e => { if (e.target === e.currentTarget) onFermer(); }}>
+      <div className={s.fenetreIn} role="dialog" aria-modal="true" aria-label="Le mandat s’arrête">
+        <div className={s.fenTete}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <h3>Le mandat s’arrête : pourquoi ?</h3>
+            <p>Le registre des mandats le note tel quel. Une fois noté, ça ne se modifie plus.</p>
+          </div>
+          <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer}><Croix /></button>
+        </div>
+        <div className={s.fenCorps}>
+          {(Object.keys(RAISONS_FIN) as RaisonFin[]).map(k => (
+            <button key={k} type="button" className={`${s.choix} ${raison === k ? s.choixOn : ''}`} aria-pressed={raison === k} onClick={() => setRaison(k)}>
+              <span className={`${s.suiteIc} ${raison === k ? s.suiteIcOn : ''}`}><Ic n={IC_RAISON[k]} t={17} /></span>
+              <span><b>{RAISONS_FIN[k].l}</b><small>{RAISONS_FIN[k].aide}</small></span>
+            </button>
+          ))}
+          <div className={s.note}>{`Il reste dans la liste, avec ses fichiers, marqué « Annulé ».${vide ? ' Le bloc Mandat de sa recherche sera vidé.' : ''}`}</div>
+        </div>
+        <div className={s.fenPied}>
+          <button type="button" className={s.btn} onClick={onFermer}>Pas maintenant</button>
+          <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!raison} onClick={() => { if (raison) onChoix(raison); }}><Croix t={15} />Marquer annulé</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── La fiche d'un document ── */
 /* Un mandat de vente annulé ou supprimé dont le bien dépend encore (V3.42). */
 type SuiteBien = { bien: BienVente; doc: DocumentRow; etaitSigne: boolean; supprime: boolean };
@@ -177,6 +228,25 @@ async function suiteBienDe(d: DocumentRow, etaitSigne: boolean, supprime: boolea
     const bien = await bienDuMandat(supabase, d);
     return bien && bienConcerne(bien, d, etaitSigne) ? { bien, doc: d, etaitSigne, supprime } : null;
   } catch { return null; }
+}
+
+/* La question avant d'annuler un document (hors mandat signé : sa fenêtre). */
+function questionAnnuler(d: DocumentRow, m: ReturnType<typeof modele>): string {
+  if (d.statut === 'signe') {
+    /* V3.50 : un avenant de recherche signé avait changé la fin du mandat ou
+       les honoraires sur la recherche ; l'annuler ne les remet pas. */
+    const avenantR = d.modele === 'avenant_recherche' && !!d.recherche_id
+      ? '\n\nLa fin du mandat et les honoraires que cet avenant avait changés sur la recherche ne reviennent pas tout seuls : remets-les à la main dans le bloc Mandat de la fiche client, si besoin.'
+      : d.modele === 'avenant_vente'
+        ? '\n\nLe prix, les honoraires et la fin du mandat que cet avenant avait reportés sur la fiche du bien ne reviennent pas tout seuls : remets-les à la main depuis la fiche du bien, si besoin.'
+        : '';
+    return `Marquer ce document comme annulé ?\n\nIl reste dans la liste, avec ses fichiers.${m?.surRecherche && m.numero && d.recherche_id ? '\n\nLe bloc Mandat de sa recherche sera vidé.' : ''}${avenantR}`;
+  }
+  /* V3.50 : la signature en cours s'arrête avec. */
+  const enSignature = d.signature
+    ? `\n\nLa signature ${d.signature.mode === 'sur_place' ? 'sur place' : 'en ligne'} en cours s’arrête : les liens ne fonctionneront plus. Personne n’est prévenu par e-mail : si quelqu’un a déjà signé, dis-le-lui toi-même.`
+    : '';
+  return `Annuler ce document ?\n\nIl reste dans la liste, avec son PDF, marqué « Annulé ».${enSignature}`;
 }
 
 function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver, onSuiteBien }: {
@@ -203,6 +273,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   /* « Envoyer le projet » (V3.40) : la fenêtre, puis ce qu'elle a fait. */
   const [projet, setProjet] = useState(false);
   const [fait, setFait] = useState<{ t: string; ok: boolean } | null>(null);
+  /* « Marquer annulé » un mandat signé : la raison d'abord (V3.50). */
+  const [finMandat, setFinMandat] = useState(false);
   const d = it.doc, x = it.mandat;
   const m = d ? modele(d.modele) : null;
   const courrier = !!m?.courrier;
@@ -214,10 +286,10 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     && (c.donnees as Record<string, unknown>).sourceId === d.id && (c.donnees as Record<string, unknown>).echeance === le) : undefined);
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace && !projet) onFermer(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace && !projet && !finMandat) onFermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onFermer, signe, surPlace, projet]);
+  }, [onFermer, signe, surPlace, projet, finMandat]);
 
   /* Relu après la signature sur place : le document a pu passer « Signé ». */
   async function recharger() {
@@ -246,22 +318,45 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     setTravail('');
   }
 
-  async function changer(maj: Record<string, unknown>, question: string) {
-    if (!d || !confirm(question)) return;
+  /* `question` : null quand la fenêtre de la raison a déjà demandé. */
+  async function changer(maj: Record<string, unknown>, question: string | null, o: { raison?: RaisonFin } = {}) {
+    if (!d || (question !== null && !confirm(question))) return;
     setTravail('etat'); setErreur('');
-    const { data, error } = await supabase.from('documents').update({ ...maj, updated_at: new Date().toISOString() }).eq('id', d.id).select().single();
+    /* V3.50 : relu d'abord. La page ouverte depuis le matin pouvait annuler
+       un document signé en ligne entre-temps, et le registre notait « Sans
+       suite : jamais signé » juste après « Signé ». */
+    const { data: frais, error: eF } = await supabase.from('documents').select('*').eq('id', d.id).maybeSingle();
+    if (eF) { setTravail(''); setErreur('Le document n’a pas pu être relu : ' + eF.message); return; }
+    const aJour = frais as DocumentRow | null;
+    if (!aJour || aJour.statut !== d.statut) { setTravail(''); setErreur(CHANGE_ENTRE_TEMPS); return; }
+    /* V3.50 : une signature en ligne ou sur place en cours s'arrête d'abord :
+       les liens ne marchent plus, et le Suivi du client le dit. Personne
+       n'est prévenu par e-mail. */
+    let signatureArretee = false;
+    if (maj.statut === 'annule' && aJour.statut === 'pret' && aJour.signature) {
+      try { await appelSignature({ action: 'annuler', id: d.id, pourquoi: 'annulation' }); signatureArretee = true; } catch (e) {
+        setTravail('');
+        setErreur('La signature en cours n’a pas pu être arrêtée, le document n’est pas annulé : ' + (e as Error).message);
+        return;
+      }
+    }
+    /* Seulement s'il est toujours dans l'état que la page montre. */
+    const { data, error } = await supabase.from('documents').update({ ...maj, updated_at: new Date().toISOString() }).eq('id', d.id).eq('statut', d.statut).select().maybeSingle();
     setTravail('');
-    if (error) { setErreur('Impossible : ' + error.message); return; }
+    /* La signature a déjà été arrêtée : il faut le savoir pour la relancer. */
+    const arretee = signatureArretee ? ' La signature en cours, elle, a bien été arrêtée : relance-la si le document doit rester.' : '';
+    if (error) { setErreur('Impossible : ' + error.message + arretee); return; }
+    if (!data) { setErreur(CHANGE_ENTRE_TEMPS + arretee); return; }
     /* Un mandat de recherche papier signé puis annulé : le bloc Mandat de
        sa recherche se vide. */
     if (maj.statut === 'annule' && m) {
-      const pb = await apresAnnulation(d, m);
+      const pb = await apresAnnulation(aJour, m, o.raison);
       if (pb) setErreur(pb);
     }
     onMaj(data as DocumentRow);
     /* Un mandat de vente (V3.42) : son bien est-il encore « En vente » avec lui ? */
     if (maj.statut === 'annule') {
-      const suite = await suiteBienDe(d, d.statut === 'signe', false);
+      const suite = await suiteBienDe(aJour, aJour.statut === 'signe', false);
       if (suite) onSuiteBien(suite);
     }
   }
@@ -310,7 +405,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     }
   }
 
-  const echeances = d && m?.echeances && d.statut === 'signe' && d.signe_le ? m.echeances(d.donnees, d.signe_le.slice(0, 10)) : [];
+  /* V3.50 : le jour de la signature à l'heure de Paris (signé en ligne la
+     nuit, l'heure universelle donnait la veille de la fin notée sur le bien). */
+  const echeances = d && m?.echeances && d.statut === 'signe' && d.signe_le ? m.echeances(d.donnees, jourParis(d.signe_le)) : [];
   const auj = aujourdhui();
   const prochaine = echeances.find(e => e.le >= auj);
 
@@ -323,7 +420,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
           <div style={{ minWidth: 0 }}>
             <h3>{it.titre}</h3>
             <p>{it.sous || (m ? m.titre : '')}</p>
-            <div style={{ marginTop: 8 }}><Pastille statut={it.statut} courrier={courrier} /></div>
+            <div style={{ marginTop: 8 }}><Pastille statut={it.statut} courrier={courrier} enSignature={it.enSignature} /></div>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer}><Croix /></button>
         </div>
@@ -391,10 +488,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
               )}
               {(d.statut === 'pret' || d.statut === 'signe') && (
                 <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!!travail}
-                  onClick={() => changer({ statut: 'annule', annule_le: new Date().toISOString() },
-                    d.statut === 'signe'
-                      ? `Marquer ce document comme annulé (rétractation, fin du mandat…) ?\n\nIl reste dans la liste, avec ses fichiers.${m?.surRecherche && m.numero && d.recherche_id ? '\n\nLe bloc Mandat de sa recherche sera vidé.' : ''}`
-                      : 'Annuler ce document ?\n\nIl reste dans la liste, avec son PDF, marqué « Annulé ».')}>
+                  onClick={() => {
+                    /* V3.50 : un mandat signé, la raison d'abord (registre). */
+                    if (d.statut === 'signe' && (d.modele === 'mandat_vente' || d.modele === 'mandat_recherche')) { setFinMandat(true); return; }
+                    void changer({ statut: 'annule', annule_le: new Date().toISOString() }, questionAnnuler(d, m));
+                  }}>
                   <Croix t={15} /><span>{d.statut === 'signe' ? 'Marquer annulé' : 'Annuler le document'}</span>
                 </button>
               )}
@@ -447,7 +545,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                       {e.du && e.au && <i>{`Écrire au ${m?.categorie === 'mandats_recherche' ? 'client' : 'vendeur'} entre le ${jourLong(e.du)} et le ${jourLong(e.au)}.`}</i>}
                       {maintenant && <i className={s.echeanceMaintenant}>C’est maintenant : envoie-lui le courrier ou l’e-mail.</i>}
                       {rate && !lettre && <i className={s.echeanceRatee}>Délai passé : sans ce courrier, le client pourra arrêter le mandat à tout moment après l’échéance.</i>}
-                      {lettre && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onEditer(lettre)}>{`Courrier : ${libStatut(lettre.statut, true).toLowerCase()}${lettre.signe_le ? ` le ${jourLong(lettre.signe_le.slice(0, 10))}` : ''} · l’ouvrir`}</button>}
+                      {lettre && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onEditer(lettre)}>{`Courrier : ${libStatut(lettre.statut, true).toLowerCase()}${lettre.signe_le ? ` le ${jourLong(jourParis(lettre.signe_le))}` : ''} · l’ouvrir`}</button>}
                       {aPreparer && <button type="button" className={s.btnLien} style={{ marginTop: 6 }} onClick={() => onDeriver('d-' + d!.id, 'courrier_reconduction', { echeance: e.le })}>Préparer le courrier</button>}
                     </span>
                   </div>
@@ -475,6 +573,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
         </div>
       </aside>
       {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} />}
+      {finMandat && d && <FenetreFinMandat vide={!!(m?.surRecherche && m.numero && d.recherche_id)} onFermer={() => setFinMandat(false)}
+        onChoix={r => { setFinMandat(false); void changer({ statut: 'annule', annule_le: new Date().toISOString() }, null, { raison: r }); }} />}
       {projet && d && <FenetreProjet doc={d} onFermer={() => setProjet(false)} onEnvoye={r => { setProjet(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
       {surPlace && d && <SignatureSurPlace doc={d} finaliser={!!surPlace.finaliser} onFermer={() => { setSurPlace(null); void recharger(); }} />}
     </>
@@ -573,7 +673,15 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         if (enCours) { alert(`${phraseMandat(enCours)}\n\n${conseilMandat(enCours)}`); return; }
       } catch (e) { alert((e as Error).message); return; }
     }
-    const donnees = { ...d.donnees, date: aujourdhui(), ...(m.numero ? { numero: '' } : {}) };
+    const donnees: Donnees = { ...d.donnees, date: aujourdhui(), ...(m.numero ? { numero: '' } : {}) };
+    /* V3.50 : un avenant dupliqué prend le numéro qui suit (comme « Préparer
+       un avenant ») : la copie d'un « Avenant n° 1 » signé faisait un second
+       « Avenant n° 1 » au même mandat, et deux observations au registre. */
+    const numeroMandat = typeof donnees.mandatNumero === 'string' ? donnees.mandatNumero.trim() : '';
+    if ('avenantNo' in donnees && numeroMandat) {
+      try { donnees.avenantNo = avenantSuivant(await avenantsDuMandat(d.modele, numeroMandat)); }
+      catch (e) { alert('La copie n’a pas pu être créée.\n\n' + (e as Error).message); return; }
+    }
     const { data, error } = await supabase.from('documents').insert({
       modele: d.modele, categorie: d.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
       client_id: d.client_id, bien_id: d.bien_id, recherche_id: d.recherche_id,

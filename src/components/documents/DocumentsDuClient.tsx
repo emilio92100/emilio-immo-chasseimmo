@@ -8,7 +8,8 @@ import BlocRepliable from './BlocRepliable';
 import NouveauDocument from './NouveauDocument';
 import Depliant from '@/components/shared/Depliant';
 import SuiviSignature, { lireSuivis, type Proposition, type SigEspace, type Suivi } from './SuiviSignature';
-import { libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
+import { etatMandatEnLigne, libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
+import { jourParis } from '@/lib/mandat';
 import s from './Documents.module.css';
 
 /* ═══ « Ses documents », sur la fiche d'un client (V3.17, rangés en V3.32) ═
@@ -68,7 +69,8 @@ function enChaine(l: ElementDoc[]): ElementDoc[] {
   return out;
 }
 
-const jour = (iso?: string | null) => (iso ? jourLong(iso.slice(0, 10)) : '');
+/* V3.50 : le jour à l'heure de Paris (pas en heure universelle). */
+const jour = (iso?: string | null) => (iso ? jourLong(Number.isFinite(Date.parse(iso)) ? jourParis(iso) : iso.slice(0, 10)) : '');
 
 export function depuisDoc(d: DocumentRow): ElementDoc {
   const courrier = !!modele(d.modele)?.courrier;
@@ -95,7 +97,8 @@ export function depuisDoc(d: DocumentRow): ElementDoc {
 }
 
 function depuisMandat(x: MandatRecherche): ElementDoc {
-  const statut: Statut = x.retracte_le ? 'annule' : x.statut === 'signe' || x.statut === 'partiel' ? (x.statut === 'partiel' ? 'pret' : 'signe') : 'pret';
+  /* Le même calcul que la rubrique Documents (V3.50, etatMandatEnLigne). */
+  const statut: Statut = etatMandatEnLigne(x);
   return {
     cle: 'r-' + x.id, ouvrir: 'r-' + x.id, categorie: 'mandats_recherche', statut, courrier: false,
     titre: 'Mandat de recherche',

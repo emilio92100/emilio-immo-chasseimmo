@@ -113,9 +113,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
+  /* V3.50 : la page demandée ET sa question (« /?page=demandes&demande=… »).
+     Tout le CRM vit dans la question : sans elle, « Ouvrir dans le CRM » d'un
+     mail ramenait au tableau de bord après la connexion. La page de
+     connexion n'accepte qu'un chemin du site (« / » puis pas « / » ni « \\ »),
+     jamais une adresse vers un autre site (src/app/login/page.tsx). */
+  const demandee = `${pathname}${request.nextUrl.search}`;
   const url = request.nextUrl.clone();
   url.pathname = '/login';
-  url.search = pathname !== '/' ? `?suite=${encodeURIComponent(pathname)}` : '';
+  url.search = demandee !== '/' ? `?suite=${encodeURIComponent(demandee)}` : '';
   return NextResponse.redirect(url);
 }
 

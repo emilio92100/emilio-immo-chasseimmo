@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { dateCourte, heureParis } from '@/lib/mandat';
-import { lireCos, inviter, sceller, envoyerExemplaire, finRetractationDe, nomDe, attendu, type LigneMandat, type Co } from '@/lib/cosignature';
+import { lireCos, inviter, sceller, envoyerExemplaire, finRetractationDe, nomDe, attendu, lienValide, type LigneMandat, type Co } from '@/lib/cosignature';
 import { envoyerMail, gabarit, echappe } from '@/lib/mandat-serveur';
+import { ecritServeur } from '@/lib/ecritures';
+import { solderRelancesSignature } from '@/lib/documents-relances';
 
 /**
  * Les gestes d'Alexandre sur un co-signataire, depuis la fiche du CRM
@@ -15,6 +17,9 @@ import { envoyerMail, gabarit, echappe } from '@/lib/mandat-serveur';
  *                                       continue avec les seuls signataires (le
  *                                       texte le prévoit), et il est scellé une
  *                                       dernière fois s'il ne manque plus personne
+ *
+ * V3.50 : un nouveau lien ou l'invitation close répondent à la relance « X
+ * n'a pas signé le mandat dans les 15 jours » : elle se ferme.
  */
 
 export const dynamic = 'force-dynamic';
@@ -41,10 +46,15 @@ export async function POST(req: NextRequest) {
     if (eL || !l) return ko(eL?.message || 'Mandat introuvable', 404);
     const ligne = l as LigneMandat, c = co as Co;
     if (ligne.statut !== 'partiel' || c.statut !== 'invite') return ko('Il n’est plus attendu : recharge la fiche.', 409);
-    const journal = (titre: string, description: string) => sb.from('journal').insert({
+    const journal = (titre: string, description: string) => ecritServeur('L’historique du client', sb.from('journal').insert({
       client_id: ligne.client_id, recherche_id: ligne.recherche_id, type: 'mandat', titre, description,
       metadata: { signature_id: ligne.id, cosignataire_id: c.id, numero: ligne.numero },
-    });
+    }));
+    /* La relance « n'a pas signé dans les 15 jours » de ce co-signataire (V3.50). */
+    const solder = async () => {
+      const e = await solderRelancesSignature(sb, { clientId: ligne.client_id, quoi: `le mandat n° ${ligne.numero}`, qui: nomDe(c.personne) });
+      if (e) console.error('[mandat/cosignataire] relance du lien expiré', e);
+    };
 
     if (action === 'renvoyer' || action === 'relancer') {
       const r = await inviter(sb, c, ligne, action === 'relancer'
@@ -52,6 +62,8 @@ export async function POST(req: NextRequest) {
         : { note: 'Lien renvoyé par Alexandre' });
       await journal(action === 'relancer' ? `✉️ Nouveau lien envoyé à ${nomDe(c.personne)}` : `✉️ Lien renvoyé à ${nomDe(c.personne)}`,
         `Mandat n° ${ligne.numero} · ${c.personne.email}${r.erreur ? ` — ⚠️ le mail n'est pas parti (${r.erreur})` : ''}`);
+      /* Un lien valable (même si le mail n'est pas parti : il peut le copier). */
+      if (lienValide(r.co)) await solder();
       if (r.erreur) return ko(`Le mail n’est pas parti : ${r.erreur}. Le lien est à jour : tu peux le copier et l’envoyer toi-même.`, 502);
       return NextResponse.json({ ok: true, co: r.co });
     }
@@ -85,6 +97,7 @@ export async function POST(req: NextRequest) {
       });
       await journal(`🔒 Invitation de ${nomDe(c.personne)} close`,
         `Mandat n° ${ligne.numero} · le ${dateCourte(le)} à ${heureParis(le)}. Il continue avec ${nomDe(p)}${signe ? ' ; version définitive scellée et envoyée' : ''}.${eMail || eInfo ? `\n⚠️ Mail non parti : ${eMail || eInfo}` : ''}`);
+      await solder();
       return NextResponse.json({ ok: true, complet: !!signe });
     }
 

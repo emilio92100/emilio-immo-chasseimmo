@@ -83,7 +83,35 @@ const T: Record<string, string[]> = {
   soleil: ['c:12,12,3.9', 'M12 3.2v2.2', 'M12 18.6v2.2', 'M3.2 12h2.2', 'M18.6 12h2.2', 'm5.9 5.9 1.6 1.6', 'm16.5 16.5 1.6 1.6', 'm18.1 5.9-1.6 1.6', 'm7.5 16.5-1.6 1.6'],
   sejour: ['M3.4 12.4a1.9 1.9 0 0 1 3.8 0v2.4h9.6v-2.4a1.9 1.9 0 0 1 3.8 0V18H3.4z', 'M7.2 14.8V9.6a1.9 1.9 0 0 1 1.9-1.9h5.8a1.9 1.9 0 0 1 1.9 1.9v5.2', 'M6 18v2', 'M18 18v2'],
   calendrier: ['M4 6.6h16v14H4z', 'M4 10.6h16', 'M8.4 3.6v4', 'M15.6 3.6v4'],
+  cle: ['c:8,15,4', 'M10.8 12.2 20 3.5', 'M16.5 7l3 3'],
 };
+
+/* V3.50 : le bien a-t-il encore sa place ? Lu sur la vente qu'il copie
+   (rubrique Biens), comme l'espace acheteur. Avant, un bien vendu ou retiré
+   s'affichait ici comme disponible, prix et « Sélection privée » compris. */
+type Etat = 'vendu' | 'compromis' | 'retire';
+const BANDEAU: Record<Etat, { titre: string; sous: string; ic: string; c: string; fond: string; trait: string }> = {
+  vendu: { titre: 'Ce bien a été vendu', sous: 'Il n’est plus disponible.', ic: 'cle', c: ENCRE, fond: '#eef2f8', trait: '#d3dcea' },
+  compromis: { titre: 'Sous compromis', sous: 'Une promesse de vente est signée : il n’est plus disponible pour l’instant.', ic: 'cle', c: OR_FONCE, fond: OR_FOND, trait: OR_TRAIT },
+  retire: { titre: 'Ce bien n’est plus en vente', sous: 'Il n’est plus proposé pour l’instant.', ic: 'maison', c: PLUME, fond: FOND, trait: TRAIT },
+};
+function etatDeVente(v: { etape?: string | null; archive?: boolean | null } | null): Etat | null {
+  if (!v) return null;
+  if (v.etape === 'vendu') return 'vendu';
+  if (v.etape === 'compromis') return 'compromis';
+  if (v.etape === 'retire' || v.etape === 'suspendu' || v.archive) return 'retire';
+  return null;
+}
+
+/* Les coordonnées du conseiller : celles des Paramètres (« Tes coordonnées
+   dans les mails »), comme la signature des mails ; celles d'avant si elles
+   sont vides. */
+const TEL_DEFAUT = '06 58 95 76 32';
+const MAIL_DEFAUT = 'arogelet@emilio-immo.com';
+function lienTel(t: string): string {
+  const n = t.replace(/[^\d+]/g, '');
+  return /^0\d{9}$/.test(n) ? `+33${n.slice(1)}` : n;
+}
 
 function Ico({ n, t = 22 }: { n: string; t?: number }) {
   const d = T[n];
@@ -114,6 +142,23 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
   const { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle();
   if (!bien) notFound();
+
+  /* Un bien encore « en sélection » (pas encore présenté) reste lisible : un
+     lien peut déjà être parti (WhatsApp à plusieurs, lien copié) avant que le
+     bien passe « présenté », ou il a pu revenir en sélection après l'envoi.
+     Le cacher casserait des liens déjà donnés au client. */
+  const [venteLue, reglagesLus] = await Promise.all([
+    bien.bien_vente_id
+      ? supabase.from('biens_vente').select('etape, archive').eq('id', bien.bien_vente_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    supabase.from('parametres').select('cle, valeur').in('cle', ['conseiller_telephone', 'conseiller_email']),
+  ]);
+  if (venteLue.error) console.error('[bien public] état de la vente', venteLue.error.message);
+  const etat = etatDeVente(venteLue.data as { etape?: string | null; archive?: boolean | null } | null);
+  const bandeau = etat ? BANDEAU[etat] : null;
+  const reglages = Object.fromEntries(((reglagesLus.data || []) as { cle: string; valeur: string | null }[]).map(r => [r.cle, (r.valeur || '').trim()]));
+  const telConseiller = reglages.conseiller_telephone || TEL_DEFAUT;
+  const mailConseiller = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(reglages.conseiller_email || '') ? reglages.conseiller_email : MAIL_DEFAUT;
 
   const prix = bien.prix_acquereur || bien.prix_vendeur;
   const labelPrix = bien.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix';
@@ -189,7 +234,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       <header style={{ background: ENCRE, padding: '16px 0', borderBottom: `2px solid ${OR}` }}>
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
           <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={280} height={64} style={{ height: 46, width: 'auto' }} priority />
-          <div style={{ color: OR, fontSize: 10, letterSpacing: 2.4, fontWeight: 700 }}>SÉLECTION PRIVÉE</div>
+          {!bandeau && <div style={{ color: OR, fontSize: 10, letterSpacing: 2.4, fontWeight: 700 }}>SÉLECTION PRIVÉE</div>}
         </div>
       </header>
 
@@ -201,6 +246,17 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       </div>
 
       <div className="fb-corps">
+
+        {/* Vendu, sous compromis, plus en vente : dit avant tout le reste. */}
+        {bandeau && (
+          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18, padding: '14px 16px', borderRadius: 15, background: bandeau.fond, border: `1px solid ${bandeau.trait}`, color: bandeau.c, boxShadow: OMBRE }}>
+            <span style={{ width: 38, height: 38, borderRadius: 12, background: CARTE, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}><Ico n={bandeau.ic} t={19} /></span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontFamily: JAKARTA, fontWeight: 800, fontSize: 16, letterSpacing: -.2 }}>{bandeau.titre}</span>
+              <span style={{ display: 'block', fontSize: 13, color: PLUME, marginTop: 2, lineHeight: 1.45 }}>{bandeau.sous}</span>
+            </span>
+          </div>
+        )}
 
         {/* Le prix d'abord : c'est la première question de celui qui reçoit le lien */}
         <div className="fb-prix" style={{ padding: '20px 0 2px' }}>
@@ -343,15 +399,19 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
               <div style={{ fontSize: 12, color: OR }}>Emilio Immobilier</div>
             </div>
           </div>
-          <h2 style={{ fontFamily: JAKARTA, fontSize: 21, fontWeight: 800, margin: '0 0 8px', letterSpacing: -.3 }}>Ce bien vous intéresse&nbsp;?</h2>
+          <h2 style={{ fontFamily: JAKARTA, fontSize: 21, fontWeight: 800, margin: '0 0 8px', letterSpacing: -.3 }}>
+            {etat === 'vendu' || etat === 'retire' ? 'Vous cherchez un bien comme celui-ci\u00a0?' : 'Ce bien vous intéresse\u00a0?'}
+          </h2>
           <div style={{ fontSize: 14, opacity: .72, marginBottom: 22, lineHeight: 1.6 }}>
-            Appelez-moi pour organiser une visite, je reste à votre disposition.
+            {etat === 'vendu' || etat === 'retire' ? 'Appelez-moi : je vous aide à trouver le vôtre.'
+              : etat === 'compromis' ? 'Il est sous compromis. Appelez-moi : je vous préviens s’il redevient disponible.'
+              : 'Appelez-moi pour organiser une visite, je reste à votre disposition.'}
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="tel:+33658957632" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: OR, color: ENCRE, padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-              <Ico n="tel" t={16} />06 58 95 76 32
+            <a href={`tel:${lienTel(telConseiller)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: OR, color: ENCRE, padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
+              <Ico n="tel" t={16} />{telConseiller}
             </a>
-            <a href="mailto:arogelet@emilio-immo.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.08)', color: '#fff', padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 700, fontSize: 14, textDecoration: 'none', border: '1px solid rgba(255,255,255,.25)' }}>
+            <a href={`mailto:${mailConseiller}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.08)', color: '#fff', padding: '14px 26px', borderRadius: 14, fontFamily: JAKARTA, fontWeight: 700, fontSize: 14, textDecoration: 'none', border: '1px solid rgba(255,255,255,.25)' }}>
               <Ico n="mail" t={16} />Me contacter
             </a>
           </div>

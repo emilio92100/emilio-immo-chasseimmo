@@ -481,8 +481,10 @@ function Pave({ ymd, sorte }: { ymd: string; sorte: 'prochaine' | 'avenir' | 'pa
     </div>
   );
 }
-export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche }: {
+export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, onDeplacer, onCreerFiche }: {
   v: VisiteCarte; prochaine?: boolean; onCR: () => void; onAnnuler: () => void; onDoc: () => void; onFiche?: () => void;
+  /* V3.50 : déplacer une visite prévue ; la fiche d'un visiteur hors CRM. */
+  onDeplacer?: () => void; onCreerFiche?: () => void;
 }) {
   const iss = v.issue ? ISSUES[v.issue] : null;
   const annulee = v.statut === 'annulee';
@@ -511,6 +513,8 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche }: 
             {v.passee && <button type="button" className={`${o.act} ${aFaire ? o.actOr : ''}`} onClick={onCR}>{aFaire ? 'Faire le compte rendu' : 'Revoir le compte rendu'}</button>}
             <button type="button" className={o.act} onClick={onDoc}><Ic n="plume" t={13} />Bon de visite</button>
             {onFiche && <button type="button" className={o.act} onClick={onFiche}><Ic n="personne" t={13} />Sa fiche</button>}
+            {onCreerFiche && <button type="button" className={o.act} onClick={onCreerFiche}><Ic n="plus" t={13} />Créer sa fiche</button>}
+            {onDeplacer && <button type="button" className={o.act} onClick={onDeplacer}><Ic n="calendrier" t={13} />Déplacer</button>}
             {!v.passee && <button type="button" className={`${o.act} ${o.actRouge}`} onClick={onAnnuler}>Annuler</button>}
           </div>
         )}

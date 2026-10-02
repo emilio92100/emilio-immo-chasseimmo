@@ -1,5 +1,6 @@
 'use client';
 import { supabase } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 import styles from './FicheClient.module.css';
 import { ISSUES, issueDe, apprisDe, visitePassee, type Issue } from '@/lib/visites';
 
@@ -82,16 +83,20 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
   const sansIssue = faites.filter(v => !issueDe(v));
   const appris = apprisDe(visites, masques);
 
+  /* V3.50 : vérifiées ligne à ligne (AGENTS §3.2) — la base fermée peut
+     refuser sans erreur, et l'écran faisait comme si c'était enregistré. */
   async function masquer(t: string) {
     const l = Array.from(new Set([...(masques || []), t]));
-    const { error } = await supabase.from('recherches').update({ appris_masques: l }).eq('id', rechercheId);
-    if (error) { alert('Pas enregistré : ' + error.message); return; }
+    if (!(await verifie('La ligne retirée', supabase.from('recherches').update({ appris_masques: l }).eq('id', rechercheId).select('id'), { ligne: true }))) return;
     onMasques();
   }
   async function toutReafficher() {
-    const { error } = await supabase.from('recherches').update({ appris_masques: [] }).eq('id', rechercheId);
-    if (error) { alert('Pas enregistré : ' + error.message); return; }
+    if (!(await verifie('Les lignes réaffichées', supabase.from('recherches').update({ appris_masques: [] }).eq('id', rechercheId).select('id'), { ligne: true }))) return;
     onMasques();
+  }
+  /* Une visite modifiée sur place (date, heure, contact). */
+  async function modifier(id: string, quoi: string, champs: Record<string, string | null>) {
+    await verifie(quoi, supabase.from('visites').update(champs).eq('id', id).select('id'), { ligne: true });
   }
 
   if (vivantes.length === 0) {
@@ -152,9 +157,9 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f8fafc', flexWrap: 'wrap' }}>
-          <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { const { error } = await supabase.from('visites').update({ date_visite: e.target.value }).eq('id', v.id); if (error) alert('Date non enregistrée : ' + error.message); onRecharger(); }} />
-          <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { const { error } = await supabase.from('visites').update({ heure: e.target.value }).eq('id', v.id); if (error) alert('Heure non enregistrée : ' + error.message); }} />
-          <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onBlur={async e => { const { error } = await supabase.from('visites').update({ contact_agence: e.target.value }).eq('id', v.id); if (error) alert('Contact non enregistré : ' + error.message); }} />
+          <input type="date" defaultValue={v.date_visite?.split('T')[0]} className={styles.inp} style={{ flex: 1, minWidth: 140 }} onChange={async e => { await modifier(v.id, 'La date de la visite', { date_visite: e.target.value || null }); onRecharger(); }} />
+          <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await modifier(v.id, 'L’heure de la visite', { heure: e.target.value || null }); }} />
+          <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onBlur={async e => { if (e.target.value !== (v.contact_agence || '')) await modifier(v.id, 'Le contact de la visite', { contact_agence: e.target.value || null }); }} />
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => onCompteRendu(v)}>{enRetard ? '📝 Faire le compte rendu' : '✓ Effectuée'}</button>
           <button className={styles.btn} onClick={() => onAnnuler(v)}
             style={{ color: '#dc2626', borderColor: '#fecaca' }}

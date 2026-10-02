@@ -38,6 +38,9 @@ import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { noterSignature } from './registre';
 import { mandatSigneSurBien } from './mandat-bien';
+import { avenantSigneSurBien } from './documents-avenant-bien';
+import { solderRelancesSignature } from './documents-relances';
+import { finValiditeOffre } from './actes/offre-achat';
 
 export const BUCKET = 'mandats';
 export const SIGNATURE_AGENCE = 'agence/signature.png';
@@ -81,10 +84,27 @@ export const lienValide = (s: SigDoc) => !!s.lien_expire_le && Date.parse(s.lien
 export const actif = (s: SigDoc) => s.statut !== 'annule';
 export const attendu = (s: SigDoc) => s.statut === 'attendu' || s.statut === 'invite';
 
+/* V3.50 : une lecture ratée lève une erreur. Avant, elle rendait une liste
+   vide : plus personne n'était « attendu », et le document pouvait passer
+   « signé » sans aucune signature. */
 export async function lireSignataires(sb: SupabaseClient, docId: string): Promise<SigDoc[]> {
   const { data, error } = await sb.from('documents_signataires').select('*').eq('document_id', docId).order('rang', { ascending: true });
-  if (error || !data) return [];
+  if (error || !data) throw new Error('Les signataires n’ont pas pu être lus' + (error ? ' : ' + error.message : '.'));
   return data as SigDoc[];
+}
+
+/* V3.50 : une offre d'achat ne se signe plus après sa date de validité. */
+export const offreFinie = (m: Pick<Modele, 'id'>, d: Donnees): Date | null => {
+  if (m.id !== 'offre_achat') return null;
+  const fin = finValiditeOffre(d);
+  return fin && fin.getTime() <= Date.now() ? fin : null;
+};
+/* La fin d'un lien tout neuf : quinze jours, mais pas au-delà de la
+   validité d'une offre d'achat (V3.50 : le lien valait 15 jours, l'offre 5). */
+export function finLien(m: Pick<Modele, 'id'>, d: Donnees, le: string): string {
+  const quinze = Date.parse(le) + DELAI_COSIGNATURE * 86_400_000;
+  const offre = m.id === 'offre_achat' ? finValiditeOffre(d) : null;
+  return new Date(offre ? Math.min(quinze, offre.getTime()) : quinze).toISOString();
 }
 
 /* Les cadres du document, l'agence comprise. */
@@ -150,12 +170,12 @@ export function mailInvitation(o: { s: SigDoc; m: Modele; d: Donnees; lien: stri
   };
 }
 
-/* Un lien tout neuf : nouveau jeton, quinze jours ; l'ancien ne mène plus
-   nulle part. Rend les champs à écrire. */
-export function lienNeuf(s: SigDoc, le: string, note?: string): Partial<SigDoc> {
+/* Un lien tout neuf : nouveau jeton, quinze jours (ou `expire`, voir
+   finLien) ; l'ancien ne mène plus nulle part. Rend les champs à écrire. */
+export function lienNeuf(s: SigDoc, le: string, note?: string, expire?: string): Partial<SigDoc> {
   return {
     statut: 'invite', mode: 'en_ligne', jeton: jetonSigner(s.personne), invite_le: le,
-    lien_expire_le: new Date(Date.parse(le) + DELAI_COSIGNATURE * 86_400_000).toISOString(),
+    lien_expire_le: expire || new Date(Date.parse(le) + DELAI_COSIGNATURE * 86_400_000).toISOString(),
     relances: 0, relance_le: null, code_hash: null, code_essais: 0, codes_envoyes: 0, code_envoye_le: null,
     deroule: [...(s.deroule || []), { t: le, x: `${note ? note + ' · ' : ''}Lien personnel envoyé à ${s.personne.email}` }],
   };
@@ -174,7 +194,7 @@ export async function inviter(sb: SupabaseClient, s: SigDoc, m: Modele, d: Donne
   const le = new Date().toISOString();
   const neuf = o.nouveau || !s.jeton || !lienValide(s) || s.statut !== 'invite';
   const maj: Partial<SigDoc> = neuf
-    ? lienNeuf(s, le, o.note)
+    ? lienNeuf(s, le, o.note, finLien(m, d, le))
     : {
       relance_le: le,
       ...(o.rappel ? { relances: o.rappel } : {}),
@@ -466,15 +486,26 @@ export async function envoyerExemplaire(o: {
 
 /* Le document passe « Signé », avec son exemplaire scellé ; un mandat de
    recherche (ou son avenant) met à jour le bloc Mandat de sa recherche, un
-   mandat de vente la fiche de son bien (V3.42) ; une ligne va dans le suivi
-   du client. Rend les problèmes rencontrés. */
-export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDoc, le: string): Promise<string[]> {
+   mandat de vente la fiche de son bien (V3.42), un avenant de vente aussi
+   (V3.50) ; une ligne va dans le suivi du client. Rend les problèmes
+   rencontrés. `echecs` : ceux d'avant (un exemplaire non parti), dits dans
+   la ligne du suivi.
+   V3.50 : seulement s'il est encore « à faire signer ». Déjà classé (deux
+   derniers signataires au même moment), rien n'est refait : ni registre,
+   ni fiche, ni suivi. */
+export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDoc, le: string, o: { echecs?: string[] } = {}): Promise<string[]> {
   const m = modele(doc.modele);
   const pbs: string[] = [];
-  const { error } = await sb.from('documents').update({
+  const { data: classe, error } = await sb.from('documents').update({
     statut: 'signe', signe_le: le, signe_chemin: sd.scelle_chemin || null, signature: { ...sd, classe_le: new Date().toISOString() }, updated_at: new Date().toISOString(),
-  }).eq('id', doc.id);
+  }).eq('id', doc.id).eq('statut', 'pret').select('id');
   if (error) { pbs.push('document : ' + error.message); return pbs; }
+  if (!classe?.length) return pbs;
+  /* La relance « n'a pas signé dans les 15 jours » n'a plus d'objet. */
+  if (m) {
+    const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, doc.donnees).le });
+    if (eR) pbs.push('relance du lien expiré : ' + eR);
+  }
   /* Le registre des mandats (V3.18) : « Signé » sur la ligne du mandat,
      ou l'avenant sur celle de son mandat. */
   const pbR = await noterSignature(sb, {
@@ -490,6 +521,13 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
     const pbB = await mandatSigneSurBien(sb, doc, jourB);
     if (pbB) pbs.push(pbB);
   }
+  /* V3.50 : un avenant de vente change le prix, les honoraires ou la fin
+     sur la fiche du bien. */
+  if (doc.modele === 'avenant_vente') {
+    const jourB = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(le));
+    const pbB = await avenantSigneSurBien(sb, doc, jourB);
+    if (pbB) pbs.push(pbB);
+  }
   if (m?.surRecherche && doc.recherche_id) {
     const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(le));
     const { error: e2 } = await sb.from('recherches').update(m.surRecherche(doc.donnees, jour)).eq('id', doc.recherche_id);
@@ -499,7 +537,8 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
     const { error: e3 } = await sb.from('journal').insert({
       client_id: doc.client_id, type: 'mandat',
       titre: `✍️ ${m?.titre || 'Document'} signé ${sd.mode === 'sur_place' ? 'sur place' : 'en ligne'}`,
-      description: [doc.numero ? `n° ${doc.numero}` : '', doc.titre || '', `signé par tous le ${dateCourte(le)} à ${heureParis(le)}`].filter(Boolean).join(' · '),
+      description: [doc.numero ? `n° ${doc.numero}` : '', doc.titre || '', `signé par tous le ${dateCourte(le)} à ${heureParis(le)}`].filter(Boolean).join(' · ')
+        + ([...(o.echecs || []), ...pbs].length ? `\n⚠️ ${[...(o.echecs || []), ...pbs].join(' ; ')}` : ''),
       metadata: { document_id: doc.id },
     });
     if (e3) pbs.push('suivi du client : ' + e3.message);
@@ -508,20 +547,32 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
 }
 
 /* Tout ce qui suit la dernière signature, d'un seul tenant (en ligne) :
-   scellé, envoyé à chacun, rangé. */
-export async function terminer(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[]): Promise<{ erreur: string | null; signe?: Uint8Array; echecs: string[] }> {
+   scellé, envoyé à chacun, rangé.
+   V3.50 : deux derniers signataires au même moment arrivaient tous les deux
+   ici. La fin se réserve d'abord, en une écriture qui ne passe qu'une fois
+   (`complet_le` encore vide) : le second trouve la place prise et s'arrête
+   (`deja`), sans second PDF, ni second envoi, ni seconde ligne. */
+export async function terminer(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[]): Promise<{ erreur: string | null; signe?: Uint8Array; echecs: string[]; deja?: boolean }> {
   const m = modele(doc.modele);
   if (!m) return { erreur: 'document', echecs: [] };
+  const le = sigs.filter(s => s.statut === 'signe').map(s => s.signe_le as string).sort().pop() || new Date().toISOString();
+  if (doc.signature) {
+    const { data: pris, error: eP } = await sb.from('documents').update({ signature: { ...doc.signature, complet_le: le } })
+      .eq('id', doc.id).eq('statut', 'pret').is('signature->>complet_le', null).select('id');
+    /* La réservation elle-même échoue : on continue comme avant (classer ne
+       passe de toute façon qu'une fois). */
+    if (eP) console.error('[signature] réserver la fin du document', eP.message);
+    else if (!pris?.length) return { erreur: null, echecs: [], deja: true };
+  }
   const sc = await sceller(sb, doc, sigs);
   if ('erreur' in sc) return { erreur: sc.erreur, echecs: [] };
-  const le = sigs.filter(s => s.statut === 'signe').map(s => s.signe_le as string).sort().pop() || new Date().toISOString();
   const echecs: string[] = [];
   for (const s of sigs.filter(x => x.statut === 'signe')) {
     const e = await envoyerExemplaire({ s, m, d: doc.donnees, signe: sc.signe, complet: true, attendus: [] });
     if (e) echecs.push(`${nomSig(s)} : ${e}`);
   }
   const maj: SignatureDoc = { ...sc.maj, complet_le: le, envoye_le: new Date().toISOString() };
-  echecs.push(...await classer(sb, doc, maj, le));
+  echecs.push(...await classer(sb, doc, maj, le, { echecs: [...echecs] }));
   return { erreur: null, signe: sc.signe, echecs };
 }
 

@@ -581,7 +581,10 @@ export const ETAPES_BIEN: EtapeBien[] = [
     avant: { titre: 'L’estimation et le prix', court: 'Estimation', sous: 'Le rendez-vous, la fourchette, le prix conseillé et les honoraires.' },
     champs: [
       { t: 'titre', cle: 't-estim', lib: 'L’estimation de l’agence', ic: 'regle' },
-      { t: 'date', cle: 'rdvEstimation', lib: 'Rendez-vous d’estimation', ic: 'calendrier' },
+      /* V3.50 : l'heure et l'agenda se règlent depuis la fiche (« Définir l'estimation ») ;
+         ici, changer la date déplace aussi le rendez-vous de l'agenda, à la même heure
+         (l'effacer ne l'annule pas : c'est la fenêtre de l'estimation, ou l'agenda). */
+      { t: 'date', cle: 'rdvEstimation', lib: 'Rendez-vous d’estimation', ic: 'calendrier', aide: 'L’heure, et le rendez-vous dans ton agenda : depuis la fiche du bien, « Définir l’estimation ».' },
       { t: 'date', cle: 'avisEnvoye', lib: 'Avis de valeur envoyé le', ic: 'envoyer' },
       { t: 'euros', cle: 'estimBasse', lib: 'Fourchette basse', ic: 'bas' },
       { t: 'euros', cle: 'estimHaute', lib: 'Fourchette haute', ic: 'haut' },
@@ -809,7 +812,8 @@ function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc
     const rdv0 = txt(d, 'rdvEstimation');
     /* V3.48 : mis en attente, il ne montre plus son ancien rendez-vous. */
     const enAttente = etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation';
-    if (rdv0 && !enAttente && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}`, ton: 'neutre', ic: 'calendrier' };
+    const h0 = txt(d, 'rdvEstimationHeure');
+    if (rdv0 && !enAttente && (joursAvant(rdv0) ?? -1) >= 0) return { t: `Rendez-vous d’estimation le ${dateCourte(rdv0)}${h0 ? ` à ${h0.replace(':', ' h ')}` : ''}`, ton: 'neutre', ic: 'calendrier' };
     /* Mis en attente à l'estimation (V3.32) : pourquoi, et quand le rappeler. */
     if (etapeInfo?.statut === 'a_suivre' && ed.de === 'estimation') return { t: ['En attente', ed.raison, ed.reprise ? `à recontacter vers le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre', ic: 'pause' };
     const delai: Record<string, string> = { vite: 'vendre dès que possible', '3mois': 'vendre sous 3 mois', '6mois': 'vendre sous 6 mois', libre: 'pas pressé' };
@@ -847,9 +851,11 @@ function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc
      de valeur. Le montant lui-même est sur la carte (prixCarte). */
   const a = num(d, 'estimBasse'), h = num(d, 'estimHaute'), p = num(d, 'prix');
   const rdv = txt(d, 'rdvEstimation'), avis = txt(d, 'avisEnvoye');
+  const hRdv = txt(d, 'rdvEstimationHeure');
+  const aH = hRdv ? ` à ${hRdv.replace(':', ' h ')}` : '';
   const j = joursAvant(rdv);
   if (avis) return { t: `Avis de valeur envoyé le ${dateCourte(avis)}`, ton: 'ok', ic: 'check' };
-  if (rdv && (j ?? -1) >= 0) return { t: j === 0 ? 'Rendez-vous d’estimation aujourd’hui' : `Rendez-vous d’estimation le ${dateCourte(rdv)}`, ton: 'neutre', ic: 'calendrier' };
+  if (rdv && (j ?? -1) >= 0) return { t: j === 0 ? `Rendez-vous d’estimation aujourd’hui${aH}` : `Rendez-vous d’estimation le ${dateCourte(rdv)}${aH}`, ton: 'neutre', ic: 'calendrier' };
   if (a || h || p) return { t: p && (a || h) ? `Conseillé ${euros(p)} · avis de valeur à envoyer` : 'Avis de valeur à envoyer', ton: 'neutre', ic: 'etiquette' };
   return { t: rdv ? `Vu le ${dateCourte(rdv)} · montant à définir` : 'Pas encore de rendez-vous', ton: 'neutre', ic: rdv ? 'etiquette' : 'calendrier' };
 }
@@ -1020,9 +1026,18 @@ export function typeCompatible(v: unknown, typesRecherche: string | null | undef
    honoraires de vente compris. Pas d'honoraires de recherche en plus.
    Servi à la création de la copie (versBienAcheteur) et à chaque changement
    de prix ou d'honoraires (repercuterPrix, biens/outils). */
+/* V3.50 : honoraires à la charge du vendeur, la copie portait le net
+   vendeur (475 000) sans commission : tout écran qui recalcule le prix de
+   l'acheteur (prix_vendeur + commission, comme la fiche client ou l'envoi
+   de biens) affichait 475 000 au lieu des 500 000 qu'il paie. Désormais la
+   copie dit toujours ce que paie l'acheteur : à la charge de l'acquéreur, le
+   net + les honoraires ; à la charge du vendeur, le prix entier, sans
+   commission (les honoraires ne le regardent pas). */
 export function prixCopie(d: Donnees) {
   const a = argentBien(d);
-  return { prix_vendeur: a.net ?? a.prix, commission_type: 'fixe', commission_val: a.acq ? a.hono || 0 : 0, prix_acquereur: a.prix };
+  return a.acq
+    ? { prix_vendeur: a.net ?? a.prix, commission_type: 'fixe', commission_val: a.hono || 0, prix_acquereur: a.prix }
+    : { prix_vendeur: a.prix, commission_type: 'fixe', commission_val: 0, prix_acquereur: a.prix };
 }
 
 /* Le bien dans le dossier d'un acheteur (table `biens`) : exactement les

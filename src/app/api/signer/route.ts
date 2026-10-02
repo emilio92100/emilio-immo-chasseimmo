@@ -370,13 +370,25 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
   const m = doc ? modele(doc.modele) : null;
   if (!doc || !m) return ko('lien invalide', 401);
   const d = doc.donnees;
-  const sigs = await SD.lireSignataires(sb, doc.id);
+  /* V3.50 : une lecture ratée arrête tout (avant, une liste vide laissait
+     croire que plus personne n'était attendu), et il doit y figurer. */
+  let sigs: SD.SigDoc[];
+  try { sigs = await SD.lireSignataires(sb, doc.id); } catch (e) {
+    console.error('[signer] signataires', (e as Error).message);
+    return ko('lecture', 503);
+  }
+  if (!sigs.some(x => x.id === s.id)) {
+    console.error('[signer] signataire absent de la liste', s.id);
+    return ko('lecture', 503);
+  }
   const moi = SD.nomSig(s);
   const nd = SD.nomDocument(m, d);
   const lienCrm = SD.lienCrmDocument(doc);
   /* Le document l'attend-il encore ? Alexandre a pu arrêter la signature,
      ou le document a pu être annulé. */
   const ouvert = s.statut === 'invite' && doc.statut === 'pret' && !!doc.signature;
+  /* V3.50 : une offre d'achat passée sa date de validité ne se signe plus. */
+  const finOffre = SD.offreFinie(m, d);
 
   switch (etape) {
     case 'afficher': {
@@ -389,6 +401,7 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
 
     case 'code': {
       if (!ouvert) return ko('etat', 409, { statut: s.statut });
+      if (finOffre) return ko('offre_expiree', 410, { fin: finOffre.toISOString() });
       if (!SD.lienValide(s)) return ko('lien_expire', 410);
       const r = await SD.envoyerCode(sb, s, sigs, m, d);
       if ('erreur' in r) return ko(r.erreur, r.statut, r.plus || {});
@@ -399,12 +412,21 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
       if (body.accepte !== true) return ko('accepte', 400);
       if (s.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
       if (!ouvert) return ko('recommencer', 409);
+      if (finOffre) return ko('offre_expiree', 410, { fin: finOffre.toISOString() });
       if (!SD.lienValide(s)) return ko('lien_expire', 410);
       const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
       const appareil = appareilDe(req.headers.get('user-agent') || '');
       const r = await SD.validerSignature(sb, s, m, d, { code: String(body.code || ''), griffe: body.griffe, ip, appareil, demande: body.demande === true });
       if ('erreur' in r) return ko(r.erreur, r.statut, r.plus || {});
-      const tous = sigs.map(x => (x.id === r.s.id ? r.s : x));
+      /* V3.50 : relus APRÈS l'enregistrement de sa signature. Deux derniers
+         signataires au même moment voyaient chacun l'autre « attendu » (lu
+         avant), et personne ne terminait : le document restait en signature.
+         Relus ici, l'un des deux au moins voit tout le monde signé ; s'ils
+         le voient tous les deux, terminer ne passe qu'une fois. Une relecture
+         ratée : la liste du début, comme avant. */
+      let relus = sigs;
+      try { relus = await SD.lireSignataires(sb, doc.id); } catch (e) { console.error('[signer] relecture des signataires', (e as Error).message); }
+      const tous = relus.map(x => (x.id === r.s.id ? r.s : x));
       const restants = tous.filter(x => SD.actif(x) && SD.attendu(x));
       const echecs: string[] = [];
       let pdf: Uint8Array | null = null;
@@ -424,18 +446,27 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
         });
         if (e) console.error('[signer] alerte blocage', e);
       };
+      /* La ligne du suivi : celle de classer quand il est le dernier (V3.50,
+         une seule ligne pour la signature finale, au lieu de deux). */
+      let ligneFaite = false;
       if (!restants.length) {
         /* Le dernier : tout est scellé, envoyé à chacun, rangé. */
         const t = await SD.terminer(sb, doc, tous);
         if (t.erreur) { await bloque(t.erreur); return ko('stockage', 500, { detail: t.erreur }); }
+        /* V3.50 : un autre signataire a fini au même instant, c'est lui qui
+           scelle, envoie et range. Ici, rien d'autre à faire : ni second mail
+           à Alexandre, ni PDF à moitié prêt. */
+        if (t.deja) return NextResponse.json({ ok: true, complet: true, signeLe: r.s.signe_le || new Date().toISOString(), attendus: [] });
         pdf = t.signe || null;
         echecs.push(...t.echecs);
+        ligneFaite = true;
       } else {
         /* Pas le dernier : une version scellée avec les signatures du
-           moment, qu'il reçoit. */
+           moment, qu'il reçoit. V3.50 : écrite seulement si le document n'a
+           pas été terminé entre-temps (un autre a pu signer en dernier). */
         const sc = await SD.sceller(sb, doc, tous);
         if ('erreur' in sc) { await bloque(sc.erreur); return ko('stockage', 500, { detail: sc.erreur }); }
-        const { error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id);
+        const { error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id).eq('statut', 'pret').is('signature->>complet_le', null);
         if (eD) echecs.push(`document : ${eD.message}`);
         pdf = sc.signe;
         const e = await SD.envoyerExemplaire({ s: r.s, m, d, signe: sc.signe, complet: false, attendus: restants.map(x => x.personne.prenom || SD.nomSig(x)) });
@@ -443,7 +474,7 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
       }
       const le = r.s.signe_le || new Date().toISOString();
       /* L'historique qui ne s'écrit pas : le mail d'alerte part quand même, et le dit. */
-      if (doc.client_id && !(await ecritServeur('L’historique du client', sb.from('journal').insert({
+      if (doc.client_id && !ligneFaite && !(await ecritServeur('L’historique du client', sb.from('journal').insert({
         client_id: doc.client_id, type: 'mandat', metadata: { document_id: doc.id, signataire_id: s.id },
         titre: `✍️ ${moi} a signé ${nd.court}${restants.length ? '' : ' — signé par tous'}`,
         description: `${doc.titre || m.titre} · signé avec son lien personnel le ${dateCourte(le)} à ${heureParis(le)}${restants.length ? `\nOn attend encore : ${restants.map(SD.nomSig).join(', ')}` : ''}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}`,

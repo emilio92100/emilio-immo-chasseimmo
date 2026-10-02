@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
-import { signalerEchec } from '@/lib/ecritures';
+import { signalerEchec, verifie } from '@/lib/ecritures';
+import { solderRelancesRetourVisite } from '@/lib/demandes-visite';
 import {
   ISSUES, RAISONS, AIME, issueDe, AVIS_HERITE, badgeApresVisite, resumeIssue, type Issue,
 } from '@/lib/visites';
@@ -51,7 +52,10 @@ export async function enregistrerCompteRendu(
   const avant = issueDe(v);
   /* L'issue reste « la sienne » si Alexandre garde ce que le client a dit. */
   const garde = !!v.avis_client_le && x.issue === v.issue && v.issue_par === 'client';
-  const { error } = await supabase.from('visites').update({
+  /* V3.50 : la visite DOIT être touchée (`.select('id')`) : sur une session
+     expirée, la base fermée ne modifiait rien sans un mot, et la fenêtre se
+     fermait comme si le compte rendu était noté. */
+  const { data: notee, error } = await supabase.from('visites').update({
     statut: 'effectuee',
     note_etoiles: x.etoiles || 0,
     commentaire: x.commentaire || '',
@@ -62,13 +66,30 @@ export async function enregistrerCompteRendu(
     retenir: x.retenir,
     issue_par: x.issue ? (garde ? 'client' : 'conseiller') : null,
     issue_le: x.issue ? (x.issue === avant && v.issue_le ? v.issue_le : new Date().toISOString()) : null,
-  }).eq('id', v.id);
+  }).eq('id', v.id).select('id');
   if (error) return error.message;
+  if (!notee?.length) return 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.';
 
+  /* Le titre du bien tel que l'espace l'a écrit dans ses relances
+     (« Veut revoir — <titre> ») : celui de la ligne du bien, relu ici. */
+  let titreRelances: string | null = ctx.bienTitre;
   if (v.bien_id) {
-    const { error: eB } = await supabase.from('biens')
-      .update({ badge_retour: badgeApresVisite(x.issue, ctx.badgeActuel) }).eq('id', v.bien_id);
-    if (eB) signalerEchec('Le compte rendu est noté, mais l’avis sur le bien', eB.message);
+    const majBien = supabase.from('biens')
+      .update({ badge_retour: badgeApresVisite(x.issue, ctx.badgeActuel) }).eq('id', v.bien_id).select('id, titre')
+      .then(r => {
+        const b = ((r.data || []) as { titre: string | null }[])[0];
+        if (b) titreRelances = b.titre;
+        return r;
+      });
+    await verifie('Le compte rendu est noté, mais l’avis sur le bien', majBien, { ligne: true });
+  }
+  /* V3.50 : l'issue choisie par Alexandre solde les relances nées de l'avis
+     du client qui ne valent plus (« Veut faire une offre », « Veut revoir »,
+     « Il réfléchit ») : seule celle de la même issue reste. « Non aboutie »
+     les solde toutes. Sans issue, rien ne change. */
+  if (x.issue && ctx.clientId) {
+    const err = await solderRelancesRetourVisite(ctx.clientId, [titreRelances], { garder: x.issue === 'non' ? null : x.issue });
+    if (err) signalerEchec('Le compte rendu est noté, mais les relances après la visite', err);
   }
   const etoiles = x.etoiles > 0 ? '⭐'.repeat(x.etoiles) : '';
   const corps = [

@@ -796,6 +796,9 @@ function texteVisites(corps: string, lignes: LigneVisite[], token?: string | nul
 
 
 export async function POST(req: NextRequest) {
+  /* V3.50 : une erreur imprévue après la réservation de la date du mail de
+     bienvenue la rend aussi (sinon le bouton resterait « Déjà envoyé »). */
+  let rendreSiErreur: (() => Promise<void>) | null = null;
   /* Ce qui n'a pas été noté après un envoi réussi (V3.17) : le mail est
      parti, le CRM le dit quand même. */
   const avertissements: string[] = [];
@@ -901,6 +904,38 @@ export async function POST(req: NextRequest) {
         totalRecherches = count || 2;
       }
     }
+
+    /* V3.50 : un double clic, ou deux onglets, envoyaient le mail de
+       bienvenue deux fois. On refuse un second envoi pour le même client
+       moins de 5 minutes après le premier ; plus tard, le renvoi reste
+       possible (exprès). La date est réservée AVANT l'envoi, sous condition
+       qu'elle n'ait pas bougé depuis notre lecture : de deux demandes
+       simultanées, une seule passe. Un envoi raté rend l'ancienne date. */
+    const DELAI_BIENVENUE = 5 * 60_000;
+    let reserveBienvenue: { avant: string | null } | null = null;
+    if (bienvenue && recherche?.client_id) {
+      const ilYa = new Date(Date.now() - DELAI_BIENVENUE).toISOString();
+      const dejaParti = 'pas de second envoi, ce même mail est parti il y a moins de 5 minutes (un double clic, ou un autre onglet ?). Il est sûrement dans sa boîte : pour le renvoyer exprès, attends quelques minutes.';
+      /* La même recherche seulement : annoncer une 2e recherche juste après le
+         mail de bienvenue de la 1re est voulu, pas un double clic. */
+      const { data: recents, error: eRecents } = await supabase.from('recherches').select('id')
+        .eq('id', recherche_id as string).gte('bienvenue_envoye_le', ilYa).limit(1);
+      if (eRecents) return NextResponse.json({ success: false, error: `Le mail de bienvenue n’a pas pu être vérifié : ${eRecents.message}` }, { status: 500 });
+      if (recents && recents.length) return NextResponse.json({ success: false, error: dejaParti }, { status: 409 });
+      const avant = (recherche.bienvenue_envoye_le as string | null | undefined) || null;
+      const reserver = supabase.from('recherches').update({ bienvenue_envoye_le: new Date().toISOString() }).eq('id', recherche_id as string);
+      const { data: pris, error: ePris } = await (avant ? reserver.eq('bienvenue_envoye_le', avant) : reserver.is('bienvenue_envoye_le', null)).select('id');
+      if (ePris) return NextResponse.json({ success: false, error: `Le mail de bienvenue n’a pas pu être préparé : ${ePris.message}` }, { status: 500 });
+      if (!pris || !pris.length) return NextResponse.json({ success: false, error: dejaParti }, { status: 409 });
+      reserveBienvenue = { avant };
+    }
+    /* L'envoi a raté : la date d'avant revient, le bouton n'est pas condamné. */
+    const rendreBienvenue = async () => {
+      if (!reserveBienvenue) return;
+      await ecritServeur('La date du mail de bienvenue', supabase.from('recherches')
+        .update({ bienvenue_envoye_le: reserveBienvenue.avant }).eq('id', recherche_id as string), avertissements);
+    };
+    rendreSiErreur = rendreBienvenue;
 
     /* Le nom qu'on montre au client. « Recherche 2 » ne lui dit rien : on
        retombe alors sur ses critères, comme dans son espace. */
@@ -1081,6 +1116,7 @@ export async function POST(req: NextRequest) {
         : (client.emails || []);
       const emails = sourceEmails.filter((e: string) => e && e.includes('@'));
       if (emails.length === 0) {
+        if (bienvenue) await rendreBienvenue();
         results.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' });
         continue;
       }
@@ -1151,6 +1187,8 @@ export async function POST(req: NextRequest) {
         const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
 
         if (ok) {
+          /* Parti : plus question de rendre la date, quoi qu'il arrive ensuite. */
+          if (bienvenue) rendreSiErreur = null;
           /* Le mail de bienvenue ne part qu'une fois : on horodate la recherche,
              et c'est cette date qui grise le bouton dans le CRM. On l'écrit
              après l'envoi, jamais avant — un échec Mailjet ne doit pas
@@ -1173,8 +1211,11 @@ export async function POST(req: NextRequest) {
             biens_ids: biensClient.map(b => b.id),
             sms_envoye: false,
           }), avertissements);
+          /* V3.50 : le serveur est le seul à écrire cette ligne (la fiche
+             l'écrivait aussi : elle apparaissait deux fois). Une recherche
+             qui s'ajoute garde son titre à elle. */
           const titreJournal = bienvenue
-            ? '👋 Mail de bienvenue envoyé'
+            ? (nouvelleRecherche ? `✉️ Nouvelle recherche annoncée — ${String(recherche?.nom || nomRecherche)}` : '👋 Mail de bienvenue envoyé')
             : biensClient.length === 0
             ? `✉️ Mail envoyé — ${objetFinal}`
             : biensClient.length === 1
@@ -1190,9 +1231,11 @@ export async function POST(req: NextRequest) {
           results.push({ client_id: client.id, success: true });
         } else {
           const errMsg = mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200);
+          if (bienvenue) await rendreBienvenue();
           results.push({ client_id: client.id, success: false, error: errMsg });
         }
       } catch (e) {
+        if (bienvenue) await rendreBienvenue();
         results.push({ client_id: client.id, success: false, error: (e as Error).message });
       }
     }
@@ -1208,6 +1251,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (e) {
+    if (rendreSiErreur) { try { await rendreSiErreur(); } catch { /* déjà signalé */ } }
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

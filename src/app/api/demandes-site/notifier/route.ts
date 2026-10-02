@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { envoyerMailjet } from '@/lib/point-auto';
 import { TABLE_DEMANDES, robot, type DemandeSite } from '@/lib/demandes-site';
-import { mailDemande } from '@/lib/demandes-site-mail';
+import { alerteDemandeCoupee, mailDemande } from '@/lib/demandes-site-mail';
+import { CLE_ALERTES } from '@/lib/alertes';
 
 /* ═══ « Nouvelle demande du site » : le mail à Alexandre (V3.37) ═══════════
    Le site, après chaque formulaire, appelle la fonction send-contact-email du
@@ -35,7 +36,17 @@ async function traiter() {
     return NextResponse.json({ ok: false, erreur: error.message }, { status: 500 });
   }
 
-  let envoyes = 0, robots = 0;
+  /* V3.50 : le réglage des alertes (Paramètres › Alertes mail). Coupé, la
+     demande est quand même marquée annoncée : elle est dans le CRM, et ne
+     repartira pas d'un coup le jour où on rallume le mail. */
+  let coupe = false;
+  if (data && data.length) {
+    const { data: r, error: eR } = await sb.from('parametres').select('valeur').eq('cle', CLE_ALERTES).maybeSingle();
+    if (eR) console.error('[demandes-site/notifier] lecture du réglage', eR.message);
+    else coupe = alerteDemandeCoupee((r as { valeur?: string | null } | null)?.valeur);
+  }
+
+  let envoyes = 0, robots = 0, coupees = 0;
   const erreurs: string[] = [];
   for (const d of (data || []) as DemandeSite[]) {
     /* Se réserver la demande : si un autre appel l'a prise entre-temps, la
@@ -45,6 +56,7 @@ async function traiter() {
     if (ePris) { erreurs.push(ePris.message); continue; }
     if (!pris || !pris.length) continue;
     if (robot(d)) { robots++; continue; }
+    if (coupe) { coupees++; continue; }
 
     const m = mailDemande(d);
     const r = await envoyerMailjet({ a: DESTINATAIRE(), sujet: m.sujet, html: m.html, texte: m.texte, id: `demande-${d.id}`, deNom: 'Site Emilio Immobilier' });
@@ -55,7 +67,7 @@ async function traiter() {
     const { error: eRetour } = await sb.from(TABLE_DEMANDES).update({ notifie_le: null }).eq('id', d.id);
     if (eRetour) console.error('[demandes-site/notifier] remise à annoncer', d.id, eRetour.message);
   }
-  return NextResponse.json({ ok: erreurs.length === 0, envoyes, robots, erreurs });
+  return NextResponse.json({ ok: erreurs.length === 0, envoyes, robots, coupees, erreurs });
 }
 
 export async function POST() { return traiter(); }

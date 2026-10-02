@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.43 · 30 septembre 2026**
+**Version 3.50 · 2 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,74 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.50 — 2 octobre 2026 · tout le CRM relu : le chiffre d'affaires, l'estimation, les visites, les documents, la fiche acheteur, l'agenda, les contacts
+
+Rien à passer dans Supabase.
+
+Alexandre : « fais le même diagnostic sur documents, fiches acheteurs, agenda, les relances… tout »,
+puis « la phase quand je crée un bien à suivre, l'estimation, les rentrées quand on fait un acte, si
+le chiffre d'affaires rentre bien, les visites ». Six relectures (documents, fiche acheteur, agenda
+et relances, contacts, chiffre d'affaires, biens), environ 80 points ; tout ce qui pouvait fausser
+l'argent, perdre une donnée ou dire faux à un client est corrigé. Quatre relectures adverses ensuite,
+une quinzaine de retouches.
+
+**Des outils communs, une seule façon de faire** :
+- `lib/annuler-visites.ts` · `annulerVisites(ids, { pourquoi })` : annuler une visite d'acheteur
+  partout pareil (statut, son rappel « Rendez-vous : Visite … » fermé s'il ne sert plus, la ligne
+  « Visite annulée » dans sa recherche). Agenda, page Visites, fiche acheteur, fiche du bien.
+- `lib/relances.ts` · `solderRelancesAcheteur(clientId, rechercheId?)` : les relances d'un acheteur
+  dont le dossier se clôt, sans toucher à ses relances de vendeur, ni aux rappels d'un compromis en
+  cours (« Compromis … »), ni à ceux de l'agenda (« Rendez-vous : … ») — `lib/relances-garder.ts`.
+- `lib/demandes-visite.ts` · `solderRelancesRetourVisite` : « Veut faire une offre / Veut revoir /
+  Il réfléchit — <bien> » se ferment quand la suite arrive (offre notée, 2e visite, compte rendu,
+  bien vendu ou retiré).
+- `lib/montant.ts` · `lireMontant` : « 8 333,33 », « 42.500 », « 850k ». Les honoraires d'une
+  transaction lisaient « 8 333,33 » comme 833 333 €.
+- `lib/rdv-bien.ts` : un rendez-vous de l'agenda relié à un bien (visite hors CRM, estimation) se
+  déplace et s'annule des deux côtés.
+
+**Le chiffre d'affaires** (`lib/activite.ts`) :
+- encaissé : les actes signés ; une transaction de chasse sur une copie d'un bien de l'agence ne
+  compte pas deux fois ; une lecture ratée s'affiche « — » au lieu de 0 € ; mois à l'heure de Paris ;
+- à venir (`honorairesPrevus`) : compromis signés (agence et chasse), sans les dossiers perdus ou
+  archivés — tableau de bord et Mon activité ;
+- « C'est vendu » exige les honoraires (ou « Vente sans honoraires »), les recalcule avec le prix ;
+  « Corriger l'acte… » sur un bien vendu ; un bien vendu ne se supprime plus ; tout est marqué TTC
+  côté biens, HT côté chiffre d'affaires ;
+- fiche acheteur : un seul chemin de clôture (`clore()`) pour Clôturer, Bien trouvé / Perdu et Acte
+  signé ; l'acte demande sa date et prévient si les honoraires manquent ; « Acte signé » n'arrête que
+  sa recherche ; Réinitialiser garde une vente signée ; supprimer un dossier qui a une vente signée
+  (ou un propriétaire de bien) est refusé ; un bien de l'agence ne crée plus de transaction côté
+  chasse (carte « Ouvrir la fiche du bien »).
+
+**L'estimation** : le rendez-vous a une heure et va dans l'agenda (`rdvEstimationHeure`,
+`rdvEstimationRdv`) ; chaque jalon (bien créé, rendez-vous, visite sur place, avis de valeur, mise de
+côté) a sa ligne dans le Suivi du propriétaire ; relances « faire le point » (avis + 7 jours) et
+« recontacter » (date de reprise), fermées au mandat ; « Repartir de zéro » à la reprise ; la visite
+sur place n'est notée faite qu'à la première réponse ; doublons signalés (adresse, propriétaire,
+contact) ; « Un mandat signé » à la création ouvre la fenêtre du mandat ; brouillons vides rangés à
+part.
+
+**Les visites** : « Déplacer » (acheteur suivi ou hors CRM, agenda compris), « Planifier une 2e
+visite », « Créer sa fiche » pour un visiteur hors CRM, créneau déjà pris ou passé signalé, visites
+passées sans compte rendu comptées « à faire », « Le point vendeur » (texte prêt à envoyer au
+propriétaire, noté dans son Suivi). Un bien vendu, retiré ou en pause ne se visite plus depuis
+l'agenda ni la fiche acheteur.
+
+**Documents** : signature simultanée des deux derniers signataires, erreur de lecture, finalisation
+depuis deux onglets, annulation depuis une page pas à jour ; l'avenant de vente signé s'applique au
+bien (`lib/documents-avenant-bien.ts`) ; une offre d'achat ne se signe plus après sa validité ;
+registre : Rétracté / Fin / Annulé, correction avant signature notée ; rappels du matin journalisés
+après envoi, alerte mail en cas d'échec.
+
+**Contacts et le reste** : retirer « Acheteur » arrête ses mails automatiques ; supprimer un contact
+relié à des biens ou documents est refusé ; la page publique d'un bien dit « vendu / sous compromis /
+plus en vente » ; « Nouveau mail » par lots Mailjet (plus de 504 à moitié envoyé) ; le lien
+« Ouvrir dans le CRM » survit à la connexion ; « Vendeurs signés » sur la carte ; doublons de
+contacts signalés ; demandes du site reliées avec leur type et leurs critères ; Ctrl/⌘ K ; mail de
+bienvenue écrit une fois dans le Suivi et protégé du double clic. Tableau de bord : « Relances à
+venir » sur 3 jours, dates à l'heure de Paris.
 
 ### V3.49 — 2 octobre 2026 · un bien cohérent d'un bout à l'autre : chaque étape dit ce qu'elle permet, et accompagne
 

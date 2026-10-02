@@ -3,14 +3,14 @@ import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, us
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, colonnesBien, controleAnnonce, etapeDe, etapesDuBien, lirePieces, lirePhotos, m2, permisBien, pourcent, titreBien,
+  argentBien, avantMandat, colonnesBien, controleAnnonce, etapeDe, etapesDuBien, lirePieces, lirePhotos, m2, permisBien, pourcent, texteEstimation, titreBien,
   type BienVente, type ChampBien as TChamp, type Donnees, type EtapeBien, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { ChampBien, habitable, manquesBien, proprioOuvert } from './ChampsBien';
 import CarteBien from './CarteBien';
 import FilEtapes from '@/components/documents/FilEtapes';
-import { bienVide, enregistrerBien, supprimerBien } from './outils';
+import { ajouterSuivi, bienVide, biensSemblables, enregistrerBien, supprimerBien, type BienSemblable } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -98,7 +98,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
 }
 
 /* L'aperçu : la carte, les chiffres, l'annonce. */
-function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbPrevues, nbOffres }: { bien: BienVente; d: Donnees; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbPrevues: number; nbOffres: number }) {
+function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbPrevues, nbCR, nbOffres }: { bien: BienVente; d: Donnees; suivi: SuiviVente[]; nbAcheteurs: number; nbVisites: number; nbPrevues: number; nbCR: number; nbOffres: number }) {
   const pseudo: BienVente = { ...bien, donnees: d, ...colonnesBien(d) };
   const a = argentBien(d);
   const surf = num(d, 'carrez') || num(d, 'surface');
@@ -110,12 +110,12 @@ function Apercu({ bien, d, suivi, nbAcheteurs, nbVisites, nbPrevues, nbOffres }:
   return (
     <div className={b.apercu}>
       <div className={s.edApercuT}><span>La carte dans la liste</span></div>
-      <CarteBien bien={pseudo} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} />
+      <CarteBien bien={pseudo} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} />
       {bien.etape !== 'a_suivre' && <div className={b.bloc}>
         <div className={b.blocT}><span className={b.blocIc}><Ic n="euro" t={15} /></span><h3>Les chiffres</h3></div>
         <div className={b.lignes}>
           <div className={b.li}><span>{avant ? 'Prix conseillé' : 'Prix affiché'}</span><b>{a.prix ? euros(a.prix) : '—'}</b></div>
-          <div className={b.li}><span>{a.acq ? 'Honoraires (acquéreur)' : 'Honoraires (vendeur)'}</span><b>{a.hono !== null ? `${euros(a.hono)}${a.taux ? ` · ${pourcent(a.taux)}` : ''}` : '—'}</b></div>
+          <div className={b.li}><span>{a.acq ? 'Honoraires (acquéreur)' : 'Honoraires (vendeur)'}</span><b>{a.hono !== null ? `${euros(a.hono)} TTC${a.taux ? ` · ${pourcent(a.taux)}` : ''}` : '—'}</b></div>
           <div className={b.li}><span>Net vendeur</span><b>{a.net ? euros(a.net) : '—'}</b></div>
           <div className={b.li}><span>Prix au m²</span><b>{a.prix && surf ? euros(a.prix / surf) : '—'}</b></div>
           {charges ? <div className={b.li}><span>Charges de copropriété</span><b>{`${euros(charges / 12)} / mois`}</b></div> : null}
@@ -160,13 +160,37 @@ function Notice({ id, onFermer }: { id: string; onFermer: () => void }) {
   );
 }
 
-export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false, suivi, nbAcheteurs, nbVisites = 0, nbPrevues = 0, nbOffres = 0, onMaj, onFermer }: {
+/* V3.50 : un nouveau bien qui en double un autre (même adresse, ou un
+   propriétaire qui a déjà un bien en cours) : on le dit pendant la saisie,
+   avec « Ouvrir la fiche existante » ou « C'est un autre bien ». */
+function Semblables({ l, onOuvrir, onIgnorer }: { l: BienSemblable[]; onOuvrir: (id: string) => void; onIgnorer: (id: string) => void }) {
+  return (
+    <div className={`${b.ventile} ${b.ventileManque}`} role="status" style={{ marginBottom: 14 }}>
+      <Ic n="info" t={16} />
+      <span>
+        <b>{l.length > 1 ? 'Ces biens existent peut-être déjà :' : 'Ce bien existe peut-être déjà :'}</b>
+        {l.map(x => (
+          <span key={x.bien.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <span>{`${x.pourquoi === 'adresse' ? 'Même adresse' : 'Même propriétaire'} : ${[x.bien.titre || titreBien(x.bien.donnees || {}), x.bien.adresse || x.bien.ville || '', etapeDe(x.bien.etape).court + (x.bien.archive ? ', archivé' : ''), x.bien.reference || ''].filter(Boolean).join(' · ')}`}</span>
+            <button type="button" className={b.lien} onClick={() => onOuvrir(x.bien.id)}>Ouvrir la fiche existante</button>
+            <button type="button" className={b.lien} onClick={() => onIgnorer(x.bien.id)}>{x.pourquoi === 'adresse' ? 'C’est un autre bien : continuer' : 'Un autre bien à lui : continuer'}</button>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false, autres, vus = [], onOuvrirExistant, suivi, nbAcheteurs, nbVisites = 0, nbPrevues = 0, nbCR = 0, nbOffres = 0, onMaj, onFermer }: {
   bien: BienVente;
   etapeDepart?: string;
   nouveau?: boolean;
+  /* V3.50 : les autres biens (un nouveau bien seulement), pour les doublons ;
+     `vus` : ceux déjà montrés avant la création (« Créer quand même »). */
+  autres?: BienVente[]; vus?: string[]; onOuvrirExistant?: (id: string) => void;
   suivi: SuiviVente[];
   nbAcheteurs: number;
-  nbVisites?: number; nbPrevues?: number;
+  nbVisites?: number; nbPrevues?: number; nbCR?: number;
   nbOffres?: number;
   onMaj: (b: BienVente) => void;
   /* null : le bien, créé puis laissé vide, a été supprimé. */
@@ -194,6 +218,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
   };
   const [enreg, setEnreg] = useState<Enreg>('ok');
   const formRef = useRef<HTMLDivElement>(null);
+  const [ignores, setIgnores] = useState<string[]>(vus);
 
   /* ── L'enregistrement automatique ── */
   const dernier = useRef<Donnees>(d);
@@ -210,6 +235,17 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
   const enregistrer = useCallback(async (): Promise<boolean> => {
     if (enVol.current) await enVol.current;
     if (!aEnregistrer.current) return true;
+    /* V3.50 : la fourchette, comme dans les fenêtres de l'estimation. Rien ne
+       part tant qu'elle est à l'envers (l'écran le dit, la saisie reste). */
+    const dx = dernier.current;
+    /* Seulement quand la fourchette vient d'être touchée : une fourchette déjà
+       à l'envers en base (d'avant) ne doit pas bloquer les photos ou la
+       description d'un bien où elle n'est même pas affichée. */
+    const touchee = dx.estimBasse !== vu.current.estimBasse || dx.estimHaute !== vu.current.estimHaute;
+    if (touchee && typeof dx.estimBasse === 'number' && typeof dx.estimHaute === 'number' && dx.estimBasse > 0 && dx.estimHaute > 0 && dx.estimBasse > dx.estimHaute) {
+      setEnreg({ erreur: 'La fourchette basse est au-dessus de la haute.' });
+      return false;
+    }
     aEnregistrer.current = false;
     const donnees = dernier.current;
     setEnreg('encours');
@@ -270,12 +306,34 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
     return enregistrer();
   }
 
+  /* V3.50 : une estimation revue dans l'éditeur (la fourchette, le prix
+     conseillé avant le mandat) laisse UNE ligne dans l'historique du bien, à
+     la fermeture — avant et après —, comme « Revoir l'estimation ». Pas une
+     par frappe. */
+  const estimDepart = useRef({ basse: num(bien.donnees || {}, 'estimBasse'), haute: num(bien.donnees || {}, 'estimHaute'), prix: num(bien.donnees || {}, 'prix') });
+  async function noterEstimation() {
+    const x = dernier.current;
+    const avantM = avantMandat(rowRef.current.etape);
+    const a = estimDepart.current;
+    const n = { basse: num(x, 'estimBasse'), haute: num(x, 'estimHaute'), prix: avantM ? num(x, 'prix') : a.prix };
+    if (n.basse === a.basse && n.haute === a.haute && n.prix === a.prix) return;
+    estimDepart.current = n;
+    const deja = !!(a.basse || a.haute || (avantM && a.prix));
+    const p = avantM ? n.prix : null, pa = avantM ? a.prix : null;
+    try {
+      await ajouterSuivi({ bien_id: row.id, type: 'note',
+        commentaire: `${texteEstimation({ basse: n.basse, haute: n.haute, prix: p })}${deja ? ` (avant : ${texteEstimation({ basse: a.basse, haute: a.haute, prix: pa }).replace(/^Estimation : /, '')})` : ''}`,
+        donnees: { estimation: true, basse: n.basse, haute: n.haute, prix: p, ...(deja ? { avant: { basse: a.basse, haute: a.haute, prix: pa } } : {}), depuis: 'editeur' } });
+    } catch (e) { setEnreg({ erreur: `L’estimation est enregistrée, mais pas sa ligne d’historique : ${(e as Error).message}` }); }
+  }
+
   async function fermer() {
     const ok = await vider();
     if (nouveau && bienVide(dernier.current)) {
       try { await supprimerBien({ ...row, donnees: dernier.current }); onFermer(null); return; } catch { /* on le garde */ }
     }
     if (!ok && !confirm('La dernière modification n’a pas pu être enregistrée.\n\nFermer quand même ?')) return;
+    if (ok) await noterEstimation();
     onFermer(rowRef.current);
   }
   fermerRef.current = () => { void fermer(); };
@@ -284,6 +342,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
     const ok = await vider();
     if (!ok) return;
     if (nouveau && bienVide(dernier.current)) { await fermer(); return; }
+    await noterEstimation();
     onFermer(rowRef.current);
   }
 
@@ -291,6 +350,19 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
      jamais enregistrée, pour effacer ce qui ne sert pas encore. */
   const dv = useMemo(() => ({ ...d, _stade: row.etape }), [d, row.etape]);
   const dd = useDeferredValue(d);
+  const semblables = useMemo(() => (nouveau && autres ? biensSemblables(dd, autres, row.id, ignores) : []), [nouveau, autres, dd, row.id, ignores]);
+  /* Ouvrir la fiche existante : le bien commencé ici est retiré (après accord
+     s'il contient déjà quelque chose). */
+  async function ouvrirExistant(id: string) {
+    if (!onOuvrirExistant) return;
+    if (minuterie.current) clearTimeout(minuterie.current);
+    if (enVol.current) await enVol.current;
+    if (!bienVide(dernier.current) && !confirm('Ouvrir la fiche existante ?\n\nLe bien commencé ici est supprimé, avec ce que tu y as déjà saisi.')) return;
+    try { await supprimerBien({ ...rowRef.current, donnees: dernier.current }); }
+    catch (e) { setEnreg({ erreur: (e as Error).message }); return; }
+    aEnregistrer.current = false;
+    onOuvrirExistant(id);
+  }
   const manquesParEtape = useMemo(() => ETAPES.map(e => manquesBien(e.champs, dv)), [ETAPES, dv]);
 
   const suivreDefilement = useCallback(() => {
@@ -393,6 +465,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
           <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive}`}>
             {notice && <Notice id={notice} onFermer={() => setNotice(null)} />}
+            {semblables.length > 0 && <Semblables l={semblables} onOuvrir={id => { void ouvrirExistant(id); }} onIgnorer={id => setIgnores(l => [...l, id])} />}
             {mode === 'tout'
               ? ETAPES.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />)
               : <BlocEtape key={ETAPES[cur].id} e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} anime />}
@@ -405,7 +478,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
           </div>
         </div>
         <div className={`${s.edApercu} ${b.edApercu}`}>
-          <Apercu bien={row} d={dd} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbOffres={nbOffres} />
+          <Apercu bien={row} d={dd} suivi={suivi} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} />
         </div>
       </div>
 

@@ -5,9 +5,10 @@ import { toutLire } from '@/lib/registre';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
-import { estAcheteur } from '@/lib/contacts';
+import { estAcheteur, estArchive } from '@/lib/contacts';
 import { jourParis } from '@/lib/mandat';
-import { honorairesEncaisses, moisDe, moisCourant, eurosRonds, type Encaisse } from '@/lib/activite';
+import { honorairesEncaisses, honorairesPrevus, moisDe, moisCourant, eurosRonds, type Encaisse } from '@/lib/activite';
+import { maintenantParis, visitePasseeParis } from '@/lib/visites';
 
 /* Les étapes d'une transaction, dans l'ordre de la fiche client. */
 const ETAPES_TX: { cle: string; nom: string }[] = [
@@ -45,9 +46,8 @@ function ilYa(iso: string): string {
   if (min < 1) return 'à l’instant';
   if (min < 60) return `il y a ${min} min`;
   const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
-  const auj = new Date(); auj.setHours(0, 0, 0, 0);
-  const jour = new Date(d); jour.setHours(0, 0, 0, 0);
-  const ecart = Math.round((auj.getTime() - jour.getTime()) / 86400000);
+  /* V3.50 : aujourd'hui et hier à l'heure de Paris. */
+  const ecart = Math.round((Date.parse(`${jourParis()}T12:00:00Z`) - Date.parse(`${jourParis(d)}T12:00:00Z`)) / 86400000);
   if (ecart === 0) return `aujourd’hui à ${h}`;
   if (ecart === 1) return `hier à ${h}`;
   return `le ${d.getDate()} ${MOIS_COURT[d.getMonth()]}`;
@@ -73,14 +73,21 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
   const [titresBiens, setTitresBiens] = useState<Record<string, string>>({});
   const [aVenir, setAVenir] = useState<VisiteAVenir[]>([]);
   const [activite, setActivite] = useState<LigneJournal[]>([]);
-  const [encaisse, setEncaisse] = useState<Encaisse[]>([]);
+  /* V3.50 : null = le chiffre d'affaires n'a pas pu être lu. Avant, une
+     lecture ratée (session expirée) affichait « 0 € » comme si de rien
+     n'était. */
+  const [encaisse, setEncaisse] = useState<Encaisse[] | null>([]);
+  /* Ce qui est attendu : les compromis signés, acte pas encore passé.
+     null si la lecture a échoué (la ligne ne s'affiche pas). */
+  const [prevu, setPrevu] = useState<Encaisse[] | null>([]);
 
   async function fetchData() {
     const maintenant = new Date();
-    const jour = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+    /* V3.50 : « aujourd'hui » à l'heure de Paris, comme partout. */
+    const jour = jourParis(maintenant);
     const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
     const debutMoisJour = jour.slice(0, 8) + '01';
-    const [{ data: c }, { data: r }, tx, pres, faites, venir, jr, ca] = await Promise.all([
+    const [{ data: c }, { data: r }, tx, pres, faites, venir, jr, ca, ap] = await Promise.all([
       /* Tous les contacts, par pages de 1 000 (V3.43 : au-delà, les compteurs étaient faux). */
       toutLire<Client>((de, a) => supabase.from('clients').select('*').order('created_at', { ascending: false }).order('id').range(de, a)),
       supabase.from('relances').select('*').eq('statut', 'en_attente').order('date_echeance', { ascending: true }),
@@ -89,20 +96,35 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
          par lien : c'est ce qu'il a reçu, sélection par sélection. */
       supabase.from('biens').select('id', { count: 'exact', head: true }).eq('etape', 'presente').gte('envoye_le', debutMois.toISOString()),
       supabase.from('visites').select('id', { count: 'exact', head: true }).eq('statut', 'effectuee').gte('date_visite', debutMoisJour).lte('date_visite', `${jour}T23:59:59`),
+      /* Quelques-unes de plus que les cinq affichées : celles de ce matin
+         déjà passées sont retirées juste après. */
       supabase.from('visites').select('id, client_id, recherche_id, date_visite, heure, biens(titre, ville)')
-        .eq('statut', 'a_venir').gte('date_visite', jour).order('date_visite').order('heure').limit(5),
+        .eq('statut', 'a_venir').gte('date_visite', jour).order('date_visite').order('heure').limit(12),
       supabase.from('journal').select('id, client_id, recherche_id, bien_id, type, titre, created_at').order('created_at', { ascending: false }).limit(25),
-      honorairesEncaisses().catch(() => [] as Encaisse[]),
+      honorairesEncaisses().catch((e: Error) => { console.error('[tableau de bord] chiffre d’affaires', e?.message); return null; }),
+      honorairesPrevus().catch((e: Error) => { console.error('[tableau de bord] honoraires à venir', e?.message); return null; }),
     ]);
-    setClients(c || []);
+    const tous = (c || []) as Client[];
+    setClients(tous);
     setRelances(r || []);
     setChiffres({ presentes: pres.count || 0, visitesFaites: faites.count || 0 });
+    /* V3.50 : sans les transactions d'un client perdu ou archivé : le dossier
+       est clos, la transaction ne court plus. Un client « bien trouvé » et
+       une recherche à l'arrêt restent : la fiche arrête la veille dès le
+       compromis signé, c'est justement là que l'acte se prépare. */
+    const clos = new Set(tous.filter(x => x.statut === 'perdu' || estArchive(x)).map(x => x.id));
     const enCours = ((tx.data || []) as Tx[])
+      .filter(t => !(t.client_id && clos.has(t.client_id)))
       .sort((a, b) => ETAPES_TX.findIndex(e => e.cle === b.etape_actuelle) - ETAPES_TX.findIndex(e => e.cle === a.etape_actuelle));
     setTransactions(enCours);
-    setAVenir((venir.data || []) as unknown as VisiteAVenir[]);
+    /* V3.50 : une visite de ce matin dont l'heure est passée attend son
+       compte rendu, elle n'est plus « à venir » (même règle que le menu et
+       la page Visites). */
+    const mParis = maintenantParis(maintenant);
+    setAVenir(((venir.data || []) as unknown as VisiteAVenir[]).filter(v => !visitePasseeParis(v, mParis)).slice(0, 5));
     setActivite(sansDoublons((jr.data || []) as LigneJournal[]).slice(0, 7));
     setEncaisse(ca);
+    setPrevu(ap);
     setLoading(false);
     /* Le bien de chaque transaction, pour dire sur quoi elle porte. */
     const ids = enCours.map(t => t.bien_id).filter((x): x is string => !!x);
@@ -124,8 +146,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
     onNavigate('fiche', cl);
   };
   const mois = moisCourant();
-  const caMois = encaisse.filter(e => moisDe(e.quand) === mois);
+  const caMois = (encaisse || []).filter(e => moisDe(e.quand) === mois);
   const totalMois = caMois.reduce((t, e) => t + e.ht, 0);
+  const totalPrevu = (prevu || []).reduce((t, e) => t + e.ht, 0);
 
   /* Des acheteurs : un notaire ou un vendeur n'est ni actif ni prospect. */
   const actifs    = clients.filter(c => estAcheteur(c) && c.statut === 'actif').length;
@@ -139,9 +162,21 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
      en attente en base, donc une relance prévue dans six jours faisait
      clignoter le dashboard pour rien. La barre de gauche et celle du haut,
      elles, n'ont jamais compté que les relances dues. */
-  const relanceRetard     = relances.filter(r => r.date_echeance.split('T')[0] < today);
-  const relanceAujourdhui = relances.filter(r => r.date_echeance.split('T')[0] === today);
-  const relanceAvenir     = relances.filter(r => r.date_echeance.split('T')[0] > today);
+  /* V3.50 : le jour d'une échéance se lit à l'heure de Paris. Prise sur
+     l'heure UTC enregistrée, une demande arrivée à 0 h 30 tombait la veille :
+     « 1j de retard » ici, « Aujourd'hui » dans la page Relances. */
+  const jourDe = (r: Relance) => {
+    const d = new Date(r.date_echeance);
+    return isNaN(d.getTime()) ? String(r.date_echeance || '').slice(0, 10) : jourParis(d);
+  };
+  const relanceRetard     = relances.filter(r => jourDe(r) < today);
+  const relanceAujourdhui = relances.filter(r => jourDe(r) === today);
+  /* V3.50 : « à venir », ce sont les trois prochains jours (Alexandre : « J+3
+     max »). Au-delà, elles restent dans la page Relances, sans encombrer
+     l'accueil. */
+  const dansTroisJours = (() => { const x = new Date(`${today}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + 3); return x.toISOString().slice(0, 10); })();
+  const relanceAvenir     = relances.filter(r => { const j = jourDe(r); return j > today && j <= dansTroisJours; });
+  const relancePlusTard   = relances.filter(r => jourDe(r) > dansTroisJours);
   const relanceAfaire     = [...relanceRetard, ...relanceAujourdhui];
 
   const now = new Date();
@@ -151,7 +186,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
      le groupe dans lequel la ligne se trouve : rouge quand c'est dû, ambre
      quand c'est pour plus tard. */
   const LigneRelance = ({ r }: { r: Relance }) => {
-    const dateR = r.date_echeance.split('T')[0];
+    const dateR = jourDe(r);
     const enRetard = dateR < today;
     const cejour = dateR === today;
     const jours = Math.abs(Math.round((new Date(dateR).getTime() - new Date(today).getTime()) / 86400000));
@@ -194,7 +229,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
             {relanceAfaire.length > 0
               ? <>Vous avez <strong style={{color:'#fca5a5'}}>{relanceAfaire.length} relance{relanceAfaire.length > 1 ? 's' : ''} à faire</strong>{relanceAvenir.length > 0 ? <> et {relanceAvenir.length} à venir</> : null} — bonne journée ! 🌟</>
               : relanceAvenir.length > 0
-                ? <>Rien à relancer aujourd&apos;hui — {relanceAvenir.length} relance{relanceAvenir.length > 1 ? 's' : ''} plus tard dans la semaine. ☀️</>
+                ? <>Rien à relancer aujourd&apos;hui — {relanceAvenir.length} relance{relanceAvenir.length > 1 ? 's' : ''} dans les 3 prochains jours. ☀️</>
                 : <>Aucune relance à faire — bonne journée ! ☀️</>
             }
           </p>
@@ -243,9 +278,19 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
             <div className={`${styles.statIcon} ${styles.iconDark}`}>💰</div>
             <span className={`${styles.statBadge} ${styles.badgeGoldDark}`}>HT</span>
           </div>
-          <div className={`${styles.statVal} ${styles.statValWhite}`}>{eurosRonds(totalMois)}</div>
-          <div className={`${styles.statLabel} ${styles.statLabelDark}`}>CA mois en cours</div>
-          {caMois.length > 0 && <div className={styles.statSub}>{caMois.length > 1 ? `${caMois.length} actes signés` : '1 acte signé'}</div>}
+          {/* V3.50 : une lecture ratée se dit (« — »), au lieu d'un « 0 € »
+              qui faisait croire à un mois sans vente. */}
+          <div className={`${styles.statVal} ${styles.statValWhite}`}>{encaisse === null ? '—' : eurosRonds(totalMois)}</div>
+          <div className={`${styles.statLabel} ${styles.statLabelDark}`}>CA HT du mois en cours</div>
+          {encaisse === null
+            ? <div className={styles.statSub}>Chiffre d’affaires indisponible : recharge la page</div>
+            : caMois.length > 0 && <div className={styles.statSub}>{caMois.length > 1 ? `${caMois.length} actes signés` : '1 acte signé'}</div>}
+          {/* Ce qui arrive : les compromis signés, l'acte pas encore passé. */}
+          {prevu && prevu.length > 0 && (
+            <div className={`${styles.statLabel} ${styles.statLabelDark}`} style={{ marginTop: 4 }}>
+              {`À venir : ${eurosRonds(totalPrevu)} HT (${prevu.length > 1 ? `${prevu.length} compromis signés` : '1 compromis signé'})`}
+            </div>
+          )}
         </div>
       </div>
 
@@ -261,7 +306,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
                 <span className={`${styles.pastille} ${styles.pastilleRouge}`} title="À faire maintenant">{relanceAfaire.length}</span>
               )}
               {relanceAvenir.length > 0 && (
-                <span className={`${styles.pastille} ${styles.pastilleAmbre}`} title="Calées pour plus tard">{relanceAvenir.length}</span>
+                <span className={`${styles.pastille} ${styles.pastilleAmbre}`} title="Dans les 3 prochains jours">{relanceAvenir.length}</span>
               )}
             </div>
             {relances.length > 0 && <button className={styles.cardLink} onClick={() => onNavigate('relances')}>Voir toutes →</button>}
@@ -285,10 +330,15 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
                 <>
                   <div className={styles.groupeLabel} style={{ color: '#b45309', borderTop: relanceAfaire.length > 0 ? '1px solid #f1f5f9' : undefined }}>
                     <span className={styles.groupePoint} style={{ background: '#f59e0b' }} />
-                    À venir — rien à faire pour l&apos;instant
+                    Dans les 3 prochains jours — rien à faire pour l&apos;instant
                   </div>
                   {relanceAvenir.slice(0, relanceAfaire.length > 0 ? 2 : 4).map(r => <LigneRelance key={r.id} r={r} />)}
                 </>
+              )}
+              {relanceAfaire.length === 0 && relanceAvenir.length === 0 && (
+                <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                  {`✅ Rien à faire ni de prévu dans les 3 prochains jours${relancePlusTard.length ? ` · ${relancePlusTard.length} plus tard, dans « Voir toutes »` : ''}`}
+                </div>
               )}
             </div>
           )}

@@ -8,7 +8,7 @@ import { jetonEspace } from '@/lib/jeton';
 import type { Client, StatutClient } from '@/lib/supabase';
 import styles from './Clients.module.css';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { nomFoyer } from '@/lib/foyer';
+import { conjointDe, nomFoyer } from '@/lib/foyer';
 import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
 import {
   BasculeCriteres, classesCrit, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
@@ -17,7 +17,7 @@ import {
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
 import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, EVT_DEMANDE_VUE, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
 import {
-  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, sansCriteres, structurePropre, typeDe, typesDe,
+  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, reventePossible, sansCriteres, structurePropre, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
@@ -206,7 +206,8 @@ function situationDe(c: any): Situation {
   const s = c.statut_occupation;
   /* La case « revente possible » vaut propriétaire, même si le statut n'a
      pas été choisi dans la liste : elle se coche indépendamment. */
-  if (c.bien_actuel_a_vendre) return 'vendeur';
+  /* V3.50 : sauf chez un vendeur signé (il a vendu, la case est restée). */
+  if (reventePossible(c)) return 'vendeur';
   if (s === 'proprietaire') return 'proprietaire';
   if (s === 'locataire' || s === 'heberge' || s === 'autre') return 'locataire';
   return 'inconnue';
@@ -222,6 +223,33 @@ const SITUATIONS: { key: string; label: string }[] = [
 ];
 const D_CLE = <><circle cx="8" cy="15" r="4" /><path d="M10.8 12.2 20 3.5" /><path d="M16.5 7l3 3" /><path d="M14.5 9l2 2" /></>;
 const normer = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/* ── Un contact qui existe peut-être déjà (V3.50) ──
+   Avant de créer : même e-mail, même téléphone (les 9 derniers chiffres :
+   « 06 12… », « +33 6 12… » et « 0612… » se valent), ou même prénom et nom.
+   Les deux personnes d'un couple comptent. Comme « Créer la fiche contact »
+   des demandes du site. */
+type FormDoublon = { prenom: string; nom: string; email1: string; email2: string; c2_email: string; tel1: string; tel2: string; c2_tel: string };
+const finTel = (t: unknown) => String(t ?? '').replace(/\D/g, '').slice(-9);
+const nomNet = (p?: string | null, n?: string | null) => normer(`${p || ''} ${n || ''}`).replace(/[^a-z0-9]+/g, ' ').trim();
+/* Ce qui a été tapé : si ça change, l'avertissement ne vaut plus. */
+const cleDoublon = (f: FormDoublon) => [f.prenom, f.nom, f.email1, f.email2, f.c2_email, f.tel1, f.tel2, f.c2_tel].map(x => x.trim().toLowerCase()).join('|');
+function trouverDoublon(f: FormDoublon, liste: Client[]): Client | null {
+  const mails = [f.email1, f.email2, f.c2_email].map(x => x.trim().toLowerCase()).filter(x => x.includes('@'));
+  const tels = [f.tel1, f.tel2, f.c2_tel].map(finTel).filter(x => x.length === 9);
+  const nom = f.prenom.trim() && f.nom.trim() ? nomNet(f.prenom, f.nom) : '';
+  const nomInverse = nom ? nomNet(f.nom, f.prenom) : '';
+  const parNom: Client[] = [];
+  for (const c of liste) {
+    const j = conjointDe(c.conjoint);
+    const sesMails = [...(c.emails || []), j?.email].map(x => String(x || '').trim().toLowerCase()).filter(Boolean);
+    const sesTels = [...(c.telephones || []), j?.telephone].map(finTel).filter(x => x.length === 9);
+    if (mails.some(m => sesMails.includes(m)) || tels.some(t => sesTels.includes(t))) return c;
+    const n = nomNet(c.prenom, c.nom);
+    if (nom && n && (n === nom || n === nomInverse)) parNom.push(c);
+  }
+  return parNom[0] || null;
+}
 
 type DetailDossier = {
   journal: { titre: string; type: string; date: string } | null;
@@ -400,6 +428,9 @@ export default function Clients({ onNavigate, fenetre }: {
 }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  /* V3.50 : la lecture des contacts a échoué. Avant, la page disait
+     « Aucun contact pour l'instant », comme si la base était vide. */
+  const [erreurLecture, setErreurLecture] = useState('');
 
   /* Ce que la liste ne savait pas dire : combien de biens, de visites, d'offres,
      et quelle relance attend. Chargé en trois lectures, une fois, au démarrage. */
@@ -484,6 +515,9 @@ export default function Clients({ onNavigate, fenetre }: {
   const [autresCoord, setAutresCoord] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /* Un contact qui existe peut-être déjà (V3.50) : trouvé à « Créer », avec
+   ce qui était tapé à ce moment-là (`cle`). */
+  const [doublon, setDoublon] = useState<{ c: Client; cle: string } | null>(null);
   /* La demande du site d'où vient ce contact (« Créer le contact », V3.34),
      et le contact créé, rendu à la rubrique Demandes du site. */
   const demandeLiee = useRef<string | null>(null);
@@ -503,8 +537,11 @@ export default function Clients({ onNavigate, fenetre }: {
       types: pre.types, source: 'site', source_detail: pre.source_detail, notes: pre.notes,
       creerBien: !fenetre,
     } : initForm);
-    setCrit(CRIT_VIDE);
-    setStep(0); setEtapeCrit(0); setSensCrit(1);
+    /* V3.50 : une demande « Accompagnement acheteur » garde ce que le client
+       a donné (budget, type, surface, pièces…) dans sa recherche. Avant, elle
+       repartait vide : « acheteur non filtré », tout était dans les notes. */
+    setCrit(pre?.criteres ? { ...CRIT_VIDE, ...pre.criteres } : CRIT_VIDE);
+    setStep(0); setEtapeCrit(0); setSensCrit(1); setDoublon(null);
     setError(''); setAdrSug([]); setAutresCoord(false); setShowModal(true);
   }
 
@@ -558,6 +595,7 @@ export default function Clients({ onNavigate, fenetre }: {
       .select('*')
       .order('created_at', { ascending: false }).order('id').range(de, a));
     if (eCl) console.error('[contacts] lecture', eCl);
+    setErreurLecture(eCl || '');
     const clientsList = cl;
 
     // V3 : la source de vérité des critères est la table `recherches`, plus `clients.*`.
@@ -623,7 +661,8 @@ export default function Clients({ onNavigate, fenetre }: {
       const [bi, vi, re] = await Promise.all([
         toutLire<any>((de, a) => supabase.from('biens').select('client_id, etape, badge_retour')
           .or('etape.eq.presente,badge_retour.eq.offre_faite').order('id').range(de, a)),
-        toutLire<any>((de, a) => supabase.from('visites').select('client_id').order('id').range(de, a)),
+        /* V3.50 : sans les visites annulées, comme la page Visites. */
+        toutLire<{ client_id: string; statut: string | null }>((de, a) => supabase.from('visites').select('client_id, statut').order('id').range(de, a)),
         toutLire<any>((de, a) => supabase.from('relances').select('client_id, date_echeance, note')
           .eq('statut', 'en_attente').order('date_echeance', { ascending: true }).order('id').range(de, a)),
       ]);
@@ -634,7 +673,7 @@ export default function Clients({ onNavigate, fenetre }: {
         if (b.etape === 'presente') e.biens++;
         if (b.badge_retour === 'offre_faite') e.offres++;
       });
-      vi.data.forEach((v: any) => { const e = s[v.client_id]; if (e) e.visites++; });
+      vi.data.forEach(v => { const e = s[v.client_id]; if (e && v.statut !== 'annulee') e.visites++; });
       re.data.forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
       const noter = (j: any) => {
         const e = s[j.client_id];
@@ -767,12 +806,35 @@ export default function Clients({ onNavigate, fenetre }: {
     .filter(c => { const s = situationDe(c); return k === 'toutes' || (k === 'proprietaire' ? (s === 'proprietaire' || s === 'vendeur') : s === k); })
     .length;
 
-  async function handleCreate(e: React.FormEvent) {
+  /* Le contact qui existe peut-être déjà : sa fiche, à la place de la
+     création (V3.50). */
+  async function ouvrirDoublon(id: string) {
+    const { data, error: e } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
+    if (e || !data) { setError(e ? `Sa fiche n’a pas pu être ouverte : ${e.message}` : 'Ce contact n’existe plus.'); setDoublon(null); return; }
+    setDoublon(null); setShowModal(false); setForm(initForm); setCrit(CRIT_VIDE);
+    onNavigate('fiche', data);
+  }
+
+  async function handleCreate(e: React.FormEvent, forcer = false) {
     e.preventDefault();
+    /* Un double clic ne crée pas deux fiches (V3.50). */
+    if (saving) return;
     if (!form.types.length) { setError('Choisissez qui est ce contact : acheteur, vendeur, notaire…'); setStep(0); return; }
     if (!form.prenom.trim() && !form.nom.trim()) { setError('Renseignez au moins un prénom ou un nom'); setStep(1); return; }
     const acheteur = form.types.includes('acheteur');
     setSaving(true); setError('');
+    /* V3.50 : avant de créer, un contact qui existe peut-être déjà (même
+       e-mail, même téléphone, même nom). Depuis une demande du site, c'est
+       déjà fait par la question « Créer la fiche contact ? ». Une lecture
+       ratée ne bloque pas la création. */
+    const tape: FormDoublon = { ...form, c2_email: form.couple ? form.c2_email : '', c2_tel: form.couple ? form.c2_tel : '' };
+    if (!fenetre && !forcer) {
+      const { data: tous, erreur: eTous } = await toutLire<Client>((de, a) => supabase.from('clients').select('*').order('id').range(de, a));
+      if (eTous) console.error('[contacts] recherche d’un doublon', eTous);
+      const d = eTous ? null : trouverDoublon(tape, tous);
+      if (d) { setDoublon({ c: d, cle: cleDoublon(tape) }); setSaving(false); return; }
+    }
+    setDoublon(null);
     try {
       const reference = await genererReference();
       const emails = [form.email1, form.email2].filter(Boolean);
@@ -1421,6 +1483,19 @@ export default function Clients({ onNavigate, fenetre }: {
 
               {/* ── Pied ── */}
               <div className="nc-pied" style={{ padding: '14px 26px', borderTop: '1px solid #f1f5f9', background: '#fbfcfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+                {/* V3.50 : un contact qui existe peut-être déjà. Juste au-dessus
+                    des boutons, pour qu'on le voie quelle que soit l'étape. */}
+                {doublon && doublon.cle === cleDoublon({ ...form, c2_email: form.couple ? form.c2_email : '', c2_tel: form.couple ? form.c2_tel : '' }) && (
+                  <div role="alert" style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px', fontSize: 13, color: '#92400e', lineHeight: 1.45 }}>
+                    <span style={{ flex: '1 1 260px', minWidth: 0 }}>
+                      {`Ce contact existe peut-être déjà : ${nomFoyer(doublon.c) || 'sans nom'}${[doublon.c.telephones?.[0], doublon.c.emails?.[0]].filter(Boolean).length ? `, ${[doublon.c.telephones?.[0], doublon.c.emails?.[0]].filter(Boolean).join(', ')}` : ''}${estArchive(doublon.c) ? ' (archivé)' : ''}.`}
+                    </span>
+                    <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" className={styles.btnPrimary} disabled={saving} onClick={() => ouvrirDoublon(doublon.c.id)}>Ouvrir sa fiche</button>
+                      <button type="button" className={styles.btnSecondary} disabled={saving} onClick={e => handleCreate(e, true)}>Créer quand même</button>
+                    </span>
+                  </div>
+                )}
                 {/* Au téléphone : « ← » seul, et pas d'« Annuler » (la croix
                     est en haut) — tout tient sur une ligne. */}
                 {step === 0
@@ -1517,8 +1592,15 @@ export default function Clients({ onNavigate, fenetre }: {
             </div>
           ))}
         </div>
+      ) : erreurLecture && !clients.length ? (
+        <div className={cc.vide}>
+          <b>Les contacts n’ont pas pu être lus</b>
+          <span style={{ display: 'block' }}>{`${erreurLecture}. Vérifie ta connexion, puis réessaie.`}</span>
+          <button type="button" className={styles.btnSecondary} style={{ marginTop: 12 }} onClick={() => fetchClients()}>Réessayer</button>
+        </div>
       ) : (
         <>
+          {erreurLecture && <div className={styles.errorBox} style={{ marginBottom: 12 }}>{`Une partie des contacts n’a pas pu être lue (${erreurLecture}) : la liste est peut-être incomplète. Recharge la page.`}</div>}
           {avecAcheteurs && (
             <div className={cc.section}>
               {filtered.length === 0 ? (

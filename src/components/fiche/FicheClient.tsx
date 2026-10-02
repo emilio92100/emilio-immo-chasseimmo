@@ -6,12 +6,17 @@ import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
-import { programmerRelance, delaiRelance, echeanceDans } from '@/lib/relances';
+import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur } from '@/lib/relances';
+import { annulerVisites } from '@/lib/annuler-visites';
+import { lireMontant, ecrireMontant } from '@/lib/montant';
+import { visitePassee } from '@/lib/visites';
+import { eurosRonds } from '@/lib/activite';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
+import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi } from '@/lib/intentions';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nomFoyer, conjointDe } from '@/lib/foyer';
@@ -22,7 +27,7 @@ import {
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
-import { solderRelancesVisite } from '@/lib/demandes-visite';
+import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
 import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
@@ -282,11 +287,46 @@ const ETAPES_TX: { cle: string; nom: string; quoi: string; icone: string }[] = [
 ];
 
 /* Un montant tapé au clavier : vide ou illisible → rien, jamais NaN.
-   Effacer le champ écrivait « NaN » dans la transaction, et le récapitulatif
-   finissait par afficher « NaN € ». */
-function nbOuNull(v: any): number | null {
-  const n = parseInt(String(v ?? '').replace(/[^\d-]/g, ''), 10);
-  return Number.isFinite(n) ? n : null;
+   V3.50 : lu par `lireMontant` (src/lib/montant.ts). L'ancienne lecture ne
+   gardait que les chiffres : « 8 333,33 » d'honoraires devenait 833 333 €, et
+   le chiffre d'affaires gonflait d'autant. Les champs d'argent de la
+   transaction sont des champs texte : « 8 333,33 », « 350 000 », « 850k »
+   passent tous. À la sortie du champ, le montant se réécrit en clair. */
+const champMontant = (v: unknown) => ecrireMontant(lireMontant(v), '');
+function remettreEnForme(e: React.FocusEvent<HTMLInputElement>) {
+  const n = lireMontant(e.currentTarget.value);
+  if (n !== null) e.currentTarget.value = ecrireMontant(n, '');
+}
+
+/* V3.50 — Un bien d'acheteur qui est en fait un mandat de l'agence (une copie
+   portant `bien_vente_id`) : l'offre, le compromis et l'acte se suivent sur
+   la fiche du bien, pas dans une transaction de chasse (la vente y compte
+   déjà dans le chiffre d'affaires). */
+function CarteMandatAgence({ titre, onOuvrir }: { titre?: string | null; onOuvrir: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 12, padding: '12px 14px', marginBottom: 14, textAlign: 'left' }}>
+      <span style={{ flex: '1 1 240px', minWidth: 0, fontSize: 13, color: '#55647a', lineHeight: 1.55 }}>
+        {titre ? <b style={{ display: 'block', color: 'var(--emilio)', fontSize: 13.5, marginBottom: 2 }}>{titre}</b> : null}
+        {'Ce bien est un mandat de l’agence : l’offre, le compromis et l’acte se suivent sur la fiche du bien.'}
+      </span>
+      <button type="button" className={styles.btn} style={{ flexShrink: 0 }} onClick={onOuvrir}>Ouvrir la fiche du bien</button>
+    </div>
+  );
+}
+
+/* Ce que la fenêtre « Acte signé » lit d'une transaction. */
+type TxActe = {
+  id: string; recherche_id?: string | null; bien_id?: string | null;
+  acte_date_prevue?: string | null; honoraires_ht?: unknown; honoraires_ttc?: unknown;
+};
+
+/* V3.50 — Les honoraires HT d'une vente signée (comme src/lib/activite.ts) :
+   saisis HT, sinon TTC ramenés en HT, sinon rien. */
+function honorairesHT(t: { honoraires_ht?: unknown; honoraires_ttc?: unknown }): number {
+  const ht = lireMontant(t.honoraires_ht);
+  if (ht !== null) return ht;
+  const ttc = lireMontant(t.honoraires_ttc);
+  return ttc !== null ? ttc / 1.2 : 0;
 }
 
 /* Le délai SRU part de la date du compromis — encore faut-il qu'elle existe.
@@ -934,6 +974,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [reinitStats, setReinitStats] = useState<{
     propositions: number; passages: number; lues: number;
     biens: number; presentes: number; visites: number; envois: number;
+    /* V3.50 : une transaction en cours (effacée) ; une vente signée (gardée,
+       avec son bien : elle compte dans le chiffre d'affaires). */
+    txOuverte: boolean; venteGardee: string | null;
   } | null>(null);
   /* Supprimer le client : la seule action de l'application qui efface une
      personne. Elle compte d'abord, et fait écrire le nom avant d'agir. */
@@ -950,6 +993,20 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   /* Choisir le bien d'une transaction : à la création, ou pour la corriger. */
   const [showChoixTx, setShowChoixTx] = useState<'creer' | 'changer' | null>(null);
   const [cloture, setCloture] = useState({ motif: 'trouve_avec_moi', note: '' });
+  /* V3.50 — La fenêtre « Acte signé » : la date de signature (c'est elle qui
+     range la vente dans le chiffre d'affaires), et la clôture qui suit.
+     `portee` : l'acte d'une recherche (elle seule s'arrête), ou tout le
+     dossier (« Clôturer › Trouvé avec moi » avec une transaction ouverte). */
+  const [acte, setActe] = useState<{
+    tx: TxActe; date: string; portee: 'recherche' | 'dossier'; raison: string | null; note: string;
+  } | null>(null);
+  /* V3.50 — Un double clic créait deux transactions : la deuxième faisait
+     échouer la lecture de l'onglet, qui affichait « Aucune transaction ». */
+  const txEnCreation = useRef(false);
+  /* Les biens sous compromis déjà acceptés pour une visite (offre de secours) :
+     la question n'est pas reposée à la confirmation de la visite. */
+  const compromisAccepte = useRef<Set<string>>(new Set());
+  const visiteEnCours = useRef(false);
   const [showBien, setShowBien] = useState(false);
   const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null; recherche_id?: string | null }[]>([]);
   const [delaiJours, setDelaiJours] = useState(5);
@@ -1071,8 +1128,14 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [ajoutVisite, setAjoutVisite] = useState(false);
 
   useEffect(() => { loadRecherches(); }, [client.id]);
-  useEffect(() => { if (rechercheId) load(); }, [rechercheId]);
-  useEffect(() => { txRef.current = transaction; if (transaction) setTxData(transaction); }, [transaction]);
+  /* V3.50 : ce qui attendait d'être écrit dans la transaction part AVANT de
+     changer de recherche, sur la transaction où on l'a tapé. Sinon le
+     minuteur l'écrivait dans la transaction de l'autre recherche, une fois
+     chargée — ou le perdait. `flushTx` lit la transaction affichée tout de
+     suite, avant le chargement de la nouvelle. */
+  useEffect(() => { flushTx(); setVueEtape(null); if (rechercheId) load(); }, [rechercheId]);
+  /* Sans transaction, plus rien d'une ancienne ne doit rester affiché. */
+  useEffect(() => { txRef.current = transaction; setTxData(transaction || {}); }, [transaction]);
   /* En quittant la fiche, on écrit ce qui attendait encore : sinon la dernière
      frappe — un montant, un nom de notaire — restait dans le vide. */
   useEffect(() => () => { flushTx(); }, []);
@@ -1193,9 +1256,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
          posé la date, et c'est elle qui fait foi. */
       const { data } = await supabase.from('recherches').select('*').eq('id', rechercheActive.id).single();
       if (data) setRecherches(rs => rs.map(x => x.id === (data as Recherche).id ? (data as Recherche) : x));
-      await addJournal(client.id, 'mail_envoye', dejaAccueilli
-        ? `✉️ Nouvelle recherche annoncée — ${rechercheActive.nom}`
-        : '👋 Mail de bienvenue envoyé', undefined, undefined, { rechercheId: rechercheActive.id });
+      /* V3.50 : plus de ligne au Suivi ici. Le serveur (/api/send-mail) note
+         déjà « 👋 Mail de bienvenue envoyé » quand le mail part : la fiche
+         l'écrivait une deuxième fois. */
+      load();
     } catch (e) {
       alert(`Le mail n'est pas parti : ${(e as Error).message}`);
     } finally {
@@ -1251,13 +1315,54 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
    * appels, les notes, les rendez-vous. Ces lignes-là racontent la relation,
    * pas la recherche : elles ne doivent pas disparaître avec elle.
    */
+  /* V3.50 — Une vente signée avec ses honoraires compte dans le chiffre
+     d'affaires (src/lib/activite.ts) : effacer la recherche ou le client qui
+     la porte la faisait disparaître du total, sans un mot. Rend le total HT
+     des ventes signées (0 sans vente), ou null si la lecture échoue. */
+  async function honorairesSignes(o: { rechercheId?: string } = {}): Promise<number | null> {
+    let q = supabase.from('transactions').select('honoraires_ht, honoraires_ttc').eq('etape_actuelle', 'finalise');
+    q = o.rechercheId ? q.eq('recherche_id', o.rechercheId) : q.eq('client_id', client.id);
+    const { data, error } = await q;
+    if (error) return null;
+    return ((data || []) as { honoraires_ht?: unknown; honoraires_ttc?: unknown }[])
+      .reduce((t, x) => t + Math.max(0, honorairesHT(x)), 0);
+  }
+  /* Rend true si la suppression peut continuer ; sinon le dit. */
+  async function suppressionPermise(o: { rechercheId?: string } = {}): Promise<boolean> {
+    const ht = await honorairesSignes(o);
+    if (ht === null) {
+      alert('La vente de ce dossier n’a pas pu être vérifiée : rien n’est supprimé. Recharge la page, puis recommence.');
+      return false;
+    }
+    if (ht > 0) {
+      alert(`Ce dossier a une vente signée (${eurosRonds(ht)} d’honoraires HT) : le supprimer l’effacerait de ton chiffre d’affaires. Archive-le plutôt.`);
+      return false;
+    }
+    /* V3.50 : supprimer la personne entière, alors qu'elle vend aussi un bien
+       avec nous, laisserait ce bien sans propriétaire (même règle que la
+       fiche d'un contact). Une recherche seule, elle, peut partir. */
+    if (!o.rechercheId) {
+      const { data, error } = await supabase.from('biens_vente').select('id').eq('client_id', client.id).limit(1);
+      if (error) {
+        alert('Ses biens en vente n’ont pas pu être vérifiés : rien n’est supprimé. Recharge la page, puis recommence.');
+        return false;
+      }
+      if (data?.length) {
+        alert('Cette personne est aussi propriétaire d’un bien suivi dans « Biens » : la supprimer laisserait ce bien sans propriétaire. Archive-la plutôt.');
+        return false;
+      }
+    }
+    return true;
+  }
+
   async function supprimerRecherche(r: Recherche) {
     const reste = recherches.filter(x => x.id !== r.id);
     const derniere = reste.length === 0;
+    if (!(await suppressionPermise({ rechercheId: r.id }))) return;
 
     const ok = confirm(
       `Supprimer la recherche « ${r.nom} » ?\n\n` +
-      `⚠️ Ses biens et leurs photos, ses visites, ses envois et tout son travail de veille ` +
+      `⚠️ Ses biens et leurs photos, ses visites, ses envois, sa transaction en cours et tout son travail de veille ` +
       `seront supprimés définitivement.\n\n` +
       (derniere
         ? `C'est la dernière recherche de ce client. Sa fiche, son suivi de dossier et le lien ` +
@@ -1348,25 +1453,43 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
    */
   const TYPES_SUIVI = [
     'bien_ajoute', 'bien_modifie', 'bien_supprime', 'veille_trouve',
-    'visite_planifiee', 'visite_effectuee', 'offre_faite', 'offre_ecrite',
+    'visite_planifiee', 'visite_effectuee', 'visite_annulee', 'offre_faite', 'offre_ecrite',
     'etape_transaction', 'retour_etape', 'dossier_finalise',
     'mail_envoye', 'envoi_bien', 'compte_rendu_visite',
   ];
+  /* Les lignes d'une vente : elles restent quand la vente signée reste. */
+  const TYPES_VENTE = ['offre_faite', 'offre_ecrite', 'etape_transaction', 'retour_etape', 'dossier_finalise'];
+
+  /* V3.50 — Les transactions d'une recherche : celles qui sont signées (elles
+     restent à la remise à zéro) et les autres. null si la lecture échoue. */
+  async function transactionsDe(rid: string): Promise<{ signees: { id: string; bien_id: string | null }[]; ouvertes: number } | null> {
+    const { data, error } = await supabase.from('transactions').select('id, bien_id, etape_actuelle').eq('recherche_id', rid);
+    if (error) return null;
+    const l = (data || []) as { id: string; bien_id: string | null; etape_actuelle: string | null }[];
+    return { signees: l.filter(t => t.etape_actuelle === 'finalise'), ouvertes: l.filter(t => t.etape_actuelle !== 'finalise').length };
+  }
 
   async function ouvrirReinit() {
     if (!rechercheId) return;
     setReinitStats(null);
     setShowReinit(true);
-    const [props, passages] = await Promise.all([
+    const [props, passages, txs] = await Promise.all([
       supabase.from('veille_propositions').select('*', { count: 'exact', head: true }).eq('recherche_id', rechercheId),
       supabase.from('veille_passages').select('nb_lues').eq('recherche_id', rechercheId),
+      transactionsDe(rechercheId),
     ]);
+    const signee = txs?.signees[0];
+    const bienSigne = signee ? biens.find(b => b.id === signee.bien_id) : null;
+    const gardes = new Set((txs?.signees || []).map(t => t.bien_id));
+    const partants = biens.filter(b => !gardes.has(b.id));
     setReinitStats({
+      txOuverte: txs ? txs.ouvertes > 0 : !!transaction,
+      venteGardee: signee ? (bienSigne?.titre || bienSigne?.ville || 'le bien acheté') : null,
       propositions: props.count || 0,
       passages: (passages.data || []).length,
       lues: (passages.data || []).reduce((t, p: any) => t + (p.nb_lues || 0), 0),
-      biens: biens.length,
-      presentes: biens.filter((b: any) => b.etape === 'presente').length,
+      biens: partants.length,
+      presentes: partants.filter(b => b.etape === 'presente').length,
       visites: visites.filter((v: any) => v.statut === 'a_venir' || v.statut === 'effectuee').length,
       envois: envois.length,
     });
@@ -1376,48 +1499,67 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     if (!rechercheId || reinitEnCours) return;
     setReinitEnCours(true);
     try {
-      const ids = biens.map((b: any) => b.id);
+      const rid = rechercheId;
+      /* V3.50 — Une vente signée ne s'efface pas : elle compte dans le chiffre
+         d'affaires. Sa transaction reste, le bien acheté aussi (la
+         transaction pointe dessus), et les lignes de la vente au Suivi.
+         Lecture impossible : on ne touche à rien. */
+      const txs = await transactionsDe(rid);
+      if (!txs) { alert('La remise à zéro n’a pas commencé : la transaction de cette recherche n’a pas pu être lue. Recharge la page, puis recommence.'); setReinitEnCours(false); return; }
+      const garder = new Set(txs.signees.map(t => t.bien_id).filter((x): x is string => !!x));
+      const partants = biens.filter(b => !garder.has(b.id));
+      const ids = partants.map(b => b.id as string);
+      const typesSuivi = txs.signees.length ? TYPES_SUIVI.filter(t => !TYPES_VENTE.includes(t)) : TYPES_SUIVI;
 
       /* Les photos que nous hébergeons partent avec les biens : sans ça elles
          resteraient à occuper du stockage sans que rien ne les affiche. */
-      const chemins = cheminsPhotos(biens);
+      const chemins = cheminsPhotos(partants);
 
       /* L'ordre compte : on enlève d'abord ce qui pointe vers un bien, le bien
          en dernier. Sinon une clé étrangère bloque la suppression. */
       /* Chaque étape est vérifiée (V3.17) : au premier échec, on s'arrête
          avant d'effacer les biens, et on le dit. */
-      const rid = rechercheId;
       const nettoye = await verifieTout('La remise à zéro', [
         ...(ids.length > 0 ? [() => supabase.from('journal').delete().in('bien_id', ids)] : []),
-        () => supabase.from('journal').delete().eq('recherche_id', rid).in('type', TYPES_SUIVI),
+        () => supabase.from('journal').delete().eq('recherche_id', rid).in('type', typesSuivi),
         /* Les lignes de journal écrites avant qu'on note la recherche n'ont ni
            bien ni recherche. Quand le client n'en a qu'une, elles ne peuvent
            venir que d'elle — on peut les enlever sans risque. */
-        ...(recherches.length === 1 ? [() => supabase.from('journal').delete().eq('client_id', client.id).is('recherche_id', null).is('bien_id', null).in('type', TYPES_SUIVI)] : []),
+        ...(recherches.length === 1 ? [() => supabase.from('journal').delete().eq('client_id', client.id).is('recherche_id', null).is('bien_id', null).in('type', typesSuivi)] : []),
         () => supabase.from('visites').delete().eq('recherche_id', rid),
         () => supabase.from('envois').delete().eq('recherche_id', rid),
-        () => supabase.from('transactions').delete().eq('recherche_id', rid),
+        /* Seulement les transactions en cours : la vente signée reste. */
+        () => supabase.from('transactions').delete().eq('recherche_id', rid).or('etape_actuelle.is.null,etape_actuelle.neq.finalise'),
         () => supabase.from('relances').delete().eq('recherche_id', rid),
         () => supabase.from('veille_propositions').delete().eq('recherche_id', rid),
         () => supabase.from('veille_passages').delete().eq('recherche_id', rid),
       ]);
       if (!nettoye) { setReinitEnCours(false); load(); return; }
 
-      const { error } = await supabase.from('biens').delete().eq('recherche_id', rechercheId);
+      let qBiens = supabase.from('biens').delete().eq('recherche_id', rid);
+      if (garder.size) qBiens = qBiens.not('id', 'in', `(${Array.from(garder).join(',')})`);
+      const { error } = await qBiens;
       if (error) { alert('La remise à zéro a échoué : ' + error.message); setReinitEnCours(false); return; }
       await effacerPhotos(chemins);
 
       /* Le compteur d'ouvertures de l'espace repart lui aussi : il comptait des
-         visites sur des biens qui n'existent plus. Le lien, lui, ne bouge pas. */
-      await verifie('Le compteur de l’espace', supabase.from('recherches').update({ espace_ouvert_le: null }).eq('id', rechercheId));
+         visites sur des biens qui n'existent plus. Le lien, lui, ne bouge pas.
+         V3.50 : la veille suit l'état du client — elle repart pour un client
+         Actif. Après un compromis ou un acte, elle restait arrêtée, alors que
+         la fenêtre annonçait « la prochaine veille rouvrira tout le marché ». */
+      const veille = client.statut === 'actif';
+      if (await verifie('La remise à zéro de la recherche', supabase.from('recherches')
+        .update({ espace_ouvert_le: null, active: veille, updated_at: new Date().toISOString() }).eq('id', rid).select('id'), { ligne: true })) {
+        setRecherches(rs => rs.map(r => (r.id === rid ? ({ ...r, active: veille } as Recherche) : r)));
+      }
 
       /* On garde la trace de la remise à zéro elle-même, sinon le dossier
          semblerait n'avoir jamais rien contenu. */
       const titre = `♻️ Suivi réinitialisé — ${rechercheActive?.nom || 'recherche'}`;
-      const detail = reinitStats
-        ? `${reinitStats.propositions} proposition(s) de veille, ${reinitStats.biens} bien(s), ${reinitStats.visites} visite(s) et ${reinitStats.passages} passage(s) effacés. Critères conservés.`
-        : 'Critères conservés.';
-      const ligne = { client_id: client.id, recherche_id: rechercheId, titre, description: detail, metadata: {} };
+      const detail = (reinitStats
+        ? `${reinitStats.propositions} proposition(s) de veille, ${ids.length} bien(s), ${reinitStats.visites} visite(s) et ${reinitStats.passages} passage(s) effacés. Critères conservés.`
+        : 'Critères conservés.') + (txs.signees.length ? ' La vente signée est gardée.' : '');
+      const ligne = { client_id: client.id, recherche_id: rid, titre, description: detail, metadata: {} };
       const { error: eJournal } = await supabase.from('journal').insert({ ...ligne, type: 'recherche_reinitialisee' });
       if (eJournal) await verifie('L’historique du client', supabase.from('journal').insert({ ...ligne, type: 'statut_change' }));
 
@@ -1447,6 +1589,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
    * stockage.
    */
   async function ouvrirSuppressionClient() {
+    /* V3.50 : une vente signée le retient (voir suppressionPermise). */
+    if (!(await suppressionPermise())) return;
     setSupprStats(null);
     setShowSupprClient(true);
     const rIds = recherches.map(r => r.id);
@@ -1478,6 +1622,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       return;
     }
     setSupprEnCours(true);
+    if (!(await suppressionPermise())) { setSupprEnCours(false); return; }
     try {
       const rIds = recherches.map(r => r.id);
       const { data: lot } = await supabase.from('biens').select('photos').eq('client_id', client.id);
@@ -1487,6 +1632,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       const etapes: { quoi: string; faire: () => any }[] = [
         { quoi: 'journal', faire: () => supabase.from('journal').delete().eq('client_id', client.id) },
         { quoi: 'relances', faire: () => supabase.from('relances').delete().eq('client_id', client.id) },
+        /* V3.50 : ses rendez-vous restaient dans l'agenda, sans dossier à ouvrir. */
+        { quoi: 'rendez-vous', faire: () => supabase.from('rendez_vous').delete().eq('client_id', client.id) },
         { quoi: 'visites', faire: () => supabase.from('visites').delete().eq('client_id', client.id) },
         { quoi: 'envois', faire: () => supabase.from('envois').delete().eq('client_id', client.id) },
         { quoi: 'transactions', faire: () => supabase.from('transactions').delete().eq('client_id', client.id) },
@@ -1519,6 +1666,8 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       setShowSupprClient(false);
       setSupprEnCours(false);
       signalerMaj();
+      /* V3.50 : il quitte aussi la barre des fiches ouvertes. */
+      retirerFicheOuverte('contact', client.id);
       onBack();
     } catch (e: any) {
       alert('La suppression a échoué : ' + (e?.message || e));
@@ -1530,13 +1679,20 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const [{ data: b }, { data: v }, { data: t }, { data: e }, { data: j }, { data: h }] = await Promise.all([
       supabase.from('biens').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
       supabase.from('visites').select('*').eq('recherche_id', rechercheId).order('date_visite'),
-      supabase.from('transactions').select('*').eq('recherche_id', rechercheId).maybeSingle(),
+      /* V3.50 : toutes les transactions de la recherche, pas `.maybeSingle()` :
+         deux lignes (un double clic) faisaient échouer la lecture, et l'onglet
+         affichait « Aucune transaction » — on en créait alors une troisième.
+         La plus récente qui n'est pas signée passe devant. */
+      supabase.from('transactions').select('*').eq('recherche_id', rechercheId),
       supabase.from('envois').select('*').eq('recherche_id', rechercheId).order('created_at', { ascending: false }),
       supabase.from('journal').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
       supabase.from('espace_evenements').select('*').eq('recherche_id', rechercheId)
         .in('type', ['criteres', 'message']).order('created_at', { ascending: false }).limit(40),
     ]);
-    setBiens(b||[]); setVisites(v||[]); setTransaction(t); setEnvois(e||[]); setJournal(j||[]);
+    const txs = ((t || []) as { etape_actuelle?: string | null; created_at?: string | null }[])
+      .slice().sort((x, y) => String(y.created_at || '').localeCompare(String(x.created_at || '')));
+    const tx = txs.find(x => x.etape_actuelle !== 'finalise') || txs[0] || null;
+    setBiens(b||[]); setVisites(v||[]); setTransaction(tx); setEnvois(e||[]); setJournal(j||[]);
     setHistoEvts(h||[]);
     /* Les compteurs de la barre de gauche suivent ce qui vient de changer. */
     signalerMaj();
@@ -1749,11 +1905,15 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      sans mandat restait marqué « expiré » partout, jusque dans la liste. */
   async function supprimerMandat() {
     if (!rechercheId) return;
-    if (!confirm('Supprimer le mandat de recherche de ce dossier ?\n\nLes dates, la durée et les honoraires seront effacés. Le dossier sera marqué « sans mandat ».')) return;
+    if (!confirm('Supprimer le mandat de recherche de ce dossier ?\n\nLes dates, la durée, les honoraires et le numéro seront effacés, et la proposition en ligne retirée. Le dossier sera marqué « sans mandat ».')) return;
     setSaving(true);
+    /* V3.50 : le numéro et la date de proposition partent aussi. Ils
+       restaient, et l'espace du client affichait de nouveau « Votre mandat
+       est prêt » (un numéro sans signature = mandat à signer). */
     const { data, error } = await supabase.from('recherches').update({
       mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null,
       mandat_date_expiration: null, sans_mandat: true,
+      mandat_numero: null, mandat_propose_le: null,
       updated_at: new Date().toISOString(),
     }).eq('id', rechercheId).select().maybeSingle();
     if (error || !data) { signalerEchec('La suppression du mandat', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.'); setSaving(false); return; }
@@ -1766,25 +1926,138 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     setSaving(false); setShowMandat(false);
   }
 
-  /* Clôturer : le statut change, la veille s'arrête (c'est le drapeau
-     « active » que je lis pour savoir sur quoi chercher), et les relances en
-     attente sont soldées — inutile de relancer quelqu'un qui a acheté. */
+  /* ═══ Clore un dossier acheteur (V3.50) ═══════════════════════════════
+     Une seule logique, quelle que soit la porte : « Clôturer la recherche »,
+     « Bien trouvé » ou « Perdu » dans le menu d'état, « Acte signé ». Avant,
+     chacune faisait à sa façon : le menu ne soldait pas les relances et ne
+     notait pas le motif ; la clôture et l'acte soldaient TOUTES les relances
+     du client, ses relances de vendeur comprises.
+     Ici, dans l'ordre :
+     · le client passe « Bien trouvé » ou « Perdu », avec son motif — sauf
+       l'acte d'une recherche quand une autre continue : il reste suivi ;
+     · la veille s'arrête (sur la seule recherche de l'acte, ou sur toutes) ;
+     · ses relances d'acheteur se soldent (celles de vendeur restent) ;
+     · ses visites encore à venir sont annulées, rappels compris.
+     Au premier échec (dit à l'écran), on s'arrête. `clos` : le client entier
+     est clos (et pas seulement une de ses recherches). */
+  async function clore(o: { statut: 'bien_trouve' | 'perdu'; raison: string | null; seule?: string | null }): Promise<{ ok: boolean; clos: boolean }> {
+    const seule = o.seule || null;
+    let clos = true;
+    if (seule) {
+      /* Une autre recherche continue-t-elle ? Sa veille tourne, ou elle
+         attend la fin d'une suspension, ou sa transaction est en cours (sa
+         veille est alors en pause depuis le compromis). */
+      const enPause = lireSuspension(client)?.recherches || [];
+      let autre = recherches.some(r => r.id !== seule && (r.active !== false || enPause.includes(r.id)));
+      if (!autre) {
+        const { data, error } = await supabase.from('transactions').select('id, etape_actuelle').eq('client_id', client.id).neq('recherche_id', seule);
+        if (!error) autre = ((data || []) as { etape_actuelle: string | null }[]).some(t => t.etape_actuelle !== 'finalise');
+      }
+      clos = !autre;
+    }
+
+    if (clos) {
+      /* Le statut efface aussi une date de reprise de suspension (comme le
+         menu d'état) : base sans la colonne, on écrit le reste. */
+      const champs = { statut: o.statut, raison_perte: o.raison };
+      let r = await supabase.from('clients').update({ ...champs, suspension: null }).eq('id', client.id).select('id');
+      if (r.error && colonneSuspensionAbsente(r.error.message)) r = await supabase.from('clients').update(champs).eq('id', client.id).select('id');
+      if (!(await verifie('La clôture du dossier', Promise.resolve(r), { ligne: true }))) return { ok: false, clos };
+    }
+
+    const veille = supabase.from('recherches').update({ active: false });
+    if (!(await verifie('L’arrêt de la veille', seule && !clos
+      ? veille.eq('id', seule).select('id')
+      : veille.eq('client_id', client.id).select('id'), { ligne: !!seule && !clos }))) return { ok: false, clos };
+
+    /* Ne lèvent jamais : un échec se dit, la clôture est faite. */
+    await solderRelancesAcheteur(client.id, clos ? null : seule);
+    let q = supabase.from('visites').select('id, date_visite, heure').eq('client_id', client.id).eq('statut', 'a_venir');
+    if (!clos && seule) q = q.eq('recherche_id', seule);
+    const { data: prevues, error: eVis } = await q;
+    if (eVis) signalerEchec('L’annulation des visites prévues', eVis.message);
+    else {
+      /* Une visite dont l'heure est passée a peut-être eu lieu : elle reste,
+         son compte rendu est encore à faire. */
+      const maintenant = new Date();
+      const ids = ((prevues || []) as { id: string; date_visite: string | null; heure: string | null }[])
+        .filter(v => !visitePassee(v, maintenant)).map(v => v.id);
+      if (ids.length) await annulerVisites(ids, { pourquoi: clos ? 'Dossier clôturé.' : 'Recherche terminée.' });
+    }
+    return { ok: true, clos };
+  }
+
+  /* La transaction encore ouverte du client : celle de la recherche
+     affichée d'abord. Lecture impossible : celle qui est à l'écran. */
+  async function transactionOuverte(): Promise<TxActe | null> {
+    const { data, error } = await supabase.from('transactions').select('*').eq('client_id', client.id);
+    if (error) return transaction && transaction.etape_actuelle !== 'finalise' ? (transaction as TxActe) : null;
+    const l = ((data || []) as (TxActe & { etape_actuelle?: string | null; created_at?: string | null })[])
+      .filter(t => t.etape_actuelle !== 'finalise')
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    return l.find(t => t.recherche_id === rechercheId) || l[0] || null;
+  }
+
+  /* La fenêtre « Acte signé ». La date proposée : celle de l'acte prévu s'il
+     est passé (ou aujourd'hui), sinon aujourd'hui — c'est elle qui range la
+     vente dans le chiffre d'affaires du mois. */
+  function ouvrirActe(tx: TxActe, o: { portee: 'recherche' | 'dossier'; raison: string | null; note: string }) {
+    const prevue = typeof tx.acte_date_prevue === 'string' ? tx.acte_date_prevue.slice(0, 10) : '';
+    const auj = jourParis();
+    setActe({ tx, date: prevue && prevue <= auj ? prevue : auj, ...o });
+  }
+
+  async function confirmerActe() {
+    if (!acte || saving) return;
+    const { tx, date, portee, raison, note } = acte;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert('Indique la date de signature de l’acte.'); return; }
+    if (date > jourParis()) { alert('L’acte n’est pas encore signé à cette date : choisis le jour de la signature.'); return; }
+    setSaving(true);
+    if (txRef.current?.id === tx.id) await flushTx();
+    if (!(await verifie('L’acte signé', supabase.from('transactions')
+      .update({ etape_actuelle: 'finalise', acte_date_prevue: date }).eq('id', tx.id).select('id'), { ligne: true }))) { setSaving(false); load(); return; }
+    const rid = tx.recherche_id || rechercheId || null;
+    const r = await clore({ statut: 'bien_trouve', raison, seule: portee === 'recherche' ? rid : null });
+    if (!r.ok) { setSaving(false); load(); return; }
+    const jour = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR');
+    if (r.clos) {
+      await addJournal(client.id, 'dossier_finalise', '🎉 Acte signé — bien trouvé !',
+        `Acte signé le ${jour}. ${note || 'Le dossier est clos : la veille s’arrête et les relances en attente sont soldées.'}`,
+        undefined, { rechercheId: rid });
+    } else {
+      /* Il cherche encore autre chose : la ligne dit quelle recherche s'arrête. */
+      const nomR = recherches.find(x => x.id === rid)?.nom || 'cette recherche';
+      await addJournal(client.id, 'dossier_finalise', `🎉 Acte signé — recherche « ${nomR} » terminée`,
+        `Acte signé le ${jour}. La veille s’arrête sur cette recherche ; ses autres recherches continuent.`,
+        undefined, { rechercheId: rid });
+    }
+    await refresh();
+    setActe(null); setShowCloture(false); setCloture({ motif: 'trouve_avec_moi', note: '' });
+    setSaving(false); setVueEtape(null);
+    loadRecherches(); chargerRelances(); load();
+  }
+
+  /* Clôturer : le motif, puis la même sortie que partout (voir `clore`).
+     « Trouvé avec moi » alors qu'une transaction est ouverte : c'est un
+     acte signé — il passe par la fenêtre de l'acte, pour que la vente compte
+     dans le chiffre d'affaires (V3.50 ; elle n'y comptait jamais). */
   async function cloturerDossier() {
     const m = MOTIFS_CLOTURE.find(x => x.cle === cloture.motif);
-    if (!m) return;
+    if (!m || saving) return;
+    const note = cloture.note.trim();
+    const raison = note ? `${m.nom} — ${note}` : m.nom;
     setSaving(true);
-    const raison = cloture.note.trim() ? `${m.nom} — ${cloture.note.trim()}` : m.nom;
-    /* Vérifié (V3.17) : au premier échec, on s'arrête — la fenêtre reste
-       ouverte, on peut recommencer. */
-    const ok = await verifie('La clôture du dossier', supabase.from('clients').update({ statut: m.statut, raison_perte: raison }).eq('id', client.id).select('id'), { ligne: true })
-      && await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id))
-      && await verifie('Les relances en attente', supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', client.id).eq('statut', 'en_attente'));
-    if (!ok) { setSaving(false); load(); return; }
-    await addJournal(client.id, 'dossier_finalise', `🏁 Recherche clôturée — ${m.nom}`, cloture.note.trim() || undefined);
-    const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
-    if (data) setClient(data as Client);
+    await flushTx();
+    if (m.statut === 'bien_trouve') {
+      const tx = await transactionOuverte();
+      if (tx) { setSaving(false); setShowCloture(false); ouvrirActe(tx, { portee: 'dossier', raison, note }); return; }
+    }
+    const r = await clore({ statut: m.statut === 'bien_trouve' ? 'bien_trouve' : 'perdu', raison });
+    if (!r.ok) { setSaving(false); load(); return; }
+    await addJournal(client.id, 'dossier_finalise', `🏁 Recherche clôturée — ${m.nom}`, note || undefined);
+    await refresh();
     setSaving(false); setShowCloture(false); setCloture({ motif: 'trouve_avec_moi', note: '' });
-    load();
+    loadRecherches(); chargerRelances(); load();
   }
 
   async function rouvrirDossier() {
@@ -1803,31 +2076,77 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      pas une offre sur un bien qu'il n'a pas visité — et ça évite de chercher
      dans toute la sélection. */
   function biensVisites() {
-    const vus = new Set(visites.map(v => v.bien_id).filter(Boolean));
+    /* V3.50 : une visite annulée n'est pas une visite. L'écran disait « 1 bien
+       a été visité » et proposait une transaction sur un bien jamais vu. */
+    const vus = new Set(visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee').map(v => v.bien_id).filter(Boolean));
     return biens.filter(b => vus.has(b.id));
+  }
+  /* Ceux sur lesquels une transaction de chasse peut porter : pas les mandats
+     de l'agence, suivis sur la fiche du bien (V3.50). */
+  function biensPourTx() {
+    return biensVisites().filter(b => !b.bien_vente_id);
   }
 
   async function choisirBienTx(bienId: string) {
-    if (showChoixTx === 'changer' && transaction) {
-      if (!(await verifie('Le changement de bien de la transaction', supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
+    /* V3.50 : un clic à la fois. Un double clic créait deux transactions. */
+    if (txEnCreation.current) return;
+    txEnCreation.current = true;
+    setSaving(true);
+    try {
       const b = biens.find(x => x.id === bienId);
-      await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`, undefined, undefined, { rechercheId });
-    } else {
-      if (!(await verifie('La transaction', supabase.from('transactions').insert({
-        client_id: client.id, recherche_id: rechercheId,
-        bien_id: bienId, etape_actuelle: 'offre',
-      })))) return;
-      await verifie('Le bien « offre faite »', supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId));
-      const b = biens.find(x => x.id === bienId);
-      await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${b?.titre || b?.ville || 'bien'}`, undefined, undefined, { rechercheId });
+      const titre = b?.titre || b?.ville || 'bien';
+      if (showChoixTx === 'changer' && transaction) {
+        const ancien = transaction.bien_id as string | null;
+        if (!(await verifie('Le changement de bien de la transaction', supabase.from('transactions').update({ bien_id: bienId }).eq('id', transaction.id).select('id'), { ligne: true }))) return;
+        /* V3.50 : les badges suivent l'offre. L'ancien bien gardait « Offre
+           faite » (dans son espace aussi) et le nouveau ne l'avait jamais. */
+        if (ancien && ancien !== bienId) {
+          await verifie('L’ancien bien repassé « visité »', supabase.from('biens').update({ badge_retour: 'visite' }).eq('id', ancien).eq('badge_retour', 'offre_faite'));
+        }
+        await verifie('Le bien « offre faite »', supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId).select('id'), { ligne: true });
+        const err = await solderRelancesRetourVisite(client.id, [b?.titre]);
+        if (err) signalerEchec('Les relances « Veut faire une offre » de ce bien', err);
+        await addJournal(client.id, 'offre_faite', `Transaction rattachée à ${b?.titre || b?.ville || 'un autre bien'}`, undefined, undefined, { rechercheId: rechercheId || null });
+      } else {
+        /* Une transaction déjà ouverte en base (un autre onglet, un clic
+           d'avant) : on ne la double pas, on l'affiche. */
+        const deja = await supabase.from('transactions').select('id, etape_actuelle').eq('recherche_id', rechercheId);
+        if (!deja.error && ((deja.data || []) as { etape_actuelle: string | null }[]).some(t => t.etape_actuelle !== 'finalise')) {
+          setShowChoixTx(null); load(); return;
+        }
+        if (!(await verifie('La transaction', supabase.from('transactions').insert({
+          client_id: client.id, recherche_id: rechercheId || null,
+          bien_id: bienId, etape_actuelle: 'offre',
+        })))) return;
+        await verifie('Le bien « offre faite »', supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', bienId));
+        /* L'offre est là : les relances nées de son avis après la visite
+           (« Veut faire une offre », « Veut revoir », « Il réfléchit ») sont
+           servies (V3.50 ; elles restaient ouvertes). */
+        const err = await solderRelancesRetourVisite(client.id, [b?.titre]);
+        if (err) signalerEchec('Les relances « Veut faire une offre » de ce bien', err);
+        await addJournal(client.id, 'offre_faite', `💼 Transaction ouverte — ${titre}`, undefined, undefined, { rechercheId: rechercheId || null });
+      }
+      setShowChoixTx(null);
+      chargerRelances();
+      load();
+    } finally {
+      txEnCreation.current = false;
+      setSaving(false);
     }
-    setShowChoixTx(null);
-    load();
   }
 
   async function changeStatut(statut: string) {
     // Anti-doublon : ne rien faire si le statut est déjà le même
     if (client.statut === statut) return;
+    /* V3.50 : « Bien trouvé » et « Perdu » ferment le dossier. Ils passent
+       par la fenêtre de clôture — le motif, puis la même sortie que partout
+       (relances, visites, veille, transaction ouverte). Avant, le menu ne
+       changeait que le statut. */
+    if (statut === 'bien_trouve' || statut === 'perdu') {
+      setCloture({ motif: statut === 'bien_trouve' ? 'trouve_avec_moi' : 'trouve_ailleurs', note: '' });
+      setShowCloture(true);
+      return;
+    }
     /* Un statut choisi ici efface la date de reprise d'une suspension : une
        vieille date restée en base réveillerait plus tard un dossier suspendu
        « sans date » (voir src/lib/suspension.ts). Base sans la colonne : on
@@ -1995,7 +2314,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
     const { data: bienInsere, error: erreurBien } = await supabase.from('biens').insert({
       client_id: client.id,
-      recherche_id: rechercheId,
+      recherche_id: rechercheId || null,
       /* ⚠️ Sans `etape`, le bien n'apparaît dans AUCUN onglet : Sélection et
          Présentés filtrent tous les deux dessus en dur (OngletBiens.tsx).
          Seul le compteur le voyait, via son repli `(b.etape || 'selection')`
@@ -2087,7 +2406,36 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     load();
   }
 
+  /* V3.50 — Un mandat de l'agence (copie portant `bien_vente_id`) vendu,
+     retiré, suspendu ou archivé ne se visite plus : l'espace du client cache
+     la visite et refuse sa demande, mais la fiche la laissait caler — elle
+     restait dans l'agenda, invisible pour lui. Sous compromis : seulement
+     pour une offre de secours, on le demande. Rend false si on s'arrête.
+     Lecture impossible : on laisse faire (le bien a pu être vérifié avant). */
+  async function venteAgenceVisitable(ids: string[]): Promise<boolean> {
+    const copies = biens.filter(b => ids.includes(b.id) && b.bien_vente_id);
+    if (!copies.length) return true;
+    const { data, error } = await supabase.from('biens_vente').select('id, etape, archive')
+      .in('id', copies.map(b => b.bien_vente_id as string));
+    if (error) return true;
+    const ventes = (data || []) as { id: string; etape: string | null; archive: boolean | null }[];
+    for (const b of copies) {
+      const v = ventes.find(x => x.id === b.bien_vente_id);
+      if (!v) continue;
+      const nom = b.titre || b.ville || 'Ce bien';
+      if (v.etape === 'vendu') { alert(`Ce bien est vendu.\n\n« ${nom} » ne peut plus être visité.`); return false; }
+      if (v.archive || v.etape === 'retire' || v.etape === 'suspendu') { alert(`Ce bien n’est plus en vente.\n\n« ${nom} » ne peut plus être visité.`); return false; }
+      if (v.etape === 'compromis' && !compromisAccepte.current.has(b.id)) {
+        if (!confirm(`Ce bien est sous compromis : une visite ne sert que pour une offre de secours. Continuer ?\n\n« ${nom} »`)) return false;
+        compromisAccepte.current.add(b.id);
+      }
+    }
+    return true;
+  }
+
   async function planifierVisite(bienId: string) {
+    compromisAccepte.current = new Set();
+    if (!(await venteAgenceVisitable([bienId]))) return;
     // Vérifier si une visite à venir existe déjà pour ce bien
     const existante = visites.find(v => v.bien_id === bienId && v.statut === 'a_venir');
     if (existante) {
@@ -2103,6 +2451,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function doRemplacerVisite() {
     const visiteId = showConfirmVisite;
     const bienId = pendingBienId;
+    /* V3.50 : son rappel (« Rendez-vous : Visite … ») se ferme d'abord. La
+       ligne supprimée l'emportait sinon, et le rappel restait dans les
+       Relances. Pas de ligne « annulée » au Suivi : elle est remplacée. */
+    if (visiteId) await annulerVisites([visiteId], { journal: false });
     if (visiteId && !(await verifie('Le remplacement de la visite', supabase.from('visites').delete().eq('id', visiteId).select('id'), { ligne: true }))) { setShowConfirmVisite(null); return; }
     setShowConfirmVisite(null);
     await load();
@@ -2181,6 +2533,16 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     const prixAcqEdit = editBienForm.commission_type === 'pourcentage'
       ? Math.round((parseFloat(editBienForm.prix_vendeur)||0) * (1 + (parseFloat(editBienForm.commission_val)||0) / 100))
       : (parseFloat(editBienForm.prix_vendeur)||0) + (parseFloat(editBienForm.commission_val)||0);
+    /* V3.50 — Un mandat de l'agence : son prix vient de la fiche du bien
+       (et la suit). Recalculé ici, un bien aux honoraires payés par le
+       vendeur repassait au prix net : 500 000 € devenaient 475 000 € dans
+       l'espace du client. On n'y touche plus. */
+    const prix = editBienForm.bien_vente_id ? {} : {
+      prix_vendeur: parseFloat(editBienForm.prix_vendeur)||null,
+      commission_type: editBienForm.commission_type,
+      commission_val: parseFloat(editBienForm.commission_val)||null,
+      prix_acquereur: prixAcqEdit||null,
+    };
     const enregistre = await verifie('La fiche du bien', supabase.from('biens').update({
       photos: photosFinales,
       titre: editBienForm.titre,
@@ -2217,10 +2579,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       surface_terrasse: parseFloat(editBienForm.surface_terrasse)||null,
       etat_general: editBienForm.etat_general||null,
       description: editBienForm.description,
-      prix_vendeur: parseFloat(editBienForm.prix_vendeur)||null,
-      commission_type: editBienForm.commission_type,
-      commission_val: parseFloat(editBienForm.commission_val)||null,
-      prix_acquereur: prixAcqEdit||null,
+      ...prix,
       charges_trimestrielles: parseInt(editBienForm.charges_trimestrielles)||null,
       charges_comprises: (editBienForm.charges_comprises || '').trim() || null,
       taxe_fonciere: parseInt(editBienForm.taxe_fonciere)||null,
@@ -2393,11 +2752,13 @@ ${signatureMail()}`,
           }).eq('id', id).select('id'), { ligne: true });
           const prix = Number(b?.prix_acquereur) || Number(b?.prix_vendeur) || 0;
           const hono = prix - (Number(b?.prix_vendeur) || 0);
+          /* V3.50 : sur un mandat de l'agence, ce sont ses honoraires à elle. */
+          const deQui = b?.bien_vente_id ? 'de l’agence' : 'de chasse';
           await verifie('L’historique du client', supabase.from('journal').insert({
-            client_id: client.id, bien_id: id, recherche_id: rechercheId, type: 'envoi_bien',
+            client_id: client.id, bien_id: id, recherche_id: rechercheId || null, type: 'envoi_bien',
             titre: neuf ? 'Envoyé au client · mail' : 'Renvoyé au client · mail',
             description: prix
-              ? `Prix présenté ${prix.toLocaleString('fr-FR')} €${hono > 0 ? ` — dont ${hono.toLocaleString('fr-FR')} € d'honoraires de chasse` : ''}`
+              ? `Prix présenté ${prix.toLocaleString('fr-FR')} €${hono > 0 ? ` — dont ${hono.toLocaleString('fr-FR')} € d'honoraires ${deQui}` : ''}`
               : null,
             metadata: {},
           }));
@@ -2432,24 +2793,45 @@ ${signatureMail()}`,
     }
   }
 
+  /* V3.50 : un clic à la fois — un double clic posait deux fois la visite. */
   async function savePlanVisite() {
+    if (!planVisteForm.bien_ids.length || visiteEnCours.current) return;
+    visiteEnCours.current = true;
+    try { await enregistrerVisite(); } finally { visiteEnCours.current = false; }
+  }
+
+  async function enregistrerVisite() {
     const { bien_ids, date, heure, contact, notes } = planVisteForm;
-    if (!bien_ids.length) return;
+    /* V3.50 : un bien ajouté au créneau peut être un mandat de l'agence vendu
+       ou sous compromis : même contrôle que pour le premier. */
+    if (!(await venteAgenceVisitable(bien_ids))) return;
+    /* Les biens déjà visités (une 2e visite), relevés avant l'ajout. */
+    const revus = bien_ids.filter(id => visites.some(v => v.bien_id === id && (v.statut === 'effectuee' || v.statut === 'a_venir')));
     /* Une ligne de visite par bien, toutes sur le même créneau : la table n'a
        qu'un `bien_id`, et l'agenda comme les comptes rendus raisonnent bien
        par bien. Ce qui est commun — date, heure, contact — est recopié. */
     const { error: errVis } = await supabase.from('visites').insert(bien_ids.map(bien_id => ({
-      client_id: client.id, recherche_id: rechercheId, bien_id, statut: 'a_venir',
+      client_id: client.id, recherche_id: rechercheId || null, bien_id, statut: 'a_venir',
       date_visite: date || null, heure: heure || null,
       contact_agence: contact || null, commentaire: notes || null,
     })));
     if (errVis) { alert("La visite n'a pas pu être enregistrée.\n\n" + errVis.message); return; }
-    await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', bien_ids));
+    /* V3.50 : un bien « Offre faite » le reste (même règle que le compte
+       rendu, badgeApresVisite). Une 2e visite effaçait l'offre, dans le CRM
+       comme dans son espace, alors que la transaction restait ouverte. */
+    await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens').update({ badge_retour: 'souhaite_visiter' })
+      .in('id', bien_ids).or('badge_retour.is.null,badge_retour.neq.offre_faite'));
     /* S'il l'avait demandée depuis son espace, la demande est servie : la
        relance « Veut visiter » se solde, et la page Visites la range dans
        « À venir ». */
     const errRel = await solderRelancesVisite(client.id, bien_ids.map(id => biens.find(b => b.id === id)?.titre));
     if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
+    /* Une 2e visite répond à « Veut revoir » et « Il réfléchit » ; « Veut
+       faire une offre » reste, l'offre n'est pas encore là (V3.50). */
+    if (revus.length) {
+      const errRetour = await solderRelancesRetourVisite(client.id, revus.map(id => biens.find(b => b.id === id)?.titre), { garder: 'offre' });
+      if (errRetour) signalerEchec('La visite est enregistrée, mais les relances « Veut revoir » de ce bien', errRetour);
+    }
     const noms = bien_ids
       .map(id => biens.find(b => b.id === id))
       .map(b => b?.titre || b?.ville || 'Bien')
@@ -2458,7 +2840,7 @@ ${signatureMail()}`,
     await addJournal(client.id, 'visite_planifiee',
       bien_ids.length > 1 ? `📅 Visite planifiée — ${bien_ids.length} biens : ${noms}` : `📅 Visite planifiée — ${noms}`,
       desc, undefined, { rechercheId });
-    setShowPlanVisite(false); load();
+    setShowPlanVisite(false); chargerRelances(); load();
   }
 
   function marquerEffectuee(visiteId: string) {
@@ -2482,9 +2864,11 @@ ${signatureMail()}`,
     const nom = b?.titre || b?.ville || 'ce bien';
     const quand = v.date_visite ? ` du ${new Date(v.date_visite).toLocaleDateString('fr-FR')}` : '';
     if (!confirm(`Annuler la visite${quand} — ${nom} ?\n\nElle sort de ton agenda et le rappel disparaît de l'espace du client.`)) return;
-    const { error } = await supabase.from('visites').update({ statut: 'annulee' }).eq('id', v.id);
-    if (error) { alert("Impossible d'annuler cette visite : " + error.message); return; }
-    await addJournal(client.id, 'visite_planifiee', `📅 Visite annulée${quand} — ${nom}`, undefined, undefined, { rechercheId });
+    /* V3.50 : la même annulation que partout (src/lib/annuler-visites.ts) —
+       vérifiée, son rappel dans les Relances se ferme, et la ligne du Suivi
+       est bien une « Visite annulée » (elle se notait « visite planifiée »). */
+    await annulerVisites([v.id]);
+    chargerRelances();
     load();
   }
 
@@ -2535,7 +2919,7 @@ ${signatureMail()}`,
       } else if (!actionRelanceId && jour) {
         /* Ajoutée après coup : elle n'existait pas, on la crée et on la relie. */
         const { data: rel, error: eRel } = await supabase.from('relances').insert({
-          client_id: client.id, recherche_id: rechercheId,
+          client_id: client.id, recherche_id: rechercheId || null,
           type: 'manuelle', statut: 'en_attente',
           date_echeance: new Date(`${jour}T12:00:00`).toISOString(),
           note: noteRelance,
@@ -2557,9 +2941,11 @@ ${signatureMail()}`,
        tard, de supprimer les deux ensemble. */
     let relanceId: string | null = null;
     if (actionF.relance) {
+      /* V3.50 : un client sans recherche n'a pas d'identifiant de recherche —
+         « '' » faisait échouer l'écriture (« L'action : pas enregistré »). */
       const { data: rel, error: eRel } = await supabase.from('relances').insert({
         client_id: client.id,
-        recherche_id: rechercheId,
+        recherche_id: rechercheId || null,
         type: 'manuelle',
         statut: 'en_attente',
         date_echeance: new Date(`${actionF.relance}T12:00:00`).toISOString(),
@@ -2573,7 +2959,7 @@ ${signatureMail()}`,
 
     const noteOk = await verifie('L’action', supabase.from('journal').insert({
       client_id: client.id,
-      recherche_id: rechercheId,
+      recherche_id: rechercheId || null,
       type: actionF.type,
       titre,
       description: actionF.description || null,
@@ -2660,7 +3046,15 @@ ${signatureMail()}`,
     txPending.current = {};
     const id = txRef.current?.id;
     if (!id || Object.keys(lot).length === 0) return;
-    await verifie('La transaction', supabase.from('transactions').update(lot).eq('id', id).select('id'), { ligne: true });
+    let r = await supabase.from('transactions').update(lot).eq('id', id).select('id');
+    /* V3.50 : les montants gardent leurs centimes. Si une colonne n'accepte
+       que des nombres entiers, on réessaie à l'euro près plutôt que de tout
+       perdre. */
+    if (r.error && /type (integer|bigint|smallint)/i.test(r.error.message)) {
+      const arrondi = Object.fromEntries(Object.entries(lot).map(([k, v]) => [k, typeof v === 'number' ? Math.round(v) : v]));
+      r = await supabase.from('transactions').update(arrondi).eq('id', id).select('id');
+    }
+    await verifie('La transaction', Promise.resolve(r), { ligne: true });
   }
 
   function saveTxField(field: string, value: any) {
@@ -2680,7 +3074,7 @@ ${signatureMail()}`,
        savoir si une déclaration de fin de recherche est encore d'actualité.
        Relancer la veille rallume sa pastille « Recherche en cours ». */
     if (!(await verifie(active ? 'La reprise de la veille' : 'La mise en pause de la veille', supabase.from('recherches')
-      .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId)))) return;
+      .update({ active, updated_at: new Date().toISOString() }).eq('id', rechercheId).select('id'), { ligne: true }))) return;
     setRecherches(rs => rs.map(r => r.id === rechercheId ? ({ ...r, active } as Recherche) : r));
     await addJournal(client.id, 'statut_change',
       active ? '🔍 Veille relancée' : '⏸️ Veille mise en pause', pourquoi, undefined, { rechercheId });
@@ -2732,29 +3126,15 @@ ${signatureMail()}`,
 
   /* L'acte signé, c'est la même sortie que « Clôturer le dossier ». Le bouton
      écrivait seulement `statut = bien_trouve` : la veille continuait de
-     tourner et les relances tombaient sur un client qui avait ses clés. */
+     tourner et les relances tombaient sur un client qui avait ses clés.
+     V3.50 : il ouvre la fenêtre « Acte signé » — la date de la signature à
+     confirmer (elle range la vente dans le chiffre d'affaires du mois ; une
+     date prévue jamais corrigée la rangeait au mauvais mois), et un mot si
+     les honoraires manquent. La suite : `confirmerActe`, puis `clore`. */
   async function finaliserTransaction() {
-    if (!transaction) return;
-    /* Sans date d'acte saisie, c'est aujourd'hui : le chiffre d'affaires du
-       mois se range sur cette date (src/lib/activite.ts, V3.20). */
-    const dateActe = ({ ...transaction, ...txData } as { acte_date_prevue?: string | null }).acte_date_prevue;
-    const auj = new Date();
-    const jourActe = `${auj.getFullYear()}-${String(auj.getMonth() + 1).padStart(2, '0')}-${String(auj.getDate()).padStart(2, '0')}`;
+    if (!transaction || saving) return;
     await flushTx();
-    setSaving(true);
-    /* Vérifié (V3.17) : au premier échec, on s'arrête et on le dit. */
-    const ok = await verifie('L’acte signé', supabase.from('transactions').update({ etape_actuelle: 'finalise', ...(dateActe ? {} : { acte_date_prevue: jourActe }) }).eq('id', transaction.id).select('id'), { ligne: true })
-      && await verifie('Le statut « bien trouvé »', supabase.from('clients').update({ statut: 'bien_trouve', raison_perte: null }).eq('id', client.id))
-      && await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id))
-      && await verifie('Les relances en attente', supabase.from('relances').update({ statut: 'cloturee' }).eq('client_id', client.id).eq('statut', 'en_attente'));
-    if (!ok) { setSaving(false); load(); return; }
-    await addJournal(client.id, 'dossier_finalise', '🎉 Acte signé — bien trouvé !',
-      "Le dossier est clos : la veille s'arrête et les relances en attente sont soldées.", undefined, { rechercheId });
-    const { data } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
-    if (data) setClient(data as Client);
-    setRecherches(rs => rs.map(r => ({ ...r, active: false } as Recherche)));
-    setSaving(false); setVueEtape(null); setTxData({});
-    chargerRelances(); refresh(); load();
+    ouvrirActe({ ...transaction, ...txData } as TxActe, { portee: 'recherche', raison: null, note: '' });
   }
 
   /* Une offre refusée, un vendeur qui se retire, un client qui renonce : il
@@ -2785,7 +3165,7 @@ ${signatureMail()}`,
 
   async function ajouterContreOffre() {
     if (!transaction) return;
-    const m = nbOuNull(coForm.montant);
+    const m = lireMontant(coForm.montant);
     /* Le formulaire lisait les champs avec document.getElementById et ne
        vérifiait rien : un clic à vide ajoutait une contre-offre « NaN € ». */
     if (!m) { alert('Indiquez le montant de la contre-offre.'); return; }
@@ -2879,7 +3259,7 @@ ${signatureMail()}`,
   async function creerRelanceManuelle() {
     const jours = await delaiRelance();
     const { error } = await supabase.from('relances').insert({
-      client_id: client.id, recherche_id: rechercheId, type: 'manuelle',
+      client_id: client.id, recherche_id: rechercheId || null, type: 'manuelle',
       statut: 'en_attente', date_echeance: echeanceDans(jours), note: 'Relance manuelle',
     });
     if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; }
@@ -3166,7 +3546,7 @@ ${signatureMail()}`,
                                       Une seule porte, maintenant. */}
                                   <button onClick={() => {
                                     setMenuStatut(null); setTab('transaction');
-                                    if (!transaction && biensVisites().length > 0) setShowChoixTx('creer');
+                                    if (!transaction && biensPourTx().length > 0) setShowChoixTx('creer');
                                   }}
                                     style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
                                     💼 {transaction ? 'Voir la transaction' : 'Ouvrir une transaction'}
@@ -4023,8 +4403,11 @@ ${signatureMail()}`,
         {tab === 'transaction' && (
           !transaction
             ? (() => {
-                /* L'ancien écran disait quoi faire ailleurs. Celui-ci le fait. */
-                const visites_ = biensVisites();
+                /* L'ancien écran disait quoi faire ailleurs. Celui-ci le fait.
+                   V3.50 : les mandats de l'agence visités ne se proposent pas
+                   ici — ils se suivent sur la fiche du bien. */
+                const visites_ = biensPourTx();
+                const agence = biensVisites().filter(b => b.bien_vente_id);
                 return (
                   <div className={styles.emptyTab} style={{ padding: '46px 24px' }}>
                     <div style={{ fontSize: 40, marginBottom: 14 }}>💼</div>
@@ -4034,10 +4417,20 @@ ${signatureMail()}`,
                     <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 20, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
                       {visites_.length > 0
                         ? `Une transaction suit un bien de l'offre jusqu'à l'acte. ${visites_.length} bien${visites_.length > 1 ? 's ont' : ' a'} été visité${visites_.length > 1 ? 's' : ''} — c'est parmi ${visites_.length > 1 ? 'eux' : 'lui'} que ça se joue.`
-                        : "Une transaction suit un bien de l'offre jusqu'à l'acte. Planifiez d'abord une visite : on n'écrit pas une offre sur un bien que le client n'a pas vu."}
+                        : agence.length > 0
+                          ? `Une transaction suit un bien de l'offre jusqu'à l'acte. ${agence.length > 1 ? 'Les biens qu’il a visités sont des mandats de l’agence' : 'Le bien qu’il a visité est un mandat de l’agence'} : tout se passe sur la fiche du bien.`
+                          : "Une transaction suit un bien de l'offre jusqu'à l'acte. Planifiez d'abord une visite : on n'écrit pas une offre sur un bien que le client n'a pas vu."}
                     </div>
+                    {agence.length > 0 && (
+                      <div style={{ maxWidth: 560, margin: '0 auto 6px' }}>
+                        {agence.map(b => (
+                          <CarteMandatAgence key={b.id} titre={b.titre || b.ville || null}
+                            onOuvrir={() => onNavigate('biens', { bien: b.bien_vente_id })} />
+                        ))}
+                      </div>
+                    )}
                     {visites_.length > 0 && (
-                      <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowChoixTx('creer')}>
+                      <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving} onClick={() => setShowChoixTx('creer')}>
                         + Créer une transaction
                       </button>
                     )}
@@ -4060,9 +4453,9 @@ ${signatureMail()}`,
 
                 const co: any[] = Array.isArray(tx.contre_offres) ? tx.contre_offres : [];
                 const derniere = co.length ? co[co.length - 1] : null;
-                const offre = nbOuNull(tx.offre_montant);
-                const prixFinal = nbOuNull(tx.prix_final);
-                const hono = nbOuNull(tx.honoraires_ht);
+                const offre = lireMontant(tx.offre_montant);
+                const prixFinal = lireMontant(tx.prix_final);
+                const hono = lireMontant(tx.honoraires_ht);
                 const ecart = (prixFinal !== null && offre !== null) ? prixFinal - offre : null;
                 const sruJ = tx.sru_date_fin
                   ? Math.ceil((new Date(`${tx.sru_date_fin}T23:59:59`).getTime() - Date.now()) / 86400000)
@@ -4076,11 +4469,11 @@ ${signatureMail()}`,
                 const chiffres: any[] = [];
                 if (offre !== null) chiffres.push({ k: 'Offre initiale', v: eur(offre), d: tx.offre_date ? jourFr(tx.offre_date) : null, c: '#a9822f' });
                 if (derniere) {
-                  const m = nbOuNull(derniere.montant);
+                  const m = lireMontant(derniere.montant);
                   chiffres.push({ k: 'Dernière contre-offre', v: m !== null ? eur(m) : '—', d: derniere.partie === 'acheteur' ? 'de votre client' : 'du vendeur', c: '#2d5c8f' });
                 }
                 if (prixFinal !== null) chiffres.push({ k: 'Prix retenu', v: eur(prixFinal), d: ecart !== null ? `${ecart > 0 ? '+' : ''}${eur(ecart)} vs offre` : null, c: '#15803d' });
-                if (hono !== null) chiffres.push({ k: 'Honoraires', v: `${eur(hono)} HT`, d: `${eur(Math.round(hono * 1.2))} TTC`, c: 'var(--emilio)' });
+                if (hono !== null) chiffres.push({ k: 'Honoraires', v: `${eur(hono)} HT`, d: `${eur(Math.round(hono * 1.2 * 100) / 100)} TTC`, c: 'var(--emilio)' });
 
                 const SUIVANT: Record<string, { label: string; vers: string }> = {
                   offre:          { label: '→ Passer en négociation', vers: 'negociation' },
@@ -4110,7 +4503,7 @@ ${signatureMail()}`,
                             </span>
                           </span>
                         ) : null}
-                        {tx.etape_actuelle === 'offre' && biensVisites().length > 1 && (
+                        {tx.etape_actuelle === 'offre' && biensPourTx().some(b => b.id !== tx.bien_id) && (
                           <button className={styles.btn} style={{ fontSize: 12, flexShrink: 0 }}
                             onClick={() => setShowChoixTx('changer')}>Changer de bien</button>
                         )}
@@ -4118,11 +4511,17 @@ ${signatureMail()}`,
                     ) : (
                       <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
                         ⚠️ Aucun bien associé à cette transaction.
-                        {biensVisites().length > 0 && (
+                        {biensPourTx().length > 0 && (
                           <button className={styles.btn} style={{ marginLeft: 10, fontSize: 12 }}
                             onClick={() => setShowChoixTx('changer')}>Choisir un bien</button>
                         )}
                       </div>
+                    )}
+                    {/* V3.50 : une transaction ouverte avant sur un mandat de
+                        l'agence reste visible ; la vente, elle, se suit sur la
+                        fiche du bien (et n'y compte qu'une fois). */}
+                    {bienTx?.bien_vente_id && (
+                      <CarteMandatAgence onOuvrir={() => onNavigate('biens', { bien: bienTx.bien_vente_id })} />
                     )}
 
                     {/* ── Le rail : où on en est, et où on peut revenir ── */}
@@ -4171,6 +4570,12 @@ ${signatureMail()}`,
                           La veille est arrêtée sur cette recherche et les relances en attente ont été soldées.
                           {tx.acte_date_prevue ? ` Acte du ${jourFr(tx.acte_date_prevue)}.` : ''}
                         </div>
+                        {/* V3.50 : une vente sans honoraires ne compte pas dans le CA — on le dit ici. */}
+                        {!(hono !== null && hono > 0) && (
+                          <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginTop: 12, lineHeight: 1.5, maxWidth: 440, marginLeft: 'auto', marginRight: 'auto' }}>
+                            {'Les honoraires ne sont pas renseignés : cette vente ne compte pas dans ton chiffre d’affaires. Ajoute-les dans « Revoir le dossier ».'}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 9, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
                           <button className={styles.btn} onClick={() => setVueEtape('acte')}>Revoir le dossier</button>
                           <button className={styles.btn} onClick={reculerEtape}>↩️ Rouvrir la transaction</button>
@@ -4197,9 +4602,9 @@ ${signatureMail()}`,
                               <div className={styles.formRow}>
                                 <div>
                                   <label className={styles.lbl}>Montant de l'offre €</label>
-                                  <input className={styles.inp} type="number" placeholder="Ex : 350000"
-                                    defaultValue={transaction.offre_montant ?? ''}
-                                    onChange={e => saveTxField('offre_montant', nbOuNull(e.target.value))} />
+                                  <input className={styles.inp} type="text" inputMode="decimal" placeholder="Ex : 350 000"
+                                    defaultValue={champMontant(transaction.offre_montant)} onBlur={remettreEnForme}
+                                    onChange={e => saveTxField('offre_montant', lireMontant(e.target.value))} />
                                 </div>
                                 <div>
                                   <label className={styles.lbl}>Date de l'offre</label>
@@ -4222,7 +4627,7 @@ ${signatureMail()}`,
                               {co.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                                   {co.map((c: any, i: number) => {
-                                    const m = nbOuNull(c.montant);
+                                    const m = lireMontant(c.montant);
                                     const acheteur = c.partie === 'acheteur';
                                     return (
                                       <div key={i} className="tx-co" data-partie={c.partie}>
@@ -4249,12 +4654,12 @@ ${signatureMail()}`,
                                       <option value="vendeur">🏢 Le vendeur</option>
                                       <option value="acheteur">🏠 Votre client</option>
                                     </select>
-                                    <input className={styles.inp} type="number" placeholder="Montant €" style={{ flex: '1 1 130px' }}
+                                    <input className={styles.inp} type="text" inputMode="decimal" placeholder="Montant €" style={{ flex: '1 1 130px' }}
                                       value={coForm.montant} onChange={e => setCoForm(f => ({ ...f, montant: e.target.value }))}
                                       onKeyDown={e => { if (e.key === 'Enter') ajouterContreOffre(); }} />
                                     <input className={styles.inp} type="date" style={{ width: 160, flexShrink: 0 }}
                                       value={coForm.date} onChange={e => setCoForm(f => ({ ...f, date: e.target.value }))} />
-                                    <button className={styles.btn} disabled={!nbOuNull(coForm.montant)}
+                                    <button className={styles.btn} disabled={!lireMontant(coForm.montant)}
                                       onClick={ajouterContreOffre}>+ Ajouter</button>
                                   </div>
                                 </div>
@@ -4266,15 +4671,15 @@ ${signatureMail()}`,
                             <>
                               <div>
                                 <label className={styles.lbl}>Prix final accepté €</label>
-                                <input className={styles.inp} type="number" placeholder="Ex : 345000"
+                                <input className={styles.inp} type="text" inputMode="decimal" placeholder="Ex : 345 000"
                                   key={`pf-${transaction.prix_final ?? ''}`}
-                                  defaultValue={transaction.prix_final ?? ''}
-                                  onChange={e => saveTxField('prix_final', nbOuNull(e.target.value))} />
+                                  defaultValue={champMontant(transaction.prix_final)} onBlur={remettreEnForme}
+                                  onChange={e => saveTxField('prix_final', lireMontant(e.target.value))} />
                               </div>
-                              {enCours && derniere && nbOuNull(derniere.montant) !== null && nbOuNull(derniere.montant) !== prixFinal && (
+                              {enCours && derniere && lireMontant(derniere.montant) !== null && lireMontant(derniere.montant) !== prixFinal && (
                                 <button className={styles.btn} style={{ alignSelf: 'flex-start', fontSize: 12.5 }}
-                                  onClick={async () => { const m = nbOuNull(derniere.montant); saveTxField('prix_final', m); await flushTx(); load(); }}>
-                                  Reprendre la dernière contre-offre ({eur(nbOuNull(derniere.montant) as number)})
+                                  onClick={async () => { const m = lireMontant(derniere.montant); saveTxField('prix_final', m); await flushTx(); load(); }}>
+                                  Reprendre la dernière contre-offre ({eur(lireMontant(derniere.montant) as number)})
                                 </button>
                               )}
                               {ecart !== null && (
@@ -4307,13 +4712,13 @@ ${signatureMail()}`,
                               <div className={styles.formRow}>
                                 <div>
                                   <label className={styles.lbl}>Montant du prêt €</label>
-                                  <input className={styles.inp} type="number" defaultValue={transaction.pret_montant ?? ''}
-                                    onChange={e => saveTxField('pret_montant', nbOuNull(e.target.value))} />
+                                  <input className={styles.inp} type="text" inputMode="decimal" defaultValue={champMontant(transaction.pret_montant)} onBlur={remettreEnForme}
+                                    onChange={e => saveTxField('pret_montant', lireMontant(e.target.value))} />
                                 </div>
                                 <div>
                                   <label className={styles.lbl}>Apport €</label>
-                                  <input className={styles.inp} type="number" defaultValue={transaction.pret_apport ?? ''}
-                                    onChange={e => saveTxField('pret_apport', nbOuNull(e.target.value))} />
+                                  <input className={styles.inp} type="text" inputMode="decimal" defaultValue={champMontant(transaction.pret_apport)} onBlur={remettreEnForme}
+                                    onChange={e => saveTxField('pret_apport', lireMontant(e.target.value))} />
                                 </div>
                               </div>
                               {tx.sru_date_fin && (
@@ -4340,22 +4745,28 @@ ${signatureMail()}`,
                                 </div>
                                 <div>
                                   <label className={styles.lbl}>Honoraires HT €</label>
-                                  <input className={styles.inp} type="number" defaultValue={transaction.honoraires_ht ?? ''}
+                                  {/* V3.50 : un champ texte lu par lireMontant — « 8 333,33 »
+                                      devenait 833 333 € (et rien du tout sous Firefox ou Safari). */}
+                                  <input className={styles.inp} type="text" inputMode="decimal" placeholder="Ex : 8 333,33"
+                                    defaultValue={champMontant(transaction.honoraires_ht)} onBlur={remettreEnForme}
                                     onChange={e => {
-                                      const n = nbOuNull(e.target.value);
+                                      const n = lireMontant(e.target.value);
                                       saveTxField('honoraires_ht', n);
-                                      saveTxField('honoraires_ttc', n === null ? null : Math.round(n * 1.2));
+                                      saveTxField('honoraires_ttc', n === null ? null : Math.round(n * 1.2 * 100) / 100);
                                     }} />
                                 </div>
                               </div>
                               {hono !== null && (
                                 <div className="tx-alerte" data-ton="vert">
-                                  💰 Honoraires TTC : <b>{eur(Math.round(hono * 1.2))}</b>
+                                  💰 Honoraires TTC : <b>{eur(Math.round(hono * 1.2 * 100) / 100)}</b>
                                 </div>
                               )}
                               {enCours && (
                                 <div className="tx-note">
-                                  Clôturer ici, c'est fermer le dossier : le client passe en « Bien trouvé », la veille s'arrête et les relances en attente sont soldées.
+                                  {/* V3.50 : un client à plusieurs recherches n'est clos que si plus rien ne tourne. */}
+                                  {recherches.some(r => r.id !== rechercheId && r.active !== false)
+                                    ? 'Clôturer ici, c’est fermer cette recherche : sa veille s’arrête et ses relances sont soldées. Ses autres recherches continuent.'
+                                    : 'Clôturer ici, c’est fermer le dossier : le client passe en « Bien trouvé », la veille s’arrête et les relances en attente sont soldées.'}
                                 </div>
                               )}
                             </>
@@ -4709,13 +5120,13 @@ ${signatureMail()}`,
                 sont proposés — c'est là que se joue une offre.
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {biensVisites().map(b => {
-                  const vs = visites.filter(v => v.bien_id === b.id);
+                {biensPourTx().map(b => {
+                  const vs = visites.filter(v => v.bien_id === b.id && (v.statut === 'a_venir' || v.statut === 'effectuee'));
                   const faite = vs.find(v => v.statut === 'effectuee');
                   const derniere = faite || vs[0];
                   const actif = transaction?.bien_id === b.id;
                   return (
-                    <button type="button" key={b.id} onClick={() => choisirBienTx(b.id)} disabled={actif}
+                    <button type="button" key={b.id} onClick={() => choisirBienTx(b.id)} disabled={actif || saving}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 12,
                         border: `1.5px solid ${actif ? '#c9a84c' : '#e3e8f0'}`, background: actif ? '#faf6ee' : 'white',
                         cursor: actif ? 'default' : 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .14s' }}>
@@ -4763,8 +5174,14 @@ ${signatureMail()}`,
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏁 Clôturer la recherche</h2><button className={styles.modalClose} onClick={() => setShowCloture(false)}>✕</button></div>
             <div className={styles.modalBody}>
               <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
-                La veille s'arrête sur ce dossier, les relances en attente sont soldées, et le motif reste au journal. Tout est réversible : « Rouvrir le dossier » dans le menu d'état.
+                {'La veille s’arrête sur ce dossier, ses relances d’acheteur sont soldées, ses visites à venir annulées, et le motif reste au journal. Tout est réversible : « Rouvrir le dossier » dans le menu d’état.'}
               </div>
+              {/* V3.50 : trouvé avec nous et une transaction ouverte = un acte signé. */}
+              {cloture.motif === 'trouve_avec_moi' && transaction && transaction.etape_actuelle !== 'finalise' && (
+                <div style={{ background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#7a5d1c', lineHeight: 1.55 }}>
+                  {'Une transaction est en cours : elle passera « Acte signé », pour que la vente compte dans ton chiffre d’affaires. Tu confirmeras la date de l’acte juste après.'}
+                </div>
+              )}
               <div>
                 <label className={styles.lbl}>Pourquoi la recherche s'arrête</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -4806,6 +5223,58 @@ ${signatureMail()}`,
         </div>
         </Portail>
       )}
+
+      {/* ═══ MODAL ACTE SIGNÉ (V3.50) ═══
+          La date de la signature, à confirmer : c'est elle qui range la vente
+          dans le chiffre d'affaires du mois. Sans honoraires, on prévient. */}
+      {acte && (() => {
+        const bienActe = biens.find(b => b.id === acte.tx.bien_id);
+        const nomActe = bienActe ? (bienActe.titre || bienActe.ville || '') : '';
+        const htActe = honorairesHT(acte.tx);
+        const sansHono = !(htActe > 0);
+        return (
+          <Portail>
+          <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget && !saving) setActe(null); }}>
+            <div className={styles.modal} style={{ maxWidth: 480 }}>
+              <div className={styles.modalHeader}>
+                <h2 className={styles.modalTitle}>🎉 Acte signé</h2>
+                {!saving && <button className={styles.modalClose} onClick={() => setActe(null)}>✕</button>}
+              </div>
+              <div className={styles.modalBody}>
+                {acte.portee === 'dossier' && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 11, padding: '11px 14px', fontSize: 12.5, color: '#55647a', lineHeight: 1.55 }}>
+                    {`La transaction${nomActe ? ` sur « ${nomActe} »` : ''} passe « Acte signé » : la vente compte dans ton chiffre d’affaires, puis le dossier se clôture.`}
+                  </div>
+                )}
+                <div>
+                  <label className={styles.lbl}>Date de signature de l&apos;acte</label>
+                  <input className={styles.inp} type="date" value={acte.date} max={jourParis()}
+                    onChange={e => { const d = e.target.value; setActe(a => (a ? { ...a, date: d } : a)); }} />
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5, lineHeight: 1.5 }}>
+                    {'C’est cette date qui range la vente dans le chiffre d’affaires du mois.'}
+                  </div>
+                </div>
+                {sansHono ? (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 11, padding: '11px 14px', fontSize: 13, color: '#92400e', lineHeight: 1.55 }}>
+                    {'Les honoraires ne sont pas renseignés : cette vente ne comptera pas dans ton chiffre d’affaires. Tu pourras les ajouter ensuite dans l’onglet Transaction.'}
+                  </div>
+                ) : (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 11, padding: '11px 14px', fontSize: 13, color: '#15803d', lineHeight: 1.55 }}>
+                    {`Honoraires : ${ecrireMontant(htActe)} HT.`}
+                  </div>
+                )}
+              </div>
+              <div className={styles.modalFooter}>
+                <button className={styles.btn} disabled={saving} onClick={() => setActe(null)}>Annuler</button>
+                <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving || !acte.date} onClick={confirmerActe}>
+                  {saving ? '…' : sansHono ? 'Continuer sans honoraires' : '🎉 Clôturer'}
+                </button>
+              </div>
+            </div>
+          </div>
+          </Portail>
+        );
+      })()}
 
       {suspendre && (
         <Portail>
@@ -5125,8 +5594,10 @@ ${signatureMail()}`,
             <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <p style={{ fontSize: 14, color: 'var(--emilio)', margin: 0, lineHeight: 1.6 }}>
                 Tout le travail fait sur <b>{rechercheActive?.nom || 'cette recherche'}</b>{' '}sera effacé.
-                La recherche repart comme si tu venais de la créer, et la prochaine veille rouvrira
-                tout le marché.
+                {/* V3.50 : la veille suit l'état du client. */}
+                {client.statut === 'actif'
+                  ? ' La recherche repart comme si tu venais de la créer, et la prochaine veille rouvrira tout le marché.'
+                  : ' La recherche repart comme si tu venais de la créer. La veille reprendra quand le dossier repassera « Actif ».'}
               </p>
 
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 15px' }}>
@@ -5140,7 +5611,7 @@ ${signatureMail()}`,
                     <li><b>{reinitStats.propositions}</b> proposition{reinitStats.propositions > 1 ? 's' : ''} de veille, y compris les écartées et leurs motifs</li>
                     <li><b>{reinitStats.biens}</b> bien{reinitStats.biens > 1 ? 's' : ''} en sélection ou présentés{reinitStats.presentes > 0 ? ` (dont ${reinitStats.presentes} déjà envoyé${reinitStats.presentes > 1 ? 's' : ''} au client)` : ''}, avec leurs photos</li>
                     <li><b>{reinitStats.visites}</b> visite{reinitStats.visites > 1 ? 's' : ''} et leurs comptes rendus</li>
-                    <li><b>{reinitStats.envois}</b> envoi{reinitStats.envois > 1 ? 's' : ''}, la transaction en cours et les relances</li>
+                    <li><b>{reinitStats.envois}</b> envoi{reinitStats.envois > 1 ? 's' : ''}{reinitStats.txOuverte ? ', la transaction en cours' : ''} et les relances</li>
                     <li><b>{reinitStats.passages}</b> passage{reinitStats.passages > 1 ? 's' : ''} de veille — le compteur « {reinitStats.lues} annonces lues » de l&apos;espace client revient à zéro</li>
                   </ul>
                 )}
@@ -5151,6 +5622,10 @@ ${signatureMail()}`,
                   Ce qui ne bouge pas
                 </div>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: 'var(--emilio)', lineHeight: 1.85 }}>
+                  {/* V3.50 : une vente signée ne s'efface pas (chiffre d'affaires). */}
+                  {reinitStats?.venteGardee && (
+                    <li>{`La vente signée sur « ${reinitStats.venteGardee} », avec son bien : elle reste dans ton chiffre d’affaires`}</li>
+                  )}
                   <li>Les critères, les précisions libres et le mandat</li>
                   <li>Le lien de l&apos;espace client — il continue de fonctionner, le client y trouvera une page vide</li>
                   <li>L&apos;historique du client : appels, notes, changements de critères</li>
@@ -5262,7 +5737,8 @@ ${signatureMail()}`,
                 {(editBienForm.ville || editBienForm.prix_vendeur) && (
                   <div style={{ marginTop: 4, display: 'flex', gap: 12, alignItems: 'center' }}>
                     {editBienForm.ville && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>📍 {editBienForm.ville}{editBienForm.code_postal ? ` (${editBienForm.code_postal})` : ''}</span>}
-                    {editBienForm.prix_vendeur && <span style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{parseFloat(editBienForm.prix_vendeur).toLocaleString('fr-FR')}€</span>}
+                    {/* V3.50 : un mandat de l'agence montre son prix affiché, pas le net vendeur. */}
+                    {(editBienForm.bien_vente_id ? editBienForm.prix_acquereur : editBienForm.prix_vendeur) && <span style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>{parseFloat(editBienForm.bien_vente_id ? editBienForm.prix_acquereur : editBienForm.prix_vendeur).toLocaleString('fr-FR')}€</span>}
                   </div>
                 )}
               </div>
@@ -5433,7 +5909,22 @@ ${signatureMail()}`,
                 </div>
               </div>
 
-              {/* Groupe prix */}
+              {/* Groupe prix — V3.50 : un mandat de l'agence garde le prix de sa
+                  fiche (honoraires de l'agence compris) ; il ne se recalcule pas ici. */}
+              {editBienForm.bien_vente_id ? (
+                <div style={{ background: '#fffbeb', borderRadius: 12, padding: 14, border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>💰 Prix</div>
+                  <div style={{ background: 'white', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>Prix affiché</span>
+                    <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: '#c9a84c' }}>
+                      {editBienForm.prix_acquereur ? ecrireMontant(Number(editBienForm.prix_acquereur)) : '—'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#92400e', marginTop: 8, lineHeight: 1.5 }}>
+                    {'Ce bien est un mandat de l’agence : son prix et les honoraires de l’agence se changent sur la fiche du bien.'}
+                  </div>
+                </div>
+              ) : (
               <div style={{ background: '#fffbeb', borderRadius: 12, padding: 14, border: '1px solid #fde68a' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>💰 Prix & Commission</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -5464,6 +5955,7 @@ ${signatureMail()}`,
                 )}
                 </div>
               </div>
+              )}
 
               {/* Groupe agence */}
               <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e3e8f0' }}>

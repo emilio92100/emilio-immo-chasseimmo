@@ -48,7 +48,11 @@ const tailleFr = (o: number) => (o >= 1_000_000 ? `${String(Math.round(o / 100_0
 type Contact = { id: string; prenom: string | null; nom: string | null; reference: string | null; emails: string[] | null; types?: string[] | null; archive?: boolean | null; [k: string]: unknown };
 type Dest = { cle: string; contact: Contact | null; email: string };
 type Piece = { id: string; nom: string; taille: number; etat: 'envoi' | 'ok' | 'ko'; chemin?: string; erreur?: string };
-type Resultat = { envoyes: { nom: string; a: string[]; clientId: string | null }[]; echecs: string[]; avertissements: string[]; mode: 'pj' | 'liens' };
+type Resultat = { envoyes: { nom: string; a: string[]; clientId: string | null }[]; echecs: string[]; avertissements: string[]; mode: 'pj' | 'liens'; incertains?: string[] };
+/* V3.50 : le serveur n'a pas pu dire ce qui est parti (délai dépassé, coupure,
+   Mailjet muet). Avant : « Erreur 504 », alors que des mails étaient partis,
+   et un deuxième envoi faisait des doubles. */
+const PEUT_ETRE = 'L’envoi a peut-être été fait en partie : vérifie le Suivi des contacts avant de renvoyer.';
 
 const nomDe = (c: Contact) => `${c.prenom || ''} ${c.nom || ''}`.trim() || c.reference || 'Contact';
 const mailsDe = (c: Contact) => (c.emails || []).map(e => String(e).trim()).filter(e => MAIL.test(e));
@@ -470,19 +474,28 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
     if (pb) { setErreur(pb); setApercu(false); return; }
     setEnvoi(true); setErreur('');
     try {
-      const r = await fetch('/api/mail', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'envoyer', objet: objet.trim(), html: corps, style,
-          contacts: dests.filter(d => d.contact).map(d => d.contact!.id),
-          adresses: dests.filter(d => !d.contact).map(d => d.email),
-          pieces: piecesOk.map(p => ({ chemin: p.chemin, nom: p.nom })),
-        }),
-      });
-      const j = await r.json().catch(() => null) as (Resultat & { ok?: boolean; erreur?: string }) | null;
-      if (!r.ok || !j?.ok) throw new Error(j?.erreur || `Erreur ${r.status}`);
+      let r: Response;
+      try {
+        r = await fetch('/api/mail', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'envoyer', objet: objet.trim(), html: corps, style,
+            contacts: dests.filter(d => d.contact).map(d => d.contact!.id),
+            adresses: dests.filter(d => !d.contact).map(d => d.email),
+            pieces: piecesOk.map(p => ({ chemin: p.chemin, nom: p.nom })),
+          }),
+        });
+      } catch {
+        /* La connexion a lâché en route : la demande est peut-être arrivée. */
+        throw new Error(PEUT_ETRE);
+      }
+      const j = await r.json().catch(() => null) as (Resultat & { ok?: boolean; erreur?: string; incertain?: boolean }) | null;
+      /* Pas de réponse lisible (la page « 504 » de Vercel), ou le serveur dit
+         lui-même qu'il ne sait pas : peut-être parti. */
+      if (!j || j.incertain) throw new Error(j?.erreur || PEUT_ETRE);
+      if (!r.ok || !j.ok) throw new Error(j.erreur || (r.status >= 500 ? PEUT_ETRE : `Erreur ${r.status}`));
       if (j.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', j.avertissements.join(' ; '));
-      setResultat({ envoyes: j.envoyes, echecs: j.echecs || [], avertissements: j.avertissements || [], mode: j.mode });
+      setResultat({ envoyes: j.envoyes, echecs: j.echecs || [], avertissements: j.avertissements || [], mode: j.mode, incertains: j.incertains || [] });
       setApercu(false);
     } catch (e) {
       setErreur((e as Error).message);
@@ -518,6 +531,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
               {horsCrm.length > 0 && <li><Ic n="info" t={15} /><span>{`${horsCrm.map(x => x.a[0]).join(', ')} : hors CRM, rien n’est noté.`}</span></li>}
               {resultat.mode === 'liens' && <li><Ic n="trombone" t={15} /><span>{'Les pièces étaient trop lourdes : elles sont parties en liens de téléchargement, valables 7 jours.'}</span></li>}
               {resultat.echecs.map(e => <li key={e} className={s.faitKo}><Croix t={14} /><span>{`Pas parti : ${e}`}</span></li>)}
+              {(resultat.incertains || []).length > 0 && <li className={s.faitKo}><Ic n="info" t={15} /><span>{`Peut-être parti : ${(resultat.incertains || []).join(', ')}. Mailjet n’a pas répondu à temps : vérifie leur Suivi avant de renvoyer.`}</span></li>}
             </ul>
             <div className={s.faitBoutons}>
               {dansCrm.length === 1 && (

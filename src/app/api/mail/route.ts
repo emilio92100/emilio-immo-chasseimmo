@@ -56,32 +56,65 @@ const nomPropre = (n: string) => String(n || '').normalize('NFD').replace(/[\u03
 type Dest = { a: string[]; nom: string; prenom: string; famille: string; reference: string; clientId: string | null };
 type Contact = { id: string; prenom: string | null; nom: string | null; reference: string | null; emails: string[] | null };
 
-async function mailjet(o: { a: { email: string; nom: string }[]; sujet: string; texte: string; html: string; pj: { nom: string; type: string; base64: string }[]; id: string }): Promise<string | null> {
+/* V3.50 : les mails partent par lots, un appel Mailjet par lot (l'API v3.1
+   en accepte 50 par appel). Sans pièce jointe, tout part en un seul appel.
+   Avant, un appel par personne, l'un après l'autre, avec jusqu'à 10 Mo de
+   pièces chacun : au-delà de 60 s, Vercel coupait (« Erreur 504 ») alors que
+   les premiers mails étaient partis, et les renvoyer faisait des doubles.
+   Un lot ne dépasse pas ~14 Mo (Mailjet refuse un mail de plus de 15 Mo,
+   pièces comprises) ; on n'en lance plus quand le temps manque : ceux qui
+   restent sont dits « pas partis », jamais « peut-être ».
+   Mailjet répond message par message : chacun est noté selon SA réponse.
+   `incertain` : Mailjet n'a pas répondu (délai dépassé, coupure, panne de
+   son côté) — les mails du lot sont peut-être partis, on ne le sait pas. */
+type Message = { a: { email: string; nom: string }[]; sujet: string; texte: string; html: string; id: string };
+type Pj = { nom: string; type: string; base64: string };
+const LOT_MAX_MESSAGES = 50;
+const LOT_MAX_OCTETS = 14_000_000;
+async function mailjetLot(messages: Message[], pj: Pj[], limite: number): Promise<{ erreurs: (string | null)[]; incertain: boolean }> {
   const k = process.env.MAILJET_API_KEY, s = process.env.MAILJET_API_SECRET;
-  if (!k || !s) return 'Mailjet non configuré';
+  if (!k || !s) return { erreurs: messages.map(() => 'Mailjet non configuré'), incertain: false };
+  const arret = new AbortController();
+  const minuterie = setTimeout(() => arret.abort(), Math.max(5_000, limite));
   try {
     const r = await fetch('https://api.mailjet.com/v3.1/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Basic ${Buffer.from(`${k}:${s}`).toString('base64')}` },
       body: JSON.stringify({
-        Messages: [{
+        Messages: messages.map(m => ({
           From: { Email: FROM_EMAIL, Name: FROM_NAME },
-          To: o.a.map(x => ({ Email: x.email, ...(x.nom ? { Name: x.nom } : {}) })),
-          Subject: o.sujet, TextPart: o.texte, HTMLPart: o.html, CustomID: o.id,
-          ...(o.pj.length ? { Attachments: o.pj.map(p => ({ ContentType: p.type, Filename: p.nom, Base64Content: p.base64 })) } : {}),
+          To: m.a.map(x => ({ Email: x.email, ...(x.nom ? { Name: x.nom } : {}) })),
+          Subject: m.sujet, TextPart: m.texte, HTMLPart: m.html, CustomID: m.id,
+          ...(pj.length ? { Attachments: pj.map(p => ({ ContentType: p.type, Filename: p.nom, Base64Content: p.base64 })) } : {}),
           TrackOpens: 'disabled', TrackClicks: 'disabled',
-        }],
+        })),
       }),
+      signal: arret.signal,
     });
-    const j = await r.json().catch(() => null) as { Messages?: { Status?: string; Errors?: { ErrorMessage?: string }[] }[] } | null;
-    if (r.ok && j?.Messages?.[0]?.Status === 'success') return null;
-    return j?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || `Mailjet ${r.status}`;
+    const j = await r.json().catch(() => null) as { Messages?: { Status?: string; Errors?: { ErrorMessage?: string }[] }[]; ErrorMessage?: string } | null;
+    const l = j?.Messages;
+    if (Array.isArray(l) && l.length === messages.length) {
+      return { erreurs: l.map(m => (m?.Status === 'success' ? null : m?.Errors?.[0]?.ErrorMessage || `Mailjet ${r.status}`)), incertain: false };
+    }
+    /* Pas de réponse message par message : refusé en bloc (rien n'est
+       parti), ou une panne de Mailjet (on ne sait pas). */
+    const err = j?.ErrorMessage || `Mailjet ${r.status}`;
+    return { erreurs: messages.map(() => err), incertain: r.status >= 500 || !j };
   } catch (e) {
-    return (e as Error).message || 'envoi impossible';
+    const err = (e as Error).name === 'AbortError' ? 'Mailjet n’a pas répondu à temps' : ((e as Error).message || 'envoi impossible');
+    return { erreurs: messages.map(() => err), incertain: true };
+  } finally {
+    clearTimeout(minuterie);
   }
 }
 
 export async function POST(req: NextRequest) {
+  /* Le temps qu'il reste : Mailjet doit avoir répondu assez tôt pour qu'on
+     ait le temps de tout noter avant la limite de Vercel (maxDuration). */
+  const debut = Date.now();
+  /* Les mails sont partis vers Mailjet : une erreur après ce point ne veut
+     pas dire « rien n'est parti ». */
+  let parti = false;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
@@ -203,36 +236,78 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── L'envoi : un mail par destinataire ── */
+    /* ── L'envoi : un message par destinataire, envoyés par lots (V3.50) ── */
     const texteBrut = htmlVersTexte(corps);
-    const envoyes: { nom: string; a: string[]; clientId: string | null }[] = [];
-    for (const d of dests) {
+    const marque = Date.now();
+    const lot = dests.map((d, i) => {
       const pour = { prenom: d.prenom, nom: d.famille, reference: d.reference };
       const sujet = personnaliserObjet(objet, pour, conseiller) || objet;
       const html = mailLibreHtml({ style, corps: personnaliserHtml(corps, pour, conseiller), h, liens, jours: LIENS_JOURS });
       const texte = `${personnaliserTexte(texteBrut, pour, conseiller)}${texteLiens(liens, LIENS_JOURS)}`;
-      const err = await mailjet({ a: d.a.map(email => ({ email, nom: d.nom })), sujet, texte, html, pj, id: `mail-${d.clientId || 'libre'}-${Date.now()}` });
-      if (err) { echecs.push(`${d.nom || d.a[0]} (${err})`); continue; }
-      envoyes.push({ nom: d.nom, a: d.a, clientId: d.clientId });
+      return { d, sujet, texte, html, id: `mail-${d.clientId || 'libre'}-${marque}-${i}` };
+    });
+    /* Les lots, dans l'ordre, tant qu'il reste le temps de noter ensuite. */
+    const poidsPj = pj.reduce((t, p) => t + p.base64.length, 0);
+    const lots: number[][] = [];
+    let courant: number[] = [], poids = 0;
+    lot.forEach((m, i) => {
+      const p = poidsPj + m.html.length + m.texte.length;
+      if (courant.length && (courant.length >= LOT_MAX_MESSAGES || poids + p > LOT_MAX_OCTETS)) { lots.push(courant); courant = []; poids = 0; }
+      courant.push(i); poids += p;
+    });
+    if (courant.length) lots.push(courant);
+    /* Par message : null = parti, un texte = pas parti (et pourquoi),
+       'incertain' = on ne sait pas. */
+    const etat: (string | null | 'incertain')[] = lot.map(() => 'le temps a manqué : renvoie-le-lui');
+    const fin = debut + (maxDuration - 15) * 1000;
+    for (const l of lots) {
+      if (fin - Date.now() < 8_000) break;
+      parti = true;
+      const r = await mailjetLot(l.map(i => ({ a: lot[i].d.a.map(email => ({ email, nom: lot[i].d.nom })), sujet: lot[i].sujet, texte: lot[i].texte, html: lot[i].html, id: lot[i].id })), pj, fin - Date.now());
+      l.forEach((i, n) => { etat[i] = r.incertain ? 'incertain' : r.erreurs[n]; });
+    }
 
-      /* La trace, pour un contact du CRM : l'envoi, et son Suivi. */
-      if (d.clientId) {
-        const rid = dossier[d.clientId] || null;
-        await ecritServeur('L’envoi (communications)', sb.from('envois').insert({
-          client_id: d.clientId, recherche_id: rid, type: 'mail_libre', objet: sujet, corps: texte,
+    /* La trace, pour un contact du CRM : l'envoi, et son Suivi. Tout en même
+       temps (pas l'un après l'autre), pour finir bien avant la limite. */
+    const noter = (m: typeof lot[number], incertain: boolean) => {
+      const d = m.d;
+      if (!d.clientId) return Promise.resolve();
+      const rid = dossier[d.clientId] || null;
+      const pieces = noms.length ? `\n\n${mode === 'pj' ? 'Pièces jointes' : `Liens de téléchargement (${LIENS_JOURS} jours)`} : ${noms.join(', ')}` : '';
+      return Promise.all([
+        incertain ? Promise.resolve(true) : ecritServeur('L’envoi (communications)', sb.from('envois').insert({
+          client_id: d.clientId, recherche_id: rid, type: 'mail_libre', objet: m.sujet, corps: m.texte,
           destinataires: d.a, biens_ids: [], sms_envoye: false,
-        }), avertissements);
-        await ecritServeur('Le Suivi du contact', sb.from('journal').insert({
+        }), avertissements),
+        ecritServeur('Le Suivi du contact', sb.from('journal').insert({
           client_id: d.clientId, recherche_id: rid, type: 'mail_envoye',
-          titre: `✉️ Mail envoyé — ${sujet}`,
-          description: `À : ${d.a.join(', ')}\n\n${texte}${noms.length ? `\n\n${mode === 'pj' ? 'Pièces jointes' : `Liens de téléchargement (${LIENS_JOURS} jours)`} : ${noms.join(', ')}` : ''}`,
-          metadata: { source: 'nouveau_mail', style, pieces: noms },
-        }), avertissements);
-      }
+          titre: incertain ? `✉️ Mail peut-être parti — ${m.sujet}` : `✉️ Mail envoyé — ${m.sujet}`,
+          description: `${incertain ? 'Mailjet n’a pas répondu à temps : ce mail est peut-être parti, peut-être pas. Vérifie avec lui avant de le renvoyer.\n\n' : ''}À : ${d.a.join(', ')}\n\n${m.texte}${pieces}`,
+          metadata: { source: 'nouveau_mail', style, pieces: noms, ...(incertain ? { incertain: true } : {}) },
+        }), avertissements),
+      ]).then(() => undefined);
+    };
+
+    const envoyes: { nom: string; a: string[]; clientId: string | null }[] = [];
+    const incertains: string[] = [];
+    lot.forEach((m, i) => {
+      const e = etat[i];
+      if (e === 'incertain') incertains.push(m.d.nom || m.d.a[0]);
+      else if (e) echecs.push(`${m.d.nom || m.d.a[0]} (${e})`);
+      else envoyes.push({ nom: m.d.nom, a: m.d.a, clientId: m.d.clientId });
+    });
+    await Promise.all(lot.map((m, i) => (etat[i] === null ? noter(m, false) : etat[i] === 'incertain' ? noter(m, true) : Promise.resolve())));
+    if (!envoyes.length && incertains.length) {
+      return NextResponse.json({
+        ok: false, incertain: true, incertains, echecs,
+        erreur: 'L’envoi a peut-être été fait en partie : vérifie le Suivi des contacts avant de renvoyer.',
+      }, { status: 502 });
     }
     if (!envoyes.length) return ko(`Le mail n’est pas parti : ${echecs.join(' · ')}`, 502);
-    return NextResponse.json({ ok: true, envoyes, echecs, avertissements, mode });
+    return NextResponse.json({ ok: true, envoyes, echecs, incertains, avertissements, mode });
   } catch (e) {
+    /* Après le départ vers Mailjet, on ne sait pas : on le dit (V3.50). */
+    if (parti) return NextResponse.json({ ok: false, incertain: true, erreur: `L’envoi a peut-être été fait en partie : vérifie le Suivi des contacts avant de renvoyer. (${(e as Error).message || 'erreur'})` }, { status: 500 });
     return ko((e as Error).message || 'Erreur', 500);
   }
 }

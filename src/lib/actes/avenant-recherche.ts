@@ -24,7 +24,7 @@
    avant le premier usage. */
 
 import {
-  euros, BAREME, HONORAIRES_TAUX, tauxDe, forfaitDe, prixEtHonoraires, honorairesCourt, seuilForfait,
+  euros, jourParis, BAREME, HONORAIRES_TAUX, tauxDe, forfaitDe, prixEtHonoraires, honorairesCourt, seuilForfait,
   decrireRecherche, decrireCourt, rechercheDepuis,
   type Recherche, type Contenu, type Mandant, type Societe, type Partie, type Bloc, type Fiche, type Resume,
 } from '@/lib/mandat';
@@ -470,7 +470,8 @@ function deriver(src: Source): Donnees {
   const out: Donnees = {};
   const reprises = src.modele === 'mandat_en_ligne' ? [...REPRIS_PAPIER, 'sciPerso', 'finActuelle'] : REPRIS_PAPIER;
   for (const k of reprises) if (k in s) out[k] = s[k];
-  const jour = String(src.signe_le || s.date || '').slice(0, 10);
+  /* V3.50 : le jour de la signature à l'heure de Paris, pas en heure universelle. */
+  const jour = src.signe_le ? jourParis(src.signe_le) : String(s.date || '').slice(0, 10);
   const ok = /^\d{4}-\d{2}-\d{2}$/.test(jour);
   if (src.modele !== 'mandat_en_ligne') {
     const total = s.dureeMode === 'prorogation' ? (num(s, 'dureeMax') ?? 12) : (num(s, 'duree') ?? 12);
@@ -568,7 +569,7 @@ export function donneesMandatEnLigne(l: MandatEnLigneSource, signataires: Partia
   const acquereurs = [personneDe(l.mandant), ...signataires.map(personneDe)];
   const s = l.societe || null;
   const siren = s?.siren ? s.siren.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : '';
-  const jour = String(l.signe_le || '').slice(0, 10);
+  const jour = l.signe_le ? jourParis(l.signe_le) : '';
   return {
     type: 'simple', qui: s ? 'sci' : acquereurs.length === 1 ? 'personne' : acquereurs.length === 2 ? 'couple' : 'plusieurs',
     acquereurs,

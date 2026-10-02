@@ -1,5 +1,7 @@
 import { signalerEchec } from './ecritures';
 import { supabase } from '@/lib/supabase';
+import { relanceAGarder } from './relances-garder';
+export { relanceAGarder };
 
 /**
  * Les relances, côté CRM.
@@ -111,5 +113,29 @@ export async function cloturerRelancesAuto(
     if (error) signalerEchec('La clôture des relances automatiques', error.message);
   } catch (e) {
     signalerEchec('La clôture des relances automatiques', (e as Error)?.message || '');
+  }
+}
+
+/* Les relances d'un acheteur dont le dossier se clôt (acte signé, dossier
+   clôturé, bien trouvé, perdu). S'il vend aussi un bien avec nous, ses
+   relances de vendeur (réponse à une offre, rappels du compromis, notes sans
+   recherche) restent : seules celles de ses recherches se soldent (V3.47).
+   V3.50 : la fiche acheteur soldait tout, relances de vendeur comprises —
+   une seule règle désormais, ici, pour le bien comme pour la fiche. */
+export async function solderRelancesAcheteur(clientId: string, rechercheId?: string | null): Promise<void> {
+  try {
+    const v = await supabase.from('biens_vente').select('id').eq('client_id', clientId).not('etape', 'in', '(vendu,retire)').limit(1);
+    if (v.error) signalerEchec('Les biens en vente de l’acheteur', v.error.message);
+    let q = supabase.from('relances').select('id, note').eq('client_id', clientId).eq('statut', 'en_attente');
+    if (rechercheId) q = q.eq('recherche_id', rechercheId);
+    else if (v.error || v.data?.length) q = q.not('recherche_id', 'is', null);
+    const { data, error: eL } = await q;
+    if (eL) { signalerEchec('Les relances de l’acheteur', eL.message); return; }
+    const ids = ((data || []) as { id: string; note: string | null }[]).filter(r => !relanceAGarder(r.note)).map(r => r.id);
+    if (!ids.length) return;
+    const { error } = await supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids).eq('statut', 'en_attente');
+    if (error) signalerEchec('Les relances de l’acheteur', error.message);
+  } catch (e) {
+    signalerEchec('Les relances de l’acheteur', (e as Error)?.message || '');
   }
 }

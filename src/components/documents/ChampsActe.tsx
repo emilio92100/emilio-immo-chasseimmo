@@ -1,4 +1,5 @@
 'use client';
+import { lireMontant } from '@/lib/montant';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { enLettres } from '@/lib/mandat';
 import { PERSONNE_VIDE, type Champ, type Donnees, type Personne } from '@/lib/actes';
@@ -29,6 +30,8 @@ const ecrireNombre = (n: number | null, euros: boolean) =>
     ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n).replace(/[\u202f\u00a0]/g, ' ')
     : String(n).replace('.', ',');
 
+/* V3.50 : un montant se lit avec lireMontant (« 850.000 », « 850k », « 8 333,33 ») ;
+   une surface ou un nombre de pièces garde la lecture simple. */
 function ChampNombre({ id, euros, unite, v, onChange, off, manque }: {
   id: string; euros: boolean; unite?: string; v: unknown; onChange: (n: number | null) => void; off: boolean; manque: boolean;
 }) {
@@ -42,7 +45,7 @@ function ChampNombre({ id, euros, unite, v, onChange, off, manque }: {
       <div className={s.unite}>
         <input id={id} className={`${s.input} ${manque ? s.inputManque : ''}`} inputMode="decimal" autoComplete="off" disabled={off}
           value={texte} onFocus={() => setDedans(true)} onBlur={() => setDedans(false)}
-          onChange={e => { setTexte(e.target.value); onChange(lireNombre(e.target.value)); }}
+          onChange={e => { setTexte(e.target.value); onChange(euros ? lireMontant(e.target.value) : lireNombre(e.target.value)); }}
           style={u ? { paddingRight: Math.min(150, 22 + u.length * 7.2) } : undefined} />
         {u && <span>{u}</span>}
       </div>

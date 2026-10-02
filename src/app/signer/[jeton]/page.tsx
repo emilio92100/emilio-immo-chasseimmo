@@ -102,15 +102,29 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
   const m = doc ? modele(doc.modele) : null;
   if (!doc || !m) return null;
   const identite = doc.identite || IDENTITE_DEFAUT;
-  const sigs = await SD.lireSignataires(sb, doc.id);
   const nd = SD.nomDocument(m, doc.donnees);
+  /* V3.50 : une lecture ratée ne montre pas un document sans ses
+     signataires : « réessayez dans un instant ». */
+  let sigs: SD.SigDoc[];
+  try { sigs = await SD.lireSignataires(sb, doc.id); } catch (e) {
+    console.error('[signer] page, signataires', (e as Error).message);
+    return {
+      jeton, etat: 'indisponible', entete: m.entete(doc.donnees), le: nd.le, court: nd.court, espace: null,
+      moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: '' }, role: s.role || 'Signataire', autres: [],
+      parties: [], cadres: { etats: {}, moi: s.cle }, resume: [], accepter: '', expresse: null, identite,
+      code: null, signeLe: null, complet: false, expire: null, retractation: false, tel: TEL_AGENT,
+    };
+  }
   const cases = SD.casesDe(m, doc);
   const etats: Record<string, string | null> = {};
   for (const x of sigs.filter(SD.actif)) etats[x.cle] = x.statut === 'signe' ? x.signe_le : null;
   if (doc.signature?.agence_le) etats.agence = doc.signature.agence_le;
+  /* V3.50 : une offre d'achat passée sa date de validité ne se signe plus. */
+  const finOffre = SD.offreFinie(m, doc.donnees);
   const etat: DonneesSignerDoc['etat'] = s.statut === 'signe' ? 'signe'
     : s.statut !== 'invite' || doc.statut === 'annule' || (doc.statut === 'pret' && !doc.signature) ? 'annule'
     : doc.statut !== 'pret' ? 'fin'
+    : finOffre ? 'offre_expiree'
     : SD.lienValide(s) ? 'invite' : 'expire';
   /* V3.43 : le texte du document n'est envoyé que s'il y a quelque chose à
      lire ou à signer (lien valable, ou déjà signé). */
@@ -138,5 +152,6 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     signeLe: s.signe_le, complet: doc.statut === 'signe', expire: s.lien_expire_le,
     /* « 14 jours pour changer d'avis » seulement si le document le dit. */
     retractation: aRetractation(m, doc.donnees), tel: TEL_AGENT,
+    finValidite: finOffre ? finOffre.toISOString() : null,
   };
 }

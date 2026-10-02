@@ -6,6 +6,7 @@ import Visionneuse from './Visionneuse';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { euros, jourParis } from '@/lib/mandat';
+import { lireMontant } from '@/lib/montant';
 import { conjointDe } from '@/lib/foyer';
 import { lirePro, lireStructure } from '@/lib/contacts';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
@@ -16,7 +17,7 @@ import {
 } from '@/lib/biens-vente';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
-import { creerFicheProprio, deposerPhoto, deposerPiece, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
+import { creerFicheProprio, deposerPhoto, deposerPiece, doublonsContact, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -55,6 +56,9 @@ const ecrireNb = (n: number | null, euros = false) => (n === null ? '' : euros
   ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n).replace(/[\u202f\u00a0]/g, ' ')
   : String(n).replace('.', ','));
 
+/* V3.50 : un montant se lit comme partout dans le CRM (lireMontant) :
+   « 850.000 » faisait 850 €, et « 850k » rien du tout. Les autres nombres
+   (une surface : « 12,5 ») gardent leur lecture. */
 export function SaisieNombre({ id, v, onChange, unite, off, ph, euros = false, auto = false, lib }: {
   id?: string; v: number | null; onChange: (n: number | null) => void; unite?: string; off: boolean; ph?: string; euros?: boolean;
   auto?: boolean; lib?: string;
@@ -65,7 +69,7 @@ export function SaisieNombre({ id, v, onChange, unite, off, ph, euros = false, a
     <div className={s.unite}>
       <input id={id} className={s.input} inputMode="decimal" autoComplete="off" disabled={off} value={saisie ?? ecrireNb(v, euros)} placeholder={ph} autoFocus={auto} aria-label={lib}
         onFocus={() => setSaisie(ecrireNb(v, euros))} onBlur={() => setSaisie(null)}
-        onChange={e => { setSaisie(e.target.value); onChange(lireNb(e.target.value)); }}
+        onChange={e => { setSaisie(e.target.value); onChange(euros ? lireMontant(e.target.value) : lireNb(e.target.value)); }}
         style={unite ? { paddingRight: 22 + unite.length * 7.5 } : undefined} />
       {unite && <span>{unite}</span>}
     </div>
@@ -524,6 +528,8 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
      restaient, prêts à créer un doublon). Le nouveau remplace l'ancien, noms
      et coordonnées compris. */
   const [enChange, setEnChange] = useState(false);
+  /* V3.50 : les contacts qui ressemblent à celui qu'on allait créer. */
+  const [doublon, setDoublon] = useState<{ p: Personne; l: ClientMini[] } | null>(null);
   useEffect(() => {
     let vivant = true;
     lireClients().then(l => { if (vivant) setClients(l); }).catch(e => { if (vivant) { setErreur((e as Error).message); setClients([]); } });
@@ -538,12 +544,14 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const nomPremier = premier ? [premier.prenom, premier.nom].filter(Boolean).join(' ') : '';
   const sci = d.qui === 'sci' && txt(d, 'sciNom') ? txt(d, 'sciNom') : '';
 
-  function choisir(c: ClientMini) {
+  async function choisir(c: ClientMini) {
+    setDoublon(null); setForm(null);
     maj('clientId', c.id);
     maj('proprioNouveau', false);
     maj('proprioSans', false);
-    /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses contacts. */
-    void marquerVendeur(c.id);
+    /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses
+       contacts. V3.50 : attendu, et un échec se dit. */
+    if (!(await marquerVendeur(c.id))) setErreur(`${nomClient(c)} est relié au bien, mais son type « vendeur » n’a pas pu être posé sur sa fiche.`);
     /* Ses coordonnées remplacent ce qui est saisi : d'office si rien ne
        l'est (ou si l'on change de propriétaire), sinon après accord (un
        autre nom avait été tapé). */
@@ -575,14 +583,22 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     setForm(mots.length > 1 ? { ...PERSONNE_VIDE, prenom: mots[0], nom: mots.slice(1).join(' ') } : { ...PERSONNE_VIDE, nom: tape });
     setQ('');
   }
-  async function creer(p: Personne) {
+  async function creer(p: Personne, quandMeme = false) {
     const net: Personne = { ...p, prenom: p.prenom.trim(), nom: p.nom.trim(), telephone: p.telephone.trim(), email: p.email.trim().toLowerCase() };
     if (!net.nom && !net.prenom) { setErreur('Écris au moins son nom.'); return; }
+    /* V3.50 : le contact existe peut-être déjà (même e-mail, même téléphone,
+       mêmes prénom et nom) : on le propose avant d'en créer un second. */
+    if (!quandMeme) {
+      const l = doublonsContact(clients || [], net);
+      if (l.length) { setDoublon({ p: net, l }); return; }
+    }
+    setDoublon(null);
     setCree(true); setErreur('');
     try {
       const c = await creerFicheProprio(net);
-      const l = await lireClients(true);
-      setClients(l);
+      /* Relié tout de suite (V3.50) : avant, une relecture de la liste qui
+         échouait laissait le contact créé, mais pas relié — et un second
+         essai en créait un deuxième. */
       maj('clientId', c.id);
       maj('proprioNouveau', false);
       maj('proprioSans', false);
@@ -592,6 +608,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       if (!d.qui || enChange) maj('qui', 'personne');
       setForm(null);
       setEnChange(false);
+      try { setClients(await lireClients(true)); } catch { setClients(x => [c, ...(x || []).filter(y => y.id !== c.id)]); }
     } catch (e) { setErreur((e as Error).message); }
     setCree(false);
   }
@@ -637,8 +654,26 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       </div>
     );
   }
+  const boiteDoublon = doublon && (
+    <div className={`${b.question} ${b.questionNouveau}`}>
+      <div className={b.questionT}>
+        <span className={b.questionIc}><Ic n="personne" t={18} /></span>
+        <div><b>{doublon.l.length > 1 ? 'Ces contacts existent peut-être déjà' : 'Ce contact existe peut-être déjà'}</b><small>{`Même ${[doublon.p.email ? 'e-mail' : '', doublon.p.telephone ? 'téléphone' : '', 'nom'].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' ou $1')} : relie sa fiche plutôt que d’en créer une seconde.`}</small></div>
+      </div>
+      <div className={s.resultats}>
+        {doublon.l.map(c => (
+          <button key={c.id} type="button" className={s.resultat} onClick={() => { void choisir(c); }}>
+            <Ic n="personne" t={15} />{`Utiliser la fiche de ${nomClient(c)}`}<small>{[c.telephones?.[0], c.emails?.[0]].filter(Boolean).join(' · ')}</small>
+          </button>
+        ))}
+      </div>
+      <div className={b.questionActs}>
+        <button type="button" className={b.questionLien} disabled={cree} onClick={() => { void creer(doublon.p, true); }}>{`Non, créer quand même la fiche de ${[doublon.p.prenom, doublon.p.nom].filter(Boolean).join(' ')}`}</button>
+      </div>
+    </div>
+  );
   if (form) {
-    return <FormNouveauProprio depart={form} occupe={cree} erreur={erreur} onCreer={creer} onAnnuler={() => { setForm(null); setErreur(''); }} />;
+    return <>{boiteDoublon}<FormNouveauProprio depart={form} occupe={cree} erreur={erreur} onCreer={p => { void creer(p); }} onAnnuler={() => { setForm(null); setErreur(''); setDoublon(null); }} /></>;
   }
   return (
     <div className={b.question}>
@@ -651,6 +686,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       {enChange && (
         <button type="button" className={b.questionLien} onClick={() => { setEnChange(false); setQ(''); }}>{`Garder ${lie ? nomClient(lie) : 'le propriétaire actuel'}`}</button>
       )}
+      {boiteDoublon}
       {/* Des noms saisis sans fiche (les biens d'avant la V3.30) : on les garde, et on propose la fiche. */}
       {saisis.length > 0 && !enChange && (
         <div className={b.sansFiche}>
@@ -667,7 +703,7 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
         {trouves.length > 0 && (
           <div className={s.resultats}>
             {trouves.map(c => (
-              <button key={c.id} type="button" className={s.resultat} onClick={() => choisir(c)}>
+              <button key={c.id} type="button" className={s.resultat} onClick={() => { void choisir(c); }}>
                 <Ic n="personne" t={15} />{nomClient(c)}<small>{c.telephones?.[0] || c.emails?.[0] || ''}</small>
               </button>
             ))}

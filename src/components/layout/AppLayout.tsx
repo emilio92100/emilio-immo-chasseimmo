@@ -132,7 +132,10 @@ export default function AppLayout() {
 
     const dehors = async () => {
       try { await fetch('/api/login', { method: 'DELETE' }); } catch { /* on sort quand même */ }
-      window.location.href = '/login';
+      /* V3.50 : on revient là où on était après la connexion (la page ET sa
+         question : tout le CRM vit dans « ?page=… »). */
+      const ici = `${window.location.pathname}${window.location.search}`;
+      window.location.href = ici && ici !== '/' ? `/login?suite=${encodeURIComponent(ici)}` : '/login';
     };
 
     supabase.auth.getSession().then(({ data }) => {

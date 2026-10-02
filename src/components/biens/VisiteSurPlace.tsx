@@ -1,8 +1,8 @@
 'use client';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { euros } from '@/lib/mandat';
-import { num, liste } from '@/lib/actes';
+import { euros, jourParis } from '@/lib/mandat';
+import { num, liste, txt } from '@/lib/actes';
 import {
   ATOUTS_BIEN, ATOUTS_PIECE, DEFAUTS_BIEN, DELAIS, ETAPES_BIEN, ETATS_PIECE, PIECES_TUILES, SOLS,
   etapeDe, lireDossier, lignesDossier, lirePhotos, lirePieces, m2, nomExpo, pictoPiece, titreBien,
@@ -10,7 +10,7 @@ import {
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import { ChampBien, SaisieNombre, habitable, nomLibre, nouvelId } from './ChampsBien';
-import { deposerPhoto, enregistrerBien } from './outils';
+import { deposerPhoto, enregistrerBien, noterVisiteFaite } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -62,8 +62,8 @@ const CHAMPS: Record<string, string[]> = {
   copro: ['copro', 'coproVotes', 'coproFaits', 'coproAVenir'],
 };
 const cleDraft = (id: string) => `emi-visite-${id}`;
-/* La date du jour, à l'heure de la tablette (pas en temps universel). */
-const aujourdhui = () => new Date().toLocaleDateString('sv-SE');
+/* La date du jour, à l'heure de Paris (V3.50 : c'était l'heure de la tablette). */
+const aujourdhui = () => jourParis();
 
 /* ── Un bloc de questions de la fiche, en grand ── */
 function Questions({ cles, d, maj, bienId, titre, ic }: { cles: string[]; d: Donnees; maj: (c: string, v: unknown) => void; bienId: string; titre?: string; ic?: string }) {
@@ -423,9 +423,22 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
     return ok;
   }, [row.id]);
 
+  /* V3.50 : la visite est « faite » à la première vraie réponse, et non plus
+     à la simple ouverture de l'écran (un coup d'œil sur la tablette cochait
+     la visite et le rendez-vous). Ce jour-là, le Suivi du propriétaire le dit. */
+  const marque = useRef(!!txt(bien.donnees || {}, 'visiteLe'));
   const maj = useCallback((cle: string, v: unknown) => {
+    const ajout: Donnees = {};
+    if (!marque.current && cle !== 'visiteLe' && cle !== 'rdvEstimation') {
+      marque.current = true;
+      if (!txt(dernier.current, 'visiteLe')) {
+        ajout.visiteLe = aujourdhui();
+        void noterVisiteFaite(bien);
+      }
+      if (!txt(dernier.current, 'rdvEstimation') && (bien.etape === 'a_suivre' || bien.etape === 'estimation')) ajout.rdvEstimation = aujourdhui();
+    }
     setD(prev => {
-      const n = { ...prev, [cle]: typeof v === 'function' ? (v as (a: unknown) => unknown)(prev[cle]) : v };
+      const n = { ...prev, ...ajout, [cle]: typeof v === 'function' ? (v as (a: unknown) => unknown)(prev[cle]) : v };
       dernier.current = n;
       try { localStorage.setItem(cleDraft(row.id), JSON.stringify({ t: Date.now(), d: n })); } catch { /* plein ou interdit */ }
       return n;
@@ -434,7 +447,7 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
     setEnreg('attente');
     if (minuterie.current) clearTimeout(minuterie.current);
     minuterie.current = setTimeout(() => { void enregistrer(); }, 700);
-  }, [enregistrer, row.id]);
+  }, [enregistrer, row.id, bien]);
 
   /* Les photos : envoyées tout de suite, ou gardées jusqu'au retour du réseau. */
   const envoyerPhoto = useCallback(async (f: File, legende: string) => {
@@ -463,17 +476,19 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
     return () => { window.removeEventListener('online', reprendre); clearInterval(t); };
   }, [enregistrer, envoyerPhoto]);
 
-  /* Au premier affichage : la date de la visite, et le brouillon à envoyer. */
+  /* Au premier affichage (V3.50) : seulement le brouillon resté sur la
+     tablette, s'il est plus récent que la fiche — la date de la visite
+     attend la première réponse (maj). */
   const premier = useRef(false);
   useEffect(() => {
     if (premier.current) return;
     premier.current = true;
-    const t = setTimeout(() => {
-      if (!dernier.current.visiteLe) maj('visiteLe', aujourdhui());
-      if (!dernier.current.rdvEstimation && (bien.etape === 'a_suivre' || bien.etape === 'estimation')) maj('rdvEstimation', aujourdhui());
-    }, 0);
-    return () => clearTimeout(t);
-  }, [maj, bien.etape]);
+    if (JSON.stringify(dernier.current) !== JSON.stringify(vu.current)) {
+      aEnregistrer.current = true;
+      const t = setTimeout(() => { void enregistrer(); }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [enregistrer]);
 
   async function fermer(suite?: Suite) {
     if (minuterie.current) clearTimeout(minuterie.current);

@@ -230,6 +230,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVol = useRef<Promise<boolean> | null>(null);
   const aEnregistrer = useRef(false);
+  /* La raison du dernier enregistrement raté (V3.50 : la finalisation la dit). */
+  const erreurEnreg = useRef('');
 
   const enregistrer = useCallback(async (): Promise<boolean> => {
     if (!m) return false;
@@ -244,7 +246,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
       }).eq('id', row.id).eq('statut', 'brouillon').select().maybeSingle();
       if (error || !data) {
         aEnregistrer.current = true;
-        setEnreg({ erreur: error ? error.message : 'Le document n’est plus un brouillon : rouvre-le depuis la liste.' });
+        erreurEnreg.current = error ? error.message : 'Le document n’est plus un brouillon : il a été finalisé ou envoyé ailleurs. Recharge la page.';
+        setEnreg({ erreur: erreurEnreg.current });
         return false;
       }
       setRow(data as DocumentRow);
@@ -493,7 +496,14 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     setTravail('finaliser');
     setMessage(null);
     try {
-      if (aEnregistrer.current) await enregistrer();
+      /* V3.50 : la dernière saisie d'abord (et celle en cours d'envoi) ; si
+         elle ne passe pas, on ne finalise pas (avant, on finalisait quand
+         même, par-dessus un document parfois déjà parti en signature). */
+      if (minuterie.current) clearTimeout(minuterie.current);
+      if (!(await enregistrer())) {
+        const pourquoi = erreurEnreg.current || 'la dernière modification n’a pas pu être enregistrée.';
+        throw new Error(`Le document n’est pas finalisé : ${pourquoi.charAt(0).toLowerCase()}${pourquoi.slice(1)}`);
+      }
       const r = await finaliser(row, m!, d, { registre: !!reg });
       setRow(r); onMaj(r);
       /* Le numéro donné par le registre est dans le document : l'écran le montre. */

@@ -303,3 +303,25 @@ export const OFFRE_ACHAT: Modele = {
     return `J’ai lu cette offre en entier et je m’engage à acheter ce bien${prix ? ` au prix de ${eurosLettres(prix)}${d.forme === 'fai' ? ', honoraires de l’agence du vendeur compris' : ', net vendeur'}` : ''}, aux conditions ci-dessus. Mon offre tient jusqu’au ${jusquau} : bon pour offre d’achat.`;
   },
 };
+
+/* V3.50 : l'instant où l'offre cesse de valoir — sa date de validité, à
+   l'heure dite (sinon à 23 h 59), à l'heure de Paris. Avant, rien ne la
+   lisait : le lien de signature valait 15 jours, le dernier rappel partait
+   au 7e jour, et une offre se signait encore après sa date. Null : pas de
+   date lisible. Navigateur et serveur. */
+export function finValiditeOffre(d: Donnees): Date | null {
+  const jour = txt(d, 'validite');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return null;
+  const heure = /^\d{2}:\d{2}$/.test(txt(d, 'validiteHeure')) ? txt(d, 'validiteHeure') : '23:59';
+  const t = new Date(`${jour}T${heure}:${heure === '23:59' ? '59' : '00'}${decalageParis(jour)}`);
+  return Number.isFinite(t.getTime()) ? t : null;
+}
+/* Le décalage de Paris sur l'heure universelle, ce jour-là (« +02:00 »). */
+function decalageParis(ymd: string): string {
+  try {
+    const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', timeZoneName: 'longOffset' })
+      .formatToParts(new Date(`${ymd}T12:00:00Z`)).find(x => x.type === 'timeZoneName')?.value || '';
+    const m = /GMT([+-]\d{2}):?(\d{2})/.exec(t);
+    return m ? `${m[1]}:${m[2]}` : '+01:00';
+  } catch { return '+01:00'; }
+}

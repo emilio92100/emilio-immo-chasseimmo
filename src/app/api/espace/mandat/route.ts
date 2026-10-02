@@ -17,6 +17,7 @@ import { alerteMailActive } from '@/lib/alertes';
 import { ecritServeur } from '@/lib/ecritures';
 import { lireIdentiteAgence } from '@/lib/agence';
 import { inscrire, numeroAncien, observer, type LigneRegistre } from '@/lib/registre';
+import { solderRelancesSignature } from '@/lib/documents-relances';
 
 /**
  * La signature du mandat de recherche, depuis l'espace client.
@@ -694,6 +695,20 @@ export async function POST(req: NextRequest) {
         if (error) return ko('enregistrement', 500, { detail: error.message });
         const pbRegR = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'retracte', texte: `Rétractation exercée en ligne depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.` });
         await alerteRegistre(pbRegR, l.numero, 'Rétracté');
+        /* V3.50 : « registre ImmoFacile » seulement pour un numéro pris dans la
+           réserve (l'ancien registre) ; sinon, le registre du CRM l'a noté.
+           Un numéro d'avant le registre (préparé à la main) n'y a pas de
+           ligne : on le dit plutôt que d'affirmer qu'il est noté. */
+        let auRegistre = l.contenu?.source === 'registre';
+        if (!auRegistre && l.contenu?.source !== 'reserve') {
+          const { data: lr } = await sb.from('registre_mandats').select('id').eq('signature_id', l.id).limit(1);
+          auRegistre = !!lr?.length;
+        }
+        const registreTexte = l.contenu?.source === 'reserve'
+          ? 'Le noter dans le registre ImmoFacile.'
+          : !auRegistre ? 'Ce mandat n’a pas de ligne dans le registre des mandats du CRM : note la rétractation dans le registre où il est inscrit.'
+            : pbRegR ? 'Le registre des mandats du CRM n’a pas pu le noter : ajoute « Rétracté » à la main (Documents › Registre des mandats).'
+              : 'C’est déjà noté « Rétracté » dans le registre des mandats du CRM.';
         /* Le premier signataire renonce : le mandat prend fin pour tous (le
            texte le prévoit). Ceux qu'on attendait ne le sont plus ; ceux qui
            avaient signé sont prévenus. */
@@ -702,14 +717,19 @@ export async function POST(req: NextRequest) {
             statut: 'annule', code_hash: null, deroule: [...(c.deroule || []), { t: le, x: `Invitation close : ${l.mandant.prenom} a renoncé au mandat` }],
           }).eq('id', c.id);
           if (eC) console.error('[mandat] renonciation, co-signataire', eC.message);
+          /* V3.50 : sa relance « n'a pas signé dans les 15 jours » n'a plus d'objet. */
+          else {
+            const eR = await solderRelancesSignature(sb, { clientId: recherche.client_id, quoi: `le mandat n° ${l.numero}`, qui: nomDe(c.personne) });
+            if (eR) console.error('[mandat] renonciation, relance du lien expiré', eR);
+          }
         }
         for (const c of cosR.filter(x => x.statut === 'signe')) {
           await envoyerMail({
             a: c.personne.email, nomA: nomDe(c.personne), repondreA: 'agence@emilio-immo.com',
             sujet: `Le mandat de recherche n° ${l.numero} a pris fin`,
-            texte: `Bonjour ${c.personne.prenom},\n\n${l.mandant.prenom} a renoncé au mandat de recherche n° ${l.numero}, le ${dateLongue(le)} : il prend fin pour vous deux, sans aucun frais.\n\nSi vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.\n\nAlexandre Rogelet — Emilio Immobilier`,
+            texte: `Bonjour ${c.personne.prenom},\n\n${l.mandant.prenom} a renoncé au mandat de recherche n° ${l.numero}, le ${dateLongue(le)} : il prend fin pour tous ceux qui l'avaient signé, sans aucun frais.\n\nSi vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.\n\nAlexandre Rogelet — Emilio Immobilier`,
             html: gabarit('Le mandat a pris fin', `<p>Bonjour ${echappe(c.personne.prenom)},</p>
-              <p>${echappe(l.mandant.prenom)} a renoncé au <b>mandat de recherche n° ${echappe(l.numero)}</b>, le ${dateLongue(le)} : il prend fin pour vous deux, sans aucun frais.</p>
+              <p>${echappe(l.mandant.prenom)} a renoncé au <b>mandat de recherche n° ${echappe(l.numero)}</b>, le ${dateLongue(le)} : il prend fin pour tous ceux qui l’avaient signé, sans aucun frais.</p>
               <p>Si vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.</p>
               <p>Alexandre Rogelet — Emilio Immobilier</p>`),
           });
@@ -736,7 +756,7 @@ export async function POST(req: NextRequest) {
         await ecritServeur('La relance', sb.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente', date_echeance: le,
-          note: `À rappeler : il a renoncé à son mandat de recherche n° ${l.numero} (délai de rétractation). Le noter dans le registre ImmoFacile.`,
+          note: `À rappeler : il a renoncé à son mandat de recherche n° ${l.numero} (délai de rétractation). ${registreTexte}`,
         }));
 
         const m = l.mandant;
@@ -755,9 +775,9 @@ export async function POST(req: NextRequest) {
         if (eFiche || await alerteMailActive(sb, 'mandat_renonce')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `↩️ ${nomClient} a renoncé à son mandat (n° ${l.numero})`,
-          texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat n° ${l.numero} prend fin. Note-le dans le registre ImmoFacile.${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}).` : ''}\n\n${lienCrm}`,
+          texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat n° ${l.numero} prend fin. ${registreTexte}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}).` : ''}\n\n${lienCrm}`,
           html: gabarit(`${nomClient} a renoncé à son mandat`, `<p><b>${echappe(nomClient)}</b> a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}.</p>
-            <p>Le mandat <b>n° ${echappe(l.numero)}</b> prend fin. Note-le dans le registre ImmoFacile.</p>
+            <p>Le mandat <b>n° ${echappe(l.numero)}</b> prend fin. ${echappe(registreTexte)}</p>
             ${eFiche ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFiche.message)}).</p>` : ''}
             <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
@@ -779,6 +799,9 @@ export async function POST(req: NextRequest) {
           if (co.relance_le && Date.now() - Date.parse(co.relance_le) < 15 * 60_000) return ko('attendre', 429);
           const r = await inviter(sb, co, lp, { note: `Lien renvoyé à la demande de ${l.mandant.prenom}` });
           if (r.erreur) return ko('mail', 502);
+          /* V3.50 : un nouveau lien répond à la relance « n'a pas signé dans les 15 jours ». */
+          const eR = await solderRelancesSignature(sb, { clientId: recherche.client_id, quoi: `le mandat n° ${l.numero}`, qui: nomDe(co.personne) });
+          if (eR) console.error('[mandat] relance du lien expiré', eR);
           await evt('mandat', `Lien renvoyé à ${nomDe(co.personne)}`);
           return NextResponse.json({ ok: true, expire: r.co.lien_expire_le, email: masquerEmail(r.co.personne.email) });
         }
@@ -808,6 +831,9 @@ export async function POST(req: NextRequest) {
           metadata: { signature_id: l.id, cosignataire_id: co.id },
         }));
         if (eM) return ko('mail', 502);
+        /* V3.50 : un nouveau lien répond à la relance « n'a pas signé dans les 15 jours ». */
+        const eR = await solderRelancesSignature(sb, { clientId: recherche.client_id, quoi: `le mandat n° ${l.numero}`, qui: nomDe(co.personne) });
+        if (eR) console.error('[mandat] relance du lien expiré', eR);
         return NextResponse.json({ ok: true, email: masquerEmail(email), expire: (neuf as Co).lien_expire_le });
       }
 

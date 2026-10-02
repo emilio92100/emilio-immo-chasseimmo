@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Page.module.css';
 import { ALERTES_MAIL, CLE_ALERTES, alertesCoupees, valeurAlertes, type Alerte, type CleAlerte } from '@/lib/alertes';
+import { CLE_ALERTE_DEMANDE, alerteDemandeCoupee } from '@/lib/demandes-site-mail';
 
 /* ═══ Paramètres · Alertes mail ═══════════════════════════════════════════
    Les mails que le CRM envoie à Alexandre (« Emilio · CRM »), un
@@ -11,7 +12,33 @@ import { ALERTES_MAIL, CLE_ALERTES, alertesCoupees, valeurAlertes, type Alerte, 
    Chaque clic s'enregistre tout de suite : le bouton « Sauvegarder tout »
    ne touche pas à ce réglage (voir PageParametres). */
 
-const GROUPES: { id: Alerte['groupe']; titre: string }[] = [
+/* V3.50 : « Nouvelle demande du site » se coupe aussi d'ici (et avec
+   « Tout couper »). Avant, il partait toujours, quel que soit le réglage.
+   Elle n'est pas encore dans la liste commune (src/lib/alertes.ts) : on
+   l'ajoute ici, rangée dans la même valeur que les autres ; si elle y entre
+   un jour, elle n'est pas montrée deux fois. */
+type Cle = CleAlerte | typeof CLE_ALERTE_DEMANDE;
+type Ligne = Omit<Alerte, 'cle' | 'groupe'> & { cle: Cle; groupe: Alerte['groupe'] | 'site' };
+const DEMANDE_SITE: Ligne = {
+  cle: CLE_ALERTE_DEMANDE, groupe: 'site', titre: 'Une nouvelle demande du site',
+  objet: 'Nouvelle demande du site — Estimation — Paul Martin',
+  quand: 'Quelqu’un remplit un formulaire d’emilio-immo.com : estimation, accompagnement acheteur, question sur un bien, message. Rien ne part pour une demande qui ressemble à un robot.',
+  crm: 'La demande dans Demandes du site, en « Nouvelle », avec ses réponses.',
+};
+const LISTE: Ligne[] = ALERTES_MAIL.some(a => (a.cle as string) === CLE_ALERTE_DEMANDE) ? ALERTES_MAIL : [...ALERTES_MAIL, DEMANDE_SITE];
+const lireCoupees = (valeur: string | null | undefined): Set<Cle> => {
+  const s = new Set<Cle>(alertesCoupees(valeur));
+  if (alerteDemandeCoupee(valeur)) s.add(CLE_ALERTE_DEMANDE);
+  return s;
+};
+const valeurDe = (s: Set<Cle>): string => {
+  const o = JSON.parse(valeurAlertes(new Set([...s].filter((k): k is CleAlerte => k !== CLE_ALERTE_DEMANDE)))) as Record<string, boolean>;
+  if (s.has(CLE_ALERTE_DEMANDE)) o[CLE_ALERTE_DEMANDE] = false;
+  return JSON.stringify(o);
+};
+
+const GROUPES: { id: Ligne['groupe']; titre: string }[] = [
+  { id: 'site', titre: 'Le site emilio-immo.com' },
   { id: 'clients', titre: 'Tes clients' },
   { id: 'mandats', titre: 'Les mandats' },
   { id: 'auto', titre: 'Le point automatique' },
@@ -43,7 +70,7 @@ const fr = (t: string) => t.replace(/« /g, '«\u00a0').replace(/ »/g, '\u00a0�
 const RUBRIQUE: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8', margin: '22px 0 4px' };
 
 export default function ParamAlertes() {
-  const [coupees, setCoupees] = useState<Set<CleAlerte> | null>(null);
+  const [coupees, setCoupees] = useState<Set<Cle> | null>(null);
   const [erreur, setErreur] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [note, setNote] = useState('');
@@ -51,21 +78,21 @@ export default function ParamAlertes() {
   useEffect(() => {
     supabase.from('parametres').select('valeur').eq('cle', CLE_ALERTES).maybeSingle().then(({ data, error }) => {
       if (error) { setErreur(error.message); return; }
-      setCoupees(alertesCoupees(data?.valeur as string | null));
+      setCoupees(lireCoupees(data?.valeur as string | null));
     });
   }, []);
 
-  async function enregistrer(suivant: Set<CleAlerte>) {
+  async function enregistrer(suivant: Set<Cle>) {
     const avant = coupees;
     setCoupees(suivant); setEnCours(true);
     const { error } = await supabase.from('parametres')
-      .upsert({ cle: CLE_ALERTES, valeur: valeurAlertes(suivant), updated_at: new Date().toISOString() }, { onConflict: 'cle' });
+      .upsert({ cle: CLE_ALERTES, valeur: valeurDe(suivant), updated_at: new Date().toISOString() }, { onConflict: 'cle' });
     setEnCours(false);
     if (error) { setCoupees(avant); alert("Le réglage n'a pas pu être enregistré.\n\n" + error.message); return; }
     setNote('Enregistré'); setTimeout(() => setNote(''), 2000);
   }
 
-  function basculer(cle: CleAlerte) {
+  function basculer(cle: Cle) {
     if (!coupees) return;
     const s = new Set(coupees);
     if (s.has(cle)) s.delete(cle); else s.add(cle);
@@ -75,7 +102,7 @@ export default function ParamAlertes() {
   if (erreur) return <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24, color: '#b91c1c', fontSize: 13 }}>{`Les alertes n'ont pas pu être lues : ${erreur}`}</div>;
   if (!coupees) return <div className={`${styles.card} ${styles.carteForm}`} style={{ padding: 24, color: '#94a3b8', fontSize: 13 }}>Chargement…</div>;
 
-  const total = ALERTES_MAIL.length;
+  const total = LISTE.length;
   const recues = total - coupees.size;
 
   return (
@@ -92,7 +119,7 @@ export default function ParamAlertes() {
         <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: '#f8fafc', border: '1px solid #e3e8f0', borderRadius: 12, padding: '11px 14px' }}>
           <span style={{ fontSize: 13.5, color: 'var(--emilio)' }}>{'Tu reçois '}<b>{`${recues} alerte${recues > 1 ? 's' : ''} sur ${total}`}</b></span>
           <span style={{ display: 'inline-flex', gap: 14 }}>
-            <button type="button" disabled={enCours || coupees.size === total} onClick={() => enregistrer(new Set(ALERTES_MAIL.map(a => a.cle)))}
+            <button type="button" disabled={enCours || coupees.size === total} onClick={() => enregistrer(new Set(LISTE.map(a => a.cle)))}
               style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: coupees.size === total ? '#cbd5e1' : '#64748b', cursor: 'pointer' }}>
               Tout couper
             </button>
@@ -103,10 +130,10 @@ export default function ParamAlertes() {
           </span>
         </div>
 
-        {GROUPES.map(g => (
+        {GROUPES.filter(g => LISTE.some(a => a.groupe === g.id)).map(g => (
           <div key={g.id}>
             <div style={RUBRIQUE}>{g.titre}</div>
-            {ALERTES_MAIL.filter(a => a.groupe === g.id).map(a => {
+            {LISTE.filter(a => a.groupe === g.id).map(a => {
               const on = !coupees.has(a.cle);
               return (
                 <div key={a.cle} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderTop: '1px solid #f1f5f9' }}>

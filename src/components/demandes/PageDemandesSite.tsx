@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '@/lib/supabase';
+import { addJournal, supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
-import { typeDe } from '@/lib/contacts';
+import { TYPES_CONTACT, colonneContactAbsente, typeDe, typesDe, type TypeContact } from '@/lib/contacts';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
 import EnteteRubrique, { type Tuile } from '@/components/shared/EnteteRubrique';
@@ -269,10 +269,34 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     setDemandes(l => l.map(x => (x.id === d.id ? { ...x, client_id: clientId, statut: 'traite', statut_le: new Date().toISOString(), is_called: true } : x)));
     setAnnonce({ texte: `Contact ${prenomNom(d.name).prenom || d.name} créé`, action: 'Voir sa fiche', annuler: () => { ouvrirFiche(clientId); }, n: Date.now() });
   };
-  /* Relier la demande à un contact qui existe déjà. */
+  /* Relier la demande à un contact qui existe déjà.
+     V3.50 : le contact prend aussi le type qui va avec la demande (une
+     estimation → vendeur, un accompagnement ou une question sur un bien →
+     acheteur, comme « Créer le contact »), et la demande s'écrit dans son
+     Suivi. Avant, seule la demande changeait : rien sur sa fiche. */
   const relier = async (d: DemandeSite, c: ContactProche) => {
     setQuestion(null);
     if (!(await modifier(d.id, { client_id: c.id, statut: 'traite', statut_le: new Date().toISOString(), is_called: true }, 'Le lien avec le contact'))) return;
+    const cat = categorieDe(d.form_type);
+    let ajoute: TypeContact | null = null;
+    if (cat.type) {
+      /* Avant le SQL des types, la colonne manque : tout contact est déjà
+         acheteur, il n'y a rien à ajouter. */
+      const { data: lu, error: eLu } = await supabase.from('clients').select('types').eq('id', c.id).maybeSingle();
+      if (eLu && !colonneContactAbsente(eLu.message)) signalerEchec('Le type du contact', eLu.message);
+      else if (lu) {
+        const avant = typesDe(lu);
+        /* Un « Vendeur signé » qui revend redevient « Vendeur » (comme pour un bien). */
+        if (!avant.includes(cat.type)) {
+          const apres = TYPES_CONTACT.map(t => t.k).filter(k => k === cat.type || (avant.includes(k) && !(cat.type === 'vendeur' && k === 'vendeur_signe')));
+          if (await verifie('Le type du contact', supabase.from('clients').update({ types: apres }).eq('id', c.id).select('id'), { ligne: true })) ajoute = cat.type;
+        }
+      }
+    }
+    const pre = preRemplissage(d);
+    await addJournal(c.id, 'message_client', `Demande du site · ${cat.lib}`,
+      `${pre.notes}${ajoute ? `\n\nType ajouté à sa fiche : ${typeDe(ajoute).lib}.` : ''}`, { demande_site: d.id, formulaire: d.form_type });
+    signalerMaj();
     setAnnonce({ texte: `Demande reliée à ${[c.prenom, c.nom].filter(Boolean).join(' ') || 'ce contact'}`, action: 'Voir sa fiche', annuler: () => { ouvrirFiche(c.id); }, n: Date.now() });
   };
   const ouvrirFiche = async (id: string) => {
@@ -746,7 +770,7 @@ function QuestionContact({ d, onNon, onOui, onRelier }: {
               {pre.tel && <span className={`${s.pastille} ${s.pastilleRobot}`}><Ic n="telephone" t={12} e={2.2} /><span>{pre.tel}</span></span>}
               {pre.email && <span className={`${s.pastille} ${s.pastilleRobot}`}><Ic n="mail" t={12} e={2.2} /><span>{pre.email}</span></span>}
             </div>
-            <div className={s.qSource}>{`Source : site, ${pre.source_detail.charAt(0).toLowerCase()}${pre.source_detail.slice(1)} · la demande va dans ses notes`}</div>
+            <div className={s.qSource}>{`Source : site, ${pre.source_detail.charAt(0).toLowerCase()}${pre.source_detail.slice(1)} · la demande va dans ses notes${pre.criteres ? ', ses critères dans sa recherche' : ''}`}</div>
           </div>
         </div>
 
@@ -769,8 +793,10 @@ function QuestionContact({ d, onNon, onOui, onRelier }: {
 
         <div className={s.qPied}>
           <button type="button" className={s.btn} onClick={onNon}>Annuler</button>
-          <button type="button" className={`${s.btn} ${s.btnPlein}`} onClick={onOui}>
-            <Ic n="plus" t={16} e={2.4} /><span>{proches && proches.length ? 'Créer quand même' : 'Oui, créer le contact'}</span>
+          {/* V3.50 : pas avant d'avoir regardé s'il existe déjà (un clic
+              rapide créait un double). */}
+          <button type="button" className={`${s.btn} ${s.btnPlein}`} onClick={onOui} disabled={proches === null}>
+            <Ic n="plus" t={16} e={2.4} /><span>{proches === null ? 'Vérification…' : proches.length ? 'Créer quand même' : 'Oui, créer le contact'}</span>
           </button>
         </div>
       </div>

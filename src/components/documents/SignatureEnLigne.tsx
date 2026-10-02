@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { modeSignature, modele, type CaseSignature } from '@/lib/actes';
 import { IDENTITE_DEFAUT } from '@/lib/agence';
-import { dateCourte, heureParis } from '@/lib/mandat';
+import { dateCourte, dateLongue, heureParis } from '@/lib/mandat';
+import { finValiditeOffre } from '@/lib/actes/offre-achat';
 import { Croix, Ic } from './ApercuActe';
 import {
   appelSignature, lienFichier, lireSignataires, nomFichier, nomSignataire, tableSignaturesAbsente,
@@ -32,6 +33,10 @@ export function FenetreLancer({ doc, onFermer, onLance }: {
   const [champs, setChamps] = useState<Record<string, string>>({});
   const [travail, setTravail] = useState(false);
   const [erreur, setErreur] = useState('');
+  /* V3.50 : une offre d'achat, ses liens ne valent pas au-delà de sa validité. */
+  const [maintenant] = useState(() => Date.now());
+  const finOffre = doc.modele === 'offre_achat' ? finValiditeOffre(doc.donnees) : null;
+  const offreAvant15 = !!finOffre && finOffre.getTime() < maintenant + 15 * 86_400_000;
 
   async function lancer() {
     const manque: Record<string, string> = {};
@@ -75,7 +80,9 @@ export function FenetreLancer({ doc, onFermer, onLance }: {
           ))}
           <ul className={s.liste2}>
             <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{`L’agence signe en ${mode === 'en_ligne' ? 'envoyant' : 'lançant la signature'} : ta signature est posée dans son cadre, avec l’heure.`}</span></li>
-            {mode === 'en_ligne' && <li><span className={`${s.k} ${s.kOr}`}><Ic n="horloge" t={12} /></span><span>{'Les liens valent 15 jours. Un rappel part à 2 jours, puis un dernier à 7 jours ; tu es prévenu si quelqu’un n’a pas signé à temps.'}</span></li>}
+            {mode === 'en_ligne' && <li><span className={`${s.k} ${s.kOr}`}><Ic n="horloge" t={12} /></span><span>{finOffre && offreAvant15
+              ? `Les liens valent jusqu’au ${dateLongue(finOffre)} à ${heureParis(finOffre)}, la fin de validité de l’offre : après, elle ne peut plus être signée. Un rappel part à 2 jours si l’offre vaut encore ; tu es prévenu si quelqu’un n’a pas signé à temps.`
+              : 'Les liens valent 15 jours. Un rappel part à 2 jours, puis un dernier à 7 jours ; tu es prévenu si quelqu’un n’a pas signé à temps.'}</span></li>}
             <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{'Signé par tous, le document est scellé avec son certificat, envoyé à chacun, et rangé ici tout seul.'}</span></li>
           </ul>
           {erreur && <div className={s.erreur}>{erreur}</div>}

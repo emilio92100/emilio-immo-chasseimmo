@@ -17,6 +17,7 @@ import { signalerEchec, verifie } from '@/lib/ecritures';
 import { correspondance, criteresDepuisRecherche } from '@/lib/correspondance';
 import { raisonEcart } from '@/lib/ecart-acheteur';
 import { titreBien, typeCompatible, versCorrespondance, type BienVente } from '@/lib/biens-vente';
+import { acheteurEnCours, colonneContactAbsente } from '@/lib/contacts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ligne = Record<string, any>;
@@ -35,17 +36,23 @@ const nom = (c: Ligne | undefined) => [c?.prenom, c?.nom].filter(Boolean).join('
 
 export async function chargerAlertesRappro(): Promise<AlerteRappro[]> {
   const depuis = new Date(Date.now() - FENETRE).toISOString();
-  const [m, r, cl, co, j] = await Promise.all([
+  /* V3.50 : avec les types et l'archive (avant leur SQL, sans eux). */
+  const lireClients = (cols: string) => supabase.from('clients').select(cols).limit(3000);
+  const [m, r, cl0, co, j] = await Promise.all([
     supabase.from('biens_vente').select('*').eq('archive', false).eq('etape', 'mandat'),
     supabase.from('recherches').select('*').eq('active', true).limit(1000),
-    supabase.from('clients').select('id, prenom, nom, statut').limit(3000),
+    lireClients('id, prenom, nom, statut, types, archive'),
     supabase.from('biens').select('id, bien_vente_id, recherche_id').not('bien_vente_id', 'is', null).limit(5000),
     supabase.from('journal').select('recherche_id, created_at').eq('type', 'rapprochement').gte('created_at', depuis),
   ]);
+  const cl = cl0.error && colonneContactAbsente(cl0.error.message) ? await lireClients('id, prenom, nom, statut') : cl0;
   if (m.error || r.error || cl.error || co.error) return [];
   const mandats = (m.data || []) as BienVente[];
-  const clients: Record<string, Ligne> = Object.fromEntries(((cl.data || []) as Ligne[]).map(c => [c.id, c]));
-  const suivi = (id: string) => ['actif', 'prospect'].includes(String(clients[id]?.statut || ''));
+  const clients: Record<string, Ligne> = Object.fromEntries(((cl.data || []) as unknown as Ligne[]).map(c => [c.id, c]));
+  /* Un acheteur suivi : son dossier vit (actif, prospect), il porte encore
+     le type « acheteur » et n'est pas archivé. Avant, un contact dont on
+     avait retiré le type, ou archivé, recevait encore des alertes (V3.50). */
+  const suivi = (id: string) => !!clients[id] && ['actif', 'prospect'].includes(String(clients[id].statut || '')) && acheteurEnCours(clients[id]);
   const recherches = ((r.data || []) as Ligne[]).filter(x => suivi(x.client_id));
   const deja = new Set(((co.data || []) as Ligne[]).map(x => `${x.bien_vente_id}|${x.recherche_id}`));
   const rapproches = ((j.data || []) as Ligne[]);

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 import { euros } from '@/lib/mandat';
 import { nomFoyer } from '@/lib/foyer';
 import { demanderNouveauBien } from '@/lib/intentions';
@@ -46,20 +47,69 @@ export function Puce({ k }: { k: TypeContact }) {
   return <span className={c.puce} style={{ background: t.fond, color: t.c, borderColor: `${t.c}33` }}><Ic n={t.ic} t={12} />{t.lib}</span>;
 }
 
+/* ── Changer les types d'un contact : ce qui doit suivre (V3.50) ──
+   Partagé par les pastilles (fiche d'un acheteur, fiche d'un contact) et
+   « Modifier » de la fiche d'un contact.
+   · « Vendeur » ne s'enlève pas tant qu'un de ses biens est en vente (mandat,
+     sous offre, sous compromis, en pause) : sa fiche de bien et son mandat
+     perdraient leur vendeur. On dit pourquoi.
+   · « Acheteur » enlevé : ses recherches encore ouvertes s'arrêtent (plus de
+     point automatique ni d'alerte), après confirmation. Son statut ne bouge pas.
+   Rend `null` si on peut enregistrer (et `arreter` : les recherches à
+   fermer ensuite), sinon le message à afficher (vide : il a dit non). */
+const EN_VENTE = ['mandat', 'offre', 'compromis', 'suspendu'];
+export async function controlerTypes(clientId: string, avant: TypeContact[], apres: TypeContact[], prenom?: string | null):
+  Promise<{ erreur: string | null; arreter: boolean }> {
+  if (avant.includes('vendeur') && !apres.includes('vendeur')) {
+    const { data, error } = await supabase.from('biens_vente').select('id, titre, etape, archive').eq('client_id', clientId);
+    if (error) return { erreur: `Ses biens n’ont pas pu être vérifiés : ${error.message}`, arreter: false };
+    const b = ((data || []) as { titre: string | null; etape: string; archive?: boolean | null }[]).find(x => !x.archive && EN_VENTE.includes(x.etape));
+    if (b) {
+      return {
+        erreur: `${prenom || 'Ce contact'} reste « Vendeur » : son bien ${b.titre ? `« ${b.titre} » ` : ''}est encore en vente (${etapeDe(b.etape).lib.toLowerCase()}). Quand la vente sera signée ou le bien retiré, tu pourras changer son type.`,
+        arreter: false,
+      };
+    }
+  }
+  if (avant.includes('acheteur') && !apres.includes('acheteur')) {
+    const { data, error } = await supabase.from('recherches').select('id').eq('client_id', clientId).eq('active', true).limit(1);
+    if (error) return { erreur: `Ses recherches n’ont pas pu être vérifiées : ${error.message}`, arreter: false };
+    if (data && data.length) {
+      if (!confirm('Ses recherches s’arrêtent aussi : plus de mails automatiques ni d’alertes. Continuer ?')) return { erreur: '', arreter: false };
+      return { erreur: null, arreter: true };
+    }
+  }
+  return { erreur: null, arreter: false };
+}
+/* Ses recherches encore ouvertes s'arrêtent (le type « Acheteur » est parti).
+   Le message rouge dit si ça n'a pas pu se faire. */
+export async function arreterRecherches(clientId: string): Promise<boolean> {
+  return verifie('L’arrêt de ses recherches', supabase.from('recherches').update({ active: false }).eq('client_id', clientId).eq('active', true).select('id'));
+}
+
 /* ── Les pastilles, et de quoi les changer sans ouvrir de formulaire ──
    Enregistre tout de suite. `onMaj` reçoit la fiche à jour. */
 export function TypesEnLigne({ client, sombre = false, onMaj }: {
-  client: { id: string; types?: unknown }; sombre?: boolean; onMaj?: (types: TypeContact[]) => void;
+  client: { id: string; types?: unknown; prenom?: string | null }; sombre?: boolean; onMaj?: (types: TypeContact[]) => void;
 }) {
   const [types, setTypes] = useState<TypeContact[]>(() => typesDe(client));
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [erreur, setErreur] = useState('');
+  const [occupe, setOccupe] = useState(false);
   async function basculer(k: TypeContact) {
+    if (occupe) return;
     const n = types.includes(k) ? types.filter(x => x !== k) : TYPES_CONTACT.map(t => t.k).filter(x => x === k || types.includes(x));
     if (!n.length) return;
     setErreur('');
-    const { error } = await supabase.from('clients').update({ types: n }).eq('id', client.id);
-    if (error) { setErreur(colonneContactAbsente(error.message) ? 'Lance d’abord outils/sql/types-contact.sql dans Supabase.' : error.message); return; }
+    setOccupe(true);
+    const ctl = await controlerTypes(client.id, types, n, client.prenom);
+    if (ctl.erreur !== null) { setOccupe(false); setErreur(ctl.erreur); return; }
+    const { data: maj, error } = await supabase.from('clients').update({ types: n }).eq('id', client.id).select('id');
+    if (error) { setOccupe(false); setErreur(colonneContactAbsente(error.message) ? 'Lance d’abord outils/sql/types-contact.sql dans Supabase.' : error.message); return; }
+    /* La base fermée refuse parfois sans erreur (AGENTS.md §3.2). */
+    if (!maj?.length) { setOccupe(false); setErreur('Rien n’a été enregistré : la session a peut-être expiré. Recharge la page, puis recommence.'); return; }
+    if (ctl.arreter) await arreterRecherches(client.id);
+    setOccupe(false);
     setTypes(n);
     onMaj?.(n);
   }
@@ -256,15 +306,30 @@ export function BiensDuContact({ clientId, prenom, onNavigate, toujours = false,
     return () => { vivant = false; };
   }, [clientId]);
   if (!biens || (!biens.length && !toujours)) return null;
+  /* V3.50 : le compte ne prend que les biens pas archivés, comme la liste
+     des contacts et le bandeau de la fiche (« Aucun bien » au-dessus de
+     « Ses biens (1) », avant). Les archivés restent là, en dessous, grisés. */
+  const actifs = biens.filter(b => !b.archive);
+  const archives = biens.filter(b => b.archive);
   return (
-    <BlocRepliable ic="maison" titre="Ses biens" n={biens.length} ouvertAuDebut={ouvertAuDebut}
-      resume={biens.length ? biens.slice(0, 2).map(x => { const e = etapeDe(x.etape); return <span key={x.id} style={{ background: '#f4f7fb', color: e.c }}><span className={c.point} style={{ background: e.c }} />{e.court}</span>; }) : undefined}
+    <BlocRepliable ic="maison" titre="Ses biens" n={actifs.length} ouvertAuDebut={ouvertAuDebut}
+      resume={actifs.length ? actifs.slice(0, 2).map(x => { const e = etapeDe(x.etape); return <span key={x.id} style={{ background: '#f4f7fb', color: e.c }}><span className={c.point} style={{ background: e.c }} />{e.court}</span>; }) : undefined}
       action={<button type="button" className={c.lien} onClick={() => { demanderNouveauBien(clientId); onNavigate('biens'); }}>+ Créer<span className={sd.rpLong}> un bien</span></button>}>
-      {biens.length ? (
+      {actifs.length ? (
         <div className={c.biensMini} style={{ borderTop: 'none', paddingTop: 0 }}>
-          {biens.map(b => <LigneBien key={b.id} b={b} onClick={() => onNavigate('biens', { bien: b.id })} />)}
+          {actifs.map(b => <LigneBien key={b.id} b={b} onClick={() => onNavigate('biens', { bien: b.id })} />)}
         </div>
-      ) : <div className={c.pied}>{`Aucun bien pour l’instant. « Créer un bien » ouvre la rubrique Biens, ${prenom || 'ce contact'} déjà propriétaire : estimation, mandat, tout y est.`}</div>}
+      ) : <div className={c.pied}>{archives.length
+        ? `Aucun bien en cours. « Créer un bien » ouvre la rubrique Biens, ${prenom || 'ce contact'} déjà propriétaire.`
+        : `Aucun bien pour l’instant. « Créer un bien » ouvre la rubrique Biens, ${prenom || 'ce contact'} déjà propriétaire : estimation, mandat, tout y est.`}</div>}
+      {archives.length > 0 && (
+        <>
+          <div className={c.pied} style={{ marginTop: 10 }}>{`Archivés (${archives.length})`}</div>
+          <div className={c.biensMini} style={{ borderTop: 'none', paddingTop: 0, opacity: 0.6 }}>
+            {archives.map(b => <LigneBien key={b.id} b={b} onClick={() => onNavigate('biens', { bien: b.id })} />)}
+          </div>
+        </>
+      )}
     </BlocRepliable>
   );
 }
@@ -317,9 +382,12 @@ export function EnteteContacts() {
   );
 }
 
-export function LigneContact({ x, biens, derniere, onOuvrir, onBien }: {
+export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien }: {
   x: ContactListe; biens: BienDuContact[]; derniere?: string | null; onOuvrir: () => void; onBien: (id: string) => void;
 }) {
+  /* V3.50 : les biens archivés ne comptent pas, comme sur sa fiche. */
+  const biens = tousBiens.filter(b => !b.archive);
+  const nbArchives = tousBiens.length - biens.length;
   const types = typesDe(x);
   const t = typeDe(types.find(k => k !== 'acheteur') || types[0]);
   const principal = types.includes('acheteur') ? typeDe('acheteur') : t;
@@ -357,7 +425,7 @@ export function LigneContact({ x, biens, derniere, onOuvrir, onBien }: {
           );
         })}
         {vend && biens.length > 2 && <span className={c.lPlus}>{`+ ${biens.length - 2} autre${biens.length > 3 ? 's' : ''} bien${biens.length > 3 ? 's' : ''}`}</span>}
-        {vend && !biens.length && !types.includes('acheteur') && <span className={c.lInfo}><span className={c.lInfoIc} style={{ color: '#b8c2d1' }}><Ic n="maison" t={14} /></span><span className={c.lAFaire}>Pas encore de bien</span></span>}
+        {vend && !biens.length && !types.includes('acheteur') && <span className={c.lInfo}><span className={c.lInfoIc} style={{ color: '#b8c2d1' }}><Ic n="maison" t={14} /></span><span className={c.lAFaire}>{nbArchives ? `Biens archivés (${nbArchives})` : 'Pas encore de bien'}</span></span>}
         {pro && (
           <span className={c.lInfo}>
             <span className={c.lInfoIc} style={{ color: t.c }}><Ic n={t.ic} t={14} /></span>

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { relanceAGarder } from '@/lib/relances-garder';
+import { reventePossible } from '@/lib/contacts';
 import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
 import { etatServeur, alerteHorsMandat, mandatDocumentEnRoute, adressesClient } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
-import { estIssue, raisonsValides, issueDe, badgeApresVisite, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
+import { estIssue, raisonsValides, issueDe, badgeApresVisite, maintenantParis, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
 import { ecritServeur } from '@/lib/ecritures';
 import { colonneSuspensionAbsente } from '@/lib/suspension';
 
@@ -36,6 +38,90 @@ function base() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+}
+
+/* ── V3.50 : le client a trouvé, ou il arrête ─────────────────────────────
+   Comme quand Alexandre clôt le dossier dans le CRM :
+   1. ses relances en attente se soldent, avec la règle de
+      solderRelancesAcheteur (src/lib/relances.ts) : s'il vend aussi un bien
+      avec nous (pas vendu, pas retiré), ses relances de vendeur restent et
+      seules celles de ses recherches se soldent. Dans le doute (lecture
+      impossible), on garde aussi celles de vendeur ;
+   2. ses visites à venir s'annulent (src/lib/annuler-visites.ts, version
+      serveur) : leur rappel se ferme quand plus aucune visite prévue ne s'en
+      sert, et une ligne « Visite annulée » va au Suivi de sa recherche.
+   Avant, l'espace ne fermait rien : les relances tombaient sur un client qui
+   avait ses clés, et ses visites restaient dans la pastille Visites, puis
+   en « compte rendu à faire » pour toujours. Jamais bloquant : un échec
+   reste dans les journaux du serveur. */
+const MOIS_FIN = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+type JournalServeur = { client_id: string; recherche_id?: string | null; bien_id?: string | null; type: string; titre: string; description?: string | null; metadata?: Record<string, unknown> };
+/* Comme addJournal : un type que la base refuse (liste fermée, code 23514)
+   est gardé sous « statut_change », le type voulu en metadata. */
+async function journalServeur(sb: ReturnType<typeof base>, quoi: string, ligne: JournalServeur) {
+  const { error } = await sb.from('journal').insert(ligne);
+  if (!error) return;
+  if ((error as { code?: string }).code === '23514' && ligne.type !== 'statut_change') {
+    await ecritServeur(quoi, sb.from('journal').insert({ ...ligne, type: 'statut_change', metadata: { ...(ligne.metadata || {}), type_voulu: ligne.type } }));
+    return;
+  }
+  console.error(`[écriture] ${quoi} : ${error.message}`);
+}
+async function solderFinDeRecherche(sb: ReturnType<typeof base>, clientId: string, quoi: string): Promise<number> {
+  try {
+    const v = await sb.from('biens_vente').select('id').eq('client_id', clientId).not('etape', 'in', '(vendu,retire)').limit(1);
+    if (v.error) console.error('[espace/fin] biens en vente du client', v.error.message);
+    const vendeur = !!v.error || !!v.data?.length;
+    let q = sb.from('relances').select('id, note').eq('client_id', clientId).eq('statut', 'en_attente');
+    if (vendeur) q = q.not('recherche_id', 'is', null);
+    const { data: rel, error: eRel } = await q;
+    if (eRel) console.error('[espace/fin] relances en attente', eRel.message);
+    /* Pas les rappels d'un compromis en cours ni ceux de l'agenda (V3.50). */
+    const aClore = ((rel || []) as { id: string; note: string | null }[]).filter(r => !relanceAGarder(r.note)).map(r => r.id);
+    if (aClore.length) await ecritServeur('[espace/fin] relances en attente', sb.from('relances').update({ statut: 'cloturee' }).in('id', aClore).eq('statut', 'en_attente'));
+
+    type V = { id: string; recherche_id: string | null; bien_id: string | null; date_visite: string | null; heure: string | null; rappel_relance_id: string | null; biens?: { titre?: string | null; ville?: string | null } | null };
+    const { data: vis, error: eV } = await sb.from('visites')
+      .select('id, recherche_id, bien_id, date_visite, heure, rappel_relance_id, biens(titre, ville)')
+      .eq('client_id', clientId).eq('statut', 'a_venir');
+    if (eV) { console.error('[espace/fin] visites', eV.message); return 0; }
+    /* Celles déjà passées attendent le compte rendu d'Alexandre : on n'y touche pas. */
+    const mParis = maintenantParis();
+    const aVenir = ((vis || []) as unknown as V[]).filter(x => !visitePasseeParis(x, mParis));
+    if (!aVenir.length) return 0;
+    const { data: faites, error: eA } = await sb.from('visites').update({ statut: 'annulee' })
+      .in('id', aVenir.map(x => x.id)).eq('statut', 'a_venir').select('id');
+    if (eA) { console.error('[écriture] [espace/fin] visites à venir', eA.message); return 0; }
+    const ok = new Set(((faites || []) as { id: string }[]).map(x => x.id));
+    const annulees = aVenir.filter(x => ok.has(x.id));
+
+    const rappels = Array.from(new Set(annulees.map(x => x.rappel_relance_id).filter((x): x is string => !!x)));
+    if (rappels.length) {
+      const encore = await sb.from('visites').select('rappel_relance_id').in('rappel_relance_id', rappels).eq('statut', 'a_venir');
+      if (encore.error) console.error('[espace/fin] rappels des visites', encore.error.message);
+      else {
+        const gardes = new Set(((encore.data || []) as { rappel_relance_id: string | null }[]).map(x => x.rappel_relance_id));
+        const aFermer = rappels.filter(r => !gardes.has(r));
+        if (aFermer.length) {
+          await ecritServeur('[espace/fin] rappels des visites', sb.from('relances').update({ statut: 'cloturee' }).in('id', aFermer).eq('statut', 'en_attente'));
+        }
+      }
+    }
+    for (const x of annulees) {
+      const d = x.date_visite ? String(x.date_visite).slice(0, 10).split('-').map(Number) : null;
+      const h = x.heure && /^\d{2}:\d{2}/.test(x.heure) ? ` à ${x.heure.slice(0, 5).replace(':', ' h ')}` : '';
+      const prevue = d ? `Prévue le ${d[2]} ${MOIS_FIN[(d[1] || 1) - 1]} ${d[0]}${h}. ` : '';
+      await journalServeur(sb, '[espace/fin] journal visite annulée', {
+        client_id: clientId, recherche_id: x.recherche_id, bien_id: x.bien_id, type: 'visite_annulee',
+        titre: `✕ Visite annulée — ${x.biens?.titre || x.biens?.ville || 'le bien'}`,
+        description: `${prevue}Le client ${quoi}, depuis son espace.`,
+      });
+    }
+    return annulees.length;
+  } catch (e) {
+    console.error('[espace/fin] clôture', e instanceof Error ? e.message : String(e));
+    return 0;
+  }
 }
 
 const AVIS_OK = ['interesse', 'souhaite_visiter', 'refuse'];
@@ -1035,16 +1121,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            le moment de lui parler de son logement actuel. La relance le dit. */
         let revente = false;
         if (motif === 'trouve_avec_vous' || motif === 'trouve_ailleurs') {
-          const { data: cl } = await supabase.from('clients')
-            .select('bien_actuel_a_vendre').eq('id', recherche.client_id).maybeSingle();
-          revente = !!cl?.bien_actuel_a_vendre;
+          /* V3.50 : un vendeur signé a déjà vendu, sa case d'avant ne compte plus. */
+          const lu = await supabase.from('clients')
+            .select('bien_actuel_a_vendre, types').eq('id', recherche.client_id).maybeSingle();
+          let cl: unknown = lu.data;
+          if (lu.error) ({ data: cl } = await supabase.from('clients')
+            .select('bien_actuel_a_vendre').eq('id', recherche.client_id).maybeSingle());
+          revente = reventePossible(cl as { bien_actuel_a_vendre?: unknown; types?: string[] | null } | null);
         }
+
+        /* V3.50 : il a trouvé ou il arrête (pas une pause, qui se reprend) :
+           ses anciennes relances se soldent et ses visites à venir s'annulent
+           (solderFinDeRecherche, plus haut). AVANT la relance « à rappeler
+           pour confirmer » ci-dessous, qui, elle, doit rester. */
+        let visitesAnnulees = 0;
+        if (motif !== 'pause') visitesAnnulees = await solderFinDeRecherche(supabase, recherche.client_id, quoi);
+        const annulees = visitesAnnulees ? ` ${visitesAnnulees > 1 ? `Ses ${visitesAnnulees} visites prévues sont annulées` : 'Sa visite prévue est annulée'}.` : '';
 
         await ecritServeur('[espace/fin] relance', supabase.from('relances').insert({
           client_id: recherche.client_id, recherche_id: recherche.id,
           type: 'rappel_client', statut: 'en_attente',
           date_echeance: new Date().toISOString(),
-          note: `Le client ${quoi}, depuis son espace.${bascule} À rappeler pour confirmer${motif === 'pause' ? ' et savoir quand reprendre' : ''}.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
+          note: `Le client ${quoi}, depuis son espace.${bascule}${annulees} À rappeler pour confirmer${motif === 'pause' ? ' et savoir quand reprendre' : ''}.${revente ? ' 🔑 Revente possible : c\u2019est le moment de lui parler de son logement actuel.' : ''}`,
         }));
 
         /* Liste de types fermée côté espace_evenements : c'est un message. */

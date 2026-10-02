@@ -40,6 +40,7 @@
  */
 
 import { lienEspace } from '@/lib/jeton';
+import { acheteurEnCours, colonneContactAbsente, estAcheteur, estArchive, reventePossible } from '@/lib/contacts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Base = any;
@@ -156,11 +157,21 @@ function libelleReaction(type: string, titre: string): string {
 export async function calculerCandidats(sb: Base, reglages: Reglages, opts: { clientId?: string; maintenant?: Date } = {}): Promise<Candidat[]> {
   const maintenant = opts.maintenant || new Date();
 
-  let q = sb.from('clients')
-    .select('id, prenom, nom, emails, statut, created_at, statut_occupation, bien_actuel_a_vendre, token_espace');
-  q = opts.clientId ? q.eq('id', opts.clientId) : q.eq('statut', 'actif');
-  const { data: clients, error } = await q;
+  /* V3.50 : avec les types et l'archive. Un contact qui n'est plus acheteur
+     (le type retiré) ou qui est archivé gardait son statut « actif » et
+     recevait encore « Où en est votre recherche ? ». Avant le SQL des types,
+     les colonnes manquent : on relit sans elles (tout le monde est acheteur). */
+  const COLS = 'id, prenom, nom, emails, statut, created_at, statut_occupation, bien_actuel_a_vendre, token_espace';
+  const lire = (cols: string) => {
+    const q = sb.from('clients').select(cols);
+    return opts.clientId ? q.eq('id', opts.clientId) : q.eq('statut', 'actif');
+  };
+  let { data: clients, error } = await lire(`${COLS}, types, archive`);
+  if (error && colonneContactAbsente(error.message)) ({ data: clients, error } = await lire(COLS));
   if (error) throw new Error('Lecture des clients impossible : ' + error.message);
+  /* L'envoi quotidien : seulement les vrais acheteurs. Pour une fiche
+     précise, on calcule quand même, et on dit pourquoi rien ne part. */
+  if (!opts.clientId) clients = (clients || []).filter((c: any) => acheteurEnCours(c));
   if (!clients?.length) return [];
 
   const ids = clients.map((c: any) => c.id);
@@ -199,6 +210,8 @@ export async function calculerCandidats(sb: Base, reglages: Reglages, opts: { cl
 
     let empechement: string | null = null;
     if (c.statut !== 'actif') empechement = 'Le mail ne part que pour les dossiers actifs.';
+    else if (!estAcheteur(c)) empechement = 'Ce contact n’est plus acheteur : le mail ne part pas.';
+    else if (estArchive(c)) empechement = 'Ce contact est archivé : le mail ne part pas.';
     else if (reglages.exclus.includes(c.id)) empechement = 'Tu as choisi de ne jamais lui envoyer ce mail.';
     else if (!email) empechement = 'Pas d’adresse mail sur sa fiche.';
     else if (!recherche) empechement = 'Pas de recherche en cours.';
@@ -222,7 +235,7 @@ export async function calculerCandidats(sb: Base, reglages: Reglages, opts: { cl
 
     sortie.push({
       clientId: c.id, prenom: c.prenom || '', nom: c.nom || '', email, statut: c.statut,
-      revente: !!c.bien_actuel_a_vendre, tokenClient: c.token_espace || null,
+      revente: reventePossible(c), tokenClient: c.token_espace || null,
       recherche, dernierMouvement, dernierEnvoi,
       echeance: ech.toISOString(),
       du: !empechement && ech.getTime() <= maintenant.getTime(),

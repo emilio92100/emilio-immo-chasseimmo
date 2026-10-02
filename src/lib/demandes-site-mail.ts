@@ -20,6 +20,20 @@ const dateParis = (iso: string) => {
 
 export const CRM = () => (process.env.CRM_URL || 'https://emilio-immo-chasseimmo.vercel.app').replace(/\/$/, '');
 
+/* ── Le réglage (V3.50) ──
+   Ce mail se coupe comme les autres alertes (Paramètres › Alertes mail, et
+   « Tout couper ») : même ligne `parametres` « alertes_mail », clé
+   « demande_site » à false. Avant, il partait toujours. Dans le doute (valeur
+   illisible), il part : une alerte de trop vaut mieux qu'une perdue. */
+export const CLE_ALERTE_DEMANDE = 'demande_site';
+export function alerteDemandeCoupee(valeur: string | null | undefined): boolean {
+  if (!valeur) return false;
+  try {
+    const o = JSON.parse(valeur);
+    return !!o && typeof o === 'object' && (o as Record<string, unknown>)[CLE_ALERTE_DEMANDE] === false;
+  } catch { return false; }
+}
+
 const echapper = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const html = (t: string) => echapper(t).replace(/\n/g, '<br>');
 

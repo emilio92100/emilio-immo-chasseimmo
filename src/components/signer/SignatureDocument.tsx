@@ -24,7 +24,9 @@ import { CSS_SIGNER } from './SignatureCosignataire';
 
 export type DonneesSignerDoc = {
   jeton: string;
-  etat: 'invite' | 'expire' | 'signe' | 'annule' | 'fin' | 'introuvable';
+  /* V3.50 : « offre_expiree » (une offre d'achat passée sa date de
+     validité), « indisponible » (la page n'a pas pu tout lire). */
+  etat: 'invite' | 'expire' | 'signe' | 'annule' | 'fin' | 'introuvable' | 'offre_expiree' | 'indisponible';
   /* « Avenant n° 1 au mandat n° 4412 » (en-tête), « l’avenant n° 1 au mandat
      de recherche n° 4412 » (dans les phrases), « l’avenant ». */
   entete: string; le: string; court: string;
@@ -50,10 +52,15 @@ export type DonneesSignerDoc = {
   tel: string;
   /* Son espace acheteur, quand c'est le client du document (V3.32). */
   espace?: string | null;
+  /* La fin de validité d'une offre d'achat passée (V3.50). */
+  finValidite?: string | null;
 };
 
 type Reponse = Record<string, unknown> & { ok?: boolean; error?: string };
-const ERR: Record<string, string> = { ...ERREURS, demande: 'Cochez aussi la case « Je demande que l’Agence commence… » pour signer.' };
+const ERR: Record<string, string> = {
+  ...ERREURS, demande: 'Cochez aussi la case « Je demande que l’Agence commence… » pour signer.',
+  lecture: 'Votre signature n’a pas pu être vérifiée pour l’instant. Réessayez dans un instant.',
+};
 const Maj = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
@@ -77,6 +84,14 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
   const [pad, setPad] = useState(false);
   const [erreur, setErreur] = useState('');
   const [fin, setFin] = useState<{ complet: boolean; signeLe: string; attendus: string[] } | null>(null);
+  const [finOffre, setFinOffre] = useState(d.finValidite || '');
+  /* V3.50 : l'offre a passé sa date de validité pendant qu'il lisait. */
+  const offreFinie = (r: Reponse | null) => {
+    if (r?.error !== 'offre_expiree') return false;
+    if (typeof r.fin === 'string') setFinOffre(r.fin);
+    setEtat('offre_expiree');
+    return true;
+  };
 
   useEffect(() => { void envoyer('afficher'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { window.scrollTo({ top: 0 }); }, [etape, etat]);
@@ -92,6 +107,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     const r = await envoyer('code');
     setEnvoi(false);
     if (r?.ok) { setEmailMasque(String(r.email || '')); setCodeDe(''); setCode(''); setAttente(45); setDemande(true); }
+    else if (offreFinie(r)) return;
     else if (r?.error === 'lien_expire') setEtat('expire');
     else if (r?.error === 'etat') setEtat('annule');
     else setErreur(ERR[r?.error || ''] || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.');
@@ -109,7 +125,8 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     }
     if (r?.error === 'code' && typeof r.restants === 'number') {
       setErreur(r.restants > 0 ? `Ce code ne correspond pas. Encore ${r.restants} essai${r.restants > 1 ? 's' : ''}.` : ERR.trop);
-    } else if (r?.error === 'lien_expire') setEtat('expire');
+    } else if (offreFinie(r)) return;
+    else if (r?.error === 'lien_expire') setEtat('expire');
     else setErreur(ERR[r?.error || ''] || 'La signature n’a pas abouti. Réessayez dans un instant.');
   };
   const telecharger = async () => {
@@ -142,6 +159,10 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
   );
 
   if (etat === 'introuvable') return message('info', 'Ce lien ne mène plus nulle part', 'Il a peut-être été remplacé par un plus récent : regardez le dernier e-mail reçu, ou appelez Alexandre.');
+  if (etat === 'indisponible') return message('info', 'La page n’a pas pu s’afficher', 'Elle n’a pas pu se charger complètement. Réessayez dans quelques minutes, ou appelez Alexandre.');
+  if (etat === 'offre_expiree') return message('horloge', 'Cette offre n’est plus valable', finOffre
+    ? `Cette offre n’est plus valable depuis le ${dateLongue(finOffre)} à ${heureParis(finOffre)} : elle ne peut plus être signée. Contactez Emilio Immobilier.`
+    : 'Cette offre n’est plus valable : elle ne peut plus être signée. Contactez Emilio Immobilier.');
   if (etat === 'expire') return message('horloge', 'Ce lien a expiré', 'Pour votre sécurité, un lien de signature n’est valable que quinze jours. Appelez Alexandre : il vous en enverra un nouveau.');
   if (etat === 'annule' || etat === 'fin') return message('info', `${Maj(d.court)} ne vous attend plus`, `Alexandre a arrêté la signature en ligne de ${d.le}. S’il faut le signer, il vous enverra un nouveau lien.`);
 

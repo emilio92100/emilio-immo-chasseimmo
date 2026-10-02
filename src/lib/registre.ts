@@ -135,8 +135,9 @@ export const TYPES_OBS: Record<TypeObs, { l: string; ic: string; ton: 'vert' | '
   delegation: { l: 'Délégation', ic: 'accord', ton: 'bleu' },
   note: { l: 'Observation', ic: 'bulle', ton: 'bleu' },
 };
-/* Ce qu'on peut ajouter à la main, depuis le registre. */
-export const OBS_A_LA_MAIN: TypeObs[] = ['signe', 'sans_suite', 'fin', 'vente', 'annule', 'delegation', 'note'];
+/* Ce qu'on peut ajouter à la main, depuis le registre. V3.50 : « Rétracté »
+   aussi (un mandant qui se rétracte par courrier ne pouvait pas être noté). */
+export const OBS_A_LA_MAIN: TypeObs[] = ['signe', 'sans_suite', 'retracte', 'fin', 'vente', 'annule', 'delegation', 'note'];
 
 /* L'état d'une ligne : la dernière observation qui en décide. */
 const DECIDE: TypeObs[] = ['signe', 'sans_suite', 'retracte', 'annule', 'fin', 'vente'];
@@ -184,16 +185,53 @@ export async function noterSignature(sb: SupabaseClient, o: {
   }
   return null;
 }
+/* Pourquoi un mandat signé s'arrête (V3.50) : « Marquer annulé » dans
+   Documents le demande. Avant, c'était toujours « Annulé », même pour une
+   rétractation ou une fin de mandat. */
+export type RaisonFin = 'retracte' | 'fin' | 'annule';
+export const RAISONS_FIN: Record<RaisonFin, { l: string; aide: string; texte: (quand: string) => string }> = {
+  retracte: { l: 'Rétracté', aide: 'Le mandant a exercé son droit de rétractation.', texte: q => `Rétractation du mandant, notée dans le CRM le ${q}.` },
+  fin: { l: 'Fin du mandat', aide: 'Arrivé à son terme, ou résilié par l’une des parties.', texte: q => `Fin du mandat, notée dans le CRM le ${q}.` },
+  annule: { l: 'Annulé', aide: 'Annulé d’un commun accord, ou signé par erreur.', texte: q => `Mandat signé puis annulé dans le CRM, le ${q}.` },
+};
 export async function noterAnnulation(sb: SupabaseClient, o: {
-  modele: string; document_id: string; titre: string; mandatNumero?: string; etaitSigne: boolean; quand: string;
+  modele: string; document_id: string; titre: string; mandatNumero?: string; etaitSigne: boolean; quand: string; raison?: RaisonFin;
 }): Promise<string | null> {
   if (MANDATS.includes(o.modele)) {
+    const raison: RaisonFin = o.raison || 'annule';
     return observer(sb, o.etaitSigne
-      ? { document_id_mandat: o.document_id, type: 'annule', texte: `Mandat signé puis annulé dans le CRM, le ${o.quand}.`, document_id: o.document_id }
+      ? { document_id_mandat: o.document_id, type: raison, texte: RAISONS_FIN[raison].texte(o.quand), document_id: o.document_id }
       : { document_id_mandat: o.document_id, type: 'sans_suite', texte: `Jamais signé : document annulé le ${o.quand}. Le numéro reste attaché à ce mandat.`, document_id: o.document_id });
   }
   if ((o.modele.startsWith('avenant') || o.modele === 'delegation') && o.mandatNumero && o.etaitSigne) {
     return observer(sb, { numero: o.mandatNumero, type: 'note', texte: `${o.titre} : ${o.modele === 'delegation' ? 'annulée' : 'annulé'} le ${o.quand}.`, document_id: o.document_id });
   }
   return null;
+}
+
+/* ── Corrigé avant signature (V3.50) ──
+   Un mandat finalisé, repassé en brouillon et corrigé (le nom d'un vendeur,
+   le prix) garde sa ligne et son numéro : la ligne ne se réécrit pas. Ce qui
+   a changé s'ajoute en observation, une fois par version : rien de neuf
+   depuis la dernière correction notée, rien n'est ajouté. Rend un message
+   d'erreur, ou null. */
+const TETE_CORRECTION = 'Corrigé avant signature : ';
+export function texteCorrection(l: Pick<LigneRegistre, 'mandants' | 'objet' | 'type_mandat'>, e: Pick<Entree, 'mandants' | 'objet' | 'type_mandat'>): string | null {
+  const net = (t: unknown) => String(t ?? '').replace(/\s+/g, ' ').trim();
+  const parts: string[] = [];
+  if (e.type_mandat && net(e.type_mandat) !== net(l.type_mandat)) parts.push(`mandat ${TYPES_MANDAT[String(e.type_mandat)] || e.type_mandat}`);
+  if (net(e.mandants) !== net(l.mandants)) parts.push(`mandants : ${net(e.mandants)}`);
+  if (net(e.objet) !== net(l.objet)) parts.push(`objet : ${net(e.objet)}`);
+  return parts.length ? `${TETE_CORRECTION}${parts.join(' ; ')}.` : null;
+}
+export async function noterCorrection(sb: SupabaseClient, l: LigneRegistre, e: Pick<Entree, 'mandants' | 'objet' | 'type_mandat'>): Promise<string | null> {
+  const { data, error } = await sb.from('registre_observations').select('texte, rang').eq('registre_id', l.id).eq('type', 'note')
+    .like('texte', `${TETE_CORRECTION}%`).order('rang', { ascending: false }).limit(1);
+  if (error) return registreAbsent(error) ? null : 'Le registre des mandats n’a pas pu être relu : ' + error.message;
+  const derniere = (data || []).length ? String((data as { texte: string }[])[0].texte) : '';
+  /* Revenu à ce que la ligne dit : on le note seulement si une correction
+     avait été notée entre-temps. */
+  const texte = texteCorrection(l, e) || (derniere ? `${TETE_CORRECTION}retour au texte inscrit à l’origine.` : null);
+  if (!texte || texte === derniere) return null;
+  return observer(sb, { registre_id: l.id, type: 'note', texte });
 }

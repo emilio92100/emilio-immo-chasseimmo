@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { modele, modeSignature, electronique, type CaseSignature } from '@/lib/actes';
-import { dateCourte, heureParis, DELAI_COSIGNATURE } from '@/lib/mandat';
+import { dateCourte, heureParis } from '@/lib/mandat';
 import { appareilDe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import {
   lireSignataires, casesDe, jetonSigner, envoyerLien, inviter, envoyerCode, validerSignature, sceller, assembler, envoyerExemplaire,
   classer, lireFichier, nomSig, actif, attendu, emailValide, nomDocument, ALERTES, envoyerMail, gabarit, echappe, lienCrmDocument,
+  finLien, offreFinie,
   type DocSigne, type SigDoc, type SignatureDoc, type PersonneSig,
 } from '@/lib/signature-documents';
+import { solderRelancesSignature } from '@/lib/documents-relances';
 
 /**
  * La signature en ligne ou sur place d'un document (Documents juridiques).
@@ -22,9 +24,10 @@ import {
  *   { action: 'renvoyer', id, sig, email? }
  *        son lien, à nouveau (neuf si l'adresse change ou s'il a expiré) ;
  *        sur place, « il signera plus tard » : un lien lui part
- *   { action: 'annuler', id }
+ *   { action: 'annuler', id, pourquoi? }
  *        la signature s'arrête : les liens ne marchent plus, le document
- *        redevient « à faire signer »
+ *        redevient « à faire signer ». `pourquoi: 'annulation'` : arrêtée
+ *        parce que le document est annulé (V3.50), le Suivi le dit
  *   { action: 'code', id, sig, email }                     (sur place)
  *   { action: 'signer', id, sig, code, griffe, accepte }  (sur place)
  *   { action: 'finaliser', id, etape }                     (sur place, à la fin)
@@ -74,13 +77,23 @@ export async function POST(req: NextRequest) {
     })) : Promise.resolve(true));
     const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
     const appareil = appareilDe(req.headers.get('user-agent') || '');
+    /* V3.50 : une offre d'achat passée sa date de validité ne se signe plus. */
+    const finOffre = offreFinie(m, d);
+    /* V3.50 : une lecture ratée des signataires arrête l'action (avant, une
+       liste vide passait pour « plus personne n'est attendu »). */
+    const lire = async (): Promise<SigDoc[] | null> => {
+      try { return await lireSignataires(sb, doc.id); } catch (e) { console.error('[documents/signature]', (e as Error).message); return null; }
+    };
 
     /* ── Lancer la signature ─────────────────────────────────────── */
     if (action === 'lancer') {
       if (doc.statut !== 'pret') return ko('etat', 409, { statut: doc.statut });
       if (!electronique(d)) return ko('papier', 409);
+      if (finOffre) return ko('offre_expiree', 409, { fin: finOffre.toISOString() });
       const mode = modeSignature(d) as 'en_ligne' | 'sur_place';
-      const deja = (await lireSignataires(sb, doc.id)).filter(actif);
+      const lus = await lire();
+      if (!lus) return ko('lecture', 503);
+      const deja = lus.filter(actif);
       if (deja.length) return ko('deja', 409);
       const cases = casesDe(m, doc).filter(c => !c.agence);
       if (!cases.length) return ko('personne', 400);
@@ -101,7 +114,8 @@ export async function POST(req: NextRequest) {
           document_id: doc.id, cle: c.cle, rang: i + 1, role: c.qui, nom: c.nom, mode, personne: p,
           statut: enLigne ? 'invite' : 'attendu',
           jeton: enLigne ? jetonSigner(p) : null,
-          lien_expire_le: enLigne ? new Date(Date.parse(le) + DELAI_COSIGNATURE * 86_400_000).toISOString() : null,
+          /* Quinze jours, ou moins pour une offre d'achat (sa validité). */
+          lien_expire_le: enLigne ? finLien(m, d, le) : null,
           invite_le: enLigne ? le : null,
           deroule: [{ t: le, x: enLigne ? `Lien personnel envoyé à ${p.email}` : 'Attendu pour signer sur place' }],
           relances: 0, code_essais: 0, codes_envoyes: 0,
@@ -133,7 +147,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, signataires: rows, signature: sd, echecs });
     }
 
-    const sigs = await lireSignataires(sb, doc.id);
+    const lus = await lire();
+    if (!lus) return ko('lecture', 503);
+    const sigs = lus;
     const sd = doc.signature;
     if (!sd) return ko('pas_lance', 409);
     const cible = (): SigDoc | null => sigs.find(s => s.id === body.sig && actif(s)) || null;
@@ -141,6 +157,7 @@ export async function POST(req: NextRequest) {
     /* ── Renvoyer un lien (ou passer du « sur place » au lien) ───── */
     if (action === 'renvoyer') {
       if (doc.statut !== 'pret') return ko('etat', 409);
+      if (finOffre) return ko('offre_expiree', 409, { fin: finOffre.toISOString() });
       const s = cible();
       if (!s || !attendu(s)) return ko('signataire', 404);
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -159,6 +176,9 @@ export async function POST(req: NextRequest) {
       const r = await inviter(sb, x, m, d, { nouveau: change || s.statut === 'attendu', note: s.statut === 'attendu' ? 'Signera plus tard, par son lien' : undefined });
       if (r.erreur) return ko('mail', 502, { detail: r.erreur });
       await journal(`📨 Lien de signature ${s.statut === 'attendu' ? 'envoyé' : 'renvoyé'} à ${nomSig(r.s)}`, `${doc.titre || ''} · ${r.s.personne.email}`);
+      /* V3.50 : sa relance « n'a pas signé dans les 15 jours » a sa réponse. */
+      const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le, qui: nomSig(s) });
+      if (eR) console.error('[documents/signature] relance du lien expiré', eR);
       return NextResponse.json({ ok: true, signataire: r.s });
     }
 
@@ -171,13 +191,18 @@ export async function POST(req: NextRequest) {
       const { error: e2 } = await sb.from('documents').update({ signature: null, updated_at: le }).eq('id', doc.id);
       if (e2) return ko('enregistrement', 500, { detail: e2.message });
       const signes = sigs.filter(s => s.statut === 'signe');
-      await journal(`⏹️ Signature arrêtée : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus`);
+      const annulation = body.pourquoi === 'annulation';
+      await journal(`⏹️ Signature arrêtée${annulation ? ', document annulé' : ''} : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus${annulation ? ' · personne n’a été prévenu par e-mail' : ''}`);
+      /* V3.50 : les relances « n'a pas signé dans les 15 jours » n'ont plus d'objet. */
+      const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le });
+      if (eR) console.error('[documents/signature] relance du lien expiré', eR);
       return NextResponse.json({ ok: true });
     }
 
     /* ── Sur place : son code, sur SON adresse ───────────────────── */
     if (action === 'code') {
       if (doc.statut !== 'pret') return ko('etat', 409);
+      if (finOffre) return ko('offre_expiree', 409, { fin: finOffre.toISOString() });
       const s = cible();
       if (!s) return ko('signataire', 404);
       const r = await envoyerCode(sb, s, sigs, m, d, { email: typeof body.email === 'string' ? body.email : undefined, surPlace: true });
@@ -188,6 +213,7 @@ export async function POST(req: NextRequest) {
     /* ── Sur place : sa signature ────────────────────────────────── */
     if (action === 'signer') {
       if (doc.statut !== 'pret') return ko('etat', 409);
+      if (finOffre) return ko('offre_expiree', 409, { fin: finOffre.toISOString() });
       if (body.accepte !== true) return ko('accepte', 400);
       const s = cible();
       if (!s) return ko('signataire', 404);

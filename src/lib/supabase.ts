@@ -172,7 +172,11 @@ export async function genererReference(): Promise<string> {
       .like('reference', `EMI-${annee}-%`)
       .order('id')
       .range(de, de + 999)
-    if (error) break
+    /* V3.50 : une lecture ratée ne donne plus « EMI-AAAA-100 » (un numéro
+       peut-être déjà pris) : on s'arrête et on le dit. Les trois appelants
+       (création d'un contact, d'un notaire, d'un propriétaire) affichent
+       l'erreur levée. */
+    if (error) throw new Error(`Le numéro de dossier n’a pas pu être calculé (${error.message}). Réessaie dans un instant.`)
     for (const x of data || []) {
       const n = parseInt(String((x as { reference?: string }).reference || '').split('-')[2], 10)
       if (Number.isFinite(n) && n > max) max = n

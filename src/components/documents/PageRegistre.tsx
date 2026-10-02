@@ -282,6 +282,7 @@ function FenObserver({ l, onFermer, onFait }: { l: LigneRegistre; onFermer: () =
   }
   const aide: Partial<Record<TypeObs, string>> = {
     signe: 'Ex : signé à l’agence le 2 octobre 2026.', sans_suite: 'Ex : le vendeur a renoncé avant de signer.',
+    retracte: 'Ex : rétractation reçue par lettre recommandée le 9 octobre 2026, dans le délai de 14 jours.',
     fin: 'Ex : résilié par lettre recommandée du 5 novembre 2026, fin le 20 novembre.', vente: 'Ex : acte authentique signé le 12 janvier 2027 chez Me Durand.',
     annule: 'Ex : mandat annulé d’un commun accord le …', delegation: 'Ex : délégué à l’Agence du Parc (SARL Parc Immobilier) le 3 octobre 2026, jusqu’au 3 janvier 2027.',
     note: 'Toute autre information utile.',

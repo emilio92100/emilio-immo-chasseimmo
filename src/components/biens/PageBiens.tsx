@@ -1,17 +1,18 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { euros, jourParis } from '@/lib/mandat';
+import { euros } from '@/lib/mandat';
 import { EVT_DEMANDE_VUE, EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
-import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, type BienVente, type EtapeVente } from '@/lib/biens-vente';
+import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, type BienVente, type EtapeVente, type SuiviVente } from '@/lib/biens-vente';
+import { issueDe, visitePasseeParis } from '@/lib/visites';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
 import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
-import { FenNouveau } from './FenetresBien';
+import { FenMandat, FenNouveau } from './FenetresBien';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, supprimerBien, supprimerBrouillon, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -90,7 +91,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     window.addEventListener(EVT_DEMANDE_VUE, demande);
     return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
   }, []);
-  const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean } | null>(null);
+  const [edition, setEdition] = useState<{ bien: BienVente; etape?: string; nouveau?: boolean; vus?: string[] } | null>(null);
+  /* V3.50 : « Un mandat signé » ouvre la fenêtre du mandat juste après la création. */
+  const [mandatNeuf, setMandatNeuf] = useState<{ bien: BienVente; vus: string[] } | null>(null);
   const [cree, setCree] = useState(false);
   const [choixDepart, setChoixDepart] = useState(false);
   const [erreurDepart, setErreurDepart] = useState('');
@@ -150,36 +153,71 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     setListe(l => (l ? { ...l, biens: l.biens.some(x => x.id === r.id) ? l.biens.map(x => (x.id === r.id ? r : x)) : [r, ...l.biens] } : l));
   }, []);
 
+  /* V3.50 : les biens encore en cours du propriétaire choisi (« Créer son
+     bien » depuis sa fiche) : FenNouveau les montre avant d'en créer un autre. */
+  const existantsPour = pour && liste ? liste.biens.filter(x => x.client_id === pour && !x.archive && x.etape !== 'vendu') : [];
   async function nouveau(etape: EtapeVente) {
     if (!liste) return;
     setCree(true); setErreurDepart('');
     try {
       const c = pour ? liste.clients[pour] : null;
+      const vus = existantsPour.map(x => x.id);
+      /* « Un mandat signé » (V3.50) : le bien naît à l'estimation, la fenêtre du
+         mandat le fait passer « En vente » avec son prix, ses honoraires et son
+         propriétaire. Annulée, le bien qu'on venait de créer disparaît. */
+      if (etape === 'mandat') {
+        const r = await creerBien(liste.biens.map(x => x.reference), 'estimation', c ? donneesProprio(c) : {}, { sansSuivi: true });
+        setChoixDepart(false); setPour(null);
+        setMandatNeuf({ bien: r, vus });
+        setCree(false);
+        return;
+      }
       const r = await creerBien(liste.biens.map(x => x.reference), etape, c ? donneesProprio(c) : {});
-      if (c) void marquerVendeur(c.id);
+      if (c) await marquerVendeur(c.id);
       majBien(r);
       setChoixDepart(false); setPour(null);
-      setEdition({ bien: r, nouveau: true });
+      setEdition({ bien: r, nouveau: true, vus });
     } catch (e) { setErreurDepart((e as Error).message); }
     setCree(false);
+  }
+  async function abandonnerMandatNeuf() {
+    const x = mandatNeuf;
+    setMandatNeuf(null);
+    if (!x) return;
+    try { await supprimerBien(x.bien); } catch (e) { setErreur(`Le bien commencé n’a pas pu être retiré : ${(e as Error).message}`); void charger(); }
+  }
+  /* Les brouillons vides (V3.50) : « Nouveau bien » ouvert puis laissé, l'onglet
+     fermé. Ils ne s'effacent pas tout seuls : on les montre à part, avec
+     « Supprimer » — rien de ce qu'ils contiennent ne se perd, ils sont vides. */
+  const [brouillonsOuverts, setBrouillonsOuverts] = useState(false);
+  async function supprimerBrouillons(l: BienVente[]) {
+    for (const x of l) {
+      try { await supprimerBrouillon(x); setListe(y => (y ? { ...y, biens: y.biens.filter(z => z.id !== x.id) } : y)); }
+      catch (e) { setErreur(`${x.reference || 'Un brouillon'} : ${(e as Error).message}`); }
+    }
   }
 
   /* Ce que chaque carte affiche : acheteurs, visites, offres. */
   const parBien = useMemo(() => {
-    const m: Record<string, { acheteurs: number; visites: number; prevues: number; offres: number }> = {};
+    const m: Record<string, { acheteurs: number; visites: number; prevues: number; cr: number; offres: number }> = {};
     if (!liste) return m;
-    /* Prévue : à venir et pas encore passée ; le reste est fait (V3.33). */
-    const auj = jourParis();
+    /* Prévue : à venir et pas encore passée (V3.33). V3.50 : jour ET heure, à
+       l'heure de Paris ; une visite passée sans compte rendu compte à part
+       (« compte rendu à faire »), et non plus comme faite. */
     for (const x of liste.biens) {
       const copies = liste.copies.filter(c => c.bien_vente_id === x.id);
       const ids = new Set(copies.map(c => c.id));
       const enVente = !['vendu', 'retire'].includes(x.etape);
+      const libres = liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'visite' && s2.statut !== 'annulee');
+      const crm = liste.visites.filter(v => ids.has(v.bien_id) && v.statut !== 'annulee');
+      const libreAVenir = (s2: SuiviVente) => s2.statut === 'a_venir' && !instantPasse(s2.le);
+      const crmAVenir = (v: VisiteRow) => v.statut === 'a_venir' && (!v.date_visite || !visitePasseeParis(v));
       m[x.id] = {
         acheteurs: enVente ? acheteursPour(x, liste.recherches, liste.clients, copies).filter(a => a.corr.note >= SEUIL_CORRESPOND).length : 0,
-        visites: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'visite' && s2.statut !== 'annulee').length
-          + liste.visites.filter(v => ids.has(v.bien_id) && v.statut !== 'annulee').length,
-        prevues: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'visite' && s2.statut === 'a_venir' && (!s2.le || String(s2.le).slice(0, 10) >= auj)).length
-          + liste.visites.filter(v => ids.has(v.bien_id) && v.statut === 'a_venir' && (!v.date_visite || String(v.date_visite).slice(0, 10) >= auj)).length,
+        visites: libres.length + crm.length,
+        prevues: libres.filter(libreAVenir).length + crm.filter(crmAVenir).length,
+        cr: libres.filter(s2 => s2.statut === 'a_venir' && !libreAVenir(s2) && !s2.avis).length
+          + crm.filter(v => v.statut === 'a_venir' && !crmAVenir(v) && !issueDe(v)).length,
         offres: liste.suivi.filter(s2 => s2.bien_id === x.id && s2.type === 'offre').length,
       };
     }
@@ -189,7 +227,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* Où en est le mandat de chaque bien dans Documents (V3.42). */
   const mandats = useMemo(() => (liste ? mandatsParBien(liste) : {}), [liste]);
 
-  const biens = liste?.biens || [];
+  const tousBiens = liste?.biens || [];
+  const brouillons = useMemo(() => (liste ? liste.biens.filter(x => brouillonVide(x, liste)) : []), [liste]);
+  const biens = brouillons.length ? tousBiens.filter(x => !brouillons.includes(x)) : tousBiens;
   const actifs = biens.filter(x => !x.archive);
   const archives = biens.filter(x => x.archive);
   const q = sansAccent(cherche.trim());
@@ -210,15 +250,17 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const honoCompromis = actifs.filter(x => x.etape === 'compromis').reduce((t, x) => t + (honorairesVente(x, (liste?.suivi || []).filter(s2 => s2.bien_id === x.id)) || 0), 0);
   const phrase = [
     exclus ? `${exclus} exclusivité${exclus > 1 ? 's' : ''}` : '',
-    honoCompromis ? `${euros(honoCompromis)} d’honoraires sous compromis` : '',
+    honoCompromis ? `${euros(honoCompromis)} d’honoraires TTC sous compromis` : '',
   ].filter(Boolean).join(' · ') || 'Tes biens, du premier contact avec le propriétaire à la signature chez le notaire.';
 
-  const bienOuvert = ouvert && liste ? biens.find(x => x.id === ouvert) || null : null;
+  const bienOuvert = ouvert && liste ? tousBiens.find(x => x.id === ouvert) || null : null;
 
   const editeur = edition && typeof document !== 'undefined' && createPortal(
     <EditeurBien key={edition.bien.id} bien={edition.bien} etapeDepart={edition.etape} nouveau={edition.nouveau}
+      autres={edition.nouveau ? tousBiens : undefined} vus={edition.vus}
+      onOuvrirExistant={id => { const n = edition.bien.id; setEdition(null); setListe(l => (l ? { ...l, biens: l.biens.filter(x => x.id !== n) } : l)); ouvrir(id); }}
       suivi={(liste?.suivi || []).filter(x => x.bien_id === edition.bien.id)} nbAcheteurs={parBien[edition.bien.id]?.acheteurs || 0}
-      nbVisites={parBien[edition.bien.id]?.visites || 0} nbPrevues={parBien[edition.bien.id]?.prevues || 0} nbOffres={parBien[edition.bien.id]?.offres || 0}
+      nbVisites={parBien[edition.bien.id]?.visites || 0} nbPrevues={parBien[edition.bien.id]?.prevues || 0} nbCR={parBien[edition.bien.id]?.cr || 0} nbOffres={parBien[edition.bien.id]?.offres || 0}
       onMaj={majBien}
       onFermer={r => {
         const etaitNouveau = edition.nouveau;
@@ -267,6 +309,23 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         <div className={s.erreur}><b>Une étape avant de commencer</b>{MESSAGE_SQL}</div>
       )}
       {erreur && !installer && <div className={s.erreur}>{erreur}</div>}
+      {brouillons.length > 0 && !installer && (
+        <div className={b.brouillons}>
+          <div className={b.brouillonsT}>
+            <Ic n="info" t={16} />
+            <span>{`${brouillons.length > 1 ? `${brouillons.length} brouillons vides` : 'Un brouillon vide'} : « Nouveau bien » ouvert puis laissé, sans rien dedans.`}</span>
+            <button type="button" className={b.lien} onClick={() => setBrouillonsOuverts(v => !v)}>{brouillonsOuverts ? 'Replier' : 'Voir'}</button>
+            <button type="button" className={`${s.btn} ${b.brouillonsBtn}`} onClick={() => { if (brouillons.length === 1 || confirm(`Supprimer les ${brouillons.length} brouillons vides ?`)) void supprimerBrouillons(brouillons); }}><Ic n="corbeille" t={14} />{brouillons.length > 1 ? 'Tout supprimer' : 'Supprimer'}</button>
+          </div>
+          {brouillonsOuverts && brouillons.map(x => (
+            <div key={x.id} className={b.brouillonL}>
+              <span><b>Brouillon vide</b>{` · ${[x.reference, `créé le ${new Date(x.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`].filter(Boolean).join(' · ')}`}</span>
+              <button type="button" className={b.lien} onClick={() => ouvrir(x.id)}>Ouvrir</button>
+              <button type="button" className={b.lien} onClick={() => { void supprimerBrouillons([x]); }}>Supprimer</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {liste && !installer && biens.length > 0 && (
         <FiltresBiens biens={filtre === 'archives' ? archives : actifs} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres}
@@ -293,7 +352,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
             return (
               <Rendu key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
-                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbOffres={parBien[x.id]?.offres || 0}
+                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbCR={parBien[x.id]?.cr || 0} nbOffres={parBien[x.id]?.offres || 0}
                 mandat={mandats[x.id] || null} onClick={() => ouvrir(x.id)} />
             );
           })}
@@ -301,7 +360,10 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       ))}
       {editeur}
       {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} pour={pour && liste?.clients[pour] ? nomClient(liste.clients[pour]) : ''}
+        existants={existantsPour} onOuvrir={id => { setChoixDepart(false); setPour(null); ouvrir(id); }}
         onFermer={() => { if (!cree) { setChoixDepart(false); setPour(null); } }} onChoisir={e => { void nouveau(e); }} />}
+      {mandatNeuf && typeof document !== 'undefined' && <FenMandat bien={mandatNeuf.bien} creation onFermer={() => { void abandonnerMandatNeuf(); }}
+        onFait={r => { const vus = mandatNeuf.vus; setMandatNeuf(null); majBien(r); setEdition({ bien: r, nouveau: true, vus }); }} />}
     </div>
   );
 }

@@ -8,7 +8,8 @@ import { demanderOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import styles from './Page.module.css';
 import EnteteRubrique, { PictoVisites } from '@/components/shared/EnteteRubrique';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
-import { ISSUES, issueDe, type Issue } from '@/lib/visites';
+import { ISSUES, issueDe, maintenantParis, visitePasseeParis, type Issue } from '@/lib/visites';
+import { annulerVisites } from '@/lib/annuler-visites';
 
 /* Petite enveloppe dessinée pour le bouton de rappel. */
 function Enveloppe() {
@@ -101,20 +102,22 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     return null;
   }
 
+  /* V3.50 : la même annulation que l'agenda et la fiche (src/lib/annuler-
+     visites.ts). Ici, seul le statut changeait : le rappel de la visite
+     restait dans les Relances, et le Suivi de l'acheteur n'en disait rien.
+     Un échec s'affiche en rouge. */
   async function annuler(id: string) {
     if (!confirm('Annuler cette visite ?')) return;
-    const { error } = await supabase.from('visites').update({ statut: 'annulee' }).eq('id', id);
-    if (error) { alert("L'annulation n'a pas pu être enregistrée.\n\n" + error.message); return; }
+    await annulerVisites([id]);
     load();
   }
 
-  /* Une visite « à venir » dont la date est passée attend son compte rendu. */
+  /* Une visite « à venir » dont la date est passée attend son compte rendu.
+     V3.50 : à l'heure de Paris, la même règle que le menu et le tableau de
+     bord (src/lib/visites.ts). */
   const maintenant = new Date();
-  const passee = (v: any) => {
-    if (!v.date_visite) return false;
-    const d = new Date(`${String(v.date_visite).slice(0, 10)}T${v.heure ? String(v.heure).slice(0, 5) : '23:59'}:00`);
-    return !isNaN(d.getTime()) && d < maintenant;
-  };
+  const mParis = maintenantParis(maintenant);
+  const passee = (v: { date_visite?: string | null; heure?: string | null }) => visitePasseeParis(v, mParis);
   const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const q = sansAccent(cherche.trim());
   const trouvees = q

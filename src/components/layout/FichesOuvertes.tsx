@@ -38,6 +38,13 @@ export function signalerFicheOuverte(f: FicheOuverte) {
 export function signalerBienActif(id: string | null) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<string | null>(EVT_BIEN_ACTIF, { detail: id }));
 }
+/* V3.50 : un contact supprimé (ou un bien) sort de la barre tout de suite.
+   Avant, son bloc restait et ne menait plus à rien. La barre l'écoute
+   elle-même (ci-dessous) : aucun écran n'a besoin de connaître sa liste. */
+export const EVT_FICHE_RETIREE = 'emilio:fiche-retiree';
+export function retirerFicheOuverte(k: FicheOuverte['k'], id: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<{ k: FicheOuverte['k']; id: string }>(EVT_FICHE_RETIREE, { detail: { k, id } }));
+}
 
 /* La mémoire du navigateur : une commodité, jamais indispensable. */
 const CLE = 'fiches.ouvertes';
@@ -128,6 +135,20 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
   const apresGlisse = useRef(false);                  // le clic qui suit un glissement ne compte pas
   const fichesRef = useRef(fiches);
   fichesRef.current = fiches;
+  /* Une fiche retirée d'ailleurs (contact supprimé, V3.50) : la barre se
+     range elle-même, par le même chemin qu'un glissement (onRanger). */
+  const rangerRef = useRef(onRanger);
+  useEffect(() => { rangerRef.current = onRanger; }, [onRanger]);
+  useEffect(() => {
+    const retiree = (e: Event) => {
+      const d = (e as CustomEvent<{ k: FicheOuverte['k']; id: string }>).detail;
+      const l = fichesRef.current;
+      if (!d || !rangerRef.current || !l.some(x => x.k === d.k && x.id === d.id)) return;
+      rangerRef.current(l.filter(x => !(x.k === d.k && x.id === d.id)));
+    };
+    window.addEventListener(EVT_FICHE_RETIREE, retiree);
+    return () => window.removeEventListener(EVT_FICHE_RETIREE, retiree);
+  }, []);
   useEffect(() => {
     if (!pose) return;
     let b = 0;

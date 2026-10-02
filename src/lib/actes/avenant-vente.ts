@@ -18,7 +18,7 @@
    ⚠️ Texte écrit pour Emilio, à faire relire par l'avocat d'Alexandre
    avant le premier usage. */
 
-import { euros, BAREME_VENTE, type Partie, type Bloc, type Fiche, type Resume } from '@/lib/mandat';
+import { euros, jourParis, BAREME_VENTE, type Partie, type Bloc, type Fiche, type Resume } from '@/lib/mandat';
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, lignes, plusMois, couper,
@@ -280,6 +280,10 @@ function reperes(d: Donnees, etape: string): Repere[] {
 function manques(d: Donnees): string[] {
   const out: string[] = [];
   if (!txt(d, 'mandatNumero') || !txt(d, 'mandatDate')) out.push('Le numéro et la date du mandat');
+  /* V3.50 : comme l'avenant de recherche. Parti d'un mandat seulement finalisé,
+     l'avenant disait « signé le <date du brouillon> » d'un mandat que personne
+     n'avait signé. */
+  if (d.mandatSigne === false) out.push('Un mandat signé : celui-ci ne l’est pas encore, il se modifie avant signature');
   vendeursDe(d).forEach((p, i, l) => { if (!p.nom || !p.prenom) out.push(`Le nom ${l.length > 1 ? `du vendeur ${i + 1}` : d.qui === 'sci' ? 'du gérant' : 'du vendeur'}`); });
   if (d.qui === 'sci' && !txt(d, 'sciNom')) out.push('Le nom de la société');
   if (aConjoint(d) && !txt(d, 'conjoint')) out.push('Le nom du conjoint');
@@ -318,11 +322,13 @@ function deriver(src: Source): Donnees {
   const s = src.donnees || {};
   const out: Donnees = {};
   for (const k of REPRIS) if (k in s) out[k] = s[k];
-  const jour = String(src.signe_le || s.date || '').slice(0, 10);
+  /* V3.50 : le jour de la signature à l'heure de Paris (signé en ligne entre
+     minuit et 2 h, l'heure universelle donnait la veille). */
+  const jour = src.signe_le ? jourParis(src.signe_le) : String(s.date || '').slice(0, 10);
   const total = s.dureeMode === 'prorogation' ? (num(s, 'dureeMax') ?? 12) : (num(s, 'duree') ?? 3);
   return {
     ...out,
-    mandatNumero: src.numero || txt(s, 'numero'), mandatDate: jour,
+    mandatNumero: src.numero || txt(s, 'numero'), mandatDate: jour, mandatSigne: !!src.signe_le,
     nouveauPrix: null, charge2: s.charge || 'acquereur', honoMode2: s.honoMode || 'taux', taux2: s.taux ?? null, forfait2: s.forfait ?? null,
     finActuelle: /^\d{4}-\d{2}-\d{2}$/.test(jour) ? plusMois(jour, total) : '',
     finNouvelle: /^\d{4}-\d{2}-\d{2}$/.test(jour) ? plusMois(jour, total + 3) : '',

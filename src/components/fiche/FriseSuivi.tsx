@@ -73,7 +73,8 @@ function familleDe(it: LigneSuivi): string {
   if (t === 'message_client' || t === 'demande_rappel' || t === 'point_auto_reponse') return 'message';
   if (t === 'email_libre' || t === 'envoi_externe' || t === 'mail_envoye' || t === 'envoi_bien') return 'comm';
   if (t === 'mandat') return 'mandat';
-  if (t === 'visite_planifiee' || t === 'visite_effectuee') return 'visite';
+  /* V3.50 : l'annulation d'une visite (src/lib/annuler-visites.ts) se range avec les visites. */
+  if (t === 'visite_planifiee' || t === 'visite_effectuee' || t === 'visite_annulee') return 'visite';
   if (t === 'offre_ecrite' || t === 'offre_faite' || t === 'etape_transaction' || t === 'dossier_finalise') return 'affaire';
   return 'systeme';
 }

@@ -8,6 +8,8 @@ import { typeDe } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
+import { jourParis } from '@/lib/mandat';
+import { maintenantParis, visitePasseeParis } from '@/lib/visites';
 import { TABLE_DEMANDES } from '@/lib/demandes-site';
 import PictoBoite from '@/components/demandes/PictoBoite';
 
@@ -104,7 +106,13 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   }, [ouvert, onFermer]);
 
   async function fetchCounts() {
-    const today = new Date().toISOString();
+    /* V3.50 : les visites à venir, même règle que le tableau de bord et la
+       page Visites : « à venir », datées d'aujourd'hui (heure de Paris) ou
+       plus tard, sans celles de ce matin déjà passées (elles attendent leur
+       compte rendu). Avant, la date du jour était comparée à l'heure UTC
+       exacte : toutes les visites du jour sortaient du compte. */
+    const today = jourParis();
+    const mParis = maintenantParis();
     /* La pastille ne dit que ce qui est dû : en retard ou pour aujourd'hui.
        Une relance prévue dans douze jours n'est pas une alerte — elle reste
        dans la page Relances, mais elle ne doit pas peser sur le menu.
@@ -112,10 +120,10 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
     /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
        l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
-    const [{ count: rel }, { count: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
+    const [{ count: rel }, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
       supabase.from('relances').select('*', { count: 'exact', head: true })
         .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
-      supabase.from('visites').select('*', { count: 'exact', head: true }).eq('statut', 'a_venir').gte('date_visite', today),
+      supabase.from('visites').select('date_visite, heure').eq('statut', 'a_venir').gte('date_visite', today).limit(1000),
       /* Les clients qui ont demandé à visiter depuis leur espace, sans date
          encore calée : la même liste que la page Visites. */
       chargerDemandesVisite().catch(() => []),
@@ -130,7 +138,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
          (outils/sql/demandes-site.sql), pas de pastille. */
       supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).eq('statut', 'nouveau').eq('archive', false),
     ]);
-    setCounts({ relances: rel || 0, visites: vis || 0, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0 });
+    const visAVenir = ((vis || []) as { date_visite: string | null; heure: string | null }[]).filter(v => !visitePasseeParis(v, mParis)).length;
+    setCounts({ relances: rel || 0, visites: visAVenir, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste

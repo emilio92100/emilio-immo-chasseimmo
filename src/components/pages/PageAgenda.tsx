@@ -9,7 +9,9 @@ import { nommerRecherche, resumerRecherche } from '@/lib/espace';
 import { prendreDemandeRendezVous, signalerMaj, EVT_NOUVEAU_RDV, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { supabase, addJournal } from '@/lib/supabase';
 import { verifie, signalerEchec } from '@/lib/ecritures';
-import { solderRelancesVisite } from '@/lib/demandes-visite';
+import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
+import { annulerVisites } from '@/lib/annuler-visites';
+import { annulerCoteBien, bienDuRdv, deplacerCoteBien, etatVenteDesCopies, poserEstimationSurBien, rdvLieAuBien } from '@/lib/rdv-bien';
 
 /**
  * L'agenda du CRM (maquette A : petit calendrier à gauche, semaine au centre).
@@ -246,16 +248,31 @@ function construire(visites: any[], rdvs: any[], relances: any[], transactions: 
     const c = clientsParId[r.client_id];
     taches.push({ cle: 'rel-' + r.id, jour: cleDe(new Date(r.date_echeance)), titre: `Relance · ${nomDe(c) || 'client'}`, genre: 'relance', clientId: r.client_id || null });
   }
+  /* V3.50 : un dossier clos n'a plus d'échéance à surveiller. Ces tâches
+     restaient dans l'agenda pour un client perdu ou archivé.
+     - L'acte et la fin du délai SRU : seulement perdu ou archivé. Pas « bien
+       trouvé » (un client qui a trouvé avec nous attend encore son acte), pas
+       la recherche arrêtée (la fiche met la veille en pause dès le compromis :
+       ce sont justement les dossiers où l'acte arrive).
+     - La fin du mandat de recherche : aussi bien trouvé, ou recherche arrêtée. */
+  const fermes = (clientId: string | null) => {
+    const c = clientId ? clientsParId[clientId] : null;
+    return !!c && (c.statut === 'perdu' || c.archive === true);
+  };
   for (const t of transactions) {
     const qui = nomDe(clientsParId[t.client_id]);
     const pose = (d: any, titre: string, genre: Genre) => { if (d) taches.push({ cle: `tx-${t.id}-${titre}`, jour: String(d).slice(0, 10), titre: `${titre} · ${qui}`, genre, clientId: t.client_id || null }); };
     pose(t.offre_date, 'Offre', 'signature');
     pose(t.compromis_date, 'Compromis', 'signature');
+    if (fermes(t.client_id)) continue;
     pose(t.sru_date_fin, 'Fin du délai SRU', 'signature');
     pose(t.acte_date_prevue, 'Acte prévu', 'signature');
   }
   for (const r of recherches) {
     if (!r.mandat_date_expiration || r.sans_mandat) continue;
+    /* Un dossier en pause (« Suspendu ») a ses recherches arrêtées, mais son
+       mandat court toujours : sa fin reste dans l'agenda (V3.50). */
+    if ((r.active === false && clientsParId[r.client_id]?.statut !== 'suspendu') || fermes(r.client_id) || clientsParId[r.client_id]?.statut === 'bien_trouve') continue;
     taches.push({ cle: 'm-' + r.id, jour: String(r.mandat_date_expiration).slice(0, 10), titre: `Fin du mandat · ${nomDe(clientsParId[r.client_id])}`, genre: 'mandat', clientId: r.client_id || null });
   }
   evs.sort((a, b) => a.debut.getTime() - b.debut.getTime());
@@ -310,13 +327,19 @@ const lire = (t: string, cols: string, filtre?: (q: any) => any) => toutLire<any
   const q = supabase.from(t).select(cols);
   return (filtre ? filtre(q) : q).order('id').range(de, a);
 });
+/* V3.50 : `archive` pour reconnaître un dossier clos. La colonne n'existe
+   qu'après types-contact.sql : sans elle, on relit sans. */
+const lireClients = async () => {
+  const r = await lire('clients', 'id, prenom, nom, statut, emails, civilite, couple, conjoint, archive');
+  return r.erreur && /archive/.test(r.erreur) ? lire('clients', 'id, prenom, nom, statut, emails, civilite, couple, conjoint') : r;
+};
 const lireAgenda = () => Promise.all([
   lire('visites', '*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
   lire('rendez_vous', '*'),
   lire('relances', '*', q => q.eq('statut', 'en_attente')),
   lire('transactions', '*'),
   lire('recherches', '*'),
-  lire('clients', 'id, prenom, nom, statut, emails, civilite, couple, conjoint'),
+  lireClients(),
 ]);
 
 export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
@@ -416,6 +439,14 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     try { window.sessionStorage.setItem('emi-cr', ev.ids[0]); } catch { /* sans effet */ }
     onNavigate('visites');
   };
+  /* V3.50 : un rendez-vous lié à un bien de l'agence (visite hors CRM,
+     estimation) ouvre la fiche du bien. */
+  const ouvrirBien = (ev: Ev) => {
+    const b = bienDuRdv(ev);
+    if (!b) return;
+    setSelCle(null);
+    onNavigate('biens', { bien: b });
+  };
   const ouvrirDossier = async (clientId: string | null) => {
     if (!clientId) return;
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).maybeSingle();
@@ -425,16 +456,28 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   async function annuler(ev: Ev) {
     const quoi = ev.source === 'visite' ? (ev.ids.length > 1 ? `ces ${ev.ids.length} visites` : 'cette visite') : 'ce rendez-vous';
-    if (!window.confirm(`Annuler ${quoi} du ${jourLong(ev.debut)} à ${hhmm(ev.debut)} ?\n\n${ev.source === 'visite' ? 'Elle disparaît aussi de l’espace du client.' : 'Il sort de ton agenda.'}`)) return;
-    const { error } = ev.source === 'visite'
-      ? await supabase.from('visites').update({ statut: 'annulee' }).in('id', ev.ids)
-      : await supabase.from('rendez_vous').update({ statut: 'annule' }).in('id', ev.ids);
+    const bien = ev.source === 'rdv' ? bienDuRdv(ev) : null;
+    const suite = ev.source === 'visite' ? 'Elle disparaît aussi de l’espace du client.'
+      : bien ? 'Il sort de ton agenda, et la fiche du bien est mise à jour.' : 'Il sort de ton agenda.';
+    if (!window.confirm(`Annuler ${quoi} du ${jourLong(ev.debut)} à ${hhmm(ev.debut)} ?\n\n${suite}`)) return;
+    /* V3.50 : une visite d'acheteur s'annule partout de la même façon
+       (src/lib/annuler-visites.ts) : le statut, son rappel dans les Relances
+       et la ligne au Suivi. Un échec s'affiche en rouge. */
+    if (ev.source === 'visite') {
+      await annulerVisites(ev.ids);
+      setSelCle(null); charger(); signalerMaj();
+      return;
+    }
+    const { data: annules, error } = await supabase.from('rendez_vous').update({ statut: 'annule' }).in('id', ev.ids).select('id');
     if (error) { alert("L'annulation n'a pas pu être enregistrée.\n\n" + error.message); return; }
+    if (!annules?.length) { alert("L'annulation n'a pas pu être enregistrée : la session a peut-être expiré. Recharge la page, puis recommence."); return; }
     if (ev.relanceId) {
       const r = await supabase.from('relances').update({ statut: 'cloturee' }).eq('id', ev.relanceId);
       if (r.error) alert("C'est annulé, mais son rappel est resté dans tes Relances : clos-le à la main.\n\n" + r.error.message);
     }
-    if (ev.clientId) await addJournal(ev.clientId, ev.source === 'visite' ? 'visite_annulee' : 'rdv_annule', `✕ ${ev.titre} — annulé`, `${maj(jourLong(ev.debut))} à ${hhmm(ev.debut)}`, undefined, { rechercheId: ev.rechercheId });
+    /* V3.50 : le bien suit (visite hors CRM annulée, estimation retirée). */
+    if (rdvLieAuBien(ev)) await annulerCoteBien({ id: ev.ids[0], type: ev.type, details: ev.details }, ev.jour);
+    if (ev.clientId) await addJournal(ev.clientId, 'rdv_annule', `✕ ${ev.titre} — annulé`, `${maj(jourLong(ev.debut))} à ${hhmm(ev.debut)}`, undefined, { rechercheId: ev.rechercheId });
     setSelCle(null); charger();
   }
 
@@ -502,6 +545,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
         <Detail ev={sel} etroit={etroit} onFerme={() => setSelCle(null)}
           onModifier={() => { setModale({ mode: 'modifier', ev: sel }); setSelCle(null); }}
           onAnnuler={() => annuler(sel)} onCR={() => compteRendu(sel)} onDossier={() => ouvrirDossier(sel.clientId)}
+          onBien={() => ouvrirBien(sel)}
           onRappel={() => setRappelDe(sel.ids[0])} />
       )}
       {rappelDe && (
@@ -1136,8 +1180,8 @@ function VueMois({ debutMois, evs, taches, auj, jourSel, onJour }: {
 }
 
 /* ══ Le détail d'un rendez-vous ════════════════════════════════ */
-function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, onRappel }: {
-  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void; onRappel: () => void;
+function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, onBien, onRappel }: {
+  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void; onBien: () => void; onRappel: () => void;
 }) {
   const [monte, setMonte] = useState(false);
   useEffect(() => { setMonte(true); }, []);
@@ -1218,6 +1262,7 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
           )}
           {itineraire && <a className="ag-appui" href={itineraire} target="_blank" rel="noopener noreferrer" style={bouton}><Ic n="route" t={15} />Itinéraire</a>}
           {ev.clientId && <button type="button" className="ag-appui" onClick={onDossier} style={bouton}><Ic n="dossier" t={15} />Le dossier</button>}
+          {ev.source === 'rdv' && bienDuRdv(ev) && <button type="button" className="ag-appui" onClick={onBien} style={bouton}><Ic n="maison" t={15} />Ouvrir le bien</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onModifier} style={bouton}><Ic n="crayon" t={15} />Modifier</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onAnnuler} style={{ ...bouton, color: '#b42318' }}><Ic n="corbeille" t={15} />Annuler</button>}
         </div>
@@ -1746,7 +1791,36 @@ type Formulaire = {
   type: TypeRdv; rechercheId: string; choisis: Record<string, boolean>; date: string; heure: string; duree: number;
   titre: string | null; lieu: string | null; contact: string | null; notes: string; rappel: string; prevenir: boolean;
   mode: string; etape: string; proprietaire: string; telephone: string;
+  /* V3.50 : une estimation créée ici peut viser un bien de l'agence. */
+  bienVenteId: string;
 };
+
+/* Un bien de l'agence qu'on peut estimer (à suivre ou en estimation), pour
+   le choix « Bien » d'une nouvelle estimation, avec son propriétaire. */
+type BienEstim = { id: string; titre: string; lieu: string; client_id: string | null; proprietaire: string; telephone: string };
+
+async function lireBiensAEstimer(): Promise<BienEstim[]> {
+  const { data, error } = await supabase.from('biens_vente').select('id, titre, client_id, adresse, code_postal, ville, donnees')
+    .in('etape', ['a_suivre', 'estimation']).eq('archive', false).order('updated_at', { ascending: false }).limit(300);
+  /* Sans la rubrique Biens (SQL pas passé) ou sans réseau : pas de choix,
+     l'estimation se crée comme avant. */
+  if (error || !data?.length) return [];
+  const lignes = data as { id: string; titre: string | null; client_id: string | null; adresse: string | null; code_postal: string | null; ville: string | null; donnees: Record<string, unknown> | null }[];
+  const ids = Array.from(new Set(lignes.map(b => b.client_id).filter((x): x is string => !!x)));
+  const proprios: Record<string, { prenom?: string | null; nom?: string | null; telephones?: string[] | null }> = {};
+  if (ids.length) {
+    const { data: cl } = await supabase.from('clients').select('id, prenom, nom, telephones').in('id', ids);
+    for (const c of (cl || []) as { id: string; prenom: string | null; nom: string | null; telephones: string[] | null }[]) proprios[c.id] = c;
+  }
+  return lignes.map(b => {
+    const c = b.client_id ? proprios[b.client_id] : undefined;
+    const p0 = (Array.isArray(b.donnees?.proprietaires) ? b.donnees.proprietaires[0] : null) as { prenom?: string; nom?: string; telephone?: string } | null;
+    const proprietaire = nomDe(c) || `${p0?.prenom || ''} ${p0?.nom || ''}`.trim();
+    const telephone = (c?.telephones || []).filter(Boolean)[0] || p0?.telephone || '';
+    const lieu = [b.adresse, [b.code_postal, b.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    return { id: b.id, titre: b.titre || b.ville || 'Bien sans titre', lieu, client_id: b.client_id, proprietaire, telephone };
+  });
+}
 
 function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onEnregistre }: {
   modale: NonNullable<Modale>; dossiers: Dossier[]; relances: any[]; tableAbsente: boolean; evs: Ev[]; onFerme: () => void; onEnregistre: () => void;
@@ -1763,18 +1837,21 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         date: ev.jour, heure: hhmm(ev.debut), duree: minutes, titre: ev.titre, lieu: ev.lieu,
         contact: ev.contact, notes: ev.notes, rappel, prevenir: false,
         mode: ev.details?.mode || 'tel', etape: ev.details?.etape || 'compromis',
-        proprietaire: ev.details?.proprietaire || '', telephone: ev.details?.telephone || '',
+        proprietaire: ev.details?.proprietaire || '', telephone: ev.details?.telephone || '', bienVenteId: '',
       };
     }
     return {
       type: 'visite', rechercheId: modale.mode === 'nouveau' ? modale.rechercheId || '' : '', choisis: {},
       date: modale.mode === 'nouveau' ? modale.jour : cleDe(new Date()), heure: modale.mode === 'nouveau' ? modale.heure : '10:00',
       duree: 60, titre: null, lieu: null, contact: null, notes: '',
-      rappel: 'veille', prevenir: false, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '',
+      rappel: 'veille', prevenir: false, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '', bienVenteId: '',
     };
   }, [ev, modale, relances]);
   const [f, setF] = useState<Formulaire>(init);
   const [biens, setBiens] = useState<any[]>([]);
+  /* Les biens à estimer, lus quand on choisit « Estimation » (nouveau
+     rendez-vous seulement). null : pas encore lus. */
+  const [biensEstim, setBiensEstim] = useState<BienEstim[] | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [monte, setMonte] = useState(false);
   useEffect(() => { setMonte(true); }, []);
@@ -1791,14 +1868,28 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   /* Le client : obligatoire pour une visite (il faut ses biens), facultatif
      pour un rendez-vous, un appel ou une signature, absent pour un
      rendez-vous libre, une estimation ou un créneau personnel. */
-  const avecDossier = f.type !== 'perso' && f.type !== 'estimation' && f.type !== 'libre';
-  const dossierObligatoire = f.type === 'visite';
+  /* V3.50 : un rendez-vous lié à un bien de l'agence (visite hors CRM,
+     estimation posée depuis le bien) ne se change ici que pour sa date, son
+     heure, sa durée et ses notes. Avant, il s'ouvrait comme une visite
+     d'acheteur : « Choisis le dossier du client », puis rien n'était
+     enregistré, ou le visiteur et le bien disparaissaient du rendez-vous. */
+  const lie = !!ev && ev.source === 'rdv' && rdvLieAuBien(ev);
+  const avecDossier = !lie && f.type !== 'perso' && f.type !== 'estimation' && f.type !== 'libre';
+  const dossierObligatoire = !lie && f.type === 'visite';
+
+  useEffect(() => {
+    if (ev || f.type !== 'estimation' || biensEstim !== null) return;
+    let vivant = true;
+    lireBiensAEstimer().then(l => { if (vivant) setBiensEstim(l); }).catch(() => { if (vivant) setBiensEstim([]); });
+    return () => { vivant = false; };
+  }, [ev, f.type, biensEstim]);
+  const bienEstim = f.type === 'estimation' && !ev && f.bienVenteId ? (biensEstim || []).find(b => b.id === f.bienVenteId) || null : null;
 
   /* Les biens du dossier : ceux de la Sélection et des Présentés. */
   useEffect(() => {
     if (!f.rechercheId || f.type !== 'visite') { setBiens([]); return; }
     let vivant = true;
-    supabase.from('biens').select('id, titre, ville, quartier, adresse, adresse_probable, photos, etape, badge_retour, agence_nom, prix_acquereur, prix_vendeur')
+    supabase.from('biens').select('id, titre, ville, quartier, adresse, adresse_probable, photos, etape, badge_retour, agence_nom, prix_acquereur, prix_vendeur, bien_vente_id')
       .eq('recherche_id', f.rechercheId).in('etape', ['selection', 'presente'])
       .then(({ data }) => { if (vivant) setBiens(data || []); });
     return () => { vivant = false; };
@@ -1850,7 +1941,9 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const rdvImpossible = f.type !== 'visite' && tableAbsente;
 
   const effets: string[] = [`Ajouté à ton agenda le ${jourLong(debut)} à ${hhmm(debut)}.`];
-  if (f.type === 'visite') effets.push('Visible aussi dans la page Visites et dans l’espace du client.');
+  if (lie) effets.push('La fiche du bien prend la nouvelle date.');
+  else if (f.type === 'visite') effets.push('Visible aussi dans la page Visites et dans l’espace du client.');
+  if (bienEstim) effets.push(`La fiche du bien « ${bienEstim.titre} » reçoit la date d’estimation.`);
   if (avecDossier && dossier) effets.push(`Noté dans le suivi du dossier de ${dossier.nom}.`);
   /* Le rappel tombe à midi, la veille ou le jour même. Une veille déjà
      passée (rendez-vous pris pour aujourd'hui) devient aujourd'hui : sinon
@@ -1874,6 +1967,23 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     setEnvoi(true);
     const jourTxt = `${jourLong(debut)} à ${hhmm(debut)}`;
 
+    /* 0. V3.50 : un bien de l'agence vendu, retiré, suspendu ou archivé ne se
+       visite plus ; sous compromis, seulement pour une offre de secours. La
+       fiche du bien refusait déjà, l'agenda laissait passer. Vérifié avant
+       le rappel, pour ne rien laisser derrière soi. */
+    if (f.type === 'visite' && !ev) {
+      const etat = await etatVenteDesCopies(choisis);
+      if (etat.erreur && !window.confirm(`Je n'ai pas pu vérifier que ${choisis.length > 1 ? 'ces biens sont' : 'ce bien est'} toujours en vente.\n\n${etat.erreur}\n\nPlanifier la visite quand même ?`)) { setEnvoi(false); return; }
+      if (etat.bloque.length) {
+        const reste = choisis.length > etat.bloque.length ? `\n\nDécoche ${etat.bloque.length > 1 ? 'ces biens' : 'ce bien'} pour caler les autres.` : '';
+        setEnvoi(false); alert(`${etat.bloque.join('\n')}\n\nLa visite n'est pas planifiée.${reste}`); return;
+      }
+      if (etat.secours.length) {
+        const qui = etat.secours.length > 1 ? `« ${etat.secours.join(' », « ')} » sont sous compromis` : `« ${etat.secours[0]} » est sous compromis`;
+        if (!window.confirm(`${qui}.\n\nLa visite ne peut servir qu'à une offre de secours. La planifier quand même ?`)) { setEnvoi(false); return; }
+      }
+    }
+
     /* 1. Le rappel, dans les Relances. */
     let relanceId: string | null = ev?.relanceId || null;
     let relanceNeuve: string | null = null;
@@ -1886,9 +1996,14 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         if (r.error) { setEnvoi(false); alert("Le rappel n'a pas pu être retiré.\n\n" + r.error.message); return; }
         relanceId = null;
       } else if (relanceId) {
-        const r = await supabase.from('relances').update({ date_echeance: quand.toISOString(), note }).eq('id', relanceId);
+        /* V3.50 : le rappel déplacé repasse « en attente ». Marqué « C'est
+           fait » plus tôt, il était déplacé mais restait clos : le rappel
+           promis n'arrivait jamais. Disparu de la base, on en pose un neuf. */
+        const r = await supabase.from('relances').update({ date_echeance: quand.toISOString(), note, statut: 'en_attente' }).eq('id', relanceId).select('id');
         if (r.error) { setEnvoi(false); alert("Le rappel n'a pas pu être déplacé.\n\n" + r.error.message); return; }
-      } else if (f.rappel !== 'aucun') {
+        if (!r.data?.length) relanceId = null;
+      }
+      if (!relanceId && f.rappel !== 'aucun') {
         const { data, error } = await supabase.from('relances').insert({
           client_id: dossier.clientId, recherche_id: dossier.rechercheId, type: 'manuelle', statut: 'en_attente',
           date_echeance: quand.toISOString(), note,
@@ -1906,12 +2021,39 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     };
 
     /* 2. Le rendez-vous lui-même. */
-    if (f.type === 'visite') {
+    if (lie && ev) {
+      /* V3.50 : un rendez-vous lié à un bien. Seuls la date, l'heure, la
+         durée et les notes changent ; `details` (le visiteur, son téléphone,
+         le bien) n'est pas touché. Puis la fiche du bien suit. */
+      const { data: faits, error } = await supabase.from('rendez_vous')
+        .update({ debut: debut.toISOString(), fin: fin.toISOString(), notes: f.notes || null }).in('id', ev.ids).select('id');
+      if (error) { await echec("Le rendez-vous n'a pas pu être modifié.\n\n" + error.message); return; }
+      if (!faits?.length) { await echec("Le rendez-vous n'a pas pu être modifié : la session a peut-être expiré. Recharge la page, puis recommence."); return; }
+      if (f.date !== ev.jour || f.heure !== hhmm(ev.debut) || f.duree !== Math.round((ev.fin.getTime() - ev.debut.getTime()) / 60000)) {
+        await deplacerCoteBien({ id: ev.ids[0], type: ev.type, details: ev.details }, { date: f.date, heure: f.heure, duree: f.duree, ancienJour: ev.jour });
+      }
+    } else if (f.type === 'visite') {
       if (ev) {
-        const { error } = await supabase.from('visites').update({
+        /* V3.50 : une visite déplacée. Le rappel déjà envoyé au client donnait
+           l'ancienne heure : il s'efface (« Rappel envoyé » ne s'affiche plus,
+           on peut le renvoyer). Seulement s'il y en a eu un : la colonne
+           n'existe qu'après rappel-visites.sql. */
+        const deplacee = f.date !== ev.jour || f.heure !== hhmm(ev.debut);
+        const { data: modifiees, error } = await supabase.from('visites').update({
           date_visite: f.date, heure: f.heure, duree_min: f.duree, contact_agence: contact || null, commentaire: f.notes || null, rappel_relance_id: relanceId,
-        }).in('id', ev.ids);
+          ...(deplacee && ev.details?.rappelLe ? { rappel_envoye_le: null } : {}),
+        }).in('id', ev.ids).select('id');
         if (error) { await echec("La visite n'a pas pu être modifiée.\n\n" + error.message); return; }
+        if (!modifiees?.length) { await echec("La visite n'a pas pu être modifiée : la session a peut-être expiré. Recharge la page, puis recommence."); return; }
+        /* Et une ligne au Suivi de l'acheteur, dans sa recherche : l'ancienne
+           date, la nouvelle. */
+        if (deplacee && ev.clientId) {
+          const avant = `${jourLong(ev.debut)} à ${heureFr(ev.debut)}`, apres = `${jourLong(debut)} à ${heureFr(debut)}`;
+          for (const b of ev.biens) {
+            await addJournal(ev.clientId, 'visite_planifiee', `📅 Visite déplacée — ${b.titre}`,
+              `Prévue le ${avant}, déplacée au ${apres}.`, undefined, { rechercheId: ev.rechercheId, bienId: b.id });
+          }
+        }
       } else {
         const { data: creees, error } = await supabase.from('visites').insert(choisis.map(b => ({
           client_id: dossier!.clientId, recherche_id: dossier!.rechercheId, bien_id: b.id, statut: 'a_venir',
@@ -1934,27 +2076,42 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
            « Veut visiter » se solde (voir src/lib/demandes-visite.ts). */
         const errRel = await solderRelancesVisite(dossier!.clientId, choisis.map(b => b.titre));
         if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
+        /* V3.50 : une 2e visite répond aussi à « Veut revoir » et « Il
+           réfléchit ». « Veut faire une offre » reste : l'offre n'est pas faite. */
+        const errRetour = await solderRelancesRetourVisite(dossier!.clientId, choisis.map(b => b.titre), { garder: 'offre' });
+        if (errRetour) alert("La visite est enregistrée, mais les relances « Veut revoir » ou « Il réfléchit » n'ont pas pu être soldées.\n\n" + errRetour);
         await addJournal(dossier!.clientId, 'visite_planifiee',
           choisis.length > 1 ? `📅 Visite planifiée — ${choisis.length} biens : ${choisis.map(b => b.titre || b.ville).join(' · ')}` : `📅 Visite planifiée — ${choisis[0].titre || choisis[0].ville || ''}`,
           `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${contact ? ` · Contact : ${contact}` : ''}`, undefined, { rechercheId: dossier!.rechercheId });
       }
     } else {
+      /* V3.50 : `details` se complète, il ne se réécrit plus : une clé posée
+         ailleurs (le bien d'une estimation…) reste. Une clé mise à undefined
+         disparaît à l'envoi, comme avant. */
       const ligne = {
         type: f.type, titre: titre.trim(), debut: debut.toISOString(), fin: fin.toISOString(), lieu: lieu || null, notes: f.notes || null,
-        client_id: avecDossier ? dossier?.clientId || null : null, recherche_id: avecDossier ? dossier?.rechercheId || null : null,
-        details: { mode: f.type === 'appel' ? f.mode : undefined, etape: f.type === 'signature' ? f.etape : undefined, proprietaire: f.type === 'estimation' ? f.proprietaire || undefined : undefined, telephone: f.type === 'estimation' ? f.telephone || undefined : undefined },
+        client_id: avecDossier ? dossier?.clientId || null : bienEstim?.client_id || null, recherche_id: avecDossier ? dossier?.rechercheId || null : null,
+        details: {
+          ...(ev?.details || {}),
+          mode: f.type === 'appel' ? f.mode : undefined, etape: f.type === 'signature' ? f.etape : undefined, proprietaire: f.type === 'estimation' ? f.proprietaire || undefined : undefined, telephone: f.type === 'estimation' ? f.telephone || undefined : undefined,
+          ...(bienEstim ? { bien_vente_id: bienEstim.id } : {}),
+        },
         relance_id: relanceId,
       };
-      const { error } = ev
-        ? await supabase.from('rendez_vous').update(ligne).in('id', ev.ids)
-        : await supabase.from('rendez_vous').insert(ligne);
+      const { data: rdvs, error } = ev
+        ? await supabase.from('rendez_vous').update(ligne).in('id', ev.ids).select('id')
+        : await supabase.from('rendez_vous').insert(ligne).select('id');
       if (error) { await echec("Le rendez-vous n'a pas pu être enregistré.\n\n" + error.message); return; }
+      if (!rdvs?.length) { await echec("Le rendez-vous n'a pas pu être enregistré : la session a peut-être expiré. Recharge la page, puis recommence."); return; }
       if (!ev && avecDossier && dossier) await addJournal(dossier.clientId, 'rdv_planifie', `📅 ${titre.trim()}`, `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${lieu ? ` · ${lieu}` : ''}`, undefined, { rechercheId: dossier.rechercheId });
+      /* L'estimation d'un bien choisi : sa fiche reçoit la date, l'heure et
+         le lien vers ce rendez-vous. */
+      if (bienEstim) await poserEstimationSurBien(bienEstim.id, String((rdvs[0] as { id: string }).id), f.date, f.heure);
     }
 
     /* 3. Le mail au client. Le rendez-vous est déjà enregistré : un échec ici
        ne l'annule pas, on le dit simplement. */
-    const idsVisites = f.type === 'visite' ? (ev ? ev.ids : visitesCreees) : [];
+    const idsVisites = f.type === 'visite' && !lie ? (ev ? ev.ids : visitesCreees) : [];
     if (f.prevenir && mail && dossier && idsVisites.length) {
       /* Une visite : le mail « vos visites » (photo, adresse, itinéraire),
          qui note aussi la date d'envoi sur chaque visite. */
@@ -2000,7 +2157,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   }, []);
   if (!monte) return null;
 
-  const typesDispo = ev ? (ev.source === 'visite' ? ['visite'] as TypeRdv[] : ORDRE.filter(t => t !== 'visite')) : ORDRE;
+  const typesDispo = ev ? (ev.source === 'visite' || lie ? [ev.type] : ORDRE.filter(t => t !== 'visite')) : ORDRE;
 
   return createPortal(
     <div className="ag-voile ag-modale-fond" data-sortie={sortie || undefined} style={{ position: 'fixed', inset: 0, zIndex: 9995, background: 'rgba(14,20,30,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}
@@ -2041,9 +2198,12 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
                 <div className="ag-modale-types" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
                   {typesDispo.map(k => {
                     const t = TYPES[k], actif = f.type === k;
+                    /* V3.50 : un clic sur le type déjà choisi ne remet plus le
+                       titre, le lieu et la durée à zéro (un rendez-vous qu'on
+                       modifiait reprenait 1 h sans prévenir). */
                     return (
                       <button key={k} type="button" className="ag-appui" aria-pressed={actif}
-                        onClick={() => maj_({ type: k, titre: null, lieu: null, duree: k === 'appel' ? 30 : k === 'visite' || k === 'signature' ? 60 : f.duree })}
+                        onClick={() => { if (!actif) maj_({ type: k, titre: null, lieu: null, duree: k === 'appel' ? 30 : k === 'visite' || k === 'signature' ? 60 : f.duree }); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, height: 46, padding: '0 10px', borderRadius: 13, border: `1.5px solid ${actif ? t.point : BORD}`, background: actif ? t.fond : 'white', color: actif ? t.encre : NAVY, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', boxShadow: actif ? `0 10px 22px -16px ${t.point}` : 'none' }}>
                         <span style={{ width: 28, height: 28, borderRadius: 8, background: actif ? t.point : '#f1f4f8', color: actif ? 'white' : DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={t.ico} t={16} /></span>
                         {t.nom}
@@ -2052,6 +2212,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
                   })}
                 </div>
                 {rdvImpossible && <span style={{ fontSize: 12.5, color: '#92400e' }}>Ce type de rendez-vous s’enregistrera une fois le SQL de l’agenda lancé dans Supabase.</span>}
+                {lie && <span style={{ fontSize: 12.5, color: DOUX, lineHeight: 1.5 }}>{'Ce rendez-vous est lié à un bien : ici, seuls la date, l’heure, la durée et les notes se changent. La fiche du bien suit.'}</span>}
               </div>
               {f.type === 'appel' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Comment" /><Puces options={[{ v: 'tel', lib: 'Téléphone' }, { v: 'visio', lib: 'Visio' }]} valeur={f.mode} onChange={v => maj_({ mode: v, titre: null, lieu: null })} /></div>
@@ -2059,7 +2220,20 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
               {f.type === 'signature' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><Libelle texte="Quelle signature" /><Puces options={[{ v: 'offre', lib: 'Offre' }, { v: 'compromis', lib: 'Compromis' }, { v: 'acte', lib: 'Acte' }]} valeur={f.etape} onChange={v => maj_({ etape: v, titre: null })} /></div>
               )}
-              {f.type === 'estimation' && (
+              {f.type === 'estimation' && !ev && (biensEstim || []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <Libelle texte="Bien" aide="facultatif : un bien à suivre ou en estimation" />
+                  <select className="ag-champ" value={f.bienVenteId} aria-label="Bien à estimer" style={CHAMP}
+                    onChange={e => {
+                      const b = (biensEstim || []).find(x => x.id === e.target.value);
+                      maj_(b ? { bienVenteId: b.id, proprietaire: b.proprietaire || f.proprietaire, telephone: b.telephone || f.telephone, lieu: b.lieu || null, titre: null } : { bienVenteId: '' });
+                    }}>
+                    <option value="">Aucun bien</option>
+                    {(biensEstim || []).map(b => <option key={b.id} value={b.id}>{[b.titre, b.lieu, b.proprietaire].filter(Boolean).join(' · ')}</option>)}
+                  </select>
+                </div>
+              )}
+              {f.type === 'estimation' && !lie && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Propriétaire" /><input className="ag-champ" value={f.proprietaire} onChange={e => maj_({ proprietaire: e.target.value, titre: null })} placeholder="M. et Mme Roche" style={CHAMP} aria-label="Propriétaire" /></div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Libelle texte="Téléphone" /><input className="ag-champ" value={f.telephone} onChange={e => maj_({ telephone: e.target.value })} placeholder="06 …" style={CHAMP} aria-label="Téléphone du propriétaire" /></div>
@@ -2159,15 +2333,15 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
 
             <Section n={avecDossier ? 4 : 3} ico="crayon" titre="Titre, lieu et notes" rang={3}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <Libelle texte="Titre" aide="proposé tout seul, tu peux le changer" />
+                <Libelle texte="Titre" aide={lie ? 'repris du bien' : 'proposé tout seul, tu peux le changer'} />
                 <ChampIcone ico="crayon">
-                  <input className="ag-champ" value={titre} onChange={e => maj_({ titre: e.target.value })} style={{ ...CHAMP, paddingLeft: 42, fontSize: 15, fontWeight: 700 }} aria-label="Titre" />
+                  <input className="ag-champ" value={titre} onChange={e => maj_({ titre: e.target.value })} style={{ ...CHAMP, paddingLeft: 42, fontSize: 15, fontWeight: 700, opacity: lie ? .8 : 1 }} aria-label="Titre" disabled={lie} />
                 </ChampIcone>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <Libelle texte="Lieu" aide={f.type === 'visite' && choisis.length ? 'repris du bien' : undefined} />
+                <Libelle texte="Lieu" aide={lie || (f.type === 'visite' && choisis.length) ? 'repris du bien' : undefined} />
                 <ChampIcone ico="lieu">
-                  <input className="ag-champ" value={lieu} onChange={e => maj_({ lieu: e.target.value })} placeholder="Adresse, agence, visio…" style={{ ...CHAMP, paddingLeft: 42, opacity: f.type === 'visite' ? .8 : 1 }} aria-label="Lieu" disabled={f.type === 'visite'} />
+                  <input className="ag-champ" value={lieu} onChange={e => maj_({ lieu: e.target.value })} placeholder="Adresse, agence, visio…" style={{ ...CHAMP, paddingLeft: 42, opacity: f.type === 'visite' || lie ? .8 : 1 }} aria-label="Lieu" disabled={f.type === 'visite' || lie} />
                 </ChampIcone>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2237,7 +2411,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         </div>
 
         <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 22px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
-          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
+          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : lie || bienEstim ? 'Rendez-vous lié à un bien.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
           <button type="button" className="ag-appui" onClick={fermer} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
             style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', opacity: envoi ? .7 : 1, boxShadow: '0 12px 24px -12px rgba(201,168,76,.95)' }}>

@@ -1954,9 +1954,12 @@ export function ModaleObservation({ bien, clientId, onFerme, onEnregistre }: { b
        et le saisit à sa place. L'espace acheteur le dira — « le commentaire de
        votre conseiller » — au lieu de faire croire au client qu'il a écrit
        quelque chose qu'il n'a jamais écrit. */
-    /* Vérifié (V3.17) : pas enregistré, la fenêtre reste ouverte. */
+    /* Vérifié (V3.17) : pas enregistré, la fenêtre reste ouverte.
+       V3.50 : un bien « Offre faite » le reste (même règle que le compte
+       rendu, badgeApresVisite) — sa transaction est ouverte ; son mot, lui,
+       est noté. */
     if (!(await verifie('Le retour du client', supabase.from('biens').update({
-      badge_retour: a.badge, retour_client: texte.trim() || a.label,
+      badge_retour: bien.badge_retour === 'offre_faite' ? 'offre_faite' : a.badge, retour_client: texte.trim() || a.label,
       retour_le: new Date().toISOString(), retour_par: 'conseiller',
     }).eq('id', bien.id).select('id'), { ligne: true }))) { setEnvoi(false); return; }
     await verifie('L’historique du client', supabase.from('journal').insert({
@@ -2061,11 +2064,17 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
   const [envoi, setEnvoi] = useState(false);
   const [copie, setCopie] = useState(false);
 
+  /* V3.50 — Un mandat de l'agence (une copie portant `bien_vente_id`) : son
+     prix est celui de la fiche du bien, honoraires de l'agence compris. On n'y
+     ajoute pas d'honoraires de chasse — un bien aux honoraires payés par le
+     vendeur passait de 500 000 € à 486 875 € — et on ne le réécrit pas. */
+  const agence = !!bien?.bien_vente_id;
   const base = Number(bien.prix_vendeur) || 0;
   const v = parseFloat(String(valeur).replace(',', '.')) || 0;
-  const honoraires = montantHonoraires(base, type, valeur);
-  const surMandat = !!mandat && mandat.type === type && mandat.val === v;
-  const total = base + honoraires;
+  const prixAgence = Number(bien.prix_acquereur) || base;
+  const honoraires = agence ? Math.max(0, prixAgence - base) : montantHonoraires(base, type, valeur);
+  const surMandat = !agence && !!mandat && mandat.type === type && mandat.val === v;
+  const total = agence ? prixAgence : base + honoraires;
   const pctEq = base > 0 ? (honoraires / base) * 100 : 0;
 
   async function marquer(canal: string) {
@@ -2075,12 +2084,12 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
     const neuf = bien.etape !== 'presente';
     if (!(await verifie('Le bien « présenté »', supabase.from('biens').update({
       etape: 'presente', envoye_le: new Date().toISOString(), canal_envoi: canal,
-      commission_type: type, commission_val: v, prix_acquereur: total, badge_retour: 'propose',
+      ...(agence ? {} : { commission_type: type, commission_val: v, prix_acquereur: total }), badge_retour: 'propose',
     }).eq('id', bien.id).select('id'), { ligne: true }))) { setEnvoi(false); return; }
     await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id, type: 'envoi_bien',
       titre: `Envoyé au client · ${canal === 'mail' ? 'mail' : canal === 'whatsapp' ? 'WhatsApp' : 'lien'}`,
-      description: `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de chasse`,
+      description: `Prix présenté ${total.toLocaleString('fr-FR')} €${honoraires > 0 || !agence ? ` — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires ${agence ? 'de l’agence' : 'de chasse'}` : ''}`,
       metadata: {},
     }));
     /* Présenté = en attente d'une réponse : la relance se programme ici. */
@@ -2102,6 +2111,7 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
      et on peut encore annuler. On n'enregistre donc que les honoraires qu'on
      vient de fixer ; le passage en « Présenté » se fait à l'envoi réel. */
   async function enregistrerPrix() {
+    if (agence) return;   // le prix de l'agence ne se réécrit pas (V3.50)
     setEnvoi(true);
     await verifie('Les honoraires du bien', supabase.from('biens').update({
       commission_type: type, commission_val: v, prix_acquereur: total,
@@ -2177,41 +2187,57 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
       <div style={{ padding: '18px 24px', borderBottom: `1px solid ${BORD}`, background: '#fbfcfe' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>
           <span>Prix de l&apos;annonce</span>
-          <span style={{ fontWeight: 700, color: NAVY, fontSize: 15 }}>{base.toLocaleString('fr-FR')} €</span>
+          <span style={{ fontWeight: 700, color: NAVY, fontSize: 15 }}>{(agence ? total : base).toLocaleString('fr-FR')} €</span>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
-          Tes honoraires de chasse
-        </div>
-        <RappelMandat mandat={mandat} applique={surMandat}
-          onAppliquer={() => { if (mandat) { setType(mandat.type); setValeur(String(mandat.val)); } }} />
+        {agence ? (
+          /* V3.50 : un mandat de l'agence — ses honoraires sont dans son prix. */
+          <>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
+              Honoraires de l&apos;agence
+            </div>
+            <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.55, marginBottom: 13, background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 10, padding: '9px 12px' }}>
+              {honoraires > 0
+                ? `${honoraires.toLocaleString('fr-FR')} €, déjà compris dans le prix. Ce bien est un mandat de l’agence : rien à ajouter.`
+                : 'Déjà compris dans le prix. Ce bien est un mandat de l’agence : rien à ajouter.'}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
+              Tes honoraires de chasse
+            </div>
+            <RappelMandat mandat={mandat} applique={surMandat}
+              onAppliquer={() => { if (mandat) { setType(mandat.type); setValeur(String(mandat.val)); } }} />
 
-        <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
-            {bascule('pourcentage', '% du prix')}
-            {bascule('fixe', 'Montant fixe')}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexGrow: 1 }}>
-            <input type="number" step={type === 'pourcentage' ? '0.1' : '500'} min="0" value={valeur}
-              onChange={e => setValeur(e.target.value)}
-              style={{ width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 11, padding: '10px 13px', fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{type === 'pourcentage' ? '%' : '€'}</span>
-          </div>
-        </div>
+            <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
+                {bascule('pourcentage', '% du prix')}
+                {bascule('fixe', 'Montant fixe')}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexGrow: 1 }}>
+                <input type="number" step={type === 'pourcentage' ? '0.1' : '500'} min="0" value={valeur}
+                  onChange={e => setValeur(e.target.value)}
+                  style={{ width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 11, padding: '10px 13px', fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{type === 'pourcentage' ? '%' : '€'}</span>
+              </div>
+            </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 13 }}>
-          <span>Soit</span>
-          <span style={{ fontWeight: 700, color: NAVY }}>
-            + {honoraires.toLocaleString('fr-FR')} €
-            {type === 'fixe' && base > 0 && <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 12.5 }}> ({pctEq.toFixed(1)} %)</span>}
-          </span>
-        </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 13 }}>
+              <span>Soit</span>
+              <span style={{ fontWeight: 700, color: NAVY }}>
+                {`+ ${honoraires.toLocaleString('fr-FR')} €`}
+                {type === 'fixe' && base > 0 && <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 12.5 }}>{` (${pctEq.toFixed(1)} %)`}</span>}
+              </span>
+            </div>
+          </>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: `2px solid ${BORD}` }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
           <span style={{ fontSize: 26, fontWeight: 800, color: OR, letterSpacing: -.6 }}>{total.toLocaleString('fr-FR')} €</span>
         </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>tout compris, honoraires de chasse inclus</div>
+        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>{agence ? 'tout compris, honoraires de l’agence inclus' : 'tout compris, honoraires de chasse inclus'}</div>
       </div>
 
       <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -2252,11 +2278,17 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   const n = biens.length;
 
   const ligneDe = (id: string) => lignes.find(l => l.id === id) || { id, ...pourTous };
+  /* V3.50 : un mandat de l'agence garde son prix, honoraires de l'agence
+     compris — pas d'honoraires de chasse par-dessus (voir ModaleEnvoi). */
   const calc = (b: any) => {
     const l = ligneDe(b.id);
     const base = Number(b.prix_vendeur) || 0;
+    if (b?.bien_vente_id) {
+      const total = Number(b.prix_acquereur) || base;
+      return { l, base, h: Math.max(0, total - base), total, v: 0, agence: true };
+    }
     const h = montantHonoraires(base, l.type, l.valeur);
-    return { l, base, h, total: base + h, v: parseFloat(String(l.valeur).replace(',', '.')) || 0 };
+    return { l, base, h, total: base + h, v: parseFloat(String(l.valeur).replace(',', '.')) || 0, agence: false };
   };
   const toutAppliquer = (type: TypeHono, valeur: string) => {
     setTypeG(type); setValG(valeur);
@@ -2264,16 +2296,19 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   };
   const changerLigne = (id: string, m: Partial<LigneHono>) => setLignes(ls => ls.map(l => (l.id === id ? { ...l, ...m } : l)));
   const vG = parseFloat(String(valG).replace(',', '.')) || 0;
-  const surMandat = !!mandat && lignes.every(l => l.type === mandat.type && (parseFloat(String(l.valeur).replace(',', '.')) || 0) === mandat.val);
+  const surMandat = !!mandat && lignes.filter(l => !biens.find(b => b.id === l.id)?.bien_vente_id)
+    .every(l => l.type === mandat.type && (parseFloat(String(l.valeur).replace(',', '.')) || 0) === mandat.val);
 
   /* Les prix d'abord : c'est ce que le mail et l'espace afficheront. */
   function champsPrix(b: any) {
-    const { l, base, total, v } = calc(b);
+    const { l, base, total, v, agence } = calc(b);
+    if (agence) return {};   // le prix de l'agence ne se réécrit pas (V3.50)
     return { commission_type: l.type, commission_val: v, ...(base > 0 ? { prix_acquereur: total } : {}) };
   }
 
   async function enregistrerPrix(): Promise<boolean> {
     for (const b of biens) {
+      if (b?.bien_vente_id) continue;
       const { error } = await supabase.from('biens').update(champsPrix(b)).eq('id', b.id);
       if (error) { alert(`Les honoraires de « ${b.titre || 'un bien'} » n'ont pas pu être enregistrés.\n\n${error.message}`); return false; }
     }
@@ -2287,7 +2322,7 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
     const nomCanal = canal === 'whatsapp' ? 'WhatsApp' : 'lien';
     let journalRate = '';
     for (const b of biens) {
-      const { base, h, total } = calc(b);
+      const { base, h, total, agence } = calc(b);
       const { error } = await supabase.from('biens').update({
         ...champsPrix(b), etape: 'presente', envoye_le: quand, canal_envoi: canal, badge_retour: 'propose',
       }).eq('id', b.id);
@@ -2295,7 +2330,7 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
       const { error: ej } = await supabase.from('journal').insert({
         client_id: clientId, bien_id: b.id, recherche_id: b.recherche_id, type: 'envoi_bien',
         titre: `Envoyé au client · ${nomCanal} · avec ${n - 1} autre${n > 2 ? 's' : ''}`,
-        description: base > 0 ? `Prix présenté ${total.toLocaleString('fr-FR')} € — dont ${h.toLocaleString('fr-FR')} € d'honoraires de chasse` : null,
+        description: base > 0 ? `Prix présenté ${total.toLocaleString('fr-FR')} €${h > 0 || !agence ? ` — dont ${h.toLocaleString('fr-FR')} € d'honoraires ${agence ? 'de l’agence' : 'de chasse'}` : ''}` : null,
         metadata: {},
       });
       if (ej) journalRate = ej.message;
@@ -2433,8 +2468,8 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
 
       <div style={{ padding: '6px 24px 4px' }}>
         {biens.map((b, i) => {
-          const { l, base, h, total } = calc(b);
-          const aPart = l.type !== typeG || (parseFloat(String(l.valeur).replace(',', '.')) || 0) !== vG;
+          const { l, base, h, total, agence } = calc(b);
+          const aPart = !agence && (l.type !== typeG || (parseFloat(String(l.valeur).replace(',', '.')) || 0) !== vG);
           return (
             <div key={b.id} className="emi-hono-ligne" style={{
               display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '11px 0',
@@ -2448,11 +2483,14 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
                   {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
                 </span>
                 <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                  {base > 0 ? `Annonce ${base.toLocaleString('fr-FR')} € · + ${h.toLocaleString('fr-FR')} €` : 'Prix de l’annonce manquant'}
+                  {agence
+                    ? 'Mandat de l’agence · honoraires de l’agence compris'
+                    : base > 0 ? `Annonce ${base.toLocaleString('fr-FR')} € · + ${h.toLocaleString('fr-FR')} €` : 'Prix de l’annonce manquant'}
                   {aPart ? ' · à part' : ''}
                 </span>
               </span>
               <span className="emi-hono-droite" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' }}>
+                {!agence && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <input type="number" step={l.type === 'pourcentage' ? '0.1' : '500'} min="0" value={l.valeur}
                     onChange={e => changerLigne(b.id, { valeur: e.target.value })}
@@ -2463,9 +2501,10 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
                     {bascule(l.type === 'fixe', () => changerLigne(b.id, { type: 'fixe', valeur: defautPour('fixe') }), '€', true)}
                   </span>
                 </span>
+                )}
                 <span style={{ textAlign: 'right', minWidth: 104 }}>
                   <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
-                  <span style={{ display: 'block', fontSize: 16, fontWeight: 800, color: OR, letterSpacing: -.3 }}>{base > 0 ? `${total.toLocaleString('fr-FR')} €` : '—'}</span>
+                  <span style={{ display: 'block', fontSize: 16, fontWeight: 800, color: OR, letterSpacing: -.3 }}>{(agence ? total : base) > 0 ? `${total.toLocaleString('fr-FR')} €` : '—'}</span>
                 </span>
               </span>
             </div>

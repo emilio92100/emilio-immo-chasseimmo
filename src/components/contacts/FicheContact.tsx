@@ -11,7 +11,7 @@ import {
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
 import FicheClient, { Coordonnees, type Coord } from '@/components/fiche/FicheClient';
-import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne } from './ChampsContact';
+import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne, arreterRecherches, controlerTypes } from './ChampsContact';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import FriseSuivi from '@/components/fiche/FriseSuivi';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
@@ -22,7 +22,8 @@ import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
-import { demanderNouveauBien, demanderOngletBien } from '@/lib/intentions';
+import { demanderNouveauBien, demanderOngletBien, signalerMaj } from '@/lib/intentions';
+import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { libelleVisites } from '@/lib/visites';
 import c from './Contacts.module.css';
@@ -44,13 +45,30 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
      relit la ligne entière avant de choisir. */
   const partiel = !client.created_at;
   const [plein, setPlein] = useState<Client | null>(null);
+  /* V3.50 : un contact supprimé pendant que la recherche du haut le gardait
+     en mémoire tournait sur « Chargement de la fiche… » pour toujours. On le
+     dit, la recherche du haut se recharge et la barre du bas l'oublie. */
+  const [manque, setManque] = useState<{ id: string; erreur: string | null } | null>(null);
   useEffect(() => {
     if (!partiel) return;
     let vivant = true;
-    supabase.from('clients').select('*').eq('id', client.id).maybeSingle().then(({ data }) => { if (vivant && data) setPlein(data as Client); });
+    supabase.from('clients').select('*').eq('id', client.id).maybeSingle().then(({ data, error }) => {
+      if (!vivant) return;
+      if (data) { setPlein(data as Client); return; }
+      setManque({ id: client.id, erreur: error ? error.message : null });
+      if (!error) { signalerMaj(); retirerFicheOuverte('contact', client.id); }
+    });
     return () => { vivant = false; };
   }, [client.id, partiel]);
   const x = partiel ? (plein?.id === client.id ? plein : null) : client;
+  if (!x && manque?.id === client.id) {
+    return (
+      <div style={{ padding: '40px 24px', color: '#64748b', fontSize: 14, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 14 }}>
+        <span>{manque.erreur ? `La fiche n’a pas pu être lue : ${manque.erreur}` : 'Ce contact n’existe plus : il a été supprimé.'}</span>
+        <button type="button" className={c.btn} onClick={onBack}><Ic n="retour" t={15} />Revenir aux contacts</button>
+      </div>
+    );
+  }
   if (!x) return <div style={{ padding: '40px 24px', color: '#64748b', fontSize: 14 }}>Chargement de la fiche…</div>;
   return estAcheteur(x)
     ? <FicheClient client={x} onBack={onBack} onNavigate={onNavigate} />
@@ -122,8 +140,8 @@ const pl = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieu
    une ligne discrète. Les biens d'un vendeur ont leur propre rang, sur toute
    la largeur du bandeau (BiensHero) : la colonne de gauche reste à la
    hauteur des coordonnées, et rien ne reste vide à droite ni en bas. */
-function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien, onSuivi }: {
-  proprio: boolean; biens: BienHero[] | null; vente: ActiviteVente;
+function ActiviteHero({ proprio, biens, archives = 0, vente, journal, relances, creeLe, onBien, onSuivi }: {
+  proprio: boolean; biens: BienHero[] | null; archives?: number; vente: ActiviteVente;
   journal: { type: string; created_at: string }[]; relances: { date_echeance: string; note: string | null }[];
   creeLe: string | null | undefined; onBien: (id: string, onglet?: string) => void; onSuivi: () => void;
 }) {
@@ -143,7 +161,9 @@ function ActiviteHero({ proprio, biens, vente, journal, relances, creeLe, onBien
     if (concernes.length === 1) onBien(concernes[0].id, avantMandat(concernes[0].etape) ? undefined : 'visites');
     else versListe();
   };
-  const sousBiens = !liste.length ? 'pas encore de bien'
+  /* V3.50 : les biens archivés ne comptent pas (comme « Ses biens » et la
+     liste des contacts) ; on dit seulement qu'il y en a. */
+  const sousBiens = !liste.length ? (archives ? `${archives} archivé${archives > 1 ? 's' : ''}` : 'pas encore de bien')
     : liste.length === 1 ? etapeDe(liste[0].etape).lib
     : enVente === liste.length ? 'tous en vente'
     : enVente ? `dont ${enVente} en vente` : 'aucun en vente pour l’instant';
@@ -261,6 +281,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
 
   /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32). */
   const [biensH, setBiensH] = useState<BienHero[] | null>(null);
+  const [nbArchives, setNbArchives] = useState(0);
   const [vo, setVo] = useState<ActiviteVente>(VENTE_VIDE);
   useEffect(() => {
     let vivant = true;
@@ -269,6 +290,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       if (!vivant) return;
       const l = (error ? [] : data || []) as (BienHero & { archive?: boolean | null })[];
       setBiensH(l.filter(b => !b.archive));
+      setNbArchives(l.filter(b => b.archive).length);
       if (!l.length) return;
       const { data: sv } = await supabase.from('biens_vente_suivi').select('bien_id, type, statut, le').in('bien_id', l.map(b => b.id)).in('type', ['visite', 'offre']);
       if (!vivant) return;
@@ -325,6 +347,11 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     const couple = edit.couple && !estPro(edit.types);
     if (couple && !edit.c2_prenom.trim() && !edit.c2_nom.trim()) { setErreur('Écris au moins le prénom ou le nom de la personne 2.'); return; }
     setOccupe(true);
+    /* V3.50 : « Vendeur » ne s'enlève pas à qui a un bien en vente ;
+       « Acheteur » enlevé arrête ses recherches (voir controlerTypes). */
+    setErreur('');
+    const ctl = await controlerTypes(x.id, typesDe(x), edit.types, x.prenom);
+    if (ctl.erreur !== null) { setOccupe(false); if (ctl.erreur) setErreur(ctl.erreur); return; }
     /* Les colonnes du couple ne s'écrivent que si elles servent : avant le SQL
        « signature-plusieurs », elles n'existent pas. */
     const foyer = 'couple' in x || couple
@@ -341,6 +368,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       adresse: edit.adresse.trim() || null, pro: structurePropre(edit.pro), ...foyer,
     }, 'La fiche n’a pas pu être enregistrée');
     if (!r) { setOccupe(false); return; }
+    if (ctl.arreter) await arreterRecherches(x.id);
     /* La source s'écrit à part, et seulement si elle a changé : avant le SQL
        « source-contact », la colonne n'existe pas et le reste doit passer. */
     const avant = x as AvecSource;
@@ -367,12 +395,70 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     if (r) onNavigate('fiche', r);
   }
 
+  /* V3.50 : supprimer un contact qui n'est pas acheteur.
+     · Pas tant qu'il possède un bien ou un document : la base les garderait
+       sans propriétaire (« on delete set null »), un mandat en cours perdait
+       son vendeur sans un mot. On propose de l'archiver à la place.
+     · Pas s'il a encore un dossier d'achat (une recherche) : c'est la fiche
+       d'acheteur qui sait tout effacer proprement.
+     · Sinon : ses rendez-vous, ses relances, ses envois et son historique
+       d'abord, puis la fiche, en vérifiant qu'elle est bien partie ; la
+       recherche du haut et la barre des fiches ouvertes l'oublient. */
   async function supprimer() {
-    if (!confirm(`Supprimer ${nomFoyer(x)} de tes contacts ?\n\nC’est définitif. Pour le garder sans le voir, archive-le plutôt.`)) return;
-    setOccupe(true);
-    const { error } = await supabase.from('clients').delete().eq('id', x.id);
+    setOccupe(true); setErreur('');
+    const compter = async (table: string) => {
+      const { count, error } = await supabase.from(table).select('id', { count: 'exact', head: true }).eq('client_id', x.id);
+      /* Une table absente de ce projet (SQL pas passé) : rien ne s'y rattache. */
+      if (error && !/does not exist|schema cache/i.test(error.message)) throw new Error(error.message);
+      return error ? 0 : count || 0;
+    };
+    let nb: { biens: number; docs: number; recherches: number };
+    try {
+      const [biens, docs, recherches] = await Promise.all([compter('biens_vente'), compter('documents'), compter('recherches')]);
+      nb = { biens, docs, recherches };
+    } catch (e) {
+      setOccupe(false);
+      setErreur(`Le contact n’a pas pu être supprimé : ce qui lui est relié n’a pas pu être vérifié (${(e as Error).message}).`);
+      return;
+    }
+    if (nb.biens || nb.docs) {
+      setOccupe(false);
+      const relie = [nb.biens ? `${nb.biens} bien${nb.biens > 1 ? 's' : ''}` : '', nb.docs ? `${nb.docs} document${nb.docs > 1 ? 's' : ''}` : ''].filter(Boolean).join(' et ');
+      const pourquoi = `${x.prenom || 'Ce contact'} est relié à ${relie} : le supprimer les laisserait sans propriétaire. Archive-le plutôt.`;
+      if (archive) { alert(`${pourquoi}\n\nIl est déjà archivé : il n’apparaît plus dans la liste.`); return; }
+      if (confirm(`${pourquoi}\n\nL’archiver maintenant ?`)) await ecrire({ archive: true }, 'Le contact n’a pas pu être archivé');
+      return;
+    }
+    if (nb.recherches) {
+      setOccupe(false);
+      alert(`${x.prenom || 'Ce contact'} a encore ${nb.recherches > 1 ? `${nb.recherches} recherches` : 'une recherche'} d’achat. Pour tout effacer proprement, redonne-lui le type « Acheteur » et supprime-le depuis sa fiche d’acheteur. Ou archive-le.`);
+      return;
+    }
+    if (!confirm(`Supprimer ${nomFoyer(x)} de tes contacts ?\n\nC’est définitif : son historique et ses relances partent avec lui. Pour le garder sans le voir, archive-le plutôt.`)) { setOccupe(false); return; }
+    /* Ce qui pointe vers lui d'abord : un rendez-vous peut pointer vers une
+       relance, il part avant elle. */
+    const etapes: { quoi: string; faire: () => PromiseLike<{ error: { message: string } | null }> }[] = [
+      { quoi: 'ses rendez-vous', faire: () => supabase.from('rendez_vous').delete().eq('client_id', x.id) },
+      { quoi: 'ses relances', faire: () => supabase.from('relances').delete().eq('client_id', x.id) },
+      { quoi: 'ses envois', faire: () => supabase.from('envois').delete().eq('client_id', x.id) },
+      { quoi: 'son historique', faire: () => supabase.from('journal').delete().eq('client_id', x.id) },
+    ];
+    for (const e of etapes) {
+      const { error } = await e.faire();
+      if (error && !/does not exist|schema cache/i.test(error.message)) {
+        setOccupe(false);
+        setErreur(`La suppression s’est arrêtée sur ${e.quoi} : ${error.message}. La fiche, elle, est toujours là.`);
+        recharger();
+        return;
+      }
+    }
+    const { data: partie, error } = await supabase.from('clients').delete().eq('id', x.id).select('id');
     setOccupe(false);
-    if (error) { setErreur('Le contact n’a pas pu être supprimé : ' + error.message + (/foreign key|violates/i.test(error.message) ? ' (il est encore relié à un bien ou à un dossier).' : '')); return; }
+    if (error) { setErreur('Le contact n’a pas pu être supprimé : ' + error.message + (/foreign key|violates/i.test(error.message) ? ' (il est encore relié à un bien ou à un dossier).' : '')); recharger(); return; }
+    /* La base fermée refuse parfois sans erreur : rien n'est parti. */
+    if (!partie?.length) { setErreur('Le contact n’a pas été supprimé : la base n’a rien effacé. La session a peut-être expiré : recharge la page, puis recommence.'); recharger(); return; }
+    signalerMaj();
+    retirerFicheOuverte('contact', x.id);
     onBack();
   }
 
@@ -450,7 +536,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             )}
           </div>
         </div>
-        <ActiviteHero proprio={proprio} biens={biensH} vente={vo}
+        <ActiviteHero proprio={proprio} biens={biensH} archives={nbArchives} vente={vo}
           journal={journal} relances={relances} creeLe={x.created_at} onBien={ouvrirBien}
           onSuivi={() => document.getElementById('suivi-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         </div>

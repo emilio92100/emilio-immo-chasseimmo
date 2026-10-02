@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
-import { estAcheteur, typeDe, typesDe } from '@/lib/contacts';
+import { estAcheteur, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
+import { conjointDe } from '@/lib/foyer';
 
 /* Minuscules, sans accents ni ponctuation : « Rue de l'Église » → « rue de l eglise ». */
 function sansAccent(t: string) {
@@ -22,22 +23,34 @@ function chercher(ix: { clients: any[] }, mots: string[]) {
   if (!mots.length) return [];
   const contient = (champ: string, m: string) => champ.includes(m) || (/^\d{2,}$/.test(m) && chiffres(champ).includes(m));
   const clients = ix.clients.map((c: any) => {
+    /* V3.50 : comme la page Contacts, on cherche aussi la personne 2 d'un
+       couple (son nom, son mail, son téléphone) et ce qui est propre au
+       métier : l'étude d'un notaire, l'agence d'un confrère, la société… */
+    const j = c.couple ? conjointDe(c.conjoint) : null;
+    const p = lirePro(c.pro);
+    const mails: string[] = [...(c.emails || []), j?.email].filter(Boolean);
+    const tels: string[] = [...(c.telephones || []), j?.telephone].filter(Boolean);
+    const metier = [p.etude, p.agence, p.reseau, p.societe, p.metier, p.immeuble, lireStructure(p.structure)?.denomination].filter((x): x is string => typeof x === 'string' && !!x.trim());
     const champs: [string, string][] = [
       ['nom', sansAccent(`${c.prenom || ''} ${c.nom || ''} ${c.reference || ''}`)],
+      ['conjoint', sansAccent(j ? `${j.prenom || ''} ${j.nom || ''}` : '')],
+      ['pro', sansAccent(metier.join(' '))],
       ['adresse', sansAccent(c.adresse || '')],
       ['bien', sansAccent(c.bien_actuel_adresse || '')],
-      ['mail', sansAccent((c.emails || []).join(' '))],
-      ['tel', (c.telephones || []).join(' ')],
+      ['mail', sansAccent(mails.join(' '))],
+      ['tel', tels.join(' ')],
     ];
     const tout = champs.map(x => x[1]).join(' ');
     if (!mots.every(m => contient(tout, m))) return null;
     let raison = '';
     if (!mots.every(m => contient(champs[0][1], m))) {
       const trouve = champs.slice(1).find(([, v]) => mots.some(m => contient(v, m)));
-      if (trouve?.[0] === 'adresse') raison = `📍 ${c.adresse}`;
+      if (trouve?.[0] === 'conjoint') raison = `👥 ${`${j?.prenom || ''} ${j?.nom || ''}`.trim()}`;
+      else if (trouve?.[0] === 'pro') raison = `🏢 ${metier.find(x => mots.some(m => contient(sansAccent(x), m))) || metier[0] || ''}`;
+      else if (trouve?.[0] === 'adresse') raison = `📍 ${c.adresse}`;
       else if (trouve?.[0] === 'bien') raison = `📍 ${c.bien_actuel_adresse}`;
-      else if (trouve?.[0] === 'mail') raison = `✉️ ${(c.emails || []).find((e: string) => mots.some(m => sansAccent(e).includes(m))) || ''}`;
-      else if (trouve?.[0] === 'tel') raison = `📞 ${(c.telephones || []).find((t: string) => mots.some(m => chiffres(t).includes(chiffres(m)) && chiffres(m).length > 1)) || ''}`;
+      else if (trouve?.[0] === 'mail') raison = `✉️ ${mails.find((e: string) => mots.some(m => sansAccent(e).includes(m))) || ''}`;
+      else if (trouve?.[0] === 'tel') raison = `📞 ${tels.find((t: string) => mots.some(m => chiffres(t).includes(chiffres(m)) && chiffres(m).length > 1)) || ''}`;
     }
     return { genre: 'client', c, raison };
   }).filter(Boolean).slice(0, 8) as any[];
@@ -58,6 +71,25 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
   const [open, setOpen] = useState(false);
   const [relancesCount, setRelancesCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const champ = useRef<HTMLInputElement>(null);
+
+  /* V3.50 : le « ⌘K » affiché ne faisait rien. Cmd+K (Mac) ou Ctrl+K
+     (Windows) met maintenant le curseur dans la recherche, de n'importe quel
+     écran. Le rappel dit la bonne touche selon l'ordinateur. */
+  const raccourci = useSyncExternalStore(() => () => {}, () => (/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'), () => '⌘K');
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      /* Déjà pris ailleurs (Ctrl + K = « Ajouter un lien » dans Nouveau mail). */
+      if (e.defaultPrevented) return;
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        champ.current?.focus();
+        champ.current?.select();
+      }
+    };
+    window.addEventListener('keydown', touche);
+    return () => window.removeEventListener('keydown', touche);
+  }, []);
 
   /* Comme la barre latérale : on n'annonce que les relances dues, en retard
      ou du jour. Celles à venir attendent sagement dans leur page. */
@@ -192,6 +224,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
         <span className={styles.searchIco}>🔍</span>
         <span className={styles.searchPicto}><Icone nom="loupe" taille={17} epaisseur={2} /></span>
         <input
+          ref={champ}
           type="text"
           enterKeyHint="search"
           placeholder="Rechercher un contact, référence EMI..."
@@ -201,7 +234,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           onFocus={() => { if (results.length > 0) setOpen(true); }}
         />
         {query && <button onClick={() => { setQuery(''); setResults([]); setOpen(false); }} className={styles.clearBtn}>✕</button>}
-        {!query && <span className={styles.searchHint}>⌘K</span>}
+        {!query && <span className={styles.searchHint} title={`${raccourci === '⌘K' ? 'Cmd' : 'Ctrl'} + K pour chercher depuis n’importe quel écran`}>{raccourci}</span>}
 
         {/* DROPDOWN RÉSULTATS */}
         {open && (

@@ -8,7 +8,7 @@ import {
   adresseUtile, assezPrecis, cleAdresse, composerAdresse, garderPositions, geocoder, lienItineraire,
   placerAdresses, CENTRE, type Position,
 } from '@/lib/carte';
-import { TYPES_CONTACT, estArchive, estPro, lirePro, typeDe, typesDe } from '@/lib/contacts';
+import { TYPES_CONTACT, estArchive, estPro, lirePro, reventePossible, typeDe, typesDe } from '@/lib/contacts';
 import { etapeDe, nomProprio, type Donnees } from '@/lib/biens-vente';
 import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
@@ -70,8 +70,11 @@ type Place = Point & { lat: number; lng: number };
 type Cat = { k: string; lib: string; c: string; ic: string; etapes?: string[]; eteint?: boolean };
 /* Le petit message du bas de la carte : une phrase, ou un titre et une phrase. */
 type Msg = string | { titre?: string; texte: string };
+/* V3.50 : « Vendeurs signés » a sa pastille. Avant, il n'en avait pas : il
+   tombait dans « Propriétaires » (la création coche « propriétaire »), ou
+   n'était sur aucune carte du tout. */
 const CATS_CONTACTS: Cat[] = [
-  ...(['acheteur', 'vendeur', 'proprietaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
+  ...(['acheteur', 'vendeur', 'vendeur_signe', 'proprietaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
   { k: 'vente_possible', lib: 'Reventes possibles', c: '#a07c28', ic: 'maison' },
   ...(['notaire', 'confrere', 'gardien', 'partenaire'] as const).map(k => ({ k, lib: typeDe(k).pluriel, c: typeDe(k).c, ic: typeDe(k).ic })),
 ];
@@ -118,8 +121,14 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
     const t = typesDe(c);
     const p = lirePro(c.pro);
     const cats: string[] = [...t];
-    if (c.statut_occupation === 'proprietaire' && !cats.includes('proprietaire')) cats.push('proprietaire');
-    if (c.bien_actuel_a_vendre) cats.push('vente_possible');
+    /* Un vendeur signé n'est rangé que là : « propriétaire » (cochée d'office
+       à sa création) et « revente possible » (restée d'avant sa vente) ne
+       disent plus rien de lui (V3.50). Son type « Propriétaire », s'il l'a,
+       compte toujours. */
+    const signe = t.includes('vendeur_signe');
+    const revente = reventePossible(c);
+    if (c.statut_occupation === 'proprietaire' && !signe && !cats.includes('proprietaire')) cats.push('proprietaire');
+    if (revente) cats.push('vente_possible');
     const perso = typeof c.adresse === 'string' ? c.adresse : '';
     const adrPro = t.includes('notaire') ? p.adresseEtude : t.includes('confrere') ? p.adresseAgence : t.includes('gardien') ? p.immeuble : '';
     /* Un professionnel se trouve à son étude, à son agence, à son
@@ -131,7 +140,9 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
     const teinte: Teinte = t.includes('acheteur')
       ? TEINTE_STATUT[String(c.statut || 'actif')] || TEINTE_STATUT.actif
       : { bg: principal.fond, fg: principal.c };
-    const bienAilleurs = typeof c.bien_actuel_adresse === 'string' && adresseUtile(c.bien_actuel_adresse)
+    /* Son bien actuel, ailleurs : pas pour un vendeur signé (c'est celui qu'il
+       a vendu), sauf s'il est aussi « Propriétaire » (V3.50). */
+    const bienAilleurs = (!signe || t.includes('proprietaire')) && typeof c.bien_actuel_adresse === 'string' && adresseUtile(c.bien_actuel_adresse)
       && cleAdresse(c.bien_actuel_adresse) !== cleAdresse(adresse) ? c.bien_actuel_adresse : '';
     let catsPrincipal = cats;
     if (bienAilleurs) {
@@ -139,9 +150,9 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
       if (!duBien.length) duBien.push('proprietaire');
       points.push({
         id: `c:${c.id}:bien`, genre: 'contact', perso: true, ref: String(c.id), cats: duBien,
-        couleur: c.bien_actuel_a_vendre ? '#a07c28' : typeDe('proprietaire').c, fond: c.bien_actuel_a_vendre ? '#fbf6e9' : typeDe('proprietaire').fond,
-        titre: nom, sous: `${c.bien_actuel_a_vendre ? 'Son bien, à revendre' : 'Son bien'} · ${rue(bienAilleurs)}`,
-        etiquette: c.bien_actuel_a_vendre ? 'Revente possible' : 'Son bien', adresse: bienAilleurs, cle: cleAdresse(bienAilleurs), tel, client: c,
+        couleur: revente ? '#a07c28' : typeDe('proprietaire').c, fond: revente ? '#fbf6e9' : typeDe('proprietaire').fond,
+        titre: nom, sous: `${revente ? 'Son bien, à revendre' : 'Son bien'} · ${rue(bienAilleurs)}`,
+        etiquette: revente ? 'Revente possible' : 'Son bien', adresse: bienAilleurs, cle: cleAdresse(bienAilleurs), tel, client: c,
       });
       catsPrincipal = cats.filter(k => k !== 'vente_possible' && (k !== 'proprietaire' || t.includes('proprietaire')));
       if (!catsPrincipal.length) catsPrincipal = ['proprietaire'];
@@ -563,6 +574,10 @@ export default function PageCarte({ onNavigate, onMenu }: {
         cadre.current = true;
         m.jumpTo({ center: [p.lng, p.lat], zoom: 13.2 });
         setTimeout(() => {
+          /* V3.50 : « Voir sur la carte » sur un bien vendu (éteint d'office)
+             ou une catégorie qu'on a éteinte : on l'allume, pour cette
+             visite seulement, sinon la carte volait vers un repère absent. */
+          setActifs(a => (p.cats.some(k => a[k]) ? a : { ...a, [p.cats[0]]: true }));
           m.flyTo({ center: [p.lng, p.lat], zoom: 16.2, duration: 1500, essential: true, offset: DECALAGE(tel, ouverts) });
           m.once('moveend', () => setSel(p.id));
         }, 250);

@@ -59,8 +59,9 @@ export async function bienDuMandat(sb: SupabaseClient, doc: DocMandat): Promise<
 }
 
 /* Le prix suit chez les acheteurs qui ont reçu le bien (comme
-   repercuterPrix, biens/outils.ts). Rend un message, ou null. */
-async function prixChezAcheteurs(sb: SupabaseClient, bienId: string, avant: Donnees, apres: Donnees): Promise<string | null> {
+   repercuterPrix, biens/outils.ts). Rend un message, ou null. Exporté en
+   V3.50 pour l'avenant signé (documents-avenant-bien.ts). */
+export async function prixChezAcheteurs(sb: SupabaseClient, bienId: string, avant: Donnees, apres: Donnees): Promise<string | null> {
   const p = prixCopie(apres);
   if (JSON.stringify(prixCopie(avant)) === JSON.stringify(p)) return null;
   const { error } = await sb.from('biens').update(p).eq('bien_vente_id', bienId);
@@ -110,7 +111,15 @@ export async function mandatSigneSurBien(sb: SupabaseClient, doc: DocMandat, jou
     ? { bien_id: b.id, type: 'etape', statut: 'mandat', le: maintenant, donnees: { de: b.etape, ...infos } }
     : { bien_id: b.id, type: 'note', le: maintenant, donnees: infos,
       commentaire: `Mandat ${NOM_TYPE[type]}${numero ? ` n° ${numero}` : ''} signé le ${jourFr}, noté depuis Documents.` });
-  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, bd, d)].filter(Boolean);
+  /* V3.50 : le mandat est signé, les relances de l'estimation (« faire le
+     point » après l'avis, « recontacter ») n'ont plus d'objet. */
+  let eRel: string | null = null;
+  const relances = ['relanceAvis', 'relanceReprise'].map(k => txt(bd, k)).filter(Boolean);
+  if (relances.length) {
+    const r = await sb.from('relances').update({ statut: 'cloturee' }).in('id', relances).eq('statut', 'en_attente');
+    if (r.error) eRel = 'les relances de l’estimation : ' + r.error.message;
+  }
+  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, bd, d), eRel].filter(Boolean);
   return pbs.length ? `Le mandat est signé et noté sur la fiche du bien, mais ${pbs.join(' ; ')}.` : null;
 }
 
