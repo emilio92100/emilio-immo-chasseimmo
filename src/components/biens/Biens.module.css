@@ -1335,3 +1335,42 @@ button.pillRouge svg { color: white !important; }
 .brouillonL { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 7px 0 0 26px; border-top: 1px solid #e8edf3; }
 .brouillonL > span { flex: 1 1 220px; min-width: 0; }
 .brouillonL b { color: var(--emilio); }
+
+/* ── V3.53 : le propriétaire, à cheval sur le haut du bandeau (PastilleProprio) ──
+   Comme les rubriques à cheval sur le bas : la pastille sort du bleu, moitié
+   dessus, moitié dessous, alignée sur la photo. Sa hauteur (46 px) et l'écart
+   de la fiche (16 px) donnent la marge du bas : −(16 + 46/2) = −39 px, et le
+   bandeau descend d'autant sous elle. Sur téléphone, mêmes calculs (44 px,
+   écart 12 px). Le panneau s'ouvre dessous, par-dessus le bandeau. */
+.proprioCheval { position: relative; z-index: 3; align-self: flex-start; max-width: calc(100% - 40px); margin: -4px 0 -39px 20px; }
+.proprioCheval + .hero { padding-top: 40px; }
+.pProprio { position: relative; min-width: 0; }
+.pProprioBtn { display: inline-flex; align-items: center; gap: 10px; height: 46px; max-width: 360px; padding: 0 14px 0 6px; border-radius: 99px; border: 1.5px solid #e3c872; background: #fff; color: #a07c28; cursor: pointer; box-shadow: 0 12px 26px -12px rgba(26, 35, 50, .5), 0 2px 6px rgba(26, 35, 50, .08); font-family: 'DM Sans', sans-serif; }
+.pProprioBtn:hover { border-color: #c9a84c; background: #fffdf7; }
+.pProprioBtn[aria-expanded='true'] { border-color: #c9a84c; background: #fffdf7; }
+.pProprioTx { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; text-align: left; }
+.pProprioTx small { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #a07c28; }
+.pProprioTx b { font-size: 14.5px; color: #1a2332; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pProprioVide { border-style: dashed; padding-left: 7px; }
+.pProprioIcVide { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #faf5e6; color: #a07c28; }
+.pProprioPan { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; width: min(320px, calc(100vw - 24px)); padding: 14px; border-radius: 16px; background: #fff; border: 1px solid #e3e8f0; box-shadow: 0 18px 44px rgba(15, 23, 42, .18); display: flex; flex-direction: column; gap: 12px; animation: menuEntre .14s ease; }
+.pProprioQui { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.pProprioQui > div { min-width: 0; }
+.pProprioQui b { display: block; font-size: 15px; color: #1a2332; }
+.pProprioQui small { display: block; font-size: 12.5px; line-height: 1.4; color: #64748b; }
+.pProprioCo { display: flex; flex-direction: column; gap: 5px; padding: 9px 11px; border-radius: 12px; background: #f8fafc; border: 1px solid #eef1f6; }
+.pProprioCo a { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; font-weight: 600; color: #2e4166; text-decoration: none; }
+.pProprioCo a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pProprioCo a svg { color: #a07c28; }
+.pProprioRien { margin: 0; font-size: 13px; color: #94a3b8; }
+.pProprioBtns { display: flex; gap: 6px; }
+.pProprioAct { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 8px; border-radius: 11px; border: 1px solid #e3e8f0; background: #fff; color: #1a2332; font: 700 13px 'DM Sans', sans-serif; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.pProprioAct:hover { background: #f8fafc; }
+@media (max-width: 760px) {
+  .proprioCheval { max-width: calc(100% - 24px); margin: -2px 0 -34px 12px; }
+  .proprioCheval + .hero { padding-top: 34px; }
+  .pProprioBtn { height: 44px; max-width: 100%; }
+  /* Le panneau couvre la largeur du contenu du bandeau, bord à bord. */
+  .pProprioPan { width: calc(100vw - 48px); }
+  .pProprioAct { height: 42px; }
+}

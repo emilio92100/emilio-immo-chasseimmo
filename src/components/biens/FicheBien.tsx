@@ -37,6 +37,7 @@ import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
 import { DossierBien, type DestPropose } from './DossierBien';
+import { PastilleProprio } from './PastilleProprio';
 import { OngletVisitesOffres } from './VisitesOffres';
 import { FenPointVendeur } from './PointVendeur';
 import Depliant from '@/components/shared/Depliant';
@@ -1788,6 +1789,13 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             </div>
           )}
         </div>
+      </div>
+
+      {/* V3.53 : à qui est ce bien, sur tous les onglets. La pastille est à
+          cheval sur le haut du bandeau, comme les rubriques sur le bas. */}
+      <div className={b.proprioCheval}>
+        <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} tel={telP} mail={mailP}
+          onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')} onApres={() => { void apres(); }} />
       </div>
 
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}

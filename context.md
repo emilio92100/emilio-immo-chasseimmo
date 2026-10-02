@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.51 · 2 octobre 2026**
+**Version 3.53 · 2 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,25 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.53 — 2 octobre 2026 · le propriétaire à cheval sur le haut du bandeau d'un bien
+
+Rien à passer dans Supabase.
+
+Alexandre : « le propriétaire, il est en bas, c'est un bloc en bas ; qu'on voie à qui appartient ce
+logement, qu'on soit dans Photos, Surfaces… ». Trois maquettes ; la 3 retenue (« la barre du haut
+qui indique le propriétaire, j'aime bien »), puis : « qu'il empiète sur le bloc bleu, vers le haut,
+que ce soit plus visible ». `PastilleProprio` (`src/components/biens/`) : sur tous les onglets, une
+pastille « Propriétaire · <nom> » (« Propriétaires » pour un couple, la mallette pour une SCI),
+bordée d'or, posée à cheval sur le haut du bandeau bleu, alignée sur la photo — comme les rubriques
+à cheval sur le bas. FicheBien la met dans `.proprioCheval`, juste avant le bandeau ; la marge
+du bas vaut −(écart de la fiche + moitié de la pastille), et `.proprioCheval + .hero` descend le
+contenu du bandeau d'autant. Un clic ouvre un panneau : son rôle (gérant de la SCI…), son
+motif, téléphone et e-mail cliquables, et « Appeler », « Écrire » (la fenêtre de Nouveau mail,
+`FenetreMail`, quand sa fiche a une adresse ; sinon la messagerie de l'ordinateur), « Sa fiche » (ou
+« Relier une fiche »). Sans propriétaire : « À renseigner », qui ouvre l'éditeur sur le propriétaire.
+Échap ou un clic à côté referment. Sur téléphone, même place (un nom trop long finit en « … »), et
+le panneau prend la largeur du bandeau. La carte « Le propriétaire » de la Vue d'ensemble reste.
 
 ### V3.52 — 2 octobre 2026 · le mandat de vente : une précision sous les honoraires, les textes libres en paragraphes
 
