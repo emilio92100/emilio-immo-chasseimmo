@@ -30,7 +30,7 @@ import {
 } from '@/lib/mandat';
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import {
-  P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, plusMois, couper,
+  P, Pp, paragraphes, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, plusMois, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence, formulaireType, annexeL215,
   PERSONNE_VIDE, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
   ouiNon, IC_RYTHME, HONO_MODES, personneRegistre,
@@ -320,7 +320,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const entre: Bloc[] = [{ t: 'fiches', items: fiches }];
   const repr = d.qui === 'couple' && (d.represente === '0' || d.represente === '1') ? Number(d.represente) : -1;
   if (repr >= 0) entre.push(Pp(`${nomComplet(as[repr])} agit tant en son nom personnel qu’au nom de ${nomComplet(as[1 - repr])}, en vertu d’une procuration écrite annexée au présent mandat.`));
-  if (txt(d, 'noteAcquereurs')) entre.push(P(`Précision : ${txt(d, 'noteAcquereurs')}`));
+  entre.push(...paragraphes(txt(d, 'noteAcquereurs'), 'Précision : '));
 
   /* ── L'objet ── */
   const objet: Bloc[] = type === 'exclusif'
@@ -454,7 +454,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       ].join(' ; '),
     }),
   ] });
-  if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: [P(txt(d, 'clause'))] });
+  if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: paragraphes(txt(d, 'clause')) });
   const signataires = d.qui === 'sci' ? 1 : repr >= 0 ? 1 : as.length;
   sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
     papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(signataires + 1)} exemplaires originaux, dont un remis à chaque partie.`,
