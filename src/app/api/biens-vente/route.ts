@@ -198,6 +198,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, mode, envoyes, avertissements });
     }
 
+    /* ── Demander des documents au propriétaire (V3.51) ──
+       Alexandre : « je sélectionne ce que je souhaite, et il y a un texte
+       préfait : suite à nos échanges, voici les documents… ». Un mail sans
+       pièce jointe, noté dans l'historique du bien et le Suivi du contact. */
+    if (action === 'demander') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Bien inconnu');
+      const sujet = String(body.sujet || '').trim().slice(0, 200);
+      const message = String(body.message || '').trim().slice(0, 20_000);
+      if (!sujet) return ko('L’objet du mail est vide');
+      if (!message) return ko('Le message est vide');
+      const demandes = (Array.isArray(body.demandes) ? body.demandes : []).map(x => String(x).trim().slice(0, 160)).filter(Boolean).slice(0, 60);
+      if (!demandes.length) return ko('Aucun document choisi');
+      type Dest = { email: string; nom: string; clientId: string | null; rechercheId: string | null };
+      const dests: Dest[] = (Array.isArray(body.destinataires) ? body.destinataires : []).slice(0, 10).map((x: unknown) => {
+        const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return {
+          email: String(o.email || '').trim().toLowerCase(), nom: String(o.nom || '').trim().slice(0, 120),
+          clientId: UUID.test(String(o.clientId || '')) ? String(o.clientId) : null,
+          rechercheId: UUID.test(String(o.rechercheId || '')) ? String(o.rechercheId) : null,
+        };
+      }).filter((x: Dest, i: number, l: Dest[]) => MAIL.test(x.email) && l.findIndex(y => y.email === x.email) === i);
+      if (!dests.length) return ko('Aucune adresse e-mail valable');
+      const { data: bien, error: eBien } = await sb.from('biens_vente').select('id, titre').eq('id', id).maybeSingle();
+      if (eBien) return ko(eBien.message, 500);
+      if (!bien) return ko('Bien introuvable', 404);
+
+      const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2f3c52;max-width:600px">${message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('')}</div>`;
+      const envoyes: string[] = [];
+      const echecs: string[] = [];
+      for (const dst of dests) {
+        const err = await envoyerMail({ a: dst.email, nomA: dst.nom || undefined, sujet, texte: message, html, pj: [] });
+        if (err) echecs.push(`${dst.email} : ${err}`); else envoyes.push(dst.email);
+      }
+      if (!envoyes.length) return ko(`Le mail n’est pas parti. ${echecs.join(' · ')}`, 502);
+
+      const avertissements: string[] = [...echecs.map(e => `Pas parti à ${e}`)];
+      const partis = dests.filter(x => envoyes.includes(x.email));
+      const qui = partis.map(x => x.nom || x.email).join(', ');
+      await ecritServeur('L’historique du bien', sb.from('biens_vente_suivi').insert({
+        bien_id: id, type: 'envoi', qui, client_id: partis.find(x => x.clientId)?.clientId || null,
+        recherche_id: partis.find(x => x.rechercheId)?.rechercheId || null, commentaire: sujet,
+        donnees: { a: envoyes, demande: true, demandes },
+      }), avertissements);
+      for (const dst of partis.filter(x => x.clientId)) {
+        await ecritServeur('Le Suivi du contact', sb.from('journal').insert({
+          client_id: dst.clientId, recherche_id: dst.rechercheId, type: 'mail_envoye',
+          titre: `📋 Documents demandés — ${bien.titre || 'le bien'}`,
+          description: `À : ${dst.email}\nObjet : ${sujet}\n\n${message}`,
+        }), avertissements);
+      }
+      return NextResponse.json({ ok: true, envoyes, avertissements });
+    }
+
     return ko('Action inconnue');
   } catch (e) {
     return ko((e as Error).message || 'Erreur', 500);

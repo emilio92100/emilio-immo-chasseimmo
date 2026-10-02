@@ -348,9 +348,24 @@ function Vignette({ k }: { k: StyleMail }) {
   );
 }
 
-export default function PageMail({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+/* ── Le mail, depuis la page « Nouveau mail » ou depuis la fiche d'un contact ──
+   V3.51 : Alexandre, sur la fiche d'un contact : « un petit bouton envoyer un
+   mail […] ça affiche la trame de Nouveau mail, mais en restant sur la fiche,
+   comme ça je n'ai pas à remettre le nom ». `pour` : le contact déjà en
+   destinataire (et la recherche affichée, pour le Suivi d'un acheteur). */
+export type ContactMail = Contact;
+type PourMail = { contact: Contact; rechercheId?: string | null };
+const destDe = (c: Contact): Dest[] => (mailsDe(c).length ? [{ cle: `c-${c.id}`, contact: c, email: mailsDe(c)[0] }] : []);
+
+function Redaction({ pour = null, enFenetre = false, onNavigate, onFermer, onEnvoye, refSale }: {
+  pour?: PourMail | null; enFenetre?: boolean;
+  onNavigate?: (page: string, data?: unknown) => void;
+  onFermer?: () => void; onEnvoye?: () => void;
+  /* Vrai dès que quelque chose est écrit : la fenêtre demande avant de fermer. */
+  refSale?: React.MutableRefObject<boolean>;
+}) {
   const [contacts, setContacts] = useState<Contact[] | null>(null);
-  const [dests, setDests] = useState<Dest[]>([]);
+  const [dests, setDests] = useState<Dest[]>(() => (pour ? destDe(pour.contact) : []));
   const [objet, setObjet] = useState('');
   const [style, setStyle] = useState<StyleMail>('simple');
   const [html, setHtml] = useState('');
@@ -450,6 +465,8 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   const poids = piecesOk.reduce((t, p) => t + p.taille, 0);
   const enCours = pieces.some(p => p.etat === 'envoi');
   const corps = nettoyerHtml(html);
+  const sale = !resultat && (!!objet.trim() || pieces.length > 0 || (!!html && !htmlVide(corps) && html !== accueil(signature) && html !== accueil(signatureDe({}))));
+  useEffect(() => { if (refSale) refSale.current = sale; }, [refSale, sale]);
   const nbPersonnes = dests.length;
   const libEnvoyer = nbPersonnes === 1
     ? `Envoyer à ${dests[0].contact ? (dests[0].contact.prenom || nomDe(dests[0].contact)) : dests[0].email}`
@@ -482,6 +499,8 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
             action: 'envoyer', objet: objet.trim(), html: corps, style,
             contacts: dests.filter(d => d.contact).map(d => d.contact!.id),
             adresses: dests.filter(d => !d.contact).map(d => d.email),
+            /* Depuis la fiche d'un acheteur : son Suivi, dans la recherche affichée. */
+            ...(pour?.rechercheId ? { recherches: { [pour.contact.id]: pour.rechercheId } } : {}),
             pieces: piecesOk.map(p => ({ chemin: p.chemin, nom: p.nom })),
           }),
         });
@@ -497,6 +516,7 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
       if (j.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', j.avertissements.join(' ; '));
       setResultat({ envoyes: j.envoyes, echecs: j.echecs || [], avertissements: j.avertissements || [], mode: j.mode, incertains: j.incertains || [] });
       setApercu(false);
+      onEnvoye?.();
     } catch (e) {
       setErreur((e as Error).message);
       setApercu(false);
@@ -505,43 +525,35 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   }
 
   function recommencer() {
-    setResultat(null); setDests([]); setObjet(''); setPieces([]); setErreur(''); setStyle('simple'); place.current = false;
+    setResultat(null); setDests(pour ? destDe(pour.contact) : []); setObjet(''); setPieces([]); setErreur(''); setStyle('simple'); place.current = false;
     setTimeout(() => remplir(accueil(signature)), 0);
   }
-
-  const entete = (
-    <EnteteRubrique titre="Nouveau mail" icone={<Ic n="mail" t={22} />}
-      phrase="À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom."
-      tuiles={[]} actif="" onChoisir={() => {}} label="" />
-  );
 
   if (resultat) {
     const dansCrm = resultat.envoyes.filter(x => x.clientId);
     const horsCrm = resultat.envoyes.filter(x => !x.clientId);
     return (
-      <div className={s.page}>
-        {entete}
-        <div className={s.carte}>
-          <div className={s.fait}>
-            <span className={s.faitIc}><Ic n="check" t={26} e={2.6} /></span>
-            <h2>{resultat.envoyes.length > 1 ? `Mail envoyé à ${resultat.envoyes.length} personnes` : 'Mail envoyé'}</h2>
-            <p>{resultat.envoyes.map(x => x.nom || x.a[0]).join(', ')}</p>
-            <ul className={s.faitListe}>
-              {dansCrm.length > 0 && <li><Ic n="historique" t={15} /><span>{`Noté dans le Suivi de ${dansCrm.map(x => x.nom || x.a[0]).join(', ')}.`}</span></li>}
-              {horsCrm.length > 0 && <li><Ic n="info" t={15} /><span>{`${horsCrm.map(x => x.a[0]).join(', ')} : hors CRM, rien n’est noté.`}</span></li>}
-              {resultat.mode === 'liens' && <li><Ic n="trombone" t={15} /><span>{'Les pièces étaient trop lourdes : elles sont parties en liens de téléchargement, valables 7 jours.'}</span></li>}
-              {resultat.echecs.map(e => <li key={e} className={s.faitKo}><Croix t={14} /><span>{`Pas parti : ${e}`}</span></li>)}
-              {(resultat.incertains || []).length > 0 && <li className={s.faitKo}><Ic n="info" t={15} /><span>{`Peut-être parti : ${(resultat.incertains || []).join(', ')}. Mailjet n’a pas répondu à temps : vérifie leur Suivi avant de renvoyer.`}</span></li>}
-            </ul>
-            <div className={s.faitBoutons}>
-              {dansCrm.length === 1 && (
-                <button type="button" className={s.btn} onClick={async () => {
-                  const { data } = await supabase.from('clients').select('*').eq('id', dansCrm[0].clientId!).maybeSingle();
-                  if (data) onNavigate('fiche', data);
-                }}><Ic n="personne" t={15} />{`Ouvrir la fiche de ${dansCrm[0].nom || 'ce contact'}`}</button>
-              )}
-              <button type="button" className={`${s.btn} ${s.btnMarine}`} onClick={recommencer}><Ic n="plume" t={15} />Écrire un autre mail</button>
-            </div>
+      <div className={`${s.carte} ${enFenetre ? s.carteFen : ''}`}>
+        <div className={s.fait}>
+          <span className={s.faitIc}><Ic n="check" t={26} e={2.6} /></span>
+          <h2>{resultat.envoyes.length > 1 ? `Mail envoyé à ${resultat.envoyes.length} personnes` : 'Mail envoyé'}</h2>
+          <p>{resultat.envoyes.map(x => x.nom || x.a[0]).join(', ')}</p>
+          <ul className={s.faitListe}>
+            {dansCrm.length > 0 && <li><Ic n="historique" t={15} /><span>{`Noté dans le Suivi de ${dansCrm.map(x => x.nom || x.a[0]).join(', ')}.`}</span></li>}
+            {horsCrm.length > 0 && <li><Ic n="info" t={15} /><span>{`${horsCrm.map(x => x.a[0]).join(', ')} : hors CRM, rien n’est noté.`}</span></li>}
+            {resultat.mode === 'liens' && <li><Ic n="trombone" t={15} /><span>{'Les pièces étaient trop lourdes : elles sont parties en liens de téléchargement, valables 7 jours.'}</span></li>}
+            {resultat.echecs.map(e => <li key={e} className={s.faitKo}><Croix t={14} /><span>{`Pas parti : ${e}`}</span></li>)}
+            {(resultat.incertains || []).length > 0 && <li className={s.faitKo}><Ic n="info" t={15} /><span>{`Peut-être parti : ${(resultat.incertains || []).join(', ')}. Mailjet n’a pas répondu à temps : vérifie leur Suivi avant de renvoyer.`}</span></li>}
+          </ul>
+          <div className={s.faitBoutons}>
+            {!enFenetre && onNavigate && dansCrm.length === 1 && (
+              <button type="button" className={s.btn} onClick={async () => {
+                const { data } = await supabase.from('clients').select('*').eq('id', dansCrm[0].clientId!).maybeSingle();
+                if (data) onNavigate('fiche', data);
+              }}><Ic n="personne" t={15} />{`Ouvrir la fiche de ${dansCrm[0].nom || 'ce contact'}`}</button>
+            )}
+            <button type="button" className={`${s.btn} ${enFenetre ? '' : s.btnMarine}`} onClick={recommencer}><Ic n="plume" t={15} />Écrire un autre mail</button>
+            {enFenetre && onFermer && <button type="button" className={`${s.btn} ${s.btnMarine}`} onClick={onFermer}><Ic n="check" t={15} />Fermer</button>}
           </div>
         </div>
       </div>
@@ -549,11 +561,14 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
   }
 
   return (
-    <div className={s.page}>
-      {entete}
-      <div className={`${s.carte} ${depose ? s.carteDepose : ''}`}
+    <>
+      <div className={`${s.carte} ${enFenetre ? s.carteFen : ''} ${depose ? s.carteDepose : ''}`}
         onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDepose(true); } }}
         onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDepose(false); }} onDrop={deposer}>
+
+        {pour && !mailsDe(pour.contact).length && !dests.length && (
+          <div className={s.erreur}>{`${nomDe(pour.contact)} n’a pas d’adresse e-mail sur sa fiche : ajoute-la avec « Modifier », ou tape une adresse ci-dessous.`}</div>
+        )}
 
         {/* ── À qui, l'objet ── */}
         <div className={s.ligne}>
@@ -607,8 +622,11 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
 
         {/* ── Le pied ── */}
         <div className={s.pied}>
-          <span className={s.piedNote}>{'Tu relis le mail tel qu’il arrivera, puis tu l’envoies. Un mail par personne : chacun ne voit que son adresse, et l’envoi se range dans le Suivi des contacts du CRM.'}</span>
+          <span className={s.piedNote}>{enFenetre
+            ? 'Tu relis le mail tel qu’il arrivera, puis tu l’envoies. Il se range dans son Suivi.'
+            : 'Tu relis le mail tel qu’il arrivera, puis tu l’envoies. Un mail par personne : chacun ne voit que son adresse, et l’envoi se range dans le Suivi des contacts du CRM.'}</span>
           <div className={s.piedBoutons}>
+            {enFenetre && onFermer && <button type="button" className={s.btn} disabled={envoi} onClick={onFermer}>Annuler</button>}
             <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={ouvrirApercu}><Ic n="oeil" t={16} />Aperçu avant envoi</button>
           </div>
         </div>
@@ -618,6 +636,50 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
         <FenetreApercu dests={dests} objet={objet} corps={corps} style={style} h={h} conseiller={conseiller} pieces={piecesOk}
           envoi={envoi} onFermer={() => setApercu(false)} onEnvoyer={envoyer} libEnvoyer={libEnvoyer} manque={controler()} />
       )}
+    </>
+  );
+}
+
+export default function PageMail({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+  return (
+    <div className={s.page}>
+      <EnteteRubrique titre="Nouveau mail" icone={<Ic n="mail" t={22} />}
+        phrase="À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom."
+        tuiles={[]} actif="" onChoisir={() => {}} label="" />
+      <Redaction onNavigate={onNavigate} />
     </div>
   );
+}
+
+/* ── Écrire à un contact sans quitter sa fiche (V3.51) ──
+   La même rédaction que « Nouveau mail », dans une fenêtre, le contact déjà
+   en destinataire. Ni Échap ni un clic à côté ne la ferment : un mail à
+   moitié écrit ne se perd pas par mégarde ; la croix demande avant. */
+export function FenetreMail({ contact, rechercheId = null, onFermer, onEnvoye }: {
+  contact: ContactMail; rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
+}) {
+  const sale = useRef(false);
+  const fermer = () => {
+    if (sale.current && !confirm('Fermer sans envoyer ? Le mail que tu as commencé sera perdu.')) return;
+    onFermer();
+  };
+  const nom = nomDe(contact);
+  const fen = (
+    <div className={s.voile}>
+      <div className={`${s.fen} ${s.fenMail}`} role="dialog" aria-modal="true" aria-label={`Écrire à ${nom}`}>
+        <div className={s.fenTete}>
+          <span className={s.fenIc}><Ic n="mail" t={20} /></span>
+          <div className={s.fenTx}>
+            <h2>{`Écrire à ${nom}`}</h2>
+            <p>{'Le mail part de arogelet@emilio-immo.com, à ton nom.'}</p>
+          </div>
+          <button type="button" className={s.fermer} aria-label="Fermer" onClick={fermer}><Croix /></button>
+        </div>
+        <div className={s.fenCorps}>
+          <Redaction pour={{ contact, rechercheId }} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document === 'undefined' ? null : createPortal(fen, document.body);
 }

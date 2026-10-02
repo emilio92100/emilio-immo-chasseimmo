@@ -12,7 +12,7 @@ import {
 } from '@/lib/biens-vente';
 import { Anneau } from './OngletsBien';
 import { jourParis } from '@/lib/mandat';
-import { deposerPiece, envoyerDocuments, ouvrirPiece, retirerPiece, type DestDocuments } from './outils';
+import { demanderDocuments, deposerPiece, envoyerDocuments, ouvrirPiece, retirerPiece, type DestDocuments } from './outils';
 import x from './DossierBien.module.css';
 
 /* ═══ Le dossier d'un bien, dans l'onglet Documents (V3.30, V3.31) ═════════
@@ -114,8 +114,10 @@ function Contenu({ lignes, on, onBasculer, desactive }: { lignes: LigneDossier[]
 }
 
 /* ══ LE DOSSIER ════════════════════════════════════════════════════════════ */
-export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: {
+export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, etape = '' }: {
   bienId: string; d: Donnees; maj: Maj;
+  /* L'étape du bien : le motif proposé d'une demande de documents (V3.51). */
+  etape?: string;
   /* Les personnes à qui envoyer : le propriétaire, les acheteurs du bien. */
   destinataires: DestPropose[];
   /* « l'appartement du 68 avenue d'Iéna » : pour le message déjà écrit. */
@@ -131,6 +133,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
   const [filtre, setFiltre] = useState<'tout' | 'reunir' | 'demande' | 'recu'>('tout');
   const [choix, setChoix] = useState<string[]>([]);
   const [fen, setFen] = useState(false);
+  const [demande, setDemande] = useState(false);
   const [aRanger, setARanger] = useState<ARanger[]>([]);
   const [occupe, setOccupe] = useState('');
   const [erreur, setErreur] = useState('');
@@ -399,6 +402,10 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
           <span>{detail}{autres.length ? ` · ${autres.length} autre${autres.length > 1 ? 's' : ''} document${autres.length > 1 ? 's' : ''}` : ''}</span>
         </div>
         <div className={x.teteBtns}>
+          {/* V3.51 : demander au propriétaire ce qui manque, en quelques clics. */}
+          <button type="button" className={x.btn} onClick={() => setDemande(true)}>
+            <Ic n="liste" t={15} />Demander des documents…
+          </button>
           <button type="button" className={x.btn} disabled={!envoyables.length} onClick={() => setFen(true)} title={envoyables.length ? undefined : 'Aucun fichier déposé pour l’instant'}>
             <Ic n="envoyer" t={15} />Envoyer des documents…
           </button>
@@ -616,6 +623,24 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage }: 
         </div>
       )}
 
+      {demande && (
+        <FenDemandeDocuments bienId={bienId} d={d} doss={doss} lignes={lignes} destinataires={destinataires} lieu={lieu} etape={etape}
+          onFermer={() => setDemande(false)}
+          onFait={(r, m) => {
+            setDemande(false);
+            /* Les pièces ajoutées pour l'occasion entrent dans le dossier, et
+               tout ce qui a été demandé passe « Demandé ». */
+            if (r.nouvelles.length) maj('piecesPerso', (avant: unknown) => [...lirePiecesPerso(avant), ...r.nouvelles]);
+            const ks = [...r.cles, ...r.nouvelles.map(n => n.k)];
+            if (ks.length) maj('dossier', (avant: unknown) => {
+              const o = lireDossier(avant);
+              for (const k of ks) if (o[k]?.etat !== 'recu') o[k] = { ...(o[k] || VIDE), etat: 'demande' };
+              return { ...o };
+            });
+            onMessage(m);
+          }} />
+      )}
+
       {fen && (
         <FenEnvoiDocuments bienId={bienId} pieces={envoyables} depart={choisis.map(p => p.chemin)} destinataires={destinataires} lieu={lieu}
           onFermer={() => setFen(false)}
@@ -748,6 +773,213 @@ export function FenEnvoiDocuments({ bienId, pieces, depart, destinataires, lieu,
           <button type="button" className={x.btn} disabled={en} onClick={onFermer}>Annuler</button>
           <button type="button" className={`${x.btn} ${x.btnOr}`} disabled={en || !choisies.length || !tous.length} onClick={envoyer}>
             <Ic n="envoyer" t={15} />{en ? 'Envoi…' : tous.length === 1 ? `Envoyer à ${lesDests[0]?.nom.split(' ')[0] || tous[0].email}` : tous.length > 1 ? `Envoyer à ${tous.length} personnes` : 'Envoyer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document === 'undefined' ? null : createPortal(fen, document.body);
+}
+
+/* ══ DEMANDER DES DOCUMENTS (V3.51) ═══════════════════════════════════════
+   Alexandre : « dans l'onglet Documents d'un bien, envoyer une demande de
+   documents au client : je sélectionne ce que je souhaite, et il y a un texte
+   préfait — suite à nos échanges, voici les documents pour l'estimation ou
+   pour la vente ». On coche dans ce qui manque au dossier (ou on ajoute une
+   pièce), le motif choisit la phrase, le message se réécrit tant qu'on n'y a
+   pas touché. Après l'envoi : les pièces passent « Demandé », la demande est
+   notée dans l'historique du bien et le Suivi du propriétaire. */
+type Motif = 'estimation' | 'vente' | 'compromis';
+const MOTIFS: Record<Motif, { l: string; pour: string; objet: string }> = {
+  estimation: { l: 'L’estimation', pour: 'l’estimation', objet: 'Les documents pour l’estimation de votre bien' },
+  vente: { l: 'La mise en vente', pour: 'la mise en vente', objet: 'Les documents pour la mise en vente de votre bien' },
+  compromis: { l: 'Le compromis', pour: 'la préparation du compromis', objet: 'Les documents pour le compromis' },
+};
+const motifDe = (etape: string): Motif => (etape === 'a_suivre' || etape === 'estimation' ? 'estimation' : etape === 'compromis' || etape === 'offre' ? 'compromis' : 'vente');
+function messageDemande(prenom: string, motif: Motif, lieu: string, titres: string[], signature: string) {
+  const un = titres.length === 1;
+  return `Bonjour${prenom ? ` ${prenom}` : ''},\n\nSuite à nos échanges, voici ${un ? 'le document dont j’aurais besoin' : 'les documents dont j’aurais besoin'} pour ${MOTIFS[motif].pour} de ${lieu || 'votre bien'} :\n${titres.map(t => `– ${t}`).join('\n')}\n\nVous pouvez ${un ? 'me l’envoyer' : 'me les envoyer'} en réponse à ce mail : un scan ou une photo bien lisible suffit.\n\nJe reste à votre disposition si vous avez la moindre question.\n\n${signature}`;
+}
+type Extra = { l: string; g: LigneDossier['groupe'] };
+export type DemandeFaite = { cles: string[]; nouvelles: { k: string; l: string; groupe: LigneDossier['groupe'] }[] };
+
+export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, lieu, etape, onFermer, onFait }: {
+  bienId: string; d: Donnees; doss: Record<string, PieceDossier>; lignes: LigneDossier[]; destinataires: DestPropose[]; lieu: string; etape: string;
+  onFermer: () => void; onFait: (r: DemandeFaite, m: { t: string; ok: boolean }) => void;
+}) {
+  /* Ce qui manque : ni reçu, ni non concerné, ni couvert par un dossier de diagnostics. */
+  const manquent = lignes.filter(l => doss[l.k]?.etat !== 'recu' && doss[l.k]?.etat !== 'nc' && !doss[l.k]?.chemin && !doss[l.k]?.dans);
+  const proprios = destinataires.filter(y => !y.role.startsWith('Acheteur'));
+  const [motif, setMotif] = useState<Motif>(() => motifDe(etape));
+  const [choix, setChoix] = useState<string[]>([]);
+  const [extras, setExtras] = useState<Extra[]>([]);
+  const [saisie, setSaisie] = useState('');
+  const [dests, setDests] = useState<string[]>(() => (proprios[0] ? [proprios[0].cle] : destinataires[0] ? [destinataires[0].cle] : []));
+  const [autre, setAutre] = useState('');
+  const [objet, setObjet] = useState<string | null>(null);
+  const [signature, setSignature] = useState(() => signatureDe({}));
+  const [texte, setTexte] = useState<string | null>(null);
+  const [en, setEn] = useState(false);
+  const [erreur, setErreur] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    supabase.from('parametres').select('cle, valeur').in('cle', CLES_MAIL).then(({ data }) => {
+      if (vivant && data) setSignature(signatureDe(Object.fromEntries(data.map((r: { cle: string; valeur: string | null }) => [r.cle, r.valeur || '']))));
+    });
+    return () => { vivant = false; };
+  }, []);
+
+  const dejaLa = (t: string) => [...lignes.map(l => l.l), ...extras.map(e => e.l)].some(y => sansAccent(y) === sansAccent(t));
+  /* Des idées, comme dans le dossier : ce que le notaire demandera souvent. */
+  const idees = [...(d.qui === 'sci' ? IDEES_SCI.map(l => ({ l, g: 'vendeur' as const })) : []),
+    ...IDEES.vendeur.map(l => ({ l, g: 'vendeur' as const })), ...(d.copro === 'oui' ? IDEES.copro.map(l => ({ l, g: 'copro' as const })) : [])]
+    .filter(i => !dejaLa(i.l)).slice(0, 8);
+  function ajouterExtra(l: string, g: LigneDossier['groupe'] = 'vendeur') {
+    const t = l.trim();
+    if (!t) return;
+    if (dejaLa(t)) {
+      const ligne = manquent.find(y => sansAccent(y.l) === sansAccent(t));
+      if (ligne && !choix.includes(ligne.k)) setChoix(c => [...c, ligne.k]);
+      else setErreur(`« ${t} » est déjà dans la liste.`);
+      setSaisie('');
+      return;
+    }
+    setExtras(e => [...e, { l: t, g }]); setSaisie(''); setErreur('');
+  }
+  const basculer = (k: string) => setChoix(c => (c.includes(k) ? c.filter(y => y !== k) : [...c, k]));
+
+  const titres = [...manquent.filter(l => choix.includes(l.k)).map(l => l.l), ...extras.map(e => e.l)];
+  const lesDests = destinataires.filter(y => dests.includes(y.cle));
+  const autreOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(autre.trim());
+  const tous: DestDocuments[] = [...lesDests.map(y => ({ email: y.email, nom: y.nom, clientId: y.clientId, rechercheId: y.rechercheId })), ...(autreOk ? [{ email: autre.trim().toLowerCase(), nom: '' }] : [])];
+  const prenom = tous.length === 1 && lesDests.length === 1 ? (lesDests[0].nom.split(' ')[0] || '') : '';
+  const message = texte ?? messageDemande(prenom, motif, lieu, titres, signature);
+  const leObjet = objet ?? MOTIFS[motif].objet;
+
+  async function envoyer() {
+    if (!titres.length) { setErreur('Choisis au moins un document à demander.'); return; }
+    if (!tous.length) { setErreur(autre.trim() ? 'Cette adresse e-mail ne semble pas complète.' : 'Choisis à qui l’envoyer.'); return; }
+    setEn(true); setErreur('');
+    try {
+      const r = await demanderDocuments({ bienId, destinataires: tous, sujet: leObjet.trim(), message: message.trim(), demandes: titres });
+      const a = r.envoyes.length > 1 ? `${r.envoyes.length} destinataires` : lesDests[0]?.nom || r.envoyes[0];
+      const nouvelles = extras.map((e, i) => ({ k: `perso${Date.now().toString(36)}${i}${Math.random().toString(36).slice(2, 5)}`, l: e.l, groupe: e.g }));
+      onFait({ cles: manquent.filter(l => choix.includes(l.k)).map(l => l.k), nouvelles },
+        { t: `${titres.length > 1 ? `${titres.length} documents demandés` : 'Document demandé'} à ${a} : ${titres.length > 1 ? 'ils passent' : 'il passe'} « Demandé » dans le dossier.${r.avertissements.length ? ` ${r.avertissements.join(' · ')}` : ''}`, ok: true });
+    } catch (e) {
+      setErreur((e as Error).message);
+      setEn(false);
+    }
+  }
+
+  const fen = (
+    <div className={x.voile} onMouseDown={e => { if (e.target === e.currentTarget && !en && !titres.length) onFermer(); }}>
+      <div className={x.fen} role="dialog" aria-modal="true" aria-label="Demander des documents">
+        <div className={x.fenTete}>
+          <span className={x.fenIc}><Ic n="liste" t={20} /></span>
+          <div className={x.fenTx}>
+            <h2>Demander des documents</h2>
+            <p>Coche ce qu’il te faut : le mail se rédige tout seul. Tu le relis, puis il part à ton nom.</p>
+          </div>
+          <button type="button" className={x.fermer} aria-label="Fermer" disabled={en} onClick={onFermer}><Ic n="croix" t={16} e={2.2} /></button>
+        </div>
+        <div className={x.fenCorps}>
+          <div className={x.bloc}>
+            <div className={x.blocT}>Pour</div>
+            <div className={x.filtres} role="group" aria-label="Pour quoi">
+              {(Object.keys(MOTIFS) as Motif[]).map(k => (
+                <button key={k} type="button" aria-pressed={motif === k} onClick={() => setMotif(k)}>{MOTIFS[k].l}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className={x.bloc}>
+            <div className={x.blocT}>{`Les documents à demander · ${titres.length}`}</div>
+            {!manquent.length && !extras.length && <small className={x.aide}>Le dossier est complet : ajoute ci-dessous ce que tu veux demander en plus.</small>}
+            {GROUPES.filter(g => g.k !== 'autres').map(g => {
+              const ls = manquent.filter(l => l.groupe === g.k);
+              if (!ls.length) return null;
+              const tousOn = ls.every(l => choix.includes(l.k));
+              return (
+                <div key={g.k} className={x.demGroupe}>
+                  <div className={x.demGroupeT}>
+                    <span><Ic n={g.ic} t={13} />{g.l}</span>
+                    <button type="button" className={x.lien} onClick={() => setChoix(c => (tousOn ? c.filter(k => !ls.some(l => l.k === k)) : Array.from(new Set([...c, ...ls.map(l => l.k)]))))}>{tousOn ? 'Tout décocher' : 'Tout cocher'}</button>
+                  </div>
+                  <div className={x.demGrille}>
+                    {ls.map(l => {
+                      const on = choix.includes(l.k);
+                      return (
+                        <button key={l.k} type="button" className={x.piece} aria-pressed={on} onClick={() => basculer(l.k)}>
+                          <span className={x.destCoche}><Ic n="check" t={11} e={3.2} /></span>
+                          <span className={x.pieceTx}><b>{l.l}</b>{(doss[l.k]?.etat === 'demande' || l.aide) && <small>{doss[l.k]?.etat === 'demande' ? 'Déjà demandé : à relancer' : l.aide}</small>}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {extras.length > 0 && (
+              <div className={x.demGroupe}>
+                <div className={x.demGroupeT}><span><Ic n="plus" t={13} />Ajoutés pour cette demande</span></div>
+                <div className={x.demGrille}>
+                  {extras.map(e => (
+                    <button key={e.l} type="button" className={x.piece} aria-pressed onClick={() => setExtras(l => l.filter(y => y.l !== e.l))} title="Retirer de la demande">
+                      <span className={x.destCoche}><Ic n="check" t={11} e={3.2} /></span>
+                      <span className={x.pieceTx}><b>{e.l}</b><small>Il entrera dans le dossier, « Demandé »</small></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className={x.demAjout}>
+              <input value={saisie} placeholder="Un autre document (ex. : plan du garage)" aria-label="Ajouter un document à demander"
+                onChange={e => setSaisie(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterExtra(saisie); } }} />
+              <button type="button" className={x.btn} disabled={!saisie.trim()} onClick={() => ajouterExtra(saisie)}><Ic n="plus" t={14} e={2.4} />Ajouter</button>
+            </div>
+            {idees.length > 0 && <div className={x.idees}>{idees.map(i => <button key={i.l} type="button" onClick={() => ajouterExtra(i.l, i.g)}>{i.l}</button>)}</div>}
+          </div>
+
+          <div className={x.bloc}>
+            <div className={x.blocT}>À qui</div>
+            {destinataires.length > 0 && (
+              <div className={x.dests}>
+                {destinataires.map(y => {
+                  const on = dests.includes(y.cle);
+                  return (
+                    <button key={y.cle} type="button" className={x.dest} aria-pressed={on} onClick={() => { setDests(l => (on ? l.filter(z => z !== y.cle) : [...l, y.cle])); }}>
+                      <span className={x.destCoche}><Ic n="check" t={11} e={3.2} /></span>
+                      <span className={x.destTx}><b>{y.nom || y.email}</b><small>{`${y.role} · ${y.email}`}</small></span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <label className={x.champ}>
+              <span>{destinataires.length ? 'Ou une autre adresse' : 'Adresse e-mail'}</span>
+              <input type="email" value={autre} placeholder="proprietaire@exemple.fr" onChange={e => setAutre(e.target.value)} />
+            </label>
+            {!destinataires.length && <small className={x.aide}>Pas d’adresse sur la fiche du propriétaire : tape-la ici, ou ajoute-la sur sa fiche.</small>}
+          </div>
+
+          <div className={x.bloc}>
+            <label className={x.champ}>
+              <span>Objet{objet !== null && <button type="button" className={x.lien} onClick={() => setObjet(null)}>Revenir à l’objet proposé</button>}</span>
+              <input value={leObjet} onChange={e => setObjet(e.target.value)} />
+            </label>
+            <label className={x.champ}>
+              <span>Message{texte !== null && <button type="button" className={x.lien} onClick={() => setTexte(null)}>Revenir au message proposé</button>}</span>
+              <textarea rows={12} value={message} onChange={e => setTexte(e.target.value)} />
+            </label>
+          </div>
+          {erreur && <div className={x.erreur}>{erreur}</div>}
+        </div>
+        <div className={x.fenPied}>
+          <button type="button" className={x.btn} disabled={en} onClick={onFermer}>Annuler</button>
+          <button type="button" className={`${x.btn} ${x.btnOr}`} disabled={en || !titres.length || !tous.length} onClick={envoyer}>
+            <Ic n="envoyer" t={15} />{en ? 'Envoi…' : tous.length === 1 ? `Envoyer la demande à ${lesDests[0]?.nom.split(' ')[0] || tous[0].email}` : tous.length > 1 ? `Envoyer à ${tous.length} personnes` : 'Envoyer la demande'}
           </button>
         </div>
       </div>

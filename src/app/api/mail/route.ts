@@ -230,9 +230,13 @@ export async function POST(req: NextRequest) {
     const dossier: Record<string, string | null> = {};
     if (clientIds.length) {
       const { data: rs } = await sb.from('recherches').select('id, client_id, active, created_at').in('client_id', clientIds).order('created_at', { ascending: true });
+      /* V3.51 : écrit depuis la fiche d'un acheteur, la recherche affichée
+         (si elle est bien la sienne). */
+      const voulues = (body.recherches && typeof body.recherches === 'object' ? body.recherches : {}) as Record<string, unknown>;
       for (const id of clientIds) {
         const siennes = (rs || []).filter((r: { client_id: string }) => r.client_id === id) as { id: string; active: boolean | null }[];
-        dossier[id] = (siennes.find(r => r.active !== false) || siennes[0])?.id || null;
+        const voulue = typeof voulues[id] === 'string' ? siennes.find(r => r.id === voulues[id]) : undefined;
+        dossier[id] = (voulue || siennes.find(r => r.active !== false) || siennes[0])?.id || null;
       }
     }
 

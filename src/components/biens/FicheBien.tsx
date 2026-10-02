@@ -884,6 +884,13 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       const pieces = Array.isArray(d.pieces) ? (d.pieces as unknown[]).map(String) : [];
       /* Le projet d'un document, envoyé en relecture avant la signature (V3.40). */
       const projet = d.projet === true;
+      /* V3.51 : une demande de documents (sans pièce jointe). */
+      const demandes = Array.isArray(d.demandes) ? (d.demandes as unknown[]).map(String) : [];
+      if (d.demande === true) {
+        l.push({ cle: x.id, le: x.le, ic: 'liste', ton: 'ic_or', genre: 'documents', titre: `Documents demandés à ${x.qui || 'un contact'}`,
+          detail: demandes.join(', '), puce: { l: `${demandes.length} document${demandes.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
+        continue;
+      }
       l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_or', genre: 'documents', titre: `${projet ? 'Projet envoyé' : 'Documents envoyés'} à ${x.qui || 'un contact'}`,
         detail: [projet ? x.commentaire || '' : pieces.join(', '), d.mode === 'liens' ? 'en liens de téléchargement (7 jours)' : ''].filter(Boolean).join(' · '),
         puce: projet ? { l: 'Projet non signé', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } : { l: `${pieces.length} document${pieces.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
@@ -1967,7 +1974,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </section>
         {/* Le dossier sur toute la largeur, en tuiles (V3.30) : déposer,
             ranger, cocher, envoyer. */}
-        <DossierBien bienId={bien.id} d={d} maj={majDonnees} destinataires={destsDocs} lieu={lieuDe(d)} onMessage={m => { setMessage(m); void apres(); }} />
+        <DossierBien bienId={bien.id} d={d} maj={majDonnees} destinataires={destsDocs} lieu={lieuDe(d)} etape={bien.etape} onMessage={m => { setMessage(m); void apres(); }} />
         </div>
       )}
 

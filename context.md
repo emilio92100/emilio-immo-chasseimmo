@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.50 · 2 octobre 2026**
+**Version 3.51 · 2 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,29 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.51 — 2 octobre 2026 · écrire à un contact depuis sa fiche, demander des documents depuis un bien
+
+Rien à passer dans Supabase.
+
+**« Envoyer un mail » sur la fiche d'un contact** (Alexandre : « un petit bouton, ça affiche la trame
+de Nouveau mail mais en restant sur la fiche, comme ça je n'ai pas à remettre le nom »). La rédaction
+de « Nouveau mail » est devenue un composant (`Redaction`, `PageMail.tsx`) ; `FenetreMail` l'ouvre
+dans une fenêtre, le contact déjà en destinataire. Ni Échap ni un clic à côté ne la ferment (un mail
+commencé ne se perd pas), la croix demande avant. Fiche d'un contact : bouton dans la barre, à côté
+de « Modifier ». Fiche d'un acheteur : « ✉️ Mail » dans la barre, et « Envoyer › Mail libre » ouvre la
+même fenêtre (l'ancien formulaire texte n'est plus utilisé) ; l'envoi se range dans la recherche
+affichée (`/api/mail`, `recherches`).
+
+**« Demander des documents… » dans l'onglet Documents d'un bien** (Alexandre : « je sélectionne ce
+que je souhaite, et il y a un texte préfait : suite à nos échanges, voici les documents pour
+l'estimation ou pour la vente »). `FenDemandeDocuments` (`DossierBien.tsx`) : le motif (l'estimation,
+la mise en vente, le compromis — proposé selon l'étape), ce qui manque au dossier à cocher par groupe,
+des pièces à ajouter (ou les idées habituelles : pièces d'identité, livret de famille…), à qui (le
+propriétaire d'office), l'objet et le message, rédigés tout seuls et modifiables. L'envoi
+(`/api/biens-vente`, action `demander`) part à son nom, sans pièce jointe ; les pièces passent
+« Demandé » dans le dossier (les ajoutées y entrent), l'historique du bien dit « Documents demandés à
+… », le Suivi du propriétaire « 📋 Documents demandés ».
 
 ### V3.50 — 2 octobre 2026 · tout le CRM relu : le chiffre d'affaires, l'estimation, les visites, les documents, la fiche acheteur, l'agenda, les contacts
 

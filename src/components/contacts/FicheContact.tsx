@@ -26,6 +26,7 @@ import { demanderNouveauBien, demanderOngletBien, signalerMaj } from '@/lib/inte
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { libelleVisites } from '@/lib/visites';
+import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -271,6 +272,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [action, setAction] = useState<{ edition: any | null; type: 'note' | 'appel' } | null>(null);
   const [tour, setTour] = useState(0);
+  const [mail, setMail] = useState(false);
   const types = typesDe(x);
   const pro = lirePro(x.pro);
   const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
@@ -497,12 +499,15 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
 
   return (
     <div className={c.fiche}>
+      {mail && <FenetreMail contact={x as unknown as ContactMail} onFermer={() => setMail(false)} onEnvoye={recharger} />}
       <div className={c.barre}>
         <button type="button" className={c.retour} onClick={onBack}><Ic n="retour" t={16} />Contacts</button>
         <div className={c.actions}>
           {types.includes('confrere') && (
             <button type="button" className={`${c.btn} ${c.btnOr}`} onClick={() => onNavigate('documents', { delegation: x.id })}><Ic n="accord" t={15} />Déléguer un mandat</button>
           )}
+          {/* V3.51 : lui écrire sans quitter sa fiche (la trame de « Nouveau mail »). */}
+          <button type="button" className={c.btn} onClick={() => setMail(true)}><Ic n="mail" t={15} />Envoyer un mail</button>
           <button type="button" className={c.btn} onClick={() => { setErreur(''); setEdit(formDe(x)); }}><Ic n="crayon" t={15} />Modifier</button>
           <button type="button" className={`${c.btn} ${c.masquable}`} disabled={occupe} onClick={() => ecrire({ archive: !archive }, 'Le contact n’a pas pu être archivé')}>
             <Ic n="archive" t={15} />{archive ? 'Sortir des archives' : 'Archiver'}

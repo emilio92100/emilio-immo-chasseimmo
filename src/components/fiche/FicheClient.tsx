@@ -1,4 +1,5 @@
 'use client';
+import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { lirePro, lireStructure } from '@/lib/contacts';
@@ -1056,6 +1057,7 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const [showPlanVisite, setShowPlanVisite] = useState(false);
   const [showFicheBien, setShowFicheBien] = useState(false);
   const [showEnvoi, setShowEnvoi] = useState(false);
+  const [showMail, setShowMail] = useState(false);
   const [showConfirmEtape, setShowConfirmEtape] = useState(false);
   const [showConfirmDeleteBien, setShowConfirmDeleteBien] = useState(false);
   const [showConfirmVisite, setShowConfirmVisite] = useState<string|null>(null);
@@ -2686,22 +2688,8 @@ ${signatureMail()}`,
     setShowEnvoiBien(true);
   }
 
-  function openEnvoiLibre() {
-    const emails = client.emails?.filter(Boolean) || [];
-    setEnvoiBienIds([]);
-    setEnvoiBienId('');
-    setEnvoiPool(null);
-    setEnvoiMode('libre');
-    setEnvoiForm({
-      destinataires: emails.join(', '),
-      objet: '',
-      corps: `Bonjour ${client.prenom},
-
-${signatureMail()}`,
-    });
-    setShowEnvoiBien(true);
-  }
-
+  /* V3.51 : le mail libre s'écrit avec la trame de « Nouveau mail »
+     (FenetreMail), sans quitter la fiche. */
   async function saveEnvoiBien() {
     if (!envoiForm.destinataires.trim()) { alert('Indiquez un destinataire.'); return; }
     if (!envoiForm.objet.trim()) { alert("L'objet est obligatoire."); return; }
@@ -3381,6 +3369,11 @@ ${signatureMail()}`,
           <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>
             <span className={styles.surBureau}>📤 Envoyer</span>
             <span className={styles.surMobile}><Icone nom="envoi" taille={20} epaisseur={1.9} /><span>Envoyer</span></span>
+          </button>
+          {/* V3.51 : lui écrire sans quitter sa fiche (la trame de « Nouveau mail »). */}
+          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowMail(true)}>
+            <span className={styles.surBureau}>✉️ Mail</span>
+            <span className={styles.surMobile}><Icone nom="mail" taille={20} epaisseur={1.9} /><span>Mail</span></span>
           </button>
           <button className={`${styles.btn} ${styles.actionFiche}`} onClick={creerRelanceManuelle}>
             <span className={styles.surBureau}>🔔 Relance J+{delaiJours}</span>
@@ -5690,6 +5683,8 @@ ${signatureMail()}`,
         </Portail>
       )}
 
+      {showMail && <FenetreMail contact={client as unknown as ContactMail} rechercheId={rechercheId || null} onFermer={() => setShowMail(false)} onEnvoye={() => { void load(); }} />}
+
       {/* ═══ MODAL ENVOI ═══ */}
       {showEnvoi && (
         <Portail>
@@ -5705,7 +5700,7 @@ ${signatureMail()}`,
                 { icon: '📄', label: 'Sélection de biens', sub: `${biens.filter(b => b.badge_retour !== 'refuse').length} bien${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} actif${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.filter(b => b.badge_retour !== 'refuse').length === 0) { alert("Ajoutez d'abord des biens à la fiche."); return; } openEnvoiMulti(); }, primary: true },
                 { icon: '🤝', label: 'Présentation des services', sub: 'Plaquette Emilio Immobilier', action: () => { setShowEnvoi(false); alert('PDF Présentation — V2'); }, primary: false },
                 { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
-                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé sans bien', action: () => { setShowEnvoi(false); openEnvoiLibre(); }, primary: false },
+                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé sans bien', action: () => { setShowEnvoi(false); setShowMail(true); }, primary: false },
               ].map((btn, i) => (
                 <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid var(--emilio)' : '1px solid #e3e8f0', background: btn.primary ? 'var(--emilio)' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
                   <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>

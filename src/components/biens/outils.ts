@@ -1608,6 +1608,14 @@ export async function ouvrirPiece(chemin: string, nom?: string) {
 /* Des pièces du dossier, envoyées par mail (V3.30, /api/biens-vente
    « envoyer ») : jointes jusqu'à 10 Mo, en liens de 7 jours au-delà. */
 export type DestDocuments = { email: string; nom: string; clientId?: string | null; rechercheId?: string | null };
+/* V3.51 : demander des documents (sans pièce jointe). */
+export async function demanderDocuments(o: {
+  bienId: string; destinataires: DestDocuments[]; sujet: string; message: string; demandes: string[];
+}): Promise<{ envoyes: string[]; avertissements: string[] }> {
+  return api<{ envoyes: string[]; avertissements: string[] }>({
+    action: 'demander', id: o.bienId, destinataires: o.destinataires, sujet: o.sujet, message: o.message, demandes: o.demandes,
+  });
+}
 export async function envoyerDocuments(o: {
   bienId: string; destinataires: DestDocuments[]; sujet: string; message: string; pieces: { chemin: string; nom: string }[];
 }): Promise<{ mode: 'pj' | 'liens'; envoyes: string[]; avertissements: string[] }> {
