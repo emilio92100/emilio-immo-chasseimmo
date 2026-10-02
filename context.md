@@ -1460,6 +1460,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.52 — 2 octobre 2026 · le mandat de vente : une précision sous les honoraires, les textes libres en paragraphes
+
+Retour d'une propriétaire sur un projet de mandat (forfait de 55 000 €) : « vos honoraires sont-ils
+fixes quel que soit le prix de vente, ou recalculés ? ». La phrase du modèle, « Si la vente se fait
+à un autre prix, ils sont calculés de la même façon sur le prix obtenu », laissait croire qu'un
+forfait se recalculait. Et Alexandre : « pourquoi tout va dans la clause particulière ? », « c'est
+affiché en vrac, sans paragraphe ».
+- `mandat-vente.ts` : nouvelle question `honoNote`, « Précision sur les honoraires » (étape Prix et
+  honoraires), imprimée juste sous les honoraires et reprise dans l'information précontractuelle
+  (« Le prix du service »). La phrase « autre prix » dépend du mode : un pourcentage se recalcule
+  sur le prix obtenu ; un forfait « reste le même si la vente se fait à un autre prix », sauf
+  s'il y a une précision, qui dit alors ce qui se passe.
+- `commun.ts` : `paragraphes()` et `lignesLibres()` : un texte libre devient un paragraphe par
+  ligne, avec les montants tapés à la main gardés d'un bloc (espaces insécables). Utilisés pour
+  la clause particulière et les « Précision : » du mandat de vente et du mandat de recherche.
+- Banc d'essai : aperçu 1280 et 390 px, clic sur la précision → sa question.
+
 ### V3.51 — 2 octobre 2026 · écrire à un contact depuis sa fiche, demander des documents depuis un bien
 
 Rien à passer dans Supabase.
