@@ -1106,9 +1106,20 @@ export function BilanBien({ p }: { p: any }) {
 
 const MOIS = ['janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
-function jour(d: any) {
+/* Une date absente n'est pas une date. `new Date(null)` rend le 1er janvier
+   1970, et certains imports (Bien'ici) envoient cette même date zéro : sans
+   ce garde-fou, la fiche affichait « 1 janv. 1970 » ou « en ligne depuis
+   56 ans ». Règle d'Alexandre (octobre 2026) : quand on ne connaît pas la
+   date, on l'écrit inconnue, jamais une date au hasard. */
+export function dateConnue(d: any) {
+  if (d === null || d === undefined || d === '') return false;
   const x = new Date(d);
-  if (isNaN(x.getTime())) return '—';
+  return !isNaN(x.getTime()) && x.getFullYear() > 1971;
+}
+
+function jour(d: any) {
+  if (!dateConnue(d)) return '—';
+  const x = new Date(d);
   return `${x.getDate()} ${MOIS[x.getMonth()]} ${x.getFullYear()}`;
 }
 function courtJour(d: any) {
@@ -1117,7 +1128,7 @@ function courtJour(d: any) {
   return `${MOIS[x.getMonth()].replace('.', '')} ${String(x.getFullYear()).slice(2)}`;
 }
 export function anciennete(d: any) {
-  if (!d) return null;
+  if (!dateConnue(d)) return null;
   const m = Math.round((Date.now() - new Date(d).getTime()) / 2.628e9);
   if (isNaN(m)) return null;
   if (m < 1) return "moins d'un mois";
@@ -1151,7 +1162,7 @@ export function seriePrix(p: any): PointPrix[] {
     return isNaN(x.getTime()) ? '' : x.toISOString().slice(0, 10);
   };
   const prixActuel = Number(p?.prix ?? p?.prix_vendeur);
-  if (p?.date_publication && p?.prix_initial) out.push({ date: iso(p.date_publication), prix: Number(p.prix_initial) });
+  if (dateConnue(p?.date_publication) && p?.prix_initial) out.push({ date: iso(p.date_publication), prix: Number(p.prix_initial) });
   if (prixActuel > 0) out.push({ date: iso(p?.date_derniere_baisse) || new Date().toISOString().slice(0, 10), prix: prixActuel });
   const ok = out.filter(x => x.date && isFinite(x.prix) && x.prix > 0);
   return ok.length >= 2 && ok[0].prix !== ok[1].prix ? ok : pts;
@@ -1358,7 +1369,7 @@ export function BandeauMarche({ p }: { p: any }) {
   const ecart = liste.length >= 2 && liste[0].prix && liste[liste.length - 1].prix
     ? Number(liste[liste.length - 1].prix) - Number(liste[0].prix) : 0;
 
-  if (!p.date_publication && !nbBaisses && !nbAgences && !agenceMandat && !portail) return null;
+  if (!dateConnue(p.date_publication) && !nbBaisses && !nbAgences && !agenceMandat && !portail) return null;
 
   const bascule = (v: 'date' | 'prix' | 'agences') => setOuvert(o => (o === v ? null : v));
   const k = (n: number) => `${n.toLocaleString('fr-FR')} €`;
@@ -1382,12 +1393,12 @@ export function BandeauMarche({ p }: { p: any }) {
 
       <div style={{ padding: 9 }}>
       <div className="emi-marche-grille" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 7 }}>
-        {p.date_publication ? (
+        {dateConnue(p.date_publication) ? (
           <CaseMarche icone="horloge" titre="En ligne depuis" valeur={anciennete(p.date_publication)}
             detail={`depuis le ${jour(p.date_publication)}`}
             onClick={() => bascule('date')} ouvert={ouvert === 'date'} />
         ) : (
-          <CaseMarche icone="horloge" titre="En ligne depuis" valeur="—" detail="date inconnue" />
+          <CaseMarche icone="horloge" titre="En ligne depuis" valeur="—" detail="date de première publication inconnue" />
         )}
 
         {aDuPrix ? (
@@ -1476,7 +1487,7 @@ export function BandeauMarche({ p }: { p: any }) {
       <div className="emi-volet" data-ouvert={ouvert === 'date'}>
         <div>
           <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 22 }}>
-            <Ligne lib="Première mise en ligne" val={jour(p.date_publication)} />
+            <Ligne lib="Première mise en ligne" val={dateConnue(p.date_publication) ? jour(p.date_publication) : 'inconnue'} />
             <Ligne lib="Sur le marché depuis" val={anciennete(p.date_publication) || '—'} />
             {p.date_derniere_baisse && <Ligne lib="Dernier changement de prix" val={jour(p.date_derniere_baisse)} />}
             {agenceMandat && <Ligne lib="Mandat" val={agenceMandat} />}
