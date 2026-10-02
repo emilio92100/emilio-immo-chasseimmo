@@ -373,6 +373,14 @@ export function lignes(d: Donnees, k: string): Record<string, string>[] {
 
 export const P = (x: string, g = false): Bloc => ({ t: 'p', x, g });
 export const Pp = (x: string): Bloc => ({ t: 'p', x, petit: true });
+/* Un texte libre (une clause, une précision), tel qu'on l'a tapé : une ligne
+   par paragraphe, au lieu d'un seul bloc où les retours à la ligne se
+   perdent (V3.52). `avant` : ce qui précède la première ligne (« Précision : »).
+   Les montants tapés à la main gardent leurs chiffres ensemble, comme ceux
+   que le modèle écrit (« 1 175 000 € » ne se coupe pas en fin de ligne). */
+const insecables = (x: string) => x.replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0').replace(/(\d) ([€%])/g, '$1\u00a0$2');
+export const lignesLibres = (t: string): string[] => t.split(/\n+/).map(x => insecables(x.replace(/\s+/g, ' ').trim())).filter(Boolean);
+export const paragraphes = (t: string, avant = ''): Bloc[] => lignesLibres(t).map((x, i) => P(i === 0 && avant ? `${avant}${x}` : x));
 /* « 685 000 € (six cent quatre-vingt-cinq mille euros) » */
 export const eurosLettres = (n: number) => `${euros(n)} (${enLettres(n)} euros)`;
 /* « 12 » → « douze (12) » */
