@@ -7,7 +7,6 @@
 
 import { useState, type ReactNode } from 'react';
 import Depliant from '@/components/shared/Depliant';
-import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { Ic } from '@/components/documents/ApercuActe';
 import v from './VueBien.module.css';
 import { jourParis } from '@/lib/mandat';
@@ -187,50 +186,8 @@ export function CarteVisites({ nbVisites, nbAVenir, nbOffres, repartition, proch
   );
 }
 
-/* ── Le propriétaire : l'appeler en un geste ── */
-/* « la SCI AVIENA », « Dupont Investissements » */
-const laSociete = (n: string) => (/^(sci|sarl|sas|sasu|eurl|sa|snc|société|holding)\b/i.test(n) ? `la ${n}` : n);
-export function CarteProprio({ nom, sous, plus, tel, mail, pluriel, personne, societe, pour, onFiche, onModifier, onRetirer }: {
-  nom: string; sous: string; tel: string; pluriel: boolean; onFiche?: () => void; onModifier: () => void;
-  /* V3.31 : une ligne de plus (délai, venu par, notaire), l'e-mail à la
-     place du SMS, et « Retirer du bien ». */
-  plus?: string; mail?: string; onRetirer?: () => void;
-  /* Sa fiche, pour dessiner son avatar (V3.31) ; une SCI : la mallette. */
-  personne?: Personne | null; societe?: boolean;
-  /* Il agit au nom d'une société (V3.32) : son rôle, et laquelle. */
-  pour?: { nom: string; role: string } | null;
-}) {
-  const brut = tel.replace(/[\s.]+/g, '');
-  return (
-    <div className={`${v.kpi} ${v.kpiBlanc} ${v.kpiLarge}`}>
-      <div className={v.kpiT} style={{ color: '#0f766e' }}><span className={v.kpiIc} style={{ background: '#f0fdfa', color: '#0d9488' }}><Ic n="personne" t={17} /></span>{pluriel ? 'Les propriétaires' : 'Le propriétaire'}{onRetirer && <button type="button" className={v.retirer} onClick={onRetirer} title="Le bien n’aura plus de propriétaire ; sa fiche reste dans tes contacts"><Ic n="croix" t={11} e={2.6} />Retirer du bien</button>}</div>
-      {nom ? (
-        <div className={v.proprio}>
-          <AvatarContact c={{ ...(personne || { prenom: nom }), couple: pluriel }} teinte={{ bg: '', fg: '#e8c96a' }} className={v.proprioAv} libre societe={societe} />
-          <div>
-            <b>{nom}</b>
-            {pour && <span className={v.proprioSoc}><Ic n="immeuble" t={13} /><span>{pour.role ? `${pour.role} de ${laSociete(pour.nom)}` : `Pour ${laSociete(pour.nom)}`}</span></span>}
-            {sous && <small>{sous}</small>}{plus && <small className={v.proprioPlus}>{plus}</small>}
-          </div>
-        </div>
-      ) : <span className={v.kpiSousGris}>Pas encore renseigné.</span>}
-      {/* Ses coordonnées en clair (V3.32) : on les lit sans ouvrir sa fiche. */}
-      {nom && (tel || mail) && (
-        <div className={v.proprioCo}>
-          {tel && <a href={`tel:${brut}`}><Ic n="telephone" t={13} /><span>{tel}</span></a>}
-          {mail && <a href={`mailto:${mail}`}><Ic n="mail" t={13} /><span>{mail}</span></a>}
-        </div>
-      )}
-      <div className={v.proprioBtns}>
-        {tel && <a className={v.pbTel} href={`tel:${brut}`} aria-label="Appeler" title={tel}><Ic n="telephone" t={16} /></a>}
-        {mail && <a className={v.pb} href={`mailto:${mail}`} aria-label="E-mail" title={mail}><Ic n="mail" t={16} /></a>}
-        {onFiche
-          ? <button type="button" className={v.pbTexte} onClick={onFiche}>{pluriel ? 'Leur fiche' : 'Sa fiche'}</button>
-          : <button type="button" className={v.pbTexte} onClick={onModifier}>{nom ? 'Relier une fiche' : 'Le renseigner'}</button>}
-      </div>
-    </div>
-  );
-}
+/* ── Le propriétaire : la carte « Le propriétaire » (V3.29-V3.53) a laissé
+   la place à la pastille à cheval sur le bandeau (PastilleProprio, V3.54). ── */
 
 /* ── Les prochaines visites ── */
 export type ProchaineVisite = { cle: string; ymd: string; heure: string; qui: string; sous: string; etat: string; ton: 'bleu' | 'or' | 'gris'; clientId: string | null };

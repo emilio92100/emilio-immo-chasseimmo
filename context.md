@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.53 · 2 octobre 2026**
+**Version 3.54 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,31 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.54 — 3 octobre 2026 · la pastille du propriétaire : une croix, « Créer sa fiche », et plus de carte en bas
+
+Rien à passer dans Supabase.
+
+Alexandre, sur la V3.53 : « il n'y a pas de petite croix en haut, comme “Retirer du bien” en bas » ;
+« la partie Le propriétaire, en bas, on peut l'enlever, ça ne sert à rien » ; et, sur une
+propriétaire saisie sans fiche : « il y a marqué Relier une fiche, je n'ai pas compris pourquoi ».
+- `PastilleProprio` : une petite croix au bout de la pastille, derrière un trait. Un clic ouvre, à
+  la place du panneau, « Retirer <nom> de ce bien ? » (sa fiche reste dans les contacts ; sans
+  fiche, son nom et ses coordonnées notés sur le bien sont effacés), « Retirer du bien » /
+  « Annuler ». FicheBien : `retirerProprio`, sans le `confirm()` d'avant.
+- Un nom saisi sur le bien sans fiche dans les contacts (les biens d'avant la V3.30) : le panneau le
+  dit (« Pas encore de fiche dans tes contacts : ses coordonnées sont notées sur ce bien
+  seulement… ») et propose « Créer sa fiche » au lieu de « Relier une fiche » (qui ouvrait
+  l'éditeur sans dire pourquoi). FicheBien, `creerFicheProprioBien` : la première personne saisie
+  devient un contact « vendeur » (`creerFicheProprio`), relié au bien ; si elle est déjà dans les
+  contacts (même e-mail, même téléphone, mêmes prénom et nom : `doublonsContact`), on propose de
+  relier cette fiche-là (`marquerVendeur`). L'enregistrement attendu, la liste se relit.
+- La carte « Le propriétaire » de la Vue d'ensemble est retirée (`CarteProprio` et ses styles
+  supprimés de VueBien) ; sa ligne « motif · Venu par · Notaire » passe dans le panneau de la
+  pastille (`plus`). Les cartes : deux (avant le mandat : Pour la visite, Acheteurs ; ensuite :
+  Visites et offres, Pour la visite), une une fois vendu — `Kpis` accepte `n` = 2 et 1.
+- Les boutons du panneau passent à la ligne quand ils n'ont pas la place (« Relier une fiche »
+  débordait de son bouton).
 
 ### V3.53 — 2 octobre 2026 · le propriétaire à cheval sur le haut du bandeau d'un bien
 

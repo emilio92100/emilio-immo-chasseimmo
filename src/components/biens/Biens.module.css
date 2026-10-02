@@ -1363,9 +1363,26 @@ button.pillRouge svg { color: white !important; }
 .pProprioCo a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pProprioCo a svg { color: #a07c28; }
 .pProprioRien { margin: 0; font-size: 13px; color: #94a3b8; }
-.pProprioBtns { display: flex; gap: 6px; }
-.pProprioAct { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 8px; border-radius: 11px; border: 1px solid #e3e8f0; background: #fff; color: #1a2332; font: 700 13px 'DM Sans', sans-serif; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.pProprioBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pProprioAct { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 8px; border-radius: 11px; border: 1px solid #e3e8f0; background: #fff; color: #1a2332; font: 700 13px 'DM Sans', sans-serif; text-decoration: none; cursor: pointer; white-space: nowrap; }
 .pProprioAct:hover { background: #f8fafc; }
+.pProprioAct:disabled { opacity: .6; cursor: default; }
+/* V3.54 : la croix, au bout de la pastille, derrière un trait. Centrée par
+   top/bottom + margin auto (jamais transform : AGENTS.md §2.7). */
+.pProprioAvecX { padding-right: 46px; }
+.pProprioX { position: absolute; top: 0; bottom: 0; right: 8px; margin: auto 0; width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.pProprioX::before { content: ''; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 1px; background: #eadcb2; }
+.pProprioX:hover, .pProprioX[aria-expanded='true'] { color: #b91c1c; background: #fef2f2; }
+.pProprioQui small.pProprioPlus { color: #8290a6; margin-top: 2px; }
+.pProprioSans { margin: 0; padding: 9px 11px; border-radius: 12px; background: #fdf8ea; border: 1px solid #f1e3b8; font-size: 12.5px; line-height: 1.45; color: #6b5a2a; }
+.pProprioOr { border-color: #e3c872; background: #fdf8ea; color: #8a6a1f; }
+.pProprioOr:hover { background: #faf1d8; }
+.pProprioDanger { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.pProprioDanger:hover { background: #fde4e4; }
+.pProprioQ { display: flex; align-items: flex-start; gap: 11px; }
+.pProprioQ b { display: block; font-size: 14.5px; color: #1a2332; }
+.pProprioQ small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: #64748b; }
+.pProprioQIc { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fef2f2; color: #b91c1c; }
 @media (max-width: 760px) {
   .proprioCheval { max-width: calc(100% - 24px); margin: -2px 0 -34px 12px; }
   .proprioCheval + .hero { padding-top: 34px; }

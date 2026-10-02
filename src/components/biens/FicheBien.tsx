@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { euros, jourParis } from '@/lib/mandat';
-import { num, txt, liste, modele, modeSignature } from '@/lib/actes';
+import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/actes';
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
@@ -21,7 +21,7 @@ import {
 import type { ChoixGuide } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
-  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
+  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -48,7 +48,7 @@ import {
   dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type NotaireCarte, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
-import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteProprio, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
+import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
@@ -1424,20 +1424,51 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const motifP = [lib(d, 'motif'), lib(d, 'delai')].filter(Boolean).join(' · ');
   const sousP = interlocuteur || (recherchesProprio.length ? (plurielP ? 'cherchent aussi à acheter' : 'cherche aussi à acheter') : motifP);
   const mailP = proprio?.emails?.[0] || persP.find(p => p?.email)?.email || '';
-  /* Ce que disait le bloc « Le propriétaire » du bas (retiré en V3.31). */
+  /* Ce que disait le bloc « Le propriétaire » du bas (retiré en V3.31) ; dans
+     le panneau de la pastille depuis la V3.54. */
   const plusP = [sousP !== motifP ? motifP : '', lib(d, 'origine') ? `Venu par : ${lib(d, 'origine').toLowerCase()}` : '', txt(d, 'notaire') ? `Notaire : ${txt(d, 'notaire')}` : ''].filter(Boolean).join(' · ');
   /* « Retirer du bien » (V3.31) : comme dans l'éditeur, le bien n'a plus de
      propriétaire (ni fiche reliée, ni nom, ni coordonnées) ; sa fiche reste
-     dans les contacts. La carte repasse aussitôt à « Pas encore renseigné ». */
+     dans les contacts. V3.54 : depuis la croix de la pastille, qui a déjà
+     demandé confirmation ; elle repasse aussitôt à « À renseigner ». */
   const retirerProprio = () => {
-    const qui = proprio ? nomClient(proprio) : nomP || 'ce propriétaire';
-    if (!confirm(`Retirer ${qui} de ce bien ?\n\nSa fiche reste dans tes contacts. Le bien n’aura plus de propriétaire : ni fiche reliée, ni nom, ni coordonnées. Tu pourras en relier un autre avec « Relier une fiche ».`)) return;
     setBien(prev => {
       const donnees = { ...(prev.donnees || {}), clientId: '', proprietaires: [], proprioNouveau: false, proprioSans: false, qui: '', sciNom: '' };
       const n = { ...prev, client_id: null, donnees };
       enregistrerDansLOrdre(n.id, donnees, prev.donnees || {});
       return n;
     });
+  };
+  /* « Créer sa fiche » (V3.54), depuis la pastille : un propriétaire saisi sur
+     le bien sans fiche dans les contacts (les biens d'avant la V3.30) devient
+     un contact « vendeur », relié au bien — comme « Créer sa fiche » dans
+     l'éditeur. S'il y est déjà (même e-mail, même téléphone, mêmes prénom et
+     nom), on propose de relier celui-là plutôt que d'en créer un second.
+     L'enregistrement attendu, la liste se relit : la pastille passe à
+     « Sa fiche ». */
+  const p0Saisi = lirePersonnes(d.proprietaires).find(x => x.nom || x.prenom) || null;
+  const creerFicheProprioBien = async () => {
+    if (!p0Saisi) { onModifier('proprio'); return; }
+    const net = { ...p0Saisi, prenom: p0Saisi.prenom.trim(), nom: p0Saisi.nom.trim(), telephone: p0Saisi.telephone.trim(), email: p0Saisi.email.trim().toLowerCase() };
+    const qui = [net.prenom, net.nom].filter(Boolean).join(' ');
+    try {
+      const deja = doublonsContact(Object.values(liste.clients), net)[0] || null;
+      let c: ClientMini;
+      let relie = false;
+      if (deja && confirm(`${nomClient(deja)} est déjà dans tes contacts${[deja.telephones?.[0], deja.emails?.[0]].filter(Boolean).length ? ` (${[deja.telephones?.[0], deja.emails?.[0]].filter(Boolean).join(' · ')})` : ''}.\n\nRelier sa fiche à ce bien, plutôt que d’en créer une seconde ?`)) {
+        c = deja; relie = true;
+        await marquerVendeur(c.id);
+      } else {
+        if (deja && !confirm(`Créer quand même une nouvelle fiche pour ${qui} ?`)) return;
+        c = await creerFicheProprio(net);
+      }
+      const avantD = bien.donnees || {};
+      setBien(prev => ({ ...prev, client_id: c.id, donnees: { ...(prev.donnees || {}), clientId: c.id, proprioNouveau: false, proprioSans: false } }));
+      enregistrerDansLOrdre(bien.id, { ...avantD, clientId: c.id, proprioNouveau: false, proprioSans: false }, avantD);
+      await file.current;
+      onRecharger();
+      setMessage({ t: relie ? `La fiche de ${nomClient(c)} est reliée à ce bien.` : `La fiche de ${nomClient(c)} est créée dans tes contacts (vendeur) et reliée à ce bien.`, ok: true });
+    } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   };
   const faites = visites.filter(v => v.statut !== 'annulee' && passee(v));
   const compte = (x: Issue | null) => faites.filter(v => v.issue === x).length;
@@ -1794,8 +1825,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {/* V3.53 : à qui est ce bien, sur tous les onglets. La pastille est à
           cheval sur le haut du bandeau, comme les rubriques sur le bas. */}
       <div className={b.proprioCheval}>
-        <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} tel={telP} mail={mailP}
-          onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')} onApres={() => { void apres(); }} />
+        <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} plus={plusP} tel={telP} mail={mailP}
+          onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')}
+          onCreerFiche={!proprio && p0Saisi ? creerFicheProprioBien : undefined} onRetirer={nomP || proprio ? retirerProprio : undefined} onApres={() => { void apres(); }} />
       </div>
 
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}
@@ -1818,7 +1850,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {onglet === 'apercu' && (
         <div className={b.col}>
           {/* Avant le mandat (V3.31, maquette B) : le parcours de l'estimation
-              sur toute la largeur, puis le propriétaire, la visite, les acheteurs. */}
+              sur toute la largeur, puis la visite, les acheteurs. */}
           {avant && (
             <BlocParcours bien={bien} onDefinir={() => setFen({ k: 'estim' })} onEstimation={() => setFen({ k: 'estimation' })}
               onMandat={() => setFen({ k: 'mandat' })} onDocuments={() => setOnglet('documents')} />
@@ -1828,10 +1860,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
           {/* Après le mandat (V3.32) : le mandat est dans le bandeau, les
               acheteurs dans leur onglet ; « Pour la visite » remonte ici. */}
-          <Kpis n={avant || e !== 'vendu' ? 3 : 2}>
+          {/* V3.54 : la carte « Le propriétaire » est partie (Alexandre : « ça ne
+              sert à rien, on a déjà la partie en haut ») — la pastille du
+              bandeau dit tout, sur tous les onglets. */}
+          <Kpis n={avant || e !== 'vendu' ? 2 : 1}>
             {!avant && <CarteVisites nbVisites={nbVisites} nbAVenir={visitesAVenir.length} nbOffres={offresOuvertes.length} repartition={repartition} prochaine={prochaineVisite}
               onVoir={() => setOnglet('visites')} onVisite={ouvrirVisite} onOffre={ouvrirOffre} />}
-            <CarteProprio nom={nomP} sous={sousP} plus={plusP} tel={telP} mail={mailP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} onRetirer={nomP || proprio ? retirerProprio : undefined} onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onModifier={() => onModifier('proprio')} />
             {(avant || e !== 'vendu') && <CartePourLaVisite {...visitePourCarte(d)} onModifier={() => onModifier('pratique')} />}
             {avant && <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />}
           </Kpis>
