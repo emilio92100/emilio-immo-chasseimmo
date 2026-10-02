@@ -28,7 +28,7 @@ import { euros, type Partie, type Bloc, type Fiche, type Resume } from '@/lib/ma
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import { BAREME_VENTE } from '@/lib/mandat';
 import {
-  P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, lignes, couper,
+  P, Pp, paragraphes, lignesLibres, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, lignes, couper,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, lignesPersonne, blocsInformations, ficheAgence,
   PERSONNE_VIDE, plusMois, veille, annexeL215, blocsSignature, manquesSignature, lieuDe, modeSignature, electronique, CHAMP_SIGNATURE, MANQUE_EXECUTION,
   ouiNon, IC_RYTHME, HONO_MODES, TANTIEMES_BASES, personneRegistre,
@@ -377,6 +377,10 @@ const ETAPES: Etape[] = [
         { v: 'aucun', l: 'Aucun honoraire', ic: 'ouvert' }, { v: 'reduits', l: 'Des honoraires réduits', ic: 'pourcent' },
       ] },
       { t: 'euros', cle: 'semiMontant', lib: 'Honoraires réduits', ic: 'euro', unite: '€ TTC', si: d => d.type === 'semi' && d.semiDirect === 'reduits' },
+      /* V3.52 : imprimée juste sous les honoraires, et reprise dans
+         l'information précontractuelle. */
+      { t: 'zone', cle: 'honoNote', lib: 'Précision sur les honoraires', ic: 'plume', large: true,
+        aide: 'Imprimée juste sous les honoraires. Par exemple : comment ils baissent si le prix baisse. Une ligne par paragraphe.' },
     ],
   },
   {
@@ -497,7 +501,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   }
   if (txt(d, 'notaire')) entre.push(Pp(`Notaire chargé de la vente pour le MANDANT : ${txt(d, 'notaire')}.`));
   if (d.fiscal === 'non') entre.push(Pp(`${plusieurs ? 'Les vendeurs déclarent' : 'Le vendeur déclare'} ne pas avoir sa résidence fiscale en France : le notaire en tiendra compte pour l’impôt sur la plus-value.`));
-  if (txt(d, 'noteVendeurs')) entre.push(P(`Précision : ${txt(d, 'noteVendeurs')}`));
+  entre.push(...paragraphes(txt(d, 'noteVendeurs'), 'Précision : '));
 
   /* ── L'objet ── */
   const objet: Bloc[] = type === 'exclusif'
@@ -535,7 +539,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       ? 'Le bien est occupé par le MANDANT, qui le libérera au plus tard le jour de la signature de l’acte de vente.'
       : 'Le bien sera libre de toute occupation le jour de la signature de l’acte de vente.'));
   if (txt(d, 'meubles')) bien.push(P(`Sont également vendus avec le bien : ${txt(d, 'meubles')}.`));
-  if (txt(d, 'noteBien')) bien.push(P(`Précision : ${txt(d, 'noteBien')}`));
+  bien.push(...paragraphes(txt(d, 'noteBien'), 'Précision : '));
 
   /* ── Le prix et les honoraires ── */
   const prix: Bloc[] = a.prix
@@ -553,11 +557,19 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       ? `${pourcent(a.taux)} TTC du ${a.charge === 'acquereur' ? 'prix net vendeur' : 'prix de vente'}${a.honoraires ? `, soit ${euros(a.honoraires)} TTC au prix de présentation` : ''}`
       : 'à préciser';
   hono.push(P(`Honoraires de l’Agence : ${combien}, à la charge ${a.charge === 'acquereur' ? 'de l’acquéreur' : 'du MANDANT'}.`, true));
+  /* Un autre prix de vente : un pourcentage s'applique au prix obtenu ; un
+     forfait ne bouge pas, sauf ce qu'en dit la précision (V3.52 : « calculés
+     de la même façon » laissait croire qu'un forfait se recalculait). */
+  const noteHono = txt(d, 'honoNote');
+  const autrePrix = a.forfait
+    ? (noteHono ? '' : ' Ce forfait reste le même si la vente se fait à un autre prix.')
+    : ' Si la vente se fait à un autre prix, ils sont calculés de la même façon sur le prix obtenu.';
   if (a.charge === 'acquereur') {
-    hono.push(P('Ils sont compris dans le prix de présentation, et indiqués dans toute annonce. Si la vente se fait à un autre prix, ils sont calculés de la même façon sur le prix obtenu.'));
+    hono.push(P(`Ils sont compris dans le prix de présentation, et indiqués dans toute annonce.${autrePrix}`));
   } else {
-    hono.push(P('Ils seront réglés par le MANDANT, par l’intermédiaire du notaire, sur le prix de vente. Si la vente se fait à un autre prix, ils sont calculés de la même façon sur le prix obtenu.'));
+    hono.push(P(`Ils seront réglés par le MANDANT, par l’intermédiaire du notaire, sur le prix de vente.${autrePrix}`));
   }
+  hono.push(...paragraphes(noteHono));
   if (type === 'semi') {
     hono.push(P(d.semiDirect === 'reduits' && num(d, 'semiMontant')
       ? `Si le MANDANT vend lui-même, à un acquéreur qui ne lui a été présenté par aucun intermédiaire, les honoraires sont ramenés à ${euros(num(d, 'semiMontant') || 0)} TTC.`
@@ -661,7 +673,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
       ].join(' ; '),
     }),
   ] });
-  if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: [P(txt(d, 'clause'))] });
+  if (txt(d, 'clause')) sections.push({ titre: 'Clause particulière', ic: 'plume', blocs: paragraphes(txt(d, 'clause')) });
   const nbEx = (d.qui === 'sci' ? 1 + associesDe(d).length : vs.length) + 1 + (aConjoint(d) ? 1 : 0);
   sections.push({ titre: 'Date et signatures', ic: 'plume', blocs: blocsSignature(d, {
     papier: `Fait à ${txt(d, 'faitA') || '……………'}, le ${txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………'}, en ${nbLettres(nbEx)} exemplaires originaux, dont un remis à chaque partie.`,
@@ -715,6 +727,7 @@ export function infoPrecontractuelle(d: Donnees, A: IdentiteAgence): Partie {
         ] },
         { ic: 'euro', titre: 'Le prix du service', lignes: [
           `${combien}, à la charge ${a.charge === 'acquereur' ? 'de l’acquéreur' : 'du vendeur'}.`,
+          ...lignesLibres(txt(d, 'honoNote')),
           'Dus uniquement si la vente est conclue et signée chez le notaire : rien n’est versé avant.',
           'Si vous vendez sans l’Agence à un acquéreur qu’elle vous a présenté, pendant le mandat et les mois qui suivent, une indemnité égale à ces honoraires est due.',
           `Barème de l’Agence : jusqu’à ${pourcent(BAREME_VENTE)} TTC du prix, affiché à l’Agence et sur son site.`,
