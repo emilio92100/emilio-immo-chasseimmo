@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.58 · 3 octobre 2026**
+**Version 3.59 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,31 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.59 — 3 octobre 2026 · la fiche d'un vendeur ou d'un contact en rubriques
+
+Rien à passer dans Supabase.
+
+Alexandre, sur la fiche de Christine (vendeuse, associée d'une SCI) : « il n'y a pas le petit menu à cheval
+sur la ligne blanche, comme pour un acheteur » ; « il y a trop d'infos sur une seule page, on est obligé
+de descendre tout en bas pour voir le suivi » ; « on a déjà l'info sur la partie bleue, je ne vois pas
+l'utilité de la remettre en dessous » ; « pour le En bref, mettre À savoir sur Christine ».
+
+- **Les rubriques** (`FicheContact.tsx`, `BarreOnglets` / `CorpsOnglet` de `OngletsGlissants.tsx`, comme la
+  fiche d'un bien) à cheval sur le bas du bandeau (`.heroOnglets`, `.ongletsCheval`) :
+  « **À savoir sur Christine** » (« À savoir » sur téléphone, `.ongletLong`) : sa société, la carte
+  « À savoir », les blocs du métier (agence, étude, immeuble, activité), « Il cherche aussi à acheter ? » ;
+  « **Documents** » (le nombre en pastille ; « **Délégations** » pour un confrère) ; « **Suivi** » (le
+  nombre d'éléments ; la frise seule, sans la bande « Le suivi »). Ouvre sur « À savoir ».
+  Un notaire, un gardien, un partenaire n'ont pas l'onglet Documents (comme avant : pas de bloc).
+- Les tuiles du bandeau d'un pro (« 1 échange », « Aucune relance ») ouvrent l'onglet Suivi ; « Il agit
+  pour une société ? Ajouter » ouvre « À savoir », où le bloc se déplie.
+- **« Ses biens » n'est plus répété sous le bandeau** : les biens y sont déjà (`BiensHero`). Au bout de
+  leur rang, « **+ Nouveau bien** » (`.heroBienAjout`) ; au-delà de quatre biens, « + N autres biens » les
+  déplie dans le bandeau (avant : renvoyait à « Ses biens », plus bas). `BiensDuContact` n'est plus
+  utilisé par la fiche (toujours exporté par `ChampsContact.tsx`). Les biens archivés ne se voient plus
+  sur la fiche (la tuile le dit quand il n'y a qu'eux) : rubrique Biens, filtre Archivés.
+- L'avis « contact archivé » et les erreurs passent sous la barre des rubriques.
 
 ### V3.58 — 3 octobre 2026 · la signature en ligne : un seul mail à la fin, et qui a signé sous la ligne dans Documents
 
