@@ -72,6 +72,13 @@
 .ligneS { margin-top: 2px; font-size: 12.5px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ligneMeta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .ligneMeta span { font-size: 11.5px; color: #94a3b8; white-space: nowrap; }
+/* V3.58 : un document en signature garde, sous sa ligne, qui a signé et qui
+   on attend (SuiviSignature), aligné sur le texte de la ligne. */
+.ligneBloc { border-bottom: 1px solid #f1f4f8; background: white; transition: background .12s; }
+.ligneBloc:last-child { border-bottom: none; }
+.ligneBloc > .ligne { border-bottom: none; }
+.ligneBlocOn { background: #fbf8ef; }
+.ligneSuivi { padding: 0 18px 12px 70px; }
 .type { display: inline-flex; padding: 2px 8px; border-radius: 6px; background: #f1f4f8; color: #4a5568; font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
 
 .statut { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 700; white-space: nowrap; border: 1px solid; }
@@ -431,6 +438,7 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .ligneIc { width: 34px; height: 34px; border-radius: 10px; }
   .ligneMeta { display: none; }
   .ligneMobile { display: flex !important; }
+  .ligneSuivi { padding: 0 10px 10px; }
 
   .panneau { top: auto; left: 0; width: 100%; max-height: 88vh; border-radius: 20px 20px 0 0; animation: monte .22s ease; }
   @keyframes monte { from { transform: translateY(40px); opacity: .4 } to { transform: none; opacity: 1 } }
@@ -699,6 +707,10 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .suiviTete { padding: 9px 10px; gap: 9px; flex-wrap: wrap; }
   .suiviTx { flex-basis: calc(100% - 52px); }
   .suiviTete .suiviVoir { margin-left: 43px; }
+  /* V3.58 : à partir de quatre signataires, les points prennent leur ligne :
+     le texte et « Qui a signé ? » repartent du bord, sans retrait. */
+  .suiviTete:has(.suiviPoints i:nth-child(4)) .suiviTx { flex-basis: 100%; }
+  .suiviTete:has(.suiviPoints i:nth-child(4)) .suiviVoir { margin-left: 0; }
 }
 
 /* ── Les documents d'un contact, rangés par état (V3.32) ── */
