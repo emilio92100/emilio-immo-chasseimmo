@@ -114,8 +114,10 @@ function Etiquettes({ r }: { r: Rangee }) {
   );
 }
 
-function LigneApercu({ r, ouvert, edition, mode, aujourdhui, onOuvrir, onEdition, onChoix }: {
+function LigneApercu({ r, ouvert, fermant, edition, mode, aujourdhui, onOuvrir, onEdition, onChoix }: {
   r: Rangee; ouvert: boolean; edition: boolean; mode: Mode; aujourdhui: string;
+  /* Elle se replie : le détail reste le temps de l'animation. */
+  fermant: boolean;
   onOuvrir: () => void; onEdition: () => void; onChoix: (x: Partial<Choix>) => void;
 }) {
   const p = r.plan;
@@ -162,7 +164,12 @@ function LigneApercu({ r, ouvert, edition, mode, aujourdhui, onOuvrir, onEdition
         </span>
         <span className={st.chev}><Ic n="bas" t={14} e={2.4} /></span>
       </button>
-      {ouvert && <Detail r={r} edition={edition} mode={mode} aujourdhui={aujourdhui} onEdition={onEdition} onChoix={onChoix} />}
+      {/* V3.62 (« trop brut ») : le détail se déplie et se replie en douceur. */}
+      {(ouvert || fermant) && (
+        <div className={`${st.deplie}${ouvert ? ` ${st.deplieOuvert}` : ''}`}>
+          <div className={st.deplieIn}><Detail r={r} edition={edition} mode={mode} aujourdhui={aujourdhui} onEdition={onEdition} onChoix={onChoix} /></div>
+        </div>
+      )}
     </div>
   );
 }
@@ -174,6 +181,8 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
   const precisions = c.recherches.map(x => x.precision).filter(Boolean);
   const commentaire = c.commentaires.join('\n');
   const aSavoir = p.aSavoir.split('\n\n').filter(b => !/^Son commentaire dans ImmoFacile|^Précision de sa recherche dans ImmoFacile/.test(b)).join('\n');
+  /* Ce qui est recopié tel quel dans « À savoir », en plus des lignes lues. */
+  const bruts = [precisions.length ? 'la précision de sa recherche' : '', commentaire ? 'son commentaire' : ''].filter(Boolean).join(' et ');
   const statut = !p.roles.acheteur ? 'Prospect'
     : r.actif ? 'Actif : veille et point automatique'
       : mode !== 'actifs' ? 'Prospect : à qualifier, rien ne part tout seul'
@@ -217,14 +226,17 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
               <dt>Rôles</dt><dd className={st.roles}>{p.roles.proprietaire && <Role r="proprietaire" />}{p.roles.acheteur && <Role r="acheteur" />}</dd>
               {p.roles.acheteur && <><dt>Statut</dt><dd>{statut}</dd></>}
               {p.recherches.length > 0 && <><dt>Sa recherche</dt><dd><Puces r={r} onChoix={onChoix} /></dd></>}
-              {p.recherches[0]?.crit.notes && <><dt>Précisions</dt><dd className={st.texte}>{p.recherches[0].crit.notes}</dd></>}
+              {/* Toujours là pour un acheteur : ce que le client lira dans « Précisions sur la recherche ». */}
+              {p.recherches.length > 0 && <><dt>Précisions</dt><dd className={p.recherches[0].crit.notes ? st.texte : st.pale}>{p.recherches[0].crit.notes
+                || (r.etat === 'attente' ? 'Lecture de son texte en cours…'
+                  : precisions.length || commentaire ? 'Rien de repris : sa précision d’ImmoFacile reste, telle quelle, dans « À savoir ».' : 'Aucune')}</dd></>}
               {p.recherches.slice(1).map(x => <Fragment key={x.nom}><dt>{x.nom}</dt><dd>{`${x.titre} · ${x.ligne}`}</dd></Fragment>)}
               {p.roles.proprietaire && <><dt>Son bien</dt><dd>{p.aSuivre
                 ? `Fiche bien « À suivre » dans Biens : ${p.aSuivre.resume} · ${p.aSuivre.rappelTexte}`
                 : p.projetVente
                   ? `Case « Revente possible après l’achat (mandat vendeur potentiel) » cochée${p.bienActuel.notes ? ` : ${p.bienActuel.notes.replace(/[.\s]+$/, '')}` : ''} · ${p.rappel ? p.rappel.rappelTexte : 'sans date de rappel'}. Pas de fiche bien.`
                   : <span className={st.pale}>Pas de projet de vente</span>}</dd></>}
-              <dt>À savoir</dt><dd className={st.texte}>{`${extrait(aSavoir, 700)}${commentaire ? '\n+ son commentaire d’ImmoFacile, en entier' : ''}`}</dd>
+              <dt>À savoir</dt><dd className={st.texte}>{`${extrait(aSavoir, 700)}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd>
               <dt>Suivi</dt><dd className={st.pale}>{`« ${p.suivi} »`}</dd>
             </dl>
           </>
@@ -323,6 +335,18 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const [onglet, setOnglet] = useState<Onglet>('tous');
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [edition, setEdition] = useState<string | null>(null);
+  /* La ligne qui se replie, le temps de son animation. */
+  const [fermant, setFermant] = useState<string | null>(null);
+  const repli = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function basculer(cle: string) {
+    if (ouvert) {
+      setFermant(ouvert);
+      if (repli.current) clearTimeout(repli.current);
+      repli.current = setTimeout(() => setFermant(null), 340);
+    }
+    setOuvert(o => (o === cle ? null : cle));
+    setEdition(null);
+  }
   const [avance, setAvance] = useState({ faits: 0, total: 0, nom: '' });
   const [resultats, setResultats] = useState<Resultat[]>([]);
   const [erreurFin, setErreurFin] = useState('');
@@ -661,8 +685,8 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
       </div>
       <div className={st.liste}>
         {visibles.map(r => (
-          <LigneApercu key={r.c.cle} r={r} mode={mode} aujourdhui={aujourdhui} ouvert={ouvert === r.c.cle} edition={edition === r.c.cle}
-            onOuvrir={() => { setOuvert(o => (o === r.c.cle ? null : r.c.cle)); setEdition(null); }}
+          <LigneApercu key={r.c.cle} r={r} mode={mode} aujourdhui={aujourdhui} ouvert={ouvert === r.c.cle} fermant={fermant === r.c.cle && ouvert !== r.c.cle} edition={edition === r.c.cle}
+            onOuvrir={() => basculer(r.c.cle)}
             onEdition={() => setEdition(x => (x === r.c.cle ? null : r.c.cle))}
             onChoix={x => changerChoix(r.c.cle, x)} />
         ))}

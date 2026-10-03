@@ -47,25 +47,27 @@ Sépare toujours trois choses :
 Réponds UNIQUEMENT par un objet JSON valide, sans texte ni balise autour :
 {"contacts":[ un objet par contact reçu, avec sa "cle" recopiée à l'identique ]}
 
+Toutes les listes sont des tableaux JSON, même avec un seul élément, jamais une chaîne : "precisions": ["Box fermé pour trois voitures.", "Quartier calme."], "aSavoir": ["…", "…"], "secteurs": ["Boulogne-Billancourt"].
+
 Chaque objet :
 {
 "cle": "la clé reçue",
 "recherche": null s'il ne cherche pas à acheter, sinon {
-  "types": parmi ["Appartement","Maison","Loft","Duplex","Terrain","Autre"],
+  "types": un tableau parmi ["Appartement","Maison","Loft","Duplex","Terrain","Autre"],
   "budgetMin": euros ou null, "budgetMax": euros ou null,
   "surfaceMin": m² ou null, "surfaceMax": m² ou null, "piecesMin": nombre ou null, "piecesMax": nombre ou null, "chambresMin": nombre ou null,
-  "secteurs": les communes ou arrondissements, écrits en entier (« Boulogne-Billancourt », « Paris 15e », « Issy-les-Moulineaux ») ; les quartiers et les rues vont dans "precisions",
+  "secteurs": un tableau des communes ou arrondissements, écrits en entier (« Boulogne-Billancourt », « Paris 15e », « Issy-les-Moulineaux ») ; les quartiers et les rues vont dans "precisions",
   "equipements": [{"cle": "parking"|"cave"|"balcon"|"terrasse"|"jardin"|"gardien"|"interphone"|"digicode"|"exterieur"|"ascenseur", "niveau": "souhaite"|"indispensable"}] ; « obligatoire », « impératif », « indispensable », un mot écrit en MAJUSCULES pour insister = "indispensable" ; « de préférence », « idéalement », « + » = "souhaite" ; un box ou un garage = "parking" ; « balcon ou terrasse » = "exterieur" ; jamais un équipement qu'il refuse,
   "rdcExclu": true s'il ne veut pas de rez-de-chaussée, "dernierEtage": true s'il veut le dernier étage,
   "etageMin": nombre ou null (« à partir du 1er » = 1), "etageMax": nombre ou null,
   "etageMaxSansAscenseur": l'étage le plus haut accepté sans ascenseur, ou null (« 3e sans asc pas bloquant » = 3),
   "cuisine": "ouverte"|"separee"|null (« cuisine indépendante » = "separee" ; « pas de préférence » = null), "cuisineNiveau": "souhaite"|"indispensable"|null,
-  "exposition": les orientations SOUHAITÉES parmi ["sud","est","ouest","nord","traversant"] (un refus, « pas de ouest », va dans "precisions"),
-  "etat": les états acceptés parmi ["a_renover","travaux_legers","bon_etat","refait_neuf"] ; rien s'il ne dit rien ; « travaux ok », « avec travaux why not » = les quatre ; « sans travaux » = ["bon_etat","refait_neuf"],
+  "exposition": un tableau des orientations SOUHAITÉES parmi ["sud","est","ouest","nord","traversant"] (un refus, « pas de ouest », va dans "precisions"),
+  "etat": un tableau des états acceptés parmi ["a_renover","travaux_legers","bon_etat","refait_neuf"] ; rien s'il ne dit rien ; « travaux ok », « avec travaux why not » = les quatre ; « sans travaux » = ["bon_etat","refait_neuf"],
   "sejourMin": m² du séjour ou null, "exterieurMin": m² d'extérieur minimum ou null, "anneeMin": année de construction minimum ou null,
   "financement": "cash"|"pret_valide"|"pret_en_cours"|"a_monter"|"pret_relais"|"mixte_cash_pret"|"mixte_cash_relais"|"mixte_pret_relais"|null,
   "urgence": "immediate"|"3_mois"|"6_mois"|"annee"|null,
-  "precisions": des phrases courtes sur ce qu'il cherche et qui n'ont pas de case ci-dessus : quartier, rues à éviter, vue, calme, vis-à-vis, proximité d'une école, du métro ou des commerces, « pas au dernier étage », « RDC accepté s'il y a un extérieur », « deux salles d'eau idéalement ». Écrites proprement, sans abréviation, sans « il » ni « vous » : le client pourra les lire. Exemple : « Box fermé pour trois voitures, ou places de stationnement équivalentes. » Jamais rien sur son logement actuel, sa vente, son financement ni sa vie privée.
+  "precisions": un tableau de phrases courtes sur ce qu'il cherche et qui n'ont pas de case ci-dessus : quartier, rues à éviter, vue, calme, vis-à-vis, proximité d'une école, du métro ou des commerces, « pas au dernier étage », « RDC accepté s'il y a un extérieur », « deux salles d'eau idéalement ». Écrites proprement, sans abréviation, sans « il » ni « vous » : le client pourra les lire. Exemple : « Box fermé pour trois voitures, ou places de stationnement équivalentes. » Jamais rien sur son logement actuel, sa vente, son financement ni sa vie privée.
 },
 "location": une phrase s'il cherche aussi (ou seulement) à louer, sinon null,
 "proprietaire": true si le texte dit qu'il possède un logement,
@@ -82,8 +84,8 @@ Chaque objet :
   "aSuivre": true seulement si Alexandre doit suivre ce projet de vente (cas "projet", ou "apres_achat" avec une estimation à faire),
   "rappel": {"date": "AAAA-MM-JJ" si une date précise de rappel est écrite, sinon null, "mois": 1 à 12 si un mois est cité (« rappeler en septembre » = 9 ; deux mois, « septembre/octobre » = le dernier, 10), sinon null, "annee": l'année si elle est écrite ou se déduit de la date de la note, sinon null, "texte": la consigne, courte, ou null}
 },
-"aSavoir": des phrases courtes, pour Alexandre seul, sur la personne et son histoire : comment il est arrivé (annonce, panneau, portail), sa situation, ses délais, son financement, ce qui a été fait ou promis, avec les dates. Une idée par phrase, sans abréviation, dans l'ordre des dates. Pas les critères de recherche déjà rendus plus haut, pas les formules de politesse des messages de portail,
-"emails": les adresses e-mail écrites dans le texte (pas celles d'une agence), "telephones": les numéros écrits dans le texte
+"aSavoir": un tableau de phrases courtes, pour Alexandre seul, sur la personne et son histoire : comment il est arrivé (annonce, panneau, portail), sa situation, ses délais, son financement, ce qui a été fait ou promis, avec les dates. Une idée par phrase, sans abréviation, dans l'ordre des dates. Pas les critères de recherche déjà rendus plus haut, pas les formules de politesse des messages de portail,
+"emails": un tableau des adresses e-mail écrites dans le texte (pas celles d'une agence), "telephones": un tableau des numéros écrits dans le texte
 }
 
 Pour le rappel, prends la consigne la PLUS RÉCENTE. Une date relative (« demain », « dans 1 an », « semaine pro ») se calcule à partir de la date de la note où elle est écrite.`;

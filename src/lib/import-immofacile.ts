@@ -649,11 +649,17 @@ const nb = (v: unknown, min: number, max: number): number | null => {
   return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : null;
 };
 const tx = (v: unknown, max: number) => (typeof v === 'string' ? net(v).slice(0, max) : '');
-const lst = (v: unknown, max: number, long: number) => (Array.isArray(v) ? v.map(x => tx(x, long)).filter(Boolean).slice(0, max) : []);
+/* Une liste rendue par Claude : un tableau, ou (V3.62) une seule chaîne qu'on
+   découpe — « "precisions": "Box fermé. Calme." » faisait tout tomber, et la
+   fiche arrivait sans ses précisions ni ses lignes « À savoir ». */
+const PHRASES = /\n+|(?<=[.!?…])\s+(?=[A-ZÀ-ÖØ-Þ«"])/;
+const ELEMENTS = /[\n;,]+/;
+const liste = (v: unknown, sep: RegExp): unknown[] => (Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? v.split(sep) : []);
+const lst = (v: unknown, max: number, long: number, sep: RegExp = ELEMENTS) => liste(v, sep).map(x => tx(x, long).replace(/^[-–•*]\s*/, '')).filter(Boolean).slice(0, max);
 function parmi<T extends string>(v: unknown, ok: readonly T[]): T | null {
   return typeof v === 'string' && (ok as readonly string[]).includes(v) ? v as T : null;
 }
-const parmiListe = <T extends string>(v: unknown, ok: readonly T[]): T[] => (Array.isArray(v) ? [...new Set(v.map(x => parmi(x, ok)).filter((x): x is T => !!x))] : []);
+const parmiListe = <T extends string>(v: unknown, ok: readonly T[]): T[] => [...new Set(liste(v, /[\s,;|/]+/).map(x => parmi(typeof x === 'string' ? x.trim() : x, ok)).filter((x): x is T => !!x))];
 const vrai = (v: unknown) => v === true || v === 'true';
 
 /* Une recherche rendue sans rien dedans (« recherche: {} ») n'en est pas
@@ -680,7 +686,10 @@ export function lireLecture(x: unknown, cle?: string): Lecture | null {
     surfaceMin: nb(r0.surfaceMin, 8, 3000), surfaceMax: nb(r0.surfaceMax, 8, 3000),
     piecesMin: nb(r0.piecesMin, 1, 30), piecesMax: nb(r0.piecesMax, 1, 30), chambresMin: nb(r0.chambresMin, 0, 20),
     secteurs: lst(r0.secteurs, 12, 60),
-    equipements: (Array.isArray(r0.equipements) ? r0.equipements : []).map(e => ({ cle: parmi(O(e).cle, CLES_EQUIP), niveau: parmi(O(e).niveau, NIVEAUX) || 'souhaite' }))
+    /* Un équipement rendu en simple mot (« balcon ») : souhaité. */
+    equipements: liste(r0.equipements, ELEMENTS).map(e => (typeof e === 'string'
+      ? { cle: parmi(e.trim().toLowerCase(), CLES_EQUIP), niveau: 'souhaite' as const }
+      : { cle: parmi(O(e).cle, CLES_EQUIP), niveau: parmi(O(e).niveau, NIVEAUX) || 'souhaite' }))
       .filter((e): e is { cle: CleEquip; niveau: 'souhaite' | 'indispensable' } => !!e.cle)
       .filter((e, i, l) => l.findIndex(y => y.cle === e.cle) === i),
     rdcExclu: vrai(r0.rdcExclu), dernierEtage: vrai(r0.dernierEtage),
@@ -689,7 +698,7 @@ export function lireLecture(x: unknown, cle?: string): Lecture | null {
     exposition: parmiListe(r0.exposition, EXPOS), etat: parmiListe(r0.etat, ETATS),
     sejourMin: nb(r0.sejourMin, 5, 300), exterieurMin: nb(r0.exterieurMin, 1, 5000), anneeMin: nb(r0.anneeMin, 1600, 2100),
     financement: parmi(r0.financement, FINANCEMENTS), urgence: parmi(r0.urgence, URGENCES),
-    precisions: lst(r0.precisions, 12, 220),
+    precisions: lst(r0.precisions, 12, 220, PHRASES),
   } : null;
   /* Deux bornes inversées : on les remet dans l'ordre. */
   if (recherche && rechercheVide(recherche)) recherche = null;
@@ -715,7 +724,7 @@ export function lireLecture(x: unknown, cle?: string): Lecture | null {
       projet: parmi(v0.projet, PROJETS) || 'aucun', aSuivre: vrai(v0.aSuivre),
       rappel: { date, mois: nb(rp.mois, 1, 12), annee: nb(rp.annee, 2000, 2100), texte: tx(rp.texte, 120) || null },
     },
-    aSavoir: lst(o.aSavoir, 12, 300),
+    aSavoir: lst(o.aSavoir, 12, 300, PHRASES),
     emails: lst(o.emails, 4, 120).map(m => m.toLowerCase()).filter(mailValide),
     telephones: lst(o.telephones, 4, 30).filter(t => finTel(t).length === 9).map(beauTel),
   };
