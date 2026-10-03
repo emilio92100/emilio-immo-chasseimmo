@@ -187,6 +187,56 @@ export function mailInvitation(o: { s: SigDoc; m: Modele; d: Donnees; lien: stri
   };
 }
 
+/* V3.61 — la signature arrêtée, ou le document annulé : chacun de ceux qui
+   avaient reçu leur lien (ou déjà signé) est prévenu par e-mail. Alexandre :
+   « ce n'est pas à moi de les avertir ; il faut qu'ils soient prévenus quand
+   j'arrête une signature en cours, pour tout type de document ». Des mots
+   simples, au nom d'Alexandre : la signature est interrompue (ou le document
+   annulé), le lien ne marche plus, rien à faire ; une signature déjà faite
+   ne compte plus. */
+export function mailArret(o: { s: SigDoc; m: Modele; d: Donnees; annulation: boolean }) {
+  const { s } = o;
+  const doc = nomDocument(o.m, o.d);
+  const adresse = [txt(o.d, 'adresse'), txt(o.d, 'ville')].filter(Boolean).join(', ');
+  const precis = adresse && !doc.le.includes(adresse) ? ` (${adresse})` : '';
+  const Doc = doc.le.charAt(0).toUpperCase() + doc.le.slice(1);
+  const prenom = s.personne.prenom || nomSig(s);
+  const aSigne = s.statut === 'signe';
+  /* « L'offre d'achat a été annulée » : le seul modèle au féminin. */
+  const e = o.m.id === 'offre_achat' ? 'e' : '';
+  const sujet = o.annulation ? `${Doc} a été annulé${e}` : `${Doc} : la signature est interrompue`;
+  const p1 = o.annulation
+    ? `${Doc}${precis} a été annulé${e}.`
+    : `La signature en ligne ${doc.du}${precis} a été interrompue.`;
+  const p2 = o.annulation
+    ? `Le lien de signature que vous avez reçu ne fonctionne plus, et il n’y a plus rien à signer.${aSigne ? ' Votre signature n’est donc pas prise en compte.' : ''}`
+    : `Le lien que vous avez reçu ne fonctionne plus : vous n’avez rien à faire pour le moment.${aSigne ? ' La signature que vous aviez déjà faite n’est plus prise en compte.' : ''}`;
+  const p3 = o.annulation ? '' : 'Si le document doit être signé à nouveau, vous recevrez un nouveau lien par e-mail.';
+  return {
+    sujet,
+    texte: `Bonjour ${prenom},\n\n${sansCourbes(p1)}\n\n${sansCourbes(p2)}${p3 ? `\n\n${sansCourbes(p3)}` : ''}\n\nUne question ? Répondez à ce message, ou appelez Alexandre.\n\nAlexandre Rogelet — Emilio Immobilier`,
+    html: gabarit(o.annulation ? 'Document annulé' : 'Signature interrompue', `<p>Bonjour ${echappe(prenom)},</p>
+      <p>${echappe(p1)}</p>
+      <p>${echappe(p2)}</p>
+      ${p3 ? `<p>${echappe(p3)}</p>` : ''}`,
+      'Une question ? Répondez à ce message, ou appelez Alexandre.'),
+  };
+}
+
+/* Qui prévenir : ceux qui avaient leur lien, ou qui ont déjà signé (en ligne
+   ou sur place). Pas celui qui devait signer sur place et n'a encore rien
+   reçu. Rend les noms prévenus et les envois ratés. */
+export const aPrevenir = (sigs: SigDoc[]) => sigs.filter(x => (x.statut === 'invite' || x.statut === 'signe') && emailValide(x.personne.email || ''));
+export async function prevenirArret(sigs: SigDoc[], m: Modele, d: Donnees, annulation: boolean): Promise<{ prevenus: string[]; echecs: string[] }> {
+  const prevenus: string[] = [], echecs: string[] = [];
+  for (const x of aPrevenir(sigs)) {
+    const mail = mailArret({ s: x, m, d, annulation });
+    const e = await envoyerMail({ a: x.personne.email, nomA: nomSig(x), sujet: mail.sujet, texte: mail.texte, html: mail.html, repondreA: 'agence@emilio-immo.com' });
+    if (e) echecs.push(`${nomSig(x)} : ${e}`); else prevenus.push(nomSig(x));
+  }
+  return { prevenus, echecs };
+}
+
 /* Un lien tout neuf : nouveau jeton, quinze jours (ou `expire`, voir
    finLien) ; l'ancien ne mène plus nulle part. Rend les champs à écrire. */
 export function lienNeuf(s: SigDoc, le: string, note?: string, expire?: string): Partial<SigDoc> {
