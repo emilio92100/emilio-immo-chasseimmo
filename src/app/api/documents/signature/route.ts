@@ -7,7 +7,7 @@ import { ecritServeur } from '@/lib/ecritures';
 import {
   lireSignataires, casesDe, jetonSigner, envoyerLien, inviter, envoyerCode, validerSignature, sceller, assembler, envoyerExemplaire,
   classer, lireFichier, nomSig, actif, attendu, emailValide, nomDocument, ALERTES, envoyerMail, gabarit, echappe, lienCrmDocument,
-  finLien, offreFinie, autreEnSignature, ARRETEE,
+  finLien, offreFinie, autreEnSignature, ARRETEE, prevenirArret,
   type DocSigne, type SigDoc, type SignatureDoc, type PersonneSig,
 } from '@/lib/signature-documents';
 import { solderRelancesSignature } from '@/lib/documents-relances';
@@ -29,7 +29,7 @@ import { solderRelancesSignature } from '@/lib/documents-relances';
  *   { action: 'renvoyer', id, sig, email? }
  *        son lien, à nouveau (neuf si l'adresse change ou s'il a expiré) ;
  *        sur place, « il signera plus tard » : un lien lui part
- *   { action: 'annuler', id, pourquoi? }
+ *   { action: 'annuler', id, pourquoi?, prevenir? }   → { prevenus, echecs }
  *        la signature s'arrête : les liens ne marchent plus, le document
  *        redevient « à faire signer ». `pourquoi: 'annulation'` : arrêtée
  *        parce que le document est annulé (V3.50), le Suivi le dit.
@@ -40,7 +40,9 @@ import { solderRelancesSignature } from '@/lib/documents-relances';
  *        V3.55, « Modifier » depuis une page pas à jour le permettait).
  *        V3.56 : une fin réservée depuis plus de dix minutes et jamais
  *        rangée (scellement raté) ne bloque plus l'arrêt. V3.57 : mais dès
- *        que la version complète part à chacun, plus d'arrêt (« envoye »)
+ *        que la version complète part à chacun, plus d'arrêt (« envoye »).
+ *        V3.61 : ceux qui avaient leur lien ou avaient signé sont prévenus
+ *        par e-mail (mailArret), sauf `prevenir: false`
  *   { action: 'code', id, sig, email }                     (sur place)
  *   { action: 'signer', id, sig, code, griffe, accepte }  (sur place)
  *   { action: 'finaliser', id, etape }                     (sur place, à la fin)
@@ -257,11 +259,17 @@ export async function POST(req: NextRequest) {
       if (error) return ko('enregistrement', 500, { detail: error.message });
       const signes = sigs.filter(s => s.statut === 'signe');
       const annulation = body.pourquoi === 'annulation';
-      await journal(`⏹️ Signature arrêtée${annulation ? ', document annulé' : ''} : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus · personne n’a été prévenu par e-mail`);
+      /* V3.61 : chacun est prévenu par e-mail (lien reçu, ou déjà signé),
+         sauf si Alexandre a décoché « Prévenir les signataires ». */
+      const prev = body.prevenir === false ? { prevenus: [] as string[], echecs: [] as string[] } : await prevenirArret(sigs, m, d, annulation);
+      const dit = prev.prevenus.length
+        ? `${prev.prevenus.length > 1 ? `${prev.prevenus.length} signataires prévenus` : `${prev.prevenus[0]} prévenu`} par e-mail (${prev.prevenus.join(', ')})`
+        : body.prevenir === false ? 'personne n’a été prévenu par e-mail (case décochée)' : 'personne à prévenir par e-mail';
+      await journal(`⏹️ Signature arrêtée${annulation ? ', document annulé' : ''} : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus · ${dit}${prev.echecs.length ? `\n⚠️ Mail non parti : ${prev.echecs.join(' ; ')}` : ''}`);
       /* V3.50 : les relances « n'a pas signé dans les 15 jours » n'ont plus d'objet. */
       const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le });
       if (eR) console.error('[documents/signature] relance du lien expiré', eR);
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, prevenus: prev.prevenus, echecs: prev.echecs });
     }
 
     if (!sd) return ko('pas_lance', 409);
