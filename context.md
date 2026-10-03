@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.63 · 3 octobre 2026**
+**Version 3.64 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,37 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.64 — 3 octobre 2026 · « Retirer la proposition » du mandat de recherche : le client prévenu
+
+Rien à passer dans Supabase.
+
+Le cas laissé de côté par la V3.63 : sur la fiche d'un acheteur (fenêtre « Mandat de recherche »), le
+bouton **« Retirer la proposition »** du mandat proposé dans l'espace client ne prévenait personne. Le
+client l'apprenait en rouvrant son espace. Alexandre : « règle aussi ce problème, la meilleure des façons ».
+
+- **Le mail** (`/api/mandat/retrait`, nouveau, derrière le code d'accès) : appelé par la fiche une fois la
+  proposition retirée ; il refuse tant que `mandat_propose_le` est rempli. « À propos de votre mandat de
+  recherche », au nom d'Alexandre : la proposition est retirée pour le moment, rien à faire, « s'il faut en
+  signer un plus tard, je vous le dirai », son téléphone. S'il avait commencé à signer (`signatureId`, ligne
+  passée « abandonne ») : la signature est arrêtée, le code ne marche plus, et l'adresse saisie pour signer
+  est prévenue aussi. Un e-mail par adresse de la fiche. La ligne « 📋 Proposition de mandat retirée » du
+  suivi dit qui a été prévenu, ou pourquoi personne.
+- **La fenêtre qui explique** (`FenetreConfirmer`, dans `MandatEnLigne.tsx`) remplace le `confirm()` :
+  ce qui va se passer (plus de carte « Votre mandat est prêt », les rappels s'arrêtent, la signature
+  commencée s'arrête, le mandat type approuvé qui lui permet encore de signer seul, le numéro « sans
+  suite » au registre ou à marquer dans ImmoFacile, le mail), « Et ensuite », un conseil (« tu veux
+  seulement changer les honoraires ? Mettre à jour »). La case **« Prévenir … par e-mail »** est cochée
+  d'office s'il a pu voir la proposition, relu au clic (`demanderRetrait`) : signature commencée, mail
+  « Votre mandat est prêt » parti depuis (`envois`, corps « Mandat de recherche prêt à signer… »), rappel
+  automatique (`journal.metadata.rappelMandat`), espace ouvert depuis (`recherches.espace_ouvert_le`).
+  Sinon décochée, et la fenêtre dit pourquoi (« il ne l'a sans doute pas vue »).
+- **L'espace** (`EspaceClient.tsx`) : le lien « Lire et signer mon mandat » d'un ancien mail
+  (`?mandat=1`) ne rouvre plus de signature quand la proposition est retirée, même si le mandat type
+  approuvé lui permet de signer seul : une fenêtre « Ce mandat n'est plus à signer » (`MANDAT_RETIRE`,
+  la même que les « ? »). Rien quand un mandat est signé ou qu'un mandat de Documents l'attend.
+- Pas couvert : « Supprimer le mandat » (FicheClient, `supprimerMandat`) retire aussi une proposition en
+  ligne, sans mail et sans arrêter une signature commencée. Fait pour effacer un mandat saisi à la main.
 
 ### V3.63 — 3 octobre 2026 · arrêter, annuler, modifier : une fenêtre qui explique, et les signataires prévenus
 
