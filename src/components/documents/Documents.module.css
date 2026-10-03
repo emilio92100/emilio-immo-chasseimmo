@@ -879,15 +879,27 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
    états, plus légère : fond gris, la pastille blanche glisse. Puis les
    groupes, chacun son titre (un point de couleur, le nom, le nombre). */
 .groupes { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-/* V3.61 : la barre des sortes et la bande des états ne font qu'un bloc. La
-   pastille de l'onglet choisi est d'un bleu uni, comme la bande dessous et
-   le pont qui les relie (PageDocuments, `pont`). « Tous » tout à droite. */
+/* V3.66 : la barre des sortes et la bande des états ne font qu'un bloc.
+   L'onglet choisi est un intercalaire : la pastille (OngletsGlissants)
+   arrondie en haut seulement, qui descend jusqu'à la bande et s'y évase par
+   deux coins creusés (::before, ::after). Une seule forme, qui glisse d'un
+   bloc : plus de pont posé à part (V3.61), qui laissait des marches.
+   « Tous » en dernier, collé aux autres. Près d'un bord de la bande
+   (`data-g`, `data-d`, mesurés dans PageDocuments : le premier onglet, ou la
+   barre qui défile au téléphone), la bande perd ce coin-là et l'intercalaire
+   son évasement de ce côté. */
 .vuesBloc { position: relative; display: flex; flex-direction: column; min-width: 0; background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
-.vuesBloc > nav { border: none; background: transparent; border-radius: 15px; }
-.vuesBloc > nav > span { background: var(--emilio); }
-.vuesBloc > nav > button:last-child { margin-left: auto; }
-.pont { position: absolute; z-index: 0; background: var(--emilio); pointer-events: none; transition: left .42s cubic-bezier(.16, 1, .3, 1), width .42s cubic-bezier(.16, 1, .3, 1); }
-.sousBande { position: relative; z-index: 1; margin: 0 5px 5px; padding: 4px; border-radius: 12px; background: var(--emilio); min-width: 0; box-shadow: 0 10px 22px -16px rgba(26, 35, 50, .7); }
+.vuesBloc > nav { border: none; background: transparent; border-radius: 15px 15px 0 0; padding: 7px 6px 0; gap: 2px; }
+.vuesBloc > nav > span { top: 7px; bottom: 0; border-radius: 12px 12px 0 0; background: var(--emilio); box-shadow: none; }
+.vuesBloc > nav > span::before, .vuesBloc > nav > span::after { content: ''; position: absolute; bottom: 0; width: 12px; height: 12px; transition: opacity .2s; }
+.vuesBloc > nav > span::before { left: -12px; background: radial-gradient(circle at 0 0, transparent 11.5px, var(--emilio) 12px); }
+.vuesBloc > nav > span::after { right: -12px; background: radial-gradient(circle at 100% 0, transparent 11.5px, var(--emilio) 12px); }
+.vuesBloc[data-g] > nav > span::before, .vuesBloc[data-d] > nav > span::after { opacity: 0; }
+.vuesBloc > nav > button { border-radius: 12px 12px 0 0; padding: 10px 15px 11px; }
+.vuesBloc > nav > button:hover:not([aria-pressed='true']) { background: #f3f6fa; }
+.sousBande { position: relative; z-index: 1; margin: -1px 6px 6px; padding: 5px; border-radius: 12px; background: var(--emilio); min-width: 0; transition: border-top-left-radius .2s, border-top-right-radius .2s; }
+.vuesBloc[data-g] .sousBande { border-top-left-radius: 0; transition-delay: .25s; }
+.vuesBloc[data-d] .sousBande { border-top-right-radius: 0; transition-delay: .25s; }
 /* La barre des états, dans la bande : `.sousBande > nav` pour passer devant
    les règles de la barre (OngletsGlissants.module.css), quel que soit
    l'ordre des feuilles de style. */
