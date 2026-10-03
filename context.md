@@ -1499,6 +1499,33 @@ le modifier) porte à confusion » ; et sur la liste Documents : « Tous tout à
   font qu'une forme. Pastille de l'onglet choisi en bleu uni (`--emilio`) ; dans la bande, la pastille de
   l'état choisi est blanche.
 
+### V3.62 — 3 octobre 2026 · import ImmoFacile : les précisions et « À savoir » lus pour de bon, un détail qui se déplie en douceur
+
+Rien à passer dans Supabase.
+
+Alexandre, sur un vrai contact de l'aperçu : « pourquoi à droite, sa recherche, il n'y a pas de
+précision ? et le commentaire, est-ce qu'il sera pris en compte ? » ; « le menu déplié, c'est trop
+brut ».
+- La cause : la lecture rendait parfois une liste en une seule chaîne (« "precisions": "Box fermé.
+  Calme." »), et `lireLecture` ne gardait que les tableaux. Les précisions, les lignes « À savoir »,
+  les états acceptés tombaient en silence ; le bien et les équipements (des objets) passaient. Toute
+  liste est maintenant acceptée en tableau ou en chaîne (découpée en phrases, ou aux virgules), un
+  équipement peut être un simple mot ; et la consigne envoyée à Claude dit « un tableau » partout.
+- Un propriétaire qui vend seulement (Alexandre : « elle souhaitera juste vendre, pourquoi revente
+  après achat ? ») : plus de case « Revente possible après l'achat », qui parle d'un achat. Son
+  logement (description, adresse, prix espéré) et son projet vont dans « À savoir », le rappel noté
+  se pose sur lui. La case reste pour celui qui achète et revendra après.
+- « 3ch (3ème peut être petite) » dans la précision, « 2 à 3 chambres » dans les colonnes : le CRM
+  garde 2 chambres minimum (les colonnes, pour que la veille ne rate pas un 2 chambres avec un
+  bureau), et la lecture doit maintenant écrire la nuance en phrase (« Trois chambres, la troisième
+  peut être petite. ») au lieu de la perdre.
+- L'aperçu montre toujours la ligne « Précisions » d'un acheteur (ce que le client lira, ou pourquoi
+  il n'y a rien) et dit ce qui est recopié tel quel dans « À savoir » (la précision de sa recherche,
+  son commentaire).
+- Une ligne de l'aperçu se déplie et se replie en glissant (hauteur 0fr → 1fr, fondu), la flèche
+  tourne en douceur, la ligne ne rétrécit plus au clic (`button:active` de globals.css) ; les
+  corrections apparaissent en fondu. Rien de tout ça avec « réduire les animations ».
+
 ### V3.61 — 3 octobre 2026 · « Importer depuis ImmoFacile »
 
 Rien à passer dans Supabase. La lecture des commentaires utilise `ANTHROPIC_API_KEY` (déjà sur

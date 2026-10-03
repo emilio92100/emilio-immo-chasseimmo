@@ -1054,19 +1054,24 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
   }
 
   /* Son bien. Un projet de vente (« vente après avoir trouvé », « rappeler
-     pour estimation ») coche « Revente possible (mandat vendeur potentiel) »
-     sur sa fiche, avec ce qu'on sait du logement, et pose le rappel noté sur
-     LUI. Pas de fiche dans Biens : Alexandre la crée quand il a vu le
-     logement (« Créer aussi sa fiche bien » dans les corrections, sinon). */
+     pour estimation ») pose le rappel noté sur LUI. Pas de fiche dans Biens :
+     Alexandre la crée quand il a vu le logement (« Créer aussi sa fiche
+     bien » dans les corrections, sinon).
+     · Il achète aussi : « Revente possible après l'achat (mandat vendeur
+       potentiel) » cochée, avec ce qu'on sait du logement.
+     · Il vend seulement (V3.62, Alexandre : « elle souhaitera juste vendre,
+       pourquoi revente après achat ? ») : pas cette case, qui parle d'un
+       achat. Son logement et son projet vont dans « À savoir ». */
   const v = lec?.vente;
   const b = lec?.bien || null;
   const vend = !!v && (v.projet === 'apres_achat' || v.projet === 'projet' || (v.aSuivre && v.projet !== 'vendu' && v.projet !== 'ailleurs'));
   const projetVente = roles.proprietaire && vend;
-  const bienActuel: BienActuel = projetVente && b ? {
+  const revente = projetVente && roles.acheteur;
+  const bienActuel: BienActuel = revente && b ? {
     aVendre: true, type: b.type ? TYPE_LIB[b.type].replace(/^./, x => x.toUpperCase()) : null, surface: b.surface, valeur: b.valeur,
     adresse: b.adresse ? [b.adresse, [b.codePostal, b.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') : null,
     notes: [resumeBien(b), b.notes].filter(Boolean).map(phrase).join(' ') || null,
-  } : { aVendre: projetVente, type: null, surface: null, valeur: null, adresse: null, notes: null };
+  } : { aVendre: revente, type: null, surface: null, valeur: null, adresse: null, notes: null };
   /* À la même adresse que lui : le CRM dit « Même adresse que le contact ». */
   const saRue = nomNet(c.adresse.split(',')[0], '');
   if (bienActuel.adresse && saRue.length > 4 && nomNet(bienActuel.adresse, '').startsWith(saRue)) bienActuel.adresse = null;
@@ -1113,7 +1118,12 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
   }
   /* Sans fiche bien, le rappel se pose sur lui (Relances). */
   const rappelContact: RappelContact | null = !aSuivre && rappel ? { date: rappel, retard, texte: v?.rappel.texte || null, rappelTexte } : null;
-  const bienEnNote = roles.proprietaire && b && !bienActuel.aVendre ? resumeBien(b) : '';
+  /* Pas dans « Revente possible » : son logement, en entier, dans « À savoir ». */
+  const bienEnNote = roles.proprietaire && b && !bienActuel.aVendre ? [
+    resumeBien(b),
+    b.adresse ? [b.adresse, [b.codePostal, b.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '',
+    b.valeur ? `en espère ${euros(b.valeur)}` : '',
+  ].filter(Boolean).join(', ') + (b.notes ? `. ${phrase(b.notes)}` : '') : '';
 
   const locTexte = location ? location.resume : lec?.location || null;
   const types: TypeContact[] = [];
