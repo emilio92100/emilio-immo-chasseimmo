@@ -20,6 +20,7 @@ import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
 import type { BienVente } from '@/lib/biens-vente';
 import SuiteMandatBien from './SuiteMandatBien';
 import SuiviSignature, { lireSuivis, type Suivi } from './SuiviSignature';
+import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import FenetreSigne from './FenetreSigne';
 import {
   CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier,
@@ -59,6 +60,48 @@ type Item = {
 };
 
 const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle', delegations: 'accord' };
+
+/* ═══ La liste rangée (V3.60) ═══════════════════════════════════════════
+   Alexandre : « un onglet Signatures en cours, où tout se met quand une
+   signature ou des signataires sont en attente ; puis dans Mandats de vente,
+   Mandats de recherche… une sous-catégorie : brouillon, signature en cours,
+   signé, que ce soit bien précisé et joli » ; « quand on passe d'un onglet à
+   l'autre, c'est un peu brut : de la fluidité ».
+   Une barre d'onglets qui glisse (OngletsGlissants, comme les fiches) :
+   Signatures en cours · Tous · une par sorte. Dans « Tous » et
+   dans chaque sorte, une seconde barre plus légère : Tous · Signature en
+   cours · Brouillons · Signés · Annulés. Sur « Tous », les documents sont
+   rangés en groupes titrés ; ailleurs, la liste seule. Les tuiles d'état du
+   bandeau sont parties : elles faisaient la même chose que cette barre. */
+type Vue = 'encours' | 'tout' | Categorie;
+type Etat = 'encours' | 'brouillon' | 'signe' | 'annule';
+type SousVue = 'tout' | Etat;
+const ORDRE_ETATS: Etat[] = ['encours', 'brouillon', 'signe', 'annule'];
+const VUES: Vue[] = ['encours', 'tout', ...CATEGORIES.map(c => c.id)];
+const SOUS_VUES: SousVue[] = ['tout', ...ORDRE_ETATS];
+const IC_ETAT: Record<SousVue, string> = { tout: 'liste', encours: 'plume', brouillon: 'crayon', signe: 'check', annule: 'croix' };
+/* « À faire signer » et « en signature » sont un même état : la signature
+   n'est pas finie. Un courrier, lui, est « à envoyer ». */
+const etatDe = (it: Item): Etat => (it.statut === 'pret' ? 'encours' : it.statut);
+function libEtat(k: SousVue, courriers: boolean): string {
+  if (k === 'tout') return 'Tous';
+  if (k === 'encours') return courriers ? 'À envoyer' : 'Signature en cours';
+  if (k === 'brouillon') return 'Brouillons';
+  if (k === 'signe') return courriers ? 'Envoyés' : 'Signés';
+  return 'Annulés';
+}
+
+/* Le titre d'un groupe de la liste : un point de couleur, le nom, le nombre,
+   et une phrase discrète. */
+function TeteGroupe({ g, titre, n, aide }: { g: string; titre: string; n: number; aide?: string }) {
+  return (
+    <div className={s.grT} data-g={g}>
+      <b>{titre}</b>
+      <i>{n}</i>
+      {aide && <small>{aide}</small>}
+    </div>
+  );
+}
 
 function itemDoc(d: DocumentRow): Item {
   /* V3.56 : un mandat auquel le client a renoncé en ligne, depuis son espace :
@@ -543,8 +586,10 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [noms, setNoms] = useState<Record<string, string>>({});
   const [erreur, setErreur] = useState('');
   const [absente, setAbsente] = useState(false);
-  const [statut, setStatut] = useState('tout');
-  const [cat, setCat] = useState<'tout' | Categorie>('tout');
+  /* V3.60 : la sorte (ou « Signatures en cours »), puis l'état dans la sorte. */
+  const [vue, setVue] = useState<Vue>('tout');
+  const [sous, setSous] = useState<SousVue>('tout');
+  const choisirVue = (k: Vue) => { setVue(k); setSous('tout'); };
   const [cherche, setCherche] = useState('');
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string; confrereId?: string } | null>(null);
@@ -622,9 +667,12 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
 
   const q = cherche.trim().toLowerCase();
   const cherches = useMemo(() => items.filter(it => !q || `${it.titre} ${it.sous} ${it.badge || ''}`.toLowerCase().includes(q)), [items, q]);
-  const dansCat = cherches.filter(it => cat === 'tout' || it.categorie === cat);
-  const visibles = dansCat.filter(it => statut === 'tout' || it.statut === statut);
-  const n = (st: string) => dansCat.filter(it => it.statut === st).length;
+  /* « Signatures en cours » : tout ce qui attend une signature (les liens
+     partis, ou prêt à faire signer), hors courriers. */
+  const enCoursListe = cherches.filter(it => it.statut === 'pret' && !it.courrier);
+  const dansVue = vue === 'encours' ? enCoursListe : cherches.filter(it => vue === 'tout' || it.categorie === vue);
+  const nEtat = (k: Etat) => dansVue.filter(it => etatDe(it) === k).length;
+  const vueCourriers = vue === 'courriers';
   /* V3.55 : « à faire signer » ne compte plus ceux dont les liens sont partis
      (« en signature »), et les exemplaires signés à déposer se comptent. */
   const aSigner = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier && !it.enSignature).length;
@@ -803,14 +851,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           : 'Mandats, avenants, offres d’achat, bons de visite : prêts à imprimer et à signer.'}
         recherche={items.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un nom, une adresse, un numéro…', label: 'Chercher un document' } : undefined}
         bouton={absente ? undefined : { lib: 'Nouveau document', onClick: () => setNouveau({}) }}
-        label="Filtrer par état" actif={statut} onChoisir={setStatut}
-        tuiles={items.length === 0 ? [] : [
-          { cle: 'tout', lib: 'Tous', n: dansCat.length },
-          { cle: 'brouillon', lib: 'Brouillons', n: n('brouillon'), couleur: '#94a3b8' },
-          { cle: 'pret', lib: 'À faire signer', n: n('pret'), couleur: '#3b82f6', alerte: true },
-          { cle: 'signe', lib: 'Signés', n: n('signe'), couleur: '#10b981' },
-          { cle: 'annule', lib: 'Annulés', n: n('annule'), couleur: '#ef4444' },
-        ]} />
+        label="Filtrer par état" actif="" onChoisir={() => {}} tuiles={[]} />
 
       {absente && (
         <div className={s.erreur}>
@@ -855,38 +896,84 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         </div>
       )}
       {items.length > 0 && (
-        <nav className={s.cats} aria-label="Sortes de documents">
-          <button type="button" className={`${s.cat} ${cat === 'tout' ? s.catOn : ''}`} onClick={() => setCat('tout')}>Tout <i>{cherches.length}</i></button>
-          {CATEGORIES.map(c => (
-            <button key={c.id} type="button" className={`${s.cat} ${cat === c.id ? s.catOn : ''}`} onClick={() => setCat(c.id)}>
-              <Ic n={CAT_IC[c.id]} t={14} />{c.titre}<i>{nbCat(c.id)}</i>
-            </button>
-          ))}
-        </nav>
+        <BarreOnglets<Vue> label="Sortes de documents" className={s.vues} actif={vue} onChoisir={choisirVue}
+          onglets={[
+            { k: 'encours', l: 'Signatures en cours', n: enCoursListe.length, ic: <Ic n="plume" t={15} /> },
+            { k: 'tout', l: 'Tous', n: cherches.length, ic: <Ic n="doc" t={15} /> },
+            /* Une sorte sans aucun document n'a pas d'onglet (la barre tient sur
+               une ligne) ; elle revient dès qu'elle en a un. */
+            ...CATEGORIES.filter(c => vue === c.id || items.some(it => it.categorie === c.id))
+              .map(c => ({ k: c.id as Vue, l: c.titre, n: nbCat(c.id), ic: <Ic n={CAT_IC[c.id]} t={15} /> })),
+          ]} />
       )}
 
       {docs === null ? (
         <div className={s.liste}><div className={s.vide}>Chargement…</div></div>
-      ) : !absente && (
+      ) : !absente && (items.length === 0 ? (
         <div className={s.liste}>
-          {visibles.length === 0 ? (
-            <div className={s.vide}>
-              <b>{items.length === 0 ? 'Aucun document pour l’instant' : 'Rien ici'}</b>
-              {items.length === 0 ? 'Choisis un modèle ci-dessus : le brouillon s’enregistre tout seul, au fil de la saisie.' : 'Aucun document ne correspond à ces filtres.'}
-            </div>
-          ) : visibles.map(it => {
-            const ligne = <Ligne key={it.cle} it={it} on={ouvert === it.cle} onClick={() => setOuvert(it.cle)} />;
-            const suivi = it.enSignature ? suivis[it.cle] : undefined;
-            if (!suivi) return ligne;
-            return (
-              <div key={it.cle} className={`${s.ligneBloc} ${ouvert === it.cle ? s.ligneBlocOn : ''}`}>
-                {ligne}
-                <div className={s.ligneSuivi}><SuiviSignature suivi={suivi} onFait={() => setTourSuivis(t => t + 1)} /></div>
-              </div>
-            );
-          })}
+          <div className={s.vide}>
+            <b>Aucun document pour l’instant</b>
+            {'Choisis un modèle ci-dessus : le brouillon s’enregistre tout seul, au fil de la saisie.'}
+          </div>
         </div>
-      )}
+      ) : (
+        <CorpsOnglet k={vue} ordre={VUES}>
+          <div className={s.groupes}>
+            {/* L'état dans la sorte : une barre plus légère, sous la première. */}
+            {vue !== 'encours' && (
+              <BarreOnglets<SousVue> label="Où en sont ces documents" className={s.sousVues} actif={sous} onChoisir={setSous}
+                onglets={SOUS_VUES.filter(k => k !== 'annule' || nEtat('annule') > 0 || sous === 'annule').map(k => ({
+                  k, l: libEtat(k, vueCourriers), n: k === 'tout' ? dansVue.length : nEtat(k), ic: <Ic n={IC_ETAT[k]} t={14} />,
+                }))} />
+            )}
+            <CorpsOnglet k={vue === 'encours' ? 'tout' : sous} ordre={SOUS_VUES}>
+              {(() => {
+                const groupes: { g: string; titre: string; aide?: string; liste: Item[] }[] = vue === 'encours'
+                  ? [
+                    { g: 'attente', titre: 'On attend des signatures', aide: 'les liens sont partis, ou la signature sur place a commencé', liste: dansVue.filter(it => it.enSignature) },
+                    { g: 'prets', titre: 'Prêts à faire signer', aide: 'finalisés : les liens à envoyer, ou le papier à faire signer', liste: dansVue.filter(it => !it.enSignature) },
+                  ]
+                  : sous === 'tout'
+                    ? ORDRE_ETATS.map(k => ({ g: k, titre: libEtat(k, vueCourriers), liste: dansVue.filter(it => etatDe(it) === k) }))
+                    : [{ g: sous, titre: '', liste: dansVue.filter(it => etatDe(it) === sous) }];
+                const pleins = groupes.filter(g => g.liste.length);
+                if (!pleins.length) {
+                  const sorte = CATEGORIES.find(c => c.id === vue)?.titre.toLowerCase();
+                  return (
+                    <div className={s.liste}>
+                      <div className={s.vide}>
+                        <b>{vue === 'encours' ? 'Aucune signature en cours' : 'Rien ici'}</b>
+                        {vue === 'encours'
+                          ? 'Un document finalisé, ou dont les liens de signature sont partis, arrive ici jusqu’à la dernière signature.'
+                          : q ? 'Aucun document ne correspond à cette recherche.'
+                            : `Aucun document${sorte ? ` dans « ${sorte} »` : ''}${sous !== 'tout' ? ` : ${libEtat(sous, vueCourriers).toLowerCase()}` : ''}.`}
+                      </div>
+                    </div>
+                  );
+                }
+                return <div className={s.groupes}>{pleins.map(g => (
+                  <div key={g.g} className={s.groupe}>
+                    {g.titre && <TeteGroupe g={g.g} titre={g.titre} n={g.liste.length} aide={g.aide} />}
+                    <div className={s.liste}>
+                      {g.liste.map(it => {
+                        const ligne = <Ligne key={it.cle} it={it} on={ouvert === it.cle} onClick={() => setOuvert(it.cle)} />;
+                        const suivi = it.enSignature ? suivis[it.cle] : undefined;
+                        if (!suivi) return ligne;
+                        return (
+                          <div key={it.cle} className={`${s.ligneBloc} ${ouvert === it.cle ? s.ligneBlocOn : ''}`}>
+                            {ligne}
+                            <div className={s.ligneSuivi}><SuiviSignature suivi={suivi} onFait={() => setTourSuivis(t => t + 1)} /></div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}</div>;
+              })()}
+            </CorpsOnglet>
+          </div>
+        </CorpsOnglet>
+      ))}
 
       {/* Les fenêtres vivent sur <body> : l'écran qui les contient est animé
           (transform), et un élément fixe s'y retrouverait prisonnier. */}
