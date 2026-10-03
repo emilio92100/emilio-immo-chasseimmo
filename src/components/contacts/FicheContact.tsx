@@ -11,7 +11,8 @@ import {
 } from '@/lib/contacts';
 import { Ic } from '@/components/documents/ApercuActe';
 import FicheClient, { Coordonnees, type Coord } from '@/components/fiche/FicheClient';
-import { BiensDuContact, ChampsPro, ChoixTypes, TypesEnLigne, arreterRecherches, controlerTypes } from './ChampsContact';
+import { ChampsPro, ChoixTypes, TypesEnLigne, arreterRecherches, controlerTypes } from './ChampsContact';
+import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import FriseSuivi from '@/components/fiche/FriseSuivi';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
@@ -209,6 +210,10 @@ function ActiviteHero({ proprio, biens, archives = 0, vente, journal, relances, 
 function BiensHero({ biens, vente, onBien, onCreerBien }: {
   biens: BienHero[]; vente: ActiviteVente; onBien: (id: string, onglet?: string) => void; onCreerBien: () => void;
 }) {
+  /* V3.59 : « Ses biens » n'est plus répété sous le bandeau (Alexandre : « on
+     a déjà l'info sur la partie bleue ») ; au-delà de quatre, « + N autres »
+     les déplie ici même. */
+  const [tous, setTous] = useState(false);
   if (!biens.length) {
     return (
       <div className={c.biensRang} id="biens-hero">
@@ -216,9 +221,10 @@ function BiensHero({ biens, vente, onBien, onCreerBien }: {
       </div>
     );
   }
-  const montres = biens.length > 4 ? biens.slice(0, 3) : biens;
+  const montres = biens.length > 4 && !tous ? biens.slice(0, 3) : biens;
   return (
-    <div className={`${c.biensRang} ${biens.length === 1 ? c.biensSeul : ''}`} id="biens-hero">
+    <div className={c.biensZone} id="biens-hero">
+    <div className={`${c.biensRang} ${biens.length === 1 ? c.biensSeul : ''}`}>
       {montres.map(b => {
         const e = etapeDe(b.etape);
         const d = (b.donnees || {}) as Record<string, unknown>;
@@ -243,15 +249,24 @@ function BiensHero({ biens, vente, onBien, onCreerBien }: {
           </button>
         );
       })}
-      {biens.length > 4 && (
-        <button type="button" className={`${c.heroBien} ${c.heroBienPlus}`} onClick={() => document.getElementById('ses-biens')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <span className={c.heroBienTx}><b>{`+ ${biens.length - 3} autres biens`}</b><small>dans « Ses biens », plus bas</small></span>
+      {biens.length > 4 && !tous && (
+        <button type="button" className={`${c.heroBien} ${c.heroBienPlus}`} onClick={() => setTous(true)}>
+          <span className={c.heroBienTx}><b>{`+ ${biens.length - 3} autres biens`}</b><small>les voir tous ici</small></span>
           <Ic n="bas" t={14} e={2.2} />
         </button>
       )}
     </div>
+    <button type="button" className={c.heroBienAjout} onClick={onCreerBien} title="Créer un autre bien pour ce contact"><Ic n="plus" t={14} e={2.4} /><span>Nouveau bien</span></button>
+    </div>
   );
 }
+
+/* V3.59 — les rubriques d'un contact qui n'est pas acheteur, à cheval sur le
+   bas du bandeau, comme la fiche d'un acheteur ou d'un bien (Alexandre :
+   « il y a trop d'infos sur une seule page ; qu'on ne soit pas obligé de
+   descendre tout en bas pour voir le suivi »). */
+type OngletContact = 'savoir' | 'documents' | 'suivi';
+const ORDRE_ONGLETS: OngletContact[] = ['savoir', 'documents', 'suivi'];
 
 function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
   const [x, setX] = useState<Client>(depart);
@@ -273,6 +288,14 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const [action, setAction] = useState<{ edition: any | null; type: 'note' | 'appel' } | null>(null);
   const [tour, setTour] = useState(0);
   const [mail, setMail] = useState(false);
+  const [onglet, setOnglet] = useState<OngletContact>('savoir');
+  /* Un onglet choisi depuis le bandeau (une tuile, « Ajouter » la société) :
+     la barre vient en vue si elle est plus bas. */
+  const allerA = (k: OngletContact) => {
+    setOnglet(k);
+    const barre = document.getElementById('onglets-contact');
+    if (barre && barre.getBoundingClientRect().top > window.innerHeight - 80) barre.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const types = typesDe(x);
   const pro = lirePro(x.pro);
   const jur = pro.juridique && typeof pro.juridique === 'object' ? pro.juridique : null;
@@ -330,6 +353,17 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     return () => { vivant = false; };
   }, [depart.id, tour]);
   const recharger = () => setTour(t => t + 1);
+  /* Le nombre de ses documents (de ses délégations pour un confrère), pour
+     l'onglet « Documents ». */
+  const estConfrere = types.includes('confrere');
+  const [nbDocs, setNbDocs] = useState<number | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    const q = supabase.from('documents').select('id', { count: 'exact', head: true });
+    (estConfrere ? q.eq('modele', 'delegation').eq('donnees->>confrereId', depart.id) : q.eq('client_id', depart.id))
+      .then(({ count, error }) => { if (vivant) setNbDocs(error ? null : count ?? 0); });
+    return () => { vivant = false; };
+  }, [depart.id, estConfrere]);
 
   async function ecrire(patch: Record<string, unknown>, quoi: string): Promise<Client | null> {
     setErreur('');
@@ -516,7 +550,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         </div>
       </div>
 
-      <div className={`${c.hero} ${c.heroAvecCo}`}>
+      <div className={`${c.hero} ${c.heroAvecCo} ${c.heroOnglets}`}>
         <div className={c.heroG}>
         <div className={c.heroQui}>
           <AvatarContact c={x} teinte={{ bg: '', fg: '#e0c36e' }} className={c.heroAv} libre />
@@ -528,7 +562,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 <span className={c.heroSocOk}><Ic n="immeuble" t={13} /><span>{'Pour '}<b>{structure.denomination || 'une société'}</b>{structure.qualite ? ` · ${structure.qualite.split(/[,(]/)[0].trim()}` : ''}</span></span>
               )}
               {peutSociete && !structure && !societeOuverte && (
-                <button type="button" className={c.heroSoc} onClick={() => { setCleSoc(k => k + 1); setSocieteOuverte(true); }}>
+                <button type="button" className={c.heroSoc} onClick={() => { setCleSoc(k => k + 1); setSocieteOuverte(true); allerA('savoir'); }}>
                   <Ic n="immeuble" t={13} />{`${x.civilite === 'Madame' ? 'Elle' : 'Il'} agit pour une société ?`}<b>Ajouter</b>
                 </button>
               )}
@@ -543,104 +577,12 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
         </div>
         <ActiviteHero proprio={proprio} biens={biensH} archives={nbArchives} vente={vo}
           journal={journal} relances={relances} creeLe={x.created_at} onBien={ouvrirBien}
-          onSuivi={() => document.getElementById('suivi-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+          onSuivi={() => allerA('suivi')} />
         </div>
         <Coordonnees coords={coords} onModifier={() => { setErreur(''); setEdit(formDe(x)); }}
           pied={aUneAdresse ? <BoutonCarte focus={`c:${x.id}`} onNavigate={onNavigate} /> : undefined} />
         {proprio && biensH && <BiensHero biens={biensH} vente={vo} onBien={ouvrirBien} onCreerBien={() => { demanderNouveauBien(x.id); onNavigate('biens'); }} />}
       </div>
-
-      {/* Elle arrive en glissant quand on clique « Ajouter » (V3.32). */}
-      {peutSociete && <Depliant ouvert={!!structure || societeOuverte} ecart={16}><div className={c.socHaut}>{societe}</div></Depliant>}
-
-      {archive && <div className={c.archiveBandeau}>Ce contact est archivé : il n’apparaît plus dans la liste, seulement dans « Archivés ».</div>}
-      {erreur && <div className={c.erreur}>{erreur}</div>}
-
-      {/* V3.30 : « À savoir » en tête, sur toute la largeur, rangé en blocs
-          et replié s'il est long ; dessous, les blocs de la fiche en grille.
-          Avant, il était seul dans la colonne de droite : un long texte y
-          faisait une colonne d'un mètre à côté de blocs courts. */}
-      <CarteASavoir prenom={x.prenom || ''} texte={x.notes}
-        onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
-
-      <div className={c.blocs}>
-          {types.includes('confrere') && (
-            <section className={c.bloc}>
-              <div className={c.blocT}><span className={c.blocIc}><Ic n="agence" t={15} /></span><h3>Son agence</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
-              <div className={c.lignes}>
-                <Li ic="personne" l="Statut" v={pro.statutPro === 'mandataire' ? 'Mandataire' : pro.statutPro === 'independant' ? 'À son compte' : pro.statutPro === 'salarie' ? 'Salarié d’une agence' : ''} />
-                <Li ic="agence" l="Agence" v={pro.agence} />
-                <Li ic="groupe" l="Réseau" v={pro.reseau} />
-                <Li ic="lieu" l="Adresse" v={pro.adresseAgence} />
-                <Li ic="globe" l="Site" v={pro.siteWeb} />
-              </div>
-              {!pro.agence && !pro.statutPro && <div className={c.pied}>Son agence, son statut (salarié, mandataire, à son compte) : « Modifier » pour les noter.</div>}
-              {/* Ce que sa dernière délégation a gardé (V3.19). */}
-              {jur?.le && (
-                <>
-                  <div className={c.lignes} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef1f6' }}>
-                    <Li ic="immeuble" l="Société" v={[jur.societe, jur.forme].filter(Boolean).join(', ')} />
-                    <Li ic="doc" l="RCS" v={jur.rcs} />
-                    <Li ic="carte" l="Carte professionnelle" v={[jur.carte, jur.cci ? `délivrée par ${jur.cci}` : ''].filter(Boolean).join(', ')} />
-                    <Li ic="bouclier" l="Garantie financière" v={jur.fonds === 'aucun' ? 'Ne détient aucuns fonds' : jur.garant} />
-                    <Li ic="balance" l="Assurance (RCP)" v={jur.rcp} />
-                  </div>
-                  <div className={c.pied}>{`Repris de sa délégation du ${new Date(jur.le + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}, et remis à jour à chaque délégation finalisée.`}</div>
-                </>
-              )}
-            </section>
-          )}
-          {/* Ses délégations, et « Déléguer un mandat » (V3.19). */}
-          {types.includes('confrere') && <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} confrere />}
-          {types.includes('notaire') && (
-            <section className={c.bloc}>
-              <div className={c.blocT}><span className={c.blocIc}><Ic n="balance" t={15} /></span><h3>Son étude</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
-              <div className={c.lignes}>
-                <Li ic="balance" l="Étude" v={pro.etude} />
-                <Li ic="lieu" l="Adresse" v={pro.adresseEtude} />
-                <Li ic="personne" l="Clerc ou assistant(e)" v={pro.clerc} />
-                <Li ic="telephone" l="Son téléphone" v={pro.clercTel} />
-              </div>
-              {!pro.etude && !pro.adresseEtude && <div className={c.pied}>L’étude, son adresse, le clerc : « Modifier » pour les noter.</div>}
-            </section>
-          )}
-          {types.includes('gardien') && (
-            <section className={c.bloc}>
-              <div className={c.blocT}><span className={c.blocIc}><Ic n="immeuble" t={15} /></span><h3>L’immeuble</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
-              <div className={c.lignes}>
-                <Li ic="immeuble" l="Immeuble" v={pro.immeuble} />
-                <Li ic="horloge" l="Horaires de la loge" v={pro.horaires} />
-                <Li ic="cle" l="Accès, clés" v={pro.acces} />
-              </div>
-              {!pro.immeuble && <div className={c.pied}>L’immeuble, les horaires de la loge : « Modifier » pour les noter.</div>}
-            </section>
-          )}
-          {types.includes('partenaire') && (
-            <section className={c.bloc}>
-              <div className={c.blocT}><span className={c.blocIc}><Ic n="outil" t={15} /></span><h3>Son activité</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
-              <div className={c.lignes}>
-                <Li ic="outil" l="Métier" v={pro.metier} />
-                <Li ic="agence" l="Société" v={pro.societe} />
-              </div>
-              {!pro.metier && <div className={c.pied}>Son métier, sa société : « Modifier » pour les noter.</div>}
-            </section>
-          )}
-          {aUnBien(types) && (
-            <div id="ses-biens"><BiensDuContact clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} toujours ouvertAuDebut /></div>
-          )}
-          {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
-          {(!estPro(types) || aUnBien(types)) && (
-            <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} />
-          )}
-          {!estPro(types) || aUnBien(types) ? (
-            <div className={c.aussi}>
-              <span className={c.blocIc} style={{ width: 36, height: 36 }}><Ic n="cible" t={17} /></span>
-              <div><b>Il cherche aussi à acheter ?</b>Ouvre-lui une recherche : il passe sur la fiche d’acheteur, avec son espace et la veille.</div>
-              <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={ouvrirRecherche}>Ouvrir une recherche</button>
-            </div>
-          ) : null}
-      </div>
-      <div className={c.refPied}>{`${principal.lib} · ${x.reference}`}</div>
 
       {(() => {
         /* Le suivi (V3.23) : la frise des acheteurs, sans Veille ni Sélection.
@@ -654,22 +596,124 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
             : items.filter(i => (GR[filtre] || []).includes(i.data.type));
         const comptes: Record<string, number> = { tout: items.length, systeme: items.filter(i => !manuels.includes(i.data.type)).length };
         for (const [k, t] of Object.entries(GR)) comptes[k] = items.filter(i => t.includes(i.data.type)).length;
+        const avecDocs = !estPro(types) || aUnBien(types) || types.includes('confrere');
+        const onglets = [
+          { k: 'savoir' as OngletContact, l: <span>{'À savoir'}<span className={c.ongletLong}>{` sur ${x.prenom || (x.civilite === 'Madame' ? 'elle' : 'lui')}`}</span></span>, ic: <Ic n="personne" t={15} e={2} /> },
+          ...(avecDocs ? [{ k: 'documents' as OngletContact, l: types.includes('confrere') && estPro(types) && !aUnBien(types) ? 'Délégations' : 'Documents', n: nbDocs || undefined, ic: <Ic n="doc" t={15} e={2} /> }] : []),
+          { k: 'suivi' as OngletContact, l: 'Suivi', n: items.length || undefined, ic: <Ic n="horloge" t={15} e={2} /> },
+        ];
+        const actif = onglets.some(o => o.k === onglet) ? onglet : 'savoir';
         return (
-          <section id="suivi-contact" className={c.suiviBande}>
-            <div className={c.suiviTete}><b>Le suivi</b><span>{`tout ce qui s’est passé avec ${x.prenom || 'ce contact'}`}</span></div>
-            <div className={c.suiviCorps}>
-              <FriseSuivi titre="Historique" filtresVisibles={['tout', 'appel', 'rdv', 'note', 'communications', 'systeme']}
-                items={vus} filtre={filtre} comptes={comptes} onFiltre={setFiltre}
-                aVenir={relances} relancesAtt={relances} biens={[]} nomAutreRecherche={() => null} surligne={null}
-                modifiable={j => ['appel', 'rdv', 'note', 'email_libre', 'envoi_externe', 'relance_manuelle'].includes(j.type)}
-                onModifier={j => setAction({ edition: j, type: 'note' })}
-                onSupprimer={async j => { if (await supprimerActionContact(j, x.id)) recharger(); }}
-                onAjouter={() => setAction({ edition: null, type: 'note' })}
-                onAppel={() => setAction({ edition: null, type: 'appel' })} />
+          <>
+            <div id="onglets-contact" className={c.ongletsCheval}>
+              <BarreOnglets<OngletContact> label="Rubriques du contact" actif={actif} onChoisir={setOnglet} onglets={onglets} />
             </div>
-          </section>
+            {archive && <div className={c.archiveBandeau}>Ce contact est archivé : il n’apparaît plus dans la liste, seulement dans « Archivés ».</div>}
+            {erreur && <div className={c.erreur}>{erreur}</div>}
+            <CorpsOnglet k={actif} ordre={ORDRE_ONGLETS}>
+              {actif === 'savoir' && (
+                <div className={c.ongletCorps}>
+                  {/* Sa société d'abord (V3.31) ; « Ajouter » dans le bandeau l'ouvre ici. */}
+                  {peutSociete && <Depliant ouvert={!!structure || societeOuverte} ecart={16}><div className={c.socHaut}>{societe}</div></Depliant>}
+                  <CarteASavoir prenom={x.prenom || ''} texte={x.notes}
+                    onEnregistrer={async t => !!(await ecrire({ notes: t || null }, 'Les infos n’ont pas pu être enregistrées'))} />
+                  <div className={c.blocs}>
+                    {types.includes('confrere') && (
+                      <section className={c.bloc}>
+                        <div className={c.blocT}><span className={c.blocIc}><Ic n="agence" t={15} /></span><h3>Son agence</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
+                        <div className={c.lignes}>
+                          <Li ic="personne" l="Statut" v={pro.statutPro === 'mandataire' ? 'Mandataire' : pro.statutPro === 'independant' ? 'À son compte' : pro.statutPro === 'salarie' ? 'Salarié d’une agence' : ''} />
+                          <Li ic="agence" l="Agence" v={pro.agence} />
+                          <Li ic="groupe" l="Réseau" v={pro.reseau} />
+                          <Li ic="lieu" l="Adresse" v={pro.adresseAgence} />
+                          <Li ic="globe" l="Site" v={pro.siteWeb} />
+                        </div>
+                        {!pro.agence && !pro.statutPro && <div className={c.pied}>Son agence, son statut (salarié, mandataire, à son compte) : « Modifier » pour les noter.</div>}
+                        {/* Ce que sa dernière délégation a gardé (V3.19). */}
+                        {jur?.le && (
+                          <>
+                            <div className={c.lignes} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef1f6' }}>
+                              <Li ic="immeuble" l="Société" v={[jur.societe, jur.forme].filter(Boolean).join(', ')} />
+                              <Li ic="doc" l="RCS" v={jur.rcs} />
+                              <Li ic="carte" l="Carte professionnelle" v={[jur.carte, jur.cci ? `délivrée par ${jur.cci}` : ''].filter(Boolean).join(', ')} />
+                              <Li ic="bouclier" l="Garantie financière" v={jur.fonds === 'aucun' ? 'Ne détient aucuns fonds' : jur.garant} />
+                              <Li ic="balance" l="Assurance (RCP)" v={jur.rcp} />
+                            </div>
+                            <div className={c.pied}>{`Repris de sa délégation du ${new Date(jur.le + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}, et remis à jour à chaque délégation finalisée.`}</div>
+                          </>
+                        )}
+                      </section>
+                    )}
+                    {types.includes('notaire') && (
+                      <section className={c.bloc}>
+                        <div className={c.blocT}><span className={c.blocIc}><Ic n="balance" t={15} /></span><h3>Son étude</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
+                        <div className={c.lignes}>
+                          <Li ic="balance" l="Étude" v={pro.etude} />
+                          <Li ic="lieu" l="Adresse" v={pro.adresseEtude} />
+                          <Li ic="personne" l="Clerc ou assistant(e)" v={pro.clerc} />
+                          <Li ic="telephone" l="Son téléphone" v={pro.clercTel} />
+                        </div>
+                        {!pro.etude && !pro.adresseEtude && <div className={c.pied}>L’étude, son adresse, le clerc : « Modifier » pour les noter.</div>}
+                      </section>
+                    )}
+                    {types.includes('gardien') && (
+                      <section className={c.bloc}>
+                        <div className={c.blocT}><span className={c.blocIc}><Ic n="immeuble" t={15} /></span><h3>L’immeuble</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
+                        <div className={c.lignes}>
+                          <Li ic="immeuble" l="Immeuble" v={pro.immeuble} />
+                          <Li ic="horloge" l="Horaires de la loge" v={pro.horaires} />
+                          <Li ic="cle" l="Accès, clés" v={pro.acces} />
+                        </div>
+                        {!pro.immeuble && <div className={c.pied}>L’immeuble, les horaires de la loge : « Modifier » pour les noter.</div>}
+                      </section>
+                    )}
+                    {types.includes('partenaire') && (
+                      <section className={c.bloc}>
+                        <div className={c.blocT}><span className={c.blocIc}><Ic n="outil" t={15} /></span><h3>Son activité</h3><button type="button" className={c.lien} onClick={() => setEdit(formDe(x))}>Modifier</button></div>
+                        <div className={c.lignes}>
+                          <Li ic="outil" l="Métier" v={pro.metier} />
+                          <Li ic="agence" l="Société" v={pro.societe} />
+                        </div>
+                        {!pro.metier && <div className={c.pied}>Son métier, sa société : « Modifier » pour les noter.</div>}
+                      </section>
+                    )}
+                    {!estPro(types) || aUnBien(types) ? (
+                      <div className={c.aussi}>
+                        <span className={c.blocIc} style={{ width: 36, height: 36 }}><Ic n="cible" t={17} /></span>
+                        <div><b>Il cherche aussi à acheter ?</b>Ouvre-lui une recherche : il passe sur la fiche d’acheteur, avec son espace et la veille.</div>
+                        <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={ouvrirRecherche}>Ouvrir une recherche</button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+              {actif === 'documents' && (
+                <div className={c.ongletCorps}>
+                  {/* Ses délégations, et « Déléguer un mandat » (V3.19). */}
+                  {types.includes('confrere') && <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} confrere />}
+                  {/* Ses documents : mandats, avenants… signés ou en cours (V3.17). */}
+                  {(!estPro(types) || aUnBien(types)) && <DocumentsDuClient clientId={x.id} prenom={x.prenom} onNavigate={onNavigate} ouvert />}
+                </div>
+              )}
+              {actif === 'suivi' && (
+                <section id="suivi-contact" className={`${c.suiviBande} ${c.suiviOnglet}`}>
+                  <div className={c.suiviCorps}>
+                    <FriseSuivi titre="Historique" filtresVisibles={['tout', 'appel', 'rdv', 'note', 'communications', 'systeme']}
+                      items={vus} filtre={filtre} comptes={comptes} onFiltre={setFiltre}
+                      aVenir={relances} relancesAtt={relances} biens={[]} nomAutreRecherche={() => null} surligne={null}
+                      modifiable={j => ['appel', 'rdv', 'note', 'email_libre', 'envoi_externe', 'relance_manuelle'].includes(j.type)}
+                      onModifier={j => setAction({ edition: j, type: 'note' })}
+                      onSupprimer={async j => { if (await supprimerActionContact(j, x.id)) recharger(); }}
+                      onAjouter={() => setAction({ edition: null, type: 'note' })}
+                      onAppel={() => setAction({ edition: null, type: 'appel' })} />
+                  </div>
+                </section>
+              )}
+            </CorpsOnglet>
+          </>
         );
       })()}
+      <div className={c.refPied}>{`${principal.lib} · ${x.reference}`}</div>
 
       {action && (
         <FenetreAction clientId={x.id} prenom={x.prenom || ''} edition={action.edition} typeInitial={action.type}
