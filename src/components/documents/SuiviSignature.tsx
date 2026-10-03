@@ -62,14 +62,21 @@ const leJour = (iso: string) => {
 };
 const quand = (iso: string) => `${leJour(iso)} à ${heureParis(iso)}`;
 const nomDe = (p: { prenom?: string; nom?: string } | null | undefined, repli = '') => `${p?.prenom || ''} ${p?.nom || ''}`.trim() || repli;
-const prenoms = (l: LigneSuivi[]) => l.map(x => x.nom).join(' et ');
+/* « Paul », « Paul et Claire », « Paul, Claire et Marc » ; au-delà de trois
+   (V3.58 : une SCI de huit associés), « Paul, Claire et 6 autres » : la liste
+   complète est dans le dépliant. */
+const prenoms = (l: LigneSuivi[]) => {
+  const n = l.map(x => x.nom);
+  if (n.length > 3) return `${n.slice(0, 2).join(', ')} et ${n.length - 2} autres`;
+  return n.length > 1 ? `${n.slice(0, -1).join(', ')} et ${n[n.length - 1]}` : n[0] || '';
+};
 const rappel = (n: number) => (n === 1 ? ' · rappel envoyé' : n >= 2 ? ' · dernier rappel envoyé' : '');
 
 /* La phrase du dessous : qui on attend, ou ce qu'il reste à faire. */
 function sousTitre(lignes: LigneSuivi[], fin: string): string {
   const expires = lignes.filter(x => x.etat === 'expire');
   const attendus = lignes.filter(x => x.etat === 'attente' || x.etat === 'surplace');
-  if (expires.length) return `Lien expiré pour ${prenoms(expires)} : renvoie-le`;
+  if (expires.length) return `Lien expiré pour ${prenoms(expires)} : renvoie-${expires.length > 1 ? 'les' : 'le'}`;
   if (attendus.length) return `On attend ${prenoms(attendus)}`;
   return fin;
 }
@@ -93,7 +100,7 @@ export async function lireSuivis(o: { docs?: DocumentRow[]; mandats?: SigEspace[
         const texte = etat === 'signe' ? `Signé le ${quand(x.signe_le!)}${x.mode === 'sur_place' ? ', sur place' : ', en ligne'}`
           : etat === 'surplace' ? 'Signera sur place, sur ton écran'
           : etat === 'expire' ? `Lien expiré le ${leJour(x.lien_expire_le!)}`
-          : `Lien envoyé le ${x.invite_le ? quand(x.invite_le) : '—'} · ${x.ouvert_le ? `ouvert le ${leJour(x.ouvert_le)}` : 'pas encore ouvert'}${rappel(x.relances)}`;
+          : `Lien envoyé le ${x.invite_le ? quand(x.invite_le) : '—'} · ${x.ouvert_le ? `ouvert le ${quand(x.ouvert_le)}` : 'pas encore ouvert'}${rappel(x.relances)}`;
         return {
           id: x.id, nom: nomSignataire(x), role: x.role || 'Signataire', email: x.personne?.email || '', etat, texte,
           geste: etat === 'signe' ? undefined : { sorte: 'doc', docId: d.id, sigId: x.id, attendu: x.statut === 'attendu' },
@@ -141,7 +148,7 @@ export async function lireSuivis(o: { docs?: DocumentRow[]; mandats?: SigEspace[
             : c.statut === 'annule' ? 'Invitation close : le mandat continue sans lui'
             : c.statut === 'retracte' ? 'A renoncé au mandat'
             : etat === 'expire' ? `Lien expiré le ${leJour(c.lien_expire_le!)}`
-            : `Lien envoyé le ${c.invite_le ? quand(c.invite_le) : '—'} · ${c.ouvert_le ? `ouvert le ${leJour(c.ouvert_le)}` : 'pas encore ouvert'}${rappel(c.relances)}`;
+            : `Lien envoyé le ${c.invite_le ? quand(c.invite_le) : '—'} · ${c.ouvert_le ? `ouvert le ${quand(c.ouvert_le)}` : 'pas encore ouvert'}${rappel(c.relances)}`;
           return {
             id: c.id, nom: nomDe(c.personne, 'Co-signataire'), role: 'Signe avec lui', email: c.personne?.email || '', etat, texte,
             geste: etat === 'attente' || etat === 'expire' ? { sorte: 'co', coId: c.id, expire: etat === 'expire', lien: c.jeton ? `https://${HOTE_ESPACE}/signer/${c.jeton}` : '' } : undefined,
