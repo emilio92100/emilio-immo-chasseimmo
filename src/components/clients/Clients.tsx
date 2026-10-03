@@ -11,7 +11,7 @@ import AvatarContact from '@/components/contacts/AvatarContact';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
 import {
-  BasculeCriteres, classesCrit, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
+  BasculeCriteres, classesCrit, colonnesCriteres, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
   etapesCriteres, FriseCriteres, lireModeCrit,
 } from '@/components/shared/CriteresRecherche';
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/contacts';
 import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
 import ChoixSource from '@/components/contacts/ChoixSource';
+import ImportImmoFacile from '@/components/contacts/ImportImmoFacile';
 import { Ic } from '@/components/documents/ApercuActe';
 import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
 import { TABLE_DEMANDES, type PreRemplissage } from '@/lib/demandes-site';
@@ -475,13 +476,17 @@ export default function Clients({ onNavigate, fenetre }: {
      de gauche (« Mes vendeurs »…), ou sur celle qu'on avait en quittant la
      liste pour une fiche. Le menu allume l'entrée de ce qui est affiché. */
   const [cats, setCats] = useState<Categorie[]>(() => lireCats(vueDemandee('clients')));
+  /* « Importer depuis ImmoFacile » (V3.61) : la fenêtre, puis les contacts
+     qu'elle vient de créer ou de compléter (« Voir les contacts importés »). */
+  const [importOuvert, setImportOuvert] = useState(false);
+  const [importes, setImportes] = useState<string[] | null>(null);
   useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
   /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
      place, sans recharger (V3.25). */
   useEffect(() => {
     const demande = (e: Event) => {
       const d = (e as CustomEvent<{ page: string; vue: string }>).detail;
-      if (d?.page === 'clients') setCats(lireCats(d.vue));
+      if (d?.page === 'clients') { setImportes(null); setCats(lireCats(d.vue)); }
     };
     window.addEventListener(EVT_DEMANDE_VUE, demande);
     return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
@@ -772,7 +777,7 @@ export default function Clients({ onNavigate, fenetre }: {
     : k === 'acheteur' ? estAcheteur(c)
       : k === 'non_filtre' ? estAcheteur(c) && sansCriteres(c)
         : typesDe(c).includes(k as TypeContact));
-  const autres = (avecAcheteurs ? [] : cats.includes('archives') ? clients.filter(c => estArchive(c)) : visibles.filter(dansCats)).filter(trouve)
+  const autres = (importes ? clients.filter(c => importes.includes(c.id)) : avecAcheteurs ? [] : cats.includes('archives') ? clients.filter(c => estArchive(c)) : visibles.filter(dansCats)).filter(trouve)
     .sort((a, b) => String(derniere(b) || '').localeCompare(String(derniere(a) || '')));
   const seul = cats.length === 1 ? cats[0] : null;
   const biensDe = (id: string) => biensV.filter(b => b.client_id === id);
@@ -922,38 +927,13 @@ export default function Clients({ onNavigate, fenetre }: {
              recherche l'espace parle. */
           token_espace: jetonEspace(form.prenom, form.nom),
           active: form.statut === 'actif',
-          type_bien: cr.types_bien.length ? cr.types_bien.join(', ') : null,
-          budget_min: ent(cr.budget_min), budget_max: ent(cr.budget_max),
-          surface_min: ent(cr.surface_min), surface_max: ent(cr.surface_max),
-          nb_pieces_min: ent(cr.nb_pieces_min), nb_pieces_max: ent(cr.nb_pieces_max),
-          chambres_min: ent(cr.chambres_min),
-          surface_sejour_min: ent(cr.surface_sejour_min),
-          secteurs: cr.secteurs,
-          transport_minutes: ent(cr.transport_minutes),
-          transport_lignes: cr.transport_lignes,
-          transport_arrets: cr.transport_arrets,
-          etage_min: ent(cr.etage_min), etage_max: ent(cr.etage_max),
-          etage_max_sans_ascenseur: ent(cr.etage_max_sans_ascenseur),
-          rdc_exclu: cr.rdc_exclu, dernier_etage: cr.dernier_etage,
-          dpe_max: cr.dpe_max || null,
-          annee_construction_min: ent(cr.annee_min),
-          etat_souhaite: cr.etat_souhaite || null,
-          exposition_souhaitee: cr.exposition_souhaitee || null,
-          cuisine_type: cr.cuisine_type || null,
-          exterieur_surface_min: ent(cr.exterieur_surface_min),
-          parking: cr.parking, cave: cr.cave, balcon: cr.balcon,
-          terrasse: cr.terrasse, jardin: cr.jardin,
-          ascenseur: cr.ascenseur, gardien: cr.gardien,
-          interphone: cr.interphone, digicode: cr.digicode,
-          exigences: cr.exigences,
-          urgence: cr.urgence || null,
-          financement: cr.financement || null,
-          apport: ent(cr.apport),
+          /* Les critères : les mêmes colonnes que l'import d'ImmoFacile
+             (colonnesCriteres, V3.61). */
+          ...colonnesCriteres(cr),
           sans_mandat: form.sans_mandat,
           mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
           mandat_duree: form.sans_mandat ? null : ent(form.mandat_duree),
           mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
-          notes: cr.notes || null,
         });
         if (eRech) signalerEchec('Le contact est créé, mais sa recherche', `${eRech.message}. Ouvre sa fiche et enregistre ses critères : la recherche se crée alors.`);
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
@@ -1535,8 +1515,9 @@ export default function Clients({ onNavigate, fenetre }: {
       <EnteteRubrique titre="Mes contacts" icone={PictoClients}
         recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, e-mail, agence, secteur, référence…', label: 'Chercher un contact' }}
         bouton={{ lib: 'Nouveau contact', onClick: openModal }}
+        bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
         phrase="Clique plusieurs types pour les voir ensemble."
-        label="Filtrer par type de contact" actif={cats} onChoisir={k => choisirCat(k as Categorie)}
+        label="Filtrer par type de contact" actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
         tuiles={[...CATEGORIES, ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
@@ -1774,8 +1755,15 @@ export default function Clients({ onNavigate, fenetre }: {
           )}
           {!avecAcheteurs && (autres.length ? (
             /* Une autre catégorie : les lignes arrivent l'une après l'autre. */
-            <div className={`${cc.liste} cascade`} key={cats.join('+')}>
-              {cats.length > 1 && (
+            <div className={`${cc.liste} cascade`} key={importes ? 'importes' : cats.join('+')}>
+              {importes && (
+                <div className={cc.cumul}>
+                  <span>Importés d’ImmoFacile</span>
+                  <b>{`${autres.length} contact${autres.length > 1 ? 's' : ''}`}</b>
+                  <button type="button" onClick={() => setImportes(null)}>Tout revoir</button>
+                </div>
+              )}
+              {!importes && cats.length > 1 && (
                 <div className={cc.cumul}>
                   <span>{cats.map(k => CATEGORIES.find(x => x.cle === k)?.lib).filter(Boolean).join(' + ')}</span>
                   <b>{`${autres.length} contact${autres.length > 1 ? 's' : ''}`}</b>
@@ -1786,7 +1774,13 @@ export default function Clients({ onNavigate, fenetre }: {
               {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })} />)}
             </div>
           ) : (
-            <div className={cc.vide}>
+            importes ? (
+              <div className={cc.vide}>
+                <b>Les contacts importés ne sont pas dans la liste</b>
+                <span style={{ display: 'block' }}>{search ? 'Efface la recherche, juste au-dessus.' : 'Recharge la page pour relire les contacts.'}</span>
+                <button type="button" className={styles.btnSecondary} style={{ marginTop: 12 }} onClick={() => setImportes(null)}>Tout revoir</button>
+              </div>
+            ) : <div className={cc.vide}>
               <b>{search ? 'Personne ne correspond' : seul === 'archives' ? 'Aucun contact archivé' : seul === 'tous' ? 'Aucun contact pour l’instant' : seul && seul !== 'non_filtre' && seul !== 'acheteur' ? `Aucun ${typeDe(seul).lib.toLowerCase()} pour l’instant` : 'Personne dans ces catégories'}</b>
               {search ? 'Essaie un autre mot.' : seul === 'archives' ? 'Un contact archivé reste ici, hors de la liste.' : seul === 'tous' ? 'Clique sur « + Nouveau contact » pour commencer.' : seul && seul !== 'non_filtre' && seul !== 'acheteur' ? `« + Nouveau contact », puis coche « ${typeDe(seul).lib} ».` : 'Allume d’autres tuiles, ou « Tous ».'}
             </div>
@@ -1885,6 +1879,14 @@ export default function Clients({ onNavigate, fenetre }: {
 
       {/* La fenêtre « Nouveau contact », bâtie plus haut (fenetreCreation). */}
       {fenetreCreation}
+
+      {/* « Importer depuis ImmoFacile » (V3.61). « Voir les contacts importés » :
+          la liste ne montre plus qu'eux, « Tout revoir » la rend entière. */}
+      {importOuvert && (
+        <ImportImmoFacile onFermer={() => setImportOuvert(false)}
+          onImporte={() => { signalerMaj(); fetchClients(); }}
+          onVoir={ids => { setImportOuvert(false); setImportes(ids); setCats(['tous']); setSearch(''); }} />
+      )}
     </div>
   );
 }

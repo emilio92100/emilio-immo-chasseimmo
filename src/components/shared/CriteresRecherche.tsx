@@ -192,6 +192,43 @@ export const CRIT_VIDE: CritForm = {
   urgence: '', financement: '', apport: '',
 };
 
+/* Les colonnes de `recherches` que portent les critères, tirées du
+   formulaire : les mêmes à la création d'un contact (Clients.tsx) et à
+   l'import d'ImmoFacile (V3.61, contacts/import-ecriture.ts). */
+export function colonnesCriteres(cr: CritForm) {
+  const ent = (v: string) => (v ? parseInt(v) : null);
+  return {
+    type_bien: cr.types_bien.length ? cr.types_bien.join(', ') : null,
+    budget_min: ent(cr.budget_min), budget_max: ent(cr.budget_max),
+    surface_min: ent(cr.surface_min), surface_max: ent(cr.surface_max),
+    nb_pieces_min: ent(cr.nb_pieces_min), nb_pieces_max: ent(cr.nb_pieces_max),
+    chambres_min: ent(cr.chambres_min),
+    surface_sejour_min: ent(cr.surface_sejour_min),
+    secteurs: cr.secteurs,
+    transport_minutes: ent(cr.transport_minutes),
+    transport_lignes: cr.transport_lignes,
+    transport_arrets: cr.transport_arrets,
+    etage_min: ent(cr.etage_min), etage_max: ent(cr.etage_max),
+    etage_max_sans_ascenseur: ent(cr.etage_max_sans_ascenseur),
+    rdc_exclu: cr.rdc_exclu, dernier_etage: cr.dernier_etage,
+    dpe_max: cr.dpe_max || null,
+    annee_construction_min: ent(cr.annee_min),
+    etat_souhaite: cr.etat_souhaite || null,
+    exposition_souhaitee: cr.exposition_souhaitee || null,
+    cuisine_type: cr.cuisine_type || null,
+    exterieur_surface_min: ent(cr.exterieur_surface_min),
+    parking: cr.parking, cave: cr.cave, balcon: cr.balcon,
+    terrasse: cr.terrasse, jardin: cr.jardin,
+    ascenseur: cr.ascenseur, gardien: cr.gardien,
+    interphone: cr.interphone, digicode: cr.digicode,
+    exigences: cr.exigences,
+    urgence: cr.urgence || null,
+    financement: cr.financement || null,
+    apport: ent(cr.apport),
+    notes: cr.notes || null,
+  };
+}
+
 export type EtapeCrit = { id: string; ico: string; titre: string; note?: string; sous: string; contenu: React.ReactNode };
 export type SetCrit = (maj: (f: CritForm) => CritForm) => void;
 

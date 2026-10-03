@@ -31,13 +31,16 @@ export type Tuile = {
 };
 
 export default function EnteteRubrique({
-  titre, icone, phrase, recherche, bouton, tuiles, actif, onChoisir, label,
+  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label,
 }: {
   titre: string;
   icone: ReactNode;
   phrase?: string;
   recherche?: { valeur: string; onChange: (v: string) => void; placeholder: string; label: string };
   bouton?: { lib: string; onClick: () => void };
+  /* Un second bouton, plus discret, avant le premier (V3.61 : « Importer
+     depuis ImmoFacile »). `court` : son libellé sur téléphone. */
+  bouton2?: { lib: string; court?: string; ic?: ReactNode; onClick: () => void };
   tuiles: Tuile[];
   /* Une tuile allumée, ou plusieurs quand elles se cumulent (Contacts). */
   actif: string | string[];
@@ -54,7 +57,7 @@ export default function EnteteRubrique({
             {phrase && <p className={styles.phrase}>{phrase}</p>}
           </div>
         </div>
-        {(recherche || bouton) && (
+        {(recherche || bouton || bouton2) && (
           <div className={styles.outils}>
             {recherche && (
               <label className={styles.recherche}>
@@ -62,6 +65,13 @@ export default function EnteteRubrique({
                 <input value={recherche.valeur} onChange={e => recherche.onChange(e.target.value)}
                   placeholder={recherche.placeholder} aria-label={recherche.label} />
               </label>
+            )}
+            {bouton2 && (
+              <button type="button" className={styles.bouton2} onClick={bouton2.onClick} title={bouton2.lib}>
+                {bouton2.ic}
+                <span className={bouton2.court ? styles.long : undefined}>{bouton2.lib}</span>
+                {bouton2.court && <span className={styles.court}>{bouton2.court}</span>}
+              </button>
             )}
             {bouton && (
               <button type="button" className={styles.bouton} onClick={bouton.onClick}>

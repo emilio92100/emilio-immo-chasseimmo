@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.60 · 3 octobre 2026**
+**Version 3.61 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -663,6 +663,7 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/registre/archive` | portail | L'archive du registre des mandats, à la demande : le PDF rangé dans `mandats/registre/` et envoyé par mail | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `POST /api/documents/signature` | portail | Signature en ligne ou sur place d'un document : `lancer`, `renvoyer`, `annuler`, `code` et `signer` (sur place), `finaliser` (étapes `verifier` · `assembler` · `sceller` · `envoyer` · `classer`) | `SUPABASE_SERVICE_ROLE_KEY`, Mailjet |
 | `POST /api/biens-vente` | portail | Fichiers privés d'un bien en vente : `depot` (sous `biens-vente/<id>/`), `lien` (5 minutes), `retirer`, `tout` (le bien est supprimé) | `SUPABASE_SERVICE_ROLE_KEY` |
+| `POST /api/import-immofacile` | portail (badge revérifié) | L'import ImmoFacile : lit par lots (8 au plus) le texte libre de contacts sans nom ni coordonnées (`cle` neutre, statut, critères, précisions, commentaire coupé début + fin à 6 000 caractères) et rend ce que Claude y lit, nettoyé par `lireLecture`. Réponse coupée : les contacts complets sont gardés. N'écrit rien en base | `ANTHROPIC_API_KEY` |
 | `POST /api/documents` | portail | Documents juridiques : `depot` (droit de dépôt d'un seul fichier sous `documents/<id>/`, le fichier part ensuite du navigateur), `lien` (5 minutes), `retirer` | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### Les actions de `/api/espace/<action>`
@@ -1459,6 +1460,69 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.61 — 3 octobre 2026 · « Importer depuis ImmoFacile »
+
+Rien à passer dans Supabase. La lecture des commentaires utilise `ANTHROPIC_API_KEY` (déjà sur
+Vercel) ; sans elle, l'import marche avec les colonnes seules.
+
+Alexandre quitte ImmoFacile (AC3 facture la reprise 500 €) : « il faut qu'ensuite ce soit bien
+traduit sur la fiche : propriétaire, acheteur, les critères de recherche, les précisions de la
+recherche, l'observation générale au niveau de l'historique du client, pas de la recherche ».
+
+**Le parcours** (Contacts › « Importer depuis ImmoFacile » : `ImportImmoFacile.tsx`)
+1. Il dépose un ou plusieurs exports « Contacts » d'ImmoFacile (.csv, UTF-8 ou Windows-1252).
+2. L'aperçu, rien n'est écrit : une ligne par contact (rôles, recherche, bien « À suivre »,
+   étiquettes), le détail « Dans ImmoFacile → Ce qui sera créé », des corrections (rôles, critères
+   lus en trop, bien « À suivre » et date du rappel, « ce n'est pas la même personne », « ne pas
+   importer »), des onglets (Acheteurs, Propriétaires, Tirées d'un commentaire, Déjà dans le CRM,
+   À vérifier, Pas importés). La lecture des commentaires par Claude tourne en fond, par lots ;
+   « Ne pas attendre » reprend les autres avec leurs colonnes seulement.
+3. L'écriture, contact par contact (`import-ecriture.ts`), comme une saisie à la main.
+4. Le bilan : ce qui a manqué, « Réessayer » (le CRM est relu avant), « Voir les contacts
+   importés » (Contacts filtré « Importés d'ImmoFacile »).
+
+**Les règles** (`src/lib/import-immofacile.ts`)
+- Une même personne présente deux fois (deux exports, « Propriétaire » dans l'un et « Demandeur »
+  dans l'autre) est regroupée : même nom complet, même e-mail ou même téléphone. Deux noms complets
+  différents ne se fondent jamais (un couple qui partage un fixe : deux fiches, « À vérifier ») ; un
+  numéro ou un e-mail présent sous trois noms ou plus (l'agence) ne relie personne ; les numéros
+  bidons (« 06 00 00 00 00 ») tombent.
+- Rôles : une recherche remplie ou décrite dans le commentaire → acheteur, même si ImmoFacile dit
+  seulement « Propriétaire » ; « Propriétaire », « Vendeur », « Bailleur » → propriétaire ; Notaire,
+  Agence, Gardien, Courtier… → le type pro. Rien de reconnu (« Locataire », vide) : acheteur sans
+  critères (le type par défaut du CRM), « À vérifier », jamais « Actif », et ce rôle n'est jamais
+  ajouté à une fiche qui existe déjà.
+- La recherche : les colonnes d'abord (types, budget — « 850K », « 1,1 M€ » compris —, surfaces,
+  pièces, chambres, secteurs du CRM), le texte pour ce qui manque, et les critères en plus cochés
+  (balcon, terrasse, pas de RDC, étage, ascenseur, cuisine, exposition, état, financement, délai).
+  Ses « Précisions » ne reçoivent que des phrases réécrites (le client les lit dans son espace) :
+  **jamais la « Précision » d'ImmoFacile brute**, qui va dans « À savoir ».
+- « À savoir » (pour Alexandre seul) : « Repris d'ImmoFacile : fiche créée le …, suivie par …,
+  origine … », ce que Claude a lu sur la personne, la précision et le commentaire d'origine en
+  entier, un refus noté dans ImmoFacile, un e-mail mal écrit.
+- Son bien (Alexandre : « la fiche du bien, c'est quand j'ai vu le logement ») : un projet de vente
+  lu dans le commentaire (« vente après avoir trouvé », « rappeler pour estimation ») coche
+  « Revente possible après l'achat (mandat vendeur potentiel) » (`bien_actuel_a_vendre`, avec type,
+  surface, prix espéré, adresse, notes) et pose le rappel noté sur le contact (Relances, note
+  « Projet de vente — recontacter … », jamais en double). **Aucune fiche bien n'est créée
+  d'office** : « Créer aussi sa fiche bien « À suivre » » dans les corrections, quand il a vu le
+  logement (le rappel suit alors le bien, et le type « Vendeur » n'est posé qu'une fois le bien
+  créé). Un rappel déjà passé (« rappeler en juin ») est posé pour aujourd'hui, « en retard, prévu
+  en juin 2026 ».
+- Les acheteurs arrivent « À qualifier » (prospect, recherche arrêtée : ni veille, ni point
+  automatique, ni alertes). « Actifs » : statut actif et recherche en marche — sauf ceux de
+  « À vérifier », dont ceux qui ont refusé les e-mails ou les propositions dans ImmoFacile.
+- Déjà dans le CRM (même e-mail, téléphone, personne 2 comprise, ou même nom) : pas recréé, sa fiche
+  est relue juste avant d'écrire et seul ce qui manque est ajouté. Reconnu par la personne 2, ou par
+  une coordonnée sous un autre nom : ses coordonnées ne sont pas recopiées, le bloc « À savoir » dit
+  de qui il vient. Même nom mais d'autres coordonnées des deux côtés : un homonyme, créé à part
+  (« À vérifier »). Un bien vendu, retiré ou archivé n'empêche pas un nouveau bien « À suivre ».
+- Une ligne au Suivi : « Fiche reprise d'ImmoFacile le … (créée le … chez ImmoFacile) », ou
+  « Fiche complétée depuis ImmoFacile », `metadata.source = 'import_immofacile'` et le lot.
+- Ce qui part chez Claude : ni nom, ni téléphone, ni e-mail, une clé neutre (`k1`, `k2`…). Un
+  e-mail ou un téléphone lu n'est gardé que s'il est écrit dans le texte de CE contact ; une clé
+  rendue deux fois tombe.
 
 ### V3.60 — 3 octobre 2026 · Documents : « Signatures en cours », les états dans chaque sorte, des onglets qui glissent
 
