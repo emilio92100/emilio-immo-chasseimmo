@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.59 · 3 octobre 2026**
+**Version 3.60 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,31 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.60 — 3 octobre 2026 · Documents : « Signatures en cours », les états dans chaque sorte, des onglets qui glissent
+
+Rien à passer dans Supabase.
+
+Alexandre : « un onglet Signatures en cours, où tout se met quand une signature ou des signataires sont en
+attente » ; « dans Mandats de vente, Mandats de recherche… une sous-catégorie brouillon, signature en
+cours, signé, que ce soit bien précisé et joli » ; « quand on passe de Mandats de vente à Offres d'achat,
+c'est un peu brut : de la fluidité entre chaque onglet, et un meilleur affichage des onglets ».
+
+- **La barre des sortes** (`PageDocuments.tsx`) : `BarreOnglets` / `CorpsOnglet` (OngletsGlissants, comme
+  les fiches) au lieu des pastilles : la pastille glisse, le contenu arrive en fondu du côté où l'on va.
+  « **Signatures en cours** » · « **Tous** » · une par sorte, avec leur nombre. Une sorte sans aucun
+  document n'a pas d'onglet (il revient au premier document).
+- **« Signatures en cours »** : tout document `pret` hors courriers, en deux groupes : « On attend des
+  signatures » (liens partis ou signature sur place commencée, avec « Qui a signé ? ») et « Prêts à faire
+  signer » (finalisés : liens à envoyer, ou papier). Le mandat de recherche signé dans l'espace et qui
+  attend un co-signataire y figure aussi.
+- **Les états dans chaque sorte** (et dans « Tous ») : une seconde barre, plus légère (`.sousVues` : fond
+  gris, pastille blanche) : Tous · Signature en cours · Brouillons · Signés · Annulés (Annulés seulement
+  s'il y en a ; pour les courriers : À envoyer · Envoyés). Sur « Tous », la liste est rangée en groupes
+  titrés (`TeteGroupe`, `.grT` : un point de couleur, le nom, le nombre) ; sur un état, la liste seule.
+  Changer de sorte remet l'état sur « Tous ».
+- **Les tuiles d'état du bandeau** (Tous, Brouillons, À faire signer, Signés, Annulés) sont parties : elles
+  faisaient la même chose que la seconde barre. La phrase du bandeau reste (« 1 en signature · … »).
 
 ### V3.59 — 3 octobre 2026 · la fiche d'un vendeur ou d'un contact en rubriques
 
