@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
 import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
+import FenetreConfirmer from './FenetreConfirmer';
 import { ChampActe, manquesEtape } from './ChampsActe';
 import FilEtapes from './FilEtapes';
 import { chercherQuestion, type Cible } from './versQuestion';
@@ -166,6 +167,9 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
      en brouillon depuis une page pas à jour, avant la V3.55) : on le dit, et
      on propose de l'arrêter avant de finaliser. */
   const [ancienneSignature, setAncienneSignature] = useState(doc.statut === 'brouillon' && !!doc.signature);
+  /* V3.61 : avant de le repasser en brouillon, la fenêtre qui dit ce qui va
+     se passer (FenetreConfirmer). */
+  const [fenModif, setFenModif] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
   const apercuRef = useRef<HTMLDivElement>(null);
   const corpsRef = useRef<HTMLDivElement>(null);
@@ -554,7 +558,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
      relit et le dit. Avant, seule la copie de l'onglet était regardée, et
      les anciens liens remarchaient sur le texte modifié. */
   const LANCEE = 'La signature est lancée : arrête-la d’abord (Arrêter la signature, dans la fiche du document), puis repasse-le en brouillon.';
-  async function repasserBrouillon() {
+  /* V3.61 : `confirme` : la fenêtre « Repasser en brouillon » a été validée. */
+  async function repasserBrouillon(confirme = false) {
     const relire = async () => {
       const { data: frais } = await supabase.from('documents').select('*').eq('id', row.id).maybeSingle();
       if (frais) { setRow(frais as DocumentRow); onMaj(frais as DocumentRow); }
@@ -570,7 +575,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         : { t: LANCEE, ok: false });
       return;
     }
-    if (!confirm('Repasser ce document en brouillon pour le modifier ?\n\nLe PDF figé ne sera plus proposé : s’il a déjà été imprimé, ne fais pas signer l’ancien exemplaire. Tu le finaliseras à nouveau une fois modifié.')) return;
+    if (!confirme) { setFenModif(true); return; }
+    setFenModif(false);
     setTravail('brouillon');
     try {
       /* Des signataires encore ouverts : lancée ailleurs (la réponse
@@ -686,10 +692,16 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
         {/* ── Les questions ── */}
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
           <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive} ${s.saisieDoc}`}>
-            {row.statut === 'pret' && (
+            {row.statut === 'pret' && !row.signature && (
               <div className={s.lecture}>
                 <span>{`Document figé ${quand(row.finalise_le)} : c’est ce PDF qu’on ${m.courrier ? 'envoie' : 'fait signer'}. Pour changer quelque chose, repasse-le en brouillon.`}</span>
-                <button type="button" className={s.btn} disabled={travail === 'brouillon'} onClick={repasserBrouillon}><Ic n="plume" t={14} />Modifier</button>
+                <button type="button" className={s.btn} disabled={travail === 'brouillon'} onClick={() => { void repasserBrouillon(); }}><Ic n="plume" t={14} />Modifier</button>
+              </div>
+            )}
+            {/* V3.61 : en signature, il ne se modifie pas : on dit comment faire. */}
+            {row.statut === 'pret' && row.signature && (
+              <div className={s.lecture}>
+                <span>{`Signature ${row.signature.mode === 'sur_place' ? 'sur place' : 'en ligne'} en cours : le document ne se modifie pas pendant qu’on le signe. Pour le corriger, ferme cette page, clique « Arrêter la signature » dans sa fiche, puis reviens ici et « Modifier ».`}</span>
               </div>
             )}
             {(row.statut === 'signe' || row.statut === 'annule') && (
@@ -826,6 +838,20 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
             </div>
           </div>
         </div>
+      )}
+      {fenModif && (
+        <FenetreConfirmer ic="crayon" titre="Repasser en brouillon pour le modifier ?" bouton="Repasser en brouillon"
+          intro={`${row.titre || m.titre}${row.numero ? ` · n° ${row.numero}` : ''}`}
+          points={[
+            { ic: 'crayon', t: 'Le document repasse en brouillon : tu peux tout corriger, question par question.' },
+            { ic: 'doc', ton: 'alerte', t: `Le PDF figé n’est plus proposé. S’il a déjà été imprimé ou envoyé en projet, ne fais pas ${m.courrier ? 'envoyer' : 'signer'} l’ancien exemplaire.` },
+            ...(m.registre && row.numero ? [{ ic: 'liste', t: `Il garde son n° ${row.numero}. Le registre des mandats notera « Corrigé avant signature », avec ce qui change.` }] : []),
+          ]}
+          ensuite={[
+            { ic: 'check', t: 'Corrige, puis « Finaliser » : un nouveau PDF est figé, avec l’identité de l’agence du jour.' },
+            { ic: m.courrier ? 'envoyer' : 'plume', t: m.courrier ? 'Puis envoie-le comme prévu.' : 'Puis fais-le signer comme prévu : à la main, en ligne ou sur place.' },
+          ]}
+          onFermer={() => setFenModif(false)} onConfirmer={() => repasserBrouillon(true)} />
       )}
     </div>
   );
