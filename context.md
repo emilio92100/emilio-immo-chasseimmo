@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.54 · 3 octobre 2026**
+**Version 3.55 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,74 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.55 — 3 octobre 2026 · le mandat de recherche dans l'espace suit le CRM, et la signature en ligne est verrouillée
+
+Rien à passer dans Supabase.
+
+Alexandre : « son espace doit être à jour par rapport à ce que je mets côté CRM : si je dis que c'est
+signé, c'est signé, et c'est à moi de joindre le PDF signé » ; « un petit avertissement pour ne pas
+oublier le PDF signé, sinon le client ne le voit pas » ; et « si je relance une signature déjà en
+cours, depuis Documents, la fiche d'un client ou d'un bien, est-ce que ça m'arrête ? si j'annule,
+est-ce que le lien ne marche plus ? ».
+
+**L'espace et le mandat fait dans Documents** (`src/lib/documents-espace.ts`, nouveau ;
+`mandat-serveur.ts`, `espace/[token]/page.tsx`, `SignatureMandat.tsx`, `EspaceClient.tsx`,
+`api/espace/[action]`, `api/espace/mandat`)
+- Le couple : chacun son lien. Le client est reconnu par SES adresses (puis par son prénom, jamais
+  celui du conjoint : `laSienne`) ; avant, l'espace pouvait lui donner le lien de sa conjointe. Une
+  fois qu'il a signé, l'accueil dit « Votre mandat de recherche attend la signature de Claire », avec
+  qui a signé ; Claire a son propre lien, nommé. Il peut demander des visites dès sa signature (comme
+  le mandat signé dans l'espace) ; le serveur applique la même règle.
+- « Mon mandat de recherche » dit la vérité selon l'état : en préparation (et comment il se
+  signera), prêt à signer sur papier ou au rendez-vous, envoyé (« Signer mon mandat »), lien expiré
+  (« Alexandre en est prévenu : il revient vers vous »), signature arrêtée, signé (« Télécharger mon
+  mandat »). Plus jamais « vous le recevrez très vite par e-mail » quand ce n'est pas le cas.
+- « Vos documents signés » et le téléchargement acceptent l'exemplaire déposé à la main (scan ou
+  photo, `signe_chemin`), pas seulement les documents signés en ligne. Une seule règle dit ce que
+  voit l'acheteur (`pourEspaceAcheteur`) : mandats de recherche et avenants, offres, bons de visite ;
+  jamais un document du côté vendeur, interne ou un courrier. Le mandat signé dans l'espace y figure
+  aussi.
+- Renoncer au mandat (délai de rétractation, 14 jours, calculé comme pour le mandat signé dans
+  l'espace) : possible aussi pour un mandat de Documents signé EN LIGNE. Le document passe annulé
+  (`donnees.retracte_le`), registre, bloc Mandat vidé s'il le porte encore, mails (client, autres
+  signataires, Alexandre), relance « À rappeler ». Pas pour le papier ni le « sur place » (à voir avec
+  l'avocat). L'accusé de réception n'est annoncé au client que s'il est vraiment parti.
+- L'alerte « au-delà du mandat » tient compte d'un mandat de Documents, de ses seuls avenants, et
+  compare les types par familles (loft, duplex, studio = appartement).
+- « Mes bons de visite » (Alexandre : « quand il y en a plusieurs, qu'il s'y retrouve ») : dans « Vos
+  documents signés », un bon de visite seul a sa ligne (« Bon de visite du … », l'adresse, le
+  logement) ; à partir de deux, ils se rangent dans « Mes bons de visite » (leur nombre, la dernière
+  visite), qui se déplie : une ligne par visite, la plus récente en haut, avec « Voir » (ouvert dans
+  le navigateur : `voir: true` sur l'action `document`) et « Télécharger ». Les bons de visite, c'est
+  Alexandre qui les prépare (Documents, ou la fiche du bien : « Nouveau bon », ou « Bon de visite »
+  sur une visite) ; l'acheteur les signe.
+- Agenda, vue Semaine (« le jaune n'est pas en continu, il y a un décalage ») : les deux lignes
+  d'en-tête (les jours, « Journée ») n'avaient pas la barre de défilement de la grille des heures
+  (8 px) ; chaque colonne du haut était un peu plus large, et la colonne d'aujourd'hui se décalait.
+  Elles en gardent maintenant la place (`.ag-gouttiere`, `scrollbar-gutter: stable`).
+
+**La signature en ligne des documents** (`api/documents/signature`, `signature-documents.ts`,
+`api/signer`, `signer/[jeton]`, `SignatureEnLigne.tsx`, `EditeurDocument.tsx`, `PageDocuments.tsx`)
+- Une seule signature à la fois : le lancement réserve le document (deux clics, deux onglets : un
+  seul passe) ; une copie (« Dupliquer », « Préparer une offre ») ne peut pas partir en signature
+  tant que l'autre y est (`autreEnSignature` : même bien et même acquéreur pour une offre — deux
+  acquéreurs différents restent possibles —, même mandat pour un avenant…) : « … est déjà en
+  signature depuis le … : arrête d'abord sa signature dans Documents, puis lance celle-ci. »
+- « Modifier » un document en signature est refusé par la base, pas seulement par la page (un onglet
+  resté ouvert ne rouvre plus les anciens liens sur un nouveau texte).
+- Arrêter : les liens gardent leur jeton, en « annulé » ; l'ancien lien affiche « … ne vous attend
+  plus · Alexandre a arrêté la signature », et rien du document. La confirmation dit que personne
+  n'est prévenu par e-mail. Une fois l'exemplaire complet envoyé à tous, on ne peut plus arrêter
+  (« finaliser »).
+- Courses entre une signature et un arrêt : écritures conditionnelles ; « Corriger l'e-mail »
+  repris à la relance suivante, sans écraser une adresse corrigée depuis dans l'éditeur.
+- Papier : la fenêtre « Signé » demande l'exemplaire signé ; sans lui, elle prévient que le client
+  ne le verra pas dans son espace. Tant qu'il manque : « Exemplaire signé à déposer : ton client ne
+  le voit pas encore dans son espace » (Documents, fiche client, fiche du bien, fenêtre Mandat).
+- Fiche client, fenêtre Mandat : « Retirer la proposition » arrête aussi une signature commencée dans
+  l'espace ; le titre dit où le mandat a été signé (en ligne, sur place, sur papier, hors du CRM) ;
+  le bon mandat est choisi par son numéro après un renouvellement.
 
 ### V3.54 — 3 octobre 2026 · la pastille du propriétaire : une croix, « Créer sa fiche », et plus de carte en bas
 

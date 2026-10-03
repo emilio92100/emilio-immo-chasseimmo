@@ -6,7 +6,7 @@ import { lienBienPublic } from '@/lib/jeton';
 import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
-import SignatureMandat, { AvantVisiteDocument, CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
+import SignatureMandat, { AvantVisiteDocument, CarteMonMandat, CartePret, CarteAttente, CarteDocuments, Renonciation, mandatARenoncer, CSS_MANDAT, type MandatEspace } from './SignatureMandat';
 import { ajouterMois, jourParis, DUREE } from '@/lib/mandat';
 import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
@@ -1399,10 +1399,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     return true;
   }
   /* Le même mandat que dans la fiche : avant une demande de visite, il faut
-     signer celui qu'on lui propose ou celui qu'Alexandre lui a envoyé. */
+     signer celui qu'on lui propose ou celui qu'Alexandre lui a envoyé. Pour
+     ce dernier, seulement tant que LUI ne l'a pas signé et qu'il a un lien
+     valable à lui (`enRoute.lien`, le même que lit /api/espace/retour) :
+     signé par lui, en attente de son conjoint, ses visites passent (V3.55). */
   const visiteBloquee = () => {
     const m = mandatRef.current;
-    return (m.etat !== 'valide' && !!m.enRoute?.lien) || m.etat === 'a_signer';
+    return (m.etat !== 'valide' && !!m.enRoute?.lien && m.document?.vous !== 'signe') || m.etat === 'a_signer';
   };
 
   /* ── ouverture d'une fiche ── */
@@ -1448,11 +1451,29 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }
 
   function ouvrirRenonciation() {
+    /* V3.56 : un mandat de la rubrique Documents signé en ligne, ou celui
+       signé ici — la même fenêtre, les mêmes mots. */
+    const doc = mandatARenoncer(mandatRef.current);
     montrer(<Renonciation mandat={mandatRef.current} envoyer={envoyer} onFermer={fermer}
-      onFait={() => {
-        setMandat(x => ({ ...x, etat: 'sans_numero', numero: null, signe: null, expiration: null, propose: false }));
+      onFait={({ accuse, deja }) => {
+        const le = new Date().toISOString();
+        setMandat(x => ({
+          ...x, etat: 'sans_numero', numero: null, signe: null, expiration: null, propose: false,
+          /* « Mon mandat de recherche » dit qu'il y a renoncé ; il quitte
+             « Vos documents signés », comme le mandat signé ici. */
+          ...(doc ? {
+            document: { ...doc, statut: 'retracte' as const, renoncer: null, retracteLe: le },
+            documents: (x.documents || []).filter(d => d.id !== doc.id),
+          } : {}),
+        }));
+        /* V3.57 : « un accusé vient de vous être envoyé » seulement s'il est
+           parti (le serveur le dit) ; sinon Alexandre, prévenu, le confirme. */
         montrer(<GrandOk titre="C'est enregistré"
-          texte="Votre mandat de recherche a pris fin, sans aucun frais. Un accusé de réception vient de vous être envoyé par e-mail."
+          texte={deja
+            ? 'Votre renonciation était déjà enregistrée : votre mandat de recherche a pris fin, sans aucun frais.'
+            : accuse
+              ? 'Votre mandat de recherche a pris fin, sans aucun frais. Un accusé de réception vient de vous être envoyé par e-mail.'
+              : 'Votre mandat de recherche a pris fin, sans aucun frais. Votre renonciation est bien enregistrée : Alexandre vous la confirmera par e-mail.'}
           rappel="Votre espace reste ouvert : vous pouvez en parler à Alexandre quand vous voulez."
           onFermer={fermer} />, 'pleine');
       }} />);
@@ -1487,7 +1508,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
     const enRoute = mandatRef.current.enRoute;
-    if (avis === 'souhaite_visiter' && mandatRef.current.etat !== 'valide' && enRoute?.lien) {
+    if (avis === 'souhaite_visiter' && mandatRef.current.etat !== 'valide' && enRoute?.lien && mandatRef.current.document?.vous !== 'signe') {
       ouvrirMandatDocument(b, commentaire, enRoute.lien);
       return;
     }
@@ -1675,10 +1696,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }, []);
 
   /* Il revient après avoir signé le mandat qu'Alexandre lui avait envoyé
-     (V3.32) : la demande de visite qui l'attendait part toute seule. */
+     (V3.32) : la demande de visite qui l'attendait part toute seule. Y
+     compris quand son conjoint n'a pas encore signé le sien (V3.55). */
   const visiteRepartie = useRef(false);
   useEffect(() => {
-    if (visiteRepartie.current || mandatRef.current.etat !== 'valide') return;
+    if (visiteRepartie.current || (mandatRef.current.etat !== 'valide' && mandatRef.current.document?.vous !== 'signe')) return;
     const v = visiteEnAttente();
     if (!v?.doc) return;
     const t = setTimeout(() => {
@@ -1998,8 +2020,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                   /* Signé, mais on attend encore son conjoint : l'accueil le dit. */
                   : mandat.cos?.some(c => c.statut === 'invite')
                     ? <CarteAttente mandat={mandat} onVoir={() => aller('recherche')} /> : null}
-                {/* Ses documents signés en ligne : à signer, ou signés. */}
-                {mandat.documents?.length ? <CarteDocuments documents={mandat.documents} envoyer={envoyer} /> : null}
+                {/* Ses documents (rubrique Documents, et le mandat signé ici) :
+                    à signer, en attente d'un autre, signés. */}
+                <CarteDocuments documents={mandat.documents || []} mandat={mandat} envoyer={envoyer}
+                  onVoirMandat={() => aller('recherche')} />
               </>}
               /* Sa dernière visite, sans réponse encore : la question l'attend
                  en haut de l'accueil pendant 7 jours. */

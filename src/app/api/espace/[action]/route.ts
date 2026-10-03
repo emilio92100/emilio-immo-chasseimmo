@@ -3,11 +3,12 @@ import { relanceAGarder } from '@/lib/relances-garder';
 import { reventePossible } from '@/lib/contacts';
 import { createClient } from '@supabase/supabase-js';
 import { lienBienPublic } from '@/lib/jeton';
-import { etatServeur, alerteHorsMandat, mandatDocumentEnRoute, adressesClient } from '@/lib/mandat-serveur';
+import { etatServeur, alerteHorsMandat, mandatDocumentEnRoute } from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { estIssue, raisonsValides, issueDe, badgeApresVisite, maintenantParis, visitePasseeParis, ISSUES, type Issue } from '@/lib/visites';
 import { ecritServeur } from '@/lib/ecritures';
 import { colonneSuspensionAbsente } from '@/lib/suspension';
+import { retracteEnLigne, pourEspaceAcheteur } from '@/lib/documents-espace';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -128,16 +129,26 @@ const AVIS_OK = ['interesse', 'souhaite_visiter', 'refuse'];
 const nettoie = (s: unknown, max = 600) =>
   typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
+/* Où en est son mandat quand il demande une visite qui passe quand même.
+   « sans » : aucun ne pouvait lui être proposé ; celui de Documents :
+   « prepare » (brouillon), « pret » (à signer à la main ou sur place, ou
+   signature en ligne pas lancée), « envoye » (parti en signature, pas signé
+   par lui : lien expiré, autre adresse, sur place), « partiel » (V3.55 :
+   signé par lui, on attend un autre signataire), « finalisation » (V3.56 :
+   signé par tous, le document pas encore rangé — scellement en cours, ou
+   resté bloqué). */
+type PasDeMandat = '' | 'sans' | 'prepare' | 'pret' | 'envoye' | 'partiel' | 'finalisation';
+
 /* Le mail qui prévient Alexandre qu'un client veut visiter un bien. Court :
    qui, quel bien, ses disponibilités, et le bouton vers sa fiche dans le CRM. */
 async function prevenirVisite(
   supabase: ReturnType<typeof base>, clientId: string,
   bien: { id: string; titre?: string | null; ville?: string | null; quartier?: string | null; photos?: string[] | null; prix_acquereur?: number | null; prix_vendeur?: number | null },
   dispos: string,
-  /* Pas de mandat signé (V3.32 : trois cas). « sans » : aucun ne pouvait lui
-     être proposé ; « prepare » : celui de Documents est encore en brouillon ;
-     « envoye » : parti en signature, mais pas signé (lien expiré, autre adresse). */
-  pasDeMandat: '' | 'sans' | 'prepare' | 'envoye' = '',
+  /* Pas de mandat signé (V3.32, voir PasDeMandat), ou signé par lui seul
+     (« partiel » : `attendus`, ceux qu'on attend encore). */
+  pasDeMandat: PasDeMandat = '',
+  attendus = '',
 ) {
   const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
   if (!apiKey || !apiSecret) return;
@@ -152,9 +163,19 @@ async function prevenirVisite(
     ? 'Il n’a pas pu signer depuis son espace : aucun numéro n’était prêt pour lui. Ajoute des numéros d’avance dans le CRM (bloc Mandat), ou fais-lui signer le sien avant de caler la visite.'
     : pasDeMandat === 'prepare'
       ? 'Son mandat de recherche est en préparation dans Documents : envoie-le-lui à signer avant de caler la visite.'
-      : pasDeMandat === 'envoye'
-        ? 'Son mandat de recherche est parti en signature mais il ne l’a pas signé (lien expiré, ou une autre adresse) : renvoie-lui le lien depuis Documents avant la visite.'
-        : '';
+      : pasDeMandat === 'pret'
+        ? 'Son mandat de recherche est prêt dans Documents, mais pas encore signé (à la main, sur place, ou la signature en ligne n’est pas lancée) : fais-le-lui signer avant de caler la visite.'
+        : pasDeMandat === 'envoye'
+          ? 'Son mandat de recherche est parti en signature mais il ne l’a pas signé (lien expiré, une autre adresse, ou à signer sur place) : renvoie-lui le lien depuis Documents avant la visite.'
+          : pasDeMandat === 'partiel'
+            ? `Il a signé son mandat de recherche ; il manque encore la signature de ${attendus || 'l’autre signataire'} (suivi dans Documents).`
+            : pasDeMandat === 'finalisation'
+              ? 'S’il reste « en signature » dans Documents, ouvre-le et clique sur « Tout le monde a signé : finaliser ».'
+              : '';
+  /* La première ligne de l'encadré (V3.56 : signé par tous, rien ne manque). */
+  const mandatTete = pasDeMandat === 'partiel' ? 'Mandat pas encore complet.'
+    : pasDeMandat === 'finalisation' ? 'Mandat signé par tous, en cours de finalisation (Documents).'
+    : 'Pas de mandat signé.';
   const titre = bien.titre || 'un bien';
   const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
   const prix = bien.prix_acquereur || bien.prix_vendeur;
@@ -175,7 +196,7 @@ async function prevenirVisite(
     </div>
     <div style="margin-top:16px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;font-weight:700">Ses disponibilités</div>
     <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#1a2332">${dispos ? echappe(dispos) : 'Pas précisées : à lui demander.'}</div>
-    ${mandatTexte ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.55"><b>Pas de mandat signé.</b> ${echappe(mandatTexte)}</div>` : ''}
+    ${mandatTexte ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.55"><b>${mandatTete}</b> ${echappe(mandatTexte)}</div>` : ''}
     <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
     <div style="margin-top:14px;font-size:12px;color:#94a3b8">La demande est aussi dans tes Relances, pour aujourd’hui.</div>
   </div>
@@ -189,7 +210,7 @@ async function prevenirVisite(
         From: { Email: FROM_EMAIL, Name: 'Emilio · CRM' },
         To: [{ Email: process.env.ALERTES_EMAIL || FROM_EMAIL }],
         Subject: `👀 ${nom} veut visiter · ${titre}`,
-        TextPart: `${nom} veut visiter : ${titre}${lieu ? ` (${lieu})` : ''}${prix ? ` — ${Number(prix).toLocaleString('fr-FR')} €` : ''}.\n\nSes disponibilités : ${dispos || 'pas précisées, à lui demander.'}${mandatTexte ? `\n\n⚠️ Pas de mandat signé. ${mandatTexte}` : ''}\n\nOuvrir sa fiche : ${lien}\n\nLa demande est aussi dans tes Relances, pour aujourd’hui.`,
+        TextPart: `${nom} veut visiter : ${titre}${lieu ? ` (${lieu})` : ''}${prix ? ` — ${Number(prix).toLocaleString('fr-FR')} €` : ''}.\n\nSes disponibilités : ${dispos || 'pas précisées, à lui demander.'}${mandatTexte ? `\n\n⚠️ ${mandatTete} ${mandatTexte}` : ''}\n\nOuvrir sa fiche : ${lien}\n\nLa demande est aussi dans tes Relances, pour aujourd’hui.`,
         HTMLPart: html,
         CustomID: `visite-${bien.id}-${Date.now()}`,
         TrackOpens: 'disabled', TrackClicks: 'disabled',
@@ -481,19 +502,36 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
 
     switch (action) {
 
-      /* ── un de ses documents signés en ligne (avenant, offre…) ── */
+      /* ── l'exemplaire signé d'un de ses documents (mandat, avenant,
+         offre…), signé en ligne, sur place, ou à la main (V3.55 : le scan
+         qu'Alexandre a déposé ; avant, seulement les documents scellés) ── */
       case 'document': {
         const id = typeof body.id === 'string' ? body.id : '';
         if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ ok: false, error: 'document' }, { status: 400 });
-        /* Jamais une délégation à un confrère (un contrat entre professionnels,
-           voir src/lib/actes/delegation.ts), même rangée sur sa fiche. */
-        const { data: doc } = await supabase.from('documents').select('id, client_id, statut, signe_chemin, signature, titre')
+        /* Le sien seulement (son client_id), et seulement un document que
+           son espace montre (pourEspaceAcheteur, V3.56 : la même règle que
+           l'accueil et que le CRM) — jamais une délégation à un confrère,
+           un document de vendeur, ni un courrier. */
+        const { data: doc } = await supabase.from('documents').select('id, client_id, modele, statut, signe_chemin, titre, donnees')
           .eq('id', id).eq('client_id', recherche.client_id).neq('modele', 'delegation').maybeSingle();
-        if (!doc || doc.statut !== 'signe' || !doc.signature || !doc.signe_chemin) return NextResponse.json({ ok: false, error: 'aucun' }, { status: 404 });
-        const nom = String(doc.titre || 'Document').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) + '.pdf';
-        const { data, error } = await supabase.storage.from('mandats').createSignedUrl(doc.signe_chemin as string, 120, { download: nom });
+        /* V3.56 : un mandat auquel il a renoncé en ligne reste téléchargeable,
+           comme le mandat signé dans l'espace après sa rétractation. */
+        const lisible = doc?.statut === 'signe' || (doc?.modele === 'mandat_recherche' && !!retracteEnLigne(doc));
+        if (!doc || doc.client_id !== recherche.client_id || !lisible || !doc.signe_chemin || !pourEspaceAcheteur(doc.modele)) {
+          return NextResponse.json({ ok: false, error: 'aucun' }, { status: 404 });
+        }
+        /* Les fichiers de CE document, et eux seuls (documents/<id>/…). */
+        const chemin = String(doc.signe_chemin);
+        if (!chemin.startsWith(`documents/${doc.id}/`)) return NextResponse.json({ ok: false, error: 'aucun' }, { status: 404 });
+        /* Un scan déposé à la main peut être une photo : il garde son extension. */
+        const ext = (/\.([a-z0-9]{2,5})$/i.exec(chemin)?.[1] || 'pdf').toLowerCase();
+        const nom = String(doc.titre || 'Document').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) + '.' + ext;
+        /* V3.55 : « Voir » l'ouvre dans le navigateur ; « Télécharger » (et
+           les anciens appels) l'enregistre sous son nom. */
+        const voir = body.voir === true;
+        const { data, error } = await supabase.storage.from('mandats').createSignedUrl(chemin, 120, voir ? undefined : { download: nom });
         if (error || !data?.signedUrl) return NextResponse.json({ ok: false, error: 'stockage' }, { status: 500 });
-        await evt('document', `PDF signé ouvert : ${doc.titre || 'document'}`);
+        await evt('document', `${voir ? 'Document signé ouvert' : 'Document signé téléchargé'} : ${doc.titre || 'document'}`);
         return NextResponse.json({ ok: true, url: data.signedUrl });
       }
 
@@ -637,17 +675,29 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            La recherche est relue en entier : ses colonnes « mandat_ »
            n'existent qu'une fois le SQL passé, et un select('*') ne casse
            jamais sur une colonne absente. */
-        let pasDeMandat: '' | 'sans' | 'prepare' | 'envoye' = '';
+        let pasDeMandat: PasDeMandat = '';
+        let attendus = '';
         if (avis === 'souhaite_visiter') {
           const { data: rm } = await supabase.from('recherches').select('*').eq('id', recherche.id).maybeSingle();
           const etat = rm ? await etatServeur(supabase, rm) : 'sans_numero';
           /* Un mandat préparé dans Documents, pas encore signé (V3.32) : c'est
-             celui-là qu'il signe, jamais un second. Parti avec son lien :
-             l'espace l'y emmène ; sinon la demande passe, Alexandre le sait. */
+             celui-là qu'il signe, jamais un second. Parti avec SON lien, et
+             pas encore signé par lui : l'espace l'y emmène (la même règle que
+             visiteBloquee, dans l'espace). Sinon la demande passe, et
+             Alexandre sait où il en est. Signé par lui, en attente de son
+             conjoint (V3.55) : elle passe, comme pour le mandat signé à
+             plusieurs dans l'espace. */
           const { data: cl } = etat === 'valide' ? { data: null } : await supabase.from('clients').select('*').eq('id', recherche.client_id).maybeSingle();
-          const doc = etat === 'valide' ? null : await mandatDocumentEnRoute(supabase, recherche.id, adressesClient(cl));
-          if (doc?.lien) return NextResponse.json({ ok: false, error: 'mandat_document', lien: doc.lien }, { status: 409 });
-          if (doc) pasDeMandat = doc.statut === 'pret' ? 'envoye' : 'prepare';
+          const doc = etat === 'valide' ? null : await mandatDocumentEnRoute(supabase, recherche.id, cl);
+          if (doc?.lien && doc.vous !== 'signe') return NextResponse.json({ ok: false, error: 'mandat_document', lien: doc.lien }, { status: 409 });
+          if (doc) {
+            /* V3.56 : signé par lui et par tous les autres, le document pas
+               encore rangé : rien ne manque, il se finalise. */
+            pasDeMandat = doc.statut === 'brouillon' ? 'prepare'
+              : doc.vous === 'signe' ? (doc.signataires.some(s => s.etat !== 'signe') ? 'partiel' : 'finalisation')
+              : doc.lance ? 'envoye' : 'pret';
+            attendus = doc.signataires.filter(s => s.etat !== 'signe' && s.qui !== 'vous').map(s => `${s.prenom} ${s.nom}`.trim()).filter(Boolean).join(', ');
+          }
           else if (etat === 'a_signer') return NextResponse.json({ ok: false, error: 'mandat' }, { status: 409 });
           else if (etat === 'sans_numero') pasDeMandat = 'sans';
         }
@@ -718,9 +768,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
             client_id: recherche.client_id, recherche_id: recherche.id,
             type: 'rappel_client', statut: 'en_attente',
             date_echeance: new Date().toISOString(),
-            note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}${pasDeMandat ? ' · ⚠️ mandat non signé' : ''}`.slice(0, 600),
+            note: `Veut visiter — ${bien.titre || 'un bien'}${com ? ` · ${com}` : ''}${pasDeMandat === 'partiel' ? ` · mandat signé par lui, en attente de ${attendus || 'l’autre signataire'}` : pasDeMandat === 'finalisation' ? ' · mandat signé par tous, en cours de finalisation (Documents)' : pasDeMandat ? ' · ⚠️ mandat non signé' : ''}`.slice(0, 600),
           }));
-          try { await prevenirVisite(supabase, recherche.client_id, bien, com, pasDeMandat); } catch { /* le CRM le montre déjà */ }
+          try { await prevenirVisite(supabase, recherche.client_id, bien, com, pasDeMandat, attendus); } catch { /* le CRM le montre déjà */ }
         }
 
         await evt('avis', `${libelle}${com ? ' · ' + com : ''}`, bien.id);

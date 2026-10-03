@@ -24,7 +24,7 @@
    vente » sur le bien, ou effacer le mandat noté sur la recherche). Un bien
    retiré ou vendu n'a plus de mandat qui court. */
 import { supabase } from '@/lib/supabase';
-import { jourParis } from '@/lib/mandat';
+import { jourParis, memeNumero } from '@/lib/mandat';
 
 export type MandatEnCours = {
   sorte: 'vente' | 'recherche';
@@ -101,8 +101,14 @@ export async function mandatRechercheEnCours(rechercheId: string): Promise<Manda
   const docs = ((a.data || []) as LigneDoc[]).filter(x => !(fini && x.statut === 'signe'));
   const enLigne = ((b.error ? [] : b.data || []) as { id: string; numero: string | null; statut: string; signe_le: string | null; retracte_le: string | null }[])
     .filter(x => !x.retracte_le && !(fini && x.statut !== 'en_cours'));
-  const signeEnLigne = enLigne.find(x => x.statut === 'signe' || x.statut === 'partiel');
-  const docSigne = docs.find(x => x.statut === 'signe');
+  /* V3.56 : parmi plusieurs signés (un mandat renouvelé, l'ancien pas
+     annulé), celui dont le numéro est noté sur la recherche, sinon le plus
+     récemment signé. Avant, le premier venu : la fiche pouvait ouvrir (et
+     y déposer l'exemplaire) l'ancien mandat. */
+  const recent = <T extends { signe_le: string | null }>(l: T[]) => [...l].sort((p, q) => String(q.signe_le || '').localeCompare(String(p.signe_le || '')));
+  const signeEnLigne = recent(enLigne.filter(x => x.statut === 'signe' || x.statut === 'partiel'))[0];
+  const signesDoc = recent(docs.filter(x => x.statut === 'signe'));
+  const docSigne = (rr?.mandat_numero ? signesDoc.find(x => memeNumero(x.numero, rr.mandat_numero)) : undefined) || signesDoc[0];
   if (docSigne) return { sorte: 'recherche', etat: 'signe', cle: 'd-' + docSigne.id, documentId: docSigne.id, numero: docSigne.numero || '', signeLe: docSigne.signe_le || '' };
   if (signeEnLigne) return { sorte: 'recherche', etat: 'signe', cle: 'r-' + signeEnLigne.id, documentId: null, numero: signeEnLigne.numero || '', signeLe: signeEnLigne.signe_le || '' };
   const doc = [...docs].sort((p, q) => (RANG[p.statut] ?? 9) - (RANG[q.statut] ?? 9))[0];

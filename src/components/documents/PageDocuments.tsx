@@ -13,14 +13,16 @@ import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
 import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProjet';
 import { Pastille } from './DocumentsDuClient';
-import { RAISONS_FIN, noterAnnulation, registreAbsent, type RaisonFin } from '@/lib/registre';
+import { RAISONS_FIN, noterAnnulation, quandRegistre, registreAbsent, type RaisonFin } from '@/lib/registre';
+import { retracteEnLigne } from '@/lib/documents-espace';
 import { jourParis } from '@/lib/mandat';
 import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
 import type { BienVente } from '@/lib/biens-vente';
 import SuiteMandatBien from './SuiteMandatBien';
+import FenetreSigne from './FenetreSigne';
 import {
-  apresAnnulation, apresSignature, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, deposer, etatMandatEnLigne, identiteDuJour, libStatut, lienFichier,
-  mandatDepuis, nomFichier, preparerDepuis, quand, retirerFichiers, tableAbsente,
+  CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier,
+  mandatDepuis, nomFichier, preparerDepuis, quand, rappelExemplaire, retirerFichiers, tableAbsente,
   type DocumentRow, type MandatRecherche,
 } from './outils';
 import s from './Documents.module.css';
@@ -47,21 +49,32 @@ type Item = {
   /* Un courrier : « À envoyer », « Envoyé ». */
   courrier?: boolean;
   /* V3.50 : un mandat en ligne signé par une partie seulement : « En
-     signature », comme sur la fiche client. */
+     signature », comme sur la fiche client. V3.55 : aussi un document dont
+     les liens sont partis. */
   enSignature?: boolean;
+  /* V3.55 : signé à la main, son exemplaire signé pas encore déposé : la
+     phrase du rappel. */
+  aDeposer?: string;
 };
 
 const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recherche: 'loupe', offres: 'euro', bons_visite: 'calendrier', courriers: 'boucle', delegations: 'accord' };
 
-/* V3.50 : le document a bougé depuis l'ouverture de la page. */
-const CHANGE_ENTRE_TEMPS = 'Ce document a changé entre-temps (signé ou modifié ailleurs). Recharge la page pour voir où il en est.';
-
 function itemDoc(d: DocumentRow): Item {
+  /* V3.56 : un mandat auquel le client a renoncé en ligne, depuis son espace :
+     « Annulé », et la ligne dit « rétracté » (comme un mandat signé en ligne
+     dans l'espace puis rétracté). */
+  const retracte = retracteEnLigne(d);
+  const qr = retracte ? quand(retracte) : '';
   return {
     cle: d.id, categorie: d.categorie, statut: d.statut, titre: d.titre || 'Document sans titre',
     sous: [d.sous_titre, d.numero ? `N° ${d.numero}` : '',
-      d.statut === 'pret' && d.signature ? (d.signature.mode === 'en_ligne' ? 'signature en ligne en cours' : 'signature sur place en cours') : ''].filter(Boolean).join(' · '),
-    badge: d.badge, date: d.signe_le || d.finalise_le || d.updated_at, doc: d, courrier: !!modele(d.modele)?.courrier,
+      d.statut === 'pret' && d.signature ? (d.signature.mode === 'en_ligne' ? 'signature en ligne en cours' : 'signature sur place en cours') : '',
+      retracte ? `rétracté en ligne par le client ${/^\d/.test(qr) ? `le ${qr}` : qr}` : ''].filter(Boolean).join(' · '),
+    badge: d.badge, date: retracte || d.signe_le || d.finalise_le || d.updated_at, doc: d, courrier: !!modele(d.modele)?.courrier,
+    /* V3.55 : les liens sont partis, ce n'est plus « à faire signer » (comme
+       sur la fiche d'un client ou d'un bien). */
+    enSignature: d.statut === 'pret' && !!d.signature,
+    aDeposer: exemplaireManquant(d) ? rappelExemplaire(d) : undefined,
   };
 }
 function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
@@ -88,6 +101,7 @@ function Ligne({ it, on, onClick }: { it: Item; on: boolean; onClick: () => void
           {it.badge && <span className={s.type}>{it.badge}</span>}
         </span>
         <span className={s.ligneS}>{it.sous || '—'}</span>
+        {it.aDeposer && <span className={s.ligneDepot}><Ic n="trombone" t={12} /><span>{it.aDeposer}</span></span>}
         <span className={s.ligneMobile} style={{ display: 'none', marginTop: 6, gap: 8, alignItems: 'center' }}>
           <Pastille statut={it.statut} courrier={it.courrier} enSignature={it.enSignature} /><span style={{ fontSize: 11.5, color: '#94a3b8' }}>{quand(it.date)}</span>
         </span>
@@ -97,86 +111,6 @@ function Ligne({ it, on, onClick }: { it: Item; on: boolean; onClick: () => void
         <span>{quand(it.date)}</span>
       </span>
     </button>
-  );
-}
-
-/* ── La fenêtre « Signé » : la date, et l'exemplaire signé (scan ou photo) ── */
-function FenetreSigne({ doc, onFermer, onFait }: { doc: DocumentRow; onFermer: () => void; onFait: (d: DocumentRow) => void }) {
-  const dejaSigne = doc.statut === 'signe';
-  const m = modele(doc.modele);
-  const courrier = !!m?.courrier;
-  const [jour, setJour] = useState(doc.signe_le ? jourParis(doc.signe_le) : aujourdhui());
-  const [fichier, setFichier] = useState<File | null>(null);
-  const [travail, setTravail] = useState(false);
-  const [erreur, setErreur] = useState('');
-
-  async function valider(sansFichier: boolean) {
-    if (!sansFichier && !fichier) { setErreur(courrier ? 'Choisis la preuve d’envoi (accusé, capture de l’e-mail envoyé…).' : 'Choisis le scan ou la photo de l’exemplaire signé.'); return; }
-    if (sansFichier && !courrier && !confirm('Marquer signé sans déposer l’exemplaire ?\n\nGarde bien l’original papier : tu pourras déposer le scan plus tard depuis cette fiche.')) return;
-    setTravail(true); setErreur('');
-    try {
-      let chemin = doc.signe_chemin;
-      if (fichier) {
-        const ext = (fichier.name.split('.').pop() || '').toLowerCase() || (fichier.type === 'application/pdf' ? 'pdf' : 'jpg');
-        chemin = await deposer(doc.id, 'signe', fichier, ext);
-      }
-      /* V3.50 : seulement s'il est toujours dans l'état que la page montre. */
-      const { data, error } = await supabase.from('documents').update({
-        statut: 'signe', signe_le: `${jour}T12:00:00Z`, signe_chemin: chemin || null, updated_at: new Date().toISOString(),
-      }).eq('id', doc.id).eq('statut', doc.statut).select().maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) throw new Error(CHANGE_ENTRE_TEMPS.charAt(0).toLowerCase() + CHANGE_ENTRE_TEMPS.slice(1));
-      /* Un mandat de recherche papier remplit le bloc Mandat de sa recherche
-         (une seule fois : à la première signature). */
-      if (!dejaSigne && m) {
-        const pb = await apresSignature(data as DocumentRow, m, jour);
-        if (pb) alert(pb);
-      }
-      onFait(data as DocumentRow);
-    } catch (e) {
-      setErreur('L’enregistrement a échoué : ' + (e as Error).message);
-      setTravail(false);
-    }
-  }
-
-  return (
-    <div className={s.fenetre} onClick={e => { if (e.target === e.currentTarget && !travail) onFermer(); }}>
-      <div className={s.fenetreIn} role="dialog" aria-modal="true" aria-label={courrier ? 'Courrier envoyé' : 'Document signé'}>
-        <div className={s.fenTete}>
-          <div style={{ flex: '1 1 auto' }}>
-            <h3>{courrier ? (dejaSigne ? 'Déposer la preuve d’envoi' : 'Le courrier est envoyé') : dejaSigne ? 'Déposer l’exemplaire signé' : 'Le document est signé'}</h3>
-            <p>{courrier
-              ? 'Garde la preuve de l’envoi avec le courrier : l’accusé du recommandé, ou une capture de l’e-mail envoyé. Elle est facultative, mais c’est elle qui prouve que le client a été prévenu à temps.'
-              : m?.surRecherche && m.numero && doc.recherche_id
-                ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. Le bloc Mandat de sa recherche se remplit tout seul : son espace ne lui proposera plus de signer en ligne.'
-                : m?.surRecherche && doc.recherche_id
-                  ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. S’il change la fin du mandat ou les honoraires, sa recherche se met à jour toute seule.'
-                  : doc.modele === 'avenant_vente'
-                    ? 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde. S’il change le prix, les honoraires ou la fin du mandat, la fiche du bien se met à jour toute seule.'
-                    : 'Dépose le scan ou une photo de l’exemplaire signé par tout le monde : il reste ici, rangé avec le document.'}</p>
-          </div>
-          <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
-        </div>
-        <div className={s.fenCorps}>
-          <div className={s.champLigne}>
-            <label htmlFor="sg-jour">{courrier ? 'Envoyé le' : 'Signé le'}</label>
-            <input id="sg-jour" type="date" className={s.input} value={jour} max={aujourdhui()} onChange={e => setJour(e.target.value)} />
-          </div>
-          <label className={s.fichier}>
-            <input type="file" accept="application/pdf,image/*" onChange={e => setFichier(e.target.files?.[0] || null)} />
-            <span className={s.ligneIc}><Ic n="doc" t={18} /></span>
-            <span>{fichier ? <><b>{fichier.name}</b>{` · ${Math.max(1, Math.round(fichier.size / 1024))} Ko`}</> : <><b>Choisir le fichier</b>{courrier ? ' (facultatif)' : ' (PDF ou photo)'}</>}</span>
-          </label>
-          {erreur && <div className={s.erreur}>{erreur}</div>}
-        </div>
-        <div className={s.fenPied}>
-          {!dejaSigne && <button type="button" className={s.btnLien} disabled={travail} onClick={() => valider(true)}>{courrier ? 'Envoyé, sans preuve à déposer' : 'Signé, je déposerai le scan plus tard'}</button>}
-          <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={travail} onClick={() => valider(false)}>
-            {travail ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -278,6 +212,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   const d = it.doc, x = it.mandat;
   const m = d ? modele(d.modele) : null;
   const courrier = !!m?.courrier;
+  /* V3.56 : rétracté en ligne par le client (retracteEnLigne). */
+  const retracteLe = retracteEnLigne(d);
   /* Signé en ligne ou sur place (et le modèle sait le faire). */
   const elec = !!d && !!m?.cases && electronique(d.donnees);
   const clientId = d?.client_id || x?.client_id || null;
@@ -428,6 +364,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
         <div className={s.panCorps}>
           {erreur && <div className={s.erreur}>{erreur}</div>}
           {fait && <div className={fait.ok ? s.note : s.erreur}>{fait.t}</div>}
+          {/* V3.56 : le client y a renoncé lui-même, en ligne. */}
+          {retracteLe && <div className={s.note}>{`↩️ Rétracté : le client a renoncé à ce mandat en ligne, depuis son espace, le ${quandRegistre(retracteLe)} (délai de rétractation).`}</div>}
 
           {/* ── Ce qu'on peut en faire ── */}
           {d && (
@@ -455,6 +393,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                   </button>
                 </>
               )}
+              {/* V3.55 : signé à la main sans son exemplaire : le rappel, puis le geste. */}
+              {it.aDeposer && <div className={s.depotNote}><Ic n="trombone" t={15} /><span>{it.aDeposer}</span></div>}
               {d.statut === 'signe' && (d.signe_chemin
                 ? <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, d.signature ? nomFichier(d, '-signe') : undefined)}><Ic n="doc" t={16} /><span>{courrier ? 'La preuve d’envoi' : d.signature ? 'L’exemplaire signé et scellé' : 'L’exemplaire signé'}</span>{d.signature && <small>avec son certificat</small>}</button>
                 : <button type="button" className={`${s.btn} ${courrier ? '' : s.btnOr}`} onClick={() => setSigne(true)}><Ic n="doc" t={16} /><span>{courrier ? 'Déposer la preuve d’envoi' : 'Déposer l’exemplaire signé'}</span><small>pas encore déposé{courrier ? 'e' : ''}</small></button>)}
@@ -474,6 +414,10 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                 </button>
               )}
               {d.statut === 'signe' && d.signature && <BlocSignature doc={d} onMaj={onMaj} onSurPlace={() => {}} />}
+              {/* V3.56 : rétracté en ligne, l'exemplaire signé et scellé reste là. */}
+              {retracteLe && d.signe_chemin && (
+                <button type="button" className={s.btn} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, nomFichier(d, '-signe'))}><Ic n="doc" t={16} /><span>L’exemplaire signé et scellé</span><small>avant la rétractation</small></button>
+              )}
               {(d.statut === 'signe' || d.statut === 'annule') && d.pdf_chemin && (
                 <button type="button" className={s.btn} disabled={!!travail} onClick={() => ouvrirFichier(d.pdf_chemin, nomFichier(d))}><Ic n="doc" t={16} /><span>Le PDF d’origine</span></button>
               )}
@@ -572,7 +516,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
           </div>
         </div>
       </aside>
-      {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} />}
+      {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} onRelu={onMaj} />}
       {finMandat && d && <FenetreFinMandat vide={!!(m?.surRecherche && m.numero && d.recherche_id)} onFermer={() => setFinMandat(false)}
         onChoix={r => { setFinMandat(false); void changer({ statut: 'annule', annule_le: new Date().toISOString() }, null, { raison: r }); }} />}
       {projet && d && <FenetreProjet doc={d} onFermer={() => setProjet(false)} onEnvoye={r => { setProjet(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
@@ -648,8 +592,12 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const dansCat = cherches.filter(it => cat === 'tout' || it.categorie === cat);
   const visibles = dansCat.filter(it => statut === 'tout' || it.statut === statut);
   const n = (st: string) => dansCat.filter(it => it.statut === st).length;
-  const aSigner = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier).length;
+  /* V3.55 : « à faire signer » ne compte plus ceux dont les liens sont partis
+     (« en signature »), et les exemplaires signés à déposer se comptent. */
+  const aSigner = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier && !it.enSignature).length;
+  const enSignature = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier && it.enSignature).length;
   const aEnvoyer = items.filter(it => it.statut === 'pret' && it.courrier).length;
+  const aDeposer = items.filter(it => it.aDeposer).length;
 
   const majDoc = useCallback((r: DocumentRow) => {
     setDocs(l => (l ? (l.some(x => x.id === r.id) ? l.map(x => (x.id === r.id ? r : x)) : [r, ...l]) : [r]));
@@ -673,7 +621,14 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         if (enCours) { alert(`${phraseMandat(enCours)}\n\n${conseilMandat(enCours)}`); return; }
       } catch (e) { alert((e as Error).message); return; }
     }
+    /* V3.55 : la copie d'un document en signature n'arrête pas sa signature.
+       Lancée à son tour, elle serait refusée tant que l'original attend
+       (deux offres du même acquéreur, deux avenants au même mandat…). */
+    if (d.statut === 'pret' && d.signature && !confirm('Ce document est en cours de signature.\n\nLa copie sera un nouveau brouillon, à côté : la signature de l’original continue, ses liens marchent toujours. Si la copie doit le remplacer, arrête d’abord la signature de l’original (Arrêter la signature).\n\nDupliquer quand même ?')) return;
     const donnees: Donnees = { ...d.donnees, date: aujourdhui(), ...(m.numero ? { numero: '' } : {}) };
+    /* V3.56 : la copie d'un mandat rétracté en ligne ne l'est pas. */
+    delete donnees.retracte_le;
+    delete donnees.retracte_en_ligne;
     /* V3.50 : un avenant dupliqué prend le numéro qui suit (comme « Préparer
        un avenant ») : la copie d'un « Avenant n° 1 » signé faisait un second
        « Avenant n° 1 » au même mandat, et deux observations au registre. */
@@ -808,8 +763,10 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   return (
     <div className={s.page}>
       <EnteteRubrique titre="Documents juridiques" icone={<Ic n="doc" t={22} />}
-        phrase={aSigner + aEnvoyer > 0
-          ? [aSigner ? `${aSigner} document${aSigner > 1 ? 's' : ''} à faire signer` : '', aEnvoyer ? `${aEnvoyer} courrier${aEnvoyer > 1 ? 's' : ''} à envoyer` : ''].filter(Boolean).join(' · ')
+        phrase={aSigner + enSignature + aEnvoyer + aDeposer > 0
+          ? [aSigner ? `${aSigner} document${aSigner > 1 ? 's' : ''} à faire signer` : '', enSignature ? `${enSignature} en signature` : '',
+            aEnvoyer ? `${aEnvoyer} courrier${aEnvoyer > 1 ? 's' : ''} à envoyer` : '',
+            aDeposer ? `${aDeposer} exemplaire${aDeposer > 1 ? 's' : ''} signé${aDeposer > 1 ? 's' : ''} à déposer` : ''].filter(Boolean).join(' · ')
           : 'Mandats, avenants, offres d’achat, bons de visite : prêts à imprimer et à signer.'}
         recherche={items.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un nom, une adresse, un numéro…', label: 'Chercher un document' } : undefined}
         bouton={absente ? undefined : { lib: 'Nouveau document', onClick: () => setNouveau({}) }}

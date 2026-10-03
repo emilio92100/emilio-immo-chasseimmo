@@ -10,7 +10,8 @@ import { chercherQuestion, type Cible } from './versQuestion';
 import { FenetreProjet, dernierEnvoi } from './EnvoiProjet';
 import { lireDepart, prochainNumero, type Depart } from '@/lib/registre';
 import {
-  colonnesListe, finaliser, identiteDuJour, lienFichier, montrerPdf, nomFichier, quand, type DocumentRow,
+  SIGNATURE_OUVERTE, appelSignature, colonnesListe, finaliser, identiteDuJour, lienFichier, montrerPdf, nomFichier, quand, signatureOuverte,
+  tableSignaturesAbsente, type DocumentRow,
 } from './outils';
 import s from './Documents.module.css';
 import b from '@/components/biens/Biens.module.css';
@@ -161,6 +162,10 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const [projet, setProjet] = useState(false);
   const [travail, setTravail] = useState('');
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
+  /* V3.55 : un brouillon resté avec une signature en ligne ouverte (repassé
+     en brouillon depuis une page pas à jour, avant la V3.55) : on le dit, et
+     on propose de l'arrêter avant de finaliser. */
+  const [ancienneSignature, setAncienneSignature] = useState(doc.statut === 'brouillon' && !!doc.signature);
   const formRef = useRef<HTMLDivElement>(null);
   const apercuRef = useRef<HTMLDivElement>(null);
   const corpsRef = useRef<HTMLDivElement>(null);
@@ -516,25 +521,82 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
       if (onglet) onglet.location.href = url; else window.location.href = url;
     } catch (e) {
       onglet?.close();
+      if ((e as Error).message === SIGNATURE_OUVERTE) {
+        /* L'encadré du haut le dit, avec son bouton. */
+        setAncienneSignature(true); setFin(false);
+        formRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      } else setMessage({ t: (e as Error).message, ok: false });
+    }
+    setTravail('');
+  }
+
+  /* V3.55 : l'ancienne signature restée ouverte sur un brouillon se ferme
+     (le serveur l'accepte sur un brouillon), puis on peut finaliser. */
+  async function arreterAncienneSignature() {
+    if (!confirm('Arrêter l’ancienne signature en ligne ?\n\nSes liens ne fonctionneront plus, et les signatures déjà faites ne comptent plus. Personne n’est prévenu par e-mail : si quelqu’un a déjà signé, dis-le-lui.')) return;
+    setTravail('ancienne'); setMessage(null);
+    try {
+      await appelSignature({ action: 'annuler', id: row.id });
+      const { data, error } = await supabase.from('documents').select('*').eq('id', row.id).maybeSingle();
+      if (error) throw new Error('La signature est arrêtée, mais le document n’a pas pu être relu : ' + error.message);
+      if (data) { setRow(data as DocumentRow); onMaj(data as DocumentRow); }
+      setAncienneSignature(false);
+      setMessage({ t: 'Ancienne signature arrêtée : ses liens ne fonctionnent plus. Tu peux finaliser.', ok: true });
+    } catch (e) {
       setMessage({ t: (e as Error).message, ok: false });
     }
     setTravail('');
   }
 
+  /* V3.55 : la page peut ne plus être à jour (ouverte depuis le matin, la
+     signature lancée depuis le téléphone). Le serveur ne repasse en
+     brouillon qu'un document sans signature lancée : sinon, la page se
+     relit et le dit. Avant, seule la copie de l'onglet était regardée, et
+     les anciens liens remarchaient sur le texte modifié. */
+  const LANCEE = 'La signature est lancée : arrête-la d’abord (Arrêter la signature, dans la fiche du document), puis repasse-le en brouillon.';
   async function repasserBrouillon() {
+    const relire = async () => {
+      const { data: frais } = await supabase.from('documents').select('*').eq('id', row.id).maybeSingle();
+      if (frais) { setRow(frais as DocumentRow); onMaj(frais as DocumentRow); }
+      return frais as DocumentRow | null;
+    };
     if (row.signature) {
-      setMessage({ t: 'La signature est lancée : arrête-la d’abord depuis la fiche du document (Arrêter la signature), puis repasse-le en brouillon.', ok: false });
+      /* La copie de l'onglet dit « lancée » : peut-être arrêtée depuis. */
+      setTravail('brouillon');
+      const frais = await relire();
+      setTravail('');
+      setMessage(frais && frais.statut !== 'pret' ? { t: 'Ce document a changé d’état entre-temps : voici où il en est.', ok: false }
+        : frais && !frais.signature ? { t: 'La signature a été arrêtée entre-temps : tu peux maintenant le repasser en brouillon.', ok: true }
+        : { t: LANCEE, ok: false });
       return;
     }
     if (!confirm('Repasser ce document en brouillon pour le modifier ?\n\nLe PDF figé ne sera plus proposé : s’il a déjà été imprimé, ne fais pas signer l’ancien exemplaire. Tu le finaliseras à nouveau une fois modifié.')) return;
     setTravail('brouillon');
-    const { data, error } = await supabase.from('documents').update({
-      statut: 'brouillon', finalise_le: null, pdf_chemin: null, updated_at: new Date().toISOString(),
-    }).eq('id', row.id).eq('statut', 'pret').select().maybeSingle();
+    try {
+      /* Des signataires encore ouverts : lancée ailleurs (la réponse
+         ci-dessus), ou une signature arrêtée à moitié (le document vidé, ses
+         lignes pas fermées) : on finit de la fermer, puis on continue. */
+      if (await signatureOuverte(row.id)) {
+        const frais = await relire();
+        if (!frais || frais.statut !== 'pret' || frais.signature) { setMessage({ t: frais?.signature ? LANCEE : 'Impossible de le repasser en brouillon : il a changé d’état entre-temps.', ok: false }); setTravail(''); return; }
+        await appelSignature({ action: 'annuler', id: row.id });
+      }
+      const maj = { statut: 'brouillon', finalise_le: null, pdf_chemin: null, updated_at: new Date().toISOString() };
+      let r = await supabase.from('documents').update(maj).eq('id', row.id).eq('statut', 'pret').is('signature', null).select().maybeSingle();
+      /* La colonne de la signature n'existe pas encore (SQL pas passé) : rien n'a pu être lancé. */
+      if (r.error && tableSignaturesAbsente(r.error.message)) r = await supabase.from('documents').update(maj).eq('id', row.id).eq('statut', 'pret').select().maybeSingle();
+      if (r.error) throw new Error(r.error.message);
+      if (!r.data) {
+        const frais = await relire();
+        setMessage({ t: frais?.statut === 'pret' && frais.signature ? LANCEE : 'Impossible de le repasser en brouillon : il a changé d’état entre-temps.', ok: false });
+        setTravail(''); return;
+      }
+      setRow(r.data as DocumentRow); onMaj(r.data as DocumentRow);
+      setMessage(null);
+    } catch (e) {
+      setMessage({ t: 'Impossible de le repasser en brouillon : ' + (e as Error).message, ok: false });
+    }
     setTravail('');
-    if (error || !data) { setMessage({ t: 'Impossible de le repasser en brouillon : ' + (error?.message || 'il a changé d’état entre-temps.'), ok: false }); return; }
-    setRow(data as DocumentRow); onMaj(data as DocumentRow);
-    setMessage(null);
   }
 
   /* Avant d'envoyer le projet : ce qui est à l'écran doit être enregistré,
@@ -632,6 +694,15 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
             )}
             {(row.statut === 'signe' || row.statut === 'annule') && (
               <div className={s.lecture}><span>{row.statut === 'signe' ? `${m.courrier ? 'Courrier envoyé' : 'Document signé'} : il ne se modifie plus. Pour une nouvelle version, duplique-le depuis la liste.` : 'Document annulé : consultation seulement.'}</span></div>
+            )}
+            {ancienneSignature && row.statut === 'brouillon' && (
+              <div className={s.erreur}>
+                <b>Une ancienne signature en ligne est encore ouverte</b>
+                {'Ce document a été repassé en brouillon pendant sa signature. Arrête-la avant de le finaliser : sinon ses anciens liens remarcheraient sur le nouveau texte.'}
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" className={s.btn} disabled={travail === 'ancienne'} onClick={() => { void arreterAncienneSignature(); }}>{travail === 'ancienne' ? 'Arrêt…' : 'Arrêter l’ancienne signature'}</button>
+                </div>
+              </div>
             )}
             {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
             {erreurIdentite && <div className={s.erreur}>{`${erreurIdentite} L’aperçu utilise l’identité par défaut ; la finalisation la relira.`}</div>}

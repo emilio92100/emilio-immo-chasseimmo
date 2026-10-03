@@ -12,12 +12,16 @@ import {
 } from '@/lib/cosignature';
 import { pdfMandat, pdfSigne } from '@/lib/mandat-pdf';
 import { PDFDocument } from 'pdf-lib';
-import { lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE, mandatDocumentEnRoute, adressesClient } from '@/lib/mandat-serveur';
+import {
+  lireReserve, prendreNumero, envoyerMail, gabarit, echappe, ALERTES, CRM, appareilDe, RESERVE_ALERTE, mandatDocumentEnRoute,
+  renonciationDocument, memeNumero,
+} from '@/lib/mandat-serveur';
 import { alerteMailActive } from '@/lib/alertes';
 import { ecritServeur } from '@/lib/ecritures';
 import { lireIdentiteAgence } from '@/lib/agence';
-import { inscrire, numeroAncien, observer, type LigneRegistre } from '@/lib/registre';
+import { inscrire, numeroAncien, observer, registreAbsent, type LigneRegistre } from '@/lib/registre';
 import { solderRelancesSignature } from '@/lib/documents-relances';
+import { retracteEnLigne, type FicheEspace } from '@/lib/documents-espace';
 
 /**
  * La signature du mandat de recherche, depuis l'espace client.
@@ -41,6 +45,9 @@ import { solderRelancesSignature } from '@/lib/documents-relances';
  *   POST /api/espace/mandat  { token, etape: 'renoncer', confirme }
  *        la rétractation en ligne, pendant 14 jours (obligatoire depuis le
  *        19 juin 2026 pour un contrat conclu sur une interface en ligne)
+ *   POST /api/espace/mandat  { token, etape: 'renoncer', confirme, document }
+ *        V3.56 : la même chose pour un mandat de recherche de la rubrique
+ *        Documents, signé en ligne par lui avec son lien (renoncerDocument)
  *   POST /api/espace/mandat  { token, etape: 'relancer', coId }
  *   POST /api/espace/mandat  { token, etape: 'corriger', coId, email }
  *        il signe à plusieurs : il renvoie son lien à son conjoint, ou
@@ -123,11 +130,198 @@ async function alerteRegistre(pb: string | null, numero: string, quoi: string) {
   });
 }
 
+/* ══ Il renonce à un mandat de la rubrique Documents (V3.56) ════════════
+   Le même geste que pour le mandat signé ici (étape « renoncer », plus bas),
+   pour un mandat de recherche préparé dans Documents et signé EN LIGNE par
+   lui, avec son lien, pendant son délai de rétractation — compté de la même
+   façon (renonciationDocument, src/lib/mandat-serveur.ts). Les mêmes effets,
+   autant que les données le permettent :
+     · le document passe « Annulé », marqué rétracté en ligne dans ses
+       réponses (`retracte_le`, `retracte_en_ligne`) : le CRM le dit
+       « Rétracté » (retracteEnLigne) ; l'exemplaire signé reste rangé ;
+     · « Rétracté » au registre des mandats, sur la ligne du document ;
+     · le bloc Mandat de sa recherche se vide s'il porte encore ce mandat
+       (la règle d'apresAnnulation dans le CRM) : l'espace ne le compte plus ;
+     · ceux qui l'avaient signé avec lui sont prévenus par e-mail ;
+     · une ligne dans son suivi, une relance « À rappeler » du jour ;
+     · son accusé de réception par e-mail, et l'alerte à Alexandre
+       (Paramètres › Alertes mail, « Un mandat rétracté »), qui part quand
+       même si quelque chose n'a pas pu se faire.
+   Toutes les vérifications avant d'écrire : le document de CETTE recherche,
+   rangé sur SA fiche, mandat de recherche, signé, signé en ligne par lui,
+   dans le délai. */
+async function renoncerDocument(o: {
+  sb: SupabaseClient; idDoc: unknown;
+  recherche: { id: string; client_id: string; mandat_numero?: unknown; mandat_date_signature?: unknown };
+  client: FicheEspace; nomClient: string; lienCrm: string;
+  evt: (type: string, detail: string | null) => Promise<boolean>;
+}): Promise<NextResponse> {
+  const { sb, recherche, client, nomClient, lienCrm, evt } = o;
+  const id = typeof o.idDoc === 'string' ? o.idDoc : '';
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return ko('aucun', 404);
+  const { data: dr, error: eD } = await sb.from('documents').select('*').eq('id', id).maybeSingle();
+  if (eD) return ko('erreur', 500);
+  const doc = dr as {
+    id: string; modele: string; statut: string; numero: string | null; donnees: Record<string, unknown> | null; signature: unknown;
+    client_id: string | null; recherche_id: string | null; signe_le: string | null;
+  } | null;
+  /* Le sien, et lui seul : un mandat de recherche de CETTE recherche, rangé sur sa fiche. */
+  if (!doc || doc.modele !== 'mandat_recherche' || doc.recherche_id !== recherche.id || doc.client_id !== recherche.client_id) return ko('aucun', 404);
+  /* Déjà fait (un second clic, une page restée ouverte) : rien à refaire. */
+  if (retracteEnLigne(doc)) return NextResponse.json({ ok: true, deja: true });
+  if (doc.statut !== 'signe' || !doc.signe_le) return ko('aucun', 404);
+  const r = await renonciationDocument(sb, doc, client);
+  if (!r) return ko('aucun', 404);
+  if (Date.now() > r.fin.getTime()) return ko('delai', 409);
+
+  const le = new Date().toISOString();
+  const donnees = doc.donnees && typeof doc.donnees === 'object' ? doc.donnees : {};
+  const numero = (typeof doc.numero === 'string' && doc.numero.trim()) || (typeof donnees.numero === 'string' && donnees.numero.trim()) || '';
+  const nVu = numero ? ` n° ${numero}` : '';
+  const texte = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const ficheClient = Array.isArray(client) ? null : client;
+  const prenomClient = texte(r.soi.personne?.prenom) || texte(ficheClient?.prenom) || 'Le client';
+
+  /* Le document : « Annulé », rétracté en ligne. Seulement s'il est encore
+     signé : annulé dans le CRM au même instant, rien d'autre ne se fait. */
+  const { data: fait, error } = await sb.from('documents').update({
+    statut: 'annule', annule_le: le, updated_at: le,
+    donnees: { ...donnees, retracte_le: le, retracte_en_ligne: true },
+  }).eq('id', doc.id).eq('statut', 'signe').select('id');
+  if (error) return ko('enregistrement', 500, { detail: error.message });
+  if (!fait?.length) return ko('aucun', 404);
+
+  /* Ce qui n'a pas pu s'écrire : Alexandre le lit dans son alerte. */
+  const pbs: string[] = [];
+  /* Sa ligne de signataire garde la trace, comme le déroulé du mandat signé ici. */
+  await ecritServeur('Le déroulé de sa signature', sb.from('documents_signataires').update({
+    deroule: [...(r.soi.deroule || []), { t: le, x: 'Rétractation exercée en ligne depuis son espace personnel' }],
+  }).eq('id', r.soi.id), pbs);
+
+  /* Le registre des mandats (V3.18) : « Rétracté » sur la ligne du document. */
+  const pbReg = await observer(sb, { document_id_mandat: doc.id, type: 'retracte', texte: `Rétractation exercée en ligne depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.`, document_id: doc.id });
+  await alerteRegistre(pbReg, numero || 'sans numéro', 'Rétracté');
+  const { data: lr, error: eLr } = await sb.from('registre_mandats').select('id').eq('document_id', doc.id).limit(1);
+  const registreKo = !!eLr && !registreAbsent(eLr);
+  const registreTexte = pbReg ? 'Le registre des mandats du CRM n’a pas pu le noter : ajoute « Rétracté » à la main (Documents › Registre des mandats).'
+    : registreKo ? 'Vérifie que « Rétracté » est bien noté dans le registre des mandats du CRM (Documents › Registre des mandats).'
+      : !lr?.length ? 'Ce mandat n’a pas de ligne dans le registre des mandats du CRM : note la rétractation dans le registre où il est inscrit.'
+        : 'C’est déjà noté « Rétracté » dans le registre des mandats du CRM.';
+
+  /* Ceux qui l'avaient signé avec lui : le mandat prend fin pour tous (comme
+     pour le mandat signé ici). Les mêmes mots. */
+  const echecs: string[] = [];
+  for (const c of r.autres) {
+    const a = texte(c.personne?.email);
+    if (!a) continue;
+    const prenom = texte(c.personne?.prenom);
+    const nom = `${prenom} ${texte(c.personne?.nom)}`.trim() || texte(c.nom) || a;
+    const bonjour = prenom ? `Bonjour ${prenom},` : 'Bonjour,';
+    const e = await envoyerMail({
+      a, nomA: nom, repondreA: 'agence@emilio-immo.com',
+      sujet: `Le mandat de recherche${nVu} a pris fin`,
+      texte: `${bonjour}\n\n${prenomClient} a renoncé au mandat de recherche${nVu}, le ${dateLongue(le)} : il prend fin pour tous ceux qui l'avaient signé, sans aucun frais.\n\nSi vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.\n\nAlexandre Rogelet — Emilio Immobilier`,
+      html: gabarit('Le mandat a pris fin', `<p>${echappe(bonjour)}</p>
+        <p>${echappe(prenomClient)} a renoncé au <b>mandat de recherche${echappe(nVu)}</b>, le ${dateLongue(le)} : il prend fin pour tous ceux qui l’avaient signé, sans aucun frais.</p>
+        <p>Si vous souhaitez reprendre votre recherche avec nous, vous serez les bienvenus.</p>
+        <p>Alexandre Rogelet — Emilio Immobilier</p>`),
+    });
+    if (e) echecs.push(`${nom} (${e})`);
+  }
+
+  /* Le bloc Mandat de sa recherche se vide s'il porte encore CE mandat : son
+     numéro (« 1 024 » vaut « 1024 »), ou, sans numéro noté sur la recherche,
+     le jour de sa signature. Un autre mandat noté depuis n'est pas touché.
+     V3.57 : un bloc rempli sans numéro (le mandat de Documents en avait un,
+     la recherche non) se compare au jour ; avant, il restait plein, et le
+     suivi disait à tort « porte un autre mandat ». */
+  const numRech = typeof recherche.mandat_numero === 'string' && recherche.mandat_numero.trim() ? recherche.mandat_numero : null;
+  const jourRech = typeof recherche.mandat_date_signature === 'string' ? recherche.mandat_date_signature.slice(0, 10) : '';
+  const porte = numRech
+    ? !!numero && memeNumero(numRech, numero)
+    : !!jourRech && jourRech === jourParis(doc.signe_le);
+  let eFiche: string | null = null;
+  if (porte) {
+    const maj = sb.from('recherches').update({
+      mandat_date_signature: null, mandat_duree: null, mandat_honoraires: null, mandat_date_expiration: null,
+      sans_mandat: true, mandat_numero: null, updated_at: le,
+    }).eq('id', recherche.id);
+    const { error: eF } = await (numRech ? maj.eq('mandat_numero', numRech) : maj.is('mandat_numero', null));
+    if (eF) eFiche = eF.message;
+  }
+  const autreMandat = !porte && (!!numRech || !!jourRech);
+
+  await ecritServeur('L’historique du client', sb.from('journal').insert({
+    client_id: recherche.client_id, recherche_id: recherche.id, type: 'mandat',
+    titre: '↩️ Le client a renoncé à son mandat (délai de rétractation)',
+    description: `Mandat${nVu} (rubrique Documents), signé en ligne le ${dateCourte(r.soi.signe_le || doc.signe_le)}, rétracté en ligne le ${dateCourte(le)} à ${heureParis(le)}.${autreMandat ? '\nLe bloc Mandat de sa recherche porte un autre mandat : il n’a pas été touché.' : ''}`,
+    metadata: { document_id: doc.id, numero: numero || null },
+  }), pbs);
+  await evt('mandat', `Renonciation au mandat${nVu}`);
+  /* Une relance du jour : elle sort en rouge dans Relances et sur le
+     tableau de bord. Colonnes réelles : date_echeance / note / statut. */
+  await ecritServeur('La relance', sb.from('relances').insert({
+    client_id: recherche.client_id, recherche_id: recherche.id,
+    type: 'rappel_client', statut: 'en_attente', date_echeance: le,
+    note: `À rappeler : il a renoncé à son mandat de recherche${nVu} (délai de rétractation). ${registreTexte}`.slice(0, 600),
+  }), pbs);
+
+  /* L'accusé de réception, sur un support durable : la loi l'exige. À
+     l'adresse avec laquelle il a signé. */
+  const aClient = texte(r.soi.email_verifie) || texte(r.soi.personne?.email);
+  const nomSoi = `${texte(r.soi.personne?.prenom)} ${texte(r.soi.personne?.nom)}`.trim();
+  const bonjourClient = texte(r.soi.personne?.prenom) ? `Bonjour ${texte(r.soi.personne?.prenom)},` : 'Bonjour,';
+  const eClient = aClient ? await envoyerMail({
+    a: aClient, ...(nomSoi ? { nomA: nomSoi } : {}), repondreA: 'agence@emilio-immo.com',
+    sujet: `Votre renonciation au mandat de recherche${nVu}`,
+    texte: `${bonjourClient}\n\nNous avons bien reçu votre renonciation au mandat de recherche${nVu}, le ${dateLongue(le)} à ${heureParis(le)}.\n\nLe mandat prend fin, sans aucun frais.\n\nSi vous souhaitez un jour reprendre votre recherche avec nous, vous serez le bienvenu.\n\nAlexandre Rogelet — Emilio Immobilier`,
+    html: gabarit('Votre renonciation est enregistrée', `<p>${echappe(bonjourClient)}</p>
+      <p>Nous avons bien reçu votre renonciation au <b>mandat de recherche${echappe(nVu)}</b>, le ${dateLongue(le)} à ${heureParis(le)}.</p>
+      <p>Le mandat prend fin, sans aucun frais.</p>
+      <p>Si vous souhaitez un jour reprendre votre recherche avec nous, vous serez le bienvenu.</p>
+      <p>Alexandre Rogelet — Emilio Immobilier</p>`,
+      'Ce message vaut accusé de réception de votre rétractation.'),
+  }) : 'aucune adresse';
+
+  /* L'alerte : coupée dans les Paramètres, elle part quand même s'il y a
+     quelque chose à rattraper. */
+  const soucis = [
+    ...(eFiche ? [`La fiche n'a pas pu être mise à jour (${eFiche}) : vide le bloc Mandat à la main.`] : []),
+    ...(eClient ? [`Son accusé de réception n'a pas pu lui être envoyé (${eClient}) : envoie-le-lui toi-même.`] : []),
+    ...echecs.map(e => `Le mail de fin n'est pas parti à ${e}.`),
+    ...pbs.map(p => `Pas enregistré : ${p}.`),
+  ];
+  const prevenus = r.autres.map(c => `${texte(c.personne?.prenom)} ${texte(c.personne?.nom)}`.trim() || texte(c.nom)).filter(Boolean);
+  const prevenusTexte = prevenus.length ? ` Mail de fin envoyé à ceux qui l'avaient signé avec lui : ${prevenus.join(', ')}.` : '';
+  if (soucis.length || await alerteMailActive(sb, 'mandat_renonce')) await envoyerMail({
+    a: ALERTES(), deLaPartDe: 'crm',
+    sujet: `↩️ ${nomClient} a renoncé à son mandat${numero ? ` (n° ${numero})` : ' de recherche'}`,
+    texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat${nVu} (signé en ligne dans Documents) prend fin. ${registreTexte}${prevenusTexte}${soucis.map(s => `\n⚠️ ${s}`).join('')}\n\n${lienCrm}`,
+    html: gabarit(`${nomClient} a renoncé à son mandat`, `<p><b>${echappe(nomClient)}</b> a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}.</p>
+      <p>Le mandat${numero ? ` <b>n° ${echappe(numero)}</b>` : ''} (signé en ligne dans Documents) prend fin. ${echappe(registreTexte)}${echappe(prevenusTexte)}</p>
+      ${soucis.map(s => `<p style="color:#b91c1c">⚠️ ${echappe(s)}</p>`).join('')}
+      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+  });
+  /* V3.57 : `accuse` — son accusé de réception est-il parti ? L'espace ne
+     lui dit « envoyé par e-mail » que si c'est vrai. */
+  return NextResponse.json({ ok: true, accuse: !eClient });
+}
+
 async function derniere(sb: SupabaseClient, rechercheId: string): Promise<Ligne | null> {
   const { data, error } = await sb.from('mandats_signatures').select('*')
     .eq('recherche_id', rechercheId).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (error || !data) return null;
   return data as Ligne;
+}
+
+/* V3.56 : une écriture réservée à une signature « en cours » n'a touché
+   aucune ligne. Pourquoi, pour le dire au client : signée entre-temps (un
+   autre onglet) → « deja » ; sinon (proposition retirée par Alexandre, la
+   ligne passée « abandonne ») → « retire ». */
+async function plusEnCours(sb: SupabaseClient, id: string): Promise<'deja' | 'retire'> {
+  const { data } = await sb.from('mandats_signatures').select('statut').eq('id', id).maybeSingle();
+  const s = (data as { statut?: string } | null)?.statut;
+  return s === 'signe' || s === 'partiel' ? 'deja' : 'retire';
 }
 
 export async function POST(req: NextRequest) {
@@ -150,10 +344,13 @@ export async function POST(req: NextRequest) {
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(recherche.client_id)}`;
 
     /* Un mandat de recherche préparé dans Documents (V3.32), pas encore
-       signé : c'est lui qu'il signe. Pas de second mandat par l'espace. */
+       signé par tous : c'est lui qu'il signe. Pas de second mandat par
+       l'espace. L'espace dit alors ce qu'il a à faire (V3.55) : le signer
+       avec SON lien (`lien`), rien (`signe` : il l'a déjà signé), ou
+       attendre qu'Alexandre revienne vers lui (ni l'un ni l'autre). */
     if ((etape === 'afficher' || etape === 'code' || etape === 'signer') && etatMandat(recherche) !== 'valide') {
-      const doc = await mandatDocumentEnRoute(sb, recherche.id, adressesClient(client));
-      if (doc) return ko('document', 409, { lien: doc.lien });
+      const doc = await mandatDocumentEnRoute(sb, recherche.id, client);
+      if (doc) return ko('document', 409, { lien: doc.vous === 'signe' ? null : doc.lien, signe: doc.vous === 'signe' });
     }
 
     switch (etape) {
@@ -362,10 +559,18 @@ export async function POST(req: NextRequest) {
           ...(societe || (reprise && 'societe' in reprise) ? { societe } : {}),
           ...(kbisChemin ? { kbis_chemin: kbisChemin } : {}),
         };
-        const { error } = reprise
-          ? await sb.from('mandats_signatures').update(ligne).eq('id', id)
-          : await sb.from('mandats_signatures').insert(ligne);
-        if (error) return ko('enregistrement', 500, { detail: error.message });
+        /* V3.56 : une signature commencée ne se reprend que si elle est encore
+           « en cours ». Entre la lecture et l'écriture, Alexandre a pu retirer
+           la proposition (« Retirer la proposition » la passe « abandonne »),
+           ou l'autre onglet du client a pu signer : on ne la rouvre jamais. */
+        if (reprise) {
+          const { data: repris, error: eRep } = await sb.from('mandats_signatures').update(ligne).eq('id', id).eq('statut', 'en_cours').select('id');
+          if (eRep) return ko('enregistrement', 500, { detail: eRep.message });
+          if (!repris?.length) return ko(await plusEnCours(sb, id), 409);
+        } else {
+          const { error } = await sb.from('mandats_signatures').insert(ligne);
+          if (error) return ko('enregistrement', 500, { detail: error.message });
+        }
 
         /* Ses co-signataires : remplacés à chaque demande de code (il a pu
            revenir en arrière et changer d'avis). */
@@ -469,11 +674,15 @@ export async function POST(req: NextRequest) {
           const prets: Co[] = cos.map(c => ({ ...c, ...lienNeuf(c, le, `Adresse indiquée par ${nomDe(m)}`) }) as Co);
           const sc = await sceller(sb, lp, prets);
           if (!sc.ok) return ko('stockage', 500, { detail: sc.erreur });
-          const { error: eLigne } = await sb.from('mandats_signatures').update({
+          /* V3.56 : seulement si elle est encore « en cours » (proposition
+             retirée entre-temps, ou signée dans un autre onglet) : rien
+             d'autre ne s'écrit alors — ni registre, ni liens, ni fiche. */
+          const { data: ecrit, error: eLigne } = await sb.from('mandats_signatures').update({
             statut: 'partiel', signe_le: le, ip, appareil, execution_immediate: execution, email_verifie: m.email,
             code_hash: null, code_essais: l.code_essais + 1, deroule, griffe_chemin: griffeChemin, ...sc.maj,
-          }).eq('id', l.id);
+          }).eq('id', l.id).eq('statut', 'en_cours').select('id');
           if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
+          if (!ecrit?.length) return ko(await plusEnCours(sb, l.id), 409);
           /* Le registre (V3.18) : signé, et qui doit encore signer. */
           const pbRegP = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'signe',
             texte: `Signé en ligne depuis son espace par ${nomDe(m)}, le ${dateCourte(le)} à ${heureParis(le)} ; co-signature attendue de ${cos.map(c => nomDe(c.personne)).join(', ')}.` });
@@ -592,13 +801,15 @@ export async function POST(req: NextRequest) {
         const up2 = await sb.storage.from(BUCKET).upload(cheminSigne, signe, { contentType: 'application/pdf', upsert: false });
         if (up2.error) return ko('stockage', 500, { detail: up2.error.message });
 
-        const { error: eLigne } = await sb.from('mandats_signatures').update({
+        /* V3.56 : seulement si elle est encore « en cours » (voir plus haut). */
+        const { data: ecrit, error: eLigne } = await sb.from('mandats_signatures').update({
           statut: 'signe', signe_le: le, ip, appareil, empreinte, execution_immediate: execution,
           email_verifie: m.email, pdf_chemin: cheminSigne, pdf_mandat_chemin: cheminSeul,
           code_hash: null, code_essais: l.code_essais + 1, deroule,
           contenu: { ...contenu, identite },
-        }).eq('id', l.id);
+        }).eq('id', l.id).eq('statut', 'en_cours').select('id');
         if (eLigne) return ko('enregistrement', 500, { detail: eLigne.message });
+        if (!ecrit?.length) return ko(await plusEnCours(sb, l.id), 409);
         /* Le registre (V3.18) : « Signé » sur sa ligne. */
         const pbReg = await observer(sb, { signature_id: l.id, numeroSinon: l.contenu?.source === 'registre' ? l.numero : null, type: 'signe', texte: `Signé en ligne depuis son espace par ${nomDe(m)}, le ${dateCourte(le)} à ${heureParis(le)}.` });
         await alerteRegistre(pbReg, l.numero, 'Signé');
@@ -681,6 +892,11 @@ export async function POST(req: NextRequest) {
       /* ── il renonce, dans les 14 jours ────────────────────── */
       case 'renoncer': {
         if (body.confirme !== true) return ko('confirmer', 400);
+        /* V3.56 : un mandat de la rubrique Documents signé en ligne, désigné
+           par son identifiant (« Mon mandat de recherche » l'envoie). */
+        if (body.document !== undefined && body.document !== null) {
+          return renoncerDocument({ sb, idDoc: body.document, recherche, client, nomClient, lienCrm, evt });
+        }
         const l = await derniere(sb, recherche.id);
         if (!l || !['signe', 'partiel'].includes(l.statut) || !l.signe_le) return ko('aucun', 404);
         /* À plusieurs, le délai court jusqu'à 14 jours après la dernière signature. */
@@ -760,8 +976,11 @@ export async function POST(req: NextRequest) {
         }));
 
         const m = l.mandant;
-        /* L'accusé de réception, sur un support durable : la loi l'exige. */
-        await envoyerMail({
+        /* L'accusé de réception, sur un support durable : la loi l'exige.
+           V3.57 : son résultat compte — pas parti (pas d'adresse, Mailjet),
+           l'espace ne dit pas « envoyé », et Alexandre est prévenu quoi
+           qu'il en soit des alertes coupées. */
+        const eAccuse = !String(m?.email || '').includes('@') ? 'aucune adresse' : await envoyerMail({
           a: m.email, nomA: `${m.prenom} ${m.nom}`, repondreA: 'agence@emilio-immo.com',
           sujet: `Votre renonciation au mandat de recherche n° ${l.numero}`,
           texte: `Bonjour ${m.prenom},\n\nNous avons bien reçu votre renonciation au mandat de recherche n° ${l.numero}, le ${dateLongue(le)} à ${heureParis(le)}.\n\nLe mandat prend fin, sans aucun frais.\n\nSi vous souhaitez un jour reprendre votre recherche avec nous, vous serez le bienvenu.\n\nAlexandre Rogelet — Emilio Immobilier`,
@@ -772,16 +991,17 @@ export async function POST(req: NextRequest) {
             <p>Alexandre Rogelet — Emilio Immobilier</p>`,
             'Ce message vaut accusé de réception de votre rétractation.'),
         });
-        if (eFiche || await alerteMailActive(sb, 'mandat_renonce')) await envoyerMail({
+        if (eFiche || eAccuse || await alerteMailActive(sb, 'mandat_renonce')) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm',
           sujet: `↩️ ${nomClient} a renoncé à son mandat (n° ${l.numero})`,
-          texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat n° ${l.numero} prend fin. ${registreTexte}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}).` : ''}\n\n${lienCrm}`,
+          texte: `${nomClient} a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}. Le mandat n° ${l.numero} prend fin. ${registreTexte}${eFiche ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFiche.message}).` : ''}${eAccuse ? `\n⚠️ Son accusé de réception n'a pas pu lui être envoyé (${eAccuse}) : envoie-le-lui toi-même.` : ''}\n\n${lienCrm}`,
           html: gabarit(`${nomClient} a renoncé à son mandat`, `<p><b>${echappe(nomClient)}</b> a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}.</p>
             <p>Le mandat <b>n° ${echappe(l.numero)}</b> prend fin. ${echappe(registreTexte)}</p>
             ${eFiche ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFiche.message)}).</p>` : ''}
+            ${eAccuse ? `<p style="color:#b91c1c">⚠️ Son accusé de réception n’a pas pu lui être envoyé (${echappe(eAccuse)}) : envoie-le-lui toi-même.</p>` : ''}
             <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({ ok: true, accuse: !eAccuse });
       }
 
       /* ── à plusieurs : renvoyer son lien, corriger son adresse ── */

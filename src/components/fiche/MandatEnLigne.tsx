@@ -24,18 +24,21 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { lienEspace, HOTE_ESPACE } from '@/lib/jeton';
 import {
   HONORAIRES_TAUX, BAREME, tauxDe, tauxTexte, prixMaximum, honorairesPour, euros, rechercheDepuis, redigerMandat, resumeMandat, horsMandat,
-  forfaitDe, seuilForfait, honorairesCourt, pourcentDe, jourParis,
+  forfaitDe, seuilForfait, honorairesCourt, pourcentDe, jourParis, memeNumero,
   type Contenu,
 } from '@/lib/mandat';
 import { CLE_IDENTITE, lireIdentite } from '@/lib/agence';
 import { contenuApresAvenants } from '@/lib/actes/avenant-recherche';
 import { signalerEchec } from '@/lib/ecritures';
-import { etatLigne, lireDepart, numeroAncien, prochainNumero, type ObsRegistre } from '@/lib/registre';
+import { etatLigne, lireDepart, numeroAncien, observer, prochainNumero, type ObsRegistre } from '@/lib/registre';
 import { mandatRechercheEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
+import { exemplaireManquant, lienFichier, nomFichier, rappelExemplaire, type DocumentRow } from '@/components/documents/outils';
+import FenetreSigne from '@/components/documents/FenetreSigne';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -44,6 +47,7 @@ const SIGNATURE = 'agence/signature.png';
 type Sig = {
   id: string; numero: string; statut: string; signe_le: string | null; retracte_le: string | null;
   pdf_chemin: string | null; execution_immediate: boolean | null; code_envoye_le: string | null;
+  deroule?: { t: string; x: string }[] | null;
   mandant: { civilite?: string; prenom?: string; nom?: string; email?: string; telephone?: string; adresse?: string } | null;
   contenu?: Contenu | null;
   /* SQL « signature-plusieurs » : la société, son Kbis. */
@@ -142,6 +146,10 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   /* Un mandat de recherche préparé dans Documents (V3.32) : tant qu'il est en
      route, on ne propose pas en plus celui de l'espace. */
   const [docMandat, setDocMandat] = useState<MandatEnCours | null>(null);
+  /* V3.55 : signé dans Documents, ce mandat-là, relu : où il a été signé (en
+     ligne, sur place, sur papier) et son exemplaire signé. */
+  const [docSigne, setDocSigne] = useState<DocumentRow | null>(null);
+  const [depot, setDepot] = useState(false);
   const [cos, setCos] = useState<CoSig[]>([]);
   const [numero, setNumero] = useState<string>(recherche?.mandat_numero || '');
   const [reserve, setReserve] = useState('');
@@ -175,7 +183,13 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
         .eq('recherche_id', recherche.id).eq('modele', 'avenant_recherche').neq('statut', 'annule').order('created_at'),
     ]);
     setAvenants(!av.error && av.data ? (av.data as AvenantMini[]) : []);
-    mandatRechercheEnCours(recherche.id).then(x => setDocMandat(x?.cle?.startsWith('d-') ? x : null), () => setDocMandat(null));
+    mandatRechercheEnCours(recherche.id).then(async x => {
+      setDocMandat(x?.cle?.startsWith('d-') ? x : null);
+      if (x?.cle?.startsWith('d-') && x.etat === 'signe' && x.documentId) {
+        const { data } = await supabase.from('documents').select('*').eq('id', x.documentId).maybeSingle();
+        setDocSigne((data as DocumentRow) || null);
+      } else setDocSigne(null);
+    }, () => { setDocMandat(null); setDocSigne(null); });
     const derniere = !s.error && s.data?.length ? (s.data[0] as Sig) : null;
     setSig(derniere);
     /* Ceux qui signent avec lui (la table n'existe qu'après le SQL : sans
@@ -276,14 +290,18 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   /* Sa recherche d'aujourd'hui sort-elle de ce qu'il a signé (budget,
      secteurs, type de bien) ? Le client peut changer ses critères depuis
      son espace ; Alexandre reçoit aussi un mail à ce moment-là. */
-  const avenantsSignes = avenants.filter(a => a.statut === 'signe');
+  /* V3.56 : les avenants d'UN mandat (son numéro) : un avenant à l'ancien
+     mandat de la recherche, renouvelé depuis, ne change pas le nouveau.
+     Sans numéro à comparer, tous ceux de la recherche, comme avant. */
+  const avenantsDu = (n: unknown) => avenants.filter(a => !String(n ?? '').trim() || memeNumero(a.donnees?.mandatNumero, n));
+  const avenantsSignes = avenantsDu(sig?.numero).filter(a => a.statut === 'signe');
   /* Un avenant déjà préparé, pas encore signé : le bouton l'ouvre. */
   const avenantEnCours = avenants.some(a => a.statut === 'brouillon' || a.statut === 'pret');
   const depasse = signeEnLigne && sig?.contenu?.recherche
     ? horsMandat(contenuApresAvenants(sig.contenu, avenantsSignes.map(a => a.donnees)), rechercheDepuis(recherche || {}))
     : [];
   /* Les avenants, en une ligne chacun : « Avenant n° 1 · signé le 12/10 ». */
-  const lignesAvenants = avenants.map(a => {
+  const lignesAvenants = (n: unknown) => avenantsDu(n).map(a => {
     const no = Number(a.donnees?.avenantNo) || 1;
     return `📝 Avenant n° ${no} · ${a.statut === 'signe' ? `signé le ${a.signe_le ? jourCourt(a.signe_le) : '—'}` : a.statut === 'pret' ? 'à faire signer' : 'brouillon'}`;
   });
@@ -425,17 +443,52 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     setTravail('');
   }
 
+  /* V3.55 : s'il avait déjà commencé à signer dans son espace (sa ligne « en
+     cours », un code demandé), cette signature se ferme aussi : sans ça, il
+     pouvait encore redemander un code et signer le mandat retiré. Le statut
+     « abandonne » est prévu pour ça (outils/sql/signature-plusieurs.sql) ;
+     l'espace ne reprend qu'une ligne « en_cours ». */
   async function retirer() {
-    if (!confirm('Retirer la proposition de mandat ?\n\nLe numéro est libéré sur cette fiche : pense à le marquer « clos sans suite » dans ImmoFacile.')) return;
-    setTravail('retirer');
+    const commence = sig?.statut === 'en_cours' ? sig : null;
+    const duRegistre = !!registre && registre.numero === 'ouvert';
+    /* V3.56 : le mandat type approuvé (avec le registre, ou des numéros
+       d'avance), son espace continue de lui proposer de signer seul : la
+       phrase le dit, au lieu de « il ne pourra plus le signer » (voir
+       signeSansNumero, src/lib/mandat-serveur.ts). */
+    const seulEncore = !!approuveLe && (!!registre || numeros(reserve).length > 0);
+    const prenomC = client.prenom || 'Le client';
+    const apres = seulEncore
+      ? `\n\nTon mandat type est approuvé : son espace continuera de lui proposer de signer un mandat de recherche de lui-même${commence ? ' (une nouvelle signature, depuis le début)' : ''}.`
+      : '';
+    if (!confirm(`Retirer la proposition de mandat ?${commence ? `\n\n${prenomC} avait commencé à le signer dans son espace : cette signature s’arrête${seulEncore ? '.' : ', il ne pourra plus le signer.'}` : ''}${apres}\n\n${duRegistre ? 'Son numéro est noté « sans suite » dans le registre des mandats.' : 'Le numéro est libéré sur cette fiche : pense à le marquer « clos sans suite » dans ImmoFacile.'}`)) return;
+    setTravail('retirer'); setMsg(null);
+    const le = new Date().toISOString();
+    if (commence) {
+      /* V3.56 : le déroulé relu juste avant d'écrire (celui de la page date
+         de son ouverture : un code demandé entre-temps y manquerait). */
+      const { data: lu, error: eL } = await supabase.from('mandats_signatures').select('statut, deroule').eq('id', commence.id).maybeSingle();
+      if (eL) { setTravail(''); setMsg({ t: 'La signature commencée dans son espace n’a pas pu être relue, la proposition n’est pas retirée : ' + eL.message, ok: false }); return; }
+      const deroule = Array.isArray((lu as { deroule?: unknown } | null)?.deroule) ? (lu as { deroule: { t: string; x: string }[] }).deroule : (commence.deroule || []);
+      const { data: ferme, error: eF } = await supabase.from('mandats_signatures')
+        .update({ statut: 'abandonne', code_hash: null, deroule: [...deroule, { t: le, x: 'Proposition retirée par l’agence avant la signature' }] })
+        .eq('id', commence.id).eq('statut', 'en_cours').select('id');
+      if (eF) { setTravail(''); setMsg({ t: 'La signature commencée dans son espace n’a pas pu être arrêtée, la proposition n’est pas retirée : ' + eF.message, ok: false }); return; }
+      /* Rien de fermé : il a signé entre-temps. On ne retire rien. */
+      if (!ferme?.length) { setTravail(''); setMsg({ t: 'Il vient de signer ou d’avancer dans son espace : la proposition n’est pas retirée. Recharge la fiche.', ok: false }); await charger(); return; }
+    }
     const { data, error } = await supabase.from('recherches')
-      .update({ mandat_numero: null, mandat_propose_le: null, updated_at: new Date().toISOString() })
+      .update({ mandat_numero: null, mandat_propose_le: null, updated_at: le })
       .eq('id', recherche.id).select().single();
     setTravail('');
-    if (error) { setMsg({ t: 'Impossible de retirer la proposition : ' + error.message, ok: false }); return; }
+    if (error) { setMsg({ t: `Impossible de retirer la proposition : ${error.message}${commence ? ' (sa signature commencée, elle, est bien arrêtée)' : ''}`, ok: false }); await charger(); return; }
     onMaj(data); setNumero('');
-    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée', undefined, undefined, { rechercheId: recherche.id });
-    setMsg({ t: 'Proposition retirée.', ok: true });
+    /* Le registre (V3.18) : le numéro pris pour cette signature n'aura pas de suite. */
+    let pbReg: string | null = null;
+    const n = String(recherche?.mandat_numero || '').trim();
+    if (duRegistre) pbReg = await observer(supabase, { ...(commence ? { signature_id: commence.id } : {}), numeroSinon: n || null, type: 'sans_suite', texte: `Proposition retirée par l’agence le ${quand(le)}, avant la signature.` });
+    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée', commence ? 'Sa signature commencée dans son espace est arrêtée.' : undefined, undefined, { rechercheId: recherche.id });
+    await charger();
+    setMsg(pbReg ? { t: `Proposition retirée. ${pbReg} Marque-le « sans suite » dans Documents › Registre des mandats.`, ok: false } : { t: 'Proposition retirée.', ok: true });
   }
 
   /* Un numéro noté sur la recherche avant le démarrage du registre (réservé
@@ -458,6 +511,26 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   async function copier() {
     try { await navigator.clipboard.writeText(lien); setCopie(true); setTimeout(() => setCopie(false), 1800); }
     catch { window.prompt('Copie ce lien :', lien); }
+  }
+
+  /* Où le mandat noté sur la recherche a été signé (V3.55). */
+  const modeDoc = docSigne?.signature?.mode;
+  const ouSigne = !docSigne ? 'hors du CRM'
+    : modeDoc === 'en_ligne' ? 'en ligne (Documents)'
+    : modeDoc === 'sur_place' ? 'sur place (Documents)'
+    : 'sur papier (Documents)';
+  async function voirExemplaire() {
+    if (!docSigne?.signe_chemin) return;
+    const w = window.open('', '_blank');
+    setTravail('exemplaire');
+    try {
+      const url = await lienFichier(docSigne.signe_chemin, nomFichier(docSigne, docSigne.signature ? '-signe' : ''));
+      if (w) w.location.href = url; else window.location.href = url;
+    } catch (e) {
+      w?.close();
+      setMsg({ t: 'Le mandat signé n’a pas pu être ouvert : ' + (e as Error).message, ok: false });
+    }
+    setTravail('');
   }
 
   async function voirPdf() {
@@ -515,7 +588,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
               : `🔒 Invitation de ${nomCo(c)} close : le mandat continue sans sa signature.`}</div>
           ))}
           {sig.societe && <div style={{ marginTop: 6 }}>{`🏢 Pour la société ${sig.societe.denomination} (${sig.societe.forme}, SIREN ${sig.societe.siren}, RCS ${sig.societe.rcsVille}) · ${sig.societe.qualite.toLowerCase()}`}</div>}
-          {lignesAvenants.map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
+          {lignesAvenants(sig.numero).map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
             <button type="button" style={btn} onClick={voirPdf}>📄 Voir le mandat signé</button>
             {sig.kbis_chemin && <button type="button" style={btn} onClick={voirKbis}>📎 Voir le Kbis</button>}
@@ -572,12 +645,25 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       )}
       {valide && !signeEnLigne && (
         <div style={boite('#f8fafc', '#e2e8f0', 'var(--emilio)')}>
-          <b>{`📋 Mandat signé${recherche?.mandat_numero ? ` n° ${recherche.mandat_numero}` : ''}, hors ligne`}</b>
+          {/* V3.55 : où il a été signé. Un mandat de Documents signé en ligne
+              s'affichait « hors ligne ». */}
+          <b>{`📋 Mandat signé${recherche?.mandat_numero ? ` n° ${recherche.mandat_numero}` : ''}, ${ouSigne}`}</b>
           <div>{`Signé le ${jourCourt(recherche.mandat_date_signature)}${recherche?.mandat_date_expiration ? `, valable jusqu’au ${jourCourt(recherche.mandat_date_expiration)}` : ''}.`}</div>
-          {lignesAvenants.map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
-          {onAvenant && <button type="button" style={{ ...btn, marginTop: 10 }} onClick={onAvenant}>{avenantEnCours ? '📝 Ouvrir l’avenant en cours' : '📝 Préparer un avenant'}</button>}
+          {lignesAvenants(recherche?.mandat_numero).map(l => <div key={l} style={{ marginTop: 4 }}>{l}</div>)}
+          {/* V3.55 : signé sur papier, son exemplaire pas encore déposé. */}
+          {docSigne && exemplaireManquant(docSigne) && (
+            <div style={{ ...boite('#fffbeb', '#fde68a', '#92400e'), marginTop: 10, padding: '9px 12px' }}>{rappelExemplaire(docSigne)}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            {docSigne?.signe_chemin && <button type="button" style={btn} disabled={travail === 'exemplaire'} onClick={voirExemplaire}>{travail === 'exemplaire' ? 'Ouverture…' : '📄 Voir le mandat signé'}</button>}
+            {docSigne && exemplaireManquant(docSigne) && <button type="button" style={btnOr} onClick={() => setDepot(true)}>📎 Déposer l’exemplaire signé</button>}
+            {onAvenant && <button type="button" style={btn} onClick={onAvenant}>{avenantEnCours ? '📝 Ouvrir l’avenant en cours' : '📝 Préparer un avenant'}</button>}
+          </div>
         </div>
       )}
+      {depot && docSigne && typeof document !== 'undefined' && createPortal(
+        <FenetreSigne doc={docSigne} onFermer={() => setDepot(false)} onFait={r => { setDepot(false); setDocSigne(r); setMsg({ t: 'Exemplaire signé déposé : il le retrouve dans son espace.', ok: true }); }} />,
+        document.body)}
       {sig?.statut === 'retracte' && (
         <div style={boite('#fef2f2', '#fecaca', '#991b1b')}>
           <b>{`↩️ Mandat n° ${sig.numero} rétracté`}</b>

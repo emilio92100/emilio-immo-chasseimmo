@@ -1,12 +1,13 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { modeSignature, modele, type CaseSignature } from '@/lib/actes';
 import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { dateCourte, dateLongue, heureParis } from '@/lib/mandat';
 import { finValiditeOffre } from '@/lib/actes/offre-achat';
 import { Croix, Ic } from './ApercuActe';
 import {
-  appelSignature, lienFichier, lireSignataires, nomFichier, nomSignataire, tableSignaturesAbsente,
+  appelSignature, lienFichier, lireSignataires, nomFichier, nomSignataire, pagePerimee, tableSignaturesAbsente,
   type DocumentRow, type SignataireRow,
 } from './outils';
 import s from './Documents.module.css';
@@ -21,15 +22,99 @@ import s from './Documents.module.css';
 
 const quandCourt = (iso: string) => `${dateCourte(iso)} à ${heureParis(iso)}`;
 
+/* « Paul Martin » et « paul  MARTIN » : la même personne. */
+const memeNom = (a: { prenom?: string; nom?: string } | undefined, b: { prenom?: string; nom?: string } | undefined) => {
+  const n = (p: typeof a) => `${p?.prenom || ''} ${p?.nom || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return !!n(a) && n(a) === n(b);
+};
+
+/* V3.56-V3.57 : l'adresse d'une ligne de signataire est-elle une
+   correction de l'agence, et de quelle adresse du document ? Rend cette
+   adresse d'origine (en minuscules), sinon null. `lignes` : celles du même
+   cadre et de la même personne, de la plus récente à la plus ancienne ; `i` :
+   celle qu'on regarde. Lu dans le déroulé de chaque ligne :
+     · « … (adresse corrigée par l’agence, au lieu de A) » au lancement
+       (V3.57 : une correction reprise par la fenêtre d'envoi le note) ;
+     · « Adresse e-mail corrigée par l’agence : B (au lieu de A ; …) »
+       pendant un lancement (« Corriger l'e-mail ») ;
+     · sinon, l'adresse du lancement, « Lien personnel envoyé à A ».
+   Et la chaîne : une ligne partie à B, où B était la correction d'un
+   lancement plus ancien, remonte jusqu'à l'adresse du document. Ainsi A→B,
+   arrêt, relance, arrêt, relance garde B ; et B→C au deuxième lancement
+   garde C. */
+type LigneCorrigee = { personne: { email?: string } | null; deroule?: { t: string; x: string }[] | null };
+function origineCorrigee(lignes: LigneCorrigee[], i: number, profondeur = 0): string | null {
+  if (profondeur > 20 || !lignes[i]) return null;
+  const d = Array.isArray(lignes[i].deroule) ? lignes[i].deroule! : [];
+  const texte = (e: { x?: unknown } | null | undefined) => String(e?.x || '');
+  /* 1. Au lancement, une correction reprise. */
+  const marque = d.map(e => /\(adresse corrigée par l’agence, au lieu de ([^\s)]+)\)/.exec(texte(e))?.[1]).find(Boolean);
+  if (marque) return marque.trim().toLowerCase();
+  /* 2. L'adresse de départ de ce lancement. */
+  const k = d.findIndex(e => /^Adresse e-mail corrigée par l’agence : /.test(texte(e)));
+  const auLieu = k >= 0 ? /\(au lieu de ([^\s;)]+)/.exec(texte(d[k]))?.[1] : undefined;
+  const lien = (k >= 0 ? d.slice(0, k) : d).map(e => /^Lien personnel envoyé à (\S+)/.exec(texte(e))?.[1]).find(Boolean);
+  const depart = String(auLieu || lien || '').trim().toLowerCase();
+  if (!depart) return null;
+  /* 3. Ce départ était-il la correction d'un lancement plus ancien ? */
+  for (let j = i + 1; j < lignes.length; j++) {
+    if (String(lignes[j].personne?.email || '').trim().toLowerCase() !== depart) continue;
+    const o = origineCorrigee(lignes, j, profondeur + 1);
+    if (o) return o;
+  }
+  /* 4. Corrigée par l'agence pendant ce lancement : depuis son départ. */
+  return k >= 0 ? depart : null;
+}
+
 /* ── Les adresses, avant d'envoyer ── */
-export function FenetreLancer({ doc, onFermer, onLance }: {
+export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
   doc: DocumentRow; onFermer: () => void;
   onLance: (x: { signataires: SignataireRow[]; signature: DocumentRow['signature']; echecs: string[] }) => void;
+  /* V3.55 : la page n'était plus à jour (déjà lancée ailleurs, document
+     changé) : la fiche se relit et dit pourquoi. */
+  onPerime?: (message: string) => void;
 }) {
   const m = modele(doc.modele);
   const mode = modeSignature(doc.donnees);
   const cases: CaseSignature[] = m?.cases ? m.cases(doc.donnees, doc.identite || IDENTITE_DEFAUT).filter(c => !c.agence) : [];
   const [mails, setMails] = useState<Record<string, string>>(() => Object.fromEntries(cases.map(c => [c.cle, c.personne?.email || ''])));
+  /* V3.55 : une adresse corrigée pendant une signature arrêtée depuis
+     (« Corriger l'e-mail ») est reprise, plutôt que celle du document : le
+     texte signé ne change pas, seul l'envoi va à la bonne adresse. Pour la
+     même personne (même nom), et tant qu'Alexandre n'a pas touché au champ.
+     V3.56 : seulement une VRAIE correction de l'agence (« Corriger
+     l'e-mail », écrite dans le déroulé de sa ligne), et seulement si le
+     document dit encore l'adresse à laquelle ce lancement était parti. Le
+     document corrigé depuis dans l'éditeur (paul@gmial.com devenu
+     paul@gmail.com) : c'est lui qui fait foi, l'ancienne faute ne revient
+     pas. */
+  const [repris, setRepris] = useState<Record<string, boolean>>({});
+  const touche = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const { data, error } = await supabase.from('documents_signataires').select('cle, personne, deroule, created_at')
+        .eq('document_id', doc.id).order('created_at', { ascending: false }).limit(60);
+      /* Illisible : on garde les adresses du document. */
+      if (!vivant || error || !data?.length) return;
+      const lignes = data as { cle: string; personne: { prenom?: string; nom?: string; email?: string } | null; deroule?: { t: string; x: string }[] | null }[];
+      const plus: Record<string, string> = {};
+      for (const c of cases) {
+        /* Ses lignes à lui (même cadre, même nom), la plus récente d'abord. */
+        const siennes = lignes.filter(x => x.cle === c.cle && memeNom(x.personne || undefined, c.personne));
+        const e = String(siennes[0]?.personne?.email || '').trim();
+        const duDoc = String(c.personne?.email || '').trim().toLowerCase();
+        if (!siennes.length || !e || e.toLowerCase() === duDoc) continue;
+        if (origineCorrigee(siennes, 0) === duDoc) plus[c.cle] = e;
+      }
+      if (!Object.keys(plus).length) return;
+      const libres = Object.keys(plus).filter(k => !touche.current[k]);
+      setMails(x => ({ ...x, ...Object.fromEntries(libres.map(k => [k, plus[k]])) }));
+      setRepris(Object.fromEntries(libres.map(k => [k, true])));
+    })();
+    return () => { vivant = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.id]);
   const [champs, setChamps] = useState<Record<string, string>>({});
   const [travail, setTravail] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -45,11 +130,14 @@ export function FenetreLancer({ doc, onFermer, onLance }: {
     setTravail(true); setErreur('');
     try {
       const r = await appelSignature<{ signataires: SignataireRow[]; signature: DocumentRow['signature']; echecs: string[] }>({
-        action: 'lancer', id: doc.id, signataires: cases.map(c => ({ cle: c.cle, email: mails[c.cle].trim() })),
+        /* `repris` (V3.57) : l'adresse est la correction reprise ; le
+           serveur le note sur la ligne, pour la relance suivante. */
+        action: 'lancer', id: doc.id, signataires: cases.map(c => ({ cle: c.cle, email: mails[c.cle].trim(), repris: !!repris[c.cle] })),
       });
       onLance(r);
     } catch (e) {
       const x = e as Error & { plus?: { champs?: Record<string, string> } };
+      if (pagePerimee(e) && onPerime) { onPerime(x.message); return; }
       if (x.plus?.champs) setChamps(x.plus.champs);
       setErreur(x.message);
       setTravail(false);
@@ -74,8 +162,9 @@ export function FenetreLancer({ doc, onFermer, onLance }: {
               <label htmlFor={`sg-${c.cle}`}>{`${c.qui} · ${c.nom}`}</label>
               <input id={`sg-${c.cle}`} type="email" inputMode="email" autoComplete="off" className={`${s.input} ${champs[c.cle] ? s.inputManque : ''}`}
                 value={mails[c.cle] || ''} placeholder="adresse@exemple.fr"
-                onChange={e => { const v = e.target.value; setMails(x => ({ ...x, [c.cle]: v })); setChamps(x => ({ ...x, [c.cle]: '' })); }} />
+                onChange={e => { const v = e.target.value; setMails(x => ({ ...x, [c.cle]: v })); setChamps(x => ({ ...x, [c.cle]: '' })); touche.current[c.cle] = true; setRepris(x => ({ ...x, [c.cle]: false })); }} />
               {champs[c.cle] && <i className={s.chAide} style={{ color: '#b45309' }}>{champs[c.cle]}</i>}
+              {!champs[c.cle] && repris[c.cle] && <i className={s.chAide}>{`Reprise de ta correction lors du dernier envoi${c.personne?.email ? ` (le document dit ${c.personne.email})` : ''}.`}</i>}
             </div>
           ))}
           <ul className={s.liste2}>
@@ -126,20 +215,31 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
   }, [lire, echec]);
   useEffect(() => { lire().then(l => { setSigs(l); setAbsente(false); }, echec); }, [lire, echec]);
 
+  /* V3.55 : le serveur dit que la page n'est plus à jour (lancée ou arrêtée
+     ailleurs, signé entre-temps) : le document se relit, la fiche montre où
+     il en est vraiment. */
+  const relire = useCallback(async () => {
+    const { data, error } = await supabase.from('documents').select('*').eq('id', doc.id).maybeSingle();
+    if (error) { setErreur(e => `${e ? `${e} ` : ''}Le document n’a pas pu être relu : ${error.message}`); return; }
+    if (data) onMaj(data as DocumentRow);
+    await charger();
+  }, [doc.id, onMaj, charger]);
+
   async function action(cle: string, body: Record<string, unknown>, ok: string) {
     setTravail(cle); setErreur(''); setInfo('');
     try { await appelSignature({ ...body, id: doc.id }); setInfo(ok); await charger(); }
-    catch (e) { setErreur((e as Error).message); }
+    catch (e) { setErreur((e as Error).message); if (pagePerimee(e)) await relire(); }
     setTravail('');
   }
   async function arreter() {
     const signes = (sigs || []).filter(x => x.statut === 'signe').length;
-    if (!confirm(`Arrêter la signature ${mode === 'en_ligne' ? 'en ligne' : 'sur place'} ?\n\nLes liens ne fonctionneront plus${signes ? `, et les ${signes > 1 ? `${signes} signatures déjà faites ne comptent plus` : 'signature déjà faite ne compte plus'}` : ''}. Le document redevient « à faire signer » : tu pourras la relancer.`)) return;
+    /* V3.55 : personne n'est prévenu, comme pour « Annuler le document ». */
+    if (!confirm(`Arrêter la signature ${mode === 'en_ligne' ? 'en ligne' : 'sur place'} ?\n\nLes liens ne fonctionneront plus${signes ? `, et les ${signes > 1 ? `${signes} signatures déjà faites ne comptent plus` : 'signature déjà faite ne compte plus'}` : ''}. Le document redevient « à faire signer » : tu pourras la relancer.\n\nPersonne n’est prévenu par e-mail : si quelqu’un a déjà signé, dis-le-lui. En ouvrant son lien, il lira que la signature est arrêtée.`)) return;
     setTravail('arreter'); setErreur('');
     try {
       await appelSignature({ action: 'annuler', id: doc.id });
       onMaj({ ...doc, signature: null });
-    } catch (e) { setErreur((e as Error).message); }
+    } catch (e) { setErreur((e as Error).message); if (pagePerimee(e)) await relire(); }
     setTravail('');
   }
   async function ouvrir(chemin: string | null | undefined) {
@@ -233,7 +333,9 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
               );
             })}
           </div>
-          {doc.statut === 'pret' && (
+          {/* V3.57 : la version complète est partie à chacun : plus d'arrêt
+              (« finaliser » range le document). */}
+          {doc.statut === 'pret' && !doc.signature?.envoi_le && !doc.signature?.envoye_le && (
             <button type="button" className={s.btnLien} style={{ alignSelf: 'flex-start', color: '#b91c1c' }} disabled={!!travail} onClick={arreter}>
               {travail === 'arreter' ? 'Arrêt…' : 'Arrêter la signature'}
             </button>
@@ -243,6 +345,7 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
 
       {lancer && (
         <FenetreLancer doc={doc} onFermer={() => setLancer(false)}
+          onPerime={msg => { setLancer(false); setInfo(''); setErreur(msg); void relire(); }}
           onLance={r => {
             setLancer(false);
             setSigs(r.signataires.sort((a, b) => a.rang - b.rang));

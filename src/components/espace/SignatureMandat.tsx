@@ -10,9 +10,14 @@
                            coordonnées, puis le code reçu par e-mail ;
      · <CarteMonMandat>    la rubrique « Mon mandat » de « Ma recherche » :
                            le PDF signé, et le lien discret « Renoncer au
-                           mandat » pendant les 14 jours ;
+                           mandat » pendant les 14 jours ; ou, préparé dans
+                           la rubrique Documents du CRM, où il en est
+                           (V3.55 : src/lib/documents-espace.ts) — signé en
+                           ligne par lui, le même lien (V3.56) ;
      · <CartePret>         la carte de l'accueil quand Alexandre a préparé le
-                           mandat (« Faire signer le mandat » dans le CRM).
+                           mandat (« Faire signer le mandat » dans le CRM) ;
+     · <CarteDocuments>    ses documents à l'accueil : à signer, signés par
+                           lui et en attente d'un autre, signés.
 
    Le texte affiché par « Lire le mandat complet » vient de src/lib/mandat.ts,
    exactement comme celui du PDF : ce qu'il lit est ce qu'il signe.
@@ -30,6 +35,8 @@ import {
 } from '@/lib/mandat';
 import { IDENTITE_DEFAUT, lireIdentite, type IdentiteAgence } from '@/lib/agence';
 import { chercherSocietes, qualiteDe, type SocieteTrouvee } from '@/lib/entreprises';
+/* Des types seulement : rien de ce fichier serveur ne part dans le navigateur. */
+import type { DocEspace, MandatDocEspace, SignataireEspace } from '@/lib/documents-espace';
 
 export type MandatEspace = {
   etat: 'valide' | 'a_signer' | 'sans_numero';
@@ -53,11 +60,15 @@ export type MandatEspace = {
   /** Ses documents signés en ligne (avenant, offre…) : à signer, ou signés. */
   documents?: DocEspace[];
   /** Un mandat de recherche préparé par Alexandre dans le CRM (V3.32), pas
-      encore signé : c'est lui qu'il signe, avec son lien (null tant qu'il
-      n'est pas parti). Le mandat de l'espace n'est alors pas proposé. */
+      encore signé : c'est lui qu'il signe, avec SON lien (null tant qu'il
+      n'en a pas un valable à lui, ou une fois qu'il a signé). Le mandat de
+      l'espace n'est alors pas proposé. */
   enRoute?: { lien: string | null } | null;
+  /** Ce même mandat de la rubrique Documents, état par état, pour « Mon
+      mandat de recherche » ; ou, signé, celui qui est en cours (V3.55). */
+  document?: MandatDocEspace | null;
 };
-export type DocEspace = { id: string; titre: string; etat: 'a_signer' | 'signe'; lien?: string; le?: string | null };
+export type { DocEspace, MandatDocEspace, SignataireEspace } from '@/lib/documents-espace';
 
 /* Un co-signataire vu depuis l'espace du premier : il l'a saisi lui-même,
    son adresse s'affiche donc en entier. */
@@ -88,6 +99,11 @@ const TRACES: Record<string, string[]> = {
   groupe: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5', 'M16 4.3a3.5 3.5 0 0 1 0 6.4', 'M18 14.8c1.9.7 3.2 2.5 3.5 5.2'],
   societe: ['M4 21V5l8-2v18', 'M12 8l8 2.5V21', 'M7.5 8h1.5', 'M7.5 12h1.5', 'M7.5 16h1.5', 'M15.5 13h1.5', 'M15.5 17h1.5', 'M2 21h20'],
   trombone: ['M20 11.5l-8.2 8.2a5 5 0 0 1-7-7L13 4.5a3.4 3.4 0 0 1 4.8 4.8l-8.1 8.2a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4'],
+  /* V3.55 : « Mes bons de visite » — voir, télécharger, déplier. */
+  oeil: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 'M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z'],
+  telecharger: ['M12 4v11', 'M7.5 10.5 12 15l4.5-4.5', 'M5 19.5h14'],
+  deplier: ['m6.5 9.5 5.5 5.5 5.5-5.5'],
+  cle: ['M8.5 15.5a4 4 0 1 1 0-8 4 4 0 0 1 0 8z', 'M12 11.5h8.5', 'M17.5 11.5v3', 'M20.5 11.5v2.2'],
 };
 export function Ic({ n, t = 18 }: { n: string; t?: number }) {
   const traces: readonly string[] = TRACES[n] || ICONES[n as Icone] || [];
@@ -422,8 +438,21 @@ export const ERREURS: Record<string, string> = {
   stockage: 'La signature n’a pas pu être enregistrée. Réessayez dans un instant.',
   enregistrement: 'La signature n’a pas pu être enregistrée. Réessayez dans un instant.',
   deja: 'Votre mandat est déjà signé.',
-  document: 'Alexandre vous a préparé votre mandat de recherche : c’est celui-là qu’il faut signer. Rechargez la page pour le retrouver.',
+  document: 'Alexandre vous a déjà préparé votre mandat de recherche : inutile d’en signer un second ici. Revenez à votre espace pour voir où il en est.',
+  /* V3.56 : Alexandre a retiré la proposition pendant qu'il signait. */
+  retire: 'Ce mandat n’est plus à signer pour le moment : Alexandre revient vers vous très vite.',
 };
+
+/* « document » (V3.32) : Alexandre lui a préparé son mandat dans le CRM, le
+   serveur refuse celui de l'espace. Ce qu'on lui dit dépend de ce qu'il a à
+   faire (V3.55) : le signer avec SON lien, rien (il l'a déjà signé), ou
+   attendre qu'Alexandre revienne vers lui. Jamais « c'est celui-là qu'il
+   faut signer » sans lui donner de quoi le signer. */
+type RefusDocument = { lien: string | null; signe: boolean };
+const refusDocument = (r: { lien?: unknown; signe?: unknown } | null | undefined): RefusDocument => ({
+  lien: typeof r?.lien === 'string' && r.lien.startsWith('/signer/') ? r.lien : null,
+  signe: r?.signe === true,
+});
 
 /* ── Son conjoint, un co-acquéreur : la fiche qu'il remplit pour lui ──
    Au niveau du module (AGENTS.md §2.4). « Même adresse que moi » est coché
@@ -654,7 +683,12 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const [champsCo, setChampsCo] = useState<Record<string, string>>({});
   /* Après sa signature : ceux qu'on attend encore. */
   const [enAttente, setEnAttente] = useState<CoEspace[]>([]);
+  /* Le serveur refuse : son mandat l'attend dans le CRM (voir RefusDocument). */
+  const [docRefus, setDocRefus] = useState<RefusDocument | null>(null);
   const haut = useRef<HTMLDivElement>(null);
+  const refuser = (r: { lien?: unknown; signe?: unknown } | null | undefined) => {
+    setDocRefus(refusDocument(r)); setErreur(''); setPad(false); setEtape('accueil');
+  };
 
   /* On note l'ouverture : c'est la première ligne du déroulé du certificat.
      La réponse porte la version du jour du mandat. */
@@ -663,7 +697,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     envoyer('mandat', { etape: 'afficher' }).then(r => {
       if (!vivant) return;
       /* Alexandre lui a préparé son mandat dans le CRM (V3.32) : pas celui-ci. */
-      if (r?.error === 'document') setErreur(ERREURS.document);
+      if (r?.error === 'document') { setDocRefus(refusDocument(r)); setEtape('accueil'); }
       if (r?.recherche) setRech(r.recherche);
       if (r?.identite) setIdentite(lireIdentite(r.identite));
     });
@@ -790,6 +824,8 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
       setEtape('signer');
     } else if (r?.error === 'change') {
       relire(r);
+    } else if (r?.error === 'document') {
+      refuser(r);
     } else if (r?.error === 'coordonnees' && r.champs) {
       if (typeof r.co === 'number') { ouvrirCo(r.co, r.champs); setErreur('Vérifiez les informations de votre co-acquéreur.'); }
       else if (r.societe) { setChampsSoc(r.champs); setErreur('Vérifiez les informations de votre société.'); }
@@ -804,6 +840,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     const r = await envoyer('mandat', corps(m));
     if (r?.ok) { setEmailMasque(r.email); setCode(''); setAttente(45); setCodeParti(true); setCodeDe(''); }
     else if (r?.error === 'change') relire(r);
+    else if (r?.error === 'document') refuser(r);
     else setErreur(ERREURS[r?.error] || 'Le code n’a pas pu être renvoyé.');
   };
 
@@ -832,6 +869,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
     }
     setEnvoi(false);
     if (r?.error === 'change') { relire(r); return; }
+    if (r?.error === 'document') { refuser(r); return; }
     if (r?.error === 'code' && typeof r.restants === 'number') {
       setErreur(r.restants > 0 ? `Ce code ne correspond pas. Encore ${r.restants} essai${r.restants > 1 ? 's' : ''}.` : ERREURS.trop);
     } else setErreur(ERREURS[r?.error] || 'La signature n’a pas abouti. Réessayez dans un instant.');
@@ -867,6 +905,26 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
       {[1, 2, 3].map(i => <i key={i} data-on={i <= pas ? '1' : undefined} />)}
     </div>
   ) : null;
+
+  /* ── Son mandat l'attend dans le CRM : pas de second mandat ici ── */
+  if (docRefus) {
+    return (
+      <div className="mdt">
+        {tete(raison === 'visite' ? 'Avant la visite' : 'Votre mandat de recherche')}
+        <div className="mdt-corps mdt-accueil">
+          <div className="mdt-sceau"><Ic n="bouclier" t={30} /></div>
+          <h3>{docRefus.signe ? 'Vous avez déjà signé votre mandat' : docRefus.lien ? 'Votre mandat de recherche vous attend' : 'Alexandre prépare votre mandat'}</h3>
+          <p className="mdt-p">{docRefus.signe
+            ? 'Alexandre vous l’avait préparé, et vous l’avez signé. Il n’y a rien d’autre à signer ici.'
+            : docRefus.lien
+              ? 'Alexandre vous l’a préparé et envoyé\u00a0: c’est celui-là qu’il faut signer, pas un second. Vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.'
+              : 'Il vous l’a préparé lui-même : inutile d’en signer un ici. Il revient vers vous pour la signature.'}</p>
+          {docRefus.lien && !docRefus.signe && <a className="btn or mdt-plein" href={docRefus.lien}>Lire et signer mon mandat</a>}
+          <button type="button" className={docRefus.lien && !docRefus.signe ? 'btn lien mdt-plein' : 'btn or mdt-plein'} onClick={onFermer}>Revenir à mon espace</button>
+        </div>
+      </div>
+    );
+  }
 
   /* ── 0. L'accueil : aucun chiffre, aucune somme ── */
   if (etape === 'accueil') {
@@ -1173,23 +1231,191 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   );
 }
 
+/* ══ Les documents de la rubrique Documents, vus d'ici (V3.55) ══════════
+   Qui signe et où il en est (src/lib/documents-espace.ts). Le client y est
+   « vous » ; son conjoint (son adresse est sur la fiche) peut ouvrir SA page
+   depuis ici — le code part sur l'adresse de la personne, jamais ailleurs.
+   Au niveau du module (AGENTS.md §2.4). */
+const nomSignataire = (s: SignataireEspace) => `${s.prenom} ${s.nom}`.trim() || 'Un signataire';
+const prenomSignataire = (s: SignataireEspace) => s.prenom || s.nom || 'un signataire';
+/* « signé le 6 octobre 2026 », « à signer »… V3.56 : un lien expiré ne
+   promet rien (Alexandre est prévenu par ses relances du matin ; un nouveau
+   lien n'est pas automatique, et une offre passée ne se signe plus). */
+function etatCourt(s: SignataireEspace, offreExpiree = false): string {
+  if (s.etat === 'signe') return s.le ? `signé le ${dateLongue(s.le)}` : 'signé';
+  if (offreExpiree) return 'pas signé à temps';
+  if (s.etat === 'sur_place') return 'à signer avec Alexandre';
+  if (s.etat === 'expire') return 'lien expiré, Alexandre est prévenu';
+  return 'à signer';
+}
+const enAttenteDe = (sigs: SignataireEspace[]) => prenoms(sigs.filter(s => s.etat !== 'signe' && s.qui !== 'vous').map(s => ({ prenom: prenomSignataire(s) })));
+
+/* Le texte de « Mon mandat de recherche » pour un mandat de Documents pas
+   encore signé par tous. `lien` : le sien, valable. */
+function texteMandatDocument(doc: MandatDocEspace | null, lien: string | null): string {
+  const envoye = 'Alexandre vous l’a envoyé à signer. Vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.';
+  if (lien) return envoye;
+  if (!doc) return 'Alexandre vous l’a préparé. Il revient vers vous pour la signature.';
+  /* V3.56 : « sur papier » et « prochain rendez-vous » ne se séparent pas
+     (un « papier. » seul sur sa ligne en 390 px). */
+  const avec = (qui: string) => (doc.mode === 'sur_place' ? `Vous le signerez avec ${qui}, à votre prochain\u00a0rendez-vous.` : `Vous le signerez avec ${qui}, sur\u00a0papier.`);
+  if (doc.statut === 'brouillon') {
+    return doc.mode === 'en_ligne'
+      ? 'Alexandre le prépare pour vous. Vous le recevrez par e-mail, pour le signer en ligne avec un code.'
+      : `Alexandre le prépare pour vous. ${avec('lui')}`;
+  }
+  if (doc.vous === 'signe') {
+    const moi = doc.signataires.find(s => s.qui === 'vous');
+    const quand = moi?.le ? ` le ${dateLongue(moi.le)}` : '';
+    const autres = enAttenteDe(doc.signataires);
+    return autres
+      ? `Vous l’avez signé${quand}. Il attend encore la signature de ${autres}. Vous pouvez déjà demander des visites.`
+      : `Vous l’avez signé${quand}. Alexandre le finalise : vous recevrez l’exemplaire complet par e-mail.`;
+  }
+  if (doc.vous === 'expire') return 'Le lien pour le signer a expiré. Alexandre en est prévenu : il revient vers vous.';
+  if (doc.mode === 'papier') return `Il est prêt. ${avec('Alexandre')}`;
+  if (doc.mode === 'sur_place' && doc.vous !== 'a_signer') return `Il est prêt. ${avec('Alexandre')}`;
+  /* En ligne, signature pas encore lancée, ou arrêtée : pas de fausse précision. */
+  if (!doc.lance) return 'Il est prêt. Alexandre revient vers vous pour la signature.';
+  /* Parti, mais aucune ligne à l'une de ses adresses. */
+  return 'Alexandre vous l’a envoyé à signer par e-mail.';
+}
+
+/* Les signataires, une ligne chacun (comme ceux du mandat signé ici). */
+function ListeSignataires({ sigs }: { sigs: SignataireEspace[] }) {
+  return (
+    <div className="mdt-sgn">
+      {sigs.map((s, i) => {
+        const e = etatCourt(s);
+        return (
+          <div key={i} className="mdt-sgn-bloc">
+            <div className="mdt-sgn-l">
+              <span className={'pt ' + (s.etat === 'signe' ? 'ok' : 'att')}><Ic n={s.etat === 'signe' ? 'check' : 'horloge'} t={16} /></span>
+              <span><b>{nomSignataire(s)}</b><span className="s">{s.qui === 'vous' ? `Vous · ${e}` : e.charAt(0).toUpperCase() + e.slice(1)}</span></span>
+            </div>
+            {s.qui === 'proche' && s.lien && (
+              <div className="mdt-sgn-a"><a className="mdt-relire" href={s.lien}><PeutSigner s={s} /></a></div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* « Claire peut signer ici, avec le code reçu sur son e-mail » — V3.56 :
+   « son e-mail » ne se coupe pas au trait d'union (« son e- / mail » en
+   390 px). DM Sans n'a pas le trait d'union insécable : un <span> qui ne
+   se coupe pas, et qui reprend tout de son lien (`.mdt-pret-tx span`, la
+   règle des phrases de carte, l'aurait mis en gris). */
+const SANS_COUPURE: React.CSSProperties = { whiteSpace: 'nowrap', font: 'inherit', color: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit' };
+function PeutSigner({ s }: { s: SignataireEspace }) {
+  return <>{`${prenomSignataire(s)} peut signer ici, avec le code reçu sur `}<span style={SANS_COUPURE}>son e-mail</span></>;
+}
+
+/* La page de signature d'un proche (son conjoint), en lien discret sous la
+   carte de l'accueil. */
+function LiensProches({ sigs }: { sigs?: SignataireEspace[] }) {
+  const l = (sigs || []).filter(s => s.qui === 'proche' && s.lien);
+  if (!l.length) return null;
+  return <>{l.map((s, i) => <a key={i} className="mdt-pret-a" href={s.lien || undefined}><PeutSigner s={s} /></a>)}</>;
+}
+
+/* L'exemplaire signé d'un de ses documents : un lien de deux minutes. La
+   fenêtre s'ouvre tout de suite, au toucher (un navigateur refuse d'ouvrir
+   une fenêtre après une attente réseau). */
+async function ouvrirDocument(envoyer: Envoyer, id: string, voir = false): Promise<boolean> {
+  const w = window.open('', '_blank');
+  const r = await envoyer('document', voir ? { id, voir: true } : { id });
+  if (r?.ok && r.url) { (w || window).location.assign(String(r.url)); return true; }
+  w?.close();
+  return false;
+}
+
 /* ══ « Mon mandat », dans « Ma recherche » ══════════════════════════════ */
 
 export function CarteMonMandat({ mandat, envoyer, onSigner, onRenoncer }: {
   mandat: MandatEspace; envoyer: Envoyer; onSigner: () => void; onRenoncer: () => void;
 }) {
   const [erreur, setErreur] = useState('');
-  /* Préparé par Alexandre dans le CRM (V3.32) : parti, il se signe avec son
-     lien ; pas encore parti, on le dit simplement. */
-  if (mandat.etat !== 'valide' && mandat.enRoute) return (
-    <section className="mdt-carte">
-      <div className="mdt-carte-t"><span className="ic"><Ic n="bouclier" t={17} /></span><span>Mon mandat de recherche</span></div>
-      <p className="mdt-carte-p">{mandat.enRoute.lien
-        ? 'Alexandre vous l’a envoyé à signer. Vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.'
-        : 'Alexandre le prépare pour vous : vous le recevrez très vite par e-mail, pour le signer.'}</p>
-      {mandat.enRoute.lien && <a className="btn or" href={mandat.enRoute.lien}><Ic n="plume" t={16} /><span>Signer mon mandat</span></a>}
-    </section>
-  );
+  const doc = mandat.document || null;
+  const tete = <div className="mdt-carte-t"><span className="ic"><Ic n="bouclier" t={17} /></span><span>Mon mandat de recherche</span></div>;
+
+  /* Préparé par Alexandre dans le CRM (V3.32), pas encore signé par tous :
+     chaque état dit ce qui est vrai (V3.55) — à signer avec SON lien, à
+     signer avec Alexandre (papier, sur place), lien expiré, signé par lui et
+     en attente d'un autre… Jamais « vous le recevrez très vite par e-mail »
+     pour un mandat qui se signe sur papier. */
+  if (mandat.etat !== 'valide' && ((doc && doc.statut !== 'signe' && doc.statut !== 'retracte') || mandat.enRoute)) {
+    const lien = doc?.vous === 'signe' ? null : mandat.enRoute?.lien || doc?.lien || null;
+    const sigs = doc?.signataires || [];
+    return (
+      <section className="mdt-carte">
+        {tete}
+        <p className="mdt-carte-p">{texteMandatDocument(doc, lien)}</p>
+        {(sigs.length > 1 || doc?.vous === 'signe') && <ListeSignataires sigs={sigs} />}
+        {lien && <a className="btn or" href={lien}><Ic n="plume" t={16} /><span>Signer mon mandat</span></a>}
+      </section>
+    );
+  }
+
+  /* Signé dans la rubrique Documents — à la main, en ligne ou sur place —,
+     et c'est lui le mandat en cours. L'exemplaire signé se télécharge dès
+     qu'il existe : scellé, ou le scan déposé par Alexandre. */
+  if (mandat.etat === 'valide' && doc?.statut === 'signe') {
+    const ouvrir = async () => {
+      setErreur('');
+      if (!(await ouvrirDocument(envoyer, doc.id))) setErreur('Le document n’a pas pu être ouvert. Réessayez dans un instant.');
+    };
+    /* V3.56 : signé en ligne par lui, la même renonciation que le mandat
+       signé ici. La page ne l'envoie que pendant son délai de rétractation ;
+       une page restée ouverte au-delà, le serveur répond « délai passé ». */
+    const finR = doc.renoncer?.fin || null;
+    return (
+      <section className="mdt-carte">
+        {tete}
+        <p className="mdt-carte-p">{doc.numero
+          ? <><b>{`N° ${doc.numero}`}</b>{doc.le ? ` · signé le ${dateLongue(doc.le)}` : ' · signé'}</>
+          : doc.le ? `Signé le ${dateLongue(doc.le)}` : 'Votre mandat de recherche est signé.'}</p>
+        {mandat.expiration && <p className="mdt-carte-s">{`Valable jusqu’au ${dateLongue(mandat.expiration + 'T12:00:00Z')} au plus tard.`}</p>}
+        {doc.fichier && (
+          <button type="button" className="btn fant" onClick={() => { void ouvrir(); }}>
+            <Ic n="doc" t={16} /><span>{doc.fichier === 'image' ? 'Télécharger mon mandat signé' : 'Télécharger mon mandat (PDF)'}</span>
+          </button>
+        )}
+        {erreur && <div className="mdt-erreur">{erreur}</div>}
+        {/* Comme pour le mandat signé ici : un simple lien en bas de la carte. */}
+        {finR && (
+          <button type="button" className="mdt-renoncer" onClick={onRenoncer}>{`Renoncer au mandat (possible jusqu’au ${dateLongue(finR)})`}</button>
+        )}
+      </section>
+    );
+  }
+
+  /* V3.56 : il a renoncé en ligne à son mandat de la rubrique Documents. On
+     le lui dit, simplement, et son exemplaire signé reste à portée de main. */
+  if (mandat.etat !== 'valide' && doc?.statut === 'retracte') {
+    const ouvrir = async () => {
+      setErreur('');
+      if (!(await ouvrirDocument(envoyer, doc.id))) setErreur('Le document n’a pas pu être ouvert. Réessayez dans un instant.');
+    };
+    const quoi = `votre mandat de recherche${doc.numero ? ` n° ${doc.numero}` : ''}`;
+    return (
+      <section className="mdt-carte">
+        {tete}
+        <p className="mdt-carte-p">{doc.retracteLe
+          ? `Vous avez renoncé à ${quoi} le ${dateLongue(doc.retracteLe)}. Il a pris fin, sans aucun frais.`
+          : `Vous avez renoncé à ${quoi}. Il a pris fin, sans aucun frais.`}</p>
+        {doc.fichier && (
+          <button type="button" className="btn fant" onClick={() => { void ouvrir(); }}>
+            <Ic n="doc" t={16} /><span>{doc.fichier === 'image' ? 'Télécharger le mandat signé' : 'Télécharger le mandat (PDF)'}</span>
+          </button>
+        )}
+        {erreur && <div className="mdt-erreur">{erreur}</div>}
+      </section>
+    );
+  }
+
   if (mandat.etat === 'sans_numero') return null;
   const telecharger = async () => {
     const w = window.open('', '_blank');
@@ -1329,19 +1555,93 @@ export function CarteAttente({ mandat, onVoir }: { mandat: MandatEspace; onVoir:
 }
 
 /* ══ Ses documents : ceux qui l'attendent, ceux qui sont signés ═══════════
-   Un avenant, une offre d'achat… envoyés pour signature en ligne depuis la
-   rubrique Documents du CRM. À signer : son lien personnel (le même que
-   dans l'e-mail). Signés : le PDF scellé, à télécharger. */
-export function CarteDocuments({ documents, envoyer }: { documents: DocEspace[]; envoyer: Envoyer }) {
+   Un mandat, un avenant, une offre d'achat… de la rubrique Documents du CRM
+   (V3.55 : src/lib/documents-espace.ts).
+     · à signer : SON lien personnel (le même que dans son e-mail) ;
+     · signé par lui, en attente d'un autre : qui a signé, qui on attend ;
+     · son lien a expiré : Alexandre est prévenu (relances du matin) et
+       revient vers lui — V3.56 : sans promettre de nouveau lien ; une offre
+       d'achat passée sa date de validité ne se signe plus, on le dit ;
+     · signés : l'exemplaire signé, à télécharger — scellé, ou le scan
+       qu'Alexandre a déposé pour un document signé à la main. Le mandat
+       signé ici, dans l'espace, les rejoint une fois complet : tous ses
+       documents signés au même endroit. */
+/* ── Un bon de visite signé (V3.55) ──
+   La visite (date, heure), le logement visité, et deux petits boutons :
+   « Voir » l'ouvre dans le navigateur, « Télécharger » l'enregistre. Au
+   niveau du module (AGENTS.md §2.4). */
+const quandVisite = (x: DocEspace) => {
+  const t = x.visite?.date ? Date.parse(`${x.visite.date}T12:00:00Z`) : x.le ? Date.parse(x.le) : NaN;
+  return Number.isFinite(t) ? t : 0;
+};
+const jourVisite = (x: DocEspace) => (x.visite?.date ? dateLongue(`${x.visite.date}T12:00:00Z`) : x.le ? dateLongue(x.le) : '');
+function dernierBon(bons: DocEspace[]): string {
+  const j = jourVisite(bons[0]);
+  return `${bons.length} visites${j ? ` · la dernière le ${j}` : ''}`;
+}
+function LigneBon({ x, seul, onVoir, onTelecharger }: { x: DocEspace; seul?: boolean; onVoir: () => void; onTelecharger: () => void }) {
+  const v = x.visite;
+  const jour = jourVisite(x);
+  const heure = v?.heure && /^\d{1,2}:\d{2}/.test(v.heure) ? ` à ${v.heure.slice(0, 5).replace(':', '\u00a0h\u00a0').replace(/\u00a0h\u00a000$/, '\u00a0h')}` : '';
+  const lieu = [v?.adresse, v?.ville].filter(Boolean).join(', ');
+  const bien = v?.bien ? v.bien.charAt(0).toUpperCase() + v.bien.slice(1) : '';
+  return (
+    <div className={`mdt-bon${seul ? ' seul' : ''}`}>
+      {seul && <span className="ic"><Ic n="cle" t={17} /></span>}
+      <div className="tx">
+        <b>{seul ? `Bon de visite${jour ? ` du ${jour}` : ''}` : jour ? `${jour}${heure}` : 'Visite'}</b>
+        {lieu && <span>{lieu}</span>}
+        {bien && <small>{bien}</small>}
+      </div>
+      <div className="mdt-bon-act">
+        <button type="button" onClick={onVoir}><Ic n="oeil" t={15} /><em>Voir</em></button>
+        <button type="button" onClick={onTelecharger}><Ic n="telecharger" t={15} /><em>Télécharger</em></button>
+      </div>
+    </div>
+  );
+}
+
+export function CarteDocuments({ documents, mandat, envoyer, onVoirMandat }: {
+  documents: DocEspace[]; mandat?: MandatEspace; envoyer: Envoyer;
+  /** « Voir » : « Mon mandat de recherche », dans « Ma recherche ». */
+  onVoirMandat?: () => void;
+}) {
   const [erreur, setErreur] = useState('');
-  if (!documents.length) return null;
+  const [bonsOuverts, setBonsOuverts] = useState(false);
   const aSigner = documents.filter(x => x.etat === 'a_signer');
-  const signes = documents.filter(x => x.etat === 'signe');
-  const telecharger = async (id: string) => {
-    const w = window.open('', '_blank');
-    const r = await envoyer('document', { id });
-    if (r?.ok && r.url) { (w || window).location.assign(String(r.url)); setErreur(''); }
-    else { w?.close(); setErreur('Le document n’a pas pu être ouvert. Vous l’avez aussi reçu par e-mail.'); }
+  const attente = documents.filter(x => x.etat === 'attente');
+  const expires = documents.filter(x => x.etat === 'expire');
+  /* Le mandat signé dans l'espace, une fois que tout le monde l'a signé — et
+     tant que c'est lui le mandat en cours (pas un mandat de Documents signé
+     depuis). */
+  const s = mandat?.etat === 'valide' && mandat.document?.statut !== 'signe' ? mandat.signe : null;
+  const ici: DocEspace[] = s && !(mandat?.cos || []).some(c => c.statut === 'invite')
+    ? [{ id: 'mandat-espace', titre: `Mandat de recherche n° ${s.numero}`, etat: 'signe', le: s.le, fichier: 'pdf', mandat: true, espace: true }]
+    : [];
+  const quand = (x: DocEspace) => { const t = x.le ? Date.parse(x.le) : NaN; return Number.isFinite(t) ? t : 0; };
+  /* V3.56 : « n° 1024 » ne se coupe pas (« n° » seul en bout de ligne en 390 px). */
+  const titre = (x: DocEspace) => x.titre.replace(/n° /g, 'n°\u00a0');
+  const tous = [...ici, ...documents.filter(x => x.etat === 'signe')].sort((a, b) => quand(b) - quand(a));
+  /* V3.55 : les bons de visite à part, du plus récent au plus ancien (la
+     date de la visite d'abord) ; à partir de deux, ils se rangent dans
+     « Mes bons de visite », qui se déplie. */
+  const bons = tous.filter(x => x.visite).sort((a, b) => quandVisite(b) - quandVisite(a));
+  const signes = tous.filter(x => !x.visite);
+  if (!aSigner.length && !attente.length && !expires.length && !tous.length) return null;
+
+  const telecharger = async (x: DocEspace) => {
+    setErreur('');
+    if (x.espace) {
+      const w = window.open('', '_blank');
+      const r = await envoyer('mandat', { etape: 'pdf' });
+      if (r?.ok && r.url) { (w || window).location.assign(String(r.url)); return; }
+      w?.close();
+    } else if (await ouvrirDocument(envoyer, x.id)) return;
+    setErreur('Le document n’a pas pu être ouvert. Réessayez dans un instant.');
+  };
+  const bon = async (x: DocEspace, voir: boolean) => {
+    setErreur('');
+    if (!(await ouvrirDocument(envoyer, x.id, voir))) setErreur('Le bon de visite n’a pas pu être ouvert. Réessayez dans un instant.');
   };
   return (
     <>
@@ -1349,22 +1649,75 @@ export function CarteDocuments({ documents, envoyer }: { documents: DocEspace[];
         <section key={x.id} className="mdt-pret">
           <div className="mdt-pret-ic"><Ic n="plume" t={20} /></div>
           <div className="mdt-pret-tx">
-            <b>{`Un document vous attend : ${x.titre}`}</b>
+            <b>{`Un document vous attend : ${titre(x)}`}</b>
             <span>{'Alexandre vous l’a envoyé à signer : vous le relisez en entier, puis vous le signez avec un code reçu par e-mail.'}</span>
+            <LiensProches sigs={x.signataires} />
           </div>
           <a className="btn or" href={x.lien}>Le signer</a>
         </section>
       ))}
-      {signes.length > 0 && (
+      {attente.map(x => (
+        <section key={x.id} className="mdt-pret mdt-pret-att">
+          <div className="mdt-pret-ic"><Ic n="horloge" t={20} /></div>
+          <div className="mdt-pret-tx">
+            <b>{x.mandat ? `Votre mandat de recherche attend la signature de ${enAttenteDe(x.signataires || [])}` : `${titre(x)} attend la signature de ${enAttenteDe(x.signataires || [])}`}</b>
+            <span>{x.le ? `Vous l’avez signé le ${dateLongue(x.le)}.` : 'Vous l’avez signé.'}</span>
+            <div className="mdt-pret-qui">
+              {(x.signataires || []).map((g, i) => (
+                <div key={i}><i aria-hidden="true" className={g.etat === 'signe' ? 'ok' : undefined} /><em>{`${nomSignataire(g)}${g.qui === 'vous' ? ' (vous)' : ''} · ${etatCourt(g)}`}</em></div>
+              ))}
+            </div>
+            <LiensProches sigs={x.signataires} />
+          </div>
+          {x.mandat && onVoirMandat && <button type="button" className="btn fant" onClick={onVoirMandat}>Voir</button>}
+        </section>
+      ))}
+      {expires.map(x => (
+        <section key={x.id} className="mdt-pret">
+          <div className="mdt-pret-ic"><Ic n="horloge" t={20} /></div>
+          <div className="mdt-pret-tx">
+            <b>{x.offreExpiree ? `Cette offre n’est plus valable\u00a0: ${titre(x)}` : x.mandat ? 'Le lien pour signer votre mandat a expiré' : `Le lien pour signer a expiré\u00a0: ${titre(x)}`}</b>
+            <span>{x.offreExpiree
+              ? 'Sa date de validité est passée\u00a0: elle ne peut plus être signée. Alexandre revient vers vous.'
+              : 'Alexandre en est prévenu\u00a0: il revient vers vous.'}</span>
+            {x.offreExpiree && (x.signataires || []).length > 1 && (
+              <div className="mdt-pret-qui">
+                {(x.signataires || []).map((g, i) => (
+                  <div key={i}><i aria-hidden="true" className={g.etat === 'signe' ? 'ok' : undefined} /><em>{`${nomSignataire(g)}${g.qui === 'vous' ? ' (vous)' : ''} · ${etatCourt(g, true)}`}</em></div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      ))}
+      {tous.length > 0 && (
         <section className="mdt-docs">
           <b className="t">Vos documents signés</b>
           {signes.map(x => (
-            <button key={x.id} type="button" className="mdt-doc" onClick={() => { void telecharger(x.id); }}>
+            <button key={x.id} type="button" className="mdt-doc" onClick={() => { void telecharger(x); }}>
               <span className="ic"><Ic n="doc" t={17} /></span>
-              <span className="tx"><b>{x.titre}</b>{x.le && <span>{`Signé le ${dateLongue(x.le)}`}</span>}</span>
-              <span className="go">PDF</span>
+              <span className="tx"><b>{titre(x)}</b>{x.le && <span>{`Signé le ${dateLongue(x.le)}`}</span>}</span>
+              <span className="go">{x.fichier === 'image' ? 'Ouvrir' : 'PDF'}</span>
             </button>
           ))}
+          {bons.length === 1 && <LigneBon x={bons[0]} seul onVoir={() => { void bon(bons[0], true); }} onTelecharger={() => { void bon(bons[0], false); }} />}
+          {bons.length > 1 && (
+            <div className={`mdt-bons${bonsOuverts ? ' ouvert' : ''}`}>
+              <button type="button" className="mdt-bons-tete" aria-expanded={bonsOuverts} onClick={() => setBonsOuverts(o => !o)}>
+                <span className="ic"><Ic n="cle" t={17} /></span>
+                <span className="tx">
+                  <b>Mes bons de visite<i>{bons.length}</i></b>
+                  <span>{dernierBon(bons)}</span>
+                </span>
+                <span className="chev"><Ic n="deplier" t={18} /></span>
+              </button>
+              {bonsOuverts && (
+                <div className="mdt-bons-liste">
+                  {bons.map(x => <LigneBon key={x.id} x={x} onVoir={() => { void bon(x, true); }} onTelecharger={() => { void bon(x, false); }} />)}
+                </div>
+              )}
+            </div>
+          )}
           {erreur && <div className="mdt-erreur">{erreur}</div>}
         </section>
       )}
@@ -1415,18 +1768,36 @@ export function AvantVisiteDocument({ lien, onFermer }: { lien: string; onFermer
 
 /* ══ La renonciation, avec sa confirmation ══════════════════════════════ */
 
+/* V3.56 : le mandat de la rubrique Documents auquel il peut renoncer d'ici,
+   quand c'est lui que « Mon mandat de recherche » montre (il passe avant
+   celui signé dans l'espace, comme dans la carte). Sinon null : c'est le
+   mandat signé ici. */
+export function mandatARenoncer(m: MandatEspace): MandatDocEspace | null {
+  const d = m.document;
+  return m.etat === 'valide' && d?.statut === 'signe' && d.renoncer ? d : null;
+}
+
 export function Renonciation({ mandat, envoyer, onFermer, onFait }: {
-  mandat: MandatEspace; envoyer: Envoyer; onFermer: () => void; onFait: () => void;
+  mandat: MandatEspace; envoyer: Envoyer; onFermer: () => void;
+  /* V3.57 : `accuse` — son accusé de réception est parti par e-mail ;
+     `deja` — c'était déjà fait (un second clic, une page restée ouverte). */
+  onFait: (r: { accuse: boolean; deja: boolean }) => void;
 }) {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
-  const s = mandat.signe;
+  const doc = mandatARenoncer(mandat);
+  /* Le numéro et la fin du délai : du mandat de Documents, ou de celui signé ici. */
+  const cible = doc
+    ? { numero: doc.numero, fin: doc.renoncer?.fin || null }
+    : mandat.signe ? { numero: mandat.signe.numero, fin: mandat.signe.fin } : null;
   const confirmer = async () => {
     setEnvoi(true); setErreur('');
-    const r = await envoyer('mandat', { etape: 'renoncer', confirme: true });
+    const r = await envoyer('mandat', { etape: 'renoncer', confirme: true, ...(doc ? { document: doc.id } : {}) });
     setEnvoi(false);
-    if (r?.ok) onFait();
-    else setErreur(r?.error === 'delai' ? 'Le délai de rétractation est passé : parlez-en à Alexandre.' : 'La renonciation n’a pas pu être enregistrée. Réessayez dans un instant.');
+    if (r?.ok) onFait({ accuse: r.accuse !== false && r.deja !== true, deja: r.deja === true });
+    else setErreur(r?.error === 'delai' ? 'Le délai de rétractation est passé : parlez-en à Alexandre.'
+      : r?.error === 'aucun' && doc ? ERREURS.aucun
+        : 'La renonciation n’a pas pu être enregistrée. Réessayez dans un instant.');
   };
   return (
     <>
@@ -1435,8 +1806,8 @@ export function Renonciation({ mandat, envoyer, onFermer, onFait }: {
         <button className="fermer" onClick={onFermer} aria-label="Fermer"><Ic n="croix" t={14} /></button>
       </div>
       <div className="corps-f">
-        <p className="mdt-p" style={{ textAlign: 'left' }}>{s
-          ? `Vous pouvez renoncer à votre mandat de recherche n° ${s.numero} jusqu’au ${dateLongue(s.fin)}. Il prend fin tout de suite, sans aucun frais, et vous recevez un accusé de réception par e-mail.`
+        <p className="mdt-p" style={{ textAlign: 'left' }}>{cible?.fin
+          ? `Vous pouvez renoncer à votre mandat de recherche${cible.numero ? ` n° ${cible.numero}` : ''} jusqu’au ${dateLongue(cible.fin)}. Il prend fin tout de suite, sans aucun frais, et vous recevez un accusé de réception par e-mail.`
           : 'Votre mandat prend fin tout de suite, sans aucun frais.'}</p>
         {erreur && <div className="mdt-erreur">{erreur}</div>}
         <button type="button" className="btn mdt-plein mdt-brique" disabled={envoi} onClick={confirmer}>
@@ -1644,7 +2015,9 @@ export const CSS_MANDAT = `
 .mdt-pret-tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
 .mdt-pret-tx b{font-size:14.5px; color:var(--encre)}
 .mdt-pret-tx span{font-size:12.5px; color:var(--plume); line-height:1.45}
-.mdt-pret .btn{flex:0 0 auto; padding:10px 16px}
+/* width:auto : le .btn de l'espace prend toute la largeur, et sur tablette ou
+   ordinateur il écrasait le texte de la carte en une colonne d'un mot (V3.55). */
+.mdt-pret .btn{flex:0 0 auto; width:auto; padding:10px 16px}
 .mdt-docs{display:flex; flex-direction:column; gap:8px; margin:14px 0 0; padding:14px 16px; border-radius:18px; background:var(--carte); border:1px solid var(--trait)}
 .mdt-docs .t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--or-fonce)}
 .mdt-doc{display:flex; align-items:center; gap:12px; width:100%; padding:10px 12px; border-radius:14px; border:1px solid var(--trait) !important; background:var(--fond) !important; text-align:left}
@@ -1653,7 +2026,45 @@ export const CSS_MANDAT = `
 .mdt-doc .tx b{font-size:14px; color:var(--encre)}
 .mdt-doc .tx span{font-size:12px; color:var(--plume)}
 .mdt-doc .go{flex:0 0 auto; font-size:11px; font-weight:800; letter-spacing:1px; color:var(--or-fonce)}
+/* V3.55 : les bons de visite — un seul : une ligne ; plusieurs : « Mes bons
+   de visite », qui se déplie (une ligne par visite, la plus récente en haut). */
+.mdt-bons{border-radius:14px; border:1px solid var(--trait); background:var(--fond); overflow:hidden}
+.mdt-bons-tete{display:flex; align-items:center; gap:12px; width:100%; padding:10px 12px; border:none !important; background:transparent !important; text-align:left; cursor:pointer}
+.mdt-bons-tete .ic, .mdt-bon .ic{flex:0 0 auto; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce)}
+.mdt-bons-tete .tx{flex:1; min-width:0; display:flex; flex-direction:column}
+.mdt-bons-tete .tx b{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--encre)}
+.mdt-bons-tete .tx b i{font-style:normal; min-width:20px; height:20px; padding:0 6px; border-radius:99px; display:inline-flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce); font-size:11.5px; font-weight:800}
+.mdt-bons-tete .tx > span{font-size:12px; color:var(--plume)}
+.mdt-bons-tete .chev{flex:0 0 auto; display:flex; color:var(--plume); transition:transform .18s ease}
+.mdt-bons.ouvert .mdt-bons-tete .chev{transform:rotate(180deg)}
+.mdt-bons-liste{display:flex; flex-direction:column; border-top:1px solid var(--trait)}
+.mdt-bon{display:flex; align-items:center; gap:12px; padding:10px 12px}
+.mdt-bons-liste .mdt-bon + .mdt-bon{border-top:1px solid var(--trait)}
+.mdt-bon.seul{border-radius:14px; border:1px solid var(--trait); background:var(--fond)}
+.mdt-bon .tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px}
+.mdt-bon .tx b{font-size:13.5px; color:var(--encre)}
+.mdt-bon .tx > span{font-size:12.5px; color:var(--encre2); overflow-wrap:anywhere}
+.mdt-bon .tx small{font-size:12px; color:var(--plume)}
+.mdt-bon .mdt-bon-act{flex:0 0 auto; display:flex; gap:6px}
+.mdt-bon .mdt-bon-act button{display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 10px; border-radius:9px; border:1px solid var(--trait) !important; background:var(--carte) !important; color:var(--or-fonce); font-size:12px; font-weight:800; cursor:pointer}
+.mdt-bon .mdt-bon-act button em{font-style:normal}
+@media(max-width:480px){
+  .mdt-bon{flex-wrap:wrap}
+  .mdt-bon .mdt-bon-act{flex:1 1 100%}
+  .mdt-bon.seul .act{padding-left:46px}
+  .mdt-bon .mdt-bon-act button{flex:1 1 0; justify-content:center; height:36px}
+}
 @media(max-width:420px){ .mdt-pret{flex-wrap:wrap} .mdt-pret .btn{width:100%} }
+/* Un document de la rubrique Documents signé par lui, en attente d'un autre :
+   qui a signé, qui on attend (un point par personne), et la page de son
+   conjoint en lien discret. Pas de <span> ici : .mdt-pret-tx span les prendrait. */
+.mdt-pret-qui{display:flex; flex-direction:column; gap:3px; margin-top:5px}
+.mdt-pret-qui > div{display:flex; align-items:center; gap:8px; min-width:0}
+.mdt-pret-qui i{flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:var(--or)}
+.mdt-pret-qui i.ok{background:var(--vert)}
+.mdt-pret-qui em{font-style:normal; font-size:12.5px; line-height:1.4; color:var(--encre2); min-width:0; overflow-wrap:anywhere}
+.mdt-pret-a{align-self:flex-start; margin-top:5px; font-size:12.5px; font-weight:700; line-height:1.4; color:var(--or-fonce);
+  text-decoration:underline; text-underline-offset:3px}
 
 .mdt-brique{background:var(--brique); color:#fff; margin-top:14px}
 
@@ -1741,6 +2152,8 @@ export const CSS_MANDAT = `
 .mdt-ok-l{font-size:12.5px; color:var(--vert); font-weight:700}
 .mdt-ns.ok{background:var(--vert-fond); border-color:var(--vert-trait); color:var(--vert)}
 .mdt-pret .btn.fant{width:auto}
+/* « Voir », sous la liste des signataires : sur téléphone, sur sa propre ligne. */
+@media(max-width:420px){ .mdt-pret.mdt-pret-att .btn.fant{width:100%} }
 @media(min-width:640px){ .mdt-perso-b{max-width:420px} }
 
 /* Téléphone : plus serré, pour que chaque étape tienne sans trop défiler. */

@@ -5,6 +5,7 @@ import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { modele, pdfDocument, txt, type CaseSignature, type Donnees, type Modele } from '@/lib/actes';
 import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
 import { heureParis } from '@/lib/mandat';
+import { retracteEnLigne } from '@/lib/documents-espace';
 import { Croix, Ic } from './ApercuActe';
 import {
   envoyerProjet, identiteDuJour, montrerPdf, quand,
@@ -101,7 +102,10 @@ export function evenementsDocument(d?: DocumentRow | null, x?: MandatRecherche |
     if (d.finalise_le) l.push({ cle: 'fin', le: d.finalise_le, ic: 'check', ton: 'bleu', t: courrier ? 'Finalisé, prêt à envoyer' : 'Finalisé, prêt à signer' });
     if (d.signature?.lance_le) l.push({ cle: 'sig', le: d.signature.lance_le, ic: d.signature.mode === 'en_ligne' ? 'mail' : 'tablette', ton: 'bleu', t: d.signature.mode === 'en_ligne' ? 'Liens de signature envoyés' : 'Signature sur place lancée' });
     if (d.signe_le) l.push({ cle: 'signe', le: d.signe_le, ic: 'check', ton: 'vert', t: courrier ? 'Envoyé' : 'Signé', jour: jourSeul(d.signe_le) });
-    if (d.annule_le) l.push({ cle: 'annule', le: d.annule_le, ic: 'croix', ton: 'rouge', t: 'Annulé' });
+    /* V3.56 : rétracté en ligne par le client, depuis son espace. */
+    const retracte = retracteEnLigne(d);
+    if (retracte) l.push({ cle: 'annule', le: retracte, ic: 'croix', ton: 'rouge', t: 'Rétracté en ligne par le client', detail: 'Depuis son espace, pendant son délai de rétractation' });
+    else if (d.annule_le) l.push({ cle: 'annule', le: d.annule_le, ic: 'croix', ton: 'rouge', t: 'Annulé' });
   }
   if (x) {
     l.push({ cle: 'cree', le: x.created_at, ic: 'plus', ton: 'gris', t: 'Préparé' });

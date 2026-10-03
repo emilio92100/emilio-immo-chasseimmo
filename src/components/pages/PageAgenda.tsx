@@ -678,6 +678,13 @@ function StylesAgenda() {
       @media (prefers-reduced-motion: reduce){.ag-section,.ag-panneau{animation:none}}
       @media (max-width: 760px){.ag-heure-ligne{grid-template-columns:1fr !important;gap:6px !important}}
       .ag-grille-defil::-webkit-scrollbar{width:8px}.ag-grille-defil::-webkit-scrollbar-thumb{background:#dde3ec;border-radius:8px}
+      /* V3.55 : les en-têtes de la semaine gardent la place de la barre de
+         défilement de la grille (8 px) : sans elle, chaque colonne du haut
+         était un peu plus large que celle du dessous, et la colonne jaune
+         d'aujourd'hui se décalait (Alexandre : « le jaune n'est pas en
+         continu »). La grille, elle, la garde même sans rien à faire défiler. */
+      .ag-gouttiere{overflow:hidden;scrollbar-gutter:stable}.ag-gouttiere::-webkit-scrollbar{width:8px}
+      .ag-grille-defil{scrollbar-gutter:stable}
     `}</style>
   );
 }
@@ -1052,7 +1059,7 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
   const colonnes = '56px repeat(7, minmax(0, 1fr))';
   return (
     <section className="ag-vue" style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 20, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: colonnes, borderBottom: `1px solid ${BORD}` }}>
+      <div className="ag-gouttiere" style={{ display: 'grid', gridTemplateColumns: colonnes, borderBottom: `1px solid ${BORD}` }}>
         <div />
         {semaine.map(k => {
           const d = depuisCle(k), estAuj = k === auj;
@@ -1069,7 +1076,7 @@ function VueSemaine({ semaine, evs, taches, auj, maintenant, onVoirEv, onJour, o
           );
         })}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: colonnes, borderBottom: `1px solid ${BORD}` }}>
+      <div className="ag-gouttiere" style={{ display: 'grid', gridTemplateColumns: colonnes, borderBottom: `1px solid ${BORD}` }}>
         <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: .2, color: PALE, textTransform: 'uppercase', padding: '11px 0 0 7px' }}>Journée</div>
         {semaine.map(k => (
           <div key={k} style={{ minHeight: 32, boxSizing: 'border-box', padding: 5, display: 'flex', flexDirection: 'column', gap: 4, borderLeft: `1px solid ${LIGNE}`, background: k === auj ? AUJ_FOND : 'white', minWidth: 0 }}>

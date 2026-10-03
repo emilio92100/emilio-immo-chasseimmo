@@ -17,7 +17,15 @@
      attendu  sur place : il signera sur l'écran d'Alexandre
      invite   son lien est parti, on l'attend
      signe    il a signé
-     annule   la signature a été arrêtée (ou il a été remplacé)
+     annule   la signature a été arrêtée (ou il a été remplacé). V3.55 : la
+              ligne garde son jeton, pour que son lien dise « Alexandre a
+              arrêté la signature » au lieu de « ce lien ne mène nulle part »
+
+   V3.55 : `documents.signature` est LA serrure. Lancer la réserve d'abord
+   (une écriture qui ne passe que si elle est vide), arrêter la vide d'abord,
+   et toute écriture qui suit une signature (version scellée, fin, rangement)
+   exige qu'elle soit encore celle du même lancement (`lance_le`) : une
+   signature arrêtée entre-temps ne revient jamais toute seule.
 
    Le document est « signé » quand plus personne n'est attendu : il est
    alors refait avec toutes les signatures, scellé (empreinte SHA-256,
@@ -68,6 +76,15 @@ export type SignatureDoc = {
   /* La version complète : assemblée, scellée, envoyée, rangée. */
   assemble_chemin?: string; assemble_le?: string;
   complet_le?: string; envoye_le?: string; classe_le?: string;
+  /* V3.56 : l'heure à laquelle la fin a été réservée (`complet_le`, lui,
+     est l'heure de la dernière signature). Une réservation de plus de dix
+     minutes jamais rangée est bloquée : la signature peut alors s'arrêter. */
+  complet_pris_le?: string;
+  /* V3.57 : l'envoi de la version complète à chacun a commencé (écrit juste
+     avant le premier e-mail, en ligne comme sur place). Dès lors, plus rien
+     ne se rend ni ne s'arrête : chacun a peut-être déjà reçu le document
+     signé par tous ; « Tout le monde a signé : finaliser » le range. */
+  envoi_le?: string;
 };
 export type DocSigne = {
   id: string; modele: string; statut: string; titre: string | null; numero: string | null;
@@ -200,10 +217,29 @@ export async function inviter(sb: SupabaseClient, s: SigDoc, m: Modele, d: Donne
       ...(o.rappel ? { relances: o.rappel } : {}),
       deroule: [...(s.deroule || []), { t: le, x: `${o.note || (o.rappel ? `Rappel n° ${o.rappel} envoyé` : 'Lien renvoyé')} (${s.personne.email})` }],
     };
-  const { data, error } = await sb.from('documents_signataires').update(maj).eq('id', s.id).select('*').single();
-  if (error || !data) return { erreur: error?.message || 'enregistrement', s };
+  /* V3.55 : seulement s'il est encore attendu. La signature arrêtée au même
+     moment (sa ligne passée « annule ») ne repart pas avec un lien neuf. */
+  const { data, error } = await sb.from('documents_signataires').update(maj).eq('id', s.id).in('statut', ['invite', 'attendu']).select('*').maybeSingle();
+  if (error) return { erreur: error.message, s };
+  if (!data) return { erreur: ARRETEE, s };
   const x = data as SigDoc;
   return { erreur: await envoyerLien(x, m, d, neuf ? 0 : o.rappel || 0), s: x };
+}
+
+/* L'erreur d'une signature arrêtée entre-temps (V3.55) : le signataire lit
+   « Alexandre a arrêté la signature », Alexandre « recharge la page ». */
+export const ARRETEE = 'arrete';
+
+/* La signature est-elle toujours celle du même lancement ? Arrêtée (vide),
+   relancée (autre `lance_le`), ou le document sorti de « à faire signer » :
+   non. */
+export function memeLancement(doc: Pick<DocSigne, 'statut' | 'signature'> | null, sd: Pick<SignatureDoc, 'lance_le'>): boolean {
+  return !!doc && doc.statut === 'pret' && !!doc.signature && doc.signature.lance_le === sd.lance_le;
+}
+export async function relireDocument(sb: SupabaseClient, id: string): Promise<DocSigne | null> {
+  const { data, error } = await sb.from('documents').select('*').eq('id', id).maybeSingle();
+  if (error) throw new Error('Le document n’a pas pu être relu : ' + error.message);
+  return (data as DocSigne) || null;
 }
 
 /* Le code à 6 chiffres, à SON adresse. */
@@ -257,8 +293,10 @@ export async function envoyerCode(sb: SupabaseClient, s: SigDoc, tous: SigDoc[],
   const { data, error } = await sb.from('documents_signataires').update({
     personne, code_hash: hacher(code, s.id), code_expire_le: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString(),
     code_essais: 0, codes_envoyes: remise ? 1 : s.codes_envoyes + 1, code_envoye_le: le, deroule,
-  }).eq('id', s.id).select('*').single();
-  if (error || !data) return { erreur: 'enregistrement', statut: 500, plus: { detail: error?.message } };
+  }).eq('id', s.id).in('statut', ['invite', 'attendu']).select('*').maybeSingle();
+  if (error) return { erreur: 'enregistrement', statut: 500, plus: { detail: error.message } };
+  /* V3.55 : la signature a été arrêtée pendant qu'il demandait son code. */
+  if (!data) return { erreur: ARRETEE, statut: 409 };
   const x = data as SigDoc;
   const mail = mailCode({ s: x, m, d, code, minutes: CODE_MINUTES });
   const e = await envoyerMail({ a: email, nomA: nomSig(x), deLaPartDe: 'agence', sujet: mail.sujet, texte: mail.texte, html: mail.html });
@@ -311,8 +349,12 @@ export async function validerSignature(sb: SupabaseClient, s: SigDoc, m: Modele,
       ...(demande ? [{ t: le, x: `Case à part cochée : « ${demande} »` }] : []),
     ],
   };
-  const { data, error } = await sb.from('documents_signataires').update(maj).eq('id', s.id).select('*').single();
-  if (error || !data) return { erreur: 'enregistrement', statut: 500, plus: { detail: error?.message } };
+  /* V3.55 : seulement s'il est encore attendu. Arrêtée par Alexandre pendant
+     qu'il signait (sa ligne est passée « annule ») : rien n'est noté, et il
+     le lit. */
+  const { data, error } = await sb.from('documents_signataires').update(maj).eq('id', s.id).in('statut', ['invite', 'attendu']).select('*').maybeSingle();
+  if (error) return { erreur: 'enregistrement', statut: 500, plus: { detail: error.message } };
+  if (!data) return { erreur: ARRETEE, statut: 409 };
   return { s: data as SigDoc };
 }
 
@@ -470,7 +512,10 @@ export async function envoyerExemplaire(o: {
   const Doc = doc.le.charAt(0).toUpperCase() + doc.le.slice(1);
   const corps = o.complet
     ? `${Doc} est signé par tous. Vous le trouverez ci-joint, avec son certificat de signature.`
-    : `Votre signature est enregistrée. Vous trouverez ci-joint ${doc.le} tel qu’il est signé aujourd’hui, avec son certificat. Vous recevrez la version complète dès que ${o.attendus.join(' et ')} l’aura signé.`;
+    : `Votre signature est enregistrée. Vous trouverez ci-joint ${doc.le} tel qu’il est signé aujourd’hui, avec son certificat. Vous recevrez la version complète dès que ${o.attendus.length
+      /* V3.57 : « Claire et Marc l’auront signé », jamais « l’aura » au pluriel. */
+      ? `${o.attendus.length > 1 ? `${o.attendus.slice(0, -1).join(', ')} et ${o.attendus[o.attendus.length - 1]}` : o.attendus[0]} l’${o.attendus.length > 1 ? 'auront' : 'aura'} signé`
+      : 'les autres signataires l’auront signé'}.`;
   const pied = retr ? 'Le document joint rappelle votre délai de rétractation de 14 jours et la façon de l’exercer.' : 'Gardez ce message : c’est votre exemplaire.';
   const prenom = o.s.personne.prenom || nomSig(o.s);
   return envoyerMail({
@@ -496,9 +541,11 @@ export async function envoyerExemplaire(o: {
 export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDoc, le: string, o: { echecs?: string[] } = {}): Promise<string[]> {
   const m = modele(doc.modele);
   const pbs: string[] = [];
+  /* V3.55 : et seulement si la signature est encore celle de ce lancement
+     (arrêtée entre-temps, il ne passe pas « Signé »). */
   const { data: classe, error } = await sb.from('documents').update({
     statut: 'signe', signe_le: le, signe_chemin: sd.scelle_chemin || null, signature: { ...sd, classe_le: new Date().toISOString() }, updated_at: new Date().toISOString(),
-  }).eq('id', doc.id).eq('statut', 'pret').select('id');
+  }).eq('id', doc.id).eq('statut', 'pret').eq('signature->>lance_le', sd.lance_le).select('id');
   if (error) { pbs.push('document : ' + error.message); return pbs; }
   if (!classe?.length) return pbs;
   /* La relance « n'a pas signé dans les 15 jours » n'a plus d'objet. */
@@ -551,29 +598,197 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
    V3.50 : deux derniers signataires au même moment arrivaient tous les deux
    ici. La fin se réserve d'abord, en une écriture qui ne passe qu'une fois
    (`complet_le` encore vide) : le second trouve la place prise et s'arrête
-   (`deja`), sans second PDF, ni second envoi, ni seconde ligne. */
+   (`deja`), sans second PDF, ni second envoi, ni seconde ligne.
+   V3.55 : la réservation exige aussi que la signature soit encore celle de
+   ce lancement. Arrêtée au même instant (vide), elle passait, et remettait
+   la signature sur un document arrêté : `erreur: 'arrete'`.
+   V3.56 : un échec après la réservation (scellement, stockage, document
+   pas rangé, exception) la rend : `complet_le` restait posé, et « Arrêter
+   la signature » était refusé pour toujours (« le document se range tout
+   seul »). « Tout le monde a signé : finaliser » reste le geste qui finit.
+   V3.57 : seulement AVANT le premier e-mail. Juste avant d'envoyer, la
+   version scellée et la marque `envoi_le` s'écrivent sur le document ;
+   ensuite, quoi qu'il arrive (document pas rangé, exception), la
+   réservation reste : rendue, elle effaçait la version scellée, et
+   « Arrêter » aurait vidé un document que chacun avait déjà reçu signé
+   par tous. L'arrêt refuse alors (`envoye`), et « finaliser » range. */
 export async function terminer(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[]): Promise<{ erreur: string | null; signe?: Uint8Array; echecs: string[]; deja?: boolean }> {
   const m = modele(doc.modele);
   if (!m) return { erreur: 'document', echecs: [] };
+  if (!doc.signature) return { erreur: ARRETEE, echecs: [] };
+  const sd0 = doc.signature;
   const le = sigs.filter(s => s.statut === 'signe').map(s => s.signe_le as string).sort().pop() || new Date().toISOString();
-  if (doc.signature) {
-    const { data: pris, error: eP } = await sb.from('documents').update({ signature: { ...doc.signature, complet_le: le } })
-      .eq('id', doc.id).eq('statut', 'pret').is('signature->>complet_le', null).select('id');
-    /* La réservation elle-même échoue : on continue comme avant (classer ne
-       passe de toute façon qu'une fois). */
-    if (eP) console.error('[signature] réserver la fin du document', eP.message);
-    else if (!pris?.length) return { erreur: null, echecs: [], deja: true };
+  const prisLe = new Date().toISOString();
+  const { data: pris, error: eP } = await sb.from('documents').update({ signature: { ...sd0, complet_le: le, complet_pris_le: prisLe } })
+    .eq('id', doc.id).eq('statut', 'pret').eq('signature->>lance_le', sd0.lance_le).is('signature->>complet_le', null).select('id');
+  /* La réservation elle-même échoue : on continue comme avant (classer ne
+     passe de toute façon qu'une fois, et seulement sur ce lancement). */
+  if (eP) console.error('[signature] réserver la fin du document', eP.message);
+  else if (!pris?.length) {
+    /* Pas réservée : un autre signataire a fini au même instant (deja), ou
+       la signature a été arrêtée. */
+    let frais: DocSigne | null = null;
+    try { frais = await relireDocument(sb, doc.id); } catch (e) { console.error('[signature] relire après la réservation', (e as Error).message); return { erreur: null, echecs: [], deja: true }; }
+    if (frais?.statut === 'signe') return { erreur: null, echecs: [], deja: true };
+    if (!memeLancement(frais, doc.signature)) return { erreur: ARRETEE, echecs: [] };
+    return { erreur: null, echecs: [], deja: true };
   }
-  const sc = await sceller(sb, doc, sigs);
-  if ('erreur' in sc) return { erreur: sc.erreur, echecs: [] };
-  const echecs: string[] = [];
-  for (const s of sigs.filter(x => x.statut === 'signe')) {
-    const e = await envoyerExemplaire({ s, m, d: doc.donnees, signe: sc.signe, complet: true, attendus: [] });
-    if (e) echecs.push(`${nomSig(s)} : ${e}`);
+  /* Rendre la réservation : la signature telle qu'avant, sans `complet_le`,
+     et seulement si c'est encore la nôtre (même lancement, même fin, pas
+     rangé). Ratée, on le note : l'arrêt passera au bout de dix minutes.
+     V3.57 : jamais une fois l'envoi commencé (`envoi`). */
+  let envoi = false;
+  const rendre = async () => {
+    if (eP || envoi) return;
+    const { error } = await sb.from('documents').update({ signature: sd0 })
+      .eq('id', doc.id).eq('statut', 'pret').eq('signature->>lance_le', sd0.lance_le).eq('signature->>complet_le', le);
+    if (error) console.error('[signature] rendre la fin réservée', error.message);
+  };
+  /* La signature du document, sur cette réservation-là seulement. */
+  const ecrireSignature = (sd: SignatureDoc) => sb.from('documents').update({ signature: sd })
+    .eq('id', doc.id).eq('statut', 'pret').eq('signature->>lance_le', sd0.lance_le).eq('signature->>complet_le', le).select('id');
+  try {
+    const sc = await sceller(sb, doc, sigs);
+    if ('erreur' in sc) { await rendre(); return { erreur: sc.erreur, echecs: [] }; }
+    /* V3.57 : avant le premier e-mail, la version scellée et la marque
+       « envoi commencé » sur le document. Pas écrites : rien ne part. */
+    const marque: SignatureDoc = { ...sc.maj, complet_le: le, complet_pris_le: prisLe, envoi_le: new Date().toISOString() };
+    if (!eP) {
+      const { data: ecrit, error: eM } = await ecrireSignature(marque);
+      if (eM) { await rendre(); return { erreur: 'document : ' + eM.message, echecs: [] }; }
+      if (!ecrit?.length) {
+        let frais: DocSigne | null = null;
+        try { frais = await relireDocument(sb, doc.id); } catch (e2) { console.error('[signature] relire avant l’envoi', (e2 as Error).message); }
+        return frais?.statut === 'signe' ? { erreur: null, echecs: [], deja: true } : { erreur: ARRETEE, echecs: [] };
+      }
+    }
+    envoi = true;
+    const echecs: string[] = [];
+    for (const s of sigs.filter(x => x.statut === 'signe')) {
+      const e = await envoyerExemplaire({ s, m, d: doc.donnees, signe: sc.signe, complet: true, attendus: [] });
+      if (e) echecs.push(`${nomSig(s)} : ${e}`);
+    }
+    const maj: SignatureDoc = { ...marque, envoye_le: new Date().toISOString() };
+    const pbs = await classer(sb, doc, maj, le, { echecs: [...echecs] });
+    /* Le document n'a pas pu passer « Signé » : la réservation RESTE (chacun
+       a reçu la version complète). On note au moins la fin de l'envoi ;
+       « Tout le monde a signé : finaliser » le range. */
+    if (pbs.some(p => p.startsWith('document :')) && !eP) {
+      const { error: eE } = await ecrireSignature(maj);
+      if (eE) console.error('[signature] noter la fin de l’envoi', eE.message);
+    }
+    echecs.push(...pbs);
+    return { erreur: null, signe: sc.signe, echecs };
+  } catch (e) {
+    console.error('[signature] terminer', e);
+    await rendre();
+    return { erreur: (e as Error)?.message || 'erreur', echecs: [] };
   }
-  const maj: SignatureDoc = { ...sc.maj, complet_le: le, envoye_le: new Date().toISOString() };
-  echecs.push(...await classer(sb, doc, maj, le, { echecs: [...echecs] }));
-  return { erreur: null, signe: sc.signe, echecs };
+}
+
+/* ── Un seul document du même genre en signature (V3.55) ──────────────────
+   Alexandre : « si j'ai lancé une signature et que je redemande la signature
+   du même document, est-ce que ça m'arrête ? ». « Dupliquer », ou « Préparer
+   une offre » sur le bien, faisaient une copie qui partait en signature à côté
+   de l'original : deux offres du même acquéreur pour le même bien, un « Avenant
+   n° 2 » pendant que le n° 1 se signe. Avant d'envoyer les liens, on cherche un
+   autre document du même modèle, déjà en signature, pour la même chose :
+     · mandat de vente : le même bien ;
+     · avenant (vente, recherche), délégation : le même mandat (son numéro) —
+       une délégation, au même confrère ;
+     · mandat de recherche : la même recherche ;
+     · offre d'achat : le même bien ET le même acquéreur (deux acquéreurs
+       différents sur un même bien, c'est normal) ;
+     · bon de visite : le même bien, le même visiteur, le même jour.
+   Le bien : son identifiant de bien en vente (`donnees.bienVenteId`), sinon
+   celui de la copie de l'acheteur (`bien_id`, rapprochée de son bien en vente
+   quand elle en a un), sinon l'adresse — V3.56 : et alors les mêmes
+   personnes (fiche client ou e-mail d'un signataire). La personne : la même fiche client,
+   sinon une adresse e-mail ou un nom de signataire en commun. Rend l'autre
+   document et la phrase qui le nomme, ou null. Une lecture ratée lève. */
+const net = (t: unknown) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9@.]+/g, ' ').trim();
+const champ = (d: Donnees | null | undefined, k: string) => (d && typeof d[k] === 'string' ? String(d[k]).trim() : '');
+const QUI_AUTRE: Record<string, { un: string; pour: string }> = {
+  mandat_vente: { un: 'Un autre mandat de vente', pour: 'pour ce bien' },
+  avenant_vente: { un: 'Un autre avenant', pour: 'à ce mandat' },
+  mandat_recherche: { un: 'Un autre mandat de recherche', pour: 'pour cette recherche' },
+  avenant_recherche: { un: 'Un autre avenant', pour: 'à ce mandat' },
+  offre_achat: { un: 'Une autre offre d’achat', pour: 'du même acquéreur pour ce bien' },
+  bon_visite: { un: 'Un autre bon de visite', pour: 'pour la même visite' },
+  delegation: { un: 'Une autre délégation', pour: 'de ce mandat au même confrère' },
+};
+export async function autreEnSignature(sb: SupabaseClient, doc: DocSigne): Promise<{ autre: DocSigne; phrase: string } | null> {
+  const qui = QUI_AUTRE[doc.modele];
+  if (!qui) return null;
+  const { data, error } = await sb.from('documents').select('*').eq('modele', doc.modele).eq('statut', 'pret')
+    .not('signature', 'is', null).neq('id', doc.id).limit(200);
+  if (error) throw new Error('Les autres documents en signature n’ont pas pu être lus : ' + error.message);
+  const autres = (data || []) as DocSigne[];
+  if (!autres.length) return null;
+  /* Les copies d'un bien chez un acheteur, rapprochées de leur bien en vente. */
+  const copies = [...new Set([doc, ...autres].map(x => x.bien_id).filter((x): x is string => !!x))];
+  const venteDe: Record<string, string> = {};
+  if (copies.length) {
+    const { data: b, error: eB } = await sb.from('biens').select('id, bien_vente_id').in('id', copies.slice(0, 300));
+    /* Illisible : chaque copie reste elle-même (l'adresse prend le relais). */
+    if (eB) console.error('[signature] copies des biens', eB.message);
+    for (const x of (b || []) as { id: string; bien_vente_id?: string | null }[]) if (x.bien_vente_id) venteDe[x.id] = x.bien_vente_id;
+  }
+  const bienDe = (x: DocSigne) => champ(x.donnees, 'bienVenteId') || (x.bien_id ? venteDe[x.bien_id] || `copie:${x.bien_id}` : '');
+  const adresseDe = (x: DocSigne) => { const a = net(champ(x.donnees, 'adresse')), v = net(champ(x.donnees, 'ville')); return a && v ? `${a}|${v}` : ''; };
+  /* V3.56 : l'adresse seule ne distingue pas deux lots d'un même immeuble
+     (le 5A et le 3B du 12 rue des Lilas). Quand l'un des deux n'a pas
+     d'identifiant de bien, il faut la même adresse ET les mêmes personnes :
+     la même fiche client, ou un signataire à la même adresse e-mail. */
+  const memeBien = (a: DocSigne, b: DocSigne) => {
+    const ka = bienDe(a), kb = bienDe(b);
+    if (ka && kb) return ka === kb;
+    const aa = adresseDe(a);
+    return !!aa && aa === adresseDe(b) && memesSignataires(a, b);
+  };
+  const memesSignataires = (a: DocSigne, b: DocSigne) => {
+    if (a.client_id && b.client_id) return a.client_id === b.client_id;
+    const eb = personnes(b).emails;
+    return personnes(a).emails.some(e => eb.includes(e));
+  };
+  const personnes = (x: DocSigne) => {
+    const m = modele(x.modele);
+    const cs = m ? casesDe(m, x).filter(c => !c.agence) : [];
+    return {
+      emails: cs.map(c => (c.personne?.email || '').trim().toLowerCase()).filter(Boolean),
+      /* Prénom et nom, tous les deux : deux « Martin » ne sont pas la même personne. */
+      noms: cs.map(c => (c.personne?.prenom && c.personne?.nom ? net(`${c.personne.prenom} ${c.personne.nom}`) : '')).filter(Boolean),
+    };
+  };
+  const moi = personnes(doc);
+  const memesPersonnes = (b: DocSigne) => {
+    if (doc.client_id && b.client_id) return doc.client_id === b.client_id;
+    const p = personnes(b);
+    return moi.emails.some(e => p.emails.includes(e)) || moi.noms.some(n => p.noms.includes(n));
+  };
+  const memeRecherche = (b: DocSigne) => (doc.recherche_id && b.recherche_id ? doc.recherche_id === b.recherche_id : !!doc.client_id && doc.client_id === b.client_id);
+  const numero = champ(doc.donnees, 'mandatNumero');
+  const memeMandat = (b: DocSigne) => !!numero && numero === champ(b.donnees, 'mandatNumero');
+  const pareil = (b: DocSigne): boolean => {
+    switch (doc.modele) {
+      case 'mandat_vente': return memeBien(doc, b);
+      case 'avenant_vente': return numero ? memeMandat(b) : memeBien(doc, b);
+      case 'mandat_recherche': return memeRecherche(b);
+      case 'avenant_recherche': return numero ? memeMandat(b) : memeRecherche(b);
+      case 'offre_achat': return memeBien(doc, b) && memesPersonnes(b);
+      case 'bon_visite': return memeBien(doc, b) && memesPersonnes(b) && champ(doc.donnees, 'dateVisite') === champ(b.donnees, 'dateVisite');
+      case 'delegation': return memeMandat(b) && champ(doc.donnees, 'confrereId') === champ(b.donnees, 'confrereId');
+      default: return false;
+    }
+  };
+  const autre = autres.find(pareil);
+  if (!autre) return null;
+  const nom = [autre.titre || modele(autre.modele)?.titre || 'Document', autre.numero ? `n° ${autre.numero}` : ''].filter(Boolean).join(', ');
+  const depuis = autre.signature?.lance_le ? ` depuis le ${dateCourte(autre.signature.lance_le)}` : '';
+  return {
+    autre,
+    phrase: `${qui.un} ${qui.pour} est déjà en signature${depuis} : « ${nom} ». Arrête d’abord sa signature dans Documents, puis lance celle-ci.`,
+  };
 }
 
 export const lienCrmDocument = (doc: Pick<DocSigne, 'client_id'>) =>

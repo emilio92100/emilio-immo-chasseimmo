@@ -7,7 +7,7 @@ import { ecritServeur } from '@/lib/ecritures';
 import {
   lireSignataires, casesDe, jetonSigner, envoyerLien, inviter, envoyerCode, validerSignature, sceller, assembler, envoyerExemplaire,
   classer, lireFichier, nomSig, actif, attendu, emailValide, nomDocument, ALERTES, envoyerMail, gabarit, echappe, lienCrmDocument,
-  finLien, offreFinie,
+  finLien, offreFinie, autreEnSignature, ARRETEE,
   type DocSigne, type SigDoc, type SignatureDoc, type PersonneSig,
 } from '@/lib/signature-documents';
 import { solderRelancesSignature } from '@/lib/documents-relances';
@@ -20,14 +20,27 @@ import { solderRelancesSignature } from '@/lib/documents-relances';
  *
  *   { action: 'lancer', id, signataires: [{ cle, email }] }
  *        l'agence signe ; en ligne, chacun reçoit son lien ; sur place, on
- *        attend chacun devant l'écran
+ *        attend chacun devant l'écran. V3.55 : le document se réserve
+ *        d'abord (deux onglets, deux clics : un seul passe), et un autre
+ *        document du même genre déjà en signature pour la même chose
+ *        l'arrête (« concurrent », voir autreEnSignature). V3.56 : tout
+ *        échec avant l'enregistrement des signataires rend la réservation ;
+ *        si elle ne se rend pas : « reserve » (Arrêter la signature la libère)
  *   { action: 'renvoyer', id, sig, email? }
  *        son lien, à nouveau (neuf si l'adresse change ou s'il a expiré) ;
  *        sur place, « il signera plus tard » : un lien lui part
  *   { action: 'annuler', id, pourquoi? }
  *        la signature s'arrête : les liens ne marchent plus, le document
  *        redevient « à faire signer ». `pourquoi: 'annulation'` : arrêtée
- *        parce que le document est annulé (V3.50), le Suivi le dit
+ *        parce que le document est annulé (V3.50), le Suivi le dit.
+ *        V3.55 : le document d'abord (une écriture qui ne passe que sur ce
+ *        lancement, pas encore terminé), puis les signataires, qui gardent
+ *        leur jeton : leur lien dit « Alexandre a arrêté la signature ».
+ *        Aussi sur un brouillon resté avec sa signature ouverte (avant la
+ *        V3.55, « Modifier » depuis une page pas à jour le permettait).
+ *        V3.56 : une fin réservée depuis plus de dix minutes et jamais
+ *        rangée (scellement raté) ne bloque plus l'arrêt. V3.57 : mais dès
+ *        que la version complète part à chacun, plus d'arrêt (« envoye »)
  *   { action: 'code', id, sig, email }                     (sur place)
  *   { action: 'signer', id, sig, code, griffe, accepte }  (sur place)
  *   { action: 'finaliser', id, etape }                     (sur place, à la fin)
@@ -39,6 +52,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/* V3.56 : au-delà, une fin réservée et jamais rangée est bloquée (voir annuler). */
+const FIN_BLOQUEE_MS = 10 * 60_000;
 const ko = (erreur: string, status = 400, plus: Record<string, unknown> = {}) => NextResponse.json({ ok: false, erreur, ...plus }, { status });
 
 function base(): SupabaseClient {
@@ -90,11 +105,9 @@ export async function POST(req: NextRequest) {
       if (doc.statut !== 'pret') return ko('etat', 409, { statut: doc.statut });
       if (!electronique(d)) return ko('papier', 409);
       if (finOffre) return ko('offre_expiree', 409, { fin: finOffre.toISOString() });
+      /* Déjà lancée (un autre onglet, un double clic) : rien ne repart. */
+      if (doc.signature) return ko('deja', 409);
       const mode = modeSignature(d) as 'en_ligne' | 'sur_place';
-      const lus = await lire();
-      if (!lus) return ko('lecture', 503);
-      const deja = lus.filter(actif);
-      if (deja.length) return ko('deja', 409);
       const cases = casesDe(m, doc).filter(c => !c.agence);
       if (!cases.length) return ko('personne', 400);
       const saisis: Record<string, Record<string, unknown>> = {};
@@ -107,33 +120,84 @@ export async function POST(req: NextRequest) {
       });
       if (Object.keys(champs).length) return ko('emails', 400, { champs });
       const le = new Date().toISOString();
-      const lignes = cases.map((c, i) => {
-        const p = personnes[i];
-        const enLigne = mode === 'en_ligne';
-        return {
-          document_id: doc.id, cle: c.cle, rang: i + 1, role: c.qui, nom: c.nom, mode, personne: p,
-          statut: enLigne ? 'invite' : 'attendu',
-          jeton: enLigne ? jetonSigner(p) : null,
-          /* Quinze jours, ou moins pour une offre d'achat (sa validité). */
-          lien_expire_le: enLigne ? finLien(m, d, le) : null,
-          invite_le: enLigne ? le : null,
-          deroule: [{ t: le, x: enLigne ? `Lien personnel envoyé à ${p.email}` : 'Attendu pour signer sur place' }],
-          relances: 0, code_essais: 0, codes_envoyes: 0,
-        };
-      });
-      const { data: rows, error } = await sb.from('documents_signataires').insert(lignes).select('*');
-      if (error || !rows) return ko('enregistrement', 500, { detail: error?.message });
       const sd: SignatureDoc = {
         mode, lance_le: le, agence_le: le,
         deroule: [{ t: le, x: mode === 'en_ligne'
           ? 'Document signé pour l’agence et adressé aux signataires, chacun par son lien personnel'
           : 'Document signé pour l’agence ; signature sur place ouverte' }],
       };
-      const { error: e2 } = await sb.from('documents').update({ signature: sd, updated_at: le }).eq('id', doc.id);
-      if (e2) {
-        /* Les liens créés juste avant ne doivent pas rester valables. */
-        await ecritServeur('L’annulation des liens', sb.from('documents_signataires').update({ statut: 'annule', jeton: null }).eq('document_id', doc.id));
-        return ko('enregistrement', 500, { detail: e2.message });
+      /* V3.55 : le document se réserve d'abord, en une écriture qui ne passe
+         qu'une fois (toujours « à faire signer », signature encore vide).
+         Avant, on lisait les signataires puis on en ajoutait : deux onglets
+         au même instant envoyaient chacun leurs liens. Le second trouve
+         maintenant la place prise, et rien ne part. */
+      const { data: pris, error: eP } = await sb.from('documents').update({ signature: sd, updated_at: le })
+        .eq('id', doc.id).eq('statut', 'pret').is('signature', null).select('id');
+      if (eP) return ko('enregistrement', 500, { detail: eP.message });
+      if (!pris?.length) {
+        const frais = await charger(sb, doc.id);
+        return frais?.statut === 'pret' ? ko('deja', 409) : ko('etat', 409, { statut: frais?.statut || null });
+      }
+      /* Rien n'est parti : la place se rend (seulement ce lancement-ci).
+         V3.56 : TOUT échec avant que les signataires soient enregistrés la
+         rend — une réponse d'erreur comme une exception imprévue (avant, une
+         exception laissait le document « en signature » sans personne à
+         attendre : le CRM disait « en signature », l'espace « envoyé », et
+         autreEnSignature bloquait les autres). Si elle ne se rend pas, on le
+         dit : « Arrêter la signature » la libère. */
+      const rendre = () => ecritServeur('La signature réservée', sb.from('documents').update({ signature: null }).eq('id', doc.id).eq('signature->>lance_le', le));
+      const liberer = async (reponse: NextResponse): Promise<NextResponse> => {
+        if (await rendre()) return reponse;
+        console.error('[documents/signature] lancement raté, et la signature réservée n’a pas pu être rendue', doc.id);
+        return ko('reserve', 500);
+      };
+      let rows: SigDoc[];
+      try {
+        /* V3.55 : un autre document du même genre, pour la même chose, déjà en
+           signature (une copie, une seconde offre du même acquéreur, l'avenant
+           suivant). Cherché une fois la place prise : deux copies lancées au
+           même instant se voient l'une l'autre, aucune ne part. */
+        let autre: Awaited<ReturnType<typeof autreEnSignature>> = null;
+        try { autre = await autreEnSignature(sb, doc); } catch (e) {
+          console.error('[documents/signature]', (e as Error).message);
+          return await liberer(ko('lecture', 503));
+        }
+        if (autre) return await liberer(ko('concurrent', 409, { message: autre.phrase, autre: autre.autre.id }));
+        const lus = await lire();
+        if (!lus) return await liberer(ko('lecture', 503));
+        /* Les signataires d'une signature arrêtée à moitié (le document vidé,
+           ses lignes pas encore fermées) : fermés avant d'en ouvrir d'autres,
+           sinon leurs anciens liens remarcheraient. */
+        const restes = lus.filter(actif);
+        if (restes.length) {
+          const { error: eR } = await sb.from('documents_signataires').update({ statut: 'annule', code_hash: null }).in('id', restes.map(x => x.id)).neq('statut', 'annule');
+          if (eR) return await liberer(ko('enregistrement', 500, { detail: eR.message }));
+        }
+        const lignes = cases.map((c, i) => {
+          const p = personnes[i];
+          const enLigne = mode === 'en_ligne';
+          /* V3.57 : une correction de l'agence reprise par la fenêtre d'envoi
+             (`repris`) se note, avec l'adresse du document qu'elle remplace :
+             la relance suivante la reprend encore (SignatureEnLigne). */
+          const duDoc = String(c.personne?.email || '').trim().toLowerCase();
+          const marque = saisis[c.cle]?.repris === true && duDoc && duDoc !== p.email ? ` (adresse corrigée par l’agence, au lieu de ${duDoc})` : '';
+          return {
+            document_id: doc.id, cle: c.cle, rang: i + 1, role: c.qui, nom: c.nom, mode, personne: p,
+            statut: enLigne ? 'invite' : 'attendu',
+            jeton: enLigne ? jetonSigner(p) : null,
+            /* Quinze jours, ou moins pour une offre d'achat (sa validité). */
+            lien_expire_le: enLigne ? finLien(m, d, le) : null,
+            invite_le: enLigne ? le : null,
+            deroule: [{ t: le, x: `${enLigne ? `Lien personnel envoyé à ${p.email}` : 'Attendu pour signer sur place'}${marque}` }],
+            relances: 0, code_essais: 0, codes_envoyes: 0,
+          };
+        });
+        const { data: ins, error } = await sb.from('documents_signataires').insert(lignes).select('*');
+        if (error || !ins) return await liberer(ko('enregistrement', 500, { detail: error?.message }));
+        rows = ins as SigDoc[];
+      } catch (e) {
+        console.error('[documents/signature] lancement', e);
+        return await liberer(ko('erreur', 500));
       }
       const echecs: string[] = [];
       if (mode === 'en_ligne') {
@@ -151,6 +215,55 @@ export async function POST(req: NextRequest) {
     if (!lus) return ko('lecture', 503);
     const sigs = lus;
     const sd = doc.signature;
+
+    /* ── Arrêter la signature ────────────────────────────────────── */
+    if (action === 'annuler') {
+      const ouverts = sigs.filter(actif);
+      /* « à faire signer » ; ou un brouillon resté avec sa signature ouverte
+         (avant la V3.55) : ses liens remarcheraient au prochain « Finaliser ». */
+      if (doc.statut !== 'pret' && !(doc.statut === 'brouillon' && (sd || ouverts.length))) return ko('etat', 409, { statut: doc.statut });
+      if (!sd && !ouverts.length) return ko('pas_lance', 409);
+      const le = new Date().toISOString();
+      /* V3.55 : le document d'abord, et seulement s'il est encore dans l'état
+         lu, sur ce lancement, pas encore terminé. Le dernier signataire qui
+         termine au même instant gagne : le document est signé, rien n'est
+         arrêté (avant, ses signataires passaient « annulé » quand même). */
+      if (sd) {
+        /* V3.57 : l'envoi de la version complète a commencé (`envoi_le`,
+           `envoye_le`) : chacun a peut-être déjà reçu le document signé par
+           tous. Plus d'arrêt, quel que soit l'âge : « finaliser » le range. */
+        if (doc.statut === 'pret' && (sd.envoi_le || sd.envoye_le)) return ko('envoye', 409);
+        /* V3.56 : une fin réservée (`complet_le`) depuis plus de dix minutes
+           sans que le document soit rangé est restée bloquée (le scellement a
+           échoué, la fonction s'est arrêtée en route) : l'arrêt passe, sur
+           cette réservation-là exactement. Avant, il était refusé pour
+           toujours, avec « le document se range tout seul ». */
+        const reserveLe = Date.parse(sd.complet_pris_le || sd.complet_le || '');
+        const bloquee = !!sd.complet_le && Number.isFinite(reserveLe) && Date.now() - reserveLe > FIN_BLOQUEE_MS;
+        if (sd.complet_le && !bloquee) return ko('complet', 409);
+        const arret = sb.from('documents').update({ signature: null, updated_at: le })
+          .eq('id', doc.id).eq('statut', doc.statut).eq('signature->>lance_le', sd.lance_le);
+        const { data: vide, error: e1 } = await (bloquee ? arret.eq('signature->>complet_le', sd.complet_le as string) : arret.is('signature->>complet_le', null)).select('id');
+        if (e1) return ko('enregistrement', 500, { detail: e1.message });
+        if (!vide?.length) {
+          const frais = await charger(sb, doc.id);
+          return frais?.statut === 'signe' || frais?.signature?.complet_le ? ko('complet', 409) : ko('etat', 409, { statut: frais?.statut || null });
+        }
+      }
+      /* Puis les signataires. Ils gardent leur jeton (V3.55) : leur lien dit
+         « Alexandre a arrêté la signature », et plus rien ne s'y signe. Le
+         code est effacé. */
+      const { error } = await sb.from('documents_signataires').update({ statut: 'annule', code_hash: null }).eq('document_id', doc.id).neq('statut', 'annule');
+      if (error) return ko('enregistrement', 500, { detail: error.message });
+      const signes = sigs.filter(s => s.statut === 'signe');
+      const annulation = body.pourquoi === 'annulation';
+      await journal(`⏹️ Signature arrêtée${annulation ? ', document annulé' : ''} : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus · personne n’a été prévenu par e-mail`);
+      /* V3.50 : les relances « n'a pas signé dans les 15 jours » n'ont plus d'objet. */
+      const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le });
+      if (eR) console.error('[documents/signature] relance du lien expiré', eR);
+      return NextResponse.json({ ok: true });
+    }
+
     if (!sd) return ko('pas_lance', 409);
     const cible = (): SigDoc | null => sigs.find(s => s.id === body.sig && actif(s)) || null;
 
@@ -167,36 +280,25 @@ export async function POST(req: NextRequest) {
       const change = !!email && email !== s.personne.email.toLowerCase();
       if (change) {
         const le = new Date().toISOString();
+        /* V3.55 : seulement s'il est encore attendu (arrêtée au même instant : rien). */
         const { data, error } = await sb.from('documents_signataires').update({
-          personne: { ...s.personne, email }, deroule: [...(s.deroule || []), { t: le, x: `Adresse e-mail corrigée par l’agence : ${email} (l’ancien lien ne fonctionne plus)` }],
-        }).eq('id', s.id).select('*').single();
-        if (error || !data) return ko('enregistrement', 500, { detail: error?.message });
+          /* V3.56 : l'ancienne adresse est notée (« au lieu de ») : relancée
+             plus tard, la fenêtre « Envoyer les liens » ne reprend cette
+             correction que si le document dit encore l'ancienne. */
+          personne: { ...s.personne, email }, deroule: [...(s.deroule || []), { t: le, x: `Adresse e-mail corrigée par l’agence : ${email} (au lieu de ${s.personne.email} ; l’ancien lien ne fonctionne plus)` }],
+        }).eq('id', s.id).in('statut', ['invite', 'attendu']).select('*').maybeSingle();
+        if (error) return ko('enregistrement', 500, { detail: error.message });
+        if (!data) return ko(ARRETEE, 409);
         x = data as SigDoc;
       }
       const r = await inviter(sb, x, m, d, { nouveau: change || s.statut === 'attendu', note: s.statut === 'attendu' ? 'Signera plus tard, par son lien' : undefined });
+      if (r.erreur === ARRETEE) return ko(ARRETEE, 409);
       if (r.erreur) return ko('mail', 502, { detail: r.erreur });
       await journal(`📨 Lien de signature ${s.statut === 'attendu' ? 'envoyé' : 'renvoyé'} à ${nomSig(r.s)}`, `${doc.titre || ''} · ${r.s.personne.email}`);
       /* V3.50 : sa relance « n'a pas signé dans les 15 jours » a sa réponse. */
       const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le, qui: nomSig(s) });
       if (eR) console.error('[documents/signature] relance du lien expiré', eR);
       return NextResponse.json({ ok: true, signataire: r.s });
-    }
-
-    /* ── Arrêter la signature ────────────────────────────────────── */
-    if (action === 'annuler') {
-      if (doc.statut !== 'pret') return ko('etat', 409);
-      const le = new Date().toISOString();
-      const { error } = await sb.from('documents_signataires').update({ statut: 'annule', jeton: null, code_hash: null }).eq('document_id', doc.id).neq('statut', 'annule');
-      if (error) return ko('enregistrement', 500, { detail: error.message });
-      const { error: e2 } = await sb.from('documents').update({ signature: null, updated_at: le }).eq('id', doc.id);
-      if (e2) return ko('enregistrement', 500, { detail: e2.message });
-      const signes = sigs.filter(s => s.statut === 'signe');
-      const annulation = body.pourquoi === 'annulation';
-      await journal(`⏹️ Signature arrêtée${annulation ? ', document annulé' : ''} : ${m.titre}`, `${doc.titre || ''}${signes.length ? ` · ${signes.map(nomSig).join(', ')} avai${signes.length > 1 ? 'ent' : 't'} déjà signé` : ''} · les liens ne fonctionnent plus${annulation ? ' · personne n’a été prévenu par e-mail' : ''}`);
-      /* V3.50 : les relances « n'a pas signé dans les 15 jours » n'ont plus d'objet. */
-      const eR = await solderRelancesSignature(sb, { clientId: doc.client_id, quoi: nomDocument(m, d).le });
-      if (eR) console.error('[documents/signature] relance du lien expiré', eR);
-      return NextResponse.json({ ok: true });
     }
 
     /* ── Sur place : son code, sur SON adresse ───────────────────── */
@@ -229,6 +331,14 @@ export async function POST(req: NextRequest) {
       const etape = String(body.etape || '');
       const membres = sigs.filter(actif);
       const signes = membres.filter(s => s.statut === 'signe');
+      /* V3.55 : chaque étape n'écrit que sur ce lancement-ci, document
+         toujours « à faire signer » : arrêtée entre-temps, elle s'arrête là
+         (avant, elle remettait la signature sur un document arrêté). */
+      const ecrire = async (maj: Record<string, unknown>) => {
+        const { data: fait, error } = await sb.from('documents').update(maj).eq('id', doc.id).eq('statut', 'pret').eq('signature->>lance_le', sd.lance_le).select('id');
+        if (error) return ko('enregistrement', 500, { detail: error.message });
+        return fait?.length ? null : ko(ARRETEE, 409);
+      };
       if (etape === 'verifier') {
         if (doc.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
         const manquent = membres.filter(attendu);
@@ -241,8 +351,8 @@ export async function POST(req: NextRequest) {
         if (doc.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
         const a = await assembler(sb, doc, sigs);
         if ('erreur' in a) return ko(a.erreur, a.erreur === 'attendus' ? 409 : 500);
-        const { error } = await sb.from('documents').update({ signature: { ...sd, assemble_chemin: a.chemin, assemble_le: new Date().toISOString() } }).eq('id', doc.id);
-        if (error) return ko('enregistrement', 500, { detail: error.message });
+        const pb = await ecrire({ signature: { ...sd, assemble_chemin: a.chemin, assemble_le: new Date().toISOString() } });
+        if (pb) return pb;
         return NextResponse.json({ ok: true, pages: a.pages });
       }
       if (etape === 'sceller') {
@@ -252,8 +362,10 @@ export async function POST(req: NextRequest) {
         if ('erreur' in sc) return ko(sc.erreur, 500);
         if (!sc.complet) return ko('attendus', 409);
         const le = signes.map(s => s.signe_le as string).sort().pop() || new Date().toISOString();
-        const { error } = await sb.from('documents').update({ signature: { ...sc.maj, complet_le: le } }).eq('id', doc.id);
-        if (error) return ko('enregistrement', 500, { detail: error.message });
+        /* `complet_pris_le` (V3.56) : l'heure de cette réservation, pour
+           qu'une fin restée bloquée puisse s'arrêter (voir annuler). */
+        const pb = await ecrire({ signature: { ...sc.maj, complet_le: le, complet_pris_le: new Date().toISOString() } });
+        if (pb) return pb;
         return NextResponse.json({ ok: true, empreinte: sc.empreinte, pages: sc.nbPages });
       }
       if (etape === 'envoyer') {
@@ -261,13 +373,18 @@ export async function POST(req: NextRequest) {
         if (sd.envoye_le) return NextResponse.json({ ok: true, deja: true, a: signes.map(nomSig) });
         const pdf = await lireFichier(sb, sd.scelle_chemin);
         if (!pdf) return ko('stockage', 500);
+        /* V3.57 : la marque « envoi commencé » d'abord : dès le premier
+           e-mail, la signature ne s'arrête plus (voir annuler). */
+        const envoiLe = sd.envoi_le || new Date().toISOString();
+        const pbE = await ecrire({ signature: { ...sd, envoi_le: envoiLe } });
+        if (pbE) return pbE;
         const echecs: string[] = [];
         for (const s of signes) {
           const e = await envoyerExemplaire({ s, m, d, signe: pdf, complet: true, attendus: [] });
           if (e) echecs.push(`${nomSig(s)} : ${e}`);
         }
-        const { error } = await sb.from('documents').update({ signature: { ...sd, envoye_le: new Date().toISOString() } }).eq('id', doc.id);
-        if (error) return ko('enregistrement', 500, { detail: error.message });
+        const pb = await ecrire({ signature: { ...sd, envoi_le: envoiLe, envoye_le: new Date().toISOString() } });
+        if (pb) return pb;
         if (echecs.length) {
           await envoyerMail({ a: ALERTES(), deLaPartDe: 'crm', sujet: `⚠️ Exemplaire non envoyé : ${doc.titre || m.titre}`,
             texte: `Le document signé sur place n'a pas pu être envoyé à : ${echecs.join(' ; ')}.\n\n${lienCrmDocument(doc)}`,

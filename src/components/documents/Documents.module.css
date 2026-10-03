@@ -838,3 +838,25 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
 .ztPoignee:hover::before { background: #c9a84c; }
 .ztBtn { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: none; border-radius: 7px; background: none; color: #a07c28; font: 700 12px 'DM Sans', sans-serif; cursor: pointer; }
 .ztBtn:hover { background: #fbf6e9; }
+
+/* ── L'exemplaire signé à la main, pas encore déposé (V3.55) ──
+   Alexandre : « un petit avertissement qui m'indique de ne pas oublier de
+   mettre le PDF signé, sinon le client ne pourra pas le voir dans son
+   espace ». Ambre, discret : une ligne dans la liste, un encadré dans la
+   fiche, une ligne avec « Déposer » sur la fiche d'un contact ou d'un bien. */
+.ligneDepot { display: flex; align-items: center; gap: 5px; margin-top: 4px; min-width: 0; font-size: 12px; font-weight: 600; color: #b45309; }
+.ligneDepot > svg { flex-shrink: 0; }
+.ligneDepot > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.depotNote { display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 13px; line-height: 1.5; }
+.depotNote > svg { flex-shrink: 0; margin-top: 2px; color: #b45309; }
+.depotNote > span { min-width: 0; }
+.dcAvecDepot { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dcDepot { display: flex; align-items: center; gap: 7px; padding: 6px 7px 6px 11px; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 12.5px; line-height: 1.4; }
+.dcDepot > svg { flex-shrink: 0; color: #b45309; }
+.dcDepot > span { flex: 1 1 auto; min-width: 0; }
+.dcDepotBtn { flex-shrink: 0; border: 1px solid #f3d38a; background: #fff; color: #92400e; border-radius: 8px; padding: 4px 11px; font: 700 12px 'DM Sans', sans-serif; cursor: pointer; }
+.dcDepotBtn:hover { background: #fef3c7; border-color: #e9b949; }
+.dcAvecDepot[data-enfant='oui'] > .dcDepot { margin-left: 26px; }
+@media (max-width: 640px) {
+  .ligneDepot > span { white-space: normal; }
+}

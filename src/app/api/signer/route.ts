@@ -387,20 +387,25 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
   /* Le document l'attend-il encore ? Alexandre a pu arrêter la signature,
      ou le document a pu être annulé. */
   const ouvert = s.statut === 'invite' && doc.statut === 'pret' && !!doc.signature;
+  /* V3.55 : arrêtée (sa ligne garde maintenant son jeton), document annulé
+     ou repassé en brouillon : la page le dit, avec les bons mots (avant :
+     « réessayez dans un instant »). Rien ne s'y signe plus. */
+  const arrete = s.statut !== 'signe' && !ouvert;
   /* V3.50 : une offre d'achat passée sa date de validité ne se signe plus. */
   const finOffre = SD.offreFinie(m, d);
 
   switch (etape) {
     case 'afficher': {
-      if (s.statut === 'invite' && !s.ouvert_le) {
+      if (ouvert && !s.ouvert_le) {
         const le = new Date().toISOString();
-        await ecritServeur('L’ouverture du lien', sb.from('documents_signataires').update({ ouvert_le: le, deroule: [...(s.deroule || []), { t: le, x: 'Lien personnel ouvert, document affiché' }] }).eq('id', s.id));
+        await ecritServeur('L’ouverture du lien', sb.from('documents_signataires').update({ ouvert_le: le, deroule: [...(s.deroule || []), { t: le, x: 'Lien personnel ouvert, document affiché' }] }).eq('id', s.id).eq('statut', 'invite'));
       }
       return NextResponse.json({ ok: true });
     }
 
     case 'code': {
-      if (!ouvert) return ko('etat', 409, { statut: s.statut });
+      if (s.statut === 'signe') return ko('deja', 409);
+      if (arrete) return ko(SD.ARRETEE, 409, { statut: s.statut });
       if (finOffre) return ko('offre_expiree', 410, { fin: finOffre.toISOString() });
       if (!SD.lienValide(s)) return ko('lien_expire', 410);
       const r = await SD.envoyerCode(sb, s, sigs, m, d);
@@ -411,7 +416,7 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
     case 'signer': {
       if (body.accepte !== true) return ko('accepte', 400);
       if (s.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
-      if (!ouvert) return ko('recommencer', 409);
+      if (arrete) return ko(SD.ARRETEE, 409);
       if (finOffre) return ko('offre_expiree', 410, { fin: finOffre.toISOString() });
       if (!SD.lienValide(s)) return ko('lien_expire', 410);
       const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
@@ -452,6 +457,9 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
       if (!restants.length) {
         /* Le dernier : tout est scellé, envoyé à chacun, rangé. */
         const t = await SD.terminer(sb, doc, tous);
+        /* V3.55 : Alexandre a arrêté la signature au même instant : rien
+           n'est scellé ni rangé, le signataire le lit. */
+        if (t.erreur === SD.ARRETEE) return ko(SD.ARRETEE, 409);
         if (t.erreur) { await bloque(t.erreur); return ko('stockage', 500, { detail: t.erreur }); }
         /* V3.50 : un autre signataire a fini au même instant, c'est lui qui
            scelle, envoie et range. Ici, rien d'autre à faire : ni second mail
@@ -466,8 +474,19 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
            pas été terminé entre-temps (un autre a pu signer en dernier). */
         const sc = await SD.sceller(sb, doc, tous);
         if ('erreur' in sc) { await bloque(sc.erreur); return ko('stockage', 500, { detail: sc.erreur }); }
-        const { error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id).eq('statut', 'pret').is('signature->>complet_le', null);
+        /* V3.55 : et seulement sur ce lancement. Arrêtée entre-temps (la
+           signature vidée), l'écriture remettait la signature sur un
+           document arrêté. */
+        const { data: ecrit, error: eD } = await sb.from('documents').update({ signature: sc.maj }).eq('id', doc.id).eq('statut', 'pret')
+          .eq('signature->>lance_le', doc.signature!.lance_le).is('signature->>complet_le', null).select('id');
         if (eD) echecs.push(`document : ${eD.message}`);
+        else if (!ecrit?.length) {
+          /* Pas écrite : un autre a terminé (rien à dire), ou la signature a
+             été arrêtée (on le lui dit, sans lui envoyer d'exemplaire). */
+          let frais: SD.DocSigne | null = null;
+          try { frais = await SD.relireDocument(sb, doc.id); } catch (e) { console.error('[signer] relire le document', (e as Error).message); }
+          if (frais && frais.statut !== 'signe' && !SD.memeLancement(frais, doc.signature!)) return ko(SD.ARRETEE, 409);
+        }
         pdf = sc.signe;
         const e = await SD.envoyerExemplaire({ s: r.s, m, d, signe: sc.signe, complet: false, attendus: restants.map(x => x.personne.prenom || SD.nomSig(x)) });
         if (e) echecs.push(`${moi} : ${e}`);
@@ -496,7 +515,11 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
 
     case 'pdf': {
       if (s.statut !== 'signe') return ko('aucun', 404);
-      const chemin = doc.statut === 'signe' ? doc.signe_chemin : doc.signature?.scelle_chemin;
+      /* V3.57 : un document qui a pris fin après sa signature (annulé,
+         renoncé) garde son exemplaire signé : le sien reste téléchargeable. */
+      const chemin = doc.statut === 'signe' ? doc.signe_chemin
+        : doc.statut === 'annule' ? doc.signe_chemin || doc.signature?.scelle_chemin
+        : doc.signature?.scelle_chemin;
       if (!chemin) return ko('aucun', 404);
       const { data, error } = await sb.storage.from(SD.BUCKET).createSignedUrl(chemin, 120, { download: SD.nomFichierPdf(m, d) });
       if (error || !data?.signedUrl) return ko('stockage', 500);

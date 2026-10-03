@@ -9,6 +9,7 @@ import { lireIdentiteAgence, IDENTITE_DEFAUT } from '@/lib/agence';
 import { masquerEmail, type Mandant } from '@/lib/mandat';
 import { lienEspace } from '@/lib/jeton';
 import { adressesClient } from '@/lib/mandat-serveur';
+import { retracteEnLigne } from '@/lib/documents-espace';
 
 /**
  * La page d'un co-signataire : espace.emilio-immo.com/signer/<jeton>.
@@ -103,17 +104,28 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
   if (!doc || !m) return null;
   const identite = doc.identite || IDENTITE_DEFAUT;
   const nd = SD.nomDocument(m, doc.donnees);
+  /* V3.56 : la page d'un lien qui ne sert pas (ou pas maintenant) : son
+     message, et RIEN du document — ni en-tête, ni case à cocher (le prix en
+     toutes lettres), ni rôle, ni dates des cadres, ni lien vers l'espace,
+     comme la page d'un co-signataire plus haut. Un jeton gardé après un
+     arrêt lit le document d'aujourd'hui, peut-être corrigé depuis. Seulement
+     le genre du document (« le mandat de recherche »), son prénom, et la
+     fin d'une offre passée. */
+  const sansRien = (etat: DonneesSignerDoc['etat'], finValidite: string | null = null): DonneesSignerDoc => {
+    const g = nomGenerique(m.id);
+    return {
+      jeton, etat, entete: '', le: g.le, du: g.du, court: g.court, espace: null,
+      moi: { prenom: s.personne.prenom, nom: '', email: '' }, role: '', autres: [],
+      parties: [], cadres: { etats: {}, moi: '' }, resume: [], accepter: '', expresse: null, identite: IDENTITE_DEFAUT,
+      code: null, signeLe: null, complet: false, expire: null, retractation: false, tel: TEL_AGENT, finValidite,
+    };
+  };
   /* V3.50 : une lecture ratée ne montre pas un document sans ses
      signataires : « réessayez dans un instant ». */
   let sigs: SD.SigDoc[];
   try { sigs = await SD.lireSignataires(sb, doc.id); } catch (e) {
     console.error('[signer] page, signataires', (e as Error).message);
-    return {
-      jeton, etat: 'indisponible', entete: m.entete(doc.donnees), le: nd.le, court: nd.court, espace: null,
-      moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: '' }, role: s.role || 'Signataire', autres: [],
-      parties: [], cadres: { etats: {}, moi: s.cle }, resume: [], accepter: '', expresse: null, identite,
-      code: null, signeLe: null, complet: false, expire: null, retractation: false, tel: TEL_AGENT,
-    };
+    return sansRien('indisponible');
   }
   const cases = SD.casesDe(m, doc);
   const etats: Record<string, string | null> = {};
@@ -121,15 +133,35 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
   if (doc.signature?.agence_le) etats.agence = doc.signature.agence_le;
   /* V3.50 : une offre d'achat passée sa date de validité ne se signe plus. */
   const finOffre = SD.offreFinie(m, doc.donnees);
-  const etat: DonneesSignerDoc['etat'] = s.statut === 'signe' ? 'signe'
+  /* V3.55 : une signature arrêtée garde le jeton de ses signataires : leur
+     lien dit « Alexandre a arrêté la signature ». Relancée depuis, avec un
+     nouveau lien pour lui (le même cadre, ou la même adresse) : ce lien-ci
+     a été remplacé par un plus récent. */
+  const moiEmail = String(s.personne.email || '').trim().toLowerCase();
+  const remplace = s.statut === 'annule' && sigs.some(x => x.id !== s.id && SD.actif(x)
+    && (x.cle === s.cle || (!!moiEmail && String(x.personne.email || '').trim().toLowerCase() === moiEmail)));
+  /* V3.57 : signé par lui, puis le document a pris fin (un mandat auquel
+     le client a renoncé, ou annulé dans le CRM) : « termine ». Avant, la
+     page disait « vous recevrez la version complète dès que… ». */
+  const etat: DonneesSignerDoc['etat'] = s.statut === 'signe' ? (doc.statut === 'annule' ? 'termine' : 'signe')
+    : remplace ? 'introuvable'
     : s.statut !== 'invite' || doc.statut === 'annule' || (doc.statut === 'pret' && !doc.signature) ? 'annule'
     : doc.statut !== 'pret' ? 'fin'
     : finOffre ? 'offre_expiree'
     : SD.lienValide(s) ? 'invite' : 'expire';
   /* V3.43 : le texte du document n'est envoyé que s'il y a quelque chose à
-     lire ou à signer (lien valable, ou déjà signé). */
-  const actif = etat === 'invite' || etat === 'signe';
-  const parties = actif ? m.rediger(doc.donnees, identite) : [];
+     lire ou à signer (lien valable, ou déjà signé : son exemplaire).
+     V3.56 : et tout le reste avec lui (voir sansRien) — arrêté, remplacé,
+     document annulé ou repassé en brouillon, expiré, offre plus valable. */
+  /* V3.57 : son exemplaire signé reste à lui (en-tête, sa date, le
+     téléchargement) ; rien d'autre du document. */
+  if (etat === 'termine') {
+    const brut = dr as { annule_le?: unknown } | null;
+    const fin = retracteEnLigne(doc) || (typeof brut?.annule_le === 'string' ? brut.annule_le : null);
+    return { ...sansRien('termine'), entete: m.entete(doc.donnees), signeLe: s.signe_le, finLe: fin, mandat: doc.modele === 'mandat_recherche' || doc.modele === 'mandat_vente' };
+  }
+  if (etat !== 'invite' && etat !== 'signe') return sansRien(etat, etat === 'offre_expiree' && finOffre ? finOffre.toISOString() : null);
+  const parties = m.rediger(doc.donnees, identite);
   /* Son espace, s'il en a un et que c'est bien lui (V3.32) : une fois signé,
      « Revenir à mon espace » — sa demande de visite l'y attend peut-être. */
   let espace: string | null = null;
@@ -140,12 +172,12 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     if (cl?.token_espace && moiEmail && adressesClient(cl).some(e => e.trim().toLowerCase() === moiEmail)) espace = lienEspace(cl.token_espace) || null;
   }
   return {
-    jeton, etat, entete: m.entete(doc.donnees), le: nd.le, court: nd.court, espace,
+    jeton, etat, entete: m.entete(doc.donnees), le: nd.le, du: nd.du, court: nd.court, espace,
     moi: { prenom: s.personne.prenom, nom: s.personne.nom || s.nom, email: masquerEmail(s.personne.email) },
     role: cases.find(c => c.cle === s.cle)?.qui || s.role || 'Signataire',
-    autres: actif ? sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })) : [],
+    autres: sigs.filter(x => SD.actif(x) && x.id !== s.id).map(x => ({ nom: SD.nomSig(x), signe: x.statut === 'signe' })),
     parties, cadres: { etats, moi: s.cle },
-    resume: actif ? m.resume(doc.donnees) : [], accepter: m.accepter ? m.accepter(doc.donnees, s.cle) : 'J’ai lu le document en entier et je l’accepte.',
+    resume: m.resume(doc.donnees), accepter: m.accepter ? m.accepter(doc.donnees, s.cle) : 'J’ai lu le document en entier et je l’accepte.',
     expresse: demandeExpresse(m, doc.donnees, s.cle),
     identite,
     code: s.statut === 'invite' && s.code_hash && s.code_envoye_le && recent(s.code_envoye_le) ? { le: s.code_envoye_le, email: masquerEmail(s.personne.email) } : null,
@@ -154,4 +186,20 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     retractation: aRetractation(m, doc.donnees), tel: TEL_AGENT,
     finValidite: finOffre ? finOffre.toISOString() : null,
   };
+}
+
+/* Le genre d'un document, sans rien de ce qu'il contient (V3.56) : pour la
+   page d'un lien qui ne sert plus. « Alexandre a arrêté la signature en
+   ligne du mandat de recherche. » */
+function nomGenerique(id: string): { le: string; du: string; court: string } {
+  switch (id) {
+    case 'mandat_vente': return { le: 'le mandat de vente', du: 'du mandat de vente', court: 'le mandat' };
+    case 'avenant_vente': return { le: 'l’avenant au mandat de vente', du: 'de l’avenant au mandat de vente', court: 'l’avenant' };
+    case 'mandat_recherche': return { le: 'le mandat de recherche', du: 'du mandat de recherche', court: 'le mandat' };
+    case 'avenant_recherche': return { le: 'l’avenant au mandat de recherche', du: 'de l’avenant au mandat de recherche', court: 'l’avenant' };
+    case 'offre_achat': return { le: 'l’offre d’achat', du: 'de l’offre d’achat', court: 'l’offre' };
+    case 'bon_visite': return { le: 'le bon de visite', du: 'du bon de visite', court: 'le bon de visite' };
+    case 'delegation': return { le: 'la délégation de mandat', du: 'de la délégation de mandat', court: 'la délégation' };
+    default: return { le: 'ce document', du: 'de ce document', court: 'le document' };
+  }
 }

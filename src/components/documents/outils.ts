@@ -25,6 +25,7 @@ import { juridiqueDepuis } from '@/lib/actes/delegation';
 import { mandatSigneSurBien } from '@/lib/mandat-bien';
 import { avenantSigneSurBien } from '@/lib/documents-avenant-bien';
 import { jourParis } from '@/lib/mandat';
+import { pourEspaceAcheteur } from '@/lib/documents-espace';
 
 export type DocumentRow = {
   id: string;
@@ -52,6 +53,7 @@ export type DocumentRow = {
   signature?: {
     mode: 'en_ligne' | 'sur_place'; lance_le: string; agence_le: string;
     scelle_chemin?: string; scelle_le?: string; complet_le?: string; envoye_le?: string; classe_le?: string;
+    envoi_le?: string;
   } | null;
   /* Les projets envoyés en relecture, avant la signature (V3.40), du plus
      ancien au plus récent. Absente avant outils/sql/documents-envois.sql. */
@@ -76,6 +78,33 @@ export const nomSignataire = (x: Pick<SignataireRow, 'personne' | 'nom'>) => `${
 
 /* La table des signataires n'existe pas encore (SQL pas encore passé). */
 export const tableSignaturesAbsente = (message: string) => /documents_signataires|column .*signature.* does not exist|Could not find the .*signature/i.test(message);
+
+/* V3.50 : le document a bougé depuis l'ouverture de la page. */
+export const CHANGE_ENTRE_TEMPS = 'Ce document a changé entre-temps (signé ou modifié ailleurs). Recharge la page pour voir où il en est.';
+
+/* ── L'exemplaire signé à la main (V3.55) ──
+   Alexandre : « si c'est fait à l'écrit, sans signature électronique, son
+   espace doit être à jour : si côté CRM je dis que c'est signé, c'est signé,
+   et c'est à moi de joindre le PDF signé pour qu'il puisse y accéder ».
+   Le client retrouve-t-il ce document dans son espace ? Un document d'acheteur
+   rattaché à sa fiche : mandat de recherche et ses avenants, offre d'achat,
+   bon de visite. Pas une délégation (entre professionnels), ni un document de
+   vendeur (pas encore d'espace vendeur), ni un courrier.
+   V3.56 : la règle est celle de l'espace lui-même (pourEspaceAcheteur,
+   src/lib/documents-espace.ts) : le CRM et l'espace ne peuvent plus dire
+   deux choses différentes. */
+export function vuDansEspace(row: Pick<DocumentRow, 'modele' | 'client_id'>): boolean {
+  return !!row.client_id && pourEspaceAcheteur(row.modele);
+}
+/* Signé à la main, et son exemplaire signé (scan, PDF) pas encore déposé.
+   En ligne ou sur place, l'exemplaire scellé se range tout seul. */
+export function exemplaireManquant(row: Pick<DocumentRow, 'modele' | 'statut' | 'signe_chemin' | 'signature'>): boolean {
+  return row.statut === 'signe' && !row.signe_chemin && !row.signature && !modele(row.modele)?.courrier;
+}
+/* La phrase du rappel, la même partout. */
+export const rappelExemplaire = (row: Pick<DocumentRow, 'modele' | 'client_id'>) => (vuDansEspace(row)
+  ? 'Exemplaire signé à déposer : ton client ne le voit pas encore dans son espace.'
+  : 'Exemplaire signé à déposer : garde-le ici, avec le document.');
 
 export async function lireSignataires(docId: string): Promise<SignataireRow[]> {
   const { data, error } = await supabase.from('documents_signataires').select('*').eq('document_id', docId).neq('statut', 'annule').order('rang');
@@ -108,11 +137,26 @@ const ERREURS_SIGNATURE: Record<string, string> = {
   /* V3.50 */
   lecture: 'Les signataires n’ont pas pu être lus : rien n’a été fait. Réessaie dans un instant.',
   offre_expiree: 'Cette offre n’est plus valable : sa date de validité est passée, elle ne peut plus être signée. Pour la faire signer, change d’abord sa date de validité (arrête la signature si elle est lancée, puis repasse l’offre en brouillon).',
+  /* V3.55 */
+  signataire: 'Ce signataire n’est plus attendu : il a signé entre-temps, ou la signature a été arrêtée. Recharge la page.',
+  personne: 'Personne à faire signer dans ce document : vérifie les signataires dans l’éditeur.',
+  arrete: 'La signature a été arrêtée entre-temps : recharge la page.',
+  complet: 'Tout le monde vient de signer : le document est en train de se ranger. Recharge la page dans un instant. S’il reste « en signature », clique sur « Tout le monde a signé : finaliser ».',
+  modele: 'Ce document ne se signe pas en ligne.',
+  document: 'Ce document est introuvable : il a peut-être été supprimé. Recharge la page.',
+  /* V3.57 : la version complète est partie (ou part) à chacun. */
+  envoye: 'Chacun a déjà reçu le document signé par tous : la signature ne peut plus être arrêtée. Clique sur « Tout le monde a signé : finaliser » pour le ranger.',
+  /* V3.56 : le lancement a échoué, et le document n'a pas pu être libéré. */
+  reserve: 'Rien n’est parti, mais le document est resté marqué « en signature ». Clique sur « Arrêter la signature » pour le libérer, puis relance-la.',
 };
 export class ErreurSignature extends Error {
   code: string; plus: Record<string, unknown>;
   constructor(code: string, message: string, plus: Record<string, unknown>) { super(message); this.code = code; this.plus = plus; }
 }
+/* Les réponses qui disent que la page n'est plus à jour (V3.55) : on relit
+   le document, pour montrer où il en est vraiment. */
+const PERIMES = ['deja', 'etat', 'pas_lance', 'arrete', 'complet', 'signataire', 'reserve', 'envoye'];
+export const pagePerimee = (e: unknown) => e instanceof ErreurSignature && PERIMES.includes(e.code);
 export async function appelSignature<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
   let r: Response;
   try {
@@ -128,6 +172,10 @@ export async function appelSignature<T = Record<string, unknown>>(body: Record<s
       ? 'La signature en ligne n’est pas encore installée : lance d’abord le fichier outils/sql/signature-documents.sql dans Supabase › SQL Editor.'
       : code === 'code' && typeof j?.restants === 'number'
         ? (j.restants > 0 ? `Ce code ne correspond pas. Encore ${j.restants} essai${j.restants > 1 ? 's' : ''}.` : ERREURS_SIGNATURE.trop)
+        /* V3.55 : un autre document du même genre est déjà en signature ;
+           le serveur dit lequel. */
+        : code === 'concurrent' && typeof j?.message === 'string' ? j.message
+        : code === 'enregistrement' ? `L’enregistrement n’a pas pu se faire${detail ? ` (${detail})` : ''}. Réessaie dans un instant.`
         : ERREURS_SIGNATURE[code] || `Erreur : ${detail || code}`;
     throw new ErreurSignature(code, msg, j || {});
   }
@@ -417,11 +465,27 @@ export async function numeroDejaPris(numero: string, id: string, rechercheId?: s
    document déjà parti en signature, ou ramenait un document signé à « À
    faire signer ». */
 const PLUS_BROUILLON = 'Ce document n’est plus un brouillon : il a été finalisé ou envoyé ailleurs. Recharge la page.';
+/* V3.55 : un brouillon qui a encore une signature en ligne ouverte (repassé
+   en brouillon depuis une page pas à jour, avant la V3.55). Finalisé, ses
+   anciens liens remarcheraient sur le nouveau texte, et les signatures déjà
+   faites se poseraient sur une version que personne n'a lue. */
+export const SIGNATURE_OUVERTE = 'Une ancienne signature en ligne est encore ouverte sur ce document : ses liens remarcheraient sur le nouveau texte. Arrête-la d’abord, puis finalise.';
+export async function signatureOuverte(id: string): Promise<boolean> {
+  const { data, error } = await supabase.from('documents_signataires').select('id').eq('document_id', id).neq('statut', 'annule').limit(1);
+  if (error) {
+    if (tableSignaturesAbsente(error.message)) return false;
+    throw new Error('Les signataires n’ont pas pu être vérifiés : ' + error.message);
+  }
+  return !!data?.length;
+}
 export async function finaliser(row: DocumentRow, m: Modele, dSaisi: Donnees, o: { registre?: boolean } = {}): Promise<DocumentRow> {
   let d = dSaisi;
-  const { data: avant, error: eAvant } = await supabase.from('documents').select('statut').eq('id', row.id).maybeSingle();
+  /* Toute la ligne : la colonne `signature` n'existe qu'après son SQL. */
+  const { data: avant, error: eAvant } = await supabase.from('documents').select('*').eq('id', row.id).maybeSingle();
   if (eAvant) throw new Error('Le document n’a pas pu être relu : ' + eAvant.message);
   if (!avant || (avant as { statut?: string }).statut !== 'brouillon') throw new Error(PLUS_BROUILLON);
+  const avecSignature = 'signature' in (avant as object);
+  if ((avant as DocumentRow).signature || await signatureOuverte(row.id)) throw new Error(SIGNATURE_OUVERTE);
   /* La ligne du registre et ce que ce mandat y inscrirait aujourd'hui. */
   let ligne: LigneRegistre | null = null;
   let entree: ReturnType<NonNullable<Modele['registre']>> | null = null;
@@ -443,10 +507,11 @@ export async function finaliser(row: DocumentRow, m: Modele, dSaisi: Donnees, o:
   const octets = await pdfDocument(m, d, identite);
   const chemin = await deposer(row.id, 'pdf', new Blob([octets as BlobPart], { type: 'application/pdf' }), 'pdf');
   const maintenant = new Date().toISOString();
-  const { data, error } = await supabase.from('documents').update({
+  const maj = supabase.from('documents').update({
     ...colonnesListe(m, d), donnees: d, identite, statut: 'pret', pdf_chemin: chemin,
     finalise_le: maintenant, updated_at: maintenant,
-  }).eq('id', row.id).eq('statut', 'brouillon').select().maybeSingle();
+  }).eq('id', row.id).eq('statut', 'brouillon');
+  const { data, error } = await (avecSignature ? maj.is('signature', null) : maj).select().maybeSingle();
   if (error) throw new Error('Le PDF est prêt mais le document n’a pas pu être mis à jour : ' + error.message);
   if (!data) throw new Error(PLUS_BROUILLON);
   /* V3.50 : finalisé à nouveau après une correction (un nom, le prix), il

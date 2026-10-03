@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
 import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/actes';
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
@@ -24,7 +25,8 @@ import {
   MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
-import { lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
+import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
+import FenetreSigne from '@/components/documents/FenetreSigne';
 import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
 import { DocsParEtat, depuisDoc } from '@/components/documents/DocumentsDuClient';
 import { mandatVenteEnCours } from '@/lib/coherence';
@@ -995,6 +997,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const [menu, setMenu] = useState<'etape' | 'plus' | null>(null);
   const [guide, setGuide] = useState<{ titre: string; texte: string; choix: ChoixGuide[] } | null>(null);
   const [fen, setFen] = useState<Fen | null>(null);
+  /* V3.55 : l'exemplaire signé à la main d'un document du bien, déposé d'ici. */
+  const [depotSigne, setDepotSigne] = useState<DocumentRow | null>(null);
   const [cr, setCr] = useState<VisiteU | null>(null);
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
   const [visite, setVisite] = useState(false);
@@ -1622,7 +1626,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     const mode = x.signature?.mode === 'en_ligne' ? 'en ligne' : x.signature?.mode === 'sur_place' ? 'sur place' : 'à la main';
     const etat = x.statut === 'signe' ? `signé le ${dateCourte(x.signe_le || x.updated_at)}, ${mode}`
       : x.statut === 'pret' ? (sv ? sv.titre.toLowerCase() : x.signature ? 'en signature' : 'prêt, à faire signer') : 'en préparation';
-    const detail = [o.avant || '', etat].filter(Boolean).join(' · ');
+    /* V3.55 : signé à la main, l'exemplaire pas encore déposé. */
+    const manque = exemplaireManquant(x as unknown as DocumentRow) ? 'exemplaire signé à déposer' : '';
+    const detail = [o.avant || '', etat, manque].filter(Boolean).join(' · ');
     return {
       id: x.id, titre, retrait: o.retrait, detail: detail.charAt(0).toUpperCase() + detail.slice(1),
       etat: x.statut === 'signe' ? 'signe' : x.statut === 'pret' ? 'attente' : 'prepa',
@@ -1671,6 +1677,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     : fichierMandat?.chemin ? 'Signé hors du CRM · scan joint' : 'Signé hors du CRM';
   const telechargeMandat = mandatSigne?.signe_chemin ? () => { void ouvrirSigne(mandatSigne); }
     : fichierMandat?.chemin ? () => { void ouvrirPiece(String(fichierMandat.chemin), String(fichierMandat.nom || 'mandat-signe.pdf')); } : null;
+  /* V3.55 : signé à la main dans Documents, son exemplaire pas encore déposé
+     (ni scan joint au bien). */
+  const mandatSansExemplaire = !!mandatSigne && !telechargeMandat && exemplaireManquant(mandatSigne as unknown as DocumentRow);
   /* « Déjà signé ? » (V3.48) : avant la mise en vente, la fenêtre du mandat
      (le bien passe « En vente ») ; plus loin (sous offre, compromis, vendu,
      en pause), on note seulement le mandat dans la fiche — l'étape ne bouge
@@ -1680,9 +1689,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     enMandat || mandatSigne ? {
       k: 'mandat', ic: 'plume', titre: 'Le mandat de vente', etat: 'fait', puce: commentSigne,
       statut: `Signé le ${dateCourte(signeLe)}${typeMandat ? ` · ${typeMandat}` : ''}`,
-      detail: [detailMandat, !telechargeMandat && !mandatSigne ? 'Joins le scan du mandat signé pour le retrouver ici.' : ''].filter(Boolean).join(' · ') || undefined,
+      detail: [detailMandat, !telechargeMandat && !mandatSigne ? 'Joins le scan du mandat signé pour le retrouver ici.' : '',
+        mandatSansExemplaire ? 'Exemplaire signé à déposer : garde-le ici, avec le mandat.' : ''].filter(Boolean).join(' · ') || undefined,
       actions: <>
         {telechargeMandat && <BoutonAct marine onClick={telechargeMandat}><Ic n="telecharger" t={13} />Le mandat signé</BoutonAct>}
+        {mandatSansExemplaire && <BoutonAct or onClick={() => setDepotSigne(mandatSigne as unknown as DocumentRow)}><Ic n="trombone" t={13} />Déposer l’exemplaire signé</BoutonAct>}
         {mandats.length > 0 && <BtnTuile onClick={() => ouvrirDoc((mandatSigne || mandats[0]).id)}>Voir dans Documents</BtnTuile>}
         {/* Signé ailleurs : le scan, pour pouvoir le retélécharger. */}
         {!mandatSigne && <BtnTuile onClick={() => champMandat.current?.click()}>{depotMandat ? 'Envoi…' : fichierMandat?.chemin ? 'Remplacer le scan' : <><Ic n="trombone" t={12} />Joindre le mandat signé</>}</BtnTuile>}
@@ -2007,7 +2018,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
                       en attente de signature (avec qui a signé), en préparation,
                       signés (avec le PDF signé), annulés. */}
                   <DocsParEtat elements={docsLies.map(x => ({ ...depuisDoc(x as unknown as DocumentRow), titre: x.titre || modele(x.modele)?.titre || 'Document' }))}
-                    suivis={suivis} onOuvrir={ouvrirDoc} onFait={() => setTourSuivis(t => t + 1)} />
+                    suivis={suivis} onOuvrir={ouvrirDoc} onFait={() => { setTourSuivis(t => t + 1); void apres(); }} />
                 </div>
               </Depliant>
             </div>
@@ -2032,6 +2043,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       </CorpsOnglet>
 
       {/* ── Les fenêtres ── */}
+      {depotSigne && typeof document !== 'undefined' && createPortal(
+        <FenetreSigne doc={depotSigne} onFermer={() => setDepotSigne(null)} onFait={() => { setDepotSigne(null); void apres(); }} />,
+        document.body)}
       {fen?.k === 'mandat' && <FenMandat bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estimation' && <FenEstimation bien={bien} reprise={cycleAvant} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estim' && <FenDefinirEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}

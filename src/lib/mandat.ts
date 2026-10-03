@@ -302,6 +302,27 @@ export function versionMandat(r: Recherche): string {
   return `${c.taux}|${c.forfait ?? ''}|${c.prixMax ?? ''}|${decrireRecherche(r)}`;
 }
 
+/* La famille d'un type de bien (V3.56) : « appartement » (un loft, un
+   duplex, un studio en sont), « maison » (villa, pavillon), « terrain »,
+   « autre » (la case « Autre » de l'espace), ou « autre:<texte> » pour un
+   type écrit à la main (« local commercial »). Les mêmes familles que les
+   cases du mandat de Documents (typesDepuis, src/lib/actes/mandat-recherche.ts). */
+export function familleType(t: string): string {
+  const x = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  if (/appart|studio|duplex|triplex|loft/.test(x)) return 'appartement';
+  if (/maison|villa|pavillon/.test(x)) return 'maison';
+  if (/terrain/.test(x)) return 'terrain';
+  if (x === 'autre' || x === 'autres') return 'autre';
+  return 'autre:' + x.replace(/[^a-z0-9]/g, '');
+}
+
+/* Deux numéros de mandat sont-ils le même (« 1 024 » et « 1024 ») ? Ici
+   pour servir au navigateur comme au serveur (mandat-serveur le reprend). */
+export const memeNumero = (a: unknown, b: unknown) => {
+  const n = (x: unknown) => String(x ?? '').replace(/\s/g, '').toLowerCase();
+  return !!n(a) && n(a) === n(b);
+};
+
 /* ── La recherche du moment dépasse-t-elle le mandat signé ? ──
    Le mandat est volontairement large (« environ », « ou à proximité »),
    mais trois choses le bornent : le prix maximum, les secteurs cités et le
@@ -321,12 +342,26 @@ export function horsMandat(signe: Contenu, r: Recherche): string[] {
     if (nouveaux.length) out.push(`${nouveaux.length > 1 ? 'Secteurs absents' : 'Secteur absent'} du mandat : ${nouveaux.join(', ')}`);
     else if (!r.secteurs.length) out.push(`Il ne précise plus de secteur (le mandat cite ${signe.recherche.secteurs.join(', ')})`);
   }
+  /* V3.56 : les types se comparent par famille (familleType). Un mandat de
+     Documents dit « Appartement », l'espace « Loft » ou « Duplex » : c'est
+     le même bien, pas un écart. Une ligne par famille absente, toujours la
+     même : passer de « Loft » à « Duplex », ou de « Maison » à « Villa », ne
+     fait pas repartir l'alerte (alerteHorsMandat ne prévient que d'un écart
+     nouveau). */
   const types = (t: string | null) => String(t || '').split(',').map(x => x.trim()).filter(Boolean);
-  const tAvant = types(signe.recherche.typeBien).map(n);
-  if (tAvant.length) {
-    const nouveaux = types(r.typeBien).filter(x => !tAvant.includes(n(x)));
-    if (nouveaux.length) out.push(`Type de bien absent du mandat : ${nouveaux.join(', ').toLowerCase()}`);
-    else if (!types(r.typeBien).length) out.push(`Il ne précise plus de type de bien (le mandat dit : ${String(signe.recherche.typeBien).toLowerCase()})`);
+  const fAvant = types(signe.recherche.typeBien).map(familleType);
+  if (fAvant.length) {
+    const absentes: string[] = [];
+    for (const x of types(r.typeBien)) {
+      const f = familleType(x);
+      const couverte = fAvant.includes(f)
+        || (f === 'autre' && fAvant.some(a => a.startsWith('autre')))
+        || (f.startsWith('autre:') && fAvant.includes('autre'));
+      const lib = f.startsWith('autre:') ? x.toLowerCase() : f;
+      if (!couverte && !absentes.includes(lib)) absentes.push(lib);
+    }
+    for (const lib of absentes.sort()) out.push(`Type de bien absent du mandat : ${lib}`);
+    if (!types(r.typeBien).length) out.push(`Il ne précise plus de type de bien (le mandat dit : ${String(signe.recherche.typeBien).toLowerCase()})`);
   }
   return out;
 }

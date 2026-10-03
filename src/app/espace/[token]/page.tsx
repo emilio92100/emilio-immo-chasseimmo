@@ -7,10 +7,9 @@ import { ouvrirEspace, clientDuJeton, nommerRecherche, resumerRecherche } from '
 import EspaceEnPreparation from './preparation';
 import { jetonEspace, HOTE_ESPACE } from '@/lib/jeton';
 import { etatMandat, finRetractationPour, rechercheDepuis, masquerEmail, type Mandant, type Societe } from '@/lib/mandat';
-import { adressesClient, lireReserve, mandatDocumentEnRoute, signeSansNumero } from '@/lib/mandat-serveur';
+import { lireReserve, mandatDocumentEnRoute, mandatDocumentSigne, mandatDocumentRetracte, renonciationDocument, memeNumero, signeSansNumero } from '@/lib/mandat-serveur';
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
-import { modele } from '@/lib/actes';
-import type { DocEspace } from '@/components/espace/SignatureMandat';
+import { lireDocumentsEspace, fichierDe, modeDoc, type DocEspace, type MandatDocEspace } from '@/lib/documents-espace';
 import { ecritServeur } from '@/lib/ecritures';
 
 /**
@@ -29,6 +28,12 @@ import { ecritServeur } from '@/lib/ecritures';
  */
 
 export const dynamic = 'force-dynamic';
+
+/* Un composant serveur (async), rendu une fois par requête : l'heure du
+   moment (Date.now) y est voulue. La règle « purity » du compilateur React
+   vise les composants du navigateur ; elle ne lisait pas cette page jusqu'à
+   la V3.55 (un bloc try qu'elle ne savait pas analyser). */
+/* eslint-disable react-hooks/purity */
 
 function base() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -398,10 +403,15 @@ export default async function PageEspace({ params, searchParams }: {
   });
   if (etatM === 'sans_numero' && signeSansNumero(reserve, recherche.mandat_propose_le)) etatM = 'a_signer';
   const coord = coordRes.data || null;
+  /* Qui il est, pour reconnaître SA ligne parmi les signataires d'un document
+     (ses adresses ; celle de son conjoint est à part) : voir
+     src/lib/documents-espace.ts. */
+  const fiche = coord || { prenom: client?.prenom, nom: client?.nom };
   /* Un mandat de recherche préparé dans Documents, pas encore signé (V3.32) :
      on ne lui propose pas en plus celui de l'espace — ce serait un second
-     mandat. Il signe celui-là, avec son lien ; sa demande de visite attend. */
-  const enRoute = etatM !== 'valide' ? await mandatDocumentEnRoute(supabase, recherche.id as string, adressesClient(coord)) : null;
+     mandat. Il signe celui-là, avec SON lien ; sa demande de visite attend —
+     sauf s'il l'a déjà signé et qu'on attend quelqu'un d'autre (V3.55). */
+  const enRoute = etatM !== 'valide' ? await mandatDocumentEnRoute(supabase, recherche.id as string, fiche) : null;
   if (enRoute) etatM = 'sans_numero';
   const prefill: Mandant = derniereSig && derniereSig.statut === 'en_cours' && derniereSig.mandant
     ? derniereSig.mandant as Mandant
@@ -438,6 +448,74 @@ export default async function PageEspace({ params, searchParams }: {
       : [];
   const signeOuPartiel = derniereSig && (derniereSig.statut === 'signe' || derniereSig.statut === 'partiel') && derniereSig.signe_le;
   const membres = signeOuPartiel ? cosSig.filter(c => c.statut !== 'prevu') : [];
+
+  /* ─── Le mandat de recherche de la rubrique Documents (V3.55) ───
+     Ce que « Mon mandat de recherche » en dit, état par état : en
+     préparation, prêt (à signer à la main, sur place, ou parti en ligne),
+     signé. En route : celui de mandatDocumentEnRoute. Signé : le dernier
+     signé pour cette recherche, quand c'est bien LUI le mandat en cours —
+     même numéro que la recherche, ou plus récent que celui signé dans
+     l'espace.
+     Et ses documents pour l'accueil : ceux qui attendent SA signature (sa
+     ligne, reconnue à ses adresses), ceux qu'il a signés et qui attendent
+     quelqu'un d'autre, et tous ceux qui sont signés et dont l'exemplaire est
+     déposé — en ligne, sur place ou à la main (lireDocumentsEspace). Avant
+     le SQL, les lectures échouent sans bruit : rien ne s'affiche. */
+  let docSigne: Awaited<ReturnType<typeof mandatDocumentSigne>> = null;
+  let docRetracte: Awaited<ReturnType<typeof mandatDocumentRetracte>> = null;
+  let documents: DocEspace[] = [];
+  try {
+    [docSigne, docRetracte, documents] = await Promise.all([
+      /* V3.56 : celui qui porte le numéro de la recherche, s'il y en a plusieurs. */
+      etatM === 'valide' ? mandatDocumentSigne(supabase, recherche.id as string, recherche.mandat_numero as string | null) : Promise.resolve(null),
+      /* V3.56 : sans mandat en cours, celui auquel il a renoncé en ligne. */
+      etatM !== 'valide' && !enRoute ? mandatDocumentRetracte(supabase, recherche.id as string) : Promise.resolve(null),
+      lireDocumentsEspace(supabase, client.id as string, fiche),
+    ]);
+  } catch { /* une lecture des documents ratée ne doit jamais empêcher l'espace de s'afficher */ }
+  let documentMandat: MandatDocEspace | null = null;
+  if (enRoute) {
+    documentMandat = {
+      id: enRoute.id, statut: enRoute.statut, mode: enRoute.mode, lance: enRoute.lance, numero: enRoute.numero,
+      vous: enRoute.vous, lien: enRoute.lien, signataires: enRoute.signataires, le: null, fichier: null,
+    };
+  } else if (docSigne) {
+    const numeroRecherche = recherche.mandat_numero as string | null;
+    const courant = numeroRecherche && docSigne.numero
+      ? memeNumero(numeroRecherche, docSigne.numero)
+      : !signeOuPartiel || Date.parse(docSigne.signe_le) >= Date.parse(derniereSig.signe_le as string);
+    /* V3.56 : signé en ligne par lui, il peut y renoncer d'ici pendant son
+       délai de rétractation, compté comme pour le mandat signé dans l'espace.
+       Le sien seulement (rangé sur sa fiche), et seulement tant que le délai
+       court. Une lecture ratée : pas de lien. */
+    let renoncer: MandatDocEspace['renoncer'] = null;
+    if (courant && docSigne.client_id === client.id) {
+      try {
+        const r = await renonciationDocument(supabase, docSigne, fiche);
+        if (r && Date.now() < r.fin.getTime()) renoncer = { fin: r.fin.toISOString() };
+      } catch { /* sans lien de renonciation : il peut toujours écrire à Alexandre */ }
+    }
+    if (courant) documentMandat = {
+      id: docSigne.id, statut: 'signe', mode: modeDoc(docSigne.donnees, docSigne.signature), lance: !!docSigne.signature,
+      numero: docSigne.numero, vous: null, lien: null, signataires: [], le: docSigne.signe_le,
+      /* Le PDF se télécharge par /api/espace/document, qui ne sert que les
+         documents de ce client : un mandat rangé sans client n'en a pas. */
+      fichier: docSigne.client_id === client.id ? fichierDe(docSigne.signe_chemin) : null,
+      renoncer,
+    };
+  } else if (docRetracte && docRetracte.client_id === client.id) {
+    /* V3.56 : il a renoncé en ligne à son mandat de la rubrique Documents.
+       « Mon mandat de recherche » le dit, avec l'exemplaire signé, tant que
+       rien de plus récent n'est venu : un mandat commencé ou signé dans
+       l'espace, une nouvelle proposition d'Alexandre. */
+    const renonceLe = Date.parse(docRetracte.retracte_le);
+    const apres = (v: unknown) => typeof v === 'string' && Date.parse(v) > renonceLe;
+    if (!apres(derniereSig?.created_at) && !apres(recherche.mandat_propose_le)) documentMandat = {
+      id: docRetracte.id, statut: 'retracte', mode: 'en_ligne', lance: true, numero: docRetracte.numero,
+      vous: null, lien: null, signataires: [], le: docRetracte.signe_le,
+      fichier: fichierDe(docRetracte.signe_chemin), renoncer: null, retracteLe: docRetracte.retracte_le,
+    };
+  }
   /* Son délai de rétractation : 14 jours après sa signature, prolongés si un
      co-signataire signe pendant qu'ils courent. */
   const signesCos = membres.filter(c => c.statut === 'signe' || c.statut === 'retracte').map(c => c.signe_le);
@@ -465,37 +543,10 @@ export default async function PageEspace({ params, searchParams }: {
       id: c.id, prenom: c.personne?.prenom || '', nom: c.personne?.nom || '', email: c.personne?.email || '',
       statut: c.statut, invite: c.invite_le, signe: c.signe_le, expire: c.lien_expire_le,
     })),
+    /* `lien` : SON lien, et lui seul bloque une demande de visite. */
     enRoute: enRoute ? { lien: enRoute.lien } : null,
+    document: documentMandat,
   };
-
-  /* ─── Ses documents signés en ligne (rubrique Documents du CRM) ───
-     Ceux qui attendent SA signature (son adresse est l'une de celles de sa
-     fiche), et ceux qui sont signés par tous. Avant le SQL de la signature
-     des documents, les lectures échouent sans bruit : rien ne s'affiche. */
-  const documents: DocEspace[] = [];
-  try {
-    const { data: docs } = await supabase.from('documents').select('id, modele, statut, titre, donnees, signe_le, signature')
-      .eq('client_id', client.id).in('statut', ['pret', 'signe']).order('updated_at', { ascending: false }).limit(30);
-    const elec = (docs || []).filter(x => x.signature);
-    const emails = [...(Array.isArray(coord?.emails) ? coord!.emails : []), ...(coord?.conjoint && typeof coord.conjoint === 'object' ? [(coord.conjoint as { email?: string }).email] : [])]
-      .filter((e): e is string => typeof e === 'string' && !!e).map(e => e.trim().toLowerCase());
-    const enAttente = elec.filter(x => x.statut === 'pret').map(x => x.id);
-    const { data: invites } = enAttente.length
-      ? await supabase.from('documents_signataires').select('document_id, jeton, statut, personne, lien_expire_le').in('document_id', enAttente).eq('statut', 'invite')
-      : { data: [] as { document_id: string; jeton: string | null; statut: string; personne: { email?: string } | null; lien_expire_le: string | null }[] };
-    for (const x of elec) {
-      const m = modele(x.modele as string);
-      /* Entre professionnels (la délégation à un confrère) : jamais ici. */
-      if (m?.interne) continue;
-      const titre = m ? m.entete(x.donnees || {}) : (x.titre as string) || 'Document';
-      if (x.statut === 'signe') documents.push({ id: x.id as string, titre, etat: 'signe', le: x.signe_le as string | null });
-      else {
-        const sien = (invites || []).find(i => i.document_id === x.id && i.jeton && emails.includes(String(i.personne?.email || '').toLowerCase())
-          && (!i.lien_expire_le || Date.parse(i.lien_expire_le) > Date.now()));
-        if (sien) documents.push({ id: x.id as string, titre, etat: 'a_signer', lien: `/signer/${sien.jeton}` });
-      }
-    }
-  } catch { /* pas encore installé : rien à montrer */ }
 
   const jours = client?.created_at
     ? Math.max(1, Math.round((Date.now() - new Date(client.created_at).getTime()) / 86400000))

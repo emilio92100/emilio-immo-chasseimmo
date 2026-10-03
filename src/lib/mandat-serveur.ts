@@ -23,8 +23,14 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { etatMandat, horsMandat, rechercheDepuis, DUREE, type EtatMandat, type Contenu } from './mandat';
+import { etatMandat, horsMandat, rechercheDepuis, jourParis, forfaitDe, tauxDe, finRetractationPour, memeNumero, DUREE, HONORAIRES_TAUX, type EtatMandat, type Contenu } from './mandat';
 import { contenuApresAvenants } from './actes/avenant-recherche';
+import { argentRecherche, TYPES_BIEN } from './actes/mandat-recherche';
+import { num, txt, liste, plusMois } from './actes/commun';
+import {
+  signatairesEspace, laSienne, retracteEnLigne, modeDoc, COLONNES_SIGNATAIRES,
+  type FicheEspace, type LigneSignataire, type SignataireEspace, type EtatSignataire, type ModeDoc,
+} from './documents-espace';
 import { alerteMailActive } from './alertes';
 import { lireDepart } from './registre';
 
@@ -92,30 +98,166 @@ export async function etatServeur(sb: SupabaseClient, recherche: Record<string, 
 }
 
 /* Un mandat de recherche préparé dans la rubrique Documents (V3.32), pas
-   encore signé : en préparation (brouillon) ou parti en signature (prêt).
-   Tant qu'il est là, l'espace ne propose pas le mandat en ligne — ce serait
-   un second mandat pour la même recherche (src/lib/coherence.ts). `lien` :
-   son lien personnel de signature, quand l'une des adresses du client est
-   celle d'un signataire qu'on attend. Table ou colonne absente : null. */
-export type MandatDocument = { id: string; statut: 'brouillon' | 'pret'; titre: string; lien: string | null };
-export async function mandatDocumentEnRoute(sb: SupabaseClient, rechercheId: string, emails: string[]): Promise<MandatDocument | null> {
-  const { data, error } = await sb.from('documents').select('id, statut, titre, updated_at')
+   encore signé par tous : en préparation (brouillon) ou prêt (à signer à la
+   main, sur place, ou parti en signature en ligne). Tant qu'il est là,
+   l'espace ne propose pas le mandat en ligne — ce serait un second mandat
+   pour la même recherche (src/lib/coherence.ts). Table ou colonne absente :
+   null.
+
+   `lien` : SON lien personnel de signature, quand il doit encore signer et
+   que ce lien vaut encore — jamais celui de son conjoint (V3.55 : Paul
+   ouvrait la page de Claire, et le code partait chez elle). C'est lui, et
+   lui seul, qui bloque une demande de visite (l'espace et /api/espace/retour
+   le lisent ici tous les deux). Signé par lui, en attente d'un autre : plus
+   de lien, la visite passe — comme le mandat signé à plusieurs dans
+   l'espace, qui l'engage dès sa signature.
+
+   `qui` : sa fiche (ses adresses, celle de son conjoint, son prénom), ou
+   une simple liste d'adresses, toutes à lui. */
+export type MandatDocument = {
+  id: string; statut: 'brouillon' | 'pret'; titre: string; numero: string | null;
+  mode: ModeDoc; lance: boolean;
+  lien: string | null;
+  vous: EtatSignataire | null;
+  signataires: SignataireEspace[];
+};
+export async function mandatDocumentEnRoute(sb: SupabaseClient, rechercheId: string, qui: FicheEspace | null | undefined): Promise<MandatDocument | null> {
+  /* `*` : une colonne pas encore créée ne fait jamais échouer la lecture. */
+  const { data, error } = await sb.from('documents').select('*')
     .eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId).in('statut', ['brouillon', 'pret'])
     .order('updated_at', { ascending: false }).limit(5);
   if (error || !data?.length) return null;
-  const docs = data as { id: string; statut: 'brouillon' | 'pret'; titre: string | null }[];
-  const doc = docs.find(x => x.statut === 'pret') || docs[0];
-  let lien: string | null = null;
-  const siens = emails.map(e => e.trim().toLowerCase()).filter(Boolean);
-  if (doc.statut === 'pret' && siens.length) {
-    const { data: sigs } = await sb.from('documents_signataires').select('jeton, personne, lien_expire_le')
-      .eq('document_id', doc.id).eq('statut', 'invite');
-    const sien = ((sigs || []) as { jeton: string | null; personne: { email?: string } | null; lien_expire_le: string | null }[])
-      .find(x => x.jeton && siens.includes(String(x.personne?.email || '').trim().toLowerCase())
-        && (!x.lien_expire_le || Date.parse(x.lien_expire_le) > Date.now()));
-    if (sien?.jeton) lien = `/signer/${sien.jeton}`;
+  const docs = data as { id: string; statut: 'brouillon' | 'pret'; titre: string | null; numero?: string | null; donnees?: Record<string, unknown> | null; signature?: unknown }[];
+  /* V3.56 : parmi plusieurs « à faire signer », celui qui est parti en
+     signature d'abord (une copie finalisée à côté n'est pas celui qu'il
+     signe). */
+  const doc = docs.find(x => x.statut === 'pret' && !!x.signature) || docs.find(x => x.statut === 'pret') || docs[0];
+  /* V3.56 : les signataires seulement quand la signature est lancée
+     (`documents.signature`), comme lireDocumentsEspace. Un arrêt resté à
+     moitié (le document vidé, ses lignes encore « invite ») ne lui donne ni
+     un lien mort, ni une demande de visite bloquée. */
+  let signataires: SignataireEspace[] = [];
+  if (doc.statut === 'pret' && doc.signature) {
+    const { data: sigs, error: eS } = await sb.from('documents_signataires').select(COLONNES_SIGNATAIRES).eq('document_id', doc.id);
+    if (!eS && sigs) signataires = signatairesEspace(sigs as LigneSignataire[], qui);
   }
-  return { id: doc.id, statut: doc.statut, titre: doc.titre || 'Mandat de recherche', lien };
+  const vous = signataires.find(s => s.qui === 'vous') || null;
+  const numero = (typeof doc.numero === 'string' && doc.numero.trim()) || (typeof doc.donnees?.numero === 'string' && doc.donnees.numero.trim()) || null;
+  return {
+    id: doc.id, statut: doc.statut, titre: doc.titre || 'Mandat de recherche', numero,
+    mode: modeDoc(doc.donnees, doc.signature), lance: !!doc.signature,
+    lien: vous?.etat === 'a_signer' ? vous.lien : null,
+    vous: vous?.etat || null,
+    signataires,
+  };
+}
+
+/* Le dernier mandat de recherche de la rubrique Documents signé pour cette
+   recherche (à la main, en ligne ou sur place). Absent ou illisible : null. */
+export type MandatDocumentSigne = { id: string; client_id: string | null; numero: string | null; donnees: Record<string, unknown>; signature: unknown; signe_le: string; signe_chemin: string | null };
+/* V3.56 : `numero` (celui noté sur la recherche) : parmi plusieurs signés
+   (un mandat renouvelé, l'ancien pas annulé), celui qui le porte ; sinon le
+   plus récemment signé, comme avant. */
+export async function mandatDocumentSigne(sb: SupabaseClient, rechercheId: string, numero?: string | null): Promise<MandatDocumentSigne | null> {
+  const { data, error } = await sb.from('documents').select('*')
+    .eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId).eq('statut', 'signe')
+    .order('signe_le', { ascending: false, nullsFirst: false }).limit(10);
+  const numeroDe = (x: Record<string, unknown>) => {
+    const dn = x.donnees && typeof x.donnees === 'object' ? x.donnees as Record<string, unknown> : {};
+    return (typeof x.numero === 'string' && x.numero.trim()) || (typeof dn.numero === 'string' && dn.numero.trim()) || null;
+  };
+  const lignes = (!error && data ? data : []) as Record<string, unknown>[];
+  const d = (numero ? lignes.find(x => memeNumero(numeroDe(x), numero)) : undefined) || lignes[0] || null;
+  if (!d || typeof d.signe_le !== 'string' || !d.signe_le) return null;
+  const donnees = d.donnees && typeof d.donnees === 'object' ? d.donnees as Record<string, unknown> : {};
+  const numeroDoc = numeroDe(d);
+  return {
+    id: String(d.id), client_id: typeof d.client_id === 'string' ? d.client_id : null, numero: numeroDoc, donnees,
+    signature: d.signature ?? null, signe_le: d.signe_le, signe_chemin: typeof d.signe_chemin === 'string' ? d.signe_chemin : null,
+  };
+}
+
+/* ══ Renoncer en ligne à un mandat de recherche de la rubrique Documents ══
+   V3.56. Le mandat signé dans l'espace a sa renonciation en ligne depuis le
+   début (obligatoire depuis le 19 juin 2026 pour un contrat conclu sur une
+   interface en ligne : /api/espace/mandat, étape « renoncer »). Celui de la
+   rubrique Documents, signé en ligne avec son lien, l'a maintenant aussi.
+
+   Il y a droit quand le document a été signé EN LIGNE (pas à la main, pas
+   sur place sur l'écran d'Alexandre), et par LUI : sa propre ligne de
+   signataire (laSienne : à l'une de ses adresses), signée en ligne. Le délai
+   se compte exactement comme pour le mandat signé dans l'espace : 14 jours
+   après SA signature, prolongés si un autre signe pendant qu'ils courent
+   (finRetractationPour). Le statut du document, sa recherche et son client
+   sont vérifiés par l'appelant. Pas de droit, ou lecture impossible : null.
+   L'heure n'est pas regardée ici : `fin` dit jusqu'à quand. */
+export type LigneRenonce = LigneSignataire & {
+  id: string; mode?: string | null; email_verifie?: string | null;
+  personne: { prenom?: unknown; nom?: unknown; email?: unknown } | null;
+  deroule?: { t: string; x: string }[] | null;
+};
+export type Renonciation = { soi: LigneRenonce; autres: LigneRenonce[]; fin: Date };
+export async function renonciationDocument(sb: SupabaseClient, doc: { id: string; donnees?: unknown; signature?: unknown }, qui: FicheEspace | null | undefined): Promise<Renonciation | null> {
+  const lance = doc.signature && typeof doc.signature === 'object' ? (doc.signature as { mode?: unknown }).mode : null;
+  if (lance !== 'en_ligne' || modeDoc(doc.donnees, doc.signature) !== 'en_ligne') return null;
+  const { data, error } = await sb.from('documents_signataires').select('*').eq('document_id', doc.id);
+  if (error || !data?.length) return null;
+  const lignes = data as LigneRenonce[];
+  const soi = laSienne(lignes, qui);
+  if (!soi || soi.statut !== 'signe' || !soi.signe_le || (soi.mode && soi.mode !== 'en_ligne')) return null;
+  const signes = lignes.filter(l => l.statut === 'signe' && !!l.signe_le);
+  return { soi, autres: signes.filter(l => l.id !== soi.id), fin: finRetractationPour(soi.signe_le, signes.map(l => l.signe_le)) };
+}
+
+/* Le dernier mandat de recherche de la rubrique Documents de cette
+   recherche, s'il a été rétracté en ligne par le client (retracteEnLigne).
+   Pour que « Mon mandat de recherche » le dise. Absent : null. */
+export type MandatDocumentRetracte = { id: string; client_id: string | null; numero: string | null; signe_le: string | null; signe_chemin: string | null; retracte_le: string };
+export async function mandatDocumentRetracte(sb: SupabaseClient, rechercheId: string): Promise<MandatDocumentRetracte | null> {
+  const { data, error } = await sb.from('documents').select('*')
+    .eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId).eq('statut', 'annule')
+    .order('annule_le', { ascending: false, nullsFirst: false }).limit(1);
+  const d = !error && data?.[0] ? data[0] as Record<string, unknown> : null;
+  const le = retracteEnLigne(d);
+  if (!d || !le) return null;
+  const donnees = d.donnees && typeof d.donnees === 'object' ? d.donnees as Record<string, unknown> : {};
+  return {
+    id: String(d.id), client_id: typeof d.client_id === 'string' ? d.client_id : null,
+    numero: (typeof d.numero === 'string' && d.numero.trim()) || (typeof donnees.numero === 'string' && donnees.numero.trim()) || null,
+    signe_le: typeof d.signe_le === 'string' ? d.signe_le : null, signe_chemin: typeof d.signe_chemin === 'string' ? d.signe_chemin : null,
+    retracte_le: le,
+  };
+}
+
+/* Deux numéros de mandat sont-ils le même (« 1 024 » et « 1024 ») ? Défini
+   dans src/lib/mandat.ts (le navigateur s'en sert aussi). */
+export { memeNumero };
+
+/* Ce que borne un mandat de Documents signé, sous la forme du contenu figé
+   d'un mandat signé dans l'espace (pour horsMandat) : le prix d'achat
+   maximum hors honoraires, les honoraires, les secteurs et les types de
+   bien cités. Et sa fin : la durée (ou la limite totale, quand il se
+   poursuit par périodes), comptée depuis le jour de la signature — comme
+   surRecherche l'écrit dans la recherche. */
+function contenuDocument(d: Record<string, unknown>): Contenu {
+  const a = argentRecherche(d);
+  const forfait = forfaitDe(a.forfait);
+  const taux = forfait ? HONORAIRES_TAUX : tauxDe(a.taux);
+  /* « Autre » coché sans précision reste « Autre » (V3.56) : la case « Autre »
+     de l'espace y entre, au lieu d'être signalée hors mandat. */
+  const types = liste(d, 'types').map(v => (v === 'autre' ? txt(d, 'typeAutre') || 'Autre' : TYPES_BIEN.find(t => t.v === v)?.l || '')).filter(Boolean);
+  return {
+    recherche: {
+      typeBien: types.join(', ') || null, piecesMin: num(d, 'pieces'), chambresMin: num(d, 'chambres'), surfaceMin: num(d, 'surface'),
+      secteurs: txt(d, 'secteurs').split(/\s*[,;\n]\s*/).map(x => x.trim()).filter(Boolean), budget: null, taux, forfait,
+    },
+    prixMax: a.prix, honoraires: a.honoraires, taux, forfait, duree: DUREE,
+  };
+}
+function finDocument(d: Record<string, unknown>, signeLe: string): number {
+  const total = d.dureeMode === 'prorogation' ? (num(d, 'dureeMax') ?? 12) : (num(d, 'duree') ?? 12);
+  const fin = plusMois(jourParis(signeLe), Math.round(total));
+  return fin ? Date.parse(`${fin}T23:59:59Z`) : NaN;
 }
 
 /* Les adresses d'un client (et de son conjoint, sur une fiche « couple »). */
@@ -199,30 +341,64 @@ export function appareilDe(ua: string): string {
 
 /* ══ Le client élargit sa recherche au-delà de son mandat signé ══════════
    Appelé quand il enregistre ses critères depuis son espace. On compare au
-   mandat signé en ligne (son contenu figé) la recherche d'avant et celle
-   d'après : seul un écart NOUVEAU prévient Alexandre — historique, relance
-   du jour, mail. Un mandat saisi à la main n'a pas de contenu figé : rien à
-   comparer. Ne lève jamais : une alerte ratée ne doit pas bloquer
-   l'enregistrement des critères. */
+   mandat signé la recherche d'avant et celle d'après : seul un écart
+   NOUVEAU prévient Alexandre — historique, relance du jour, mail. Le mandat
+   signé, c'est celui en cours (V3.56 : choisi comme l'espace le choisit) :
+   celui signé dans l'espace (son contenu figé), ou celui de la rubrique
+   Documents (V3.55 : ses réponses —
+   prix maximum, honoraires, secteurs, types de bien —, qu'il ait été signé
+   à la main, en ligne ou sur place). Un mandat saisi à la main dans la fiche
+   n'a ni l'un ni l'autre : rien à comparer. Ne lève jamais : une alerte
+   ratée ne doit pas bloquer l'enregistrement des critères. */
 export async function alerteHorsMandat(sb: SupabaseClient, o: {
   rechercheId: string; clientId: string; avant: Record<string, unknown>; apres: Record<string, unknown>;
 }): Promise<void> {
-  const { data: sig, error } = await sb.from('mandats_signatures')
-    .select('numero, signe_le, contenu').eq('recherche_id', o.rechercheId).in('statut', ['signe', 'partiel'])
-    .order('signe_le', { ascending: false }).limit(1).maybeSingle();
-  if (error || !sig?.contenu || !sig.signe_le) return;
+  const [{ data: ligne, error }, { data: rech }] = await Promise.all([
+    sb.from('mandats_signatures')
+      .select('numero, signe_le, contenu').eq('recherche_id', o.rechercheId).in('statut', ['signe', 'partiel'])
+      .order('signe_le', { ascending: false }).limit(1).maybeSingle(),
+    /* Toute la ligne : `mandat_numero` n'existe qu'une fois le SQL du mandat passé. */
+    sb.from('recherches').select('*').eq('id', o.rechercheId).maybeSingle(),
+  ]);
+  const numeroRecherche = rech && typeof (rech as { mandat_numero?: unknown }).mandat_numero === 'string'
+    ? String((rech as { mandat_numero: string }).mandat_numero).trim() || null : null;
+  const doc = await mandatDocumentSigne(sb, o.rechercheId, numeroRecherche).catch(() => null);
+  type Signe = { numero: string; signeLe: string; contenu: Contenu; fin: number };
+  const espace: Signe | null = !error && ligne?.contenu && ligne.signe_le && (ligne.contenu as Contenu).recherche && Number.isFinite(Date.parse(ligne.signe_le))
+    ? { numero: String(ligne.numero ?? ''), signeLe: ligne.signe_le, contenu: ligne.contenu as Contenu, fin: Date.parse(ligne.signe_le) + DUREE.total * 86_400_000 }
+    : null;
+  const documents: Signe | null = doc && Number.isFinite(Date.parse(doc.signe_le))
+    ? { numero: doc.numero || '', signeLe: doc.signe_le, contenu: contenuDocument(doc.donnees), fin: finDocument(doc.donnees, doc.signe_le) }
+    : null;
+  /* V3.56 : le mandat de référence est choisi comme l'espace choisit le
+     mandat en cours (src/app/espace/[token]/page.tsx) : celui de Documents
+     s'il porte le numéro noté sur la recherche — ou, sans numéro à comparer,
+     s'il est au moins aussi récent que celui signé dans l'espace —, sinon
+     celui signé dans l'espace. */
+  let ref: Signe | null = espace;
+  if (documents) {
+    const courant = numeroRecherche && documents.numero
+      ? memeNumero(numeroRecherche, documents.numero)
+      : !espace || Date.parse(documents.signeLe) >= Date.parse(espace.signeLe);
+    if (courant) ref = documents;
+  }
+  if (!ref) return;
+  const sig = { numero: ref.numero || '—', signe_le: ref.signeLe };
   /* Les avenants signés à ce mandat déplacent ses limites (et sa fin). La
-     table documents peut manquer : on compare alors au mandat seul. */
+     table documents peut manquer : on compare alors au mandat seul.
+     V3.56 : ceux de CE mandat seulement (son numéro). Un avenant à un autre
+     mandat de la recherche — l'ancien, renouvelé depuis — ne le change pas. */
   const { data: avs } = await sb.from('documents').select('donnees')
     .eq('recherche_id', o.rechercheId).eq('modele', 'avenant_recherche').eq('statut', 'signe');
-  const avenants = (avs || []).map(a => (a.donnees || {}) as Record<string, unknown>);
+  const numeroRef = ref.numero;
+  const avenants = (avs || []).map(a => (a.donnees || {}) as Record<string, unknown>)
+    .filter(a => (numeroRef ? memeNumero(a.mandatNumero, numeroRef) : !String(a.mandatNumero ?? '').trim()));
   const finAvenant = avenants
     .filter(a => Array.isArray(a.objets) && (a.objets as unknown[]).includes('duree') && typeof a.finNouvelle === 'string')
     .map(a => Date.parse(`${a.finNouvelle}T23:59:59Z`)).filter(Number.isFinite);
-  const fin = Math.max(Date.parse(sig.signe_le) + DUREE.total * 86_400_000, ...finAvenant);
+  const fin = Math.max(Number.isFinite(ref.fin) ? ref.fin : 0, ...finAvenant);
   if (fin < Date.now()) return;
-  if (!(sig.contenu as Contenu).recherche) return;
-  const contenu = contenuApresAvenants(sig.contenu as Contenu, avenants);
+  const contenu = contenuApresAvenants(ref.contenu, avenants);
   const avant = horsMandat(contenu, rechercheDepuis(o.avant));
   const neufs = horsMandat(contenu, rechercheDepuis(o.apres)).filter(e => !avant.includes(e));
   if (!neufs.length) return;

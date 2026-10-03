@@ -8,8 +8,10 @@ import BlocRepliable from './BlocRepliable';
 import NouveauDocument from './NouveauDocument';
 import Depliant from '@/components/shared/Depliant';
 import SuiviSignature, { lireSuivis, type Proposition, type SigEspace, type Suivi } from './SuiviSignature';
-import { etatMandatEnLigne, libStatut, lienFichier, nomFichier, type DocumentRow, type MandatRecherche } from './outils';
+import FenetreSigne from './FenetreSigne';
+import { etatMandatEnLigne, exemplaireManquant, libStatut, lienFichier, nomFichier, rappelExemplaire, type DocumentRow, type MandatRecherche } from './outils';
 import { jourParis } from '@/lib/mandat';
+import { retracteEnLigne } from '@/lib/documents-espace';
 import s from './Documents.module.css';
 
 /* ═══ « Ses documents », sur la fiche d'un client (V3.17, rangés en V3.32) ═
@@ -48,6 +50,9 @@ export type ElementDoc = {
   /* V3.32 : son numéro, et le mandat auquel il se rattache (un avenant, un
      courrier de reconduction, une délégation) : rangé sous lui. */
   numero?: string | null; rattache?: string | null; enfant?: boolean;
+  /* V3.55 : signé à la main, son exemplaire signé pas encore déposé : le
+     document (pour le déposer d'ici) et la phrase du rappel. */
+  aDeposer?: { doc: DocumentRow; phrase: string };
 };
 const RATTACHES = ['avenant_vente', 'avenant_recherche', 'courrier_reconduction', 'delegation'];
 
@@ -78,7 +83,11 @@ export function depuisDoc(d: DocumentRow): ElementDoc {
   /* La pastille dit l'état ; la ligne dit quand, et comment. */
   const comment = sig?.mode === 'en_ligne' ? 'en ligne' : sig?.mode === 'sur_place' ? 'sur place' : 'à la main';
   const prevu = modeSignature(d.donnees || {});
+  /* V3.56 : rétracté en ligne par le client (comme un mandat signé dans son
+     espace puis rétracté : « Rétracté le … »). */
+  const retracte = retracteEnLigne(d);
   const quand = d.statut === 'signe' ? `Le ${jour(d.signe_le)}${courrier ? '' : `, ${comment}`}`
+    : retracte ? `Rétracté le ${jour(retracte)}, en ligne depuis son espace`
     : d.statut === 'annule' ? (d.annule_le ? `Le ${jour(d.annule_le)}` : '')
       : d.statut === 'pret' ? (sig?.mode ? `Envoyé le ${jour((d.signature as { lance_le?: string } | null)?.lance_le || d.finalise_le)}`
         : courrier ? `Finalisé le ${jour(d.finalise_le)}`
@@ -89,10 +98,11 @@ export function depuisDoc(d: DocumentRow): ElementDoc {
     cle: d.id, ouvrir: d.id, categorie: d.categorie, statut: d.statut, courrier,
     titre: d.titre || 'Document sans titre',
     sous: [d.numero ? `N° ${d.numero}` : RATTACHES.includes(d.modele) && d.donnees?.mandatNumero ? `${d.modele === 'delegation' ? 'Mandat' : 'Au mandat'} n° ${String(d.donnees.mandatNumero)}` : '', quand].filter(Boolean).join(' · '),
-    date: d.signe_le || d.annule_le || d.finalise_le || d.updated_at,
+    date: retracte || d.signe_le || d.annule_le || d.finalise_le || d.updated_at,
     signe: d.statut === 'signe' && d.signe_chemin ? { chemin: d.signe_chemin, nom: nomFichier(d, d.signature ? '-signe' : '') } : undefined,
     numero: d.numero,
     rattache: RATTACHES.includes(d.modele) && d.donnees?.mandatNumero ? String(d.donnees.mandatNumero) : null,
+    aDeposer: exemplaireManquant(d) ? { doc: d, phrase: rappelExemplaire(d) } : undefined,
   };
 }
 
@@ -119,8 +129,10 @@ function depuisProposition(p: Proposition): ElementDoc {
   };
 }
 
-/* Une ligne : l'ouvrir dans Documents, et son exemplaire signé à côté. */
-function Ligne({ el, onOuvrir, ouvre, onSigne, enSignature = false }: { el: ElementDoc; onOuvrir: (cle: string) => void; ouvre: string; onSigne: (el: ElementDoc) => void; enSignature?: boolean }) {
+/* Une ligne : l'ouvrir dans Documents, et son exemplaire signé à côté.
+   V3.55 : signé à la main sans son exemplaire, un rappel dessous, avec
+   « Déposer » (la même fenêtre que dans Documents). */
+function Ligne({ el, onOuvrir, ouvre, onSigne, onDeposer, enSignature = false }: { el: ElementDoc; onOuvrir: (cle: string) => void; ouvre: string; onSigne: (el: ElementDoc) => void; onDeposer?: (d: DocumentRow) => void; enSignature?: boolean }) {
   const dedans = (
     <>
       <span className={`${s.dcCat} ${s['dcCat_' + el.categorie] || ''}`}><Ic n={CAT_IC[el.categorie] || 'doc'} t={15} /></span>
@@ -128,7 +140,7 @@ function Ligne({ el, onOuvrir, ouvre, onSigne, enSignature = false }: { el: Elem
       <Pastille statut={el.statut} courrier={el.courrier} enSignature={enSignature} />
     </>
   );
-  return (
+  const ligne = (
     <div className={s.dcLigne} data-enfant={el.enfant ? 'oui' : undefined}>
       {el.ouvrir
         ? <button type="button" className={s.dcOuvrir} onClick={() => onOuvrir(el.ouvrir!)} title="Ouvrir dans Documents">{dedans}</button>
@@ -138,6 +150,18 @@ function Ligne({ el, onOuvrir, ouvre, onSigne, enSignature = false }: { el: Elem
           <Ic n="doc" t={14} /><span>{ouvre === el.cle ? 'Ouverture…' : el.courrier ? 'Preuve' : 'PDF signé'}</span>
         </button>
       )}
+    </div>
+  );
+  if (!el.aDeposer) return ligne;
+  const a = el.aDeposer;
+  return (
+    <div className={s.dcAvecDepot} data-enfant={el.enfant ? 'oui' : undefined}>
+      {ligne}
+      <div className={s.dcDepot}>
+        <Ic n="trombone" t={13} />
+        <span>{a.phrase}</span>
+        {onDeposer && <button type="button" className={s.dcDepotBtn} onClick={() => onDeposer(a.doc)}>Déposer</button>}
+      </div>
     </div>
   );
 }
@@ -151,6 +175,8 @@ export function DocsParEtat({ elements, suivis, onOuvrir, onFait }: {
 }) {
   const [tout, setTout] = useState(false);
   const [ouvre, setOuvre] = useState('');
+  /* V3.55 : l'exemplaire signé à la main, déposé d'ici. */
+  const [depot, setDepot] = useState<DocumentRow | null>(null);
 
   async function ouvrirSigne(el: ElementDoc) {
     if (!el.signe) return;
@@ -177,7 +203,7 @@ export function DocsParEtat({ elements, suivis, onOuvrir, onFait }: {
   const signes = enChaine(elements.filter(x => x.statut === 'signe'));
   const annules = elements.filter(x => x.statut === 'annule');
   const caches = [...signes.slice(SIGNES_VISIBLES), ...annules];
-  const ligne = (el: ElementDoc) => <Ligne key={el.cle} el={el} onOuvrir={onOuvrir} ouvre={ouvre} onSigne={x => { void ouvrirSigne(x); }} enSignature={!!suivis[el.cle]} />;
+  const ligne = (el: ElementDoc) => <Ligne key={el.cle} el={el} onOuvrir={onOuvrir} ouvre={ouvre} onSigne={x => { void ouvrirSigne(x); }} onDeposer={setDepot} enSignature={!!suivis[el.cle]} />;
 
   return (
     <div className={s.dcListe}>
@@ -222,6 +248,10 @@ export function DocsParEtat({ elements, suivis, onOuvrir, onFait }: {
           </button>
         </>
       )}
+      {/* Sur <body> : la fiche qui contient la liste est animée (transform). */}
+      {depot && typeof document !== 'undefined' && createPortal(
+        <FenetreSigne doc={depot} onFermer={() => setDepot(null)} onFait={() => { setDepot(null); onFait?.(); }} />,
+        document.body)}
     </div>
   );
 }

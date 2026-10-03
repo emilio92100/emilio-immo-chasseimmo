@@ -33,6 +33,7 @@ import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContac
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
 import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
+import { retracteEnLigne } from '@/lib/documents-espace';
 import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
@@ -914,17 +915,17 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
      rétractation se voit sur le bouton du mandat (en rouge, avec une pastille
      « 1 » tant qu'Alexandre n'a pas ouvert la fenêtre) : c'est une
      information qui ne doit pas se perdre dans l'historique. */
-  const [derniereSig, setDerniereSig] = useState<{ id: string; numero: string; statut: string; retracte_le: string | null } | null>(null);
+  const [derniereSig, setDerniereSig] = useState<{ id: string; numero: string; statut: string; retracte_le: string | null; created_at?: string | null } | null>(null);
   const [sigVue, setSigVue] = useState(true);
   useEffect(() => {
     let vivant = true;
     setDerniereSig(null);
     if (!rechercheId) return;
-    supabase.from('mandats_signatures').select('id, numero, statut, retracte_le')
+    supabase.from('mandats_signatures').select('id, numero, statut, retracte_le, created_at')
       .eq('recherche_id', rechercheId).order('created_at', { ascending: false }).limit(1)
       .then(({ data, error }) => {
         if (!vivant || error || !data?.length) return;
-        const s = data[0] as { id: string; numero: string; statut: string; retracte_le: string | null };
+        const s = data[0] as { id: string; numero: string; statut: string; retracte_le: string | null; created_at: string | null };
         setDerniereSig(s);
         let vu = true;
         try { vu = !!localStorage.getItem('emilio_retractation_vue_' + s.id); } catch { /* sans effet */ }
@@ -932,7 +933,6 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       });
     return () => { vivant = false; };
   }, [rechercheId, showMandat]);
-  const retracte = derniereSig?.statut === 'retracte' && !cr.mandat_date_signature ? derniereSig : null;
   /* Un mandat de recherche préparé dans Documents, pas encore signé (V3.32) :
      le bouton du mandat le dit (« envoyé, en attente de signature »), au lieu
      de « non renseigné ». */
@@ -945,16 +945,53 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
       .then(({ data, error }) => {
         if (!vivant) return;
         const l = (error ? [] : data || []) as { id: string; statut: string; numero: string | null; signature: unknown }[];
-        setDocMandatLu({ rid: rechercheId, doc: l.find(x => x.statut === 'pret') || l[0] || null });
+        /* V3.56 : celui qui est parti en signature d'abord (comme l'espace). */
+        setDocMandatLu({ rid: rechercheId, doc: l.find(x => x.statut === 'pret' && !!x.signature) || l.find(x => x.statut === 'pret') || l[0] || null });
       });
     return () => { vivant = false; };
   }, [rechercheId, showMandat]);
   const docMandat = docMandatLu && docMandatLu.rid === rechercheId ? docMandatLu.doc : null;
+  /* V3.56 : un mandat de recherche de Documents auquel le client a renoncé
+     en ligne, depuis son espace (le dernier annulé de la recherche, s'il
+     porte la marque de retracteEnLigne). Le bouton le dit en rouge, comme
+     pour le mandat signé dans l'espace. */
+  const [docRetracteLu, setDocRetracteLu] = useState<{ rid: string; doc: { id: string; numero: string | null; retracte_le: string } | null; vu: boolean } | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    if (!rechercheId) return;
+    supabase.from('documents').select('id, numero, statut, donnees, annule_le').eq('modele', 'mandat_recherche').eq('recherche_id', rechercheId)
+      .eq('statut', 'annule').order('annule_le', { ascending: false, nullsFirst: false }).limit(1)
+      .then(({ data, error }) => {
+        if (!vivant) return;
+        const x = (error ? [] : data || [])[0] as { id: string; numero: string | null; statut: string; donnees: unknown } | undefined;
+        const le = retracteEnLigne(x);
+        let vu = true;
+        if (x && le) { try { vu = !!localStorage.getItem('emilio_retractation_vue_d-' + x.id); } catch { /* sans effet */ } }
+        setDocRetracteLu({ rid: rechercheId, doc: x && le ? { id: x.id, numero: x.numero, retracte_le: le } : null, vu });
+      });
+    return () => { vivant = false; };
+  }, [rechercheId, showMandat]);
+  /* Le plus récent des deux : signé dans l'espace puis rétracté, ou de
+     Documents rétracté en ligne — tant qu'aucun mandat n'est noté depuis.
+     V3.56 : comme l'espace (page.tsx), celui de Documents ne compte plus
+     dès que quelque chose de plus récent est venu : une signature commencée
+     dans l'espace, ou une nouvelle proposition. */
+  const quandR = (v: string | null | undefined) => { const t = v ? Date.parse(v) : NaN; return Number.isFinite(t) ? t : 0; };
+  const docRetracte = docRetracteLu?.rid === rechercheId && docRetracteLu.doc && !docMandat
+    && quandR(derniereSig?.created_at) <= quandR(docRetracteLu.doc.retracte_le)
+    && quandR(cr.mandat_propose_le as string | null | undefined) <= quandR(docRetracteLu.doc.retracte_le)
+    ? docRetracteLu.doc : null;
+  const retracte = [
+    derniereSig?.statut === 'retracte' ? { id: derniereSig.id, numero: derniereSig.numero as string | null, retracte_le: derniereSig.retracte_le, vu: sigVue } : null,
+    docRetracte && docRetracteLu ? { ...docRetracte, id: 'd-' + docRetracte.id, vu: docRetracteLu.vu } : null,
+  ].filter((x): x is { id: string; numero: string | null; retracte_le: string | null; vu: boolean } => !!x && !cr.mandat_date_signature)
+    .sort((a, b) => quandR(b.retracte_le) - quandR(a.retracte_le))[0] || null;
   function ouvrirMandat() {
     setShowMandat(true);
-    if (retracte && !sigVue) {
+    if (retracte && !retracte.vu) {
       try { localStorage.setItem('emilio_retractation_vue_' + retracte.id, '1'); } catch { /* sans effet */ }
-      setSigVue(true);
+      if (retracte.id.startsWith('d-')) setDocRetracteLu(x => (x ? { ...x, vu: true } : x));
+      else setSigVue(true);
     }
   }
   /* Le menu se posait dans la carte d'en-tête, qui rogne ce qui dépasse : il
@@ -3995,13 +4032,13 @@ ${signatureMail()}`,
                   l'ardoise : c'est une information de dossier, pas de recherche. */}
               <button className={styles.critMandat} onClick={ouvrirMandat} title="Modifier le mandat"
                 style={retracte ? { position: 'relative', borderColor: '#fecaca', background: '#fef2f2' } : { position: 'relative' }}>
-                {retracte && !sigVue && (
+                {retracte && !retracte.vu && (
                   <span aria-label="Nouveau" style={{ position: 'absolute', top: -7, right: -7, minWidth: 20, height: 20, borderRadius: 10, background: '#dc2626', color: '#fff', fontSize: 11.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff' }}>1</span>
                 )}
                 <b style={retracte ? { color: '#991b1b' } : undefined}>📋 Mandat{cr.mandat_date_signature || cr.mandat_date_expiration ? '' : ' de recherche'}{cr.mandat_numero ? ` n° ${cr.mandat_numero}` : docMandat?.numero ? ` n° ${docMandat.numero}` : ''}</b>
                 {retracte ? (
                   <>
-                    <span style={{ color: '#991b1b' }}>{`n° ${retracte.numero} rétracté par le client${retracte.retracte_le ? ` le ${new Date(retracte.retracte_le).toLocaleDateString('fr-FR')}` : ''}`}</span>
+                    <span style={{ color: '#991b1b' }}>{`${retracte.numero ? `n° ${retracte.numero} ` : ''}rétracté par le client${retracte.retracte_le ? ` le ${new Date(retracte.retracte_le).toLocaleDateString('fr-FR')}` : ''}`}</span>
                     <i style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>↩️ Rétracté</i>
                   </>
                 ) : cr.mandat_date_signature || cr.mandat_date_expiration ? (

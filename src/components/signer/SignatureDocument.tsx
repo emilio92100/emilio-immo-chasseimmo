@@ -26,10 +26,13 @@ export type DonneesSignerDoc = {
   jeton: string;
   /* V3.50 : « offre_expiree » (une offre d'achat passée sa date de
      validité), « indisponible » (la page n'a pas pu tout lire). */
-  etat: 'invite' | 'expire' | 'signe' | 'annule' | 'fin' | 'introuvable' | 'offre_expiree' | 'indisponible';
+  etat: 'invite' | 'expire' | 'signe' | 'annule' | 'fin' | 'introuvable' | 'offre_expiree' | 'indisponible' | 'termine';
   /* « Avenant n° 1 au mandat n° 4412 » (en-tête), « l’avenant n° 1 au mandat
-     de recherche n° 4412 » (dans les phrases), « l’avenant ». */
-  entete: string; le: string; court: string;
+     de recherche n° 4412 » (dans les phrases), « de l’avenant… » / « du
+     mandat… » (V3.56 : « la signature du mandat », jamais « de le mandat »),
+     « l’avenant ». Un lien qui ne sert plus ne reçoit que le genre du
+     document (« le mandat de recherche »), sans en-tête. */
+  entete: string; le: string; du: string; court: string;
   moi: { prenom: string; nom: string; email: string };
   role: string;
   /* Les autres signataires : où ils en sont. */
@@ -54,14 +57,21 @@ export type DonneesSignerDoc = {
   espace?: string | null;
   /* La fin de validité d'une offre d'achat passée (V3.50). */
   finValidite?: string | null;
+  /* V3.57, « termine » : signé par lui, puis le document a pris fin — le
+     jour où il a pris fin (renonciation, annulation), et si c'est un mandat. */
+  finLe?: string | null;
+  mandat?: boolean;
 };
 
 type Reponse = Record<string, unknown> & { ok?: boolean; error?: string };
 const ERR: Record<string, string> = {
   ...ERREURS, demande: 'Cochez aussi la case « Je demande que l’Agence commence… » pour signer.',
   lecture: 'Votre signature n’a pas pu être vérifiée pour l’instant. Réessayez dans un instant.',
+  deja: 'Vous avez déjà signé ce document : rechargez la page.',
 };
 const Maj = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/* « Claire », « Claire et Marc », « Claire, Marc et Léa » (V3.57). */
+const enListe = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l[l.length - 1]}` : l[0] || '');
 
 export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
   const envoyer = async (etape: string, corps: Record<string, unknown> = {}): Promise<Reponse | null> => {
@@ -92,6 +102,14 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     setEtat('offre_expiree');
     return true;
   };
+  /* V3.55 : la page était ouverte quand Alexandre a arrêté la signature
+     (« arrete »), ou quand un nouveau lien a remplacé celui-ci (« lien
+     invalide ») : elle le dit, au lieu de « réessayez dans un instant ». */
+  const plusOuvert = (r: Reponse | null) => {
+    if (r?.error === 'arrete' || r?.error === 'etat') { setPad(false); setEtat('annule'); return true; }
+    if (r?.error === 'lien invalide') { setPad(false); setEtat('introuvable'); return true; }
+    return false;
+  };
 
   useEffect(() => { void envoyer('afficher'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { window.scrollTo({ top: 0 }); }, [etape, etat]);
@@ -107,9 +125,8 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     const r = await envoyer('code');
     setEnvoi(false);
     if (r?.ok) { setEmailMasque(String(r.email || '')); setCodeDe(''); setCode(''); setAttente(45); setDemande(true); }
-    else if (offreFinie(r)) return;
+    else if (offreFinie(r) || plusOuvert(r)) return;
     else if (r?.error === 'lien_expire') setEtat('expire');
-    else if (r?.error === 'etat') setEtat('annule');
     else setErreur(ERR[r?.error || ''] || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.');
   };
   const signer = async (griffe: string) => {
@@ -125,7 +142,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     }
     if (r?.error === 'code' && typeof r.restants === 'number') {
       setErreur(r.restants > 0 ? `Ce code ne correspond pas. Encore ${r.restants} essai${r.restants > 1 ? 's' : ''}.` : ERR.trop);
-    } else if (offreFinie(r)) return;
+    } else if (offreFinie(r) || plusOuvert(r)) return;
     else if (r?.error === 'lien_expire') setEtat('expire');
     else setErreur(ERR[r?.error || ''] || 'La signature n’a pas abouti. Réessayez dans un instant.');
   };
@@ -164,7 +181,16 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
     ? `Cette offre n’est plus valable depuis le ${dateLongue(finOffre)} à ${heureParis(finOffre)} : elle ne peut plus être signée. Contactez Emilio Immobilier.`
     : 'Cette offre n’est plus valable : elle ne peut plus être signée. Contactez Emilio Immobilier.');
   if (etat === 'expire') return message('horloge', 'Ce lien a expiré', 'Pour votre sécurité, un lien de signature n’est valable que quinze jours. Appelez Alexandre : il vous en enverra un nouveau.');
-  if (etat === 'annule' || etat === 'fin') return message('info', `${Maj(d.court)} ne vous attend plus`, `Alexandre a arrêté la signature en ligne de ${d.le}. S’il faut le signer, il vous enverra un nouveau lien.`);
+  /* V3.57 : il l'a signé, puis le document a pris fin. */
+  if (etat === 'termine') return message('info',
+    /* La date ne se coupe pas (« 2026 » seul sur sa ligne en 390 px). */
+    `${d.mandat ? 'Ce mandat a pris fin' : 'Ce document a été annulé'}${d.finLe ? ` le ${dateLongue(d.finLe).replace(/ /g, '\u00a0')}` : ''}`,
+    `${d.signeLe ? `Vous l’avez signé le ${dateLongue(d.signeLe)}. ` : ''}Votre exemplaire signé reste à votre disposition.`,
+    <>
+      <button type="button" className="btn fant mdt-plein" onClick={() => { void telecharger(); }}><Ic n="doc" t={16} /><span>Télécharger mon exemplaire signé</span></button>
+      {erreur && <div className="mdt-erreur">{erreur}</div>}
+    </>);
+  if (etat === 'annule' || etat === 'fin') return message('info', `${Maj(d.court)} ne vous attend plus`, `Alexandre a arrêté la signature en ligne ${d.du}. S’il faut encore signer, il vous enverra un nouveau lien.`);
 
   /* ── Il a signé ── */
   if (etat === 'signe' || etape === 'fini') {
@@ -179,7 +205,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
           <h3>{etape === 'fini' ? `Merci ${prenom}, c’est signé` : `Vous avez signé le ${dateLongue(signeLe)}`}</h3>
           <p className="mdt-p">{complet
             ? `${Maj(d.le)} est signé par tous. Chacun en reçoit l’exemplaire complet par e-mail, avec son certificat de signature.`
-            : `Votre exemplaire vient de vous être envoyé par e-mail. Vous recevrez la version complète dès que ${attendus.join(' et ') || 'les autres signataires'} ${attendus.length > 1 ? 'auront' : 'aura'} signé.`}</p>
+            : `Votre exemplaire vient de vous être envoyé par e-mail. Vous recevrez la version complète dès que ${attendus.length ? `${enListe(attendus)} ${attendus.length > 1 ? 'auront' : 'aura'}` : 'les autres signataires auront'} signé.`}</p>
           <button type="button" className="btn fant mdt-plein" onClick={() => { void telecharger(); }}><Ic n="doc" t={16} /><span>Télécharger le document signé</span></button>
           {d.espace && <a className="btn or mdt-plein" href={d.espace}>Revenir à mon espace</a>}
           {d.retractation && <p className="mdt-mention">{'Le document rappelle votre délai de rétractation de 14 jours et la façon de l’exercer : le formulaire joint, ou un simple e-mail à l’agence.'}</p>}

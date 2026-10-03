@@ -6,7 +6,7 @@ import { HOTE_ESPACE } from '@/lib/jeton';
 import Depliant from '@/components/shared/Depliant';
 import { PastillePli } from '@/components/shared/Pli';
 import { Ic } from './ApercuActe';
-import { appelSignature, nomSignataire, type DocumentRow, type SignataireRow } from './outils';
+import { appelSignature, nomSignataire, pagePerimee, type DocumentRow, type SignataireRow } from './outils';
 import s from './Documents.module.css';
 
 /* ═══ Où en est la signature : qui a signé, qui on attend (V3.32) ═════════
@@ -216,6 +216,8 @@ export default function SuiviSignature({ suivi, onFait, ouvertAuDebut = false }:
       onFait?.();
     } catch (e) {
       setMsg({ ok: false, t: (e as Error).message });
+      /* V3.55 : la liste n'était plus à jour (signé, arrêté ailleurs) : elle se relit. */
+      if (pagePerimee(e)) onFait?.();
     }
     setTravail('');
   }
