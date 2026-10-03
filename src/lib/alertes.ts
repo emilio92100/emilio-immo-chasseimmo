@@ -69,8 +69,8 @@ export const ALERTES_MAIL: Alerte[] = [
   {
     cle: 'mandat_signe', groupe: 'mandats', titre: 'Un mandat signé',
     objet: '✍️ Paul Martin a signé son mandat (n° 4322)',
-    quand: 'Il signe son mandat en ligne. Le PDF signé est joint au mail.',
-    crm: 'Le mandat signé sur sa fiche, avec son PDF, et une ligne dans son suivi.',
+    quand: 'Son mandat est signé en ligne. À plusieurs (un couple, des associés), un seul mail, quand le dernier a signé. Le PDF signé est joint au mail.',
+    crm: 'Le mandat signé sur sa fiche, avec son PDF, qui a signé et qui on attend, et une ligne dans son suivi.',
     sauf: 'sa copie n’a pas pu lui être envoyée, la fiche n’a pas pu être mise à jour, ou sa recherche dépasse déjà le mandat.',
   },
   {
@@ -87,11 +87,11 @@ export const ALERTES_MAIL: Alerte[] = [
     crm: 'Une relance du jour, et une ligne dans son suivi.',
   },
   {
-    cle: 'document_signe', groupe: 'mandats', titre: 'Un document signé en ligne',
-    objet: '✍️ Claire Martin a signé l’avenant n° 1 au mandat de vente n° 4330',
-    quand: 'Un signataire signe avec son lien un document de la rubrique Documents (mandat de vente, avenant, offre d’achat…). Le PDF signé est joint. Rien ne part pour une signature sur place : tu y étais.',
+    cle: 'document_signe', groupe: 'mandats', titre: 'Un document signé en ligne par tous',
+    objet: '✅ Signé par tous : Mandat simple · SCI Martin (n° 4330)',
+    quand: 'Tout le monde a signé avec son lien un document de la rubrique Documents (mandat de vente, avenant, offre d’achat…) : un seul mail, à la dernière signature, pas un par signataire. Le PDF signé est joint. Rien ne part pour une signature sur place : tu y étais.',
     crm: 'Le document dans Documents, avec qui a signé et qui on attend, et une ligne dans le suivi du client.',
-    sauf: 'son exemplaire n’a pas pu lui être envoyé, ou le document n’a pas pu être mis à jour.',
+    sauf: 'un signataire n’a pas reçu son exemplaire, ou le document n’a pas pu être mis à jour (même avant la dernière signature).',
   },
   {
     cle: 'point_auto_recap', groupe: 'auto', titre: 'Le récapitulatif du point automatique',
