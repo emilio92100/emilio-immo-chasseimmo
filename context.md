@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.65 · 3 octobre 2026**
+**Version 3.66 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,28 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.66 — 3 octobre 2026 · Documents : l'onglet choisi en intercalaire, et l'arrivée sur « Signatures en cours »
+
+Rien à passer dans Supabase.
+
+Alexandre, sur la liste des documents : « quand on arrive, il faut que ça arrive sur Signatures en cours
+s'il y en a, sinon dans Tous » ; « pourquoi le Tous est à droite tout seul ? collé aux autres » ; « des
+petites fragmentations » entre l'onglet choisi et la bande des états (captures : le pont de la V3.61, plus
+étroit que l'onglet, laissait des marches) ; « quand on clique sur Signatures en cours, faut que ça soit
+mieux géré ».
+
+- **L'arrivée** (`PageDocuments.tsx`, `vuePosee`) : à la première lecture, « Signatures en cours » s'il y a
+  un document à faire signer ou en signature (hors courriers), sinon « Tous ». Posé une fois, avant
+  l'affichage (`useLayoutEffect`) ; un clic l'emporte.
+- **« Tous »** en dernier, collé aux autres (plus de `margin-left: auto`).
+- **L'intercalaire** (`Documents.module.css`, `.vuesBloc`) : plus de pont mesuré à part. La pastille de
+  la barre des sortes (OngletsGlissants) est arrondie en haut seulement, descend jusqu'à la bande et s'y
+  évase par deux coins creusés (`::before`, `::after`, dégradés radiaux). Une seule forme, qui glisse d'un
+  bloc. Près d'un bord de la bande (le premier onglet ; au téléphone, la barre qui défile), la bande perd
+  ce coin-là et l'intercalaire son évasement de ce côté (`bords`, mesuré : `data-g`, `data-d`).
+- **« Signatures en cours » a sa bande** : Tous · On attend des signatures (liens partis) · Prêts à faire
+  signer. Sans elle, l'onglet choisi restait suspendu. Chaque choix a son message quand il est vide.
 
 ### V3.65 — 3 octobre 2026 · import ImmoFacile : on voit que la lecture tourne
 
