@@ -878,16 +878,28 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
    par sorte) est celle des fiches (OngletsGlissants). Dessous, la barre des
    états, plus légère : fond gris, la pastille blanche glisse. Puis les
    groupes, chacun son titre (un point de couleur, le nom, le nombre). */
-.vues { margin-top: -2px; }
 .groupes { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-.sousVues { align-self: flex-start; max-width: 100%; padding: 4px; gap: 2px; border-radius: 12px; background: #eef1f6; border-color: transparent; }
-.sousVues > span { top: 4px; bottom: 4px; border-radius: 9px; background: white; box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 6px 14px -8px rgba(26, 35, 50, .35); }
-.sousVues > button { padding: 7px 12px; gap: 6px; font-size: 12.5px; color: #64748b; }
-.sousVues > button:hover { background: rgba(255, 255, 255, .55); }
-.sousVues > button[aria-pressed='true'] { color: var(--emilio); }
-.sousVues > button[aria-pressed='true'] svg { color: #a07c28; }
-.sousVues > button i { background: rgba(255, 255, 255, .8); }
-.sousVues > button[aria-pressed='true'] i { background: #fbf1d6; color: #8a6a1f; }
+/* V3.61 : la barre des sortes et la bande des états ne font qu'un bloc. La
+   pastille de l'onglet choisi est d'un bleu uni, comme la bande dessous et
+   le pont qui les relie (PageDocuments, `pont`). « Tous » tout à droite. */
+.vuesBloc { position: relative; display: flex; flex-direction: column; min-width: 0; background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+.vuesBloc > nav { border: none; background: transparent; border-radius: 15px; }
+.vuesBloc > nav > span { background: var(--emilio); }
+.vuesBloc > nav > button:last-child { margin-left: auto; }
+.pont { position: absolute; z-index: 0; background: var(--emilio); pointer-events: none; transition: left .42s cubic-bezier(.16, 1, .3, 1), width .42s cubic-bezier(.16, 1, .3, 1); }
+.sousBande { position: relative; z-index: 1; margin: 0 5px 5px; padding: 4px; border-radius: 12px; background: var(--emilio); min-width: 0; box-shadow: 0 10px 22px -16px rgba(26, 35, 50, .7); }
+/* La barre des états, dans la bande : `.sousBande > nav` pour passer devant
+   les règles de la barre (OngletsGlissants.module.css), quel que soit
+   l'ordre des feuilles de style. */
+.sousBande > nav { border: none; background: transparent; padding: 0; gap: 2px; border-radius: 9px; }
+.sousBande > nav > span { top: 0; bottom: 0; border-radius: 9px; background: white; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, .45); }
+.sousBande > nav > button { padding: 7px 12px; gap: 6px; font-size: 12.5px; color: rgba(255, 255, 255, .78); }
+.sousBande > nav > button[aria-pressed='false']:hover { background: rgba(255, 255, 255, .1); color: white; }
+.sousBande > nav > button svg { color: rgba(255, 255, 255, .7); }
+.sousBande > nav > button i { background: rgba(255, 255, 255, .14); color: #f0dc9c; }
+.sousBande > nav > button[aria-pressed='true'] { color: var(--emilio); }
+.sousBande > nav > button[aria-pressed='true'] svg { color: #a07c28; opacity: 1; }
+.sousBande > nav > button[aria-pressed='true'] i { background: #fbf1d6; color: #8a6a1f; }
 .groupe { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .grT { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 4px; }
 .grT::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
@@ -907,7 +919,31 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
 .grT[data-g='annule'] b { color: #b91c1c; }
 .grT[data-g='annule'] i { background: #fee2e2; color: #b91c1c; }
 @media (max-width: 760px) {
-  .vues { margin: -2px -12px 0; border-radius: 0; border-left: none; border-right: none; }
-  .sousVues { align-self: stretch; }
   .grT small { flex-basis: 100%; padding-left: 16px; }
 }
+
+/* ══ V3.61 — avant un geste : ce qui va se passer, et ensuite (FenetreConfirmer) ══ */
+.confIn { width: min(580px, 100%); }
+.confIc { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #e8eef8; color: var(--emilio); }
+.confIc[data-ton='danger'] { background: #fee2e2; color: #b91c1c; }
+.confIc[data-ton='or'] { background: #fbf1d6; color: #a07c28; }
+.confBloc { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #f7f9fc; border: 1px solid #e8edf4; }
+.confBloc[data-g='ensuite'] { background: #fbfcfe; }
+.confT { font: 800 10.5px 'DM Sans', sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: #8593a8; }
+.confListe { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.confListe > li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; color: #334155; }
+.confListe > li > svg { flex-shrink: 0; margin-top: 2px; color: #64748b; }
+.confListe > li > span { min-width: 0; }
+.confListe > li[data-ton='alerte'] { color: #991b1b; }
+.confListe > li[data-ton='alerte'] > svg { color: #dc2626; }
+.confListe > li[data-ton='ok'] > svg { color: #16a34a; }
+.confOption { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: 12px; border: 1px solid #ecdcb0; background: #fffcf3; cursor: pointer; }
+.confOption > input { flex-shrink: 0; width: 17px; height: 17px; margin: 2px 0 0; accent-color: #34496e; cursor: pointer; }
+.confOption > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.confOption b { font-size: 13.5px; color: var(--emilio); }
+.confOption small { font-size: 12.5px; color: #7b8799; line-height: 1.45; }
+.confConseil { display: flex; gap: 9px; align-items: flex-start; padding: 10px 13px; border-radius: 12px; background: #eef4ff; border: 1px solid #d6e4ff; color: #1e3a8a; font-size: 13px; line-height: 1.5; }
+.confConseil > svg { flex-shrink: 0; margin-top: 2px; color: #3b82f6; }
+.confConseil > span { min-width: 0; }
+.btnRouge { background: #dc2626; border-color: #dc2626; color: white; font-weight: 800; }
+.btnRouge:hover { background: #b91c1c; }
