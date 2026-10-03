@@ -872,3 +872,42 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
 @media (max-width: 640px) {
   .ligneDepot > span { white-space: normal; }
 }
+
+/* ══ V3.60 — la liste rangée : onglets qui glissent, états, groupes ══
+   La barre des sortes (« Signatures en cours », « Tous », une
+   par sorte) est celle des fiches (OngletsGlissants). Dessous, la barre des
+   états, plus légère : fond gris, la pastille blanche glisse. Puis les
+   groupes, chacun son titre (un point de couleur, le nom, le nombre). */
+.vues { margin-top: -2px; }
+.groupes { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.sousVues { align-self: flex-start; max-width: 100%; padding: 4px; gap: 2px; border-radius: 12px; background: #eef1f6; border-color: transparent; }
+.sousVues > span { top: 4px; bottom: 4px; border-radius: 9px; background: white; box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 6px 14px -8px rgba(26, 35, 50, .35); }
+.sousVues > button { padding: 7px 12px; gap: 6px; font-size: 12.5px; color: #64748b; }
+.sousVues > button:hover { background: rgba(255, 255, 255, .55); }
+.sousVues > button[aria-pressed='true'] { color: var(--emilio); }
+.sousVues > button[aria-pressed='true'] svg { color: #a07c28; }
+.sousVues > button i { background: rgba(255, 255, 255, .8); }
+.sousVues > button[aria-pressed='true'] i { background: #fbf1d6; color: #8a6a1f; }
+.groupe { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.grT { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 4px; }
+.grT::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
+.grT b { font: 800 11px 'DM Sans', sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: #64748b; }
+.grT i { font-style: normal; display: inline-flex; min-width: 20px; height: 19px; padding: 0 6px; border-radius: 10px; align-items: center; justify-content: center; background: #f1f5f9; color: #64748b; font: 800 11px 'DM Sans', sans-serif; }
+.grT small { font-size: 12px; color: #94a3b8; }
+.grT[data-g='encours']::before, .grT[data-g='attente']::before { background: #c9a84c; }
+.grT[data-g='encours'] b, .grT[data-g='attente'] b { color: #8a6a1f; }
+.grT[data-g='encours'] i, .grT[data-g='attente'] i { background: #fbf1d6; color: #8a6a1f; }
+.grT[data-g='prets']::before { background: #3b82f6; }
+.grT[data-g='prets'] b { color: #1d4ed8; }
+.grT[data-g='prets'] i { background: #eff6ff; color: #1d4ed8; }
+.grT[data-g='signe']::before { background: #16a34a; }
+.grT[data-g='signe'] b { color: #15803d; }
+.grT[data-g='signe'] i { background: #dcfce7; color: #166534; }
+.grT[data-g='annule']::before { background: #ef4444; }
+.grT[data-g='annule'] b { color: #b91c1c; }
+.grT[data-g='annule'] i { background: #fee2e2; color: #b91c1c; }
+@media (max-width: 760px) {
+  .vues { margin: -2px -12px 0; border-radius: 0; border-left: none; border-right: none; }
+  .sousVues { align-self: stretch; }
+  .grT small { flex-basis: 100%; padding-left: 16px; }
+}
