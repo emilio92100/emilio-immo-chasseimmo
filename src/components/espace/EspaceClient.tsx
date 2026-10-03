@@ -537,7 +537,6 @@ const TYPES_E: [string, string][] = [
   ['Appartement', '🏢'], ['Maison', '🏡'], ['Loft', '🏗️'],
   ['Duplex', '🪜'], ['Terrain', '🌱'], ['Autre', '✳️'],
 ];
-const ICONE_TYPE: Record<string, string> = Object.fromEntries(TYPES_E);
 const ETATS_E: [string, string, string][] = [
   ['a_renover', 'À rénover', '🔨'], ['travaux_legers', 'Travaux légers', '🧰'],
   ['bon_etat', 'Bon état', '✨'], ['refait_neuf', 'Refait à neuf', '💎'],
@@ -568,15 +567,6 @@ const FINANCEMENTS_E: [string, string, string][] = [
   ['mixte_pret_relais', 'Mixte · prêt + prêt relais', '🔀'],
 ];
 const LETTRES_DPE = ['A','B','C','D','E','F','G'];
-/* Une valeur du récapitulatif : petite carte avec son icône, plutôt qu'une ligne nue. */
-function Fait({ ico, lib, val }: { ico: string; lib: string; val: React.ReactNode }) {
-  return (
-    <div className="fait">
-      <span className="fi">{ico}</span>
-      <span className="ft"><i>{lib}</i><b>{val}</b></span>
-    </div>
-  );
-}
 
 /* Un champ nombre : vide par défaut, jamais d'exemple grisé pris pour une valeur. */
 function ChampNum({ val, onChange, suffixe, aide }: {
@@ -599,23 +589,7 @@ function BtnAide({ cle, onAide }: { cle: string; onAide: (c: string) => void }) 
   );
 }
 
-/* En-tête d'une catégorie, côté acheteur : pastille d'icône + titre lisible. */
-function CatE({ ico, titre, sous, children }: { ico: string; titre: string; sous?: string; children: React.ReactNode }) {
-  return (
-    <div className="bloc cat">
-      <div className="cat-h">
-        <span className="cat-i"><Ico n={ico} t={19} /></span>
-        <span className="cat-tt"><b>{titre}</b>{sous ? <i>{sous}</i> : null}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
 
-/* Une pastille d'équipement : dorée et marquée quand c'est indispensable. */
-function PastilleE({ texte, fort }: { texte: string; fort?: boolean }) {
-  return <span className={'past' + (fort ? ' indis' : ' or')}>{texte}{fort ? <i className="mk">indispensable</i> : null}</span>;
-}
 
 const T: Record<string, string[]> = {
   /* Les équipements du bien : un trait, pas un pictogramme chargé — ils se
@@ -674,6 +648,10 @@ const T: Record<string, string[]> = {
   liste:['M8 6h12','M8 12h12','M8 18h12','M4 6h.01','M4 12h.01','M4 18h.01'],
   filtre:['M4 5.5h16l-6.2 7.2v5.6l-3.6 1.9v-7.5z'],
   pouce:['M7 10.5v10H4v-10z','M7 10.5l4-7a2 2 0 0 1 2.6 2.3l-.9 4.7H19a2 2 0 0 1 2 2.3l-1.2 6.9A2 2 0 0 1 17.8 20.5H7'],
+  /* V3.67 : « Ma recherche » — un balcon, la banque du financement, le portefeuille de l'apport. */
+  balcon:['M3 13h18','M3 20h18','M5 13v7','M9 13v7','M15 13v7','M19 13v7','M8 13V5.5h8V13'],
+  banque:['M3 9.5 12 4l9 5.5','M5 10v7.5','M9.5 10v7.5','M14.5 10v7.5','M19 10v7.5','M3 20.5h18'],
+  portefeuille:['M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1z','M4 7.5 15 4v3.5','M16 13.5h1.5'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -3236,6 +3214,43 @@ function morceauxResume(crit: any, villes: { ville: string }[]) {
   return m;
 }
 
+/* ══ « Ma recherche » (V3.67) ══════════════════════════════════════
+   Alexandre, devant les maquettes : « le A, l'essentiel d'abord », aux
+   couleurs d'Emilio, et du B « ce qui ferait la différence », « ce que vous
+   évitez », et « noté par Alexandre » ; des icônes partout, « pour que ce
+   soit plus vivant ». Avant : neuf cartes pareilles, empilées, le budget
+   tout en bas, des émoji.
+   De haut en bas : le bandeau bleu (la phrase, trois cases), où il
+   cherche, le bien, ce qui est indispensable, ce qui ferait la différence
+   (souhaité), ce qu'il évite, son projet, le mot d'Alexandre. Tout vient
+   de la recherche du CRM : une rubrique sans rien à dire ne s'affiche pas.
+   Indispensable / souhaité : les niveaux du CRM (CriteresRecherche,
+   `exigences`). Sur ordinateur, deux colonnes (`.mr-cols`). */
+const ICO_EQUIP: Record<string, string> = {
+  parking: 'parking', cave: 'cave', balcon: 'balcon', terrasse: 'terrasse', jardin: 'jardin', ascenseur: 'ascenseur', gardien: 'gardien',
+};
+type ItemMr = { cle: string; ico: string; t: string };
+
+/* Une ligne du bien : son icône, son nom, sa valeur. */
+function LigneMr({ ico, lib, val }: { ico: string; lib: string; val: React.ReactNode }) {
+  return (
+    <div className="mr-l">
+      <span className="mr-li"><Ico n={ico} t={16} /></span>
+      <span className="mr-ll">{lib}</span>
+      <b className="mr-lv">{val}</b>
+    </div>
+  );
+}
+/* L'en-tête d'une rubrique : la pastille, le titre, une phrase. */
+function TeteMr({ ico, titre, sous, ton }: { ico: string; titre: string; sous?: string; ton?: string }) {
+  return (
+    <div className="mr-h">
+      <span className={'mr-hi' + (ton ? ' ' + ton : '')}><Ico n={ico} t={18} /></span>
+      <span className="mr-ht"><b>{titre}</b>{sous ? <i>{sous}</i> : null}</span>
+    </div>
+  );
+}
+
 function Recherche({ crit, aller, onCriteres, onMessage, mandatCarte }: any) {
   /* On n'invente rien : s'il n'y a pas de minimum, on écrit « jusqu'à ». */
   const bmin: number | null = crit.budgetMin || null;
@@ -3244,180 +3259,182 @@ function Recherche({ crit, aller, onCriteres, onMessage, mandatCarte }: any) {
   const expos: string[] = (crit.exposition || '').split(',').map((x: string) => x.trim()).filter(Boolean);
   const types: string[] = crit.typesBien?.length ? crit.typesBien : (crit.typeBien ? [crit.typeBien] : []);
   const iDpe = crit.dpeMax ? LETTRES_DPE.indexOf(crit.dpeMax) : -1;
+  const villes = grouperSecteurs(crit.secteurs || []);
+  const arrets: Arret[] = crit.transportArrets || [];
+  const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
 
-  /* Les équipements retenus, dans l'ordre du CRM, avec leur niveau. */
-  const equips: { texte: string; fort: boolean }[] = [];
-  EQUIP_E.forEach(([cle, lib, ico]) => {
-    if (crit.equip.includes(lib) || ex[cle]) equips.push({ texte: `${ico} ${lib}`, fort: ex[cle] === 'indispensable' });
+  /* Les trois cases du bandeau. */
+  const cases: { ico: string; v: string; l: string; or?: boolean }[] = [];
+  if (crit.surfaceMin) cases.push({ ico: 'regle', v: `${crit.surfaceMin} m²`, l: 'surface minimum' });
+  if (crit.piecesMin) cases.push({ ico: 'plan', v: pl(crit.piecesMin, 'pièce'), l: crit.chambresMin ? `dont ${pl(crit.chambresMin, 'chambre')}` : 'au moins' });
+  else if (crit.chambresMin) cases.push({ ico: 'plan', v: pl(crit.chambresMin, 'chambre'), l: 'au moins' });
+  if (bmax) cases.push({ ico: 'euro', v: EUR(bmax), l: 'budget maximum', or: true });
+  else if (bmin) cases.push({ ico: 'euro', v: EUR(bmin), l: 'budget minimum', or: true });
+
+  /* Le bien. */
+  const etats = etatsListe(crit.etatSouhaite).map((k, i) => { const l = ETATS_E.find(x => x[0] === k)?.[1] || k; return i ? l.charAt(0).toLowerCase() + l.slice(1) : l; });
+  const lignes: { ico: string; lib: string; val: React.ReactNode }[] = [];
+  if (types.length) lignes.push({ ico: 'maison', lib: types.length > 1 ? 'Types' : 'Type', val: types.map((t, i) => (i ? t.toLowerCase() : t)).join(' ou ') });
+  if (etats.length) lignes.push({ ico: 'etincelle', lib: 'État', val: etats.join(' ou ') });
+  if (crit.anneeMin) lignes.push({ ico: 'calendrier', lib: 'Construit après', val: <span className="tab">{crit.anneeMin}</span> });
+  if (crit.surfaceSejourMin) lignes.push({ ico: 'canape', lib: 'Séjour', val: <span className="tab">{`${crit.surfaceSejourMin} m² au moins`}</span> });
+  if (crit.surfaceMax) lignes.push({ ico: 'regle', lib: 'Surface', val: <span className="tab">{`${crit.surfaceMax} m² au plus`}</span> });
+  if (crit.piecesMax) lignes.push({ ico: 'plan', lib: 'Pièces', val: <span className="tab">{`${crit.piecesMax} au plus`}</span> });
+  if (crit.dernierEtage) lignes.push({ ico: 'immeuble', lib: 'Étage', val: 'Le dernier étage' });
+
+  /* Indispensable, et ce qui ferait la différence : les niveaux du CRM. */
+  const indis: ItemMr[] = [], plus: ItemMr[] = [];
+  const ranger = (niveau: string | undefined, it: ItemMr) => (niveau === 'indispensable' ? indis : plus).push(it);
+  EQUIP_E.forEach(([cle, lib]) => {
+    if (crit.equip.includes(lib) || ex[cle]) ranger(ex[cle], { cle, ico: ICO_EQUIP[cle] || 'check', t: lib });
   });
-  if (ex.exterieur) equips.push({ texte: `🌤️ Extérieur${crit.exterieurSurfaceMin ? ` de ${crit.exterieurSurfaceMin} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
-  if (crit.cuisineType) equips.push({ texte: `🍳 Cuisine ${crit.cuisineType === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
+  if (ex.exterieur) ranger(ex.exterieur, { cle: 'exterieur', ico: 'terrasse', t: crit.exterieurSurfaceMin ? `Un extérieur de ${crit.exterieurSurfaceMin} m²` : 'Un extérieur' });
+  if (crit.cuisineType) ranger(ex.cuisine, { cle: 'cuisine', ico: 'cuisine', t: crit.cuisineType === 'ouverte' ? 'Cuisine ouverte' : 'Cuisine séparée' });
+  if (expos.length) {
+    const l = expos.map(e => (EXPO_E.find(x => x[0] === e)?.[1] || e).toLowerCase());
+    plus.push({ cle: 'expo', ico: expos.includes('traversant') && expos.length === 1 ? 'traversant' : 'soleil', t: `Exposition ${l.join(' ou ')}` });
+  }
 
-  const etage = [
-    crit.etageMin ? `à partir du ${crit.etageMin}e` : '',
-    crit.etageMax ? `jusqu'au ${crit.etageMax}e` : '',
-    crit.rdcExclu ? 'pas de rez-de-chaussée' : '',
-    crit.dernierEtage ? 'dernier étage recherché' : '',
-    crit.etageMaxSansAscenseur ? `${crit.etageMaxSansAscenseur}e maximum sans ascenseur` : '',
-  ].filter(Boolean);
+  /* Ce qu'il évite. */
+  const evite: { cle: string; t: React.ReactNode }[] = [];
+  const emin = Number(crit.etageMin) || 0;
+  if (emin >= 3) evite.push({ cle: 'emin', t: `En dessous du ${emin}e étage` });
+  else if (emin === 2) evite.push({ cle: 'emin', t: 'Le rez-de-chaussée et le 1er étage' });
+  else if (emin === 1 || crit.rdcExclu) evite.push({ cle: 'emin', t: 'Le rez-de-chaussée' });
+  if (crit.etageMax) evite.push({ cle: 'emax', t: `Au-dessus du ${crit.etageMax}e étage` });
+  if (crit.etageMaxSansAscenseur) evite.push({ cle: 'asc', t: `Au-dessus du ${crit.etageMaxSansAscenseur}e étage sans ascenseur` });
+  if (iDpe >= 0 && iDpe < 6) evite.push({ cle: 'dpe', t: (
+    <span className="mr-dpe"><span>{'Les logements classés'}</span>
+      <span className="mr-dl">{LETTRES_DPE.slice(iDpe + 1).map(d => <i key={d}>{d}</i>)}</span></span>
+  ) });
 
-  const aQuelqueChose = types.length || crit.etatSouhaite || crit.anneeMin;
-  const villesResume = grouperSecteurs(crit.secteurs || []);
+  /* Son projet. */
+  const projet: { ico: string; l: string; v: string }[] = [];
+  if (crit.urgence) projet.push({ ico: 'calendrier', l: 'Échéance', v: URGENCES_E.find(x => x[0] === crit.urgence)?.[1] || crit.urgence });
+  if (crit.financement) projet.push({ ico: 'banque', l: 'Financement', v: FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[1] || crit.financement });
+  if (crit.apport) projet.push({ ico: 'portefeuille', l: 'Apport', v: EUR(crit.apport) });
 
   return (
-    <Vue icone="cible" titre="Rappel de ma recherche" aller={aller}
-      sous="Ce qu'Alexandre a noté de votre projet, catégorie par catégorie. Vous pouvez le faire évoluer vous-même à tout moment.">
+    <>
+      <button className="retour" onClick={() => aller('accueil')}><Ico n="retour" t={17} /> Retour à l&apos;accueil</button>
 
-      {/* 0 — Le rappel en une phrase, avant le détail catégorie par catégorie. */}
-      <div className="resume-r">
-        <div className="resume-k"><i /> En une phrase</div>
-        <p className="resume-p">
-          {morceauxResume(crit, villesResume).map((x, i) => x.fort
-            ? <b key={i}>{x.t}</b>
-            : <span key={i}>{x.t}</span>)}
-        </p>
+      <section className="mr-hero" aria-label="Votre recherche">
+        <div className="mr-hero-h">
+          <span className="mr-kick"><Ico n="cible" t={16} /><span>Votre recherche</span></span>
+          <img className="mr-logo" src="/logos/logo-emilio-blanc-800.png" alt="Emilio" width={74} height={31} />
+        </div>
+        <h2 className="mr-phrase">
+          {/* « 70 m² », « 850 000 € », « 2 chambres » ne se coupent pas en fin de ligne. */}
+          {morceauxResume(crit, villes).map((x, i) => {
+            const t = x.t.replace(/(\d)[ \u202f](?=\d{3}\b|m²|€|chambre)/g, '$1\u00a0');
+            return x.fort ? <b key={i}>{t}</b> : <span key={i}>{t}</span>;
+          })}
+        </h2>
+        {cases.length > 0 && (
+          <div className="mr-cases" style={{ gridTemplateColumns: `repeat(${cases.length}, minmax(0, 1fr))` }}>
+            {cases.map(c => (
+              <div key={c.ico} className={'mr-case' + (c.or ? ' or' : '')}>
+                <span className="mr-ci"><Ico n={c.ico} t={16} /></span>
+                <b className="tab">{c.v}</b>
+                <span>{c.l}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mr-note">{'Notée avec Alexandre. Vous pouvez la faire évoluer à tout moment.'}</p>
+      </section>
+
+      <div className="mr-cols">
+        {(villes.length > 0 || arrets.length > 0 || !!crit.transportMinutes) && (
+          <section className="mr-b">
+            <TeteMr ico="lieu" titre="Où vous cherchez" />
+            {villes.map(v => (
+              <div className="mr-ville" key={v.ville}>
+                <b>{v.ville}</b>
+                {v.quartiers.length
+                  ? <span className="mr-qs">{v.quartiers.map(q => <span className="mr-q" key={q}>{q}</span>)}</span>
+                  : <span className="mr-tout">{'toute la ville'}</span>}
+              </div>
+            ))}
+            {arrets.map((a, i) => (
+              <div className="mr-arret" key={a.nom + i}>
+                <span className="mr-ai"><Ico n="train" t={17} /></span>
+                <span className="mr-at"><b>{a.nom}</b><i>{`à moins de ${a.minutes || 10} min à pied`}</i></span>
+                <span className="mr-lignes">{a.lignes.map(l => <PastilleArret id={l} key={l} t={24} />)}</span>
+              </div>
+            ))}
+            {!arrets.length && !!crit.transportMinutes && (
+              <div className="mr-arret">
+                <span className="mr-ai"><Ico n="train" t={17} /></span>
+                <span className="mr-at"><b>{`À ${crit.transportMinutes} min à pied au plus`}</b><i>{'d’une station'}</i></span>
+              </div>
+            )}
+          </section>
+        )}
+
+        {lignes.length > 0 && (
+          <section className="mr-b">
+            <TeteMr ico="maison" titre="Le bien" />
+            <div className="mr-ls">{lignes.map(l => <LigneMr key={l.lib} ico={l.ico} lib={l.lib} val={l.val} />)}</div>
+          </section>
+        )}
+
+        {indis.length > 0 && (
+          <section className="mr-b mr-indis">
+            <TeteMr ico="verrou" titre="Indispensable" sous="sans cela, un bien ne vous est pas présenté" ton="bleu" />
+            <div className="mr-chips">{indis.map(it => (
+              <span className="mr-chip fort" key={it.cle}><Ico n={it.ico} t={16} /><span>{it.t}</span></span>
+            ))}</div>
+          </section>
+        )}
+
+        {plus.length > 0 && (
+          <section className="mr-b mr-plus">
+            <TeteMr ico="etoile" titre="Ce qui ferait la différence" sous="un plus, sans être obligatoire" ton="or" />
+            <div className="mr-chips">{plus.map(it => (
+              <span className="mr-chip" key={it.cle}><Ico n={it.ico} t={16} /><span>{it.t}</span></span>
+            ))}</div>
+          </section>
+        )}
+
+        {evite.length > 0 && (
+          <section className="mr-b mr-evite">
+            <TeteMr ico="croix" titre="Ce que vous évitez" sous="ce que vous ne souhaitez pas" ton="gris" />
+            <div className="mr-ev">{evite.map(e => (
+              <div className="mr-e" key={e.cle}><span className="mr-ex"><Ico n="croix" t={13} /></span><span>{e.t}</span></div>
+            ))}</div>
+          </section>
+        )}
+
+        {projet.length > 0 && (
+          <section className="mr-projet" style={{ gridTemplateColumns: `repeat(${projet.length}, minmax(0, 1fr))` }} aria-label="Votre projet">
+            {projet.map(p => (
+              <div className="mr-p" key={p.l}>
+                <span className="mr-pi"><Ico n={p.ico} t={16} /></span>
+                <span className="mr-pl">{p.l}</span>
+                <b>{p.v}</b>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* Le mot d'Alexandre : en lecture seule, le client demande, il n'écrit pas. */}
+        <section className="mr-b mr-mot">
+          {crit.notes && <span className="mr-guill" aria-hidden="true">{'“'}</span>}
+          <p className={crit.notes ? '' : 'vide'}>{crit.notes || 'Aucune précision notée pour l’instant.'}</p>
+          <div className="mr-sig">
+            <span className="mr-av">AR</span>
+            {crit.notes
+              ? <span className="mr-par"><Ico n="verrou" t={12} /><span>{'Noté par '}<b>Alexandre</b></span></span>
+              : <span className="mr-par"><span><b>Alexandre</b>{', votre conseiller'}</span></span>}
+            <button type="button" className="mr-lien" onClick={onMessage}>Ajouter une précision</button>
+          </div>
+        </section>
       </div>
 
-      {/* 1 — Le bien recherché */}
-      {aQuelqueChose ? (
-        <CatE ico="maison" titre="Le bien recherché" sous="type et état">
-          {types.length ? <div className="pastilles">{types.map((t: string) => <span className="past or" key={t}>{ICONE_TYPE[t] ? ICONE_TYPE[t] + ' ' : ''}{t}</span>)}</div> : null}
-          {(crit.etatSouhaite || crit.anneeMin) && (
-            <div className="faits">
-              {etatsListe(crit.etatSouhaite).length > 0 && <Fait ico={ETATS_E.find(x => x[0] === etatsListe(crit.etatSouhaite)[0])?.[2] || '✨'} lib="État souhaité" val={etatsListe(crit.etatSouhaite).map((k, i) => { const l = ETATS_E.find(x => x[0] === k)?.[1] || k; return i ? l.charAt(0).toLowerCase() + l.slice(1) : l; }).join(' ou ')} />}
-              {crit.anneeMin ? <Fait ico="📅" lib="Construit après" val={<span className="tab">{crit.anneeMin}</span>} /> : null}
-            </div>
-          )}
-        </CatE>
-      ) : null}
-
-      {/* 2 — Surfaces & volumes */}
-      <CatE ico="regle" titre="Surfaces & volumes" sous="la taille du bien">
-        <div className="trio">
-          <div className="mini-t"><div className="v tab">{crit.surfaceMin ? crit.surfaceMin + ' m²' : '—'}</div><div className="l">surface min.</div></div>
-          <div className="mini-t"><div className="v tab">{crit.piecesMin ?? '—'}</div><div className="l">pièces min.</div></div>
-          <div className="mini-t"><div className="v tab">{crit.chambresMin ?? '—'}</div><div className="l">chambres min.</div></div>
-        </div>
-        {(crit.surfaceMax || crit.surfaceSejourMin || crit.piecesMax) && (
-          <div className="faits">
-            {crit.surfaceMax ? <Fait ico="📏" lib="Surface maximum" val={<span className="tab">{crit.surfaceMax} m²</span>} /> : null}
-            {crit.piecesMax ? <Fait ico="🚪" lib="Pièces maximum" val={<span className="tab">{crit.piecesMax}</span>} /> : null}
-            {crit.surfaceSejourMin ? <Fait ico="🛋️" lib="Séjour d’au moins" val={<span className="tab">{crit.surfaceSejourMin} m²</span>} /> : null}
-          </div>
-        )}
-      </CatE>
-
-      {/* 3 — Étage & exposition */}
-      {(etage.length || expos.length) ? (
-        <CatE ico="immeuble" titre="Étage & exposition" sous="où se trouve le bien dans l'immeuble">
-          {etage.length ? <div className="pastilles">{etage.map(e => <span className="past" key={e}>{e}</span>)}</div> : null}
-          {expos.length ? (
-            <div style={{ marginTop: etage.length ? 12 : 0 }}>
-              <div className="ss-t">Exposition souhaitée</div>
-              <div className="pastilles">{expos.map(e => {
-                const t = EXPO_E.find(x => x[0] === e);
-                return <span className="past or" key={e}>{t ? `${t[2]} ${t[1]}` : e}</span>;
-              })}</div>
-            </div>
-          ) : null}
-        </CatE>
-      ) : null}
-
-      {/* 4 — Équipements */}
-      {equips.length ? (
-        <CatE ico="etincelle" titre="Équipements" sous="ce qui compte pour vous">
-          <div className="pastilles">{equips.map(e => <PastilleE key={e.texte} texte={e.texte} fort={e.fort} />)}</div>
-          {equips.some(e => e.fort) && <div className="note-cat">Ce qui est marqué <b>indispensable</b> n&apos;est jamais mis de côté : un bien qui ne l&apos;a pas ne vous est pas présenté.</div>}
-        </CatE>
-      ) : null}
-
-      {/* 5 — Performance énergétique */}
-      {crit.dpeMax ? (
-        <CatE ico="eclair" titre="Performance énergétique" sous="la plus mauvaise lettre acceptée">
-          <div className="dpe-r">{LETTRES_DPE.map((d, i) => (
-            <span key={d} className={'dpe-l' + (i <= iDpe ? ' ok' : '') + (d === crit.dpeMax ? ' pt' : '')}>{d}</span>
-          ))}</div>
-          <div className="note-cat">Vous gardez <b>{LETTRES_DPE.slice(0, iDpe + 1).join(' ')}</b>{iDpe < 6 ? <> — les logements classés {LETTRES_DPE.slice(iDpe + 1).join(' ')} sont écartés.</> : '.'}</div>
-        </CatE>
-      ) : null}
-
-      {/* 6 — Où je cherche */}
-      {!!crit.secteurs.length && (
-        <CatE ico="lieu" titre="Où je cherche" sous="vos communes et quartiers">
-          <div className="villes">
-            {grouperSecteurs(crit.secteurs).map(v => (
-              <div className="ville" key={v.ville}>
-                <div className="ville-n"><span className="ville-i"><Ico n="lieu" t={16} /></span>{v.ville}</div>
-                {v.quartiers.length
-                  ? <div className="pastilles">{v.quartiers.map(q => <span className="past" key={q}>{q}</span>)}</div>
-                  : <div className="ville-tout">Toute la ville</div>}
-              </div>
-            ))}
-          </div>
-        </CatE>
-      )}
-
-      {/* 7 — Transports */}
-      {crit.transportArrets?.length ? (
-        <CatE ico="train" titre="Transports" sous="vos arrêts et le temps à pied">
-          <div className="arrets-v">
-            {crit.transportArrets.map((a: Arret, i: number) => (
-              <div className="arret-v" key={a.nom + i}>
-                <div className="arret-n">{a.nom}
-                  <span className="arret-m">à moins de {a.minutes || 10} min à pied</span></div>
-                <div className="pastilles" style={{ marginTop: 8, alignItems: 'center' }}>
-                  {a.lignes.map(l => <PastilleArret id={l} key={l} t={24} />)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CatE>
-      ) : crit.transportMinutes ? (
-        <CatE ico="train" titre="Transports" sous="temps à pied maximum">
-          <div className="gros tab">{crit.transportMinutes} <small>minutes à pied maximum d&apos;une station</small></div>
-        </CatE>
-      ) : null}
-
-      {/* 8 — Budget */}
-      <CatE ico="euro" titre="Budget" sous="votre enveloppe">
-        <div className="gros tab">
-          {bmin && bmax ? <>{EUR(bmin)} <small>à</small> {EUR(bmax)}</>
-            : bmax ? <><small>Jusqu&apos;à</small> {EUR(bmax)}</>
-              : bmin ? <><small>À partir de</small> {EUR(bmin)}</>
-                : <small>À préciser ensemble</small>}
-        </div>
-        {(crit.apport || crit.financement) && (
-          <div className="faits">
-            {crit.apport ? <Fait ico="🏦" lib="Apport" val={<span className="tab">{EUR(crit.apport)}</span>} /> : null}
-            {crit.financement && <Fait ico={FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[2] || '💳'} lib="Financement" val={(FINANCEMENTS_E.find(x => x[0] === crit.financement)?.[1]) || crit.financement} />}
-          </div>
-        )}
-      </CatE>
-
-      {/* 9 — Mon projet + la note d'Alexandre, en lecture seule */}
-      <CatE ico="note" titre="Mon projet" sous="échéance et précisions">
-        {crit.urgence && (
-          <div className="faits">
-            <Fait ico={URGENCES_E.find(x => x[0] === crit.urgence)?.[2] || '⏱️'} lib="Échéance souhaitée" val={(URGENCES_E.find(x => x[0] === crit.urgence)?.[1]) || crit.urgence} />
-          </div>
-        )}
-        <div className="precisions" style={{ marginTop: crit.urgence ? 14 : 4 }}>
-          <div className="k">
-            <span><Ico n="crayon" t={13} /> Précisions sur votre recherche</span>
-            <span className="cadenas"><Ico n="verrou" t={11} /> Noté par Alexandre</span>
-          </div>
-          <blockquote className="corps">{crit.notes || 'Aucune précision notée pour l’instant.'}</blockquote>
-          <button className="cta-prec" onClick={onMessage}>
-            <span><b>Une précision à ajouter ou à retirer&nbsp;?</b>
-              <span className="s">Dites-le-lui, il met à jour et vous recontacte.</span></span>
-            <span className="chev"><Ico n="fleche" t={18} /></span>
-          </button>
-        </div>
-      </CatE>
-
-      <div className="duo"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
+      <div className="mr-actions"><button className="btn or" onClick={onCriteres}><Ico n="crayon" t={16} /> Mes critères ont évolué</button></div>
       {mandatCarte}
-    </Vue>
+    </>
   );
 }
 /* Où chercher — une carte par ville, ses quartiers en dessous.
@@ -6021,6 +6038,102 @@ button{font-family:inherit; cursor:pointer; color:inherit; border:none; backgrou
 .resume-p{margin:0; font-family:'Plus Jakarta Sans',sans-serif; font-size:17.5px; line-height:1.5;
   font-weight:600; letter-spacing:-.3px; color:var(--encre)}
 .resume-p b{color:var(--or-fonce); font-weight:800}
+
+/* ══ « Ma recherche » (V3.67) : le bandeau aux couleurs d'Emilio, des
+   rubriques à icônes. Voir Recherche. ══ */
+.mr-hero{background:#1b365d; color:#fff; border-radius:24px; padding:22px 20px 18px; display:flex; flex-direction:column; gap:16px;
+  box-shadow:0 22px 46px -26px rgba(27,54,93,.75); margin-bottom:16px}
+.mr-hero-h{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.mr-kick{display:inline-flex; align-items:center; gap:8px; font-size:11px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#e0c36e}
+.mr-logo{width:74px; height:auto; opacity:.95; display:block}
+.mr-phrase{margin:0; font-family:'Plus Jakarta Sans',sans-serif; font-size:21px; line-height:1.38; font-weight:700; letter-spacing:-.3px; color:#fff}
+.mr-phrase b{color:#e0c36e; font-weight:800}
+.mr-cases{display:grid; gap:8px}
+.mr-case{display:flex; flex-direction:column; gap:2px; min-width:0; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+  border-radius:16px; padding:10px 11px 10px}
+.mr-case b{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:17px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.mr-case > span:last-child{font-size:11.5px; color:#c3cee0; line-height:1.3}
+.mr-ci{width:28px; height:28px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.12); color:#e0c36e; margin-bottom:6px}
+.mr-case.or{background:rgba(201,168,76,.18); border-color:rgba(201,168,76,.5)}
+.mr-case.or b{color:#f0dc9c}
+.mr-case.or > span:last-child{color:#eadfbf}
+.mr-case.or .mr-ci{background:rgba(201,168,76,.3); color:#f6e7b6}
+.mr-note{margin:0; font-size:12.5px; color:#aebbd0}
+
+.mr-cols{display:flex; flex-direction:column; gap:14px}
+.mr-b{background:var(--carte); border:1px solid var(--trait); border-radius:20px; padding:16px; box-shadow:var(--ombre);
+  display:flex; flex-direction:column; gap:12px; min-width:0}
+.mr-h{display:flex; align-items:center; gap:11px}
+.mr-hi{width:36px; height:36px; border-radius:11px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+  background:#1b365d; color:#e0c36e}
+.mr-hi.or{background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.mr-hi.gris{background:#f1f4f8; color:var(--plume)}
+.mr-ht{display:flex; flex-direction:column; min-width:0}
+.mr-ht b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; line-height:1.25}
+.mr-ht i{font-style:normal; font-size:12.5px; color:var(--plume); line-height:1.35}
+
+.mr-ville{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding-top:10px; border-top:1px solid #eef1f6}
+.mr-ville > b{font-size:15px; line-height:1.6}
+.mr-qs{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px}
+.mr-q{padding:4px 10px; border-radius:99px; background:#eef2f8; color:#1b365d; font-size:13px; font-weight:600}
+.mr-tout{font-size:13px; color:var(--plume); line-height:1.9}
+.mr-arret{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--fond)}
+.mr-ai{width:32px; height:32px; border-radius:10px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; background:#fff; color:#1b365d; border:1px solid var(--trait)}
+.mr-at{flex:1 1 auto; min-width:0; display:flex; flex-direction:column}
+.mr-at b{font-size:14px; line-height:1.35}
+.mr-at i{font-style:normal; font-size:12.5px; color:var(--plume)}
+.mr-lignes{display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end}
+
+.mr-ls{display:flex; flex-direction:column}
+.mr-l{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #eef1f6}
+.mr-li{width:30px; height:30px; border-radius:9px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce)}
+.mr-ll{flex:1 1 auto; color:var(--plume); font-size:14px}
+.mr-lv{font-size:14px; text-align:right; max-width:62%}
+
+.mr-chips{display:flex; flex-wrap:wrap; gap:8px}
+.mr-chip{display:inline-flex; align-items:center; gap:7px; padding:6px 12px 6px 8px; border-radius:99px; font-size:13.5px; font-weight:600;
+  background:var(--or-fond); border:1px solid var(--or-trait); color:var(--encre)}
+.mr-chip svg{color:var(--or-fonce)}
+.mr-chip.fort{background:#1b365d; border-color:#1b365d; color:#fff}
+.mr-chip.fort svg{color:#e0c36e}
+.mr-plus{border-color:var(--or-trait)}
+
+.mr-ev{display:flex; flex-direction:column}
+.mr-e{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #eef1f6; font-size:14px; color:var(--encre2)}
+.mr-ex{width:24px; height:24px; border-radius:50%; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; background:var(--brique-fond); color:#b91c1c}
+.mr-dpe{display:flex; align-items:center; justify-content:space-between; gap:10px; flex:1 1 auto}
+.mr-dl{display:inline-flex; gap:3px}
+.mr-dl i{font-style:normal; width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center;
+  background:#fee2e2; color:#b91c1c; font-size:11.5px; font-weight:800}
+
+.mr-projet{display:grid; gap:8px}
+.mr-p{background:var(--carte); border:1px solid var(--trait); border-radius:16px; padding:12px 10px; box-shadow:var(--ombre);
+  display:flex; flex-direction:column; gap:1px; min-width:0}
+.mr-pi{width:28px; height:28px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; background:#eef2f8; color:#1b365d; margin-bottom:6px}
+.mr-pl{font-size:11.5px; color:var(--plume)}
+.mr-p b{font-size:14px; line-height:1.3}
+
+.mr-mot{gap:10px}
+.mr-guill{font-family:'Plus Jakarta Sans',sans-serif; font-size:46px; line-height:.6; height:18px; color:var(--or); display:block}
+.mr-mot p{margin:0; font-size:15px; line-height:1.6; white-space:pre-line}
+.mr-mot p.vide{color:var(--plume)}
+.mr-sig{display:flex; align-items:center; gap:10px; padding-top:10px; border-top:1px solid #eef1f6; flex-wrap:wrap}
+.mr-av{width:32px; height:32px; border-radius:50%; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+  background:#1b365d; color:#e0c36e; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:11.5px}
+.mr-par{flex:1 1 auto; display:inline-flex; align-items:center; gap:5px; font-size:13px; color:var(--plume)}
+.mr-par b{color:var(--encre)}
+.mr-lien{font-size:13px; font-weight:700; color:var(--or-fonce); padding:6px 0; text-decoration:underline; text-underline-offset:3px}
+.mr-actions{display:flex; margin-top:16px}
+.mr-actions .btn{flex:1}
+@media(min-width:1024px){
+  .mr-hero{padding:26px 28px 22px}
+  .mr-phrase{font-size:24px; max-width:860px}
+  .mr-cases{max-width:720px}
+  .mr-cols{display:block; columns:2; column-gap:16px}
+  .mr-cols > *{break-inside:avoid; margin-bottom:16px}
+  .mr-actions{max-width:420px}
+}
 
 /* Le picto de localisation, en face du nom de la commune. La ligne est un
    flex : le carré et le nom sont centrés l'un sur l'autre quoi qu'il arrive,
