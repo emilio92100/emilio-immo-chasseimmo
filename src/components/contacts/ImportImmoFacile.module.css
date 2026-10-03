@@ -46,8 +46,21 @@
 .modeAlerte { flex: 1 1 100%; display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; color: #9a3412; line-height: 1.45; }
 .modeAlerte > svg { flex-shrink: 0; margin-top: 1px; }
 
-.lecture { display: flex; align-items: center; gap: 10px; margin: 10px 22px 0; font: 600 12.5px 'DM Sans', sans-serif; color: #64748b; }
-.lecture > span { white-space: nowrap; }
+.lecture { display: flex; flex-direction: column; gap: 7px; margin: 10px 22px 0; padding: 11px 14px; border-radius: 14px; background: #fffaf0; border: 1px solid #f1e3b8; font: 600 12.5px 'DM Sans', sans-serif; color: #64748b; }
+.lectureL { display: flex; align-items: center; gap: 10px; }
+.lectureT { flex: 1 1 auto; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.lectureT > b { color: #8a6a1f; font-weight: 700; }
+.chrono { color: #a08a55; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lectureAide { font: 500 12px/1.45 'DM Sans', sans-serif; color: #8290a6; }
+/* V3.65 : « c'est en cours » — un cercle qui tourne, et la barre qui luit
+   même tant qu'aucun contact n'est revenu. */
+.rond { display: inline-block; flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(201, 168, 76, .28); border-top-color: #c9a84c; animation: tourne .8s linear infinite; }
+.rondPetit { width: 10px; height: 10px; border-width: 1.6px; border-color: rgba(52, 73, 110, .22); border-top-color: #34496e; }
+.rondBlanc { border-color: rgba(255, 255, 255, .35); border-top-color: white; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.barre.barreEnCours { background: linear-gradient(90deg, #f1ead6 0%, #faf5e6 40%, #f1ead6 80%); background-size: 250% 100%; animation: luit 1.6s linear infinite; }
+@keyframes luit { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+@media (prefers-reduced-motion: reduce) { .rond, .barre.barreEnCours { animation: none; } }
 .barre { flex: 1 1 auto; height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; }
 .barre > i { display: block; height: 100%; border-radius: 99px; background: #c9a84c; transition: width .3s ease; }
 .note { margin: 10px 22px 0; padding: 9px 12px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font: 500 12.5px/1.5 'DM Sans', sans-serif; }
@@ -195,8 +208,6 @@ button.role[aria-pressed='false'] { background: white; color: #94a3b8; box-shado
   .piedBtns { width: 100%; }
   .piedBtns > button { flex: 1 1 0; min-width: 0; justify-content: center; white-space: normal; text-align: center; }
   .piedBtns > button:first-child { flex: 0 0 auto; }
-  .lecture { flex-wrap: wrap; row-gap: 6px; }
-  .lecture > .barre { order: 3; flex-basis: 100%; }
-  .lecture > span { white-space: normal; flex: 1 1 auto; }
+  .lecture { padding: 10px 12px; }
   .fait { padding: 26px 16px 22px; }
 }

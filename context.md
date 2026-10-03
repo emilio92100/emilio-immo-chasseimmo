@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.64 · 3 octobre 2026**
+**Version 3.65 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,20 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.65 — 3 octobre 2026 · import ImmoFacile : on voit que la lecture tourne
+
+Rien à passer dans Supabase.
+
+Alexandre : « il y a marqué lecture des commentaires, 0 sur 20, mais rien ne montre que c'est en
+cours ; on ne pourrait pas mettre un spinner ? ».
+- Le bloc de lecture : un cercle qui tourne, « Claude lit les commentaires : 8 sur 20 », le temps
+  écoulé à la seconde (`Chrono`, son propre état : la liste n'est pas redessinée chaque seconde), une
+  barre qui luit même tant qu'aucun contact n'est revenu, « Ne pas attendre », et une idée de la
+  durée selon le nombre de contacts.
+- Chaque contact pas encore lu porte un petit cercle qui tourne ; le bouton du bas aussi.
+- Des lots de 4 contacts, 4 à la fois (au lieu de 6 et 3) : les premiers résultats arrivent plus
+  tôt et la barre avance plus souvent.
 
 ### V3.64 — 3 octobre 2026 · « Retirer la proposition » du mandat de recherche : le client prévenu
 

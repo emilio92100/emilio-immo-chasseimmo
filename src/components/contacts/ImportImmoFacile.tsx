@@ -25,8 +25,10 @@ import { completerFiche, importerNouveau, lireCRM, type EtatCRM, type Mode, type
    par Claude, en arrière-plan, par lots (/api/import-immofacile) ;
    l'écriture : ./import-ecriture.ts. */
 
-const PAR_LOT = 6;
-const EN_PARALLELE = 3;
+/* V3.65 : des lots plus petits, un de plus à la fois — les premiers
+   contacts lus arrivent plus vite, et la barre avance plus souvent. */
+const PAR_LOT = 4;
+const EN_PARALLELE = 4;
 /* Un lot qui revient incomplet : les manquants sont relus par deux. */
 const PAR_REPRISE = 2;
 
@@ -93,6 +95,30 @@ function Bascule({ on, rouge, onClick, children }: { on: boolean; rouge?: boolea
   );
 }
 
+/* Une idée de la durée : une vingtaine de secondes par tour de lots (au
+   pire), EN_PARALLELE lots à la fois. */
+function dureeLecture(n: number): string {
+  const s = Math.ceil(Math.ceil(n / PAR_LOT) / EN_PARALLELE) * 20;
+  return s < 60 ? 'Compte moins d’une minute au total.' : `Compte environ ${Math.round(s / 60)} minute${Math.round(s / 60) > 1 ? 's' : ''} au total.`;
+}
+
+/* Le petit cercle qui tourne : « c'est en cours ». */
+function Rond({ petit, blanc }: { petit?: boolean; blanc?: boolean }) {
+  return <i aria-hidden="true" className={`${st.rond}${petit ? ` ${st.rondPetit}` : ''}${blanc ? ` ${st.rondBlanc}` : ''}`} />;
+}
+
+/* Le temps écoulé depuis le début de la lecture, à la seconde : la preuve
+   que ça tourne, même quand la barre n'a pas encore bougé. Son propre
+   état, pour ne pas redessiner toute la liste chaque seconde. */
+function Chrono({ depuis }: { depuis: number }) {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setS(Math.max(0, Math.round((Date.now() - depuis) / 1000))), 1000);
+    return () => clearInterval(id);
+  }, [depuis]);
+  return <span className={st.chrono}>{s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`}</span>;
+}
+
 function Fermer({ onClick }: { onClick: () => void }) {
   return <button type="button" className={st.x} aria-label="Fermer" onClick={onClick}><Ic n="croix" t={16} e={2.4} /></button>;
 }
@@ -108,7 +134,7 @@ function Etiquettes({ r }: { r: Rangee }) {
       {p.location && !p.locationSeule && <em className={st.tagBleu}><Ic n="cle" t={11} /><span>Cherche aussi à louer : noté dans « À savoir »</span></em>}
       {r.etat === 'echec' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Lecture du texte impossible : vérifie</span></em>}
       {r.etat === 'passee' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Commentaire pas lu : colonnes seulement</span></em>}
-      {r.etat === 'attente' && <em className={st.tagBleu}><Ic n="horloge" t={11} /><span>Lecture du commentaire…</span></em>}
+      {r.etat === 'attente' && <em className={st.tagBleu}><Rond petit /><span>Lecture du commentaire…</span></em>}
       {r.verif.filter(x => !/^Lecture/.test(x)).map(x => <em key={x} className={st.tagRouge}><Ic n="info" t={11} /><span>{x}</span></em>)}
     </>
   );
@@ -333,6 +359,8 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const [etats, setEtats] = useState<Record<string, EtatLecture>>({});
   const [choix, setChoix] = useState<Record<string, Choix>>({});
   const [noteLecture, setNoteLecture] = useState('');
+  /* Le début de la lecture (pour le temps écoulé). */
+  const [debutLecture, setDebutLecture] = useState(0);
   const [mode, setMode] = useState<Mode>('qualifier');
   const [onglet, setOnglet] = useState<Onglet>('tous');
   const [ouvert, setOuvert] = useState<string | null>(null);
@@ -465,6 +493,7 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
     const avecTexte = new Set(demandes.map(x => x.cle));
     setEtats(Object.fromEntries(liste.map(c => [c.cle, (avecTexte.has(c.cle) ? 'attente' : 'sans_texte') as EtatLecture])));
     setNoteLecture('');
+    setDebutLecture(Date.now());
     const lots: DemandeLecture[][] = [];
     for (let i = 0; i < demandes.length; i += PAR_LOT) lots.push(demandes.slice(i, i + PAR_LOT));
     let suivant = 0;
@@ -668,10 +697,14 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
         )}
       </div>
       {enLecture > 0 && (
-        <div className={st.lecture}>
-          <span>{`Lecture des commentaires : ${aLire - enLecture} sur ${aLire}`}</span>
-          <div className={st.barre}><i style={{ width: `${Math.round(((aLire - enLecture) / Math.max(1, aLire)) * 100)}%` }} /></div>
-          <button type="button" className={`${st.lien} ${st.passer}`} onClick={passerLecture}>Ne pas attendre</button>
+        <div className={st.lecture} role="status" aria-live="polite">
+          <div className={st.lectureL}>
+            <Rond />
+            <span className={st.lectureT}><b>{`Claude lit les commentaires : ${aLire - enLecture}\u00a0sur\u00a0${aLire}`}</b>{debutLecture > 0 && <Chrono depuis={debutLecture} />}</span>
+            <button type="button" className={`${st.lien} ${st.passer}`} onClick={passerLecture}>Ne pas attendre</button>
+          </div>
+          <div className={`${st.barre} ${st.barreEnCours}`}><i style={{ width: `${Math.round(((aLire - enLecture) / Math.max(1, aLire)) * 100)}%` }} /></div>
+          <small className={st.lectureAide}>{`Les contacts se complètent au fur et à mesure : tu peux déjà les regarder. ${dureeLecture(aLire)}`}</small>
         </div>
       )}
       {noteLecture && <div className={st.note}>{noteLecture}</div>}
@@ -699,7 +732,7 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
         <div className={st.piedBtns}>
           <button type="button" className={d.btn} onClick={onFermer}>Annuler</button>
           <button type="button" className={`${d.btn} ${d.btnNavy}`} disabled={enLecture > 0 || (!aCreer.length && !aCompleter.length)} onClick={() => void importer()}>
-            <Ic n="check" t={15} e={2.6} />{libBouton}
+            {enLecture > 0 ? <Rond blanc /> : <Ic n="check" t={15} e={2.6} />}{libBouton}
           </button>
         </div>
       </div>
