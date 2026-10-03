@@ -225,6 +225,24 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
     await charger();
   }, [doc.id, onMaj, charger]);
 
+  /* V3.58 — Alexandre : « pas encore ouvert, est-ce que c'est vraiment à
+     jour ? ». Le panneau lisait les signataires une seule fois, à son
+     ouverture. Il se relit maintenant tout seul pendant une signature en
+     ligne : toutes les 30 secondes tant qu'il est à l'écran, et quand on
+     revient sur l'onglet. */
+  useEffect(() => {
+    if (doc.statut !== 'pret' || doc.signature?.mode !== 'en_ligne') return;
+    const maj = () => { if (document.visibilityState === 'visible') void relire(); };
+    const t = window.setInterval(maj, 30_000);
+    window.addEventListener('focus', maj);
+    document.addEventListener('visibilitychange', maj);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('focus', maj);
+      document.removeEventListener('visibilitychange', maj);
+    };
+  }, [doc.statut, doc.signature?.mode, relire]);
+
   async function action(cle: string, body: Record<string, unknown>, ok: string) {
     setTravail(cle); setErreur(''); setInfo('');
     try { await appelSignature({ ...body, id: doc.id }); setInfo(ok); await charger(); }
@@ -305,7 +323,7 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
               const etat = x.statut === 'signe' ? `Signé le ${quandCourt(x.signe_le!)}${x.mode === 'sur_place' ? ', sur place' : ''}`
                 : x.statut === 'attendu' ? 'Signera sur place, sur cet écran'
                 : expire ? `Lien expiré le ${dateCourte(x.lien_expire_le!)} : renvoie-lui un lien`
-                : `Lien envoyé le ${quandCourt(x.invite_le!)} · ${x.ouvert_le ? `ouvert le ${dateCourte(x.ouvert_le)}` : 'pas encore ouvert'}${x.relances === 1 ? ' · rappel envoyé' : x.relances === 2 ? ' · dernier rappel envoyé' : ''}`;
+                : `Lien envoyé le ${quandCourt(x.invite_le!)} · ${x.ouvert_le ? `ouvert le ${quandCourt(x.ouvert_le)}` : 'pas encore ouvert'}${x.relances === 1 ? ' · rappel envoyé' : x.relances === 2 ? ' · dernier rappel envoyé' : ''}`;
               return (
                 <div key={x.id} className={s.sigLigne}>
                   <span className={`${s.sigPt} ${x.statut === 'signe' ? s.kVert : expire ? s.kRouge : s.kOr}`}><Ic n={x.statut === 'signe' ? 'check' : x.statut === 'attendu' ? 'tablette' : 'horloge'} t={13} e={x.statut === 'signe' ? 3 : 2} /></span>
@@ -351,7 +369,7 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
             setSigs(r.signataires.sort((a, b) => a.rang - b.rang));
             onMaj({ ...doc, signature: r.signature });
             if (r.echecs.length) setErreur(`Lancée, mais un lien n’est pas parti : ${r.echecs.join(' ; ')}. Renvoie-le depuis la liste.`);
-            else if (mode === 'en_ligne') setInfo('C’est parti : chacun a reçu son lien. Tu es prévenu à chaque signature.');
+            else if (mode === 'en_ligne') setInfo('C’est parti : chacun a reçu son lien. Tu recevras un seul mail, quand tout le monde aura signé.');
             if (mode === 'sur_place') onSurPlace();
           }} />
       )}
