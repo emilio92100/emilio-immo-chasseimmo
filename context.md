@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.55 · 3 octobre 2026**
+**Version 3.58 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1459,6 +1459,39 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.58 — 3 octobre 2026 · la signature en ligne : un seul mail à la fin, et qui a signé sous la ligne dans Documents
+
+Rien à passer dans Supabase. (V3.56 et V3.57 sont des retouches notées dans le code de la V3.55.)
+
+Alexandre, après avoir lancé un mandat de vente pour une SCI de huit associés : « comment je suis au
+courant quand c'est signé ? » ; « il ne faut pas envoyer un mail à chaque personne qui signe, sinon il
+y aurait trop de mails : juste un mail quand le contrat est signé » ; « dans Documents je ne vois que
+En signature » ; « pas encore ouvert, est-ce que c'est vraiment à jour ? ».
+
+- **Un seul mail, quand tout le monde a signé** (`api/signer`, `signerDocument`) : « ✅ Signé par tous :
+  Mandat simple · SCI … (n° …) », la liste des signatures avec leur heure (l'agence au lancement
+  comprise), le PDF complet joint. Une signature au milieu n'envoie plus rien, sauf un souci à régler
+  (un exemplaire pas parti, le document pas mis à jour) : « ⚠️ … : un souci à la signature de … ».
+  Même règle pour le mandat de recherche à plusieurs : le premier signataire (`api/espace/mandat`)
+  n'envoie plus de mail sauf souci (copie, fiche, lien non parti, autre conjoint sur la fiche) ; le
+  mail part quand le dernier co-signataire signe (`api/signer`, « · complet »). Le numéro pris dans la
+  réserve garde son propre mail (`mandat_numero`). Textes des Paramètres › Alertes mail à jour
+  (`alertes.ts`) ; « C'est parti » dit « Tu recevras un seul mail, quand tout le monde aura signé ».
+- **Documents, la liste** (`PageDocuments.tsx`) : sous la ligne d'un document en signature (et d'un
+  mandat de recherche en ligne qui attend un co-signataire), la ligne dépliable de la fiche client
+  (`SuiviSignature`) : « Signature en ligne · 2 sur 8 », « On attend Paul Durand, Claire Morel et
+  4 autres », un point par signataire, « Qui a signé ? » qui déplie chacun (signé quand, lien envoyé,
+  ouvert quand, rappels, renvoyer le lien, corriger l'e-mail, et l'agence au lancement). Relue quand
+  la liste change, au retour sur l'onglet et chaque minute tant qu'on attend quelqu'un.
+- **« Ouvert »** : `ouvert_le` est noté quand la page `/signer/<jeton>` s'affiche chez le signataire
+  (étape `afficher`, déclenchée par la page elle-même : un aperçu de lien par un antivirus de
+  messagerie ne compte pas). Il s’affiche maintenant avec l’heure (« ouvert le 3 octobre à 19 h 52 »),
+  dans le panneau et dans le suivi. Le panneau de signature d'un document (`BlocSignature`) se relit
+  seul toutes les 30 secondes et au retour sur l'onglet (avant : une seule lecture, à l'ouverture).
+- Au-delà de trois personnes, « On attend » et « Lien expiré pour » disent « A, B et N autres »
+  (`prenoms`, `SuiviSignature.tsx`) ; sur téléphone, à partir de quatre signataires, les points ont
+  leur ligne et le texte repart du bord.
 
 ### V3.55 — 3 octobre 2026 · le mandat de recherche dans l'espace suit le CRM, et la signature en ligne est verrouillée
 
