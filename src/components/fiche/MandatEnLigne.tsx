@@ -39,6 +39,7 @@ import { etatLigne, lireDepart, numeroAncien, observer, prochainNumero, type Obs
 import { mandatRechercheEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
 import { exemplaireManquant, lienFichier, nomFichier, rappelExemplaire, type DocumentRow } from '@/components/documents/outils';
 import FenetreSigne from '@/components/documents/FenetreSigne';
+import FenetreConfirmer, { type PointConfirmer } from '@/components/documents/FenetreConfirmer';
 
 const CLE_RESERVE = 'mandat_numeros_reserve';
 const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -128,6 +129,18 @@ type AvenantMini = { id: string; statut: string; signe_le: string | null; donnee
 /* Le numéro déjà sur la fiche, le registre démarré (voir charger). */
 type EtatNumero = 'ancien' | 'ouvert' | 'fini' | null;
 
+/* « Retirer la proposition » (V3.64) : ce que la fenêtre qui explique doit
+   savoir, lu au clic. `informe` : pourquoi il a sans doute vu la proposition
+   (un mail, un rappel, son espace ouvert depuis, une signature commencée) ;
+   null s'il n'en sait rien. */
+type Retrait = {
+  commence: Sig | null; duRegistre: boolean; seulEncore: boolean; numero: string;
+  /* Le numéro vient d'ImmoFacile (pas de registre, ou un numéro d'avant
+     lui) : c'est là qu'il faut le marquer « clos sans suite ». */
+  immoFacile: boolean;
+  emails: string[]; informe: string | null;
+};
+
 export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAvenant }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recherche: any;
@@ -160,6 +173,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
   const [copie, setCopie] = useState(false);
   const [voirReserve, setVoirReserve] = useState(false);
+  const [fenRetrait, setFenRetrait] = useState<Retrait | null>(null);
   /* Le registre des mandats du CRM (V3.18) : démarré, il donne le numéro au
      moment où le client demande son code ; plus de réserve à tenir. */
   const [registre, setRegistre] = useState<{ prochain: number; premier: number; numero: EtatNumero } | null>(null);
@@ -447,48 +461,112 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
      cours », un code demandé), cette signature se ferme aussi : sans ça, il
      pouvait encore redemander un code et signer le mandat retiré. Le statut
      « abandonne » est prévu pour ça (outils/sql/signature-plusieurs.sql) ;
-     l'espace ne reprend qu'une ligne « en_cours ». */
-  async function retirer() {
+     l'espace ne reprend qu'une ligne « en_cours ».
+
+     V3.64 : plus de fenêtre grise du navigateur. Le clic lit d'abord ce que
+     le client a pu voir de la proposition (`demanderRetrait`), puis la
+     fenêtre qui explique s'ouvre (FenetreConfirmer) : ce qui va se passer, la
+     case « Prévenir … par e-mail », la suite. Une fois la proposition retirée,
+     /api/mandat/retrait lui écrit, au nom d'Alexandre. */
+  async function demanderRetrait() {
     const commence = sig?.statut === 'en_cours' ? sig : null;
-    const duRegistre = !!registre && registre.numero === 'ouvert';
     /* V3.56 : le mandat type approuvé (avec le registre, ou des numéros
        d'avance), son espace continue de lui proposer de signer seul : la
-       phrase le dit, au lieu de « il ne pourra plus le signer » (voir
+       fenêtre le dit, au lieu de « il ne pourra plus le signer » (voir
        signeSansNumero, src/lib/mandat-serveur.ts). */
     const seulEncore = !!approuveLe && (!!registre || numeros(reserve).length > 0);
-    const prenomC = client.prenom || 'Le client';
-    const apres = seulEncore
-      ? `\n\nTon mandat type est approuvé : son espace continuera de lui proposer de signer un mandat de recherche de lui-même${commence ? ' (une nouvelle signature, depuis le début)' : ''}.`
-      : '';
-    if (!confirm(`Retirer la proposition de mandat ?${commence ? `\n\n${prenomC} avait commencé à le signer dans son espace : cette signature s’arrête${seulEncore ? '.' : ', il ne pourra plus le signer.'}` : ''}${apres}\n\n${duRegistre ? 'Son numéro est noté « sans suite » dans le registre des mandats.' : 'Le numéro est libéré sur cette fiche : pense à le marquer « clos sans suite » dans ImmoFacile.'}`)) return;
+    const emails: string[] = [];
+    const ajouter = (e: unknown) => {
+      const x = String(e || '').trim();
+      if (x.includes('@') && !emails.some(y => y.toLowerCase() === x.toLowerCase())) emails.push(x);
+    };
+    (Array.isArray(client?.emails) ? client.emails : []).forEach(ajouter);
+    if (commence) ajouter(commence.mandant?.email);
+    /* A-t-il vu la proposition ? Relu au clic : le mail « Votre mandat est
+       prêt », un rappel automatique, son espace ouvert depuis. Une lecture
+       qui échoue compte comme « peut-être » : on préfère le prévenir. */
+    const proposeLe = String(recherche?.mandat_propose_le || '');
+    const t0 = Date.parse(proposeLe);
+    const depuis = (v: unknown) => typeof v === 'string' && Number.isFinite(t0) && Date.parse(v) >= t0;
+    let informe: string | null = null;
+    if (commence) informe = `${client.prenom || 'Le client'} avait commencé à le signer${commence.code_envoye_le ? ` (code demandé le ${quand(commence.code_envoye_le)})` : ''}.`;
+    else {
+      setTravail('retirer');
+      const [rr, ev, ra] = await Promise.all([
+        supabase.from('recherches').select('espace_ouvert_le').eq('id', recherche.id).maybeSingle(),
+        supabase.from('envois').select('created_at').eq('recherche_id', recherche.id).like('corps', 'Mandat de recherche prêt à signer%').order('created_at', { ascending: false }).limit(1),
+        supabase.from('journal').select('created_at').eq('client_id', client.id).eq('type', 'mandat').eq('metadata->>rappelMandat', proposeLe).limit(1),
+      ]);
+      setTravail('');
+      const mail = ev.data?.[0]?.created_at, ouvert = (rr.data as { espace_ouvert_le?: string | null } | null)?.espace_ouvert_le;
+      if (depuis(mail)) informe = `${client.prenom || 'Le client'} a reçu le mail « Votre mandat est prêt » le ${quand(mail)}.`;
+      else if (ra.data?.length) informe = `${client.prenom || 'Le client'} a reçu un rappel automatique pour le signer.`;
+      else if (depuis(ouvert)) informe = `${client.prenom || 'Le client'} a ouvert son espace depuis, le ${quand(ouvert!)}.`;
+      else if (rr.error || ev.error || ra.error) informe = 'Il a pu voir la proposition dans son espace.';
+    }
+    setMsg(null);
+    setFenRetrait({
+      commence, seulEncore, emails, informe,
+      duRegistre: !!registre && registre.numero === 'ouvert',
+      immoFacile: !registre || registre.numero === 'ancien',
+      numero: String(recherche?.mandat_numero || '').trim(),
+    });
+  }
+
+  async function retirer(f: Retrait, prevenir: boolean) {
+    const { commence, duRegistre } = f;
     setTravail('retirer'); setMsg(null);
+    const fin = (m: { t: string; ok: boolean }) => { setTravail(''); setFenRetrait(null); setMsg(m); };
     const le = new Date().toISOString();
     if (commence) {
       /* V3.56 : le déroulé relu juste avant d'écrire (celui de la page date
          de son ouverture : un code demandé entre-temps y manquerait). */
       const { data: lu, error: eL } = await supabase.from('mandats_signatures').select('statut, deroule').eq('id', commence.id).maybeSingle();
-      if (eL) { setTravail(''); setMsg({ t: 'La signature commencée dans son espace n’a pas pu être relue, la proposition n’est pas retirée : ' + eL.message, ok: false }); return; }
+      if (eL) { fin({ t: 'La signature commencée dans son espace n’a pas pu être relue, la proposition n’est pas retirée : ' + eL.message, ok: false }); return; }
       const deroule = Array.isArray((lu as { deroule?: unknown } | null)?.deroule) ? (lu as { deroule: { t: string; x: string }[] }).deroule : (commence.deroule || []);
       const { data: ferme, error: eF } = await supabase.from('mandats_signatures')
         .update({ statut: 'abandonne', code_hash: null, deroule: [...deroule, { t: le, x: 'Proposition retirée par l’agence avant la signature' }] })
         .eq('id', commence.id).eq('statut', 'en_cours').select('id');
-      if (eF) { setTravail(''); setMsg({ t: 'La signature commencée dans son espace n’a pas pu être arrêtée, la proposition n’est pas retirée : ' + eF.message, ok: false }); return; }
+      if (eF) { fin({ t: 'La signature commencée dans son espace n’a pas pu être arrêtée, la proposition n’est pas retirée : ' + eF.message, ok: false }); return; }
       /* Rien de fermé : il a signé entre-temps. On ne retire rien. */
-      if (!ferme?.length) { setTravail(''); setMsg({ t: 'Il vient de signer ou d’avancer dans son espace : la proposition n’est pas retirée. Recharge la fiche.', ok: false }); await charger(); return; }
+      if (!ferme?.length) { fin({ t: 'Il vient de signer ou d’avancer dans son espace : la proposition n’est pas retirée. Recharge la fiche.', ok: false }); await charger(); return; }
     }
     const { data, error } = await supabase.from('recherches')
       .update({ mandat_numero: null, mandat_propose_le: null, updated_at: le })
       .eq('id', recherche.id).select().single();
-    setTravail('');
-    if (error) { setMsg({ t: `Impossible de retirer la proposition : ${error.message}${commence ? ' (sa signature commencée, elle, est bien arrêtée)' : ''}`, ok: false }); await charger(); return; }
+    if (error) { fin({ t: `Impossible de retirer la proposition : ${error.message}${commence ? ' (sa signature commencée, elle, est bien arrêtée)' : ''}`, ok: false }); await charger(); return; }
     onMaj(data); setNumero('');
+    /* Le client prévenu (V3.64) : le serveur écrit, au nom d'Alexandre. */
+    let mailOk: string[] = [], mailKo: string[] = [];
+    if (prevenir && f.emails.length) {
+      try {
+        const r = await fetch('/api/mandat/retrait', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rechercheId: recherche.id, ...(commence ? { signatureId: commence.id } : {}) }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j?.ok) throw new Error(j?.erreur || `erreur ${r.status}`);
+        mailOk = j.prevenus || []; mailKo = j.echecs || [];
+      } catch (e) { mailKo = [(e as Error).message]; }
+    }
     /* Le registre (V3.18) : le numéro pris pour cette signature n'aura pas de suite. */
     let pbReg: string | null = null;
-    const n = String(recherche?.mandat_numero || '').trim();
+    const n = f.numero;
     if (duRegistre) pbReg = await observer(supabase, { ...(commence ? { signature_id: commence.id } : {}), numeroSinon: n || null, type: 'sans_suite', texte: `Proposition retirée par l’agence le ${quand(le)}, avant la signature.` });
-    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée', commence ? 'Sa signature commencée dans son espace est arrêtée.' : undefined, undefined, { rechercheId: recherche.id });
+    const lignes = [
+      commence ? 'Sa signature commencée dans son espace est arrêtée.' : '',
+      mailOk.length ? `Prévenu par e-mail : ${mailOk.join(', ')}` : '',
+      mailKo.length ? `⚠️ E-mail pas parti : ${mailKo.join(' ; ')}` : '',
+      !f.emails.length ? 'Pas d’adresse e-mail sur sa fiche : à prévenir par téléphone.' : !prevenir ? 'Pas prévenu par e-mail (case décochée).' : '',
+    ].filter(Boolean);
+    await addJournal(client.id, 'mandat', '📋 Proposition de mandat retirée', lignes.join('\n') || undefined, undefined, { rechercheId: recherche.id });
     await charger();
-    setMsg(pbReg ? { t: `Proposition retirée. ${pbReg} Marque-le « sans suite » dans Documents › Registre des mandats.`, ok: false } : { t: 'Proposition retirée.', ok: true });
+    const P = client.prenom || 'le client';
+    const quoiMail = mailKo.length
+      ? ` ⚠️ Mais le mail n’est pas parti (${mailKo.join(' ; ')}) : préviens ${P} toi-même.`
+      : mailOk.length ? ` Un e-mail est parti à ${mailOk.join(', ')}.`
+      : !f.emails.length ? ` Pas d’adresse e-mail sur sa fiche : préviens ${P} par téléphone.`
+      : ` Aucun e-mail n’est parti : à toi de prévenir ${P}.`;
+    fin(pbReg
+      ? { t: `Proposition retirée.${quoiMail} ${pbReg} Marque-le « sans suite » dans Documents › Registre des mandats.`, ok: false }
+      : { t: `Proposition retirée.${quoiMail}`, ok: !mailKo.length });
   }
 
   /* Un numéro noté sur la recherche avant le démarrage du registre (réservé
@@ -664,6 +742,40 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
       {depot && docSigne && typeof document !== 'undefined' && createPortal(
         <FenetreSigne doc={docSigne} onFermer={() => setDepot(false)} onFait={r => { setDepot(false); setDocSigne(r); setMsg({ t: 'Exemplaire signé déposé : il le retrouve dans son espace.', ok: true }); }} />,
         document.body)}
+      {/* V3.64 : « Retirer la proposition », la fenêtre qui explique. */}
+      {fenRetrait && (() => {
+        const f = fenRetrait;
+        const P = client.prenom || 'Le client', p = client.prenom || 'le client';
+        const n = f.numero;
+        const points = (coche: boolean): PointConfirmer[] => [
+          { ic: 'croix', t: `${P} ne voit plus « Votre mandat est prêt » dans son espace, et les rappels automatiques s’arrêtent.` },
+          ...(f.commence ? [{ ic: 'pause', ton: 'alerte' as const, t: `${P} avait commencé à le signer : cette signature s’arrête, son code ne fonctionne plus.` }] : []),
+          ...(f.seulEncore ? [{ ic: 'info', t: `Ton mandat type est approuvé : s’il demande une visite, son espace lui proposera quand même de signer un mandat${f.commence ? ' (une signature toute neuve)' : ''}.` }] : []),
+          ...(f.duRegistre ? [{ ic: 'doc', t: `Le n° ${n} est noté « sans suite » dans le registre des mandats.` }]
+            : n && f.immoFacile ? [{ ic: 'doc', ton: 'alerte' as const, t: `Le n° ${n} est libéré sur cette fiche : pense à le marquer « clos sans suite » dans ImmoFacile.` }] : []),
+          f.emails.length
+            ? (coche
+              ? { ic: 'mail', ton: 'ok' as const, t: `${P} reçoit un e-mail simple, à ton nom : la proposition est retirée, rien à faire de son côté.` }
+              : { ic: 'mail', ton: 'alerte' as const, t: `Aucun e-mail ne part : à toi de prévenir ${p}.` })
+            : { ic: 'mail', ton: 'alerte' as const, t: `Pas d’adresse e-mail sur sa fiche : préviens ${p} par téléphone.` },
+          { ic: 'check', t: 'Le reste ne bouge pas : sa recherche, ses biens et ses visites continuent.' },
+        ];
+        const raison = f.informe || `Ni mail, ni rappel, et son espace n’a pas été ouvert depuis la proposition : ${p} ne l’a sans doute pas vue. Coche pour lui écrire quand même.`;
+        return (
+          <FenetreConfirmer ic="croix" ton="danger" titre="Retirer la proposition de mandat ?" bouton="Retirer la proposition"
+            intro={`Mandat de recherche${n ? ` n° ${n}` : ''}${recherche?.mandat_propose_le ? ` · proposé le ${quand(recherche.mandat_propose_le)}` : ''}`}
+            option={f.emails.length ? { libelle: `Prévenir ${p} par e-mail`, aide: `À : ${f.emails.join(', ')} — ${raison}`, defaut: !!f.informe } : undefined}
+            points={points}
+            ensuite={[
+              { ic: 'euro', t: 'Pour lui proposer un autre mandat : règle les honoraires ici, puis « Proposer au client », et envoie-lui le mail.' },
+              { ic: 'doc', t: 'Pour un mandat à signer sur place ou sur papier : prépare-le dans Documents.' },
+            ]}
+            conseil={f.commence
+              ? `${P} est en train de signer : un coup de fil avant de retirer évite la surprise.`
+              : 'Tu veux seulement changer les honoraires ? Ne retire pas : modifie-les ici, clique « Mettre à jour », puis renvoie-lui le mail.'}
+            onFermer={() => setFenRetrait(null)} onConfirmer={coche => retirer(f, coche)} />
+        );
+      })()}
       {sig?.statut === 'retracte' && (
         <div style={boite('#fef2f2', '#fecaca', '#991b1b')}>
           <b>{`↩️ Mandat n° ${sig.numero} rétracté`}</b>
@@ -818,7 +930,7 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
                   <button type="button" style={btnOr} disabled={travail === 'mail'} onClick={envoyerMail}>{travail === 'mail' ? 'Envoi…' : '✉️ Envoyer par e-mail'}</button>
                 </div>
               )}
-              <button type="button" style={{ ...btn, marginTop: 8, color: '#b91c1c', borderColor: '#fecaca' }} disabled={travail === 'retirer'} onClick={retirer}>Retirer la proposition</button>
+              <button type="button" style={{ ...btn, marginTop: 8, color: '#b91c1c', borderColor: '#fecaca' }} disabled={travail === 'retirer'} onClick={() => { void demanderRetrait(); }}>{travail === 'retirer' && !fenRetrait ? '…' : 'Retirer la proposition'}</button>
             </div>
           )}
         </div>
