@@ -710,12 +710,17 @@ export async function POST(req: NextRequest) {
           const netP = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z@.0-9]/g, '');
           const conj = cos[0].personne;
           let fiche = '';
+          /* V3.58 : seulement un souci (fiche pas mise à jour, autre conjoint) ;
+             « la fiche passe en couple » se lit dans le suivi. */
+          let ficheSouci = false;
           if ('couple' in client) {
             const lite = { civilite: conj.civilite, prenom: conj.prenom, nom: conj.nom, email: conj.email, telephone: conj.telephone, naissanceDate: conj.naissanceDate, naissanceLieu: conj.naissanceLieu };
             if (!client.couple) {
               const { error: eC } = await sb.from('clients').update({ couple: true, conjoint: lite, ...(client.civilite ? {} : { civilite: m.civilite }) }).eq('id', client.id);
               fiche = eC ? `La fiche n'a pas pu passer en couple (${eC.message}).` : `La fiche passe en couple : ${nomDe(conj)} a été ajouté${conj.civilite === 'Madame' ? 'e' : ''} par ${m.prenom}.`;
+              ficheSouci = !!eC;
             } else if (netP(client.conjoint?.email) !== netP(conj.email) || netP(client.conjoint?.nom) !== netP(conj.nom)) {
+              ficheSouci = true;
               fiche = `${m.prenom} a indiqué ${nomDe(conj)} (${conj.email}) ; ta fiche indique ${[client.conjoint?.prenom, client.conjoint?.nom].filter(Boolean).join(' ') || 'une autre personne'}.`;
             }
           }
@@ -731,7 +736,12 @@ export async function POST(req: NextRequest) {
 
           const eP = await envoyerExemplaire({ a: m, numero: l.numero, signe: sc.signe, complet: false, fin: null, attendus: cos.map(c => c.personne.prenom) });
           const pjP = [{ nom: `Mandat-de-recherche-${l.numero}.pdf`, type: 'application/pdf', base64: Buffer.from(sc.signe).toString('base64') }];
-          if (eP || eFicheP || echecs.length || fiche || await alerteMailActive(sb, 'mandat_signe')) await envoyerMail({
+          /* V3.58 — Alexandre : « pas un mail à chaque personne qui signe,
+             juste un mail quand le contrat est signé ». Le premier signataire
+             d'un mandat à plusieurs n'envoie plus de mail, sauf souci à
+             régler : le mail part quand le dernier a signé (api/signer). Le
+             numéro pris dans la réserve a déjà son mail (mandat_numero). */
+          if (eP || eFicheP || echecs.length || ficheSouci) await envoyerMail({
             a: ALERTES(), deLaPartDe: 'crm', pj: pjP,
             sujet: `✍️ ${nom} a signé son mandat (n° ${l.numero}) · en attente de ${autres}`,
             texte: `${nom} vient de signer son mandat de recherche n° ${l.numero} depuis son espace, le ${dateCourte(le)} à ${heureParis(le)}.\nIl signe avec ${autres}, qui ${cos.length > 1 ? 'ont' : 'a'} reçu son lien personnel. Le mandat l'engage déjà ; il sera complet à leur signature.\n${execution ? 'Il a demandé que la recherche commence tout de suite.' : 'Il préfère attendre la fin des 14 jours.'}${contenu.source === 'reserve' ? '\nNuméro pris dans ta réserve : reporte-le dans ImmoFacile.' : ''}${fiche ? `\n👥 ${fiche}` : ''}${echecs.length ? `\n⚠️ Lien non envoyé : ${echecs.join(' ; ')}. Renvoie-le depuis sa fiche.` : ''}${eP ? `\n⚠️ Sa copie n'a pas pu lui être envoyée (${eP}).` : ''}${eFicheP ? `\n⚠️ La fiche n'a pas pu être mise à jour (${eFicheP.message}).` : ''}\n\n${lienCrm}`,
