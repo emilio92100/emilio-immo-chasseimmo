@@ -76,17 +76,22 @@ const CAT_IC: Record<string, string> = { mandats_vente: 'maison', mandats_recher
    bandeau sont parties : elles faisaient la même chose que cette barre. */
 type Vue = 'encours' | 'tout' | Categorie;
 type Etat = 'encours' | 'brouillon' | 'signe' | 'annule';
-type SousVue = 'tout' | Etat;
+/* V3.66 : « Signatures en cours » a sa bande aussi : on attend des
+   signatures (les liens sont partis) · prêts à faire signer. */
+type Attente = 'attente' | 'prets';
+type SousVue = 'tout' | Etat | Attente;
 const ORDRE_ETATS: Etat[] = ['encours', 'brouillon', 'signe', 'annule'];
-/* V3.61 : « Tous » tout à droite (Alexandre). */
+/* V3.61 : « Tous » en dernier ; V3.66 : collé aux autres (Alexandre). */
 const VUES: Vue[] = ['encours', ...CATEGORIES.map(c => c.id), 'tout'];
-const SOUS_VUES: SousVue[] = ['tout', ...ORDRE_ETATS];
-const IC_ETAT: Record<SousVue, string> = { tout: 'liste', encours: 'plume', brouillon: 'crayon', signe: 'check', annule: 'croix' };
+const SOUS_VUES: SousVue[] = ['tout', 'attente', 'prets', ...ORDRE_ETATS];
+const IC_ETAT: Record<SousVue, string> = { tout: 'liste', attente: 'horloge', prets: 'envoyer', encours: 'plume', brouillon: 'crayon', signe: 'check', annule: 'croix' };
 /* « À faire signer » et « en signature » sont un même état : la signature
    n'est pas finie. Un courrier, lui, est « à envoyer ». */
 const etatDe = (it: Item): Etat => (it.statut === 'pret' ? 'encours' : it.statut);
 function libEtat(k: SousVue, courriers: boolean): string {
   if (k === 'tout') return 'Tous';
+  if (k === 'attente') return 'On attend des signatures';
+  if (k === 'prets') return 'Prêts à faire signer';
   if (k === 'encours') return courriers ? 'À envoyer' : 'Signature en cours';
   if (k === 'brouillon') return 'Brouillons';
   if (k === 'signe') return courriers ? 'Envoyés' : 'Signés';
@@ -652,7 +657,10 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   /* V3.60 : la sorte (ou « Signatures en cours »), puis l'état dans la sorte. */
   const [vue, setVue] = useState<Vue>('tout');
   const [sous, setSous] = useState<SousVue>('tout');
-  const choisirVue = (k: Vue) => { setVue(k); setSous('tout'); };
+  /* V3.66 : à l'arrivée, « Signatures en cours » s'il y en a, sinon « Tous »
+     (posé une fois, à la première lecture ; un clic d'Alexandre l'emporte). */
+  const vuePosee = useRef(false);
+  const choisirVue = (k: Vue) => { vuePosee.current = true; setVue(k); setSous('tout'); };
   const [cherche, setCherche] = useState('');
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string; confrereId?: string } | null>(null);
@@ -735,38 +743,50 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const enCoursListe = cherches.filter(it => it.statut === 'pret' && !it.courrier);
   const dansVue = vue === 'encours' ? enCoursListe : cherches.filter(it => vue === 'tout' || it.categorie === vue);
   const nEtat = (k: Etat) => dansVue.filter(it => etatDe(it) === k).length;
+  const nAttente = (k: Attente) => dansVue.filter(it => (k === 'attente') === !!it.enSignature).length;
+  /* La bande des états : pour « Signatures en cours », où en est la signature ;
+     ailleurs, l'état du document. */
+  const ongletsSous: SousVue[] = vue === 'encours'
+    ? ['tout', 'attente', 'prets']
+    : ['tout', ...ORDRE_ETATS.filter(k => k !== 'annule' || nEtat('annule') > 0 || sous === 'annule')];
   const vueCourriers = vue === 'courriers';
 
-  /* V3.61 — Alexandre : « le sous-filtre doit être avec Mandats de vente,
-     juste en dessous, dans la même couleur ; là, la séparation est trop
-     importante ». La bande des états est bleue comme l'onglet choisi, collée
-     sous la barre, et un pont de la même couleur relie l'onglet à la bande :
-     les deux ne font qu'une forme. Le pont suit l'onglet (mesuré ici, glissé
-     comme la pastille) et la barre quand elle défile au téléphone. */
+  /* V3.66 — Alexandre : « le Tous tout seul à droite », « des petites
+     fragmentations » entre l'onglet choisi et la bande des états (V3.61 : un
+     pont mesuré, posé entre les deux, qui glissait à part). L'onglet choisi
+     est maintenant un intercalaire : la pastille elle-même, arrondie en haut,
+     descend jusqu'à la bande et s'y évase par deux coins creusés (CSS
+     `.vuesBloc`). Une seule forme, qui glisse d'un bloc. Près d'un bord de la
+     bande (le premier onglet ; au téléphone, la barre qui défile), la bande
+     perd ce coin-là, et l'intercalaire son évasement de ce côté : il tombe
+     droit, sans marche. `bords` le dit, mesuré ici. */
   const refVues = useRef<HTMLDivElement>(null);
-  const [pont, setPont] = useState<{ x: number; w: number; y: number; h: number } | null>(null);
+  const [bords, setBords] = useState({ g: false, d: false });
   const nbItems = items.length;
   useLayoutEffect(() => {
     const bloc = refVues.current;
     const nav = bloc?.querySelector<HTMLElement>('nav');
-    const bande = bloc?.querySelector<HTMLElement>('[data-bande]');
-    if (!bloc || !nav || !bande) { setPont(null); return; }
+    if (!bloc || !nav) return;
     const mesurer = () => {
       const el = nav.querySelector<HTMLElement>(`[data-k="${vue}"]`);
-      if (!el) { setPont(null); return; }
-      const x = nav.offsetLeft + el.offsetLeft - nav.scrollLeft;
-      /* Dans la bande, sans mordre sur ses coins arrondis. */
-      const g = Math.max(x, bande.offsetLeft + 8), dr = Math.min(x + el.offsetWidth, bande.offsetLeft + bande.offsetWidth - 8);
-      const y = nav.offsetTop + nav.offsetHeight - 6;
-      const nouveau = dr - g > 10 ? { x: g, w: dr - g, y, h: bande.offsetTop - y + 2 } : null;
-      setPont(p => (p && nouveau && p.x === nouveau.x && p.w === nouveau.w && p.y === nouveau.y && p.h === nouveau.h ? p : nouveau));
+      if (!el) return;
+      /* La bande : 6 px du bord, coins de 12 px, évasement de 12 px. */
+      const x = el.offsetLeft - nav.scrollLeft, fin = x + el.offsetWidth;
+      const g = 30 > x;
+      const d = fin > nav.clientWidth - 30;
+      setBords(b => (b.g === g && b.d === d ? b : { g, d }));
     };
     mesurer();
     const ro = new ResizeObserver(mesurer);
-    ro.observe(bloc);
+    ro.observe(nav);
     nav.addEventListener('scroll', mesurer, { passive: true });
     return () => { ro.disconnect(); nav.removeEventListener('scroll', mesurer); };
   }, [vue, nbItems]);
+  useLayoutEffect(() => {
+    if (vuePosee.current || docs === null) return;
+    vuePosee.current = true;
+    if (items.some(it => it.statut === 'pret' && !it.courrier)) setVue('encours');
+  }, [docs, items]);
   /* V3.55 : « à faire signer » ne compte plus ceux dont les liens sont partis
      (« en signature »), et les exemplaires signés à déposer se comptent. */
   const aSigner = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier && !it.enSignature).length;
@@ -992,8 +1012,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         </div>
       )}
       {items.length > 0 && (
-        <div className={s.vuesBloc} ref={refVues} data-sous={vue !== 'encours' ? 'oui' : undefined}>
-          {pont && <span className={s.pont} style={{ left: pont.x, width: pont.w, top: pont.y, height: pont.h }} aria-hidden="true" />}
+        <div className={s.vuesBloc} ref={refVues} data-g={bords.g ? '' : undefined} data-d={bords.d ? '' : undefined}>
           <BarreOnglets<Vue> label="Sortes de documents" actif={vue} onChoisir={choisirVue}
             onglets={[
               { k: 'encours', l: 'Signatures en cours', n: enCoursListe.length, ic: <Ic n="plume" t={15} /> },
@@ -1003,15 +1022,14 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
                 .map(c => ({ k: c.id as Vue, l: c.titre, n: nbCat(c.id), ic: <Ic n={CAT_IC[c.id]} t={15} /> })),
               { k: 'tout', l: 'Tous', n: cherches.length, ic: <Ic n="doc" t={15} /> },
             ]} />
-          {/* L'état dans la sorte : la bande bleue, collée sous l'onglet choisi. */}
-          {vue !== 'encours' && (
-            <div className={s.sousBande} data-bande>
-              <BarreOnglets<SousVue> label="Où en sont ces documents" actif={sous} onChoisir={setSous}
-                onglets={SOUS_VUES.filter(k => k !== 'annule' || nEtat('annule') > 0 || sous === 'annule').map(k => ({
-                  k, l: libEtat(k, vueCourriers), n: k === 'tout' ? dansVue.length : nEtat(k), ic: <Ic n={IC_ETAT[k]} t={14} />,
-                }))} />
-            </div>
-          )}
+          {/* L'état dans la sorte : la bande bleue, sous l'intercalaire. */}
+          <div className={s.sousBande}>
+            <BarreOnglets<SousVue> key={vue === 'encours' ? 'encours' : 'sorte'} label="Où en sont ces documents" actif={sous} onChoisir={setSous}
+              onglets={ongletsSous.map(k => ({
+                k, l: libEtat(k, vueCourriers), ic: <Ic n={IC_ETAT[k]} t={14} />,
+                n: k === 'tout' ? dansVue.length : k === 'attente' || k === 'prets' ? nAttente(k) : nEtat(k),
+              }))} />
+          </div>
         </div>
       )}
 
@@ -1027,7 +1045,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       ) : (
         <CorpsOnglet k={vue} ordre={VUES}>
           <div className={s.groupes}>
-            <CorpsOnglet k={vue === 'encours' ? 'tout' : sous} ordre={SOUS_VUES}>
+            <CorpsOnglet k={sous} ordre={SOUS_VUES}>
               {(() => {
                 const groupes: { g: string; titre: string; aide?: string; liste: Item[] }[] = vue === 'encours'
                   ? [
@@ -1037,16 +1055,20 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
                   : sous === 'tout'
                     ? ORDRE_ETATS.map(k => ({ g: k, titre: libEtat(k, vueCourriers), liste: dansVue.filter(it => etatDe(it) === k) }))
                     : [{ g: sous, titre: '', liste: dansVue.filter(it => etatDe(it) === sous) }];
+                /* « Signatures en cours » : un seul des deux groupes, si on l'a choisi. */
+                if (vue === 'encours' && sous !== 'tout') groupes.splice(0, groupes.length, ...groupes.filter(g => g.g === sous).map(g => ({ ...g, titre: '' })));
                 const pleins = groupes.filter(g => g.liste.length);
                 if (!pleins.length) {
                   const sorte = CATEGORIES.find(c => c.id === vue)?.titre.toLowerCase();
                   return (
                     <div className={s.liste}>
                       <div className={s.vide}>
-                        <b>{vue === 'encours' ? 'Aucune signature en cours' : 'Rien ici'}</b>
-                        {vue === 'encours'
-                          ? 'Un document finalisé, ou dont les liens de signature sont partis, arrive ici jusqu’à la dernière signature.'
-                          : q ? 'Aucun document ne correspond à cette recherche.'
+                        <b>{vue !== 'encours' ? 'Rien ici' : sous === 'attente' ? 'Personne à attendre' : sous === 'prets' ? 'Rien à lancer' : 'Aucune signature en cours'}</b>
+                        {q ? 'Aucun document ne correspond à cette recherche.'
+                          : vue === 'encours'
+                          ? (sous === 'attente' ? 'Un document dont les liens de signature sont partis arrive ici, jusqu’à la dernière signature.'
+                            : sous === 'prets' ? 'Un document finalisé arrive ici : ses liens à envoyer, ou le papier à faire signer.'
+                            : 'Un document finalisé, ou dont les liens de signature sont partis, arrive ici jusqu’à la dernière signature.')
                             : `Aucun document${sorte ? ` dans « ${sorte} »` : ''}${sous !== 'tout' ? ` : ${libEtat(sous, vueCourriers).toLowerCase()}` : ''}.`}
                       </div>
                     </div>
