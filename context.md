@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.66 · 3 octobre 2026**
+**Version 3.67 · 4 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,29 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.67 — 4 octobre 2026 · espace acheteur : « Ma recherche » refaite, aux couleurs d'Emilio
+
+Rien à passer dans Supabase.
+
+Alexandre n'aimait pas la présentation de « Ma recherche » (neuf cartes pareilles, empilées, le budget
+tout en bas, des émoji). Maquettes sur une planche (A à G) ; choix : « le A, l'essentiel d'abord », aux
+couleurs d'Emilio, avec du B « ce qui ferait la différence », « ce que vous évitez », « noté par
+Alexandre », et « des icônes partout, pour que ce soit plus vivant ». Rien d'inventé : tout vient de la
+recherche du CRM, une rubrique sans rien à dire ne s'affiche pas.
+
+- **`Recherche`** (`EspaceClient.tsx`, réécrite) : un bandeau bleu Emilio (`#1b365d`, la couleur du logo,
+  et le logo blanc `/logos/logo-emilio-blanc-800.png`) avec la phrase (`morceauxResume`, nombres
+  insécables) et jusqu'à trois cases à icône (surface minimum, pièces et chambres, budget) ; puis « Où
+  vous cherchez » (villes, quartiers, arrêts et leurs lignes), « Le bien » (une ligne à icône par
+  critère : type, état, année, séjour, surface et pièces maximum, dernier étage), « Indispensable » et
+  « Ce qui ferait la différence » (les niveaux `exigences` du CRM : indispensable / souhaité ;
+  équipements, extérieur, cuisine, exposition), « Ce que vous évitez » (étages exclus, au-dessus du Xe
+  sans ascenseur, les lettres du DPE écartées), le projet (échéance, financement, apport, une icône
+  chacun), le mot d'Alexandre (« Noté par Alexandre », en lecture seule ; « Ajouter une précision »
+  ouvre le message), « Mes critères ont évolué ». Sur ordinateur, deux colonnes (`.mr-cols`).
+- Icônes ajoutées à `T` : `balcon`, `banque`, `portefeuille`. Partis : `CatE`, `Fait`, `PastilleE`,
+  `ICONE_TYPE` (ne servaient qu'à l'ancienne vue). Styles : `.mr-*`.
 
 ### V3.66 — 3 octobre 2026 · Documents : l'onglet choisi en intercalaire, et l'arrivée sur « Signatures en cours »
 
