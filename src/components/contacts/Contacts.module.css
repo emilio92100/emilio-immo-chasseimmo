@@ -391,3 +391,33 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
   .biensSeul .heroBienTx { flex: 1 1 0; }
   .heroBienAct { order: 3; width: 100%; justify-content: flex-start; padding-left: 55px; }
 }
+
+/* ══ V3.59 — la fiche d'un contact en rubriques ══
+   Comme la fiche d'un acheteur ou d'un bien : les onglets à cheval sur le bas
+   du bandeau bleu (« À savoir sur … », Documents, Suivi), le contenu dessous.
+   Le bandeau garde un peu de bleu en bas pour que la barre s'y pose. */
+.heroOnglets { padding-bottom: 44px; }
+.ongletsCheval { position: relative; z-index: 2; margin: -40px 22px 0; }
+.ongletsCheval > nav { box-shadow: 0 14px 30px -16px rgba(26, 35, 50, .45), 0 2px 6px rgba(26, 35, 50, .06); }
+.ongletCorps { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.suiviOnglet { background: #f7f9fc; }
+/* Ses biens dans le bandeau, et « Nouveau bien » au bout du rang (« Ses
+   biens » n'est plus répété plus bas). */
+.biensZone { grid-column: 1 / -1; display: flex; gap: 10px; align-items: stretch; min-width: 0; }
+.biensZone > .biensRang { flex: 1 1 auto; grid-column: auto; }
+.heroBienAjout {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 16px; border-radius: 14px; cursor: pointer;
+  border: 1px dashed rgba(232, 201, 106, .5); background: rgba(232, 201, 106, .06); color: #e8c96a; font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.heroBienAjout:hover { background: rgba(232, 201, 106, .14); border-color: #e8c96a; }
+@media (max-width: 760px) {
+  .heroOnglets { padding-bottom: 42px; }
+  .ongletsCheval { margin: -36px 8px 0; }
+}
+@media (max-width: 640px) {
+  .biensZone { flex-direction: column; }
+  .heroBienAjout { min-height: 40px; }
+  /* « À savoir sur Christine » devient « À savoir » : les trois onglets tiennent. */
+  .ongletLong { display: none; }
+}
