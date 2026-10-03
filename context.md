@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.61 · 3 octobre 2026**
+**Version 3.63 · 3 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,44 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.63 — 3 octobre 2026 · arrêter, annuler, modifier : une fenêtre qui explique, et les signataires prévenus
+
+Rien à passer dans Supabase. Les commits portent « V3.61 (1/8) » à « (8/8) » : la V3.61 et la V3.62
+(l'import ImmoFacile) ont été écrites en même temps, dans une autre session. Les commentaires du code
+qui disent « V3.61 » pour Documents (FenetreConfirmer, la bande des états) renvoient à cette entrée.
+
+Alexandre : « quand j'arrête une signature, ce n'est pas à moi d'avertir les signataires : il faut qu'ils
+soient prévenus, pour tout type de document » ; « pour chaque chose que je veux faire, un petit message de
+rappel qui montre ce qui va être fait, ce que je dois faire ensuite, des recommandations » ; « Ouvrir (ou
+le modifier) porte à confusion » ; et sur la liste Documents : « Tous tout à droite ; le sous-filtre doit
+être avec Mandats de vente, juste en dessous, dans la même couleur ».
+
+- **Les signataires prévenus** (`/api/documents/signature`, action `annuler` ; `mailArret`,
+  `prevenirArret`, `src/lib/signature-documents.ts`) : chacun de ceux qui avaient reçu leur lien ou déjà
+  signé reçoit un e-mail au nom d'Alexandre. Signature arrêtée : « … : la signature est interrompue »
+  (le lien ne marche plus, rien à faire pour l'instant, un nouveau lien suivra si besoin ; une signature
+  déjà faite ne compte plus). Document annulé (`pourquoi: 'annulation'`) : « … a été annulé(e) », plus
+  rien à signer. Pas celui qui devait signer sur place sans avoir rien reçu. `prevenir: false` : personne
+  (la case décochée). La réponse rend `prevenus` et `echecs` ; le suivi du client dit qui a été prévenu.
+  Vaut pour tous les documents de la rubrique (mandats, avenants, offres, bons de visite). Le mandat de
+  recherche proposé dans l'espace (« Retirer la proposition ») n'envoie toujours rien.
+- **`FenetreConfirmer`** (nouveau, `src/components/documents/FenetreConfirmer.tsx`) remplace les
+  `confirm()` : « Ce qui va se passer » (un picto par effet, en rouge ce qui ne se rattrape pas), une case
+  à cocher (« Prévenir les 8 signataires par e-mail », cochée d'office), « Et ensuite », un conseil en
+  encadré bleu, « Ne rien faire » / le geste. Utilisée pour : **Arrêter la signature**
+  (`SignatureEnLigne.tsx`), **Annuler le document** / **Marquer annulé** hors mandat signé (qui garde
+  `FenetreFinMandat`), **Supprimer le brouillon**, **Dupliquer** un document en signature
+  (`PageDocuments.tsx`), **Modifier** = repasser en brouillon (`EditeurDocument.tsx`).
+- **« Ouvrir »** au lieu de « Ouvrir (ou le modifier) » ; dessous : « pour le modifier, arrête d'abord la
+  signature » (en signature) ou « pour le relire ou le modifier ». Dans l'éditeur, en signature, plus de
+  bouton « Modifier » : un bandeau dit comment faire (arrêter, puis revenir « Modifier »).
+- **Documents, la barre** : « Tous » passe tout à droite (`margin-left: auto`). La barre des états n'est
+  plus une barre grise à part : une **bande bleue** (`.sousBande`) collée sous la barre des sortes, dans le
+  même bloc blanc (`.vuesBloc`), et un **pont** de la même couleur (`.pont`, mesuré dans PageDocuments,
+  glisse avec la pastille et suit le défilement au téléphone) relie l'onglet choisi à la bande : ils ne
+  font qu'une forme. Pastille de l'onglet choisi en bleu uni (`--emilio`) ; dans la bande, la pastille de
+  l'état choisi est blanche.
 
 ### V3.61 — 3 octobre 2026 · « Importer depuis ImmoFacile »
 
