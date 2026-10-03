@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.67 · 4 octobre 2026**
+**Version 3.68 · 4 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,23 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.68 — 4 octobre 2026 · « Ma recherche » : retour à la présentation d'avant, avec des icônes partout
+
+Rien à passer dans Supabase.
+
+Alexandre, devant la V3.67 en ligne : « finalement, j'aime bien celle qu'on avait », mais « il n'y a pas
+assez d'icônes, par exemple pour les surfaces, les pièces, les chambres… à partir du deuxième, pas de
+rez-de-chaussée, troisième sans ascenseur ». Confirmé : revenir à l'ancienne, plus d'icônes.
+
+- **`Recherche`** (`EspaceClient.tsx`) : la présentation d'avant la V3.67 (le rappel en une phrase, une
+  carte par catégorie : le bien, surfaces, étage et exposition, équipements, énergie, où, transports,
+  budget, projet), avec une icône dessinée partout et plus aucun émoji : les trois cases surface,
+  pièces, chambres (`.mini-i`), chaque fait (`Fait`, `.fi` : état, année, surface et pièces maximum,
+  séjour, apport, financement, échéance), chaque pastille d'étage, d'exposition (`ICO_EXPO`), de type
+  (`ICO_TYPE`) et d'équipement (`PastilleE`, `ICO_EQUIP`), chaque arrêt (`.arret-h`).
+- Icônes ajoutées à `T` : `lit` (chambres), `boussole` (orientation). Les styles `.mr-*` de la V3.67 sont
+  partis ; ses icônes `balcon`, `banque`, `portefeuille` servent ici.
 
 ### V3.67 — 4 octobre 2026 · espace acheteur : « Ma recherche » refaite, aux couleurs d'Emilio
 
