@@ -19,6 +19,7 @@ import { jourParis } from '@/lib/mandat';
 import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
 import type { BienVente } from '@/lib/biens-vente';
 import SuiteMandatBien from './SuiteMandatBien';
+import SuiviSignature, { lireSuivis, type Suivi } from './SuiviSignature';
 import FenetreSigne from './FenetreSigne';
 import {
   CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier,
@@ -550,6 +551,11 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const [edition, setEdition] = useState<DocumentRow | null>(null);
   /* Un mandat de vente annulé ou supprimé : la question de sa fiche (V3.42). */
   const [suiteBien, setSuiteBien] = useState<SuiteBien | null>(null);
+  /* V3.58 : qui a signé, qui on attend, sous la ligne de chaque document en
+     signature (Alexandre : « dans Documents, je ne vois que En signature »).
+     La même ligne dépliable que sur la fiche d'un client ou d'un bien. */
+  const [suivis, setSuivis] = useState<Record<string, Suivi>>({});
+  const [tourSuivis, setTourSuivis] = useState(0);
   const refCreer = useRef<HTMLElement>(null);
   const refListe = useRef<HTMLDivElement>(null);
 
@@ -581,6 +587,33 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     }
   }, []);
   useEffect(() => { charger(); }, [charger]);
+
+  /* Les suivis : relus quand la liste change, quand on revient sur l'onglet,
+     et toutes les minutes tant qu'une signature attend quelqu'un. Une lecture
+     ratée laisse la ligne telle quelle (la pastille « En signature » reste). */
+  const enCours = useMemo(() => ({
+    docs: (docs || []).filter(d => d.statut === 'pret' && !!d.signature),
+    mandats: mandats.filter(x => !x.retracte_le && (x.statut === 'partiel' || x.statut === 'en_cours')),
+  }), [docs, mandats]);
+  useEffect(() => {
+    let vivant = true;
+    if (!enCours.docs.length && !enCours.mandats.length) { setSuivis({}); return; }
+    lireSuivis(enCours).then(l => { if (vivant) setSuivis(l); }, e => console.error('[documents] suivis', (e as Error).message));
+    return () => { vivant = false; };
+  }, [enCours, tourSuivis]);
+  const attente = enCours.docs.length + enCours.mandats.length > 0;
+  useEffect(() => {
+    if (!attente) return;
+    const maj = () => { if (document.visibilityState === 'visible') setTourSuivis(t => t + 1); };
+    const t = window.setInterval(maj, 60_000);
+    window.addEventListener('focus', maj);
+    document.addEventListener('visibilitychange', maj);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('focus', maj);
+      document.removeEventListener('visibilitychange', maj);
+    };
+  }, [attente]);
 
   const items = useMemo<Item[]>(() => [
     ...(docs || []).map(itemDoc),
@@ -841,7 +874,17 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
               <b>{items.length === 0 ? 'Aucun document pour l’instant' : 'Rien ici'}</b>
               {items.length === 0 ? 'Choisis un modèle ci-dessus : le brouillon s’enregistre tout seul, au fil de la saisie.' : 'Aucun document ne correspond à ces filtres.'}
             </div>
-          ) : visibles.map(it => <Ligne key={it.cle} it={it} on={ouvert === it.cle} onClick={() => setOuvert(it.cle)} />)}
+          ) : visibles.map(it => {
+            const ligne = <Ligne key={it.cle} it={it} on={ouvert === it.cle} onClick={() => setOuvert(it.cle)} />;
+            const suivi = it.enSignature ? suivis[it.cle] : undefined;
+            if (!suivi) return ligne;
+            return (
+              <div key={it.cle} className={`${s.ligneBloc} ${ouvert === it.cle ? s.ligneBlocOn : ''}`}>
+                {ligne}
+                <div className={s.ligneSuivi}><SuiviSignature suivi={suivi} onFait={() => setTourSuivis(t => t + 1)} /></div>
+              </div>
+            );
+          })}
         </div>
       )}
 
