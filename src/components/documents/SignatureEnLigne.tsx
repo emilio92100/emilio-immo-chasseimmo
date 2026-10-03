@@ -6,6 +6,7 @@ import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { dateCourte, dateLongue, heureParis } from '@/lib/mandat';
 import { finValiditeOffre } from '@/lib/actes/offre-achat';
 import { Croix, Ic } from './ApercuActe';
+import FenetreConfirmer from './FenetreConfirmer';
 import {
   appelSignature, lienFichier, lireSignataires, nomFichier, nomSignataire, pagePerimee, tableSignaturesAbsente,
   type DocumentRow, type SignataireRow,
@@ -249,15 +250,19 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
     catch (e) { setErreur((e as Error).message); if (pagePerimee(e)) await relire(); }
     setTravail('');
   }
-  async function arreter() {
-    const signes = (sigs || []).filter(x => x.statut === 'signe').length;
-    /* V3.55 : personne n'est prévenu, comme pour « Annuler le document ». */
-    if (!confirm(`Arrêter la signature ${mode === 'en_ligne' ? 'en ligne' : 'sur place'} ?\n\nLes liens ne fonctionneront plus${signes ? `, et les ${signes > 1 ? `${signes} signatures déjà faites ne comptent plus` : 'signature déjà faite ne compte plus'}` : ''}. Le document redevient « à faire signer » : tu pourras la relancer.\n\nPersonne n’est prévenu par e-mail : si quelqu’un a déjà signé, dis-le-lui. En ouvrant son lien, il lira que la signature est arrêtée.`)) return;
-    setTravail('arreter'); setErreur('');
+  /* V3.61 : la fenêtre qui dit ce qui va se passer (FenetreConfirmer), et
+     les signataires prévenus par e-mail (case cochée d'office). */
+  const [fenArret, setFenArret] = useState(false);
+  async function arreter(prevenir: boolean) {
+    setTravail('arreter'); setErreur(''); setInfo('');
     try {
-      await appelSignature({ action: 'annuler', id: doc.id });
+      const r = await appelSignature<{ prevenus?: string[]; echecs?: string[] }>({ action: 'annuler', id: doc.id, prevenir });
+      setFenArret(false);
+      const p = r.prevenus || [], ech = r.echecs || [];
+      setInfo(`Signature arrêtée : les liens ne fonctionnent plus.${p.length ? ` ${p.join(', ')} ${p.length > 1 ? 'ont été prévenus' : 'a été prévenu'} par e-mail.` : ''}`);
+      if (ech.length) setErreur(`Un e-mail n’est pas parti : ${ech.join(' ; ')}. Préviens-le toi-même.`);
       onMaj({ ...doc, signature: null });
-    } catch (e) { setErreur((e as Error).message); if (pagePerimee(e)) await relire(); }
+    } catch (e) { setFenArret(false); setErreur((e as Error).message); if (pagePerimee(e)) await relire(); }
     setTravail('');
   }
   async function ouvrir(chemin: string | null | undefined) {
@@ -354,12 +359,44 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
           {/* V3.57 : la version complète est partie à chacun : plus d'arrêt
               (« finaliser » range le document). */}
           {doc.statut === 'pret' && !doc.signature?.envoi_le && !doc.signature?.envoye_le && (
-            <button type="button" className={s.btnLien} style={{ alignSelf: 'flex-start', color: '#b91c1c' }} disabled={!!travail} onClick={arreter}>
+            <button type="button" className={s.btnLien} style={{ alignSelf: 'flex-start', color: '#b91c1c' }} disabled={!!travail} onClick={() => setFenArret(true)}>
               {travail === 'arreter' ? 'Arrêt…' : 'Arrêter la signature'}
             </button>
           )}
         </div>
       )}
+
+      {fenArret && (() => {
+        const liste = sigs || [];
+        const signes = liste.filter(x => x.statut === 'signe');
+        const invites = liste.filter(x => x.statut === 'invite');
+        const surPlace = liste.filter(x => x.statut === 'attendu');
+        const aPrevenir = liste.filter(x => (x.statut === 'invite' || x.statut === 'signe') && !!x.personne.email);
+        const noms = signes.map(nomSignataire).join(', ');
+        const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+        return (
+          <FenetreConfirmer ic="pause" ton="or" titre="Arrêter la signature ?" bouton="Arrêter la signature"
+            intro={`${doc.titre || modele(doc.modele)?.titre || 'Ce document'}${doc.numero ? ` · n° ${doc.numero}` : ''}`}
+            option={aPrevenir.length ? { libelle: `Prévenir ${aPrevenir.length > 1 ? `les ${aPrevenir.length} signataires` : nomSignataire(aPrevenir[0])} par e-mail`, aide: 'Ceux qui ont reçu leur lien ou qui ont déjà signé.', defaut: true } : undefined}
+            points={coche => [
+              ...(invites.length || signes.length ? [{ ic: 'croix', t: `${invites.length + signes.length > 1 ? 'Les liens envoyés ne fonctionnent plus' : 'Le lien envoyé ne fonctionne plus'} : qui ouvre le sien lit qu’Alexandre a arrêté la signature, et ne voit plus le document.` }] : []),
+              ...(surPlace.length ? [{ ic: 'tablette', t: `Plus personne ne peut signer sur ton écran (${surPlace.map(nomSignataire).join(', ')}).` }] : []),
+              ...(signes.length ? [{ ic: 'retour', ton: 'alerte' as const, t: `${noms} ${pl(signes.length, 'a', 'ont')} déjà signé : ${pl(signes.length, 'cette signature ne compte plus', 'ces signatures ne comptent plus')}. Il faudra re-signer à la relance.` }] : []),
+              ...(aPrevenir.length
+                ? [coche
+                  ? { ic: 'mail', ton: 'ok' as const, t: `${pl(aPrevenir.length, 'Il reçoit', 'Chacun reçoit')} un e-mail : la signature est interrompue, rien à faire pour l’instant, un nouveau lien suivra si le document doit être signé.` }
+                  : { ic: 'mail', ton: 'alerte' as const, t: 'Personne n’est prévenu par e-mail : à toi de les avertir.' }]
+                : []),
+              { ic: 'doc', t: `Le document reste dans Documents, « À faire signer »${doc.numero ? `, avec son n° ${doc.numero}` : ''}. Rien n’est perdu.` },
+            ]}
+            ensuite={[
+              { ic: 'crayon', t: 'Pour corriger quelque chose : « Ouvrir », puis « Modifier » (il repasse en brouillon). Corrige, puis « Finaliser ».' },
+              { ic: 'envoyer', t: 'Puis relance la signature : de nouveaux liens partent à tous, et la signature de l’agence se repose toute seule.' },
+            ]}
+            conseil="Ce document ne doit plus jamais être signé ? Utilise plutôt « Annuler le document » : il passe « Annulé » et tout le monde est prévenu."
+            onFermer={() => setFenArret(false)} onConfirmer={coche => arreter(coche)} />
+        );
+      })()}
 
       {lancer && (
         <FenetreLancer doc={doc} onFermer={() => setLancer(false)}
