@@ -1671,7 +1671,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     const t = setTimeout(() => {
       mandatOuvert.current = true;
       try { window.history.replaceState(null, '', window.location.pathname); } catch { /* sans effet */ }
-      if (mandatRef.current.etat === 'a_signer') ouvrirMandat('libre');
+      const m = mandatRef.current;
+      /* V3.64 : la proposition retirée par Alexandre, le lien du mail ne
+         rouvre plus de signature : une fenêtre le dit. Même si son mandat
+         type lui permet de signer seul (il le fera en demandant une visite).
+         Rien quand un mandat est signé, ou qu'un autre l'attend (Documents). */
+      if (m.etat === 'a_signer' && m.propose) ouvrirMandat('libre');
+      else if (m.etat !== 'valide' && !m.enRoute && m.document?.vous !== 'signe') montrer(<Explication a={MANDAT_RETIRE} onFermer={fermer} />, 'pleine');
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5351,6 +5357,19 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
       'Tout ce qui a été fait depuis reste consultable dans « Mes derniers biens consultés ».',
     ],
   },
+};
+
+/* V3.64 : il ouvre le lien « Lire et signer mon mandat » d'un mail, alors
+   qu'Alexandre a retiré sa proposition. Il a reçu un e-mail pour le lui dire
+   (si Alexandre l'a laissé partir) ; la fenêtre le redit, sans rien à faire. */
+const MANDAT_RETIRE: typeof AIDES[string] = {
+  ico: 'note', sur: 'Votre mandat de recherche', titre: 'Ce mandat n’est plus à signer',
+  texte: 'Alexandre a retiré sa proposition pour le moment.',
+  puces: [
+    'Vous n’avez rien à faire de votre côté.',
+    'S’il faut en signer un plus tard, Alexandre vous le dira.',
+    `Une question ? Appelez-le au ${AGENT.tel}.`,
+  ],
 };
 
 function Explication({ a, onFermer }: { a: typeof AIDES[string]; onFermer: () => void }) {
