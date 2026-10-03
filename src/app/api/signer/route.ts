@@ -235,7 +235,9 @@ export async function POST(req: NextRequest) {
           `n° ${l.numero} · signé avec son lien personnel le ${dateCourte(le)} à ${heureParis(le)}${restants.length ? `\nOn attend encore : ${restants.map(c => nomDe(c.personne)).join(', ')}` : ''}${echecs.length ? `\n⚠️ Exemplaire non envoyé : ${echecs.join(' ; ')}` : ''}`);
         await evt(`${moi} a signé le mandat n° ${l.numero}${sc.complet ? ' (complet)' : ''}`);
         const pj = [{ nom: `Mandat-de-recherche-${l.numero}.pdf`, type: 'application/pdf', base64: Buffer.from(sc.signe).toString('base64') }];
-        if (echecs.length || eL || await alerteMailActive(sb, 'mandat_signe')) await envoyerMail({
+        /* V3.58 : un seul mail, quand le mandat est complet (« pas un mail à
+           chaque personne qui signe »). Avant, seulement s'il y a un souci. */
+        if (echecs.length || eL || (sc.complet && await alerteMailActive(sb, 'mandat_signe'))) await envoyerMail({
           a: ALERTES(), deLaPartDe: 'crm', pj,
           sujet: `✍️ ${moi} a signé le mandat de ${premier} (n° ${l.numero})${sc.complet ? ' · complet' : ''}`,
           texte: `${moi} vient de signer le mandat de recherche n° ${l.numero} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}.\n${sc.complet ? 'Le mandat est complet : chacun a reçu son exemplaire.' : `On attend encore ${restants.map(c => nomDe(c.personne)).join(', ')}.`}${echecs.length ? `\n⚠️ Exemplaire non envoyé : ${echecs.join(' ; ')}` : ''}${eL ? `\n⚠️ La ligne du mandat n'a pas pu être mise à jour (${eL.message}).` : ''}\n\n${lienCrm}`,
@@ -498,17 +500,46 @@ async function signerDocument(req: NextRequest, sb: SupabaseClient, jeton: strin
         titre: `✍️ ${moi} a signé ${nd.court}${restants.length ? '' : ' — signé par tous'}`,
         description: `${doc.titre || m.titre} · signé avec son lien personnel le ${dateCourte(le)} à ${heureParis(le)}${restants.length ? `\nOn attend encore : ${restants.map(SD.nomSig).join(', ')}` : ''}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}`,
       })))) echecs.push('la signature n’a pas été notée dans l’historique du client');
-      if (echecs.length || await alerteMailActive(sb, 'document_signe')) {
-        const titre = `✍️ ${moi} a signé ${nd.le}${restants.length ? '' : ' · signé par tous'}`;
-        await envoyerMail({
-          a: ALERTES(), deLaPartDe: 'crm', sujet: titre,
-          ...(pdf ? { pj: [{ nom: SD.nomFichierPdf(m, d), type: 'application/pdf', base64: Buffer.from(pdf).toString('base64') }] } : {}),
-          texte: `${moi} vient de signer ${nd.le} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}.\n${restants.length ? `On attend encore ${restants.map(SD.nomSig).join(', ')}.` : 'Tout le monde a signé : chacun a reçu son exemplaire, et le document est rangé dans Documents.'}${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}\n\n${lienCrm}`,
-          html: gabarit(`${moi} a signé`, `<p><b>${echappe(moi)}</b> vient de signer ${echappe(nd.le)} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}.</p>
-            <p>${restants.length ? `On attend encore ${echappe(restants.map(SD.nomSig).join(', '))}.` : '<b>Tout le monde a signé</b> : chacun a reçu son exemplaire, et le document est rangé dans Documents.'}</p>
-            ${echecs.length ? `<p style="color:#b91c1c">⚠️ ${echappe(echecs.join(' ; '))}</p>` : ''}${bouton(lienCrm, 'Ouvrir le CRM')}`,
-            'Le PDF signé, avec son certificat, est en pièce jointe et dans Documents.'),
-        });
+      /* V3.58 — Alexandre : « il ne faut pas envoyer un mail à chaque personne
+         qui signe, sinon il y aurait trop de mails ; juste un mail quand le
+         contrat est signé ». Un seul mail, donc, quand tout le monde a signé.
+         Une signature au milieu n'en envoie que s'il y a un souci à régler
+         (son exemplaire pas parti, document pas mis à jour) ; le reste se lit
+         dans Documents (« Qui a signé ? ») et dans le suivi du client. */
+      const fini = !restants.length;
+      if (echecs.length || (fini && await alerteMailActive(sb, 'document_signe'))) {
+        const titreDoc = `${doc.titre || m.titre}${doc.numero && !(doc.titre || '').includes(doc.numero) ? ` (n° ${doc.numero})` : ''}`;
+        const signes = tous.filter(x => SD.actif(x) && x.statut === 'signe')
+          .sort((a, b) => String(a.signe_le || '').localeCompare(String(b.signe_le || '')));
+        const quiQuand = (x: SD.SigDoc) => {
+          const t = x.signe_le || le;
+          return `${SD.nomSig(x)} : le ${dateCourte(t)} à ${heureParis(t)}${x.mode === 'sur_place' ? ', sur place' : ''}`;
+        };
+        const agenceLe = doc.signature?.agence_le;
+        const liste = [...(agenceLe ? [`L’agence : le ${dateCourte(agenceLe)} à ${heureParis(agenceLe)}, au lancement`] : []), ...signes.map(quiQuand)];
+        const pj = pdf ? { pj: [{ nom: SD.nomFichierPdf(m, d), type: 'application/pdf', base64: Buffer.from(pdf).toString('base64') }] } : {};
+        if (fini) {
+          await envoyerMail({
+            a: ALERTES(), deLaPartDe: 'crm', ...pj,
+            sujet: `✅ Signé par tous : ${titreDoc}`,
+            texte: `Tout le monde a signé ${nd.le} (${titreDoc}). La dernière signature est celle de ${moi}, le ${dateCourte(le)} à ${heureParis(le)}.\n\nLes signatures :\n${liste.map(x => `- ${x}`).join('\n')}\n\nChacun a reçu son exemplaire, et le document est rangé dans Documents.${echecs.length ? `\n⚠️ ${echecs.join(' ; ')}` : ''}\n\n${lienCrm}`,
+            html: gabarit('Signé par tous', `<p><b>Tout le monde a signé</b> ${echappe(nd.le)} (${echappe(titreDoc)}). La dernière signature est celle de ${echappe(moi)}, le ${dateCourte(le)} à ${heureParis(le)}.</p>
+              <p style="margin-bottom:4px">Les signatures :</p>
+              <ul style="margin-top:0;padding-left:18px">${liste.map(x => `<li>${echappe(x)}</li>`).join('')}</ul>
+              <p>Chacun a reçu son exemplaire, et le document est rangé dans Documents.</p>
+              ${echecs.length ? `<p style="color:#b91c1c">⚠️ ${echappe(echecs.join(' ; '))}</p>` : ''}${bouton(lienCrm, 'Ouvrir le CRM')}`,
+              'Le PDF signé, avec son certificat, est en pièce jointe et dans Documents.'),
+          });
+        } else {
+          await envoyerMail({
+            a: ALERTES(), deLaPartDe: 'crm', ...pj,
+            sujet: `⚠️ ${titreDoc} : un souci à la signature de ${moi}`,
+            texte: `${moi} vient de signer ${nd.le} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}. Sa signature est bien enregistrée, mais :\n⚠️ ${echecs.join('\n⚠️ ')}\n\nOn attend encore ${restants.length} signature${restants.length > 1 ? 's' : ''} : ${restants.map(SD.nomSig).join(', ')}.\n\n${lienCrm}`,
+            html: gabarit('Un souci à régler', `<p><b>${echappe(moi)}</b> vient de signer ${echappe(nd.le)} avec son lien personnel, le ${dateCourte(le)} à ${heureParis(le)}. Sa signature est bien enregistrée, mais :</p>
+              <p style="color:#b91c1c">⚠️ ${echecs.map(echappe).join('<br>⚠️ ')}</p>
+              <p>On attend encore ${restants.length} signature${restants.length > 1 ? 's' : ''} : ${echappe(restants.map(SD.nomSig).join(', '))}.</p>${bouton(lienCrm, 'Ouvrir le CRM')}`),
+          });
+        }
       }
       return NextResponse.json({ ok: true, complet: !restants.length, signeLe: le, attendus: restants.map(x => x.personne.prenom || SD.nomSig(x)) });
     }
