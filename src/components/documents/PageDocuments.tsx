@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
@@ -19,13 +19,14 @@ import { jourParis } from '@/lib/mandat';
 import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
 import type { BienVente } from '@/lib/biens-vente';
 import SuiteMandatBien from './SuiteMandatBien';
+import FenetreConfirmer, { type PointConfirmer } from './FenetreConfirmer';
 import SuiviSignature, { lireSuivis, type Suivi } from './SuiviSignature';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import FenetreSigne from './FenetreSigne';
 import {
-  CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier,
+  CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier, lireSignataires, nomSignataire,
   mandatDepuis, nomFichier, preparerDepuis, quand, rappelExemplaire, retirerFichiers, tableAbsente,
-  type DocumentRow, type MandatRecherche,
+  type DocumentRow, type MandatRecherche, type SignataireRow,
 } from './outils';
 import s from './Documents.module.css';
 
@@ -77,7 +78,8 @@ type Vue = 'encours' | 'tout' | Categorie;
 type Etat = 'encours' | 'brouillon' | 'signe' | 'annule';
 type SousVue = 'tout' | Etat;
 const ORDRE_ETATS: Etat[] = ['encours', 'brouillon', 'signe', 'annule'];
-const VUES: Vue[] = ['encours', 'tout', ...CATEGORIES.map(c => c.id)];
+/* V3.61 : « Tous » tout à droite (Alexandre). */
+const VUES: Vue[] = ['encours', ...CATEGORIES.map(c => c.id), 'tout'];
 const SOUS_VUES: SousVue[] = ['tout', ...ORDRE_ETATS];
 const IC_ETAT: Record<SousVue, string> = { tout: 'liste', encours: 'plume', brouillon: 'crayon', signe: 'check', annule: 'croix' };
 /* « À faire signer » et « en signature » sont un même état : la signature
@@ -208,25 +210,6 @@ async function suiteBienDe(d: DocumentRow, etaitSigne: boolean, supprime: boolea
   } catch { return null; }
 }
 
-/* La question avant d'annuler un document (hors mandat signé : sa fenêtre). */
-function questionAnnuler(d: DocumentRow, m: ReturnType<typeof modele>): string {
-  if (d.statut === 'signe') {
-    /* V3.50 : un avenant de recherche signé avait changé la fin du mandat ou
-       les honoraires sur la recherche ; l'annuler ne les remet pas. */
-    const avenantR = d.modele === 'avenant_recherche' && !!d.recherche_id
-      ? '\n\nLa fin du mandat et les honoraires que cet avenant avait changés sur la recherche ne reviennent pas tout seuls : remets-les à la main dans le bloc Mandat de la fiche client, si besoin.'
-      : d.modele === 'avenant_vente'
-        ? '\n\nLe prix, les honoraires et la fin du mandat que cet avenant avait reportés sur la fiche du bien ne reviennent pas tout seuls : remets-les à la main depuis la fiche du bien, si besoin.'
-        : '';
-    return `Marquer ce document comme annulé ?\n\nIl reste dans la liste, avec ses fichiers.${m?.surRecherche && m.numero && d.recherche_id ? '\n\nLe bloc Mandat de sa recherche sera vidé.' : ''}${avenantR}`;
-  }
-  /* V3.50 : la signature en cours s'arrête avec. */
-  const enSignature = d.signature
-    ? `\n\nLa signature ${d.signature.mode === 'sur_place' ? 'sur place' : 'en ligne'} en cours s’arrête : les liens ne fonctionneront plus. Personne n’est prévenu par e-mail : si quelqu’un a déjà signé, dis-le-lui toi-même.`
-    : '';
-  return `Annuler ce document ?\n\nIl reste dans la liste, avec son PDF, marqué « Annulé ».${enSignature}`;
-}
-
 function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver, onSuiteBien }: {
   it: Item;
   noms: Record<string, string>;
@@ -253,6 +236,12 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   const [fait, setFait] = useState<{ t: string; ok: boolean } | null>(null);
   /* « Marquer annulé » un mandat signé : la raison d'abord (V3.50). */
   const [finMandat, setFinMandat] = useState(false);
+  /* V3.61 : avant d'annuler ou de supprimer, ce qui va se passer (FenetreConfirmer).
+     Pour supprimer : le n° du registre, lu avant d'ouvrir la fenêtre. */
+  const [fenAnnul, setFenAnnul] = useState(false);
+  const [fenSuppr, setFenSuppr] = useState<{ ligne: number | null } | null>(null);
+  /* Pour « Annuler le document » en signature : qui a reçu son lien, qui a signé. */
+  const [sigsAnnul, setSigsAnnul] = useState<SignataireRow[] | null>(null);
   const d = it.doc, x = it.mandat;
   const m = d ? modele(d.modele) : null;
   const courrier = !!m?.courrier;
@@ -299,7 +288,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   }
 
   /* `question` : null quand la fenêtre de la raison a déjà demandé. */
-  async function changer(maj: Record<string, unknown>, question: string | null, o: { raison?: RaisonFin } = {}) {
+  async function changer(maj: Record<string, unknown>, question: string | null, o: { raison?: RaisonFin; prevenir?: boolean } = {}) {
     if (!d || (question !== null && !confirm(question))) return;
     setTravail('etat'); setErreur('');
     /* V3.50 : relu d'abord. La page ouverte depuis le matin pouvait annuler
@@ -313,8 +302,14 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
        les liens ne marchent plus, et le Suivi du client le dit. Personne
        n'est prévenu par e-mail. */
     let signatureArretee = false;
+    let prevenus: string[] = [], echecsMail: string[] = [];
     if (maj.statut === 'annule' && aJour.statut === 'pret' && aJour.signature) {
-      try { await appelSignature({ action: 'annuler', id: d.id, pourquoi: 'annulation' }); signatureArretee = true; } catch (e) {
+      /* V3.61 : les signataires sont prévenus par e-mail (sauf case décochée). */
+      try {
+        const r = await appelSignature<{ prevenus?: string[]; echecs?: string[] }>({ action: 'annuler', id: d.id, pourquoi: 'annulation', prevenir: o.prevenir !== false });
+        prevenus = r.prevenus || []; echecsMail = r.echecs || [];
+        signatureArretee = true;
+      } catch (e) {
         setTravail('');
         setErreur('La signature en cours n’a pas pu être arrêtée, le document n’est pas annulé : ' + (e as Error).message);
         return;
@@ -334,6 +329,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       if (pb) setErreur(pb);
     }
     onMaj(data as DocumentRow);
+    if (maj.statut === 'annule') {
+      setFait({ ok: !echecsMail.length, t: `Document annulé.${signatureArretee ? ' La signature en cours est arrêtée.' : ''}${prevenus.length ? ` ${prevenus.join(', ')} ${prevenus.length > 1 ? 'ont été prévenus' : 'a été prévenu'} par e-mail.` : ''}${echecsMail.length ? ` Un e-mail n’est pas parti : ${echecsMail.join(' ; ')}. Préviens-le toi-même.` : ''}` });
+    }
     /* Un mandat de vente (V3.42) : son bien est-il encore « En vente » avec lui ? */
     if (maj.statut === 'annule') {
       const suite = await suiteBienDe(aJour, aJour.statut === 'signe', false);
@@ -341,7 +339,9 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     }
   }
 
-  async function supprimer() {
+  /* V3.61 : d'abord le registre (le n° déjà pris), puis la fenêtre qui dit
+     ce qui va se passer ; la suppression ne part qu'une fois confirmée. */
+  async function demanderSuppression() {
     if (!d) return;
     /* Un mandat qui a déjà son numéro au registre (finalisé, puis repassé en
        brouillon) : la ligne reste, le registre la note « sans suite ». */
@@ -351,9 +351,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       if (error && !registreAbsent(error)) { setErreur('Le registre des mandats n’a pas pu être lu : ' + error.message); return; }
       ligne = data ? Number((data as { numero: number }).numero) : null;
     }
-    if (!confirm(ligne
-      ? `Supprimer ce brouillon ?\n\nIl a déjà le n° ${ligne} au registre des mandats : cette ligne reste, notée « sans suite ».`
-      : 'Supprimer ce brouillon ?\n\nIl disparaît pour de bon, avec ses réponses.')) return;
+    setFenSuppr({ ligne });
+  }
+  async function supprimer(ligne: number | null) {
+    if (!d) return;
+    setFenSuppr(null);
     setTravail('supprimer'); setErreur('');
     try {
       /* V3.43 : relu d'abord. Finalisé ailleurs entre-temps, il n'est plus un
@@ -466,20 +468,29 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
                 <button type="button" className={s.btn} disabled={!!travail} onClick={() => ouvrirFichier(d.pdf_chemin, nomFichier(d))}><Ic n="doc" t={16} /><span>Le PDF d’origine</span></button>
               )}
               {d.statut !== 'brouillon' && (
-                <button type="button" className={s.btn} onClick={() => onEditer(d)}><Ic n="loupe" t={16} /><span>{d.statut === 'pret' ? 'Ouvrir (ou le modifier)' : 'Relire le document'}</span></button>
+                <button type="button" className={s.btn} onClick={() => onEditer(d)}>
+                  <Ic n="loupe" t={16} />
+                  {/* V3.61 : pendant une signature, il ne se modifie pas (« Ouvrir (ou le
+                      modifier) » laissait croire le contraire). */}
+                  <span>{d.statut === 'pret' ? 'Ouvrir' : 'Relire le document'}</span>
+                  {d.statut === 'pret' && <small>{d.signature ? 'pour le modifier, arrête d’abord la signature' : 'pour le relire ou le modifier'}</small>}
+                </button>
               )}
               <button type="button" className={s.btn} onClick={() => onDupliquer(d)}>
                 <Ic n="doc" t={16} /><span>Dupliquer</span><small>nouveau brouillon</small>
               </button>
               {d.statut === 'brouillon' && (
-                <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!!travail} onClick={supprimer}><Croix t={15} /><span>Supprimer le brouillon</span></button>
+                <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!!travail} onClick={() => { void demanderSuppression(); }}><Croix t={15} /><span>Supprimer le brouillon</span></button>
               )}
               {(d.statut === 'pret' || d.statut === 'signe') && (
                 <button type="button" className={`${s.btn} ${s.btnDanger}`} disabled={!!travail}
                   onClick={() => {
                     /* V3.50 : un mandat signé, la raison d'abord (registre). */
                     if (d.statut === 'signe' && (d.modele === 'mandat_vente' || d.modele === 'mandat_recherche')) { setFinMandat(true); return; }
-                    void changer({ statut: 'annule', annule_le: new Date().toISOString() }, questionAnnuler(d, m));
+                    /* V3.61 : la fenêtre qui explique ; en signature, les signataires d'abord. */
+                    setSigsAnnul(null);
+                    if (d.statut === 'pret' && d.signature) lireSignataires(d.id).then(setSigsAnnul, () => setSigsAnnul([]));
+                    setFenAnnul(true);
                   }}>
                   <Croix t={15} /><span>{d.statut === 'signe' ? 'Marquer annulé' : 'Annuler le document'}</span>
                 </button>
@@ -561,6 +572,58 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
         </div>
       </aside>
       {signe && d && <FenetreSigne doc={d} onFermer={() => setSigne(false)} onFait={r => { setSigne(false); onMaj(r); }} onRelu={onMaj} />}
+      {/* V3.61 : annuler (ou marquer annulé) un document qui n'est pas un mandat
+          signé : ce qui va se passer, et la suite. En signature, la fenêtre
+          attend la liste des signataires (pour la case « Prévenir »). */}
+      {fenAnnul && d && (d.statut !== 'pret' || !d.signature || sigsAnnul !== null) && (() => {
+        const signeDeja = d.statut === 'signe';
+        const enSig = d.statut === 'pret' && !!d.signature;
+        const liste = sigsAnnul || [];
+        const signes = liste.filter(x => x.statut === 'signe');
+        const aPrev = liste.filter(x => (x.statut === 'invite' || x.statut === 'signe') && !!x.personne.email);
+        const plu = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+        const points = (coche: boolean): PointConfirmer[] => [
+          { ic: 'croix', t: signeDeja
+            ? 'Le document passe « Annulé ». Il reste dans la liste, avec son exemplaire signé, en consultation seulement.'
+            : 'Le document passe « Annulé ». Il reste dans la liste, avec son PDF, mais il ne se modifie plus et ne se signe plus.' },
+          ...(enSig ? [{ ic: 'pause', t: 'La signature en cours s’arrête : les liens envoyés ne fonctionnent plus.' }] : []),
+          ...(enSig && signes.length ? [{ ic: 'retour', ton: 'alerte' as const, t: `${signes.map(nomSignataire).join(', ')} ${plu(signes.length, 'a', 'ont')} déjà signé : ${plu(signes.length, 'cette signature ne compte plus', 'ces signatures ne comptent plus')}.` }] : []),
+          ...(enSig && aPrev.length ? [coche
+            ? { ic: 'mail', ton: 'ok' as const, t: `${plu(aPrev.length, 'Il reçoit', 'Chacun reçoit')} un e-mail : le document est annulé, il n’y a plus rien à signer.` }
+            : { ic: 'mail', ton: 'alerte' as const, t: 'Personne n’est prévenu par e-mail : à toi de les avertir.' }] : []),
+          ...(m?.registre && !signeDeja && d.numero ? [{ ic: 'liste', t: `Le registre des mandats note « Jamais signé : document annulé ». Le n° ${d.numero} reste attaché à ce mandat et ne resservira pas.` }] : []),
+          ...(signeDeja ? [{ ic: 'mail', ton: 'alerte' as const, t: 'Personne n’est prévenu automatiquement : ce document était signé, préviens toi-même ceux qu’il engageait.' }] : []),
+          ...(signeDeja && d.modele === 'avenant_recherche' && d.recherche_id ? [{ ic: 'retour', ton: 'alerte' as const, t: 'La fin du mandat et les honoraires que cet avenant avait changés sur la recherche ne reviennent pas tout seuls : remets-les à la main dans le bloc Mandat de la fiche client.' }] : []),
+          ...(signeDeja && d.modele === 'avenant_vente' ? [{ ic: 'retour', ton: 'alerte' as const, t: 'Le prix, les honoraires et la fin du mandat que cet avenant avait reportés sur la fiche du bien ne reviennent pas tout seuls : remets-les à la main depuis la fiche du bien.' }] : []),
+          ...(signeDeja && m?.surRecherche && m.numero && d.recherche_id ? [{ ic: 'loupe', t: 'Le bloc Mandat de sa recherche sera vidé.' }] : []),
+          ...(d.modele === 'mandat_vente' ? [{ ic: 'maison', t: 'Si la fiche du bien dépend de ce mandat, on te demandera juste après ce qu’elle devient.' }] : []),
+        ];
+        return (
+          <FenetreConfirmer ic="croix" ton="danger" titre={signeDeja ? 'Marquer ce document annulé ?' : 'Annuler ce document ?'}
+            intro={`${d.titre || m?.titre || 'Document'}${d.numero ? ` · n° ${d.numero}` : ''}`}
+            bouton={signeDeja ? 'Marquer annulé' : 'Annuler le document'}
+            option={enSig && aPrev.length ? { libelle: `Prévenir ${aPrev.length > 1 ? `les ${aPrev.length} signataires` : nomSignataire(aPrev[0])} par e-mail`, aide: 'Ceux qui ont reçu leur lien ou qui ont déjà signé.', defaut: true } : undefined}
+            points={points}
+            ensuite={[{ ic: 'doc', t: `Pour repartir de ce document : « Dupliquer » en fait un nouveau brouillon${m?.registre ? ', qui aura son propre numéro' : ''}.` }]}
+            conseil={signeDeja ? undefined : `Tu veux seulement corriger quelque chose ? N’annule pas : ${enSig ? 'arrête la signature, puis « Ouvrir » › « Modifier ».' : '« Ouvrir » › « Modifier » le repasse en brouillon.'}`}
+            onFermer={() => setFenAnnul(false)}
+            onConfirmer={async coche => {
+              setFenAnnul(false);
+              await changer({ statut: 'annule', annule_le: new Date().toISOString() }, null, { prevenir: enSig && aPrev.length ? coche : true });
+            }} />
+        );
+      })()}
+      {fenSuppr && d && (
+        <FenetreConfirmer ic="corbeille" ton="danger" titre="Supprimer ce brouillon ?" bouton="Supprimer le brouillon"
+          intro={d.titre || m?.titre || 'Brouillon'}
+          points={[
+            { ic: 'croix', ton: 'alerte', t: 'Le brouillon disparaît pour de bon, avec toutes ses réponses. Ça ne se rattrape pas.' },
+            ...(fenSuppr.ligne ? [{ ic: 'liste', t: `Il a déjà le n° ${fenSuppr.ligne} au registre des mandats : cette ligne reste, notée « sans suite ».` }] : []),
+            ...(d.modele === 'mandat_vente' ? [{ ic: 'maison', t: 'Si la fiche du bien était passée « En vente » avec lui, on te demandera juste après ce qu’elle devient.' }] : []),
+          ]}
+          conseil="Tu hésites ? Garde-le : un brouillon n’engage à rien et ne compte nulle part tant qu’il n’est pas finalisé."
+          onFermer={() => setFenSuppr(null)} onConfirmer={() => supprimer(fenSuppr.ligne)} />
+      )}
       {finMandat && d && <FenetreFinMandat vide={!!(m?.surRecherche && m.numero && d.recherche_id)} onFermer={() => setFinMandat(false)}
         onChoix={r => { setFinMandat(false); void changer({ statut: 'annule', annule_le: new Date().toISOString() }, null, { raison: r }); }} />}
       {projet && d && <FenetreProjet doc={d} onFermer={() => setProjet(false)} onEnvoye={r => { setProjet(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
@@ -673,6 +736,37 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const dansVue = vue === 'encours' ? enCoursListe : cherches.filter(it => vue === 'tout' || it.categorie === vue);
   const nEtat = (k: Etat) => dansVue.filter(it => etatDe(it) === k).length;
   const vueCourriers = vue === 'courriers';
+
+  /* V3.61 — Alexandre : « le sous-filtre doit être avec Mandats de vente,
+     juste en dessous, dans la même couleur ; là, la séparation est trop
+     importante ». La bande des états est bleue comme l'onglet choisi, collée
+     sous la barre, et un pont de la même couleur relie l'onglet à la bande :
+     les deux ne font qu'une forme. Le pont suit l'onglet (mesuré ici, glissé
+     comme la pastille) et la barre quand elle défile au téléphone. */
+  const refVues = useRef<HTMLDivElement>(null);
+  const [pont, setPont] = useState<{ x: number; w: number; y: number; h: number } | null>(null);
+  const nbItems = items.length;
+  useLayoutEffect(() => {
+    const bloc = refVues.current;
+    const nav = bloc?.querySelector<HTMLElement>('nav');
+    const bande = bloc?.querySelector<HTMLElement>('[data-bande]');
+    if (!bloc || !nav || !bande) { setPont(null); return; }
+    const mesurer = () => {
+      const el = nav.querySelector<HTMLElement>(`[data-k="${vue}"]`);
+      if (!el) { setPont(null); return; }
+      const x = nav.offsetLeft + el.offsetLeft - nav.scrollLeft;
+      /* Dans la bande, sans mordre sur ses coins arrondis. */
+      const g = Math.max(x, bande.offsetLeft + 8), dr = Math.min(x + el.offsetWidth, bande.offsetLeft + bande.offsetWidth - 8);
+      const y = nav.offsetTop + nav.offsetHeight - 6;
+      const nouveau = dr - g > 10 ? { x: g, w: dr - g, y, h: bande.offsetTop - y + 2 } : null;
+      setPont(p => (p && nouveau && p.x === nouveau.x && p.w === nouveau.w && p.y === nouveau.y && p.h === nouveau.h ? p : nouveau));
+    };
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
+    ro.observe(bloc);
+    nav.addEventListener('scroll', mesurer, { passive: true });
+    return () => { ro.disconnect(); nav.removeEventListener('scroll', mesurer); };
+  }, [vue, nbItems]);
   /* V3.55 : « à faire signer » ne compte plus ceux dont les liens sont partis
      (« en signature »), et les exemplaires signés à déposer se comptent. */
   const aSigner = items.filter(it => it.statut === 'pret' && it.doc && !it.courrier && !it.enSignature).length;
@@ -684,7 +778,9 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     setDocs(l => (l ? (l.some(x => x.id === r.id) ? l.map(x => (x.id === r.id ? r : x)) : [r, ...l]) : [r]));
   }, []);
 
-  async function dupliquer(d: DocumentRow) {
+  /* V3.61 : dupliquer un document en signature passe par une fenêtre. */
+  const [fenDup, setFenDup] = useState<DocumentRow | null>(null);
+  async function dupliquer(d: DocumentRow, confirme = false) {
     const m = modele(d.modele);
     if (!m) return;
     /* Un seul mandat en cours (V3.32) : dupliquer un mandat qui court en
@@ -705,7 +801,7 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     /* V3.55 : la copie d'un document en signature n'arrête pas sa signature.
        Lancée à son tour, elle serait refusée tant que l'original attend
        (deux offres du même acquéreur, deux avenants au même mandat…). */
-    if (d.statut === 'pret' && d.signature && !confirm('Ce document est en cours de signature.\n\nLa copie sera un nouveau brouillon, à côté : la signature de l’original continue, ses liens marchent toujours. Si la copie doit le remplacer, arrête d’abord la signature de l’original (Arrêter la signature).\n\nDupliquer quand même ?')) return;
+    if (d.statut === 'pret' && d.signature && !confirme) { setFenDup(d); return; }
     const donnees: Donnees = { ...d.donnees, date: aujourdhui(), ...(m.numero ? { numero: '' } : {}) };
     /* V3.56 : la copie d'un mandat rétracté en ligne ne l'est pas. */
     delete donnees.retracte_le;
@@ -896,15 +992,27 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
         </div>
       )}
       {items.length > 0 && (
-        <BarreOnglets<Vue> label="Sortes de documents" className={s.vues} actif={vue} onChoisir={choisirVue}
-          onglets={[
-            { k: 'encours', l: 'Signatures en cours', n: enCoursListe.length, ic: <Ic n="plume" t={15} /> },
-            { k: 'tout', l: 'Tous', n: cherches.length, ic: <Ic n="doc" t={15} /> },
-            /* Une sorte sans aucun document n'a pas d'onglet (la barre tient sur
-               une ligne) ; elle revient dès qu'elle en a un. */
-            ...CATEGORIES.filter(c => vue === c.id || items.some(it => it.categorie === c.id))
-              .map(c => ({ k: c.id as Vue, l: c.titre, n: nbCat(c.id), ic: <Ic n={CAT_IC[c.id]} t={15} /> })),
-          ]} />
+        <div className={s.vuesBloc} ref={refVues} data-sous={vue !== 'encours' ? 'oui' : undefined}>
+          {pont && <span className={s.pont} style={{ left: pont.x, width: pont.w, top: pont.y, height: pont.h }} aria-hidden="true" />}
+          <BarreOnglets<Vue> label="Sortes de documents" actif={vue} onChoisir={choisirVue}
+            onglets={[
+              { k: 'encours', l: 'Signatures en cours', n: enCoursListe.length, ic: <Ic n="plume" t={15} /> },
+              /* Une sorte sans aucun document n'a pas d'onglet (la barre tient sur
+                 une ligne) ; elle revient dès qu'elle en a un. */
+              ...CATEGORIES.filter(c => vue === c.id || items.some(it => it.categorie === c.id))
+                .map(c => ({ k: c.id as Vue, l: c.titre, n: nbCat(c.id), ic: <Ic n={CAT_IC[c.id]} t={15} /> })),
+              { k: 'tout', l: 'Tous', n: cherches.length, ic: <Ic n="doc" t={15} /> },
+            ]} />
+          {/* L'état dans la sorte : la bande bleue, collée sous l'onglet choisi. */}
+          {vue !== 'encours' && (
+            <div className={s.sousBande} data-bande>
+              <BarreOnglets<SousVue> label="Où en sont ces documents" actif={sous} onChoisir={setSous}
+                onglets={SOUS_VUES.filter(k => k !== 'annule' || nEtat('annule') > 0 || sous === 'annule').map(k => ({
+                  k, l: libEtat(k, vueCourriers), n: k === 'tout' ? dansVue.length : nEtat(k), ic: <Ic n={IC_ETAT[k]} t={14} />,
+                }))} />
+            </div>
+          )}
+        </div>
       )}
 
       {docs === null ? (
@@ -919,13 +1027,6 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       ) : (
         <CorpsOnglet k={vue} ordre={VUES}>
           <div className={s.groupes}>
-            {/* L'état dans la sorte : une barre plus légère, sous la première. */}
-            {vue !== 'encours' && (
-              <BarreOnglets<SousVue> label="Où en sont ces documents" className={s.sousVues} actif={sous} onChoisir={setSous}
-                onglets={SOUS_VUES.filter(k => k !== 'annule' || nEtat('annule') > 0 || sous === 'annule').map(k => ({
-                  k, l: libEtat(k, vueCourriers), n: k === 'tout' ? dansVue.length : nEtat(k), ic: <Ic n={IC_ETAT[k]} t={14} />,
-                }))} />
-            )}
             <CorpsOnglet k={vue === 'encours' ? 'tout' : sous} ordre={SOUS_VUES}>
               {(() => {
                 const groupes: { g: string; titre: string; aide?: string; liste: Item[] }[] = vue === 'encours'
@@ -985,6 +1086,18 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           onSupprime={id => { setDocs(l => (l || []).filter(x => x.id !== id)); setOuvert(null); }}
           onDupliquer={dupliquer}
           onFiche={ficheClient} onSuiteBien={setSuiteBien} />
+      )}
+      {fenDup && (
+        <FenetreConfirmer ic="doc" titre="Dupliquer un document en signature ?" bouton="Dupliquer quand même"
+          intro={`${fenDup.titre || modele(fenDup.modele)?.titre || 'Document'}${fenDup.numero ? ` · n° ${fenDup.numero}` : ''}`}
+          points={[
+            { ic: 'doc', t: 'La copie est un nouveau brouillon, à côté, avec les mêmes réponses. Elle s’ouvre tout de suite pour être modifiée.' },
+            { ic: 'horloge', t: 'La signature de l’original continue : ses liens marchent toujours, rien ne change pour les signataires.' },
+            { ic: 'pause', ton: 'alerte', t: 'La copie ne pourra pas partir en signature tant que l’original y est.' },
+          ]}
+          ensuite={[{ ic: 'crayon', t: 'Si la copie doit remplacer l’original : arrête d’abord la signature de l’original (ou annule-le), puis lance celle de la copie.' }]}
+          conseil="Pour une simple correction, pas besoin de copie : arrête la signature, puis « Ouvrir » › « Modifier » sur l’original. Il garde son numéro."
+          onFermer={() => setFenDup(null)} onConfirmer={async () => { const x = fenDup; setFenDup(null); await dupliquer(x, true); }} />
       )}
       {suiteBien && <SuiteMandatBien bien={suiteBien.bien} doc={suiteBien.doc} etaitSigne={suiteBien.etaitSigne} supprime={suiteBien.supprime}
         onFermer={() => setSuiteBien(null)} onFicheBien={id => { setSuiteBien(null); onNavigate('biens', { bien: id }); }} />}
