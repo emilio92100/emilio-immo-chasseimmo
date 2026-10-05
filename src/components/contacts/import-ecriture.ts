@@ -13,7 +13,12 @@
        relié à lui, et le rappel par la relance « recontacter » de
        l'estimation (poserRelanceEstimation), gardée dans le bien ;
      · une ligne au Suivi : « Fiche reprise d'ImmoFacile le … », avec
-       `metadata.source = 'import_immofacile'` et le numéro du lot.
+       `metadata.source = 'import_immofacile'` et le numéro du lot ;
+     · V3.70, quand le fichier porte les colonnes « Prochain contact » et
+       « Historique des relances » (relevées dans ImmoFacile, qui ne les
+       exporte pas) : une relance à la date du prochain contact, et une
+       ligne du Suivi par action, à sa date d'origine
+       (`metadata.source = 'immofacile_historique'`).
    Un contact déjà dans le CRM n'est pas recréé : on complète sa fiche
    (`completer`, src/lib/import-immofacile.ts), relue juste avant d'écrire —
    deux lignes du fichier qui tombent sur la même fiche (lui, puis sa
@@ -84,6 +89,10 @@ export type Resultat = {
   echec: string | null;
   /* Son bloc « Repris d'ImmoFacile » a été ajouté à « À savoir ». */
   notes?: boolean;
+  /* V3.70 : les lignes de son historique ImmoFacile écrites dans son Suivi,
+     et la relance posée à son prochain contact. */
+  historique?: number;
+  relanceIF?: boolean;
 };
 
 type Identite = { cle: string; prenom: string; nom: string; civilite: 'Monsieur' | 'Madame' | ''; nomAffiche: string };
@@ -155,22 +164,62 @@ async function creerASuivre(proprio: ClientMini, p: Plan, crm: EtatCRM, soucis: 
 
 /* Le rappel de son projet de vente, sur lui (Relances), quand il n'a pas de
    fiche bien : comme la relance « recontacter » d'une estimation, sans bien.
-   Un rappel de vente déjà en attente (un réimport) n'est pas doublé. */
+   V3.70 : ou son prochain contact noté dans ImmoFacile, avec son dernier
+   échange en note. Un rappel de l'un ou de l'autre déjà en attente (un
+   réimport) n'est pas doublé. */
 const NOTE_VENTE = 'Projet de vente — recontacter ';
+const NOTE_PROCHAIN = 'Prochain contact repris d’ImmoFacile — ';
 async function poserRappelVente(clientId: string, nom: string, p: Plan, soucis: string[]): Promise<boolean> {
   const r = p.rappel;
   if (!r) return false;
   const le = r.date < aujourdhuiYmd() ? aujourdhuiYmd() : r.date;
-  try {
-    const deja = await supabase.from('relances').select('id').eq('client_id', clientId).eq('statut', 'en_attente').like('note', `${NOTE_VENTE}%`).limit(1);
-    if (!deja.error && (deja.data || []).length) return false;
-  } catch { /* la vérification a échoué : on pose le rappel quand même */ }
-  const note = `${NOTE_VENTE}${nom || 'le propriétaire'}${r.texte ? ` · ${r.texte}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`;
+  for (const debut of [NOTE_VENTE, NOTE_PROCHAIN]) {
+    try {
+      const deja = await supabase.from('relances').select('id').eq('client_id', clientId).eq('statut', 'en_attente').like('note', `${debut}%`).limit(1);
+      if (!deja.error && (deja.data || []).length) return false;
+    } catch { /* la vérification a échoué : on pose le rappel quand même */ }
+  }
+  const note = r.immofacile
+    ? `${NOTE_PROCHAIN}${nom || 'le contact'}${r.texte ? ` · ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`
+    : `${NOTE_VENTE}${nom || 'le propriétaire'}${r.texte ? ` · ${r.texte}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`;
   const m = await lire(supabase.from('relances').insert({
     client_id: clientId, type: 'manuelle', statut: 'en_attente', date_echeance: new Date(`${le}T09:00:00`).toISOString(), note,
   }));
-  if (m) { soucis.push(`le rappel du ${dateFr(le)} pour sa vente n’a pas été posé (${m})`); return false; }
+  if (m) { soucis.push(r.immofacile ? `sa relance du ${dateFr(le)} (prochain contact) n’a pas été posée (${m})` : `le rappel du ${dateFr(le)} pour sa vente n’a pas été posé (${m})`); return false; }
   return true;
+}
+
+/* Son historique d'ImmoFacile (V3.70) : une ligne du Suivi par action, à
+   sa date d'origine (midi, heure de Paris), comme s'il l'avait notée ce
+   jour-là. Les lignes déjà reprises (même jour, même titre, même texte : un
+   réimport) ne sont pas doublées. Rend le nombre de lignes écrites. */
+const SOURCE_HISTORIQUE = 'immofacile_historique';
+async function ecrireHistorique(clientId: string, p: Plan, lot: string, soucis: string[]): Promise<number> {
+  if (!p.historique.length) return 0;
+  const cle = (jour: string, titre: string, texte: string | null) => `${jour}|${titre}|${texte || ''}`;
+  const deja = new Set<string>();
+  try {
+    const rep = await supabase.from('journal').select('created_at, titre, description').eq('client_id', clientId).eq('metadata->>source', SOURCE_HISTORIQUE);
+    for (const x of (rep.data || []) as { created_at: string; titre: string; description: string | null }[]) deja.add(cle(aujourdhuiYmd(new Date(x.created_at)), x.titre, x.description));
+  } catch { /* la vérification a échoué : on écrit quand même */ }
+  const nouvelles = p.historique.filter(h => !deja.has(cle(h.date, h.titre, h.texte || null)));
+  if (!nouvelles.length) return 0;
+  const lignes = nouvelles.map(h => ({
+    client_id: clientId, type: h.type, titre: h.titre, description: h.texte || null,
+    metadata: { source: SOURCE_HISTORIQUE, lot, date_immofacile: h.date },
+    created_at: new Date(`${h.date}T12:00:00`).toISOString(),
+  }));
+  let ecrites: { created_at: string }[] = [];
+  try {
+    const rep = await supabase.from('journal').insert(lignes).select('created_at');
+    if (rep.error) { soucis.push(`son historique d’ImmoFacile n’a pas été écrit dans son Suivi (${rep.error.message})`); return 0; }
+    ecrites = (rep.data || []) as { created_at: string }[];
+  } catch (e) { soucis.push(`son historique d’ImmoFacile n’a pas été écrit dans son Suivi (${(e as Error)?.message || 'erreur inconnue'})`); return 0; }
+  /* La base a mis la date du jour à la place de la sienne : les lignes sont
+     là, mais toutes datées d'aujourd'hui. Alexandre doit le savoir. */
+  const jours = new Set(ecrites.map(x => aujourdhuiYmd(new Date(x.created_at))));
+  if (ecrites.length && !nouvelles.some(h => jours.has(h.date))) soucis.push('son historique est dans son Suivi, mais daté d’aujourd’hui et pas de ses dates d’ImmoFacile');
+  return ecrites.length || lignes.length;
 }
 
 /* ── Un nouveau contact ── */
@@ -246,12 +295,17 @@ export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean
   const libSrc = p.source ? libelleSource(p.source.k, p.source.detail) : '';
   const ok = await addJournal(cree.id, 'creation', p.suivi, `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`, { source: 'import_immofacile', lot: o.lot });
   if (!ok) res.soucis.push('la ligne « Fiche reprise d’ImmoFacile » de son Suivi n’a pas été écrite');
+  /* Son historique d'ImmoFacile, chaque action à sa date (V3.70). */
+  res.historique = await ecrireHistorique(cree.id, p, o.lot, res.soucis);
 
   /* Son bien « À suivre ». */
   const proprio: ClientMini = { id: cree.id, prenom: id.prenom, nom: id.nom, statut: cree.statut || null, civilite: id.civilite || null, couple: false, conjoint: null, adresse: p.adresse || null, emails: p.emails, telephones: p.telephones, pro: {} };
   const b = await creerASuivre(proprio, p, o.crm, res.soucis);
   res.bien = b.bien; res.rappel = b.rappel;
-  if (p.rappel) res.rappel = await poserRappelVente(cree.id, [id.prenom, id.nom].filter(Boolean).join(' '), p, res.soucis);
+  if (p.rappel) {
+    res.rappel = await poserRappelVente(cree.id, [id.prenom, id.nom].filter(Boolean).join(' '), p, res.soucis);
+    res.relanceIF = res.rappel && p.rappel.immofacile;
+  }
   return res;
 }
 
@@ -331,6 +385,7 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
     `${c.proche ? `Depuis la fiche ImmoFacile de ${id.nomAffiche}. ` : ''}${c.lignes.length ? `Ajouté : ${c.lignes.join(', ')}.` : ''}`.trim() || undefined,
     { source: 'import_immofacile', lot: o.lot, complete: true });
   if (!ok) res.soucis.push('la ligne « Fiche complétée depuis ImmoFacile » de son Suivi n’a pas été écrite');
+  res.historique = await ecrireHistorique(x.id, p, o.lot, res.soucis);
 
   if (c.aSuivre) {
     const proprio: ClientMini = {
@@ -340,6 +395,9 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
     const b = await creerASuivre(proprio, p, o.crm, res.soucis);
     res.bien = b.bien; res.rappel = b.rappel;
   }
-  if (c.rappel) res.rappel = await poserRappelVente(x.id, [x.prenom, x.nom].filter(Boolean).join(' '), p, res.soucis);
+  if (c.rappel && p.rappel) {
+    res.rappel = await poserRappelVente(x.id, [x.prenom, x.nom].filter(Boolean).join(' '), p, res.soucis);
+    res.relanceIF = res.rappel && p.rappel.immofacile;
+  }
   return res;
 }

@@ -133,6 +133,17 @@ button.role[aria-pressed='false'] { background: white; color: #94a3b8; box-shado
 .col dd { color: #1a2332; min-width: 0; margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
 .cite { font-style: italic; color: #475569 !important; line-height: 1.5; background: #fffaf0; border-radius: 8px; padding: 6px 8px; white-space: pre-line; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
 .texte { white-space: pre-line; color: #475569 !important; font-size: 12.5px; }
+/* V3.70 : son historique ImmoFacile, tel qu'il arrivera dans son Suivi. */
+.histo { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.histo > small { color: #64748b; font-size: 12px; line-height: 1.4; }
+.histoL { list-style: none; margin: 0; padding: 2px 10px; border-radius: 8px; background: #f8fafc; border: 1px solid #edf1f6; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+.histoL > li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 1px 10px; padding: 7px 0; font-size: 12.5px; line-height: 1.45; }
+.histoL > li + li { border-top: 1px solid #edf1f6; }
+.histoD { grid-row: span 2; color: #8290a6; font-variant-numeric: tabular-nums; padding-top: 1px; }
+.histoT { font-weight: 700; color: #2d5c8f; }
+.histoMess { color: #8a6a1f; }
+.histoNote { color: #475569; }
+.histoX { grid-column: 2; color: #475569; overflow-wrap: anywhere; }
 .crit { display: flex; flex-wrap: wrap; gap: 5px; }
 .crit > span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 9px; background: #f1f5f9; color: #334155; font-size: 12.5px; font-weight: 600; max-width: 100%; }
 .crit > span > svg { color: #64748b; }

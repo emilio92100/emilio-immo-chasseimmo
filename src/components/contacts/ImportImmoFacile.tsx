@@ -9,7 +9,7 @@ import { typeDe, typesDe } from '@/lib/contacts';
 import { libelleSource } from '@/lib/sources';
 import {
   aujourdhuiYmd, chercherDoublon, CHOIX_VIDE, completer, dateFr, demandeLecture, indexerCRM, libelleOrigine, lireFichier, lireLecture, planifier, regrouper,
-  type Choix, type ClientCRM, type Completion, type Contact, type DemandeLecture, type Doublon, type EtatLecture, type FichierLu, type Lecture, type Plan,
+  type Choix, type ClientCRM, type Completion, type Contact, type DemandeLecture, type Doublon, type EtatLecture, type FichierLu, type Lecture, type LigneSuivi, type Plan,
 } from '@/lib/import-immofacile';
 import { completerFiche, importerNouveau, lireCRM, type EtatCRM, type Mode, type Resultat } from './import-ecriture';
 
@@ -138,6 +138,34 @@ function Chrono({ depuis }: { depuis: number }) {
   return <span className={st.chrono}>{s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`}</span>;
 }
 
+/* Son historique ImmoFacile tel qu'il arrivera dans son Suivi (V3.70) :
+   une ligne par action, à sa date, les plus récentes d'abord. */
+const jjmmaaaa = (ymd: string) => ymd.split('-').reverse().join('/');
+const nbLignes = (n: number) => (n > 1 ? `${n} lignes` : 'une ligne');
+function HistoriqueSuivi({ l }: { l: LigneSuivi[] }) {
+  return (
+    <div className={st.histo}>
+      <small>{`+ ${nbLignes(l.length)} de son historique ImmoFacile, chacune à sa date :`}</small>
+      <ul className={st.histoL}>
+        {l.map((h, i) => (
+          <li key={i}>
+            <span className={st.histoD}>{jjmmaaaa(h.date)}</span>
+            <b className={`${st.histoT}${h.titre === 'Appel — messagerie' ? ` ${st.histoMess}` : h.type === 'note' ? ` ${st.histoNote}` : ''}`}>{h.titre}</b>
+            {h.texte && <span className={st.histoX}>{h.texte}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+/* La relance de son prochain contact, et la note qu'elle portera. */
+function texteRelance(p: Plan, aujourdhui: string): string {
+  const r = p.rappel;
+  if (!r) return '';
+  const quand = r.date === aujourdhui ? `Aujourd’hui${r.retard ? ` (en retard, ${r.retard})` : ''}` : `Le ${dateFr(r.date)}`;
+  return `${quand}, dans « Relances ».${r.texte ? `\nEn note : ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}`;
+}
+
 function Fermer({ onClick }: { onClick: () => void }) {
   return <button type="button" className={st.x} aria-label="Fermer" onClick={onClick}><Ic n="croix" t={16} e={2.4} /></button>;
 }
@@ -150,6 +178,11 @@ function Etiquettes({ r }: { r: Rangee }) {
       {p.tiree && <em className={st.tagOr}><Ic n="bulle" t={11} /><span>Tirée de son commentaire</span></em>}
       {p.aSuivre && <em className={p.aSuivre.retard ? st.tagOr : st.tagBleu}><Ic n="maison" t={11} /><span>{`Fiche bien « À suivre » : ${p.aSuivre.resume} · ${p.aSuivre.rappelTexte}`}</span></em>}
       {!p.aSuivre && p.projetVente && <em className={p.rappel?.retard ? st.tagOr : st.tagBleu}><Ic n="etiquette" t={11} /><span>{`${p.bienActuel.aVendre ? 'Mandat vendeur potentiel' : 'Projet de vente'}${p.rappel ? ` · ${p.rappel.rappelTexte}` : ''}`}</span></em>}
+      {/* V3.70 : son prochain contact (s'il n'est pas déjà dit plus haut) et son historique. */}
+      {(p.rappel?.immofacile || p.historique.length > 0) && (() => {
+        const t = [p.rappel?.immofacile && !p.projetVente ? `${p.rappel.rappelTexte.charAt(0).toUpperCase()}${p.rappel.rappelTexte.slice(1)}` : '', p.historique.length ? `historique : ${nbLignes(p.historique.length)}` : ''].filter(Boolean).join(' · ');
+        return <em className={p.rappel?.retard ? st.tagOr : st.tagBleu}><Ic n="horloge" t={11} /><span>{`${t.charAt(0).toUpperCase()}${t.slice(1)}`}</span></em>;
+      })()}
       {p.location && !p.locationSeule && <em className={st.tagBleu}><Ic n="cle" t={11} /><span>Cherche aussi à louer : noté dans « À savoir »</span></em>}
       {r.etat === 'echec' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Lecture du texte impossible : vérifie</span></em>}
       {r.etat === 'passee' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Commentaire pas lu : colonnes seulement</span></em>}
@@ -242,6 +275,11 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
           <dt>Coordonnées</dt><dd className={coords(c.telephones, c.emails, c.adresse) ? st.texte : st.pale}>{coords(c.telephones, c.emails, c.adresse) || 'Aucune'}</dd>
           {c.origines.length > 0 && <><dt>Origine</dt><dd>{c.origines.join(', ')}</dd></>}
           <dt>Créée le</dt><dd>{dateFr(c.creeLe) || 'Non précisé'}</dd>
+          {c.prochain && <><dt>Prochain contact</dt><dd>{dateFr(c.prochain)}</dd></>}
+          {c.historique.length > 0 && (() => {
+            const k = c.historique.filter(a => a.texte).length;
+            return <><dt>Historique</dt><dd>{`${pluriel(c.historique.length, 'action relevée', 'actions relevées')} dans sa fiche${k ? `, dont ${k} avec un commentaire` : ''}`}</dd></>;
+          })()}
           <dt>Critères</dt><dd>{criteres.length ? criteres.join(' | ') : <span className={st.pale}>Aucun critère rempli</span>}</dd>
           {precisions.length > 0 && <><dt>Précision</dt><dd className={st.cite}>{`« ${precisions.join(' / ')} »`}</dd></>}
           {commentaire && <><dt>Commentaire</dt><dd className={st.cite}>{`« ${commentaire} »`}</dd></>}
@@ -262,7 +300,11 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
               {!!r.completion.notes && <><dt>À savoir</dt><dd className={st.texte}>{`Ajouté sous ce qu’il y a déjà :\n${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd></>}
               {r.completion.proche && <><dt>Coordonnées</dt><dd className={st.pale}>{`Pas recopiées : celles de ${nomCRM(r.doublon.client)} restent seules sur sa fiche.`}</dd></>}
               {r.completion.recherche && p.recherches[0] && <><dt>Sa recherche</dt><dd><Puces r={r} onChoix={onChoix} /></dd></>}
-              {!r.completion.rien && <><dt>Suivi</dt><dd className={st.pale}>{`« ${p.suivi.replace('Fiche reprise d’ImmoFacile', 'Fiche complétée depuis ImmoFacile')} »`}</dd></>}
+              {r.completion.rappel && p.rappel?.immofacile && <><dt>Relance</dt><dd className={st.texte}>{`${texteRelance(p, aujourdhui)}\nSauf si sa fiche en a déjà une en attente.`}</dd></>}
+              {!r.completion.rien && <><dt>Suivi</dt><dd>
+                <span className={st.pale}>{`« ${p.suivi.replace('Fiche reprise d’ImmoFacile', 'Fiche complétée depuis ImmoFacile')} »`}</span>
+                {p.historique.length > 0 && <HistoriqueSuivi l={p.historique} />}
+              </dd></>}
             </dl>
           </>
         ) : r.choix.exclu ? (
@@ -292,8 +334,12 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
                   : p.projetVente
                     ? `Projet de vente : son logement et son projet notés dans « À savoir » · ${p.rappel ? p.rappel.rappelTexte : 'sans date de rappel'}. Pas de fiche bien : tu la crées quand tu as vu le logement.`
                     : <span className={st.pale}>Pas de projet de vente</span>}</dd></>}
+              {p.rappel?.immofacile && <><dt>Relance</dt><dd className={st.texte}>{texteRelance(p, aujourdhui)}</dd></>}
               <dt>À savoir</dt><dd className={st.texte}>{`${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd>
-              <dt>Suivi</dt><dd className={st.pale}>{`« ${p.suivi} »`}</dd>
+              <dt>Suivi</dt><dd>
+                <span className={st.pale}>{`« ${p.suivi} »`}</span>
+                {p.historique.length > 0 && <HistoriqueSuivi l={p.historique} />}
+              </dd>
             </dl>
           </>
         )}
@@ -348,9 +394,9 @@ function Edition({ r, aujourdhui, onChoix }: { r: Rangee; aujourdhui: string; on
           <Bascule on={!!p.aSuivre} onClick={() => onChoix({ aSuivre: !p.aSuivre })}>Créer aussi sa fiche bien « À suivre » (tu as vu le logement)</Bascule>
         </div>
       )}
-      {!r.choix.exclu && (p.aSuivre || p.projetVente) && (
+      {!r.choix.exclu && (p.aSuivre || p.projetVente || p.rappel) && (
         <label className={st.edLigne}>
-          <span>Rappel le</span>
+          <span>{p.rappel?.immofacile ? 'Relance le' : 'Rappel le'}</span>
           <input type="date" className={st.date} min={aujourdhui} value={p.aSuivre?.rappel || p.rappel?.date || ''} onChange={e => onChoix({ rappel: e.target.value })} />
         </label>
       )}
@@ -449,7 +495,7 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const nbRecherches = aCreer.reduce((n, r) => n + r.plan.recherches.length, 0) + aCompleter.reduce((n, r) => n + (r.completion?.recherche ? r.plan.recherches.length : 0), 0);
   /* Un projet de vente : la case « mandat vendeur potentiel », ou sa fiche bien si Alexandre l'a demandée. */
   const nbVendeurs = aCreer.filter(r => r.plan.projetVente || r.plan.aSuivre).length
-    + aCompleter.filter(r => r.completion && (r.completion.bienActuel || r.completion.aSuivre || r.completion.rappel)).length;
+    + aCompleter.filter(r => r.completion && (r.completion.bienActuel || r.completion.aSuivre || (r.completion.rappel && r.plan.projetVente))).length;
   const nbDeja = actives.filter(r => r.doublon).length;
   const enLecture = Object.values(etats).filter(e => e === 'attente').length;
   const aLire = Object.values(etats).filter(e => e !== 'sans_texte').length;
@@ -687,6 +733,7 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
             <li><Ic n="check" t={13} e={2.6} /><span>Précisions et commentaires lus : balcon, terrasse, étage, ascenseur, travaux… cochés dans sa recherche.</span></li>
             <li><Ic n="check" t={13} e={2.6} /><span>Déjà dans ton CRM (même e-mail, téléphone ou nom) → pas recréé ; ce qui manque sur sa fiche est complété.</span></li>
             <li><Ic n="check" t={13} e={2.6} /><span>{'Les acheteurs arrivent '}<b>à qualifier</b>{' : aucun mail ne part tout seul (veille, point automatique, alertes), sauf si tu choisis « Actifs ».'}</span></li>
+            <li><Ic n="check" t={13} e={2.6} /><span>{'Si le fichier a les colonnes « Prochain contact » et « Historique des relances » : '}<b>une relance</b>{' à cette date, et chaque action dans son Suivi, à sa date.'}</span></li>
           </ul>
         </div>
       </div>
@@ -788,7 +835,9 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const recherchesCreees = resultats.reduce((n, x) => n + x.recherches, 0);
   const biensCrees = resultats.filter(x => x.bien).length;
   const rappels = resultats.filter(x => x.rappel && x.bien).length;
-  const rappelsVente = resultats.filter(x => x.rappel && !x.bien).length;
+  const rappelsVente = resultats.filter(x => x.rappel && !x.bien && !x.relanceIF).length;
+  const relancesIF = resultats.filter(x => x.relanceIF).length;
+  const lignesHisto = resultats.reduce((n, x) => n + (x.historique || 0), 0);
   const ids = resultats.map(x => (x.fait ? x.clientId : null)).filter((x): x is string => !!x);
   const titreFait = crees.length ? `${pluriel(crees.length, 'contact importé', 'contacts importés')}` : completes.length ? `${pluriel(completes.length, 'fiche complétée', 'fiches complétées')}` : 'Rien n’a été importé';
   const fenFait = (
@@ -801,6 +850,8 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
           {recherchesCreees > 0 && <div><Ic n="cible" t={15} /><span><b>{recherchesCreees}</b>{recherchesCreees > 1 ? ' recherches créées' : ' recherche créée'}</span></div>}
           {biensCrees > 0 && <div><Ic n="maison" t={15} /><span><b>{biensCrees}</b>{`${biensCrees > 1 ? ' biens « À suivre »' : ' bien « À suivre »'}${rappels === biensCrees ? ', avec leur rappel' : rappels ? `, dont ${rappels} avec leur rappel` : ''}`}</span></div>}
           {rappelsVente > 0 && <div><Ic n="horloge" t={15} /><span><b>{rappelsVente}</b>{rappelsVente > 1 ? ' rappels posés pour un projet de vente' : ' rappel posé pour un projet de vente'}</span></div>}
+          {relancesIF > 0 && <div><Ic n="horloge" t={15} /><span><b>{relancesIF}</b>{relancesIF > 1 ? ' relances posées à leur prochain contact' : ' relance posée à son prochain contact'}</span></div>}
+          {lignesHisto > 0 && <div><Ic n="bulle" t={15} /><span><b>{lignesHisto}</b>{lignesHisto > 1 ? ' lignes d’historique ImmoFacile dans leur Suivi, chacune à sa date' : ' ligne d’historique ImmoFacile dans le Suivi'}</span></div>}
           {completes.length > 0 && <div><Ic n="personne" t={15} /><span><b>{completes.length}</b>{completes.length > 1 ? ' contacts déjà présents, complétés' : ' contact déjà présent, complété'}</span></div>}
           {crees.length > 0 && <div><Ic n="info" t={15} /><span>{mode === 'actifs' ? 'Les acheteurs sont « Actifs » : veille, point automatique et alertes. Ceux « à vérifier » sont restés à qualifier.' : 'Les acheteurs sont « Prospect », à qualifier : rien ne part tout seul.'}</span></div>}
         </div>
