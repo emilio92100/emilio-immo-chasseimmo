@@ -1461,6 +1461,49 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.76 — 5 octobre 2026 · « Tri à faire » dans Contacts
+
+Rien à passer dans Supabase.
+
+Alexandre : « le tri à faire, je le vois uniquement quand je suis dans Relance, ou j'ai un onglet
+Contact ? » ; « ajoute Tri à faire dans un bloc, et quand il n'y a plus de tri à faire, l'onglet
+disparaît ».
+- **Une tuile « Tri à faire »** dans Contacts, juste après « Tous » (en ambre, `alerte`), avec le
+  nombre de contacts non archivés qui ont une relance `NOTE_TRI` en attente (`triIds`, lu par
+  `fetchClients` avec les autres relances). Elle n'apparaît que s'il en reste ; seule comme
+  « Tous » et « Archivés ».
+- **Le bloc est celui de Relances**, sur place : `PageRelances` avec `seulTri` (ne lit que les
+  relances du tri, `like NOTE_TRI%`), rangé en « À appeler » (en retard ou aujourd'hui) puis
+  « Prévus plus tard » — les deux font le chiffre de la tuile. Mêmes boutons, mêmes animations
+  (Traiter, C'est fait, Archiver, Reporter, Ouvrir la fiche). La recherche du haut filtre le bloc
+  (nom, e-mail, téléphone). `onTri` tient la tuile à jour au fil des appels, `onArchive` range
+  tout de suite un contact archivé ici (et le sort des archives sur « Annuler »).
+- **Au dernier appel** : « Tri terminé » et « Revoir tous les contacts » ; la tuile reste allumée
+  le temps de le lire, et disparaît dès qu'on en choisit une autre.
+- **Relances, sur un écran de 1 280 px** : les cinq boutons d'une ligne du tri passent sous le
+  texte (`flex-wrap`) au lieu de l'écraser sur trois mots.
+
+**Relances sur téléphone : la ligne débordait de l'écran** (Alexandre, capture à l'appui :
+« l'affichage des relances, c'est pas optimisé »). Défaut de la V3.74 : chaque ligne est dans une
+grille (`.rl-pli`, pour se replier en douceur) dont la colonne prenait la largeur de son contenu.
+Une note longue gardée sur une ligne (« Prochain contact repris d'ImmoFacile — … ») l'élargissait
+au-delà de l'écran : texte coupé, boutons hors champ (des barres vides). Le banc ne l'avait pas vu,
+ses notes étaient courtes. Corrigé : `grid-template-columns: minmax(0,1fr)` et `min-width: 0` sur
+`.rl-pli-in`. Et :
+- les relances posées par l'import (« Prochain contact repris d'ImmoFacile — Nom · … », « Relance
+  proposée au tri de l'import — … », « Projet de vente — recontacter … ») ont leur étiquette
+  (« Repris d'ImmoFacile », « Après le tri », « Projet de vente ») ; la ligne ne montre plus que la
+  suite de la note, sans l'en-tête ni le nom déjà affiché au-dessus (`PREFIXES`, `sansNom`) ;
+- sur téléphone, la note passe sous l'étiquette, sur deux lignes, au lieu d'être coupée.
+
+**Les relances ne sont plus dans l'agenda** (Alexandre : « si j'ai 15 relances dans la journée, ça
+affiche trop d'infos sur mon agenda […] les relances ne doivent pas être sur l'agenda »). Chaque
+relance en attente faisait une pastille « Relance · Nom » dans la bande « À faire » de son jour
+(`construire()` de `PageAgenda.tsx`). Elles ont déjà leur page, les pastilles du menu et le
+tableau de bord : la bande ne garde que l'offre, le compromis, l'acte, la fin du délai SRU, la fin
+de mandat et les visites à caler. Les relances restent lues par l'agenda pour le rappel d'un
+rendez-vous (« Me le rappeler »), qui se modifie avec lui.
+
 ### V3.75 — 5 octobre 2026 · Les acheteurs : une ligne « Affiner », et filtrer par ce qu'ils cherchent
 
 Rien à passer dans Supabase.
