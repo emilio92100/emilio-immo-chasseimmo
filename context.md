@@ -1461,6 +1461,36 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.75 — 5 octobre 2026 · Les acheteurs : une ligne « Affiner », et filtrer par ce qu'ils cherchent
+
+Rien à passer dans Supabase.
+
+Alexandre : « quand je vais dans Acheteurs, je ne peux pas choisir selon les critères : tous ceux qui
+recherchent un trois chambres, un quatre chambres, tant de mètres carrés minimum » ; « au zoom à
+100 %, la présentation des contacts est un peu petite » ; et sur les trois rangées de filtres :
+« trop de lignes, c'est très moche ».
+- **Une seule ligne « Affiner »** (`src/components/clients/FiltresAcheteurs.tsx`, la même barre que
+  `FiltresBiens`) : **Statut** (Actifs, Prospects… ; les statuts à 0 ne s'affichent plus),
+  **Logement** (Propriétaires, *dont* Revente possible, Non propriétaires, À renseigner), puis
+  **Type, Pièces, Chambres, Surface, Budget, Ville**. Chaque bouton ouvre son panneau, avec le nombre
+  d'acheteurs par choix ; ce qui est choisi s'écrit sur le bouton ; « N acheteurs · Effacer ». Les
+  deux rangées « Dossier » et « Son logement » (avec « Tous » et « Toutes situations », qui ne
+  filtraient rien, et « Revente possible » compté deux fois) ont disparu.
+- **On filtre sur ce que l'acheteur demande** (sa recherche active, fusionnée par `fetchClients`) :
+  « 3 chambres » = il demande au moins 3 chambres (`chambres_min`), « 4 pièces » = son minimum
+  (`nb_pieces_min`, sinon son maximum), surface = le minimum demandé (`surface_min`) dans la
+  fourchette choisie, budget = `budget_max`, ville = celles de ses secteurs. Un acheteur qui n'a
+  pas rempli le critère n'apparaît pas tant que le filtre est posé (le panneau le dit).
+- **Défaut corrigé** : `chambres_min` n'était pas dans `CRIT_FIELDS` ; la pastille des chambres
+  lisait `clients.chambres_min`, l'ancienne colonne. Les chambres s'affichent maintenant dans la
+  pastille des pièces (« 4 pièces · 3 ch. »).
+- **Plus grand sur un grand écran** (≥ 1 360 px, `Clients.module.css` et `Contacts.module.css`) :
+  lignes plus hautes, avatar 44 px, nom 16 px, pastilles, budget et signal un cran au-dessus ; les
+  pastilles passent sur deux lignes plutôt que d'être coupées. En dessous, les tailles d'avant
+  (colonnes un peu rééquilibrées pour la colonne Recherche). Les avatars de la liste prennent leur
+  taille de la classe (`libre`) : la règle téléphone de 36 px n'avait jamais eu d'effet, elle est
+  mise à 38 px, la taille réellement affichée.
+
 ### V3.74 — 5 octobre 2026 · « Traiter » une relance sans quitter la page
 
 Rien à passer dans Supabase.
