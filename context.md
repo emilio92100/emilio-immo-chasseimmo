@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.71 · 5 octobre 2026**
+**Version 3.72 · 5 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,35 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.72 — 5 octobre 2026 · import ImmoFacile : un export à 226 000 colonnes ne fige plus l'aperçu ; l'adresse proposée dans « Modifier le contact »
+
+Rien à passer dans Supabase.
+
+**« Modifier le contact »** (`FicheClient.tsx`, `.module.css`) : l'adresse est proposée pendant la
+frappe, comme à la création du contact (Alexandre : « même quand on modifie, j'aimerais bien avoir
+ça, comme ça on peut choisir directement »). Avant, c'était un champ de texte nu : l'adresse tapée
+était gardée telle quelle et la carte la cherchait ensuite, mais une faute de frappe passait sans
+bruit. Composant `ChampAdresseAuto`, déclaré au niveau du module (AGENTS.md §2.4) : la base adresse
+nationale (`data.geopf.fr`, `autocomplete=1`, 250 ms d'attente comme `ChampAdresse` des biens), un
+choix écrit « 12 Rue de Silly, 92100 Boulogne-Billancourt » (le format de la création) ; une ville
+seule (un code postal tapé) donne « 92100 Boulogne-Billancourt », sans le nom en double. Même champ
+pour « Adresse du bien à revendre ». Échap ou un clic ailleurs ferme la liste ; on peut toujours
+taper une adresse à la main (une adresse à l'étranger, par exemple).
+
+**Import ImmoFacile** (`import-immofacile.ts`) :
+
+Un export de 50 contacts arrivé à 4,5 Mo : son en-tête annonce 15 097 blocs de recherche (« Prix
+15097 »…, 226 484 colonnes), alors que chaque ligne s'arrête à la 29e ou à la 44e colonne. `lireFichier`
+cherchait chaque colonne de chaque bloc dans tout l'en-tête, pour chaque ligne : plus d'une minute,
+l'écran figé. Les colonnes sont maintenant rangées une fois (`index`), et un bloc qui commence après
+la fin de la ligne n'est pas lu : 1 seconde pour ce fichier, le résultat est le même sur les autres
+(bancs `test.mjs` à `test4.mjs`).
+
+Et deux sortes d'actions vues sur un vrai lot de 50 fiches : « Contact terrain/physique » arrive en
+rendez-vous (« RDV physique ») dans le Suivi, et « Proposition bien manuel (e mail) » en e-mail.
+Un « Recueil du consentement » dont le statut est « Refusé » arrive en « Consentement refusé », plus
+en « Consentement recueilli ».
 
 ### V3.71 — 5 octobre 2026 · « Sa situation » à droite, Relances sans « Plus tard »
 
