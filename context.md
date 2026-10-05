@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.70 · 5 octobre 2026**
+**Version 3.71 · 5 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,24 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.71 — 5 octobre 2026 · « Sa situation » à droite, Relances sans « Plus tard »
+
+Rien à passer dans Supabase.
+
+- **Fiche d'un acheteur, « Vue d'ensemble »** (`FicheClient.tsx`) : « Sa recherche en bref » est
+  supprimée (Alexandre : « on a déjà l'onglet Sa recherche »). « Sa situation » prend sa place à
+  droite, avec ses biens de la rubrique Biens dessous ; « À savoir » reste seul à gauche. La carte
+  est toujours là : sans rien de renseigné, « Pas encore renseignée… » et un bouton « Renseigner ».
+  Le macaron « Revente possible après l'achat » est dans cette carte depuis la V3.29 (sorti du bloc
+  bleu) ; les styles `.bref*` sont partis.
+- **Relances** (`PageRelances.tsx`) : plus de groupe « Plus tard » (« pas la peine d'inonder
+  l'onglet ») : la page s'arrête à la semaine (en retard, aujourd'hui, demain, cette semaine = les
+  7 prochains jours). La troisième carte devient « Cette semaine », avec « N plus loin ». Pour voir
+  plus loin, « Voir plus loin » : les 30 prochains jours, les 2 prochains mois (avec leur nombre),
+  un jour précis, ou entre deux dates (`ChoixDate`) ; la période se range par semaine (« Semaine en
+  cours », « Semaine du 12 oct. »), « Revenir à la semaine » la ferme. Une carte cliquée ferme la
+  période.
 
 ### V3.70 — 5 octobre 2026 · import ImmoFacile : le prochain contact et l'historique des relances
 
