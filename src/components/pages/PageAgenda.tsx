@@ -22,8 +22,12 @@ import { annulerCoteBien, bienDuRdv, deplacerCoteBien, etatVenteDesCopies, poser
  *     apparaît partout ; une visite planifiée depuis une fiche apparaît ici ;
  *   - les autres rendez-vous (client, appel, signature, estimation, perso)
  *     vivent dans `rendez_vous` (voir agenda-rendez-vous.sql) ;
- *   - la bande « À faire » montre ce que le CRM sait déjà : relances dues,
- *     offre / compromis / acte, fin du délai SRU, fin de mandat.
+ *   - la bande « À faire » montre ce que le CRM sait déjà : offre /
+ *     compromis / acte, fin du délai SRU, fin de mandat, visite à caler.
+ *     V3.76 : plus les relances. Elles ont leur page, leurs pastilles et le
+ *     tableau de bord ; dans l'agenda, quinze relances du jour faisaient
+ *     quinze lignes (Alexandre : « les relances ne doivent pas être sur
+ *     l'agenda »).
  *
  * « Me le rappeler » pose une relance (page Relances) la veille ou le jour
  * même. « Prévenir le client » part par /api/send-mail, en mail simple.
@@ -51,9 +55,8 @@ const FAIT = { fond: '#f5f6f9', trait: '#e6e9ef', encre: '#7d899b' };
 const A_FAIRE = { fond: '#fff1d9', trait: '#efc178', encre: '#8a4b0f' };
 function teinte(e: Ev) { return e.crAFaire ? A_FAIRE : e.fait ? FAIT : TYPES[e.type]; }
 
-type Genre = 'relance' | 'signature' | 'mandat' | 'visite';
+type Genre = 'signature' | 'mandat' | 'visite';
 const TACHES: Record<Genre, { fond: string; encre: string; trait: string }> = {
-  relance: { fond: '#fff6e3', encre: '#8a4b0f', trait: '#f3dcae' },
   signature: { fond: '#e5f4ec', encre: '#0b5e41', trait: '#bfe3cf' },
   mandat: { fond: '#e9edf5', encre: '#34496e', trait: '#cdd5e4' },
   visite: { fond: '#fbf4e1', encre: '#5f450c', trait: '#ecdcae' },
@@ -188,7 +191,7 @@ function duJour(evs: Ev[], k: string): Ev[] {
   return out.sort((a, b) => a.debut.getTime() - b.debut.getTime());
 }
 
-function construire(visites: any[], rdvs: any[], relances: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date) {
+function construire(visites: any[], rdvs: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date) {
   const evs: Ev[] = [];
   const taches: Tache[] = [];
 
@@ -240,14 +243,7 @@ function construire(visites: any[], rdvs: any[], relances: any[], transactions: 
     });
   }
 
-  /* Les relances dues. Celles qu'on a posées comme rappel d'un rendez-vous
-     ne se répètent pas : le rendez-vous est déjà dans la grille. */
-  for (const r of relances) {
-    if (!r.date_echeance) continue;
-    if (String(r.note || '').startsWith('Rendez-vous :')) continue;
-    const c = clientsParId[r.client_id];
-    taches.push({ cle: 'rel-' + r.id, jour: cleDe(new Date(r.date_echeance)), titre: `Relance · ${nomDe(c) || 'client'}`, genre: 'relance', clientId: r.client_id || null });
-  }
+  /* V3.76 : les relances ne sont plus dans l'agenda (voir l'en-tête). */
   /* V3.50 : un dossier clos n'a plus d'échéance à surveiller. Ces tâches
      restaient dans l'agenda pour un client perdu ou archivé.
      - L'acte et la fin du délai SRU : seulement perdu ou archivé. Pas « bien
@@ -387,7 +383,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   const clientsParId = useMemo(() => Object.fromEntries(brut.clients.map(c => [c.id, c])), [brut.clients]);
   const { evs, taches } = useMemo(
-    () => construire(brut.visites, brut.rdvs, brut.relances, brut.transactions, brut.recherches, clientsParId, maintenant),
+    () => construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, maintenant),
     [brut, clientsParId, maintenant],
   );
   const dossiers: Dossier[] = useMemo(() => dossiersDe(brut.recherches, clientsParId), [brut.recherches, clientsParId]);
@@ -607,7 +603,7 @@ export function NouveauRdvPartout() {
 
   const clientsParId = useMemo(() => Object.fromEntries((brut?.clients || []).map(c => [c.id, c])), [brut]);
   const evs = useMemo(() => (brut
-    ? construire(brut.visites, brut.rdvs, brut.relances, brut.transactions, brut.recherches, clientsParId, new Date()).evs
+    ? construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, new Date()).evs
     : []), [brut, clientsParId]);
   const dossiers = useMemo(() => dossiersDe(brut?.recherches || [], clientsParId), [brut, clientsParId]);
   const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure } : null), [creneau]);
@@ -1012,7 +1008,7 @@ function PuceTache({ t, petit }: { t: Tache; petit?: boolean }) {
   const c = TACHES[t.genre];
   return (
     <span title={t.titre} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: petit ? 10.5 : 11.5, fontWeight: 700, padding: petit ? '3px 7px' : '4px 10px', borderRadius: 7, background: c.fond, color: c.encre, border: `1px solid ${c.trait}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-      <Ic n={t.genre === 'relance' ? 'cloche' : t.genre === 'signature' ? 'stylo' : t.genre === 'visite' ? 'maison' : 'dossier'} t={petit ? 11 : 12} ep={2.2} />
+      <Ic n={t.genre === 'signature' ? 'stylo' : t.genre === 'visite' ? 'maison' : 'dossier'} t={petit ? 11 : 12} ep={2.2} />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.titre}</span>
     </span>
   );

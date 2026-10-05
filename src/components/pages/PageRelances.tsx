@@ -86,15 +86,35 @@ const dateCourte = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('
 const dateLongue = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 /* Le lundi de la semaine d'un jour (« 2026-10-14 » → « 2026-10-12 »). */
 const lundiDe = (k: string) => { const d = new Date(`${k}T12:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return cleDe(d); };
+const sansAccents = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 /* ── D'où vient une relance ───────────────────────────────────── */
 /* `fort` : ce qui passe avant tout le reste du jour — un client qui veut
    faire une offre. L'étiquette est alors pleine, en or. */
 type Origine = { lib: string; ico: string; fort?: boolean };
 const veutOffrir = (r: any) => String(r.note || '').startsWith('Veut faire une offre');
+/* V3.76 — Les relances posées par l'import commencent par leur origine et le
+   nom du contact (« Prochain contact repris d'ImmoFacile — Claire Martin ·
+   Dernier échange… ») : l'étiquette dit l'origine, le nom est juste au-dessus,
+   la ligne ne montre que la suite. Sur téléphone, on ne lisait que
+   « Prochain contact repris d'Immo… ». */
+const PREFIXES: { debut: string; o: Origine }[] = [
+  { debut: 'Prochain contact repris d’ImmoFacile — ', o: { lib: 'Repris d’ImmoFacile', ico: 'horloge' } },
+  { debut: 'Relance proposée au tri de l’import — ', o: { lib: 'Après le tri', ico: 'drapeau' } },
+  { debut: 'Projet de vente — recontacter ', o: { lib: 'Projet de vente', ico: 'personne' } },
+];
+const prefixeDe = (note: unknown) => PREFIXES.find(p => String(note || '').startsWith(p.debut));
+/* La suite d'une note, sans le nom du contact qui l'ouvre (« Claire Martin · … »). */
+function sansNom(reste: string, nom: string): string {
+  const t = reste.trim();
+  if (nom && t === nom) return '';
+  return t.replace(/^[^·]*·\s*/, s0 => (nom && s0.trim().replace(/\s*·$/, '') === nom ? '' : s0));
+}
 function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'auto') return { lib: 'Biens présentés', ico: 'envoi' };
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
+  const pre = prefixeDe(r.note);
+  if (pre) return pre.o;
   if (veutOffrir(r)) return { lib: 'Veut faire une offre', ico: 'euro', fort: true };
   if (String(r.note || '').startsWith('Veut revoir')) return { lib: 'Veut revoir', ico: 'oeil' };
   if (String(r.note || '').startsWith('Il réfléchit')) return { lib: 'Il réfléchit', ico: 'horloge' };
@@ -134,7 +154,18 @@ function Compteur({ n }: { n: number }) {
   return <>{v}</>;
 }
 
-export default function PageRelances({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
+/* V3.76 — Le bloc « Tri à faire » seul (`seulTri`), dans la page Contacts : la
+   même liste, les mêmes boutons, sans le reste des relances. Contacts suit
+   ce qu'il en reste (`onTri`) pour sa tuile, qui disparaît quand le tri est
+   fini, et range tout de suite un contact archivé ici (`onArchive`). */
+export default function PageRelances({ onNavigate, seulTri = false, cherche = '', onTri, onArchive, onFini }: {
+  onNavigate: (page: string, data?: unknown) => void;
+  seulTri?: boolean;
+  cherche?: string;
+  onTri?: (clientIds: string[]) => void;
+  onArchive?: (clientId: string, archive: boolean) => void;
+  onFini?: () => void;
+}) {
   const [relances, setRelances] = useState<any[]>([]);
   const [liens, setLiens] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -164,16 +195,27 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const [alerteEnCours, setAlerteEnCours] = useState('');
   const [toutesAlertes, setToutesAlertes] = useState(false);
 
-  useEffect(() => { charger(); chargerAlertesRappro().then(setAlertes).catch(() => setAlertes([])); }, []);
+  /* Lu dans charger() : le bloc ne change pas de mode en cours de route. */
+  const triSeulement = useRef(seulTri);
+  useEffect(() => { charger(); }, []);
+  useEffect(() => { if (!seulTri) chargerAlertesRappro().then(setAlertes).catch(() => setAlertes([])); }, [seulTri]);
   useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  /* V3.76 : les contacts qui restent à trier, une fois la liste lue, puis à
+     chaque ligne qui s'en va (traitée, archivée, ou revenue par « Annuler »). */
+  useEffect(() => {
+    if (loading || !onTri) return;
+    onTri([...new Set(relances.filter(r => estTri(r.note) && r.clients && r.clients.archive !== true).map(r => String(r.client_id)))]);
+  }, [relances, loading, onTri]);
 
   async function charger() {
-    const { data, error } = await supabase
+    let q = supabase
       .from('relances')
       /* Le client entier : « Ouvrir la fiche » a besoin de l'objet complet. */
       .select('*, clients(*)')
-      .eq('statut', 'en_attente')
-      .order('date_echeance', { ascending: true });
+      .eq('statut', 'en_attente');
+    /* Dans Contacts, le tri seul : la lecture reste petite. */
+    if (triSeulement.current) q = q.like('note', `${NOTE_TRI}%`);
+    const { data, error } = await q.order('date_echeance', { ascending: true });
     if (error) { alert(`Les relances n'ont pas pu être chargées.\n\n${error.message}`); setLoading(false); return; }
     const liste = data || [];
     setRelances(liste);
@@ -211,6 +253,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     const nom = `${c.prenom || ''} ${c.nom || ''}`.trim() || 'ce contact';
     if (!confirm(`Archiver ${nom} ?\n\nIl quitte la liste des contacts et se range dans « Archivés », où tu le retrouves quand tu veux. Ses relances en attente se ferment.`)) return;
     if (!(await verifie('L’archivage du contact', supabase.from('clients').update({ archive: true, updated_at: new Date().toISOString() }).eq('id', c.id).select('id'), { ligne: true }))) return;
+    onArchive?.(c.id, true);
     const { ids, erreur } = await cloreRelancesArchive(c.id);
     if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
     await addJournal(c.id, 'statut_change', 'Contact archivé', estTri(r.note) ? 'Après le dernier appel pour faire le tri.' : undefined, { archive: true });
@@ -240,6 +283,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     }
     if (info?.archiver && c) {
       if (await verifie('L’archivage du contact', supabase.from('clients').update({ archive: true, updated_at: new Date().toISOString() }).eq('id', c.id).select('id'), { ligne: true })) {
+        onArchive?.(c.id, true);
         const { erreur } = await cloreRelancesArchive(c.id);
         if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
         await addJournal(c.id, 'statut_change', 'Contact archivé', estTri(r.note) ? 'Après le dernier appel pour faire le tri.' : undefined, { archive: true });
@@ -274,6 +318,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     if (annulable.archive) {
       const a = annulable.archive;
       if (!(await verifie('Le contact sorti des archives', supabase.from('clients').update({ archive: false, updated_at: new Date().toISOString() }).eq('id', a.clientId).select('id'), { ligne: true }))) return;
+      onArchive?.(a.clientId, false);
       if (!(await verifie('Ses relances rouvertes', supabase.from('relances').update({ statut: 'en_attente' }).in('id', a.relances).select('id')))) return;
       await addJournal(a.clientId, 'statut_change', 'Contact sorti des archives', undefined, { archive: false });
       setAnnulable(null);
@@ -337,6 +382,19 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const triDus = tri.filter(r => jourDe(r.date_echeance) <= auj);
   const triPlusTard = tri.length - triDus.length;
   const triVus = triTout ? tri : triDus;
+  /* V3.76 : dans Contacts, la recherche du haut de page vaut pour le tri. */
+  const qTri = sansAccents(cherche.trim());
+  const chiffresTri = qTri.replace(/\D/g, '');
+  const triTrouves = !qTri ? tri : tri.filter(r => {
+    const c = r.clients || {};
+    const tels: string[] = c.telephones || [];
+    return sansAccents([c.prenom, c.nom, ...(c.emails || []), ...tels].filter(Boolean).join(' ')).includes(qTri)
+      || (chiffresTri.length >= 3 && tels.some(t => String(t).replace(/\D/g, '').includes(chiffresTri)));
+  });
+  const triGroupes = [
+    { id: 'tri-dus', titre: 'À appeler', sous: 'en retard ou aujourd’hui', couleur: '#d97706', liste: triTrouves.filter(r => jourDe(r.date_echeance) <= auj) },
+    { id: 'tri-tard', titre: 'Prévus plus tard', sous: 'chacun à sa date', couleur: '#2563eb', liste: triTrouves.filter(r => jourDe(r.date_echeance) > auj) },
+  ].filter(g => g.liste.length > 0);
   /* Dans chaque groupe, « Veut faire une offre » passe en tête ; le reste
      garde l'ordre des échéances. */
   const enTete = (l: any[]) => [...l.filter(veutOffrir), ...l.filter(r => !veutOffrir(r))];
@@ -407,16 +465,17 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     const c = r.clients;
     const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : 'Client supprimé';
     const ouvert = report?.id === r.id;
-    /* Le tri : la note sans son en-tête, ni le nom qui est juste au-dessus. */
-    const texte = !r.note || r.note === o.lib ? '' : enTri ? String(r.note).slice(NOTE_TRI.length).replace(/^[^·]*·\s*/, s0 => (nom && s0.trim().replace(/\s*·$/, '') === nom ? '' : s0)) : r.note;
+    /* Le tri et les relances de l'import : la note sans son en-tête, ni le nom qui est juste au-dessus. */
+    const pre = prefixeDe(r.note);
+    const texte = !r.note || r.note === o.lib ? '' : enTri ? sansNom(String(r.note).slice(NOTE_TRI.length), nom) : pre ? sansNom(String(r.note).slice(pre.debut.length), nom) : r.note;
     return (
-      <div key={r.id} className="rl-entre rl-pli" data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
+      <div key={r.id} className="rl-entre rl-pli" data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + Math.min(rang++, 12) * 45}ms` }}>
         <div className="rl-pli-in">
         <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined}
           style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
           <span aria-hidden="true" className="rl-barre" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
           <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
+          <span className="rl-texte" style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px', minWidth: 0 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
               {faites[r.id] ? (
@@ -493,7 +552,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   };
 
   return (
-    <div className="rl-page" style={{ padding: '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
+    <div className={seulTri ? 'rl-seul' : 'rl-page'} style={{ padding: seulTri ? 0 : '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
       <style>{`
         @keyframes rlEntre{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         @keyframes rlToastCourt{0%{opacity:0;transform:translate(-50%,18px) scale(.96)}8%{opacity:1;transform:translate(-50%,0) scale(1)}91%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,12px)}}
@@ -504,6 +563,10 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         .rl-carte{transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease,border-color .3s ease,background-color .3s ease,opacity .2s ease}
         .rl-carte:hover{transform:translateY(-2px);box-shadow:0 16px 30px -22px rgba(16,24,40,.45)}
         .rl-ligne{transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease}
+        /* V3.76 : sur un écran moyen (1280), les cinq boutons passent sous le
+           texte plutôt que de l'écraser sur trois mots. */
+        .rl-ligne{flex-wrap:wrap}
+        .rl-actions{margin-left:auto}
         .rl-ligne:hover{box-shadow:0 14px 28px -22px rgba(16,24,40,.5);border-color:#d7deea}
         /* V3.74 — Traitée : la ligne passe au vert, puis glisse et se replie
            à sa vraie hauteur (grille 1fr → 0fr) ; celles du dessous remontent
@@ -512,8 +575,11 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         .rl-ligne > .rl-barre{transition:background-color .25s ease}
         .rl-ligne[data-ok] > .rl-barre{background:#16a34a !important}
         .rl-ok{animation:rlPop .34s cubic-bezier(.2,.9,.3,1) both}
-        .rl-pli{display:grid;grid-template-rows:1fr;transition:grid-template-rows .5s cubic-bezier(.4,0,.2,1),margin-top .5s cubic-bezier(.4,0,.2,1)}
-        .rl-pli-in{min-height:0}
+        .rl-pli{display:grid;grid-template-rows:1fr;grid-template-columns:minmax(0,1fr);transition:grid-template-rows .5s cubic-bezier(.4,0,.2,1),margin-top .5s cubic-bezier(.4,0,.2,1)}
+        /* V3.76 : min-width aussi. Sans lui, une note longue (« Prochain contact
+           repris d'ImmoFacile — … », sur une ligne) élargissait la grille : sur
+           téléphone, la ligne débordait de l'écran et les boutons sortaient. */
+        .rl-pli-in{min-height:0;min-width:0}
         .rl-pli[data-partante]{grid-template-rows:0fr;margin-top:-10px;pointer-events:none}
         .rl-pli-g[data-partante]{margin-top:-22px}
         .rl-pli[data-partante] > .rl-pli-in{overflow:hidden}
@@ -540,6 +606,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-carte{padding:10px !important;border-radius:16px !important;flex-direction:column !important;align-items:flex-start !important;gap:6px !important}
           .rl-carte-sous{display:none !important}
           .rl-ligne{flex-wrap:wrap !important}
+          .rl-texte{flex-basis:0 !important}
           .rl-actions{width:100%;display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px !important}
           .rl-actions > .rl-traiter{grid-column:1 / -1;order:-1}
           .rl-al{grid-template-columns:40px minmax(0,1fr);gap:12px;padding:14px}
@@ -560,12 +627,15 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-ligne{gap:11px !important;padding:11px 12px 11px 15px !important;border-radius:16px !important}
           .rl-av{width:36px !important;height:36px !important;border-radius:11px !important;font-size:13px !important}
           .rl-nom{font-size:14px !important}
-          .rl-note{font-size:12.5px !important}
+          .rl-note{font-size:12.5px !important;flex-wrap:wrap;row-gap:5px !important}
+          /* V3.76 : la note passe sous l'étiquette, sur deux lignes, plutôt que
+             coupée après trois mots. */
+          .rl-note > span:last-child{white-space:normal !important;display:-webkit-box !important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
           .rl-actions > button{height:34px !important;font-size:12.5px !important;border-radius:11px !important}
         }
       `}</style>
 
-      <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {!seulTri && <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h1 className="rl-titre" style={{ margin: 0, fontFamily: JAK, fontSize: 28, fontWeight: 800, letterSpacing: -.5 }}>Relances</h1>
         <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter cette semaine, du plus pressé au moins pressé. Plus loin : choisis une période.</p>
         {!loading && tri.length > 0 && (
@@ -576,9 +646,9 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
             <Ic n="fleche" t={13} ep={2.1} />
           </button>
         )}
-      </header>
+      </header>}
 
-      {alertes.length > 0 && (
+      {!seulTri && alertes.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-label="Rapprochements">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: '#a07c28' }}>Rapprochements</span>
@@ -626,7 +696,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         </section>
       )}
 
-      {!loading && (
+      {!seulTri && !loading && (
         <div className="rl-cartes" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
           {cartes.map((c, i) => {
             const actif = !periode && filtre === c.id;
@@ -646,7 +716,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       )}
 
       {/* Plus loin que la semaine (V3.71) : une période, ou un jour, ou entre deux dates. */}
-      {!loading && courantes.length > 0 && (
+      {!seulTri && !loading && courantes.length > 0 && (
         <div className="rl-periode rl-entre" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 16, background: periode ? '#f5f8ff' : 'white', border: `1px solid ${periode ? '#cfe0fd' : BORD}` }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#1d4ed8', marginRight: 4 }}><Ic n="calendrier" t={14} ep={2.1} />Voir plus loin</span>
           {PERIODES.map(x => {
@@ -680,7 +750,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         </div>
       )}
 
-      {loading ? (
+      {seulTri ? null : loading ? (
         <div style={{ padding: '40px 0', textAlign: 'center', color: PALE, fontSize: 13.5 }}>Chargement…</div>
       ) : courantes.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
@@ -714,7 +784,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       )}
 
       {/* V3.73 — Le tri d'après l'import : à part, sous les relances. */}
-      {!loading && tri.length > 0 && (
+      {!seulTri && !loading && tri.length > 0 && (
         <section ref={blocTri} className="rl-tri rl-entre" aria-label="Tri à faire" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 16px 18px', borderRadius: 22, background: '#f6f8fb', border: '1px dashed #d5dde8', scrollMarginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <span style={{ width: 40, height: 40, borderRadius: 13, background: 'white', border: '1px solid #dfe5ee', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="drapeau" t={19} ep={2} /></span>
@@ -738,6 +808,51 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           )}
         </section>
       )}
+
+      {/* V3.76 — Dans Contacts : le tri seul, ceux à appeler d'abord, puis
+          ceux prévus plus tard. Les deux groupes font le chiffre de la tuile. */}
+      {seulTri && (loading ? (
+        <div style={{ padding: '40px 0', textAlign: 'center', color: PALE, fontSize: 13.5 }}>Chargement…</div>
+      ) : tri.length === 0 ? (
+        <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
+          <span style={{ width: 62, height: 62, borderRadius: 20, background: '#dcfce8', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="coche" t={30} ep={2.4} /></span>
+          <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>Tri terminé</b>
+          <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.55, maxWidth: 460 }}>Tout le monde a eu son dernier appel : ceux qui restent sont dans tes contacts, les autres dans « Archivés ». Cet onglet disparaît dès que tu en choisis un autre.</span>
+          {onFini && (
+            <button type="button" className="rl-appui" onClick={onFini} style={{ marginTop: 4, height: 38, padding: '0 16px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Revoir tous les contacts</button>
+          )}
+        </div>
+      ) : (
+        <section className="rl-tri rl-entre" aria-label="Tri à faire" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 16px 18px', borderRadius: 22, background: '#f6f8fb', border: '1px dashed #d5dde8' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 13, background: 'white', border: '1px solid #dfe5ee', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="drapeau" t={19} ep={2} /></span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ fontFamily: JAK, fontSize: 16.5, fontWeight: 800, color: '#1a2332' }}>Tri à faire</b>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>suite à l’import</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#475569', background: 'white', border: '1px solid #dfe5ee', borderRadius: 20, padding: '1px 8px' }}>{tri.length}</span>
+              </span>
+              <span style={{ fontSize: 13, color: DOUX, lineHeight: 1.5 }}>Des contacts sans nouvelles depuis longtemps : un dernier appel pour savoir s’ils restent dans ton fichier. Ce sont les mêmes que dans Relances, en bas de la page.</span>
+            </span>
+          </div>
+          {triGroupes.map(g => (
+            <div key={g.id} className="rl-pli rl-pli-g" data-partante={g.liste.every(r => partantes[r.id]) ? '' : undefined}><div className="rl-pli-in">
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.1, textTransform: 'uppercase', color: g.couleur }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.couleur }} />
+                <span>{g.titre}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: g.couleur, background: `${g.couleur}14`, borderRadius: 20, padding: '1px 8px', letterSpacing: 0 }}>{g.liste.length}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0, textTransform: 'none', color: PALE }}>{g.sous}</span>
+              </div>
+              {g.liste.map(r => ligne(r))}
+            </section>
+            </div></div>
+          ))}
+          {!triGroupes.length && (
+            <span style={{ fontSize: 13, color: DOUX, padding: '4px 2px' }}>{`Personne ne correspond à « ${cherche.trim()} » dans le tri.`}</span>
+          )}
+        </section>
+      ))}
 
       {traitee && traitee.clients && (() => {
         const r = traitee, c = r.clients;
