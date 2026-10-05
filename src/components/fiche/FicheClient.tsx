@@ -3851,11 +3851,16 @@ ${signatureMail()}`,
                     if (ok) setClient(c0 => ({ ...c0, notes: t || null } as Client));
                     return ok;
                   }} />
+              </div>
+              <div className={styles.ensCol}>
                 {/* Sa situation : descendue du bloc bleu (V3.29), où elle
-                    empiétait sur l'en-tête. */}
+                    empiétait sur l'en-tête ; à droite depuis la V3.71, à la
+                    place de « Sa recherche en bref » (Alexandre : « on a déjà
+                    l'onglet Sa recherche »). Toujours là : sans rien de
+                    renseigné, elle invite à le faire. */}
                 {(() => {
                   const occ = client as any;
-                  if (!occ.statut_occupation && !occ.bien_actuel_a_vendre) return null;
+                  const vide = !occ.statut_occupation && !occ.bien_actuel_a_vendre;
                   const aVendre = !!occ.bien_actuel_a_vendre;
                   const labelStatut = ({ proprietaire: 'Propriétaire', locataire: 'Locataire', heberge: 'Hébergé', autre: 'Autre' } as any)[occ.statut_occupation] || occ.statut_occupation;
                   const champs: [string, React.ReactNode][] = [];
@@ -3868,13 +3873,15 @@ ${signatureMail()}`,
                       <div className={styles.carteEnsT}>
                         <span className={styles.carteEnsIc}><Icone nom="maison" taille={15} epaisseur={2} /></span>
                         <b>Sa situation</b>
-                        <button type="button" onClick={() => { setCf(cfDe(client)); setShowContact(true); }}>Modifier</button>
+                        <button type="button" onClick={() => { setCf(cfDe(client)); setShowContact(true); }}>{vide ? 'Renseigner' : 'Modifier'}</button>
                       </div>
-                      <div className={styles.situGrille}>
-                        {champs.map(([l, v]) => (
-                          <div key={l} className={styles.situChamp}><small>{l}</small><span>{v}</span></div>
-                        ))}
-                      </div>
+                      {vide ? <p className={styles.situNotes}>{`Pas encore renseignée : propriétaire ou locataire, et revente possible après l’achat ou non.`}</p> : (
+                        <div className={styles.situGrille}>
+                          {champs.map(([l, v]) => (
+                            <div key={l} className={styles.situChamp}><small>{l}</small><span>{v}</span></div>
+                          ))}
+                        </div>
+                      )}
                       {aVendre && <span className={styles.situVente}><Icone nom="etiquette" taille={14} />{'Revente possible après l’achat'}</span>}
                       {aVendre && occ.bien_actuel_notes && <p className={styles.situNotes}>{occ.bien_actuel_notes}</p>}
                     </div>
@@ -3882,25 +3889,6 @@ ${signatureMail()}`,
                 })()}
                 {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
                 <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
-              </div>
-              <div className={styles.ensCol}>
-                {/* Sa recherche en bref : le détail est dans « Sa recherche ». */}
-                <div className={styles.carteEns}>
-                  <div className={styles.carteEnsT}>
-                    <span className={styles.carteEnsIc}><Icone nom="loupe" taille={15} epaisseur={2} /></span>
-                    <b>{recherches.length > 1 ? `Sa recherche : ${rechercheActive?.nom || ''}` : 'Sa recherche en bref'}</b>
-                    <button type="button" onClick={() => setVue('recherche')}>{rechercheActive ? 'Voir sa recherche' : 'En ouvrir une'}</button>
-                  </div>
-                  {rechercheActive ? (
-                    <div className={styles.brefGrille}>
-                      <div className={styles.brefCase}><small>Budget</small><b className={styles.brefOr}>{cr.budget_min && cr.budget_max ? fourchetteBudget(cr.budget_min, cr.budget_max) : cr.budget_max ? `Jusqu’à ${budgetLisible(cr.budget_max)}` : cr.budget_min ? `À partir de ${budgetLisible(cr.budget_min)}` : 'À préciser'}</b></div>
-                      <div className={styles.brefCase}><small>Bien</small><b>{[cr.type_bien ? String(cr.type_bien).split(',').join(', ') : '', cr.nb_pieces_min ? `${cr.nb_pieces_min} p. et +` : '', cr.surface_min ? `${cr.surface_min} m² et +` : ''].filter(Boolean).join(' · ') || 'À préciser'}</b></div>
-                      {cr.secteurs?.length > 0 && (
-                        <div className={`${styles.brefCase} ${styles.brefLarge}`}><small>Secteurs</small><b>{cr.secteurs.join(', ')}</b></div>
-                      )}
-                    </div>
-                  ) : <p className={styles.situNotes}>Aucune recherche pour l’instant.</p>}
-                </div>
               </div>
             </div>
           </div>
