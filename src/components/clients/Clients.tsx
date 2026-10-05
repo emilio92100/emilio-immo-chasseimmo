@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
@@ -28,6 +28,8 @@ import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
 import { TABLE_DEMANDES, type PreRemplissage } from '@/lib/demandes-site';
 import cc from '@/components/contacts/Contacts.module.css';
 import FiltresAcheteurs, { FILTRES_A_VIDES, correspond, nbFiltresA, type FiltresA } from './FiltresAcheteurs';
+import PageRelances from '@/components/pages/PageRelances';
+import { estTri } from '@/lib/relances';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -43,7 +45,7 @@ const STATUTS = [
    critères), puis un type par catégorie. Les acheteurs ont leur tableau
    détaillé ; « Tous » et les autres types, une liste d'une ligne par
    contact, la même pour tous. */
-type Categorie = 'tous' | 'acheteur' | 'non_filtre' | Exclude<TypeContact, 'acheteur'> | 'archives';
+type Categorie = 'tous' | 'acheteur' | 'non_filtre' | Exclude<TypeContact, 'acheteur'> | 'archives' | 'tri';
 /* Les pastilles des tuiles, sur le bandeau bleu : les couleurs des types,
    éclaircies pour qu'on les voie (le bleu d'un notaire disparaissait). */
 const TEINTE_BANDEAU: Record<TypeContact, string> = {
@@ -60,10 +62,13 @@ const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
   { cle: 'non_filtre', lib: 'Acheteurs non filtrés', couleur: '#94a3b8' },
   ...TYPES_CONTACT.filter(t => !PRINCIPAUX.includes(t.k)).map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
 ];
+/* V3.76 : la tuile du tri d'après l'import, juste après « Tous » (elle se
+   voit sans faire défiler la rangée sur téléphone). */
+const TUILE_TRI: { cle: Categorie; lib: string; couleur?: string } = { cle: 'tri', lib: 'Tri à faire', couleur: '#fbbf24' };
 /* Les catégories d'une vue (« vendeur », « acheteur+proprietaire »…) ; rien de
    reconnu : « Tous ». */
 function lireCats(v: string | null): Categorie[] {
-  const l = (v || '').split('+').filter((k): k is Categorie => k === 'archives' || CATEGORIES.some(x => x.cle === k));
+  const l = (v || '').split('+').filter((k): k is Categorie => k === 'archives' || k === 'tri' || CATEGORIES.some(x => x.cle === k));
   return l.length ? l : ['tous'];
 }
 /* L'emoji des blocs propres à un type, dans la fenêtre de création (les
@@ -437,6 +442,17 @@ export default function Clients({ onNavigate, fenetre }: {
   /* Ce que la liste ne savait pas dire : combien de biens, de visites, d'offres,
      et quelle relance attend. Chargé en trois lectures, une fois, au démarrage. */
   const [stats, setStats] = useState<Record<string, StatDossier>>({});
+  /* V3.76 — « Tri à faire » : les contacts repris d'ImmoFacile qui attendent
+     leur dernier appel (une relance NOTE_TRI en attente). Leur tuile se
+     montre tant qu'il en reste ; le bloc les traite sur place et tient ce
+     compte à jour au fil des appels. */
+  const [triIds, setTriIds] = useState<string[]>([]);
+  const majTri = useCallback((ids: string[]) => {
+    setTriIds(l => (l.length === ids.length && l.every((x, i) => x === ids[i]) ? l : ids));
+  }, []);
+  const majArchive = useCallback((id: string, archive: boolean) => {
+    setClients(l => l.map(c => (c.id === id ? { ...c, archive } : c)));
+  }, []);
 
   /* La carte de survol. Le détail (dernier échange, espace acheteur) n'est lu
      que pour le client survolé, et gardé en mémoire ensuite. */
@@ -493,10 +509,10 @@ export default function Clients({ onNavigate, fenetre }: {
     return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
   }, []);
   const choisirCat = (k: Categorie) => setCats(l => {
-    if (k === 'tous' || k === 'archives') return [k];
+    if (k === 'tous' || k === 'archives' || k === 'tri') return [k];
     /* « Acheteurs non filtrés » est une partie des acheteurs : l'un remplace
        l'autre, sinon le second clic ne changerait rien. */
-    const base = l.filter(x => x !== 'tous' && x !== 'archives' && !(k === 'acheteur' && x === 'non_filtre') && !(k === 'non_filtre' && x === 'acheteur'));
+    const base = l.filter(x => x !== 'tous' && x !== 'archives' && x !== 'tri' && !(k === 'acheteur' && x === 'non_filtre') && !(k === 'non_filtre' && x === 'acheteur'));
     const n = base.includes(k) ? base.filter(x => x !== k) : [...base, k];
     return n.length ? n : ['tous'];
   });
@@ -685,6 +701,7 @@ export default function Clients({ onNavigate, fenetre }: {
       });
       vi.data.forEach(v => { const e = s[v.client_id]; if (e && v.statut !== 'annulee') e.visites++; });
       re.data.forEach((r: any) => { const e = s[r.client_id]; if (e && !e.relance) e.relance = { date: r.date_echeance, note: r.note }; });
+      majTri([...new Set((re.data as { client_id: string; note: string | null }[]).filter(r => estTri(r.note) && s[r.client_id]).map(r => String(r.client_id)))]);
       const noter = (j: any) => {
         const e = s[j.client_id];
         if (!e || e.dernierContact) return;
@@ -766,8 +783,10 @@ export default function Clients({ onNavigate, fenetre }: {
     p.agence, p.etude, p.immeuble, p.societe, p.metier, p.reseau, c.adresse,
     ...typesDe(c).map(k => typeDe(k).lib)].filter(Boolean).join(' ')).includes(q0) || (c.couple ? normer(nomFoyer(c)).includes(q0) : false); };
   const visibles = clients.filter(c => !estArchive(c));
+  const triSet = new Set(triIds);
   const nbCat = (k: Categorie) => k === 'tous' ? visibles.length
     : k === 'archives' ? clients.filter(c => estArchive(c)).length
+    : k === 'tri' ? visibles.filter(c => triSet.has(c.id)).length
       : k === 'acheteur' ? visibles.filter(c => estAcheteur(c)).length
         : k === 'non_filtre' ? visibles.filter(c => estAcheteur(c) && sansCriteres(c)).length
           : visibles.filter(c => typesDe(c).includes(k as TypeContact)).length;
@@ -779,6 +798,7 @@ export default function Clients({ onNavigate, fenetre }: {
   const avecAcheteurs = cats.every(k => k === 'acheteur' || k === 'non_filtre');
   const seulsNonFiltres = avecAcheteurs && !cats.includes('acheteur');
   const dansCats = (c: Client) => cats.some(k => k === 'tous' ? true
+    : k === 'tri' ? triSet.has(c.id)
     : k === 'acheteur' ? estAcheteur(c)
       : k === 'non_filtre' ? estAcheteur(c) && sansCriteres(c)
         : typesDe(c).includes(k as TypeContact));
@@ -1526,12 +1546,14 @@ export default function Clients({ onNavigate, fenetre }: {
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
         phrase="Clique plusieurs types pour les voir ensemble."
         label="Filtrer par type de contact" actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
-        tuiles={[...CATEGORIES, ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
+        tuiles={[CATEGORIES[0], TUILE_TRI, ...CATEGORIES.slice(1), ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
-             depuis le menu, alors qu'il n'y en a pas encore). */
+             depuis le menu, alors qu'il n'y en a pas encore). « Tri à faire »
+             (V3.76) suit la même règle : le dernier appel passé, elle reste
+             le temps de lire « Tri terminé », puis disparaît. */
           .filter(x => x.cle === 'tous' || nbCat(x.cle) > 0 || cats.includes(x.cle))
-          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur,
+          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur, alerte: x.cle === 'tri',
             ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
       {/* LES ACHETEURS — une seule ligne « Affiner » (V3.75) : le statut du
@@ -1756,7 +1778,12 @@ export default function Clients({ onNavigate, fenetre }: {
               )}
             </div>
           )}
-          {!avecAcheteurs && (autres.length ? (
+          {/* V3.76 — « Tri à faire » : le bloc de Relances, sur place. */}
+          {!avecAcheteurs && !importes && seul === 'tri' ? (
+            <div className="ligne-entre">
+              <PageRelances onNavigate={onNavigate} seulTri cherche={search} onTri={majTri} onArchive={majArchive} onFini={() => setCats(['tous'])} />
+            </div>
+          ) : !avecAcheteurs && (autres.length ? (
             /* Une autre catégorie : les lignes arrivent l'une après l'autre. */
             <div className={`${cc.liste} cascade`} key={importes ? 'importes' : cats.join('+')}>
               {importes && (
