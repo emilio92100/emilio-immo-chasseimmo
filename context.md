@@ -1461,6 +1461,39 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.78 — 5 octobre 2026 · Contacts : « Autres types ▾ », « Archivés » toujours visible, recherche dans les villes
+
+Rien à passer dans Supabase.
+
+Alexandre : « je ne vois pas la catégorie Archivés » (il n'avait encore aucun contact archivé : la
+tuile ne s'affichait qu'à partir d'un) ; « propriétaire au début, vendeur et acheteur, ensuite
+gardien, vendeur signé ou autre ».
+- **« Archivés » toujours dans la rangée**, même à 0 (grisée), à la même place : tout à droite,
+  après « Tri à faire » et « Tous ». Vide : « Aucun contact archivé ».
+- **L'ordre** : Propriétaires, Vendeurs, Acheteurs, Gardiens, Vendeurs signés, Acheteurs non
+  filtrés, Notaires, Confrères, Partenaires (`ORDRE_TUILES`), puis le groupe de fin.
+- **« Autres types ▾ »** (Alexandre : « à côté d'Acheteurs, une petite flèche vers le bas : on
+  clique et on choisit les autres types détectés, dès qu'il y en a un ; on ne met pas tout sur la
+  même ligne ») : sur la ligne, Propriétaires, Vendeurs, Acheteurs, puis ce bouton ; il ouvre la
+  liste des Gardiens, Vendeurs signés, Acheteurs non filtrés, Notaires, Confrères, Partenaires
+  (`MENU_TUILES` de `Clients.tsx`), chacun avec son nombre, seulement ceux qui ont au moins un
+  contact. Un type choisi s'écrit sur le bouton (« 4 · Gardiens ▾ »). `EnteteRubrique` : la tuile
+  porte `menu`, et `MenuAutres` pose la liste sur la page (portail, position fixe) — la rangée
+  défile au doigt sur téléphone et couperait une liste ouverte dedans. Elle se ferme au clic à
+  côté, à Échap, et quand la page défile.
+- **Acheteurs › Ville : une barre de recherche** en tête du panneau (Alexandre : « quand il y a
+  beaucoup de villes, une petite barre de recherche pour sélectionner plus vite »). Sans accents
+  ni majuscules (« sevr » trouve Sèvres) ; Entrée coche la première trouvée et vide la barre, pour
+  enchaîner. Les villes cochées restent toujours en vue. Sans recherche, les 30 plus demandées
+  (comme avant), et « Et 9 autres villes : tape le début du nom » — avant, celles au-delà de 30
+  étaient introuvables.
+
+**À retenir pour la reprise des biens d'ImmoFacile** (Alexandre, 5 octobre) : les biens au nom de
+« ROGELET » (son propre nom) sont des **annonces type** — une annonce proche du bien d'un client
+qui ne veut pas que le sien soit diffusé, pour capter des acheteurs. Le contact « ROGELET » n'est
+pas à importer, et ces biens pas forcément à garder. Une catégorie de biens **« Annonce type »**
+est à créer : pas de mandat, pas de vendeur, rien d'obligatoire — la fiche, puis la publication.
+
 ### V3.77 — 5 octobre 2026 · Import ImmoFacile : les vendeurs (signés, archivés)
 
 Rien à passer dans Supabase (la colonne `clients.archive` existe depuis la V3.73).
