@@ -401,7 +401,7 @@ export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien }
       <span className={c.lQui}>
         {/* Le même petit personnage que dans « Acheteurs » (V3.31), à la couleur
             de son type ; une mallette pour un professionnel. Avant : ses initiales. */}
-        <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} />
+        <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />
         <span className={c.lNom}>
           <b title={nom}>{nom}</b>
           <span className={c.puces}>{types.map(k => <Puce key={k} k={k} />)}</span>

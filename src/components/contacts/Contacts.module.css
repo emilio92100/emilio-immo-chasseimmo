@@ -88,6 +88,23 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 @media (max-width: 1180px) {
   .lJoindre { display: none; }
 }
+/* V3.75 — Un cran plus grand sur un grand écran, comme le tableau des
+   acheteurs (Clients.module.css) : « au zoom à 100 %, c'est un peu petit ». */
+@media (min-width: 1360px) {
+  .liste { gap: 9px; }
+  .lEntete { padding: 12px 20px; }
+  .lEntete > span { font-size: 12px; }
+  .lLigne { padding: 15px 20px; gap: 16px; border-radius: 14px; }
+  .lQui { width: 330px; gap: 13px; }
+  .lAv { width: 44px; height: 44px; }
+  .lNom b { font-size: 16px; }
+  .lNom .puce { font-size: 12.5px; }
+  .lInfo { font-size: 14px; }
+  .lEtape { font-size: 12px; }
+  .lJoindre { width: 230px; gap: 4px; }
+  .lJoindre a { font-size: 13.5px; }
+  .lDepuis { width: 130px; font-size: 13px; }
+}
 .biensMini { display: flex; flex-direction: column; gap: 8px; padding-top: 9px; border-top: 1px solid #f1f4f8; }
 .bienMini { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border-radius: 10px; border: 1px solid #eef1f6; background: #fbfcfe; font: 600 12.5px 'DM Sans', sans-serif; color: var(--emilio); cursor: pointer; text-align: left; }
 .bienMini:hover { border-color: #ecdcb0; background: #fdfaf2; }
