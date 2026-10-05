@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './EnteteRubrique.module.css';
 
 /* L'en-tête d'une rubrique (Visites, Mes clients) : le titre et ses chiffres
@@ -34,7 +35,91 @@ export type Tuile = {
   /* V3.77 : « Archivés », d'un autre style que les catégories (bord en
      pointillés, sa boîte d'archives). */
   archive?: boolean;
+  /* V3.78 : rangée dans le menu « Autres types ▾ » plutôt que sur la ligne
+     (Alexandre : « une petite flèche, on clique et on choisit les autres
+     types : gardien, notaire, partenaire… ; on ne met pas tout sur la même
+     ligne »). Le bouton se place juste avant le groupe de fin. */
+  menu?: boolean;
 };
+
+/* ── « Autres types ▾ » : les tuiles `menu`, dans une liste qui s'ouvre.
+   Posée sur la page (portail, position fixe) : la rangée défile au doigt sur
+   téléphone et couperait une liste ouverte à l'intérieur. ── */
+function MenuAutres({ tuiles, actif, onChoisir }: { tuiles: Tuile[]; actif: string | string[]; onChoisir: (cle: string) => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const bouton = useRef<HTMLButtonElement | null>(null);
+  const liste = useRef<HTMLDivElement | null>(null);
+  const estOn = (k: string) => (Array.isArray(actif) ? actif.includes(k) : k === actif);
+  const allumees = tuiles.filter(t => estOn(t.cle));
+  useEffect(() => {
+    if (!ouvert) return;
+    const fermer = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && (bouton.current?.contains(t) || liste.current?.contains(t))) return;
+      setOuvert(false);
+    };
+    const touche = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(false); };
+    /* La page défile ou change de taille : la liste fermée plutôt que
+       décollée de son bouton. */
+    const bouge = (e: Event) => {
+      if (e.target instanceof Node && liste.current?.contains(e.target)) return;
+      setOuvert(false);
+    };
+    document.addEventListener('mousedown', fermer);
+    document.addEventListener('touchstart', fermer);
+    document.addEventListener('keydown', touche);
+    window.addEventListener('resize', bouge);
+    window.addEventListener('scroll', bouge, true);
+    return () => {
+      document.removeEventListener('mousedown', fermer);
+      document.removeEventListener('touchstart', fermer);
+      document.removeEventListener('keydown', touche);
+      window.removeEventListener('resize', bouge);
+      window.removeEventListener('scroll', bouge, true);
+    };
+  }, [ouvert]);
+  function basculer() {
+    if (ouvert) { setOuvert(false); return; }
+    const r = bouton.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 268)) });
+    setOuvert(true);
+  }
+  const un = allumees.length === 1 ? allumees[0] : null;
+  return (
+    <>
+      <button ref={bouton} type="button" aria-haspopup="true" aria-expanded={ouvert} aria-pressed={allumees.length > 0} onClick={basculer}
+        className={`${styles.tuile} ${styles.autres} ligne-entre ${allumees.length ? styles.on : ''}`}>
+        {un && <span className={styles.n}>{un.n}</span>}
+        <span className={styles.lib}>
+          {un?.couleur && <span className={styles.point} style={{ background: un.couleur }} />}
+          <span>{un ? un.lib : allumees.length > 1 ? `Autres types · ${allumees.length}` : 'Autres types'}</span>
+          <svg className={styles.chevron} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+            style={{ transform: ouvert ? 'rotate(180deg)' : undefined }}><path d="m6 9.5 6 6 6-6" /></svg>
+        </span>
+      </button>
+      {ouvert && pos && typeof document !== 'undefined' && createPortal(
+        <div ref={liste} className={styles.menu} role="menu" style={{ top: pos.top, left: pos.left }}>
+          {tuiles.map(t => {
+            const on = estOn(t.cle);
+            return (
+              <button key={t.cle} type="button" role="menuitemcheckbox" aria-checked={on} className={`${styles.menuL} ${on ? styles.menuOn : ''}`}
+                onClick={() => { onChoisir(t.cle); setOuvert(false); }}>
+                <span className={styles.menuPoint} style={{ background: t.couleur || '#cbd5e1' }} />
+                <span className={styles.menuLib}>{t.lib}</span>
+                <span className={styles.menuN}>{t.n}</span>
+                <span className={styles.menuCoche} aria-hidden="true">
+                  {on && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 12.5 5 5 10-11" /></svg>}
+                </span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
 
 export default function EnteteRubrique({
   titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label,
@@ -102,7 +187,15 @@ export default function EnteteRubrique({
       </div>
 
       {tuiles.length > 0 && <div ref={rangee} className={styles.rangee} role="group" aria-label={label}>
-        {tuiles.map((t, i) => {
+        {(() => {
+          /* V3.78 : les tuiles `menu` sortent de la ligne ; « Autres types ▾ »
+             prend leur place, juste avant le groupe de fin. */
+          const dansMenu = tuiles.filter(t => t.menu);
+          const ligne = tuiles.filter(t => !t.menu);
+          const iFin = ligne.findIndex(t => t.fin);
+          const avant = iFin < 0 ? ligne : ligne.slice(0, iFin);
+          const apres = iFin < 0 ? [] : ligne.slice(iFin);
+          const tuile = (t: Tuile, i: number) => {
           const on = Array.isArray(actif) ? actif.includes(t.cle) : t.cle === actif;
           const vide = t.n === 0 && !on;
           const alerte = !!t.alerte && t.n > 0 && !on;
@@ -125,7 +218,15 @@ export default function EnteteRubrique({
               </span>
             </button>
           );
-        })}
+          };
+          return (
+            <>
+              {avant.map(tuile)}
+              {dansMenu.length > 0 && <MenuAutres tuiles={dansMenu} actif={actif} onChoisir={onChoisir} />}
+              {apres.map((t, i) => tuile(t, avant.length + 1 + i))}
+            </>
+          );
+        })()}
       </div>}
     </section>
   );

@@ -190,3 +190,36 @@
   .arch.on { background: #fff; }
   .arch.on .lib { color: #1a2332; }
 }
+
+/* ── V3.78 : « Autres types ▾ » ─────────────────────────────────────────
+   Le bouton est une tuile comme les autres, avec sa flèche ; la liste qu'il
+   ouvre est posée sur la page (portail) : elle n'hérite ni du bandeau bleu
+   ni de la rangée qui défile, d'où ces règles hors des deux écrans. */
+.chevron { flex: 0 0 auto; opacity: 0.75; transition: transform .18s; }
+.menu {
+  position: fixed; z-index: 1000; min-width: 230px; max-width: 260px; box-sizing: border-box;
+  padding: 6px; border-radius: 14px; background: #fff; border: 1px solid #e3e8f0;
+  box-shadow: 0 18px 40px -16px rgba(16, 24, 40, 0.35), 0 2px 6px rgba(16, 24, 40, 0.06);
+  display: flex; flex-direction: column; gap: 2px;
+  animation: menuEntre .16s cubic-bezier(.2, .7, .3, 1) both;
+}
+@keyframes menuEntre { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.menuL {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 9px;
+  background: transparent; cursor: pointer; font-family: inherit; text-align: left; color: #1a2332;
+}
+.menuL:hover { background: #f4f6f9; }
+.menuOn, .menuOn:hover { background: #fdf8ec; }
+.menuPoint { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.menuLib { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 600; }
+.menuOn .menuLib { font-weight: 800; }
+.menuN { font: 800 13px 'Plus Jakarta Sans', sans-serif; font-variant-numeric: tabular-nums; color: #64748b; }
+.menuOn .menuN { color: #a9822f; }
+.menuCoche { width: 14px; height: 14px; flex: 0 0 auto; display: inline-flex; color: #a9822f; }
+@media (max-width: 760px) {
+  /* Sans chiffre au-dessus, le mot se pose au milieu de la tuile. */
+  .autres { justify-content: center; }
+  .menuL { padding: 11px 10px; }
+  .menuLib { font-size: 14.5px; }
+}
+@media (prefers-reduced-motion: reduce) { .menu { animation: none; } .chevron { transition: none; } }
