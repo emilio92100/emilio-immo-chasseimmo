@@ -27,6 +27,7 @@ import { Ic } from '@/components/documents/ApercuActe';
 import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
 import { TABLE_DEMANDES, type PreRemplissage } from '@/lib/demandes-site';
 import cc from '@/components/contacts/Contacts.module.css';
+import dd from '@/components/documents/Documents.module.css';
 import FiltresAcheteurs, { FILTRES_A_VIDES, correspond, nbFiltresA, type FiltresA } from './FiltresAcheteurs';
 import PageRelances from '@/components/pages/PageRelances';
 import { estTri } from '@/lib/relances';
@@ -62,8 +63,13 @@ const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
   { cle: 'non_filtre', lib: 'Acheteurs non filtrés', couleur: '#94a3b8' },
   ...TYPES_CONTACT.filter(t => !PRINCIPAUX.includes(t.k)).map(t => ({ cle: t.k as Categorie, lib: t.pluriel, couleur: TEINTE_BANDEAU[t.k] })),
 ];
-/* V3.76 : la tuile du tri d'après l'import, juste après « Tous » (elle se
-   voit sans faire défiler la rangée sur téléphone). */
+/* V3.77 (Alexandre : « qu'on voie direct au début, en lisant de gauche à
+   droite, les propriétaires, ensuite vendeurs, ensuite acheteurs, ensuite
+   gardiens ou autre ; à la fin Tri à faire, Archivés, Tous ») : les types
+   d'abord, puis le groupe de fin, tout à droite. */
+const ORDRE_TUILES: Categorie[] = ['proprietaire', 'vendeur', 'vendeur_signe', 'acheteur', 'non_filtre', 'gardien', 'notaire', 'confrere', 'partenaire'];
+const FIN_TUILES: Categorie[] = ['tri', 'tous', 'archives'];
+/* V3.76 : la tuile du tri d'après l'import. */
 const TUILE_TRI: { cle: Categorie; lib: string; couleur?: string } = { cle: 'tri', lib: 'Tri à faire', couleur: '#fbbf24' };
 /* Les catégories d'une vue (« vendeur », « acheteur+proprietaire »…) ; rien de
    reconnu : « Tous ». */
@@ -447,6 +453,8 @@ export default function Clients({ onNavigate, fenetre }: {
      montre tant qu'il en reste ; le bloc les traite sur place et tient ce
      compte à jour au fil des appels. */
   const [triIds, setTriIds] = useState<string[]>([]);
+  /* V3.77 : dans « Archivés », le type regardé (les vendeurs archivés…). */
+  const [typeArch, setTypeArch] = useState<TypeContact | 'tous'>('tous');
   const majTri = useCallback((ids: string[]) => {
     setTriIds(l => (l.length === ids.length && l.every((x, i) => x === ids[i]) ? l : ids));
   }, []);
@@ -802,7 +810,11 @@ export default function Clients({ onNavigate, fenetre }: {
     : k === 'acheteur' ? estAcheteur(c)
       : k === 'non_filtre' ? estAcheteur(c) && sansCriteres(c)
         : typesDe(c).includes(k as TypeContact));
-  const autres = (importes ? clients.filter(c => importes.includes(c.id)) : avecAcheteurs ? [] : cats.includes('archives') ? clients.filter(c => estArchive(c)) : visibles.filter(dansCats)).filter(trouve)
+  /* V3.77 : les archivés, par type : les types présents, avec leur nombre. */
+  const archives = clients.filter(c => estArchive(c));
+  const typesArch = TYPES_CONTACT.map(t => ({ k: t.k, lib: t.pluriel, n: archives.filter(c => typesDe(c).includes(t.k)).length })).filter(t => t.n > 0);
+  const typeArchVu = typeArch !== 'tous' && typesArch.some(t => t.k === typeArch) ? typeArch : 'tous';
+  const autres = (importes ? clients.filter(c => importes.includes(c.id)) : avecAcheteurs ? [] : cats.includes('archives') ? archives.filter(c => typeArchVu === 'tous' || typesDe(c).includes(typeArchVu)) : visibles.filter(dansCats)).filter(trouve)
     .sort((a, b) => String(derniere(b) || '').localeCompare(String(derniere(a) || '')));
   const seul = cats.length === 1 ? cats[0] : null;
   const biensDe = (id: string) => biensV.filter(b => b.client_id === id);
@@ -1546,14 +1558,17 @@ export default function Clients({ onNavigate, fenetre }: {
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
         phrase="Clique plusieurs types pour les voir ensemble."
         label="Filtrer par type de contact" actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
-        tuiles={[CATEGORIES[0], TUILE_TRI, ...CATEGORIES.slice(1), ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés', couleur: '#cbd5e1' }] : [])]
+        tuiles={[...ORDRE_TUILES.map(k => CATEGORIES.find(x => x.cle === k)).filter((x): x is (typeof CATEGORIES)[number] => !!x), TUILE_TRI, CATEGORIES[0], ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés' }] : [])]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
              depuis le menu, alors qu'il n'y en a pas encore). « Tri à faire »
              (V3.76) suit la même règle : le dernier appel passé, elle reste
              le temps de lire « Tri terminé », puis disparaît. */
           .filter(x => x.cle === 'tous' || nbCat(x.cle) > 0 || cats.includes(x.cle))
-          .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur, alerte: x.cle === 'tri',
+          .map((x, i, l) => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur, alerte: x.cle === 'tri',
+            /* V3.77 : la première du groupe de fin part tout à droite. */
+            fin: FIN_TUILES.includes(x.cle) && !FIN_TUILES.includes(l[i - 1]?.cle as Categorie),
+            archive: x.cle === 'archives',
             ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
       {/* LES ACHETEURS — une seule ligne « Affiner » (V3.75) : le statut du
@@ -1776,6 +1791,17 @@ export default function Clients({ onNavigate, fenetre }: {
               </div>
             </div>
               )}
+            </div>
+          )}
+          {/* V3.77 — « Archivés » : un filtre par type, pour retrouver les vendeurs
+              archivés (ou les acheteurs, les propriétaires…) sans tout parcourir. */}
+          {!avecAcheteurs && !importes && seul === 'archives' && typesArch.length > 1 && (
+            <div className={`${dd.pills} ligne-entre`} role="group" aria-label="Filtrer les archivés par type" style={{ margin: '0 0 12px' }}>
+              {[{ k: 'tous' as const, lib: 'Tous les archivés', n: archives.length }, ...typesArch].map(t => (
+                <button key={t.k} type="button" className={`${dd.pill} ${typeArchVu === t.k ? dd.pillOn : ''}`} aria-pressed={typeArchVu === t.k} onClick={() => setTypeArch(t.k)}>
+                  <span>{t.lib}<i style={{ fontStyle: 'normal', marginLeft: 7, color: typeArchVu === t.k ? 'rgba(255,255,255,.75)' : '#94a3b8', fontWeight: 800 }}>{t.n}</i></span>
+                </button>
+              ))}
             </div>
           )}
           {/* V3.76 — « Tri à faire » : le bloc de Relances, sur place. */}
