@@ -69,7 +69,8 @@ function rangeeDe(c: Contact, o: { choix: Choix; etat: EtatLecture; lecture: Lec
   const verif = doublon ? plan.aVerifier.filter(x => !plan.verifFiche.includes(x)) : [...plan.aVerifier];
   if (t?.conflit && nouveau && o.choix.nouveau === null) verif.push(`Même nom que « ${nomCRM(t.client)} » dans ton CRM, mais d’autres coordonnées : une fiche à part est créée.`);
   if (doublon?.autreNom) verif.push(`Même ${doublon.raison} que « ${nomCRM(doublon.client)} » dans ton CRM, sous un autre nom : sa fiche est complétée, sans y recopier ses coordonnées.`);
-  const actif = o.mode === 'actifs' && !plan.force && verif.length === 0;
+  /* V3.73 : un « dernier appel » du tri reste à qualifier. */
+  const actif = o.mode === 'actifs' && !plan.force && verif.length === 0 && plan.tri?.sorte !== 'dernier';
   const initiales = `${(c.prenom || '')[0] || ''}${(c.nom || '')[0] || ''}`.toUpperCase() || '·';
   const bienPossible = !doublon || !o.crm.avecBien.has(doublon.client.id);
   return { c, plan, choix: o.choix, etat: o.etat, doublon, trouve: t, nouveau, completion, verif, actif, bienPossible, nom, initiales };
@@ -163,7 +164,7 @@ function texteRelance(p: Plan, aujourdhui: string): string {
   const r = p.rappel;
   if (!r) return '';
   const quand = r.date === aujourdhui ? `Aujourd’hui${r.retard ? ` (en retard, ${r.retard})` : ''}` : `Le ${dateFr(r.date)}`;
-  return `${quand}, dans « Relances ».${r.texte ? `\nEn note : ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}`;
+  return `${quand}, dans « Relances »${r.tri === 'dernier' ? ', bloc « Tri à faire »' : ''}.${r.texte ? `\nEn note : ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}`;
 }
 
 function Fermer({ onClick }: { onClick: () => void }) {
@@ -179,8 +180,8 @@ function Etiquettes({ r }: { r: Rangee }) {
       {p.aSuivre && <em className={p.aSuivre.retard ? st.tagOr : st.tagBleu}><Ic n="maison" t={11} /><span>{`Fiche bien « À suivre » : ${p.aSuivre.resume} · ${p.aSuivre.rappelTexte}`}</span></em>}
       {!p.aSuivre && p.projetVente && <em className={p.rappel?.retard ? st.tagOr : st.tagBleu}><Ic n="etiquette" t={11} /><span>{`${p.bienActuel.aVendre ? 'Mandat vendeur potentiel' : 'Projet de vente'}${p.rappel ? ` · ${p.rappel.rappelTexte}` : ''}`}</span></em>}
       {/* V3.70 : son prochain contact (s'il n'est pas déjà dit plus haut) et son historique. */}
-      {(p.rappel?.immofacile || p.historique.length > 0) && (() => {
-        const t = [p.rappel?.immofacile && !p.projetVente ? `${p.rappel.rappelTexte.charAt(0).toUpperCase()}${p.rappel.rappelTexte.slice(1)}` : '', p.historique.length ? `historique : ${nbLignes(p.historique.length)}` : ''].filter(Boolean).join(' · ');
+      {((p.rappel?.immofacile || !!p.rappel?.tri) || p.historique.length > 0) && (() => {
+        const t = [(p.rappel?.immofacile || !!p.rappel?.tri) && !p.projetVente ? `${p.rappel.rappelTexte.charAt(0).toUpperCase()}${p.rappel.rappelTexte.slice(1)}` : '', p.historique.length ? `historique : ${nbLignes(p.historique.length)}` : ''].filter(Boolean).join(' · ');
         return <em className={p.rappel?.retard ? st.tagOr : st.tagBleu}><Ic n="horloge" t={11} /><span>{`${t.charAt(0).toUpperCase()}${t.slice(1)}`}</span></em>;
       })()}
       {p.location && !p.locationSeule && <em className={st.tagBleu}><Ic n="cle" t={11} /><span>Cherche aussi à louer : noté dans « À savoir »</span></em>}
@@ -263,6 +264,7 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
   const bruts = [precisions.length ? 'la précision de sa recherche' : '', commentaire ? 'son commentaire' : ''].filter(Boolean).join(' et ');
   const statut = !p.roles.acheteur ? 'Prospect'
     : r.actif ? 'Actif : veille et point automatique'
+      : p.tri?.sorte === 'dernier' ? 'Prospect : dernier appel pour faire le tri, rien ne part tout seul'
       : mode !== 'actifs' ? 'Prospect : à qualifier, rien ne part tout seul'
         : c.refus.length ? 'Prospect : refus noté dans ImmoFacile, reste à qualifier' : 'Prospect : à vérifier d’abord, reste à qualifier';
   return (
@@ -300,7 +302,7 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
               {!!r.completion.notes && <><dt>À savoir</dt><dd className={st.texte}>{`Ajouté sous ce qu’il y a déjà :\n${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd></>}
               {r.completion.proche && <><dt>Coordonnées</dt><dd className={st.pale}>{`Pas recopiées : celles de ${nomCRM(r.doublon.client)} restent seules sur sa fiche.`}</dd></>}
               {r.completion.recherche && p.recherches[0] && <><dt>Sa recherche</dt><dd><Puces r={r} onChoix={onChoix} /></dd></>}
-              {r.completion.rappel && p.rappel?.immofacile && <><dt>Relance</dt><dd className={st.texte}>{`${texteRelance(p, aujourdhui)}\nSauf si sa fiche en a déjà une en attente.`}</dd></>}
+              {r.completion.rappel && (p.rappel?.immofacile || !!p.rappel?.tri) && <><dt>Relance</dt><dd className={st.texte}>{`${texteRelance(p, aujourdhui)}\nSauf si sa fiche en a déjà une en attente.`}</dd></>}
               {!r.completion.rien && <><dt>Suivi</dt><dd>
                 <span className={st.pale}>{`« ${p.suivi.replace('Fiche reprise d’ImmoFacile', 'Fiche complétée depuis ImmoFacile')} »`}</span>
                 {p.historique.length > 0 && <HistoriqueSuivi l={p.historique} />}
@@ -334,7 +336,7 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
                   : p.projetVente
                     ? `Projet de vente : son logement et son projet notés dans « À savoir » · ${p.rappel ? p.rappel.rappelTexte : 'sans date de rappel'}. Pas de fiche bien : tu la crées quand tu as vu le logement.`
                     : <span className={st.pale}>Pas de projet de vente</span>}</dd></>}
-              {p.rappel?.immofacile && <><dt>Relance</dt><dd className={st.texte}>{texteRelance(p, aujourdhui)}</dd></>}
+              {(p.rappel?.immofacile || !!p.rappel?.tri) && <><dt>Relance</dt><dd className={st.texte}>{texteRelance(p, aujourdhui)}</dd></>}
               <dt>À savoir</dt><dd className={st.texte}>{`${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd>
               <dt>Suivi</dt><dd>
                 <span className={st.pale}>{`« ${p.suivi} »`}</span>
@@ -396,7 +398,7 @@ function Edition({ r, aujourdhui, onChoix }: { r: Rangee; aujourdhui: string; on
       )}
       {!r.choix.exclu && (p.aSuivre || p.projetVente || p.rappel) && (
         <label className={st.edLigne}>
-          <span>{p.rappel?.immofacile ? 'Relance le' : 'Rappel le'}</span>
+          <span>{(p.rappel?.immofacile || !!p.rappel?.tri) ? 'Relance le' : 'Rappel le'}</span>
           <input type="date" className={st.date} min={aujourdhui} value={p.aSuivre?.rappel || p.rappel?.date || ''} onChange={e => onChoix({ rappel: e.target.value })} />
         </label>
       )}

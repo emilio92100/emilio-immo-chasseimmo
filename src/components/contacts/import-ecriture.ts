@@ -47,6 +47,7 @@ import { colonneSourceAbsente, libelleSource } from '@/lib/sources';
 import { titreBien } from '@/lib/biens-vente';
 import { colonnesCriteres } from '@/components/shared/CriteresRecherche';
 import { ajouterSuivi, creerBien, donneesProprio, majBien, marquerVendeur, poserDansBien, poserRelanceEstimation, type ClientMini } from '@/components/biens/outils';
+import { NOTE_TRI } from '@/lib/relances';
 import { aujourdhuiYmd, completer, dateFr, type ClientCRM, type Doublon, type Plan, type PlanRecherche } from '@/lib/import-immofacile';
 
 export type Mode = 'qualifier' | 'actifs';
@@ -169,23 +170,30 @@ async function creerASuivre(proprio: ClientMini, p: Plan, crm: EtatCRM, soucis: 
    réimport) n'est pas doublé. */
 const NOTE_VENTE = 'Projet de vente — recontacter ';
 const NOTE_PROCHAIN = 'Prochain contact repris d’ImmoFacile — ';
+/* V3.73 : le tri d'après l'import. « Dernier appel » : le bloc « Tri à
+   faire » de Relances (NOTE_TRI) ; « À relancer » : une relance ordinaire. */
+const NOTE_RELANCE_TRI = 'Relance proposée au tri de l’import — ';
 async function poserRappelVente(clientId: string, nom: string, p: Plan, soucis: string[]): Promise<boolean> {
   const r = p.rappel;
   if (!r) return false;
   const le = r.date < aujourdhuiYmd() ? aujourdhuiYmd() : r.date;
-  for (const debut of [NOTE_VENTE, NOTE_PROCHAIN]) {
+  for (const debut of [NOTE_VENTE, NOTE_PROCHAIN, NOTE_TRI, NOTE_RELANCE_TRI]) {
     try {
       const deja = await supabase.from('relances').select('id').eq('client_id', clientId).eq('statut', 'en_attente').like('note', `${debut}%`).limit(1);
       if (!deja.error && (deja.data || []).length) return false;
     } catch { /* la vérification a échoué : on pose le rappel quand même */ }
   }
-  const note = r.immofacile
+  const qui = nom || 'le contact';
+  const suite = `${r.texte ? ` · ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`;
+  const note = r.tri === 'dernier' ? `${NOTE_TRI}${qui}${suite}`
+    : r.tri === 'relancer' ? `${NOTE_RELANCE_TRI}${qui}${suite}`
+    : r.immofacile
     ? `${NOTE_PROCHAIN}${nom || 'le contact'}${r.texte ? ` · ${r.texte.charAt(0).toUpperCase()}${r.texte.slice(1)}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`
     : `${NOTE_VENTE}${nom || 'le propriétaire'}${r.texte ? ` · ${r.texte}` : ''}${r.retard ? ` (en retard, ${r.retard})` : ''}`;
   const m = await lire(supabase.from('relances').insert({
     client_id: clientId, type: 'manuelle', statut: 'en_attente', date_echeance: new Date(`${le}T09:00:00`).toISOString(), note,
   }));
-  if (m) { soucis.push(r.immofacile ? `sa relance du ${dateFr(le)} (prochain contact) n’a pas été posée (${m})` : `le rappel du ${dateFr(le)} pour sa vente n’a pas été posé (${m})`); return false; }
+  if (m) { soucis.push(r.tri === 'dernier' ? `son dernier appel du ${dateFr(le)} (tri) n’a pas été posé (${m})` : r.immofacile || r.tri ? `sa relance du ${dateFr(le)} n’a pas été posée (${m})` : `le rappel du ${dateFr(le)} pour sa vente n’a pas été posé (${m})`); return false; }
   return true;
 }
 
@@ -226,7 +234,8 @@ async function ecrireHistorique(clientId: string, p: Plan, lot: string, soucis: 
 export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean; lot: string; crm: EtatCRM }): Promise<Resultat> {
   const res: Resultat = { cle: id.cle, nom: id.nomAffiche, clientId: null, fait: null, recherches: 0, bien: false, rappel: false, soucis: [], echec: null };
   const acheteur = p.types.includes('acheteur');
-  const actif = acheteur && o.actif && !p.force;
+  /* V3.73 : un « dernier appel » du tri n'est jamais « Actif » : rien ne lui part tout seul. */
+  const actif = acheteur && o.actif && !p.force && p.tri?.sorte !== 'dernier';
   /* « Vendeur » : avec son bien, une fois celui-ci créé (creerASuivre). */
   const types = p.types.filter(t => t !== 'vendeur');
   let reference: string;
@@ -304,7 +313,7 @@ export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean
   res.bien = b.bien; res.rappel = b.rappel;
   if (p.rappel) {
     res.rappel = await poserRappelVente(cree.id, [id.prenom, id.nom].filter(Boolean).join(' '), p, res.soucis);
-    res.relanceIF = res.rappel && p.rappel.immofacile;
+    res.relanceIF = res.rappel && (p.rappel.immofacile || !!p.rappel.tri);
   }
   return res;
 }
@@ -374,7 +383,7 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
   if (c.recherche) {
     /* En marche seulement en « Actifs », pour une fiche déjà « Actif » : en
        « À qualifier », rien ne démarre tout seul. */
-    const active = o.actif && x.statut === 'actif' && !p.force;
+    const active = o.actif && x.statut === 'actif' && !p.force && p.tri?.sorte !== 'dernier';
     for (const rech of p.recherches) {
       const e = await creerRecherche(x.id, id, rech, active);
       if (e) res.soucis.push(`sa recherche n’a pas été enregistrée (${e})`);
@@ -397,7 +406,7 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
   }
   if (c.rappel && p.rappel) {
     res.rappel = await poserRappelVente(x.id, [x.prenom, x.nom].filter(Boolean).join(' '), p, res.soucis);
-    res.relanceIF = res.rappel && p.rappel.immofacile;
+    res.relanceIF = res.rappel && (p.rappel.immofacile || !!p.rappel.tri);
   }
   return res;
 }

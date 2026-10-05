@@ -24,6 +24,7 @@ import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
 import { demanderNouveauBien, demanderOngletBien, signalerMaj } from '@/lib/intentions';
+import { cloreRelancesArchive } from '@/lib/relances';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { libelleVisites } from '@/lib/visites';
@@ -376,6 +377,20 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     return data as Client;
   }
 
+  /* V3.73 : archiver ferme aussi ses relances en attente (sauf un compromis
+     ou l'agenda) : un contact rangé dans « Archivés » ne remonte plus dans
+     Relances. Une ligne du Suivi le dit, dans un sens comme dans l'autre. */
+  async function archiverOuNon(v: boolean) {
+    const ok = await ecrire({ archive: v }, v ? 'Le contact n’a pas pu être archivé' : 'Le contact n’a pas pu sortir des archives');
+    if (!ok) return;
+    if (v) {
+      const { erreur } = await cloreRelancesArchive(ok.id);
+      if (erreur) setErreur(`Le contact est archivé, mais ses relances en attente n’ont pas été fermées : ${erreur}`);
+    }
+    await addJournal(ok.id, 'statut_change', v ? 'Contact archivé' : 'Contact sorti des archives', v ? 'Ses relances en attente sont fermées.' : undefined, { archive: v });
+    signalerMaj();
+  }
+
   async function enregistrer() {
     if (!edit) return;
     if (!edit.prenom.trim() && !edit.nom.trim()) { setErreur('Écris au moins un prénom ou un nom.'); return; }
@@ -462,7 +477,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       const relie = [nb.biens ? `${nb.biens} bien${nb.biens > 1 ? 's' : ''}` : '', nb.docs ? `${nb.docs} document${nb.docs > 1 ? 's' : ''}` : ''].filter(Boolean).join(' et ');
       const pourquoi = `${x.prenom || 'Ce contact'} est relié à ${relie} : le supprimer les laisserait sans propriétaire. Archive-le plutôt.`;
       if (archive) { alert(`${pourquoi}\n\nIl est déjà archivé : il n’apparaît plus dans la liste.`); return; }
-      if (confirm(`${pourquoi}\n\nL’archiver maintenant ?`)) await ecrire({ archive: true }, 'Le contact n’a pas pu être archivé');
+      if (confirm(`${pourquoi}\n\nL’archiver maintenant ?`)) await archiverOuNon(true);
       return;
     }
     if (nb.recherches) {
@@ -543,7 +558,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
           {/* V3.51 : lui écrire sans quitter sa fiche (la trame de « Nouveau mail »). */}
           <button type="button" className={c.btn} onClick={() => setMail(true)}><Ic n="mail" t={15} />Envoyer un mail</button>
           <button type="button" className={c.btn} onClick={() => { setErreur(''); setEdit(formDe(x)); }}><Ic n="crayon" t={15} />Modifier</button>
-          <button type="button" className={`${c.btn} ${c.masquable}`} disabled={occupe} onClick={() => ecrire({ archive: !archive }, 'Le contact n’a pas pu être archivé')}>
+          <button type="button" className={`${c.btn} ${c.masquable}`} disabled={occupe} onClick={() => void archiverOuNon(!archive)}>
             <Ic n="archive" t={15} />{archive ? 'Sortir des archives' : 'Archiver'}
           </button>
           <button type="button" className={`${c.btn} ${c.btnDanger}`} disabled={occupe} onClick={supprimer} aria-label="Supprimer ce contact"><Ic n="corbeille" t={15} /></button>
