@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { supabase } from '@/lib/supabase';
-import { delaiRelance, echeanceDans } from '@/lib/relances';
-import { verifie } from '@/lib/ecritures';
+import { supabase, addJournal } from '@/lib/supabase';
+import { delaiRelance, echeanceDans, estTri, NOTE_TRI, cloreRelancesArchive } from '@/lib/relances';
+import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOngletBien } from '@/lib/intentions';
 import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } from '@/lib/alertes-rappro';
 import ChoixDate from '@/components/shared/ChoixDate';
@@ -19,6 +19,12 @@ import ChoixDate from '@/components/shared/ChoixDate';
  * avec son origine (biens présentés, un appel, une note, un message du
  * client…). « Ouvrir la fiche » arrive au bon endroit : l'onglet Présentés
  * pour une relance automatique, le Suivi sur l'action qui l'a créée sinon.
+ *
+ * V3.73 — « Tri à faire » : les contacts repris d'ImmoFacile sans nouvelles
+ * depuis longtemps (NOTE_TRI). Un bloc à part, sous les relances : ils ne
+ * comptent ni dans les trois compteurs ni dans les pastilles. Après l'appel,
+ * « C'est fait » (il reste) ou « Archiver » (il quitte la liste, retrouvable
+ * dans « Archivés »).
  */
 
 const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
@@ -46,6 +52,7 @@ const TR: Record<string, string[]> = {
   euro: ['M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5', 'M4 10.5h8', 'M4 13.5h8'],
   groupe: ['c:9,8,3.2', 'M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6', 'c:17,9,2.6', 'M16 14.2c2.8.3 5 2.6 5 5.8'],
   drapeau: ['M5 3v18', 'M5 5h13l-2 4 2 4H5'],
+  archive: ['M3.5 4.5h17v4h-17z', 'M5 8.5v10.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5', 'M10 12.5h4'],
 };
 function Ic({ n, t = 16, ep = 2 }: { n: string; t?: number; ep?: number }) {
   const traits = TR[n];
@@ -124,7 +131,11 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const [report, setReport] = useState<{ id: string; date: string } | null>(null);
   /* « C'est fait » : la carte s'efface, et un bandeau permet d'annuler. */
   const [partantes, setPartantes] = useState<Record<string, boolean>>({});
-  const [annulable, setAnnulable] = useState<{ id: string; nom: string } | null>(null);
+  /* Un archivage s'annule aussi : le contact revient, ses relances rouvrent. */
+  const [annulable, setAnnulable] = useState<{ id: string; nom: string; archive?: { clientId: string; relances: string[] } } | null>(null);
+  /* Le tri : celles du jour et en retard, ou toutes (V3.73). */
+  const [triTout, setTriTout] = useState(false);
+  const blocTri = useRef<HTMLElement | null>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   /* Les rapprochements à faire (V3.29) : un acheteur ou un mandat qui vient
      d'arriver, et ce qui leur correspond déjà. */
@@ -169,8 +180,36 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id)); signalerMaj(); }, 420);
   }
 
+  /* Le tri (V3.73) : il ne reste pas dans le fichier. Le contact passe dans
+     « Archivés » et ses relances en attente se ferment (cloreRelancesArchive). */
+  async function archiver(r: (typeof relances)[number]) {
+    const c = r.clients;
+    if (!c) return;
+    const nom = `${c.prenom || ''} ${c.nom || ''}`.trim() || 'ce contact';
+    if (!confirm(`Archiver ${nom} ?\n\nIl quitte la liste des contacts et se range dans « Archivés », où tu le retrouves quand tu veux. Ses relances en attente se ferment.`)) return;
+    if (!(await verifie('L’archivage du contact', supabase.from('clients').update({ archive: true, updated_at: new Date().toISOString() }).eq('id', c.id).select('id'), { ligne: true }))) return;
+    const { ids, erreur } = await cloreRelancesArchive(c.id);
+    if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
+    await addJournal(c.id, 'statut_change', 'Contact archivé', estTri(r.note) ? 'Après le dernier appel pour faire le tri.' : undefined, { archive: true });
+    setPartantes(p => ({ ...p, [r.id]: true }));
+    setAnnulable({ id: r.id, nom, archive: { clientId: c.id, relances: ids.length ? ids : [r.id] } });
+    if (minuterie.current) clearTimeout(minuterie.current);
+    minuterie.current = setTimeout(() => setAnnulable(null), 6000);
+    setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id && x.client_id !== c.id)); signalerMaj(); }, 420);
+  }
+
   async function annuler() {
     if (!annulable) return;
+    if (annulable.archive) {
+      const a = annulable.archive;
+      if (!(await verifie('Le contact sorti des archives', supabase.from('clients').update({ archive: false, updated_at: new Date().toISOString() }).eq('id', a.clientId).select('id'), { ligne: true }))) return;
+      if (!(await verifie('Ses relances rouvertes', supabase.from('relances').update({ statut: 'en_attente' }).in('id', a.relances).select('id')))) return;
+      await addJournal(a.clientId, 'statut_change', 'Contact sorti des archives', undefined, { archive: false });
+      setAnnulable(null);
+      setPartantes({});
+      charger();
+      return;
+    }
     if (!(await verifie('La relance rétablie', supabase.from('relances').update({ statut: 'en_attente' }).eq('id', annulable.id).select('id'), { ligne: true }))) return;
     setAnnulable(null);
     setPartantes(p => { const c = { ...p }; delete c[annulable.id]; return c; });
@@ -221,17 +260,23 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   }
 
   const auj = cleDe(new Date());
+  /* V3.73 : le tri d'après l'import, à part ; tout le reste se calcule sans lui. */
+  const tri = relances.filter(r => estTri(r.note));
+  const courantes = relances.filter(r => !estTri(r.note));
+  const triDus = tri.filter(r => jourDe(r.date_echeance) <= auj);
+  const triPlusTard = tri.length - triDus.length;
+  const triVus = triTout ? tri : triDus;
   /* Dans chaque groupe, « Veut faire une offre » passe en tête ; le reste
      garde l'ordre des échéances. */
   const enTete = (l: any[]) => [...l.filter(veutOffrir), ...l.filter(r => !veutOffrir(r))];
-  const retard = enTete(relances.filter(r => jourDe(r.date_echeance) < auj));
-  const duJour = enTete(relances.filter(r => jourDe(r.date_echeance) === auj));
-  const avenir = relances.filter(r => jourDe(r.date_echeance) > auj);
+  const retard = enTete(courantes.filter(r => jourDe(r.date_echeance) < auj));
+  const duJour = enTete(courantes.filter(r => jourDe(r.date_echeance) === auj));
+  const avenir = courantes.filter(r => jourDe(r.date_echeance) > auj);
   const demain = plusJours(1), dansSept = plusJours(7);
   const semaine = avenir.filter(r => jourDe(r.date_echeance) <= dansSept);
   const plusLoin = avenir.length - semaine.length;
   /* Les relances d'une période (bornes comprises), de la plus proche à la plus lointaine. */
-  const entre = (du: string, au: string) => relances.filter(r => { const k = jourDe(r.date_echeance); return k >= du && k <= au; });
+  const entre = (du: string, au: string) => courantes.filter(r => { const k = jourDe(r.date_echeance); return k >= du && k <= au; });
   const PERIODES: { k: Periode['k']; lib: string; du: string; au: string }[] = [
     { k: '30', lib: '30 prochains jours', du: auj, au: plusJours(30) },
     { k: '60', lib: '2 prochains mois', du: auj, au: plusJours(61) },
@@ -278,6 +323,89 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   ];
 
   let rang = 0;
+  /* Une ligne de relance, du bloc des échéances comme de celui du tri. */
+  const ligne = (r: (typeof relances)[number]) => {
+    const k = jourDe(r.date_echeance);
+    const e = ecart(k, auj);
+    const tag = e < 0 ? { lib: `${-e} j de retard`, encre: '#b91c1c', fond: '#fef2f2' }
+      : e === 0 ? { lib: 'Aujourd’hui', encre: '#b45309', fond: '#fff7e6' }
+      : e === 1 ? { lib: 'Demain', encre: '#1d4ed8', fond: '#eff6ff' }
+      : { lib: `Dans ${e} jours`, encre: '#475569', fond: '#f1f5f9' };
+    const enTri = estTri(r.note);
+    const o: Origine = enTri ? { lib: 'Dernier appel', ico: 'drapeau' } : origineDe(r, liens[r.id]);
+    const c = r.clients;
+    const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : 'Client supprimé';
+    const ouvert = report?.id === r.id;
+    /* Le tri : la note sans son en-tête, ni le nom qui est juste au-dessus. */
+    const texte = !r.note || r.note === o.lib ? '' : enTri ? String(r.note).slice(NOTE_TRI.length).replace(/^[^·]*·\s*/, s0 => (nom && s0.trim().replace(/\s*·$/, '') === nom ? '' : s0)) : r.note;
+    return (
+      <div key={r.id} className="rl-entre" style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
+        <div className="rl-ligne" data-partante={partantes[r.id] ? '' : undefined}
+          style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
+          <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
+          <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
+                {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
+              </span>
+            </span>
+            <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: o.fort ? 800 : 700, color: o.fort ? NAVY : OR_FONCE, background: o.fort ? OR : '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
+              {/* Le tri : le motif compte, il tient sur deux lignes. */}
+              <span style={enTri ? { minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4 } : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{texte}</span>
+            </span>
+            <span style={{ fontSize: 11.5, color: PALE }}>{`prévue le ${dateCourte(k)}`}</span>
+          </span>
+          <span className="rl-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, justifyContent: 'flex-end' }}>
+            {c && (
+              <button type="button" className="rl-appui" onClick={() => ouvrirFiche(r)} title="Ouvrir la fiche, au bon onglet"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, height: 38, padding: '0 14px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <span className="rl-long">Ouvrir la fiche</span><span className="rl-court">Fiche</span><Ic n="fleche" t={14} ep={2.2} />
+              </button>
+            )}
+            <button type="button" className="rl-appui" onClick={() => ouvrirReport(r.id)} aria-expanded={ouvert}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${ouvert ? OR : BORD}`, background: ouvert ? '#fffaf0' : 'white', color: ouvert ? OR_FONCE : NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Ic n="report" t={14} ep={2.2} />Reporter
+            </button>
+            {enTri && c && (
+              <button type="button" className="rl-appui" onClick={() => archiver(r)} title="Il ne reste pas : rangé dans « Archivés », ses relances se ferment"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${BORD}`, background: '#f8fafc', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <Ic n="archive" t={14} ep={2.1} />Archiver
+              </button>
+            )}
+            <button type="button" className="rl-appui" onClick={() => fait(r)}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Ic n="coche" t={15} ep={2.6} />C’est fait
+            </button>
+          </span>
+        </div>
+
+        {ouvert && report && (
+          <div className="rl-entre" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, margin: '6px 0 0', padding: '12px 14px', borderRadius: 16, background: '#fffaf0', border: '1px solid #f0e2bd' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: OR_FONCE, textTransform: 'uppercase', letterSpacing: .9, marginRight: 4 }}>Reporter au</span>
+            {([['Demain', 1], ['Dans 3 j', 3], ['Dans 7 j', 7], ['Dans 15 j', 15], ['Dans 1 mois', 30]] as [string, number][]).map(([lib, j]) => {
+              const d = plusJours(j);
+              const actif = report.date === d;
+              return (
+                <button key={lib} type="button" className="rl-appui" onClick={() => setReport({ id: r.id, date: d })}
+                  style={{ height: 32, padding: '0 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: `1px solid ${actif ? NAVY : '#e3d3ab'}`, background: actif ? NAVY : 'white', color: actif ? '#f2dfa6' : '#6b6045' }}>{lib}</button>
+              );
+            })}
+            <ChoixDate compact valeur={report.date} min={plusJours(0)} placeholder="Une autre date" onChange={v => v && setReport({ id: r.id, date: v })} />
+            <span style={{ flexGrow: 1 }} />
+            <button type="button" onClick={() => setReport(null)} style={{ background: 'none', border: 'none', color: '#a08c60', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
+            <button type="button" className="rl-appui" onClick={() => reporter(r.id, report.date)}
+              style={{ height: 34, background: NAVY, color: 'white', border: 'none', borderRadius: 10, padding: '0 15px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {`Reporter au ${dateCourte(report.date)}`}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="rl-page" style={{ padding: '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
       <style>{`
@@ -315,6 +443,8 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-al-btns{grid-column:1 / -1}
           .rl-al-btns > button{flex:1 1 0}
           .rl-actions > button{flex:1 1 0;padding:0 8px !important;white-space:nowrap}
+          .rl-tri{padding:12px 10px 14px !important;border-radius:18px !important}
+          .rl-tri .rl-actions{display:grid !important;grid-template-columns:1fr 1fr;gap:8px !important}
           .rl-long{display:none}
           .rl-court{display:inline !important}
           .rl-titre{font-size:22px !important}
@@ -334,6 +464,14 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h1 className="rl-titre" style={{ margin: 0, fontFamily: JAK, fontSize: 28, fontWeight: 800, letterSpacing: -.5 }}>Relances</h1>
         <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter cette semaine, du plus pressé au moins pressé. Plus loin : choisis une période.</p>
+        {!loading && tri.length > 0 && (
+          <button type="button" className="rl-appui" onClick={() => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            style={{ alignSelf: 'flex-start', marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 12px', borderRadius: 20, border: '1px solid #dfe5ee', background: '#f6f8fb', color: '#475569', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <Ic n="drapeau" t={13} ep={2.1} />
+            <span>{`Tri à faire : ${triDus.length ? `${triDus.length} à appeler` : 'rien pour aujourd’hui'}${triPlusTard ? ` · ${triPlusTard} plus tard` : ''}`}</span>
+            <Ic n="fleche" t={13} ep={2.1} />
+          </button>
+        )}
       </header>
 
       {alertes.length > 0 && (
@@ -404,7 +542,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       )}
 
       {/* Plus loin que la semaine (V3.71) : une période, ou un jour, ou entre deux dates. */}
-      {!loading && relances.length > 0 && (
+      {!loading && courantes.length > 0 && (
         <div className="rl-periode rl-entre" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 16, background: periode ? '#f5f8ff' : 'white', border: `1px solid ${periode ? '#cfe0fd' : BORD}` }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#1d4ed8', marginRight: 4 }}><Ic n="calendrier" t={14} ep={2.1} />Voir plus loin</span>
           {PERIODES.map(x => {
@@ -440,11 +578,11 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
 
       {loading ? (
         <div style={{ padding: '40px 0', textAlign: 'center', color: PALE, fontSize: 13.5 }}>Chargement…</div>
-      ) : relances.length === 0 ? (
+      ) : courantes.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
           <span style={{ width: 62, height: 62, borderRadius: 20, background: '#dcfce8', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="coche" t={30} ep={2.4} /></span>
           <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>Tout est à jour</b>
-          <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.55, maxWidth: 440 }}>Aucune relance en attente. Une relance se programme toute seule quand un bien part chez un client, et se clôture dès qu’il répond.</span>
+          <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.55, maxWidth: 440 }}>{tri.length ? 'Aucune relance en attente, en dehors du tri juste en dessous.' : 'Aucune relance en attente. Une relance se programme toute seule quand un bien part chez un client, et se clôture dès qu’il répond.'}</span>
         </div>
       ) : visibles.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
@@ -462,86 +600,42 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
                 <span>{g.titre}</span>
                 <span style={{ fontSize: 11, fontWeight: 800, color: g.couleur, background: `${g.couleur}14`, borderRadius: 20, padding: '1px 8px', letterSpacing: 0 }}>{g.liste.length}</span>
               </div>
-              {g.liste.map(r => {
-                const k = jourDe(r.date_echeance);
-                const e = ecart(k, auj);
-                const tag = e < 0 ? { lib: `${-e} j de retard`, encre: '#b91c1c', fond: '#fef2f2' }
-                  : e === 0 ? { lib: 'Aujourd’hui', encre: '#b45309', fond: '#fff7e6' }
-                  : e === 1 ? { lib: 'Demain', encre: '#1d4ed8', fond: '#eff6ff' }
-                  : { lib: `Dans ${e} jours`, encre: '#475569', fond: '#f1f5f9' };
-                const o = origineDe(r, liens[r.id]);
-                const c = r.clients;
-                const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : 'Client supprimé';
-                const ouvert = report?.id === r.id;
-                return (
-                  <div key={r.id} className="rl-entre" style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
-                    <div className="rl-ligne" data-partante={partantes[r.id] ? '' : undefined}
-                      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
-                      <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
-                      <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
-                            {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
-                          </span>
-                        </span>
-                        <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: o.fort ? 800 : 700, color: o.fort ? NAVY : OR_FONCE, background: o.fort ? OR : '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{r.note && r.note !== o.lib ? r.note : ''}</span>
-                        </span>
-                        <span style={{ fontSize: 11.5, color: PALE }}>{`prévue le ${dateCourte(k)}`}</span>
-                      </span>
-                      <span className="rl-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, justifyContent: 'flex-end' }}>
-                        {c && (
-                          <button type="button" className="rl-appui" onClick={() => ouvrirFiche(r)} title="Ouvrir la fiche, au bon onglet"
-                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, height: 38, padding: '0 14px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            <span className="rl-long">Ouvrir la fiche</span><span className="rl-court">Fiche</span><Ic n="fleche" t={14} ep={2.2} />
-                          </button>
-                        )}
-                        <button type="button" className="rl-appui" onClick={() => ouvrirReport(r.id)} aria-expanded={ouvert}
-                          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${ouvert ? OR : BORD}`, background: ouvert ? '#fffaf0' : 'white', color: ouvert ? OR_FONCE : NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          <Ic n="report" t={14} ep={2.2} />Reporter
-                        </button>
-                        <button type="button" className="rl-appui" onClick={() => fait(r)}
-                          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          <Ic n="coche" t={15} ep={2.6} />C’est fait
-                        </button>
-                      </span>
-                    </div>
-
-                    {ouvert && report && (
-                      <div className="rl-entre" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, margin: '6px 0 0', padding: '12px 14px', borderRadius: 16, background: '#fffaf0', border: '1px solid #f0e2bd' }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: OR_FONCE, textTransform: 'uppercase', letterSpacing: .9, marginRight: 4 }}>Reporter au</span>
-                        {([['Demain', 1], ['Dans 3 j', 3], ['Dans 7 j', 7], ['Dans 15 j', 15], ['Dans 1 mois', 30]] as [string, number][]).map(([lib, j]) => {
-                          const d = plusJours(j);
-                          const actif = report.date === d;
-                          return (
-                            <button key={lib} type="button" className="rl-appui" onClick={() => setReport({ id: r.id, date: d })}
-                              style={{ height: 32, padding: '0 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: `1px solid ${actif ? NAVY : '#e3d3ab'}`, background: actif ? NAVY : 'white', color: actif ? '#f2dfa6' : '#6b6045' }}>{lib}</button>
-                          );
-                        })}
-                        <ChoixDate compact valeur={report.date} min={plusJours(0)} placeholder="Une autre date" onChange={v => v && setReport({ id: r.id, date: v })} />
-                        <span style={{ flexGrow: 1 }} />
-                        <button type="button" onClick={() => setReport(null)} style={{ background: 'none', border: 'none', color: '#a08c60', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
-                        <button type="button" className="rl-appui" onClick={() => reporter(r.id, report.date)}
-                          style={{ height: 34, background: NAVY, color: 'white', border: 'none', borderRadius: 10, padding: '0 15px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          {`Reporter au ${dateCourte(report.date)}`}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {g.liste.map(r => ligne(r))}
             </section>
           ))}
         </div>
       )}
 
+      {/* V3.73 — Le tri d'après l'import : à part, sous les relances. */}
+      {!loading && tri.length > 0 && (
+        <section ref={blocTri} className="rl-tri rl-entre" aria-label="Tri à faire" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 16px 18px', borderRadius: 22, background: '#f6f8fb', border: '1px dashed #d5dde8', scrollMarginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 13, background: 'white', border: '1px solid #dfe5ee', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="drapeau" t={19} ep={2} /></span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ fontFamily: JAK, fontSize: 16.5, fontWeight: 800, color: '#1a2332' }}>Tri à faire</b>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>suite à l’import</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#475569', background: 'white', border: '1px solid #dfe5ee', borderRadius: 20, padding: '1px 8px' }}>{tri.length}</span>
+              </span>
+              <span style={{ fontSize: 13, color: DOUX, lineHeight: 1.5 }}>Des contacts sans nouvelles depuis longtemps : un dernier appel pour savoir s’ils restent dans ton fichier. Ils ne comptent pas dans les relances du dessus.</span>
+            </span>
+          </div>
+          {triVus.length ? triVus.map(r => ligne(r)) : (
+            <span style={{ fontSize: 13, color: DOUX, padding: '4px 2px' }}>{`Personne à appeler aujourd’hui. ${triPlusTard > 1 ? `${triPlusTard} appels sont prévus plus tard` : '1 appel est prévu plus tard'}.`}</span>
+          )}
+          {triPlusTard > 0 && (
+            <button type="button" className="rl-appui" onClick={() => setTriTout(x => !x)}
+              style={{ alignSelf: 'flex-start', height: 34, padding: '0 14px', borderRadius: 11, border: '1px solid #dfe5ee', background: 'white', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {triTout ? 'Ne garder que ceux du jour' : `Voir aussi les ${triPlusTard > 1 ? `${triPlusTard} prévus plus tard` : 'un prévu plus tard'}`}
+            </button>
+          )}
+        </section>
+      )}
+
       {annulable && (
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', animation: 'rlBandeau .3s cubic-bezier(.2,.9,.3,1) both', maxWidth: 'calc(100vw - 24px)' }}>
           <span style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
-          <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`Relance de ${annulable.nom} clôturée.`}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{annulable.archive ? `${annulable.nom} archivé.` : `Relance de ${annulable.nom} clôturée.`}</span>
           <button type="button" onClick={annuler} style={{ height: 32, padding: '0 12px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,.12)', color: OR, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Annuler</button>
         </div>
       )}
