@@ -69,8 +69,8 @@ function rangeeDe(c: Contact, o: { choix: Choix; etat: EtatLecture; lecture: Lec
   const verif = doublon ? plan.aVerifier.filter(x => !plan.verifFiche.includes(x)) : [...plan.aVerifier];
   if (t?.conflit && nouveau && o.choix.nouveau === null) verif.push(`Même nom que « ${nomCRM(t.client)} » dans ton CRM, mais d’autres coordonnées : une fiche à part est créée.`);
   if (doublon?.autreNom) verif.push(`Même ${doublon.raison} que « ${nomCRM(doublon.client)} » dans ton CRM, sous un autre nom : sa fiche est complétée, sans y recopier ses coordonnées.`);
-  /* V3.73 : un « dernier appel » du tri reste à qualifier. */
-  const actif = o.mode === 'actifs' && !plan.force && verif.length === 0 && plan.tri?.sorte !== 'dernier';
+  /* V3.73 : un « dernier appel » du tri reste à qualifier (V3.77 : un vendeur signé ou archivé aussi). */
+  const actif = o.mode === 'actifs' && !plan.force && verif.length === 0 && (!plan.tri || plan.tri.sorte === 'relancer');
   const initiales = `${(c.prenom || '')[0] || ''}${(c.nom || '')[0] || ''}`.toUpperCase() || '·';
   const bienPossible = !doublon || !o.crm.avecBien.has(doublon.client.id);
   return { c, plan, choix: o.choix, etat: o.etat, doublon, trouve: t, nouveau, completion, verif, actif, bienPossible, nom, initiales };
@@ -93,9 +93,14 @@ function Role({ r, on, onClick }: { r: 'proprietaire' | 'acheteur'; on?: boolean
 function Types({ p }: { p: Plan }) {
   return (
     <>
-      {p.roles.proprietaire && <Role r="proprietaire" />}
+      {p.types.includes('proprietaire') && <Role r="proprietaire" />}
       {p.roles.acheteur && <Role r="acheteur" />}
-      {p.types.filter(t => t !== 'acheteur' && t !== 'proprietaire').map(t => <span key={t} className={`${st.role} ${st.gris}`}>{typeDe(t).lib}</span>)}
+      {/* V3.77 : « Vendeur signé » dans sa couleur du CRM. */}
+      {p.types.filter(t => t !== 'acheteur' && t !== 'proprietaire').map(t => (
+        <span key={t} className={`${st.role} ${st.gris}`} style={t === 'vendeur_signe' || t === 'vendeur' ? { color: typeDe(t).c, background: typeDe(t).fond } : undefined}>
+          {t === 'vendeur_signe' && <Ic n="check" t={12} e={2.4} />}{typeDe(t).lib}
+        </span>
+      ))}
     </>
   );
 }
@@ -185,6 +190,9 @@ function Etiquettes({ r }: { r: Rangee }) {
         return <em className={p.rappel?.retard ? st.tagOr : st.tagBleu}><Ic n="horloge" t={11} /><span>{`${t.charAt(0).toUpperCase()}${t.slice(1)}`}</span></em>;
       })()}
       {p.location && !p.locationSeule && <em className={st.tagBleu}><Ic n="cle" t={11} /><span>Cherche aussi à louer : noté dans « À savoir »</span></em>}
+      {/* V3.77 : les vendeurs triés. */}
+      {p.archiver && <em className={st.tagBleu}><Ic n="archive" t={11} /><span>{`Rangé dans « Archivés »${p.tri?.motif ? ` : ${p.tri.motif.charAt(0).toLowerCase()}${p.tri.motif.slice(1)}` : ''}`}</span></em>}
+      {p.tri?.sorte === 'signe' && <em className={st.tagBleu}><Ic n="check" t={11} /><span>{`Vendeur signé${p.tri.motif ? ` : ${p.tri.motif.charAt(0).toLowerCase()}${p.tri.motif.slice(1)}` : ''}`}</span></em>}
       {r.etat === 'echec' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Lecture du texte impossible : vérifie</span></em>}
       {r.etat === 'passee' && <em className={st.tagRouge}><Ic n="info" t={11} /><span>Commentaire pas lu : colonnes seulement</span></em>}
       {r.etat === 'attente' && <em className={st.tagBleu}><Rond petit /><span>Lecture du commentaire…</span></em>}
@@ -262,7 +270,8 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
   const aSavoir = p.aSavoir.split('\n\n').filter(b => !/^Son commentaire dans ImmoFacile|^Précision de sa recherche dans ImmoFacile/.test(b)).join('\n');
   /* Ce qui est recopié tel quel dans « À savoir », en plus des lignes lues. */
   const bruts = [precisions.length ? 'la précision de sa recherche' : '', commentaire ? 'son commentaire' : ''].filter(Boolean).join(' et ');
-  const statut = !p.roles.acheteur ? 'Prospect'
+  const statut = p.archiver ? 'Rangé dans « Archivés » : hors de la liste, retrouvable quand tu veux, sans relance'
+    : !p.roles.acheteur ? (p.tri?.sorte === 'signe' ? `Vendeur signé : un ancien client${p.rappel ? '' : ', sans relance'}` : 'Prospect')
     : r.actif ? 'Actif : veille et point automatique'
       : p.tri?.sorte === 'dernier' ? 'Prospect : dernier appel pour faire le tri, rien ne part tout seul'
       : mode !== 'actifs' ? 'Prospect : à qualifier, rien ne part tout seul'
@@ -329,7 +338,8 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
                 || (r.etat === 'attente' ? 'Lecture de son texte en cours…'
                   : precisions.length || commentaire ? 'Rien de repris : sa précision d’ImmoFacile reste, telle quelle, dans « À savoir ».' : 'Aucune')}</dd></>}
               {p.recherches.slice(1).map(x => <Fragment key={x.nom}><dt>{x.nom}</dt><dd>{`${x.titre} · ${x.ligne}`}</dd></Fragment>)}
-              {p.roles.proprietaire && <><dt>Son bien</dt><dd>{p.aSuivre
+              {p.tri?.sorte === 'signe' && <><dt>Son bien</dt><dd>Vendu avec toi : sa fiche bien sera rattachée à la sienne à la reprise des biens d’ImmoFacile.</dd></>}
+              {p.roles.proprietaire && p.tri?.sorte !== 'signe' && !p.archiver && <><dt>Son bien</dt><dd>{p.aSuivre
                 ? `Fiche bien « À suivre » dans Biens : ${p.aSuivre.resume} · ${p.aSuivre.rappelTexte}`
                 : p.bienActuel.aVendre
                   ? `Case « Revente possible après l’achat (mandat vendeur potentiel) » cochée${p.bienActuel.notes ? ` : ${p.bienActuel.notes.replace(/[.\s]+$/, '')}` : ''} · ${p.rappel ? p.rappel.rappelTexte : 'sans date de rappel'}. Pas de fiche bien.`
@@ -413,7 +423,9 @@ function Edition({ r, aujourdhui, onChoix }: { r: Rangee; aujourdhui: string; on
 }
 
 type Etape = 'choix' | 'apercu' | 'ecriture' | 'fini';
-type Onglet = 'tous' | 'ach' | 'pro' | 'com' | 'dbl' | 'ver' | 'exc';
+type Onglet = 'tous' | 'ach' | 'pro' | 'sig' | 'arc' | 'com' | 'dbl' | 'ver' | 'exc';
+/* V3.77 : un vendeur signé ou archivé au tri a son onglet, pas celui des propriétaires. */
+const proprioSeul = (p: Plan) => p.roles.proprietaire && p.tri?.sorte !== 'signe' && !p.archiver;
 
 export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   onFermer: () => void;
@@ -505,7 +517,9 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const ONGLETS: { k: Onglet; l: string; n: number; cls?: string; toujours?: boolean }[] = [
     { k: 'tous', l: 'Tous', n: rangees.length, toujours: true },
     { k: 'ach', l: 'Acheteurs', n: actives.filter(r => !r.doublon && r.plan.roles.acheteur).length, toujours: true },
-    { k: 'pro', l: 'Propriétaires', n: actives.filter(r => !r.doublon && r.plan.roles.proprietaire).length, toujours: true },
+    { k: 'pro', l: 'Propriétaires', n: actives.filter(r => !r.doublon && proprioSeul(r.plan)).length, toujours: true },
+    { k: 'sig', l: 'Vendeurs signés', n: actives.filter(r => !r.doublon && r.plan.tri?.sorte === 'signe').length },
+    { k: 'arc', l: 'Rangés dans Archivés', n: actives.filter(r => !r.doublon && r.plan.archiver).length },
     { k: 'com', l: 'Tirées d’un commentaire', n: actives.filter(r => !r.doublon && r.plan.tiree).length, cls: st.oOr, toujours: true },
     { k: 'dbl', l: 'Déjà dans le CRM', n: nbDeja, toujours: true },
     { k: 'ver', l: 'À vérifier', n: actives.filter(r => r.verif.length).length, cls: st.oRouge },
@@ -514,7 +528,9 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
   const dansOnglet = (r: Rangee) => {
     switch (onglet) {
       case 'ach': return !r.choix.exclu && !r.doublon && r.plan.roles.acheteur;
-      case 'pro': return !r.choix.exclu && !r.doublon && r.plan.roles.proprietaire;
+      case 'pro': return !r.choix.exclu && !r.doublon && proprioSeul(r.plan);
+      case 'sig': return !r.choix.exclu && !r.doublon && r.plan.tri?.sorte === 'signe';
+      case 'arc': return !r.choix.exclu && !r.doublon && r.plan.archiver;
       case 'com': return !r.choix.exclu && !r.doublon && r.plan.tiree;
       case 'dbl': return !r.choix.exclu && !!r.doublon;
       case 'ver': return !r.choix.exclu && r.verif.length > 0;

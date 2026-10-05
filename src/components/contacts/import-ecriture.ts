@@ -234,10 +234,12 @@ async function ecrireHistorique(clientId: string, p: Plan, lot: string, soucis: 
 export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean; lot: string; crm: EtatCRM }): Promise<Resultat> {
   const res: Resultat = { cle: id.cle, nom: id.nomAffiche, clientId: null, fait: null, recherches: 0, bien: false, rappel: false, soucis: [], echec: null };
   const acheteur = p.types.includes('acheteur');
-  /* V3.73 : un « dernier appel » du tri n'est jamais « Actif » : rien ne lui part tout seul. */
-  const actif = acheteur && o.actif && !p.force && p.tri?.sorte !== 'dernier';
-  /* « Vendeur » : avec son bien, une fois celui-ci créé (creerASuivre). */
-  const types = p.types.filter(t => t !== 'vendeur');
+  /* V3.73 : un « dernier appel » du tri n'est jamais « Actif » : rien ne lui part tout seul.
+     V3.77 : un vendeur signé ou archivé non plus. */
+  const actif = acheteur && o.actif && !p.force && (!p.tri || p.tri.sorte === 'relancer');
+  /* « Vendeur » : avec son bien, une fois celui-ci créé (creerASuivre).
+     V3.77 : sauf un vendeur archivé, qui le garde sans bien. */
+  const types = p.types.filter(t => t !== 'vendeur' || p.archiver);
   let reference: string;
   try { reference = await genererReference(); }
   catch (e) { res.echec = (e as Error).message; return res; }
@@ -259,6 +261,8 @@ export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean
     bien_actuel_notes: ba.aVendre ? ba.notes : null,
     notes: p.aSavoir || null,
     est_vendeur: false,
+    /* V3.77 : un vendeur « Archivé » au tri arrive dans « Archivés ». */
+    ...(p.archiver ? { archive: true } : {}),
   };
   const civ = id.civilite ? { civilite: id.civilite } : {};
   const src = p.source ? { source: p.source.k, source_detail: p.source.detail || null } : {};
@@ -304,6 +308,9 @@ export async function importerNouveau(id: Identite, p: Plan, o: { actif: boolean
   const libSrc = p.source ? libelleSource(p.source.k, p.source.detail) : '';
   const ok = await addJournal(cree.id, 'creation', p.suivi, `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`, { source: 'import_immofacile', lot: o.lot });
   if (!ok) res.soucis.push('la ligne « Fiche reprise d’ImmoFacile » de son Suivi n’a pas été écrite');
+  if (p.archiver && !(await addJournal(cree.id, 'statut_change', 'Contact archivé', `Vendeur archivé à l’import d’ImmoFacile${p.tri?.motif ? ` : ${p.tri.motif.charAt(0).toLowerCase()}${p.tri.motif.slice(1)}` : ''}.`, { archive: true, source: 'import_immofacile', lot: o.lot }))) {
+    res.soucis.push('il est bien dans « Archivés », mais la ligne « Contact archivé » de son Suivi n’a pas été écrite');
+  }
   /* Son historique d'ImmoFacile, chaque action à sa date (V3.70). */
   res.historique = await ecrireHistorique(cree.id, p, o.lot, res.soucis);
 
@@ -343,6 +350,9 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
     doublon: o.doublon, memeLot: o.memeLot, nomImmo: id.nomAffiche,
   });
   res.fait = 'complete';
+  /* V3.77 : une fiche qui existe déjà n'est jamais archivée par l'import :
+     elle sert peut-être ailleurs. Alexandre le décide sur sa fiche. */
+  if (p.archiver && x.archive !== true) res.soucis.push('déjà dans ton CRM : sa fiche n’a pas été rangée dans « Archivés », fais-le depuis sa fiche si besoin');
   if (c.rien) return res;
   const patch: Record<string, unknown> = {};
   if (c.emails.length) patch.emails = [...(x.emails || []), ...c.emails];
@@ -383,7 +393,7 @@ export async function completerFiche(id: Identite, p: Plan, clientId: string, o:
   if (c.recherche) {
     /* En marche seulement en « Actifs », pour une fiche déjà « Actif » : en
        « À qualifier », rien ne démarre tout seul. */
-    const active = o.actif && x.statut === 'actif' && !p.force && p.tri?.sorte !== 'dernier';
+    const active = o.actif && x.statut === 'actif' && !p.force && (!p.tri || p.tri.sorte === 'relancer');
     for (const rech of p.recherches) {
       const e = await creerRecherche(x.id, id, rech, active);
       if (e) res.soucis.push(`sa recherche n’a pas été enregistrée (${e})`);
