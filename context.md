@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.69 · 5 octobre 2026**
+**Version 3.70 · 5 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,41 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.70 — 5 octobre 2026 · import ImmoFacile : le prochain contact et l'historique des relances
+
+Rien à passer dans Supabase.
+
+Alexandre : « le contenu de la relance n'est pas pris en compte », « et prochain contact non plus ».
+ImmoFacile n'exporte ni l'un ni l'autre (ni l'export d'une liste, ni celui d'un contact, ni
+« Outils » sur la liste des contacts). Ils se lisent dans sa fiche : « Prochain contact le »
+(Informations générales) et le panneau « Actions » (onglet « Archivées », « Afficher les
+commentaires »). Claude les relève dans son Chrome, en lecture seule, et les ajoute à la fin de
+l'export, en deux colonnes ; l'original n'est pas touché, une copie « … - avec relances.csv » est
+posée à côté. Un export ordinaire, sans ces colonnes, s'importe comme avant.
+
+- **Les colonnes** (`lireFichier`) : « Prochain contact » (« 13/10/2026 ») et « Historique des
+  relances » (une action par ligne : « 08/12/2025 · Relance : … », « 29/09/2026 · Messagerie ») ;
+  `lireHistorique` les lit (une ligne sans date continue la précédente), les plus récentes d'abord.
+  Deux fiches ImmoFacile pour la même personne : le prochain contact le plus proche, les deux
+  historiques sans doublon.
+- **Le Suivi** (`lignesSuivi`, `ecrireHistorique`) : une ligne par action, **à sa date d'origine**
+  (`created_at` à midi ce jour-là). Alexandre : « les relances, c'est toujours un appel passé » →
+  « Relance » = « Appel passé » avec son commentaire ; « Messagerie » = « Appel — messagerie » (les
+  mêmes titres que les issues d'appel, donc les mêmes couleurs) ; « Recueil du consentement » =
+  note « Consentement recueilli » ; « Autorisation manuelle du numéro » laissée.
+  `metadata.source = 'immofacile_historique'` : un réimport ne double pas les lignes déjà là (même
+  jour, même titre, même texte). Si la base gardait la date du jour, l'écran de fin le dirait.
+- **La relance** : le prochain contact donne une relance à tout contact, acheteur compris, à cette
+  date (une date passée : aujourd'hui, « en retard », et la ligne dans « À savoir »). Il l'emporte
+  sur le « rappeler en … » lu dans le commentaire ; avec une fiche bien « À suivre », c'est la date
+  de son rappel. Note : « Prochain contact repris d'ImmoFacile — Nom · Dernier échange le … : … » (le
+  commentaire le plus récent). Pas doublée si une relance de prochain contact ou de projet de vente
+  attend déjà.
+- **L'aperçu** : à gauche, « Prochain contact » et « Historique » (combien d'actions) ; à droite,
+  « Relance » (la date et la note) et, sous « Suivi », chaque ligne telle qu'elle arrivera (une boîte
+  qui défile) ; une étiquette « Historique : 19 lignes » sous la ligne du contact ; « Relance le »
+  dans les corrections. L'écran de fin compte les relances posées et les lignes d'historique.
 
 ### V3.69 — 5 octobre 2026 · import ImmoFacile : les coordonnées dans l'aperçu
 
