@@ -1,6 +1,6 @@
 # CONTEXTE — Emilio Immo, CRM de chasse immobilière
 
-**Version 3.68 · 4 octobre 2026**
+**Version 3.69 · 5 octobre 2026**
 
 Ce fichier décrit **ce qui existe**, pas ce qu'on aimerait construire.
 Les règles de travail (comment livrer, quels pièges éviter) sont dans **`AGENTS.md`** — à lire en premier.
@@ -1460,6 +1460,26 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.69 — 5 octobre 2026 · import ImmoFacile : les coordonnées dans l'aperçu
+
+Rien à passer dans Supabase.
+
+Alexandre : « est-ce que son adresse est reprise ? est-ce que c'est affiché ? ». Elle l'était déjà
+(colonnes Adresse, Code postal, Ville → « 12 rue …, 92100 Boulogne-Billancourt » dans l'adresse de
+sa fiche ; pour une fiche déjà dans le CRM, seulement si elle n'en a pas), mais l'aperçu ne la
+montrait pas. Une ligne « Coordonnées » des deux côtés : téléphones, e-mails, adresse (ou ce qui
+manque).
+
+Puis « est-ce qu'il y a d'autres choses qui ne sont pas affichées ? » : tout ce qui est écrit se
+voit maintenant dans l'aperçu.
+- Un nouveau contact : tous ses types (aussi Vendeur avec une fiche bien, Notaire, Confrère… qui
+  n'apparaissaient pas), son statut même s'il n'achète pas, « Situation : Propriétaire », sa source
+  (« Plateforme immobilière · SeLoger »), « À savoir » en entier (il était coupé à 700 caractères).
+- Une fiche déjà dans le CRM : les téléphones, e-mails et adresse ajoutés en clair, la source, le
+  bloc « À savoir » ajouté.
+- La précision et le commentaire d'ImmoFacile, à gauche, en entier (une boîte qui défile au-delà de
+  260 px), au lieu d'un extrait.
 
 ### V3.68 — 4 octobre 2026 · « Ma recherche » : retour à la présentation d'avant, avec des icônes partout
 
