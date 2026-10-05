@@ -107,7 +107,15 @@ export type FicheIF = {
   /* « Accepte les communications par email », « Accepte les propositions de
      biens » : « oui », « non » ou vide. */
   consentMail: string; consentBiens: string;
+  /* Deux colonnes qu'ImmoFacile n'exporte pas (V3.70) : relevées dans sa
+     fiche et ajoutées au fichier — « Prochain contact » (« 13/10/2026 ») et
+     « Historique des relances » (une action par ligne, « 08/12/2025 ·
+     Relance : … »). Vides dans un export ordinaire. */
+  prochain: string; historique: string;
 };
+/* Une action de son historique ImmoFacile : sa date, ce que c'était
+   (« Relance », « Messagerie »…), son commentaire. */
+export type ActionIF = { date: string; quoi: string; texte: string };
 export type FichierLu = {
   nom: string; encodage: Encodage; fiches: FicheIF[];
   /* Les lignes laissées de côté : la table des actions d'un export d'un seul
@@ -132,6 +140,8 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
   const tete = lignes[iTete].map(cleCol);
   const col = (k: string) => tete.indexOf(k);
   const cols = (k: string) => tete.map((x, i) => (x === k ? i : -1)).filter(i => i >= 0);
+  const iProchain = tete.findIndex(k => /^(date de )?prochain contact( le)?$/.test(k));
+  const iHistorique = tete.findIndex(k => /^historique( des (relances|actions))?$/.test(k));
   /* Les recherches : « Prix 1 », « Chambres 2 »… */
   const numeros = new Set<number>();
   tete.forEach(h => { const m = h.match(/^(.+?) (\d+)$/); if (m && BASES_RECHERCHE[m[1]]) numeros.add(Number(m[2])); });
@@ -156,6 +166,7 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
       situation: net(v(l, col('situation'))), recherches: [],
       consentMail: net(v(l, col('accepte les communications par email'))).toLowerCase(),
       consentBiens: net(v(l, col('accepte les propositions de biens'))).toLowerCase(),
+      prochain: net(v(l, iProchain)), historique: netTexte(v(l, iHistorique)),
     };
     for (const n of [...numeros].sort((a, b) => a - b)) {
       const r: RechIF = { n, precision: '', types: '', transaction: '', secteur: '', cpVilles: '', rayon: '', loyerHC: '', loyerCC: '', prix: [], pieces: '', chambres: '', surface: '', terrain: '', kelquartier: '' };
@@ -424,6 +435,9 @@ export type Contact = {
   creeLe: string | null; suiviPar: string;
   commentaires: string[];
   recherches: RechCols[];
+  /* Le prochain contact noté dans ImmoFacile, et son historique (V3.70). */
+  prochain: string | null;
+  historique: ActionIF[];
   /* Ce qu'il a refusé dans ImmoFacile (« les e-mails », « les propositions
      de biens ») : il ne passe pas « Actif » tout seul. */
   refus: string[];
@@ -448,6 +462,29 @@ export function dateImmo(s: string): string | null {
 export const dateValide = (d: unknown): d is string => typeof d === 'string' && /^\d{4}-\d\d-\d\d$/.test(d)
   && !Number.isNaN(Date.parse(`${d}T12:00:00`)) && new Date(`${d}T12:00:00`).toISOString().slice(0, 10) === d;
 
+/* La colonne « Historique des relances » : une action par ligne,
+   « 08/12/2025 · Relance : ce qui a été dit » ou « 29/09/2026 · Messagerie ».
+   Une ligne sans date continue le commentaire de la précédente. Les plus
+   récentes d'abord, comme dans ImmoFacile. */
+export function lireHistorique(t: string): ActionIF[] {
+  const out: ActionIF[] = [];
+  for (const brut of netTexte(t).split('\n')) {
+    const x = brut.trim();
+    if (!x) continue;
+    const m = x.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*[·•|–-]\s*(.+)$/);
+    const date = m ? dateImmo(m[1]) : null;
+    if (!m || !date) {
+      const der = out[out.length - 1];
+      if (der) der.texte = der.texte ? `${der.texte} / ${x}` : x;
+      continue;
+    }
+    const i = m[2].indexOf(' : ');
+    const quoi = net(i >= 0 ? m[2].slice(0, i) : m[2].replace(/\s*:\s*$/, ''));
+    out.push({ date, quoi, texte: i >= 0 ? net(m[2].slice(i + 3)) : '' });
+  }
+  return out.map((a, k) => ({ a, k })).sort((u, v) => v.a.date.localeCompare(u.a.date) || u.k - v.k).map(x => x.a);
+}
+
 /* Une case « Email » : une adresse, ou deux séparées par une virgule. */
 const mailsDe = (s: string) => s.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
 function contactDe(f: FicheIF): Contact {
@@ -467,6 +504,7 @@ function contactDe(f: FicheIF): Contact {
     creeLe: dateImmo(f.creeLe), suiviPar: f.suiviPar ? nomConseiller(f.suiviPar) : '',
     commentaires: f.commentaire ? [f.commentaire] : [],
     recherches: f.recherches.map(rechercheDesColonnes),
+    prochain: dateImmo(f.prochain), historique: lireHistorique(f.historique),
     refus: [f.consentMail === 'non' ? 'les e-mails' : '', f.consentBiens === 'non' ? 'les propositions de biens' : ''].filter(Boolean),
     mailsInvalides: mailsDe(f.email).filter(m => !mailValide(m)),
     aVoir: [],
@@ -512,6 +550,12 @@ function fondre(a: Contact, b: Contact): void {
   if (!a.suiviPar) a.suiviPar = b.suiviPar;
   ajouter(a.commentaires, b.commentaires, c => net(c));
   ajouter(a.recherches, b.recherches, r => JSON.stringify({ ...r, n: 0 }));
+  /* Deux fiches ImmoFacile pour la même personne : le contact le plus proche. */
+  if (b.prochain && (!a.prochain || b.prochain < a.prochain)) a.prochain = b.prochain;
+  if (b.historique.length) {
+    ajouter(a.historique, b.historique, x => `${x.date}|${x.quoi}|${x.texte}`);
+    a.historique.sort((u, v) => v.date.localeCompare(u.date));
+  }
   ajouter(a.refus, b.refus);
   ajouter(a.mailsInvalides, b.mailsInvalides);
   ajouter(a.aVoir, b.aVoir);
@@ -785,8 +829,29 @@ export const CHOIX_VIDE: Choix = { exclu: false, proprietaire: null, acheteur: n
 export type EtatLecture = 'sans_texte' | 'attente' | 'ok' | 'echec' | 'passee';
 export type BienActuel = { aVendre: boolean; type: string | null; surface: number | null; valeur: number | null; adresse: string | null; notes: string | null };
 export type ASuivre = { donnees: Record<string, unknown>; resume: string; rappel: string | null; rappelTexte: string; retard: string | null };
-/* Le rappel de son projet de vente, posé sur le contact (sans fiche bien). */
-export type RappelContact = { date: string; retard: string | null; texte: string | null; rappelTexte: string };
+/* Le rappel posé sur le contact (sans fiche bien) : celui de son projet de
+   vente, ou son prochain contact noté dans ImmoFacile (`immofacile`, V3.70). */
+export type RappelContact = { date: string; retard: string | null; texte: string | null; rappelTexte: string; immofacile: boolean };
+/* Une action de son historique ImmoFacile → une ligne de son Suivi, à sa
+   date. Alexandre : « les relances, c'est toujours un appel passé ».
+   « Autorisation manuelle du numéro » : un détail technique, laissé. */
+export type LigneSuivi = { type: 'appel' | 'note' | 'rdv' | 'email_libre'; titre: string; date: string; texte: string };
+export function lignesSuivi(l: ActionIF[]): LigneSuivi[] {
+  const out: LigneSuivi[] = [];
+  for (const a of l) {
+    const k = sansAccents(a.quoi).toLowerCase();
+    if (/autorisation manuelle/.test(k)) continue;
+    const quoi = a.quoi.charAt(0).toUpperCase() + a.quoi.slice(1);
+    const [type, titre]: [LigneSuivi['type'], string] = /messagerie|repondeur/.test(k) ? ['appel', 'Appel — messagerie']
+      : /^(relance|appel|rappel)/.test(k) ? ['appel', 'Appel passé']
+        : /consentement/.test(k) ? ['note', 'Consentement recueilli']
+          : /\brdv\b|rendez|visite|estimation/.test(k) ? ['rdv', quoi]
+            : /e-?mail|courriel/.test(k) ? ['email_libre', quoi]
+              : ['note', quoi];
+    out.push({ type, titre, date: a.date, texte: a.texte });
+  }
+  return out;
+}
 export type Plan = {
   exclu: boolean;
   roles: { proprietaire: boolean; acheteur: boolean };
@@ -808,6 +873,8 @@ export type Plan = {
   /* Son rappel, sur lui, quand il n'a pas de fiche bien. */
   rappel: RappelContact | null;
   suivi: string;
+  /* Son historique d'ImmoFacile, une ligne du Suivi par action (V3.70). */
+  historique: LigneSuivi[];
   location: string | null;
   /* Il ne cherche qu'à louer : pas de recherche d'achat à reprendre. */
   locationSeule: boolean;
@@ -1079,12 +1146,18 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
   /* La fiche bien : seulement si Alexandre la demande. */
   const veutSuivre = roles.proprietaire && choix.aSuivre === true;
   /* Le rappel noté pour son projet de vente. Une date choisie à la main,
-     passée : aujourd'hui (une relance ne se pose pas dans le passé). */
-  const prevu = projetVente || veutSuivre ? dateRappel(v?.rappel, aujourdhui) : null;
+     passée : aujourd'hui (une relance ne se pose pas dans le passé).
+     V3.70 : le prochain contact noté dans ImmoFacile l'emporte sur ce que
+     dit le commentaire (c'est la date la plus récente qu'Alexandre a
+     choisie), et il donne une relance à tout contact, acheteur compris. */
+  const pc = c.prochain;
+  const prevu: Rappel | null = pc ? (pc >= aujourdhui ? { date: pc, retard: null } : { date: aujourdhui, retard: `prévu le ${dateFr(pc)} dans ImmoFacile` })
+    : projetVente || veutSuivre ? dateRappel(v?.rappel, aujourdhui) : null;
   const main = choix.rappel !== null ? (dateValide(choix.rappel) ? (choix.rappel < aujourdhui ? aujourdhui : choix.rappel) : null) : null;
-  const rappel = !(projetVente || veutSuivre) ? null : choix.rappel !== null ? main : prevu?.date || null;
+  const rappel = !(projetVente || veutSuivre || pc) ? null : choix.rappel !== null ? main : prevu?.date || null;
   const retard = choix.rappel !== null ? null : prevu?.retard || null;
-  const rappelTexte = !rappel ? 'sans date de rappel' : rappel === aujourdhui ? `rappel aujourd’hui${retard ? ` (en retard, ${retard})` : ''}` : `rappel le ${dateFr(rappel)}`;
+  const quoiRappel = pc ? 'prochain contact' : 'rappel';
+  const rappelTexte = !rappel ? 'sans date de rappel' : rappel === aujourdhui ? `${quoiRappel} aujourd’hui${retard ? ` (en retard, ${retard})` : ''}` : `${quoiRappel} le ${dateFr(rappel)}`;
   const rappelRetard = rappel && retard ? `Rappel en retard, ${retard} : posé pour aujourd’hui` : '';
   let aSuivre: ASuivre | null = null;
   if (veutSuivre) {
@@ -1116,8 +1189,13 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
     d.notes = notes;
     aSuivre = { donnees: d, resume: b ? resumeBien(b) : 'son bien (à décrire)', rappel, retard, rappelTexte };
   }
-  /* Sans fiche bien, le rappel se pose sur lui (Relances). */
-  const rappelContact: RappelContact | null = !aSuivre && rappel ? { date: rappel, retard, texte: v?.rappel.texte || null, rappelTexte } : null;
+  /* Sans fiche bien, le rappel se pose sur lui (Relances). Son prochain
+     contact porte en note son dernier échange (le commentaire le plus
+     récent de son historique). */
+  const historique = lignesSuivi(c.historique);
+  const dernier = historique.find(h => h.texte && h.type !== 'note') || null;
+  const texteRappel = pc ? (dernier ? `dernier échange le ${dateFr(dernier.date)} : ${dernier.texte}` : null) : v?.rappel.texte || null;
+  const rappelContact: RappelContact | null = !aSuivre && rappel ? { date: rappel, retard, texte: texteRappel, rappelTexte, immofacile: !!pc } : null;
   /* Pas dans « Revente possible » : son logement, en entier, dans « À savoir ». */
   const bienEnNote = roles.proprietaire && b && !bienActuel.aVendre ? [
     resumeBien(b),
@@ -1146,7 +1224,7 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
     exclu: choix.exclu, roles, force, types, recherches, tiree,
     aSavoir: texteASavoir(c, lec, { bienEnNote, location: locTexte, locationSeule, precisions: c.recherches.map(r => r.precision).filter(Boolean), rappelRetard }),
     occupation: roles.proprietaire ? 'proprietaire' : null,
-    bienActuel, aSuivre, aSuivrePossible, projetVente, rappel: rappelContact, suivi, location: locTexte, locationSeule,
+    bienActuel, aSuivre, aSuivrePossible, projetVente, rappel: rappelContact, suivi, historique, location: locTexte, locationSeule,
     emails, telephones, adresse: c.adresse, source, aVerifier, verifFiche,
   };
 }
@@ -1278,9 +1356,12 @@ export function completer(p: Plan, x: ClientCRM, o: {
   if (bienActuel) lignes.push('« Revente possible » et son bien');
   if (recherche) lignes.push('sa recherche');
   if (aSuivre) lignes.push('son bien « À suivre »');
-  if (rappel) lignes.push(`un rappel pour sa vente (${p.rappel?.rappelTexte.replace(/^rappel /, '')})`);
+  if (rappel) lignes.push(p.rappel?.immofacile ? `une relance au ${p.rappel.rappelTexte}` : `un rappel pour sa vente (${p.rappel?.rappelTexte.replace(/^rappel /, '')})`);
   if (source) lignes.push('sa source');
   if (notes) lignes.push('le bloc « Repris d’ImmoFacile » dans « À savoir »');
+  /* Son historique : les lignes déjà reprises (un réimport) ne sont pas
+     doublées, c'est vérifié au moment d'écrire. */
+  if (p.historique.length) lignes.push(`son historique ImmoFacile dans son Suivi (${p.historique.length > 1 ? `${p.historique.length} lignes` : 'une ligne'})`);
   return {
     emails, telephones, adresse, types, typesAjoutes, occupation, notes, source, bienActuel, recherche, aSuivre, rappel,
     lignes, rien: lignes.length === 0, proche,
