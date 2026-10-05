@@ -5,7 +5,8 @@ import { Ic } from '@/components/documents/ApercuActe';
 import d from '@/components/documents/Documents.module.css';
 import st from './ImportImmoFacile.module.css';
 import { partieAleatoire } from '@/lib/jeton';
-import { typesDe } from '@/lib/contacts';
+import { typeDe, typesDe } from '@/lib/contacts';
+import { libelleSource } from '@/lib/sources';
 import {
   aujourdhuiYmd, chercherDoublon, CHOIX_VIDE, completer, dateFr, demandeLecture, indexerCRM, libelleOrigine, lireFichier, lireLecture, planifier, regrouper,
   type Choix, type ClientCRM, type Completion, type Contact, type DemandeLecture, type Doublon, type EtatLecture, type FichierLu, type Lecture, type Plan,
@@ -86,6 +87,18 @@ function Role({ r, on, onClick }: { r: 'proprietaire' | 'acheteur'; on?: boolean
   return <span className={cls}><Ic n={ic} t={12} />{lib}</span>;
 }
 
+/* Tous ses types : Propriétaire, Acheteur, et Vendeur (fiche bien) ou un
+   professionnel (Notaire, Confrère…) qui, avant la V3.69, n'apparaissaient pas. */
+function Types({ p }: { p: Plan }) {
+  return (
+    <>
+      {p.roles.proprietaire && <Role r="proprietaire" />}
+      {p.roles.acheteur && <Role r="acheteur" />}
+      {p.types.filter(t => t !== 'acheteur' && t !== 'proprietaire').map(t => <span key={t} className={`${st.role} ${st.gris}`}>{typeDe(t).lib}</span>)}
+    </>
+  );
+}
+
 function Bascule({ on, rouge, onClick, children }: { on: boolean; rouge?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" className={`${st.bascule}${rouge ? ` ${st.basculeRouge}` : ''}`} aria-pressed={on} onClick={onClick}>
@@ -93,6 +106,12 @@ function Bascule({ on, rouge, onClick, children }: { on: boolean; rouge?: boolea
       <span>{children}</span>
     </button>
   );
+}
+
+/* Téléphones, e-mails, adresse : une ligne chacun. `crm` : ce qui manque est dit. */
+function coords(tels: string[], mails: string[], adresse: string, crm = false): string {
+  const l = [tels.join(' · '), mails.join(' · '), adresse || (crm && (tels.length || mails.length) ? 'Pas d’adresse dans ImmoFacile' : '')];
+  return l.filter(Boolean).join('\n');
 }
 
 /* Une idée de la durée : une vingtaine de secondes par tour de lots (au
@@ -165,7 +184,7 @@ function LigneApercu({ r, ouvert, fermant, edition, mode, aujourdhui, onOuvrir, 
         <span className={st.roles}>
           {r.choix.exclu ? <span className={`${st.role} ${st.gris}`}>Pas importé</span>
             : r.doublon ? <span className={`${st.role} ${st.gris}`}>Pas recréé</span>
-              : <>{p.roles.proprietaire && <Role r="proprietaire" />}{p.roles.acheteur && <Role r="acheteur" />}</>}
+              : <Types p={p} />}
         </span>
         <span className={st.rech}>
           {r.choix.exclu ? <span className={st.pale}>Laissé de côté : rien ne sera écrit pour lui.</span>
@@ -219,11 +238,13 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
         <div className={st.colT}>Dans ImmoFacile</div>
         <dl>
           <dt>Statut</dt><dd>{c.statuts.join(' et ') || 'Non précisé'}</dd>
+          {/* V3.69 : les coordonnées, pour voir qu'elles suivent. */}
+          <dt>Coordonnées</dt><dd className={coords(c.telephones, c.emails, c.adresse) ? st.texte : st.pale}>{coords(c.telephones, c.emails, c.adresse) || 'Aucune'}</dd>
           {c.origines.length > 0 && <><dt>Origine</dt><dd>{c.origines.join(', ')}</dd></>}
           <dt>Créée le</dt><dd>{dateFr(c.creeLe) || 'Non précisé'}</dd>
           <dt>Critères</dt><dd>{criteres.length ? criteres.join(' | ') : <span className={st.pale}>Aucun critère rempli</span>}</dd>
-          {precisions.length > 0 && <><dt>Précision</dt><dd className={st.cite}>{`« ${extrait(precisions.join(' / '), 420)} »`}</dd></>}
-          {commentaire && <><dt>Commentaire</dt><dd className={st.cite}>{`« ${extrait(commentaire, 600)} »`}</dd></>}
+          {precisions.length > 0 && <><dt>Précision</dt><dd className={st.cite}>{`« ${precisions.join(' / ')} »`}</dd></>}
+          {commentaire && <><dt>Commentaire</dt><dd className={st.cite}>{`« ${commentaire} »`}</dd></>}
           {c.lignes.length > 1 && <><dt>Fichiers</dt><dd>{`${c.lignes.length} lignes regroupées : la même personne`}</dd></>}
         </dl>
       </div>
@@ -235,6 +256,10 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
             <dl>
               <dt>Sa fiche</dt><dd>{`${nomCRM(r.doublon.client)} · même ${r.doublon.raison}${r.doublon.conjoint ? ' (sa personne 2)' : ''}`}</dd>
               <dt>Ajouté</dt><dd>{r.completion.rien ? <span className={st.pale}>Rien : sa fiche a déjà tout.</span> : (() => { const t = r.completion.lignes.join(', '); return `${t.charAt(0).toUpperCase()}${t.slice(1)}.`; })()}</dd>
+              {/* V3.69 : ce qui est ajouté, en clair. */}
+              {!r.completion.proche && (r.completion.telephones.length > 0 || r.completion.emails.length > 0 || !!r.completion.adresse) && <><dt>Coordonnées</dt><dd className={st.texte}>{coords(r.completion.telephones, r.completion.emails, r.completion.adresse || '')}</dd></>}
+              {r.completion.source && <><dt>Source</dt><dd>{libelleSource(r.completion.source.k, r.completion.source.detail)}</dd></>}
+              {!!r.completion.notes && <><dt>À savoir</dt><dd className={st.texte}>{`Ajouté sous ce qu’il y a déjà :\n${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd></>}
               {r.completion.proche && <><dt>Coordonnées</dt><dd className={st.pale}>{`Pas recopiées : celles de ${nomCRM(r.doublon.client)} restent seules sur sa fiche.`}</dd></>}
               {r.completion.recherche && p.recherches[0] && <><dt>Sa recherche</dt><dd><Puces r={r} onChoix={onChoix} /></dd></>}
               {!r.completion.rien && <><dt>Suivi</dt><dd className={st.pale}>{`« ${p.suivi.replace('Fiche reprise d’ImmoFacile', 'Fiche complétée depuis ImmoFacile')} »`}</dd></>}
@@ -249,8 +274,11 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
           <>
             <div className={st.colT}>Ce qui sera créé dans ton CRM</div>
             <dl>
-              <dt>Rôles</dt><dd className={st.roles}>{p.roles.proprietaire && <Role r="proprietaire" />}{p.roles.acheteur && <Role r="acheteur" />}</dd>
-              {p.roles.acheteur && <><dt>Statut</dt><dd>{statut}</dd></>}
+              <dt>Rôles</dt><dd className={st.roles}><Types p={p} /></dd>
+              <dt>Coordonnées</dt><dd className={st.texte}>{coords(p.telephones, p.emails, p.adresse, true) || 'Aucune : ni téléphone, ni e-mail, ni adresse dans ImmoFacile'}</dd>
+              <dt>Statut</dt><dd>{statut}</dd>
+              {p.occupation && <><dt>Situation</dt><dd>Propriétaire</dd></>}
+              <dt>Source</dt><dd className={p.source ? undefined : st.pale}>{p.source ? libelleSource(p.source.k, p.source.detail) : 'Non précisée dans ImmoFacile'}</dd>
               {p.recherches.length > 0 && <><dt>Sa recherche</dt><dd><Puces r={r} onChoix={onChoix} /></dd></>}
               {/* Toujours là pour un acheteur : ce que le client lira dans « Précisions sur la recherche ». */}
               {p.recherches.length > 0 && <><dt>Précisions</dt><dd className={p.recherches[0].crit.notes ? st.texte : st.pale}>{p.recherches[0].crit.notes
@@ -264,7 +292,7 @@ function Detail({ r, edition, mode, aujourdhui, onEdition, onChoix }: { r: Range
                   : p.projetVente
                     ? `Projet de vente : son logement et son projet notés dans « À savoir » · ${p.rappel ? p.rappel.rappelTexte : 'sans date de rappel'}. Pas de fiche bien : tu la crées quand tu as vu le logement.`
                     : <span className={st.pale}>Pas de projet de vente</span>}</dd></>}
-              <dt>À savoir</dt><dd className={st.texte}>{`${extrait(aSavoir, 700)}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd>
+              <dt>À savoir</dt><dd className={st.texte}>{`${aSavoir}${bruts ? `\n+ ${bruts} d’ImmoFacile, en entier` : ''}`}</dd>
               <dt>Suivi</dt><dd className={st.pale}>{`« ${p.suivi} »`}</dd>
             </dl>
           </>

@@ -131,7 +131,7 @@ button.role[aria-pressed='false'] { background: white; color: #94a3b8; box-shado
 .col dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px 10px; font-size: 13px; margin: 0; }
 .col dt { color: #8290a6; font-weight: 700; font-size: 12px; padding-top: 2px; }
 .col dd { color: #1a2332; min-width: 0; margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
-.cite { font-style: italic; color: #475569 !important; line-height: 1.5; background: #fffaf0; border-radius: 8px; padding: 6px 8px; white-space: pre-line; }
+.cite { font-style: italic; color: #475569 !important; line-height: 1.5; background: #fffaf0; border-radius: 8px; padding: 6px 8px; white-space: pre-line; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
 .texte { white-space: pre-line; color: #475569 !important; font-size: 12.5px; }
 .crit { display: flex; flex-wrap: wrap; gap: 5px; }
 .crit > span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 9px; background: #f1f5f9; color: #334155; font-size: 12.5px; font-weight: 600; max-width: 100%; }
