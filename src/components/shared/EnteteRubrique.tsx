@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import styles from './EnteteRubrique.module.css';
 
 /* L'en-tête d'une rubrique (Visites, Mes clients) : le titre et ses chiffres
@@ -28,6 +28,12 @@ export type Tuile = {
      qui la sépare des catégories. */
   tete?: boolean;
   ic?: ReactNode;
+  /* V3.77 : la première du groupe de fin (« Tri à faire », « Tous »,
+     « Archivés »), poussé tout à droite sur ordinateur. */
+  fin?: boolean;
+  /* V3.77 : « Archivés », d'un autre style que les catégories (bord en
+     pointillés, sa boîte d'archives). */
+  archive?: boolean;
 };
 
 export default function EnteteRubrique({
@@ -47,6 +53,18 @@ export default function EnteteRubrique({
   onChoisir: (cle: string) => void;
   label: string;
 }) {
+  /* V3.77 : sur téléphone, la rangée défile au doigt ; la tuile allumée
+     (« Tous » est maintenant en fin de rangée) vient se montrer. */
+  const rangee = useRef<HTMLDivElement | null>(null);
+  const cleActive = Array.isArray(actif) ? actif.join('+') : actif;
+  useEffect(() => {
+    const r = rangee.current;
+    if (!r || r.scrollWidth <= r.clientWidth + 2) return;
+    const on = r.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!on) return;
+    const g = on.offsetLeft - r.offsetLeft, d = g + on.offsetWidth;
+    if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 12);
+  }, [cleActive, tuiles.length]);
   return (
     <section className={styles.bloc}>
       <div className={styles.haut}>
@@ -83,7 +101,7 @@ export default function EnteteRubrique({
         )}
       </div>
 
-      {tuiles.length > 0 && <div className={styles.rangee} role="group" aria-label={label}>
+      {tuiles.length > 0 && <div ref={rangee} className={styles.rangee} role="group" aria-label={label}>
         {tuiles.map((t, i) => {
           const on = Array.isArray(actif) ? actif.includes(t.cle) : t.cle === actif;
           const vide = t.n === 0 && !on;
@@ -93,8 +111,13 @@ export default function EnteteRubrique({
                douceur, à la suite des autres (V3.25). */
             <button key={t.cle} type="button" aria-pressed={on} onClick={() => onChoisir(t.cle)}
               style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
-              className={`${styles.tuile} ligne-entre ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''}`}>
+              className={`${styles.tuile} ligne-entre ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''} ${t.fin ? styles.fin : ''} ${t.archive ? styles.arch : ''}`}>
               {t.tete && t.ic && <span className={styles.teteIc} aria-hidden="true">{t.ic}</span>}
+              {t.archive && (
+                <span className={styles.archIc} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 4.5h17v4h-17z" /><path d="M5 8.5v10.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></svg>
+                </span>
+              )}
               <span className={styles.n}>{t.n}</span>
               <span className={styles.lib}>
                 {t.couleur && <span className={styles.point} style={{ background: t.couleur }} />}

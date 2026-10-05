@@ -115,6 +115,17 @@
   .teteIc { width: 24px; height: 24px; border-radius: 7px; background: #c9a84c; color: #1a2332; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .tete.on, .tete.on:hover { background: #fff; border-color: #fff; }
   .tete.on .lib { color: #1a2332; }
+  /* V3.77 : le groupe de fin, tout à droite (« Tri à faire », « Tous »,
+     « Archivés ») ; « Archivés » se distingue des catégories. */
+  .fin { margin-left: auto; }
+  .tete:last-child::after { display: none; }
+  .arch { padding-left: 6px; gap: 9px; background: transparent; border-style: dashed; border-color: rgba(255, 255, 255, 0.32); }
+  .arch:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.5); }
+  .arch .lib { color: rgba(255, 255, 255, 0.78); }
+  .archIc { width: 24px; height: 24px; border-radius: 7px; background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.85); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .arch.on, .arch.on:hover { background: #fff; border-color: #fff; border-style: solid; }
+  .arch.on .archIc { background: #eef1f6; color: #475569; }
+  .arch.on .lib { color: #1a2332; }
 }
 
 /* ── Téléphone : la carte blanche, compacte ────────────────────────── */
@@ -172,4 +183,10 @@
   .tete { background: #fdf8ec; }
   .tete .lib { color: #7a5d1c; font-weight: 800; }
   .tete.on { background: #fff; }
+  /* V3.77 : « Archivés », grisé, un trait en pointillés avant lui. */
+  .archIc { display: none; }
+  .arch { background: #f4f6f9; border-left: 1px dashed #cfd7e3; }
+  .arch .lib { color: #64748b; }
+  .arch.on { background: #fff; }
+  .arch.on .lib { color: #1a2332; }
 }
