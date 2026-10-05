@@ -12,7 +12,10 @@ import ChoixDate from '@/components/shared/ChoixDate';
  * Les relances : qui recontacter, et quand.
  *
  * En haut, trois compteurs qui servent aussi de filtres (en retard,
- * aujourd'hui, à venir). Dessous, les relances rangées par échéance, chacune
+ * aujourd'hui, cette semaine). Dessous, les relances rangées par échéance,
+ * jusqu'à la fin de la semaine seulement (V3.71, Alexandre : « pas la peine
+ * d'inonder l'onglet ») ; plus loin, une période à choisir : les 30 ou 60
+ * prochains jours, un jour précis, ou entre deux dates. Chacune
  * avec son origine (biens présentés, un appel, une note, un message du
  * client…). « Ouvrir la fiche » arrive au bon endroit : l'onglet Présentés
  * pour une relance automatique, le Suivi sur l'action qui l'a créée sinon.
@@ -64,6 +67,9 @@ const plusJours = (n: number) => { const d = new Date(); d.setHours(12, 0, 0, 0)
 const jourDe = (iso: string) => cleDe(new Date(iso));
 const ecart = (k: string, auj: string) => Math.round((new Date(`${k}T12:00:00`).getTime() - new Date(`${auj}T12:00:00`).getTime()) / 86400000);
 const dateCourte = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+const dateLongue = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+/* Le lundi de la semaine d'un jour (« 2026-10-14 » → « 2026-10-12 »). */
+const lundiDe = (k: string) => { const d = new Date(`${k}T12:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return cleDe(d); };
 
 /* ── D'où vient une relance ───────────────────────────────────── */
 /* `fort` : ce qui passe avant tout le reste du jour — un client qui veut
@@ -87,7 +93,9 @@ function origineDe(r: any, typeAction?: string | null): Origine {
   return { lib: 'Relance manuelle', ico: 'cloche' };
 }
 
-type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'avenir';
+type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'semaine';
+/* Voir plus loin que la semaine (V3.71). */
+type Periode = { k: '30' | '60' | 'date' | 'entre'; du: string; au: string };
 
 /* Un chiffre qui monte jusqu'à sa valeur à l'arrivée. */
 function Compteur({ n }: { n: number }) {
@@ -110,6 +118,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const [liens, setLiens] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>('tout');
+  const [periode, setPeriode] = useState<Periode | null>(null);
   /* Reporter posait une date toute faite sans rien demander : on choisit
      désormais la date, et la ligne se range sous nos yeux. */
   const [report, setReport] = useState<{ id: string; date: string } | null>(null);
@@ -219,22 +228,53 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const duJour = enTete(relances.filter(r => jourDe(r.date_echeance) === auj));
   const avenir = relances.filter(r => jourDe(r.date_echeance) > auj);
   const demain = plusJours(1), dansSept = plusJours(7);
+  const semaine = avenir.filter(r => jourDe(r.date_echeance) <= dansSept);
+  const plusLoin = avenir.length - semaine.length;
+  /* Les relances d'une période (bornes comprises), de la plus proche à la plus lointaine. */
+  const entre = (du: string, au: string) => relances.filter(r => { const k = jourDe(r.date_echeance); return k >= du && k <= au; });
+  const PERIODES: { k: Periode['k']; lib: string; du: string; au: string }[] = [
+    { k: '30', lib: '30 prochains jours', du: auj, au: plusJours(30) },
+    { k: '60', lib: '2 prochains mois', du: auj, au: plusJours(61) },
+    { k: 'date', lib: 'Un jour précis', du: demain, au: demain },
+    { k: 'entre', lib: 'Entre deux dates', du: auj, au: plusJours(14) },
+  ];
+  function choisirPeriode(k: Periode['k']) {
+    if (periode?.k === k) { setPeriode(null); return; }
+    const x = PERIODES.find(y => y.k === k)!;
+    setPeriode({ k, du: x.du, au: x.au });
+    setFiltre('tout');
+  }
 
-  /* Les groupes affichés, du plus pressé au plus lointain. */
+  /* Les groupes affichés, du plus pressé au plus lointain : jusqu'à la fin
+     de la semaine ; une période choisie, rangée par semaine. */
   const groupes: { id: string; titre: string; couleur: string; liste: any[] }[] = [];
-  if (filtre === 'tout' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', couleur: '#dc2626', liste: retard });
-  if (filtre === 'tout' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', couleur: '#d97706', liste: duJour });
-  if (filtre === 'tout' || filtre === 'avenir') {
-    groupes.push({ id: 'demain', titre: 'Demain', couleur: '#2563eb', liste: avenir.filter(r => jourDe(r.date_echeance) === demain) });
-    groupes.push({ id: 'semaine', titre: 'Cette semaine', couleur: '#2563eb', liste: avenir.filter(r => { const k = jourDe(r.date_echeance); return k > demain && k <= dansSept; }) });
-    groupes.push({ id: 'tard', titre: 'Plus tard', couleur: '#64748b', liste: avenir.filter(r => jourDe(r.date_echeance) > dansSept) });
+  if (periode) {
+    const l = enTete(entre(periode.du, periode.au));
+    if (periode.du === periode.au) groupes.push({ id: 'jour', titre: `Le ${dateLongue(periode.du)}`, couleur: '#2563eb', liste: l });
+    else {
+      const parSemaine = new Map<string, typeof l>();
+      for (const r of [...l].sort((a, b) => jourDe(a.date_echeance).localeCompare(jourDe(b.date_echeance)))) {
+        const k = lundiDe(jourDe(r.date_echeance));
+        if (!parSemaine.has(k)) parSemaine.set(k, []);
+        parSemaine.get(k)!.push(r);
+      }
+      for (const [k, liste] of parSemaine) groupes.push({ id: `s${k}`, titre: k === lundiDe(auj) ? 'Semaine en cours' : `Semaine du ${dateCourte(k)}`, couleur: '#2563eb', liste: enTete(liste) });
+    }
+  } else {
+    if (filtre === 'tout' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', couleur: '#dc2626', liste: retard });
+    if (filtre === 'tout' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', couleur: '#d97706', liste: duJour });
+    if (filtre === 'tout' || filtre === 'semaine') {
+      groupes.push({ id: 'demain', titre: 'Demain', couleur: '#2563eb', liste: avenir.filter(r => jourDe(r.date_echeance) === demain) });
+      groupes.push({ id: 'semaine', titre: 'Cette semaine', couleur: '#2563eb', liste: avenir.filter(r => { const k = jourDe(r.date_echeance); return k > demain && k <= dansSept; }) });
+    }
   }
   const visibles = groupes.filter(g => g.liste.length > 0);
+  const nbPeriode = periode ? entre(periode.du, periode.au).length : 0;
 
   const cartes: { id: Filtre; titre: string; n: number; sous: string; ico: string; encre: string; fond: string; trait: string }[] = [
     { id: 'retard', titre: 'En retard', n: retard.length, sous: retard.length ? 'à rattraper en premier' : 'rien en retard', ico: 'alerte', encre: '#b91c1c', fond: '#fef2f2', trait: '#fecaca' },
     { id: 'aujourdhui', titre: 'Aujourd’hui', n: duJour.length, sous: duJour.length ? 'prévues pour ce jour' : 'rien de prévu', ico: 'cloche', encre: '#b45309', fond: '#fff7e6', trait: '#fde3b0' },
-    { id: 'avenir', titre: 'À venir', n: avenir.length, sous: avenir.length ? `dont ${avenir.filter(r => jourDe(r.date_echeance) <= dansSept).length} cette semaine` : 'rien de programmé', ico: 'calendrier', encre: '#1d4ed8', fond: '#eff6ff', trait: '#cfe0fd' },
+    { id: 'semaine', titre: 'Cette semaine', n: semaine.length, sous: semaine.length ? `d’ici le ${dateCourte(dansSept)}${plusLoin ? ` · ${plusLoin} plus loin` : ''}` : plusLoin ? `rien d’ici le ${dateCourte(dansSept)} · ${plusLoin} plus loin` : 'rien de programmé', ico: 'calendrier', encre: '#1d4ed8', fond: '#eff6ff', trait: '#cfe0fd' },
   ];
 
   let rang = 0;
@@ -278,6 +318,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
           .rl-long{display:none}
           .rl-court{display:inline !important}
           .rl-titre{font-size:22px !important}
+          .rl-periode > span:first-child{width:100%}
           /* Un cran plus petit sur téléphone, au niveau du tableau de bord :
              les lignes étaient écrites trop gros. */
           .rl-carte-n{font-size:22px !important}
@@ -292,7 +333,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
 
       <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h1 className="rl-titre" style={{ margin: 0, fontFamily: JAK, fontSize: 28, fontWeight: 800, letterSpacing: -.5 }}>Relances</h1>
-        <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter, du plus pressé au plus lointain.</p>
+        <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter cette semaine, du plus pressé au moins pressé. Plus loin : choisis une période.</p>
       </header>
 
       {alertes.length > 0 && (
@@ -346,10 +387,10 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       {!loading && (
         <div className="rl-cartes" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
           {cartes.map((c, i) => {
-            const actif = filtre === c.id;
+            const actif = !periode && filtre === c.id;
             return (
-              <button key={c.id} type="button" className="rl-carte rl-entre" aria-pressed={actif} onClick={() => setFiltre(f => (f === c.id ? 'tout' : c.id))}
-                style={{ animationDelay: `${i * 70}ms`, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 18, border: `1.5px solid ${actif ? c.encre : c.n ? c.trait : BORD}`, background: c.n ? c.fond : 'white', color: NAVY, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', boxShadow: actif ? `0 0 0 4px ${c.fond}` : 'none', opacity: filtre !== 'tout' && !actif ? .6 : 1 }}>
+              <button key={c.id} type="button" className="rl-carte rl-entre" aria-pressed={actif} onClick={() => { setPeriode(null); setFiltre(f => (f === c.id && !periode ? 'tout' : c.id)); }}
+                style={{ animationDelay: `${i * 70}ms`, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 18, border: `1.5px solid ${actif ? c.encre : c.n ? c.trait : BORD}`, background: c.n ? c.fond : 'white', color: NAVY, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', boxShadow: actif ? `0 0 0 4px ${c.fond}` : 'none', opacity: (periode || filtre !== 'tout') && !actif ? .6 : 1 }}>
                 <span className={`rl-carte-ico${c.id === 'retard' && c.n ? ' rl-pouls' : ''}`} style={{ width: 42, height: 42, borderRadius: 13, background: 'white', color: c.n ? c.encre : PALE, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.n ? c.trait : BORD}`, flexShrink: 0 }}><Ic n={c.ico} t={19} ep={2.1} /></span>
                 <b className="rl-carte-n" style={{ fontFamily: JAK, fontSize: 32, fontWeight: 800, lineHeight: 1, color: c.n ? c.encre : '#b6c0cf', fontVariantNumeric: 'tabular-nums', minWidth: 24 }}><Compteur n={c.n} /></b>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
@@ -359,6 +400,41 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Plus loin que la semaine (V3.71) : une période, ou un jour, ou entre deux dates. */}
+      {!loading && relances.length > 0 && (
+        <div className="rl-periode rl-entre" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 16, background: periode ? '#f5f8ff' : 'white', border: `1px solid ${periode ? '#cfe0fd' : BORD}` }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#1d4ed8', marginRight: 4 }}><Ic n="calendrier" t={14} ep={2.1} />Voir plus loin</span>
+          {PERIODES.map(x => {
+            const actif = periode?.k === x.k;
+            const n = x.k === '30' || x.k === '60' ? entre(x.du, x.au).length : null;
+            return (
+              <button key={x.k} type="button" className="rl-appui" aria-pressed={actif} onClick={() => choisirPeriode(x.k)}
+                style={{ height: 32, padding: '0 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: `1px solid ${actif ? '#1d4ed8' : '#d6e2f5'}`, background: actif ? '#1d4ed8' : 'white', color: actif ? 'white' : NAVY, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span>{x.lib}</span>
+                {n !== null && <span style={{ fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 20, background: actif ? 'rgba(255,255,255,.2)' : '#eff6ff', color: actif ? 'white' : '#1d4ed8' }}>{n}</span>}
+              </button>
+            );
+          })}
+          {periode?.k === 'date' && (
+            <ChoixDate compact valeur={periode.du} placeholder="Choisir le jour" onChange={v => v && setPeriode({ k: 'date', du: v, au: v })} />
+          )}
+          {periode?.k === 'entre' && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 12.5, fontWeight: 700, color: DOUX }}>
+              <span>du</span>
+              <ChoixDate compact valeur={periode.du} placeholder="Début" onChange={v => v && setPeriode(p => (p ? { ...p, du: v, au: p.au < v ? v : p.au } : p))} />
+              <span>au</span>
+              <ChoixDate compact valeur={periode.au} min={periode.du} placeholder="Fin" onChange={v => v && setPeriode(p => (p ? { ...p, au: v < p.du ? p.du : v } : p))} />
+            </span>
+          )}
+          {periode && (
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 12px' }}>
+              <span style={{ fontSize: 12.5, color: DOUX }}>{`${nbPeriode > 1 ? `${nbPeriode} relances` : nbPeriode === 1 ? '1 relance' : 'Aucune relance'} ${periode.du === periode.au ? `le ${dateCourte(periode.du)}` : `du ${dateCourte(periode.du)} au ${dateCourte(periode.au)}`}`}</span>
+              <button type="button" onClick={() => setPeriode(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#1d4ed8', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir à la semaine</button>
+            </span>
+          )}
         </div>
       )}
 
@@ -373,8 +449,9 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       ) : visibles.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
           <span style={{ width: 50, height: 50, borderRadius: 16, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="soleil" t={24} ep={1.9} /></span>
-          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>Rien ici</b>
-          <button type="button" className="rl-appui" onClick={() => setFiltre('tout')} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Voir toutes les relances</button>
+          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{periode ? 'Aucune relance sur cette période' : 'Rien ici'}</b>
+          {!periode && filtre === 'tout' && plusLoin > 0 && <span style={{ fontSize: 13.5, color: DOUX }}>{`Rien d’ici le ${dateCourte(dansSept)}. ${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : choisis une période juste au-dessus.`}</span>}
+          {(periode || filtre !== 'tout') && <button type="button" className="rl-appui" onClick={() => { setFiltre('tout'); setPeriode(null); }} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir aux relances de la semaine</button>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
