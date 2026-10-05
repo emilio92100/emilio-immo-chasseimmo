@@ -1461,6 +1461,48 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.74 — 5 octobre 2026 · « Traiter » une relance sans quitter la page
+
+Rien à passer dans Supabase.
+
+Alexandre : « depuis la case relance, un bouton traiter rapidement : on reste sur la page, un petit
+pop-up […] appel passé, messagerie ou a-t-il répondu, je mets les détails, ça se met dans le suivi,
+je valide et la ligne disparaît avec fluidité, et je passe à la prochaine ».
+- **Page Relances** (`PageRelances.tsx`) : un bouton **Traiter** sur chaque ligne (le bouton plein ;
+  « C'est fait » passe en secondaire : clore sans rien noter). Sur téléphone, Traiter prend toute la
+  largeur, au-dessus de Fiche, Reporter, C'est fait.
+- La fenêtre est celle des actions des contacts (`FenetreAction.tsx`), ouverte sur « Appel passé »,
+  avec en haut **le rappel de la relance** (son origine, sa date, sa note) et **le téléphone du
+  client** (un lien `tel:` : un clic pour appeler depuis le téléphone). Titre « Traiter la relance »,
+  bouton « ✓ Valider ».
+- Valider écrit la ligne dans le Suivi du client (sur la recherche de la relance, `rechercheId`, comme
+  la prochaine relance si on en pose une), **clôt la relance traitée**, la ligne s'efface en douceur,
+  un bandeau dit « Noté dans le suivi de … », puis la liste se relit (la prochaine relance posée
+  apparaît à sa date).
+- **Tri d'après l'import** : la fenêtre demande en plus « Après cet appel : Il reste / Il ne reste pas »
+  (Valider attend la réponse). « Il ne reste pas » archive le contact (ses relances en attente se
+  ferment, ligne « Contact archivé » dans le Suivi) et ne propose pas de prochaine relance.
+- `FenetreAction` : props facultatives (`rechercheId`, `contexte`, `titre`, `libelleValider`,
+  `proposerArchive`) ; la fiche d'un contact l'utilise comme avant.
+- **Les animations** (Alexandre : « que ce soit joli, de belles animations, pas brutal ») :
+  - la fenêtre monte en fondu (sur téléphone, elle glisse du bas), ses blocs arrivent l'un après
+    l'autre ; Échap ou un clic à côté la referment en douceur (`fenAnime`, `data-ouverture`,
+    `data-sortie` dans `Contacts.module.css`) ;
+  - « Valider » passe au vert, avec une coche qui se dessine (« Noté dans le suivi »), puis la
+    fenêtre redescend : `onFait` part après ces ~0,9 s, et ses minuteries ne sont pas annulées si
+    la fenêtre disparaît (la page Relances y clôt la relance) ;
+  - sur la page, la ligne passe au vert (« Noté dans le suivi », barre verte), puis glisse et se
+    replie **à sa vraie hauteur** (grille `1fr → 0fr`, classe `rl-pli`, `REPLI` = 520 ms) : celles
+    du dessous remontent sans saut. Le dernier d'un groupe emmène son titre (« En retard »…) ;
+  - le bandeau du bas entre et sort en glissant ; les compteurs du haut partent du chiffre affiché
+    (3 → 2), plus de zéro ;
+  - « Réduire les animations » (réglage du téléphone ou de l'ordinateur) coupe tout.
+- **Carte, sur téléphone** (`PageCarte.tsx`, `Carte.module.css`) : une étiquette longue (« Acheteur ·
+  Propriétaire ») élargissait la fiche du bas au-delà de l'écran (photo et bouton coupés : la
+  largeur minimale d'un élément flex est celle de son texte). `min-width: 0`, et deux lignes : **le
+  nom et son étiquette** (une pastille de sa couleur, qui cède sa place la première), puis **la rue
+  et les boutons**. Les boutons ronds et le petit message remontent de 12 px.
+
 ### V3.73 — 5 octobre 2026 · « Tri à faire » dans Relances, et l'archive pour les acheteurs
 
 Rien à passer dans Supabase (la colonne `clients.archive` existe depuis la V3.50).
