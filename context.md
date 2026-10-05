@@ -1461,6 +1461,39 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.73 — 5 octobre 2026 · « Tri à faire » dans Relances, et l'archive pour les acheteurs
+
+Rien à passer dans Supabase (la colonne `clients.archive` existe depuis la V3.50).
+
+**Le tri d'après l'import ImmoFacile.** Des contacts repris sans prochain contact, sans nouvelles
+depuis longtemps (dernière relance en 2022…). Alexandre : « une catégorie dernier appel pour faire le
+tri […] pas envie qu'ils se mélangent avec les contacts dont les relances sont à jour ».
+- Une colonne de plus dans le fichier enrichi, **« Tri à faire »** (`import-immofacile.ts`,
+  `lireTri`) : « Dernier appel : <motif> » ou « À relancer : <motif> », avec la date proposée dans
+  « Prochain contact ». Le motif part en note de la relance.
+- « Dernier appel » (`import-ecriture.ts`) : relance notée `NOTE_TRI` (« Dernier appel pour faire le
+  tri — … », `src/lib/relances.ts`), et un acheteur n'est **jamais « Actif »**, même en mode Actifs
+  (Prospect, recherche arrêtée : ni veille, ni point automatique, ni alertes). « À relancer » : une
+  relance ordinaire (« Relance proposée au tri de l'import — … »). Un réimport ne double pas.
+- **Page Relances** (`PageRelances.tsx`) : un bloc à part, **« Tri à faire · suite à l'import »**, sous
+  les relances, avec un lien en haut de page. Il montre ceux du jour et en retard (« Voir aussi les N
+  prévus plus tard »). Ils ne comptent ni dans les trois compteurs, ni dans les pastilles du menu et de
+  la barre du haut (`compterRelancesDues`), ni dans le tableau de bord. Sur chaque ligne : Ouvrir la
+  fiche, Reporter, **Archiver**, C'est fait. Archiver s'annule six secondes (le contact revient, ses
+  relances rouvrent). La ligne d'affichage des relances est devenue une fonction (`ligne`), partagée
+  par les deux blocs.
+
+**Archiver un acheteur** (`FicheClient.tsx`) : dans le menu d'état, « Actions » › « Archiver le
+contact » (ou « Sortir des archives »). Il quitte la liste, se retrouve dans la tuile « Archivés » de
+Contacts avec les autres, et un bandeau le dit en haut de sa fiche. Sa veille s'arrête (recherches
+`active: false`) ; sortir des archives ne remet rien en marche. Le tableau de bord ne le compte plus
+dans les actifs.
+
+**Archiver ferme les relances en attente** (`cloreRelancesArchive`), sur la fiche d'un acheteur comme
+sur celle d'un autre contact (`FicheContact.tsx`) et depuis le tri : un archivé ne remonte plus dans
+Relances. Sauf ce qu'une clôture ne ferme jamais (un compromis, l'agenda : `relanceAGarder`). Une ligne
+« Contact archivé » / « Contact sorti des archives » dans le Suivi.
+
 ### V3.72 — 5 octobre 2026 · import ImmoFacile : un export à 226 000 colonnes ne fige plus l'aperçu ; l'adresse proposée dans « Modifier le contact »
 
 Rien à passer dans Supabase.
