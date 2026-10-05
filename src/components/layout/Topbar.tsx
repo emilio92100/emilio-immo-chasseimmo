@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
+import { compterRelancesDues } from '@/lib/relances';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { estAcheteur, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
@@ -94,12 +95,8 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
   /* Comme la barre latérale : on n'annonce que les relances dues, en retard
      ou du jour. Celles à venir attendent sagement dans leur page. */
   useEffect(() => {
-    const compter = () => {
-      const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
-      supabase.from('relances').select('*', { count: 'exact', head: true })
-        .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString())
-        .then(({ count }) => setRelancesCount(count || 0));
-    };
+    /* V3.73 : sans les relances du tri d'après l'import (compterRelancesDues). */
+    const compter = () => { compterRelancesDues().then(setRelancesCount).catch(() => {}); };
     compter();
     const revoir = () => { if (!document.hidden) compter(); };
     const minuterie = setInterval(revoir, 20000);

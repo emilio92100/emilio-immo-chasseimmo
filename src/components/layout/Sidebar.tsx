@@ -8,6 +8,7 @@ import { typeDe } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { chargerDemandesVisite } from '@/lib/demandes-visite';
+import { compterRelancesDues } from '@/lib/relances';
 import { jourParis } from '@/lib/mandat';
 import { maintenantParis, visitePasseeParis } from '@/lib/visites';
 import { TABLE_DEMANDES } from '@/lib/demandes-site';
@@ -116,13 +117,12 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     /* La pastille ne dit que ce qui est dû : en retard ou pour aujourd'hui.
        Une relance prévue dans douze jours n'est pas une alerte — elle reste
        dans la page Relances, mais elle ne doit pas peser sur le menu.
-       Fin de journée, pour que celles du jour comptent quelle que soit l'heure. */
-    const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
+       Fin de journée, pour que celles du jour comptent quelle que soit l'heure.
+       V3.73 : sans celles du tri d'après l'import (compterRelancesDues). */
     /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
        l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
-    const [{ count: rel }, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
-      supabase.from('relances').select('*', { count: 'exact', head: true })
-        .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()),
+    const [rel, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
+      compterRelancesDues().catch(() => 0),
       supabase.from('visites').select('date_visite, heure').eq('statut', 'a_venir').gte('date_visite', today).limit(1000),
       /* Les clients qui ont demandé à visiter depuis leur espace, sans date
          encore calée : la même liste que la page Visites. */
