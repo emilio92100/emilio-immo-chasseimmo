@@ -1021,9 +1021,14 @@ export default function PageCarte({ onNavigate, onMenu }: {
           <div className={s.basTel}>
             {liste.length ? (
               <div className={s.carrousel} ref={carrousel} onScroll={surGlisse}>
-                {/* Des fiches d'une ligne (V3.28) : qui ou quoi, son étiquette et
-                    sa rue ; à droite, appeler (ou l'itinéraire) et la fiche. La
-                    carte garde presque tout l'écran. */}
+                {/* Des fiches courtes (V3.28) : qui ou quoi, son étiquette et sa
+                    rue ; appeler (ou l'itinéraire) et la fiche. La carte garde
+                    presque tout l'écran.
+                    V3.74 (Alexandre : « on ne voit pas tout sur la carte ») :
+                    une étiquette longue (« Acheteur · Propriétaire ») élargissait
+                    la fiche au-delà de l'écran, la photo et le bouton coupés.
+                    Le nom et son étiquette en haut, la rue et les boutons en
+                    dessous ; la fiche ne dépasse plus jamais l'écran. */}
                 {liste.slice(0, 60).map(p => (
                   <div key={p.id} data-id={p.id} className={`${s.carteTel} ${sel === p.id ? s.carteTelSel : ''}`}
                     style={{ '--c': p.couleur } as React.CSSProperties}
@@ -1033,10 +1038,11 @@ export default function PageCarte({ onNavigate, onMenu }: {
                       : p.perso
                         ? <span className={`${s.telVign} ${s.telVignCle}`}><Ic n="cle" t={16} e={2.1} /></span>
                         : <AvatarContact c={(p.client || {}) as never} teinte={p.teinte || { bg: p.fond, fg: p.couleur }} taille={40} />}
-                    <span className={s.telTxt}>
+                    <span className={s.telL1}>
                       <b>{p.titre}</b>
-                      <span><i>{p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette}</i>{` · ${rue(p.adresse)}`}</span>
+                      {(p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette) && <i>{p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette}</i>}
                     </span>
+                    <span className={s.telAdr}>{rue(p.adresse)}</span>
                     <span className={s.telAct}>
                       {p.tel
                         ? <a href={`tel:${p.tel.replace(/\s/g, '')}`} aria-label={`Appeler ${p.titre}`} onClick={e => e.stopPropagation()}><Icone nom="tel" taille={16} epaisseur={1.9} /></a>
