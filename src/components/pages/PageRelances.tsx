@@ -7,6 +7,7 @@ import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOngletBien } from '@/lib/intentions';
 import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } from '@/lib/alertes-rappro';
 import ChoixDate from '@/components/shared/ChoixDate';
+import FenetreAction from '@/components/contacts/FenetreAction';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -25,11 +26,19 @@ import ChoixDate from '@/components/shared/ChoixDate';
  * comptent ni dans les trois compteurs ni dans les pastilles. Après l'appel,
  * « C'est fait » (il reste) ou « Archiver » (il quitte la liste, retrouvable
  * dans « Archivés »).
+ *
+ * V3.74 — « Traiter » : noter ce qui s'est passé sans quitter la page
+ * (FenetreAction : appel passé, a répondu ou messagerie, les détails, une
+ * prochaine relance). Valider écrit la ligne dans le Suivi du client, clôt la
+ * relance, et la ligne s'efface ; on passe à la suivante.
  */
 
 const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
 const DOUX = '#5b6678', PALE = '#8d99ab';
 const JAK = "'Plus Jakarta Sans', system-ui, sans-serif";
+/* Le temps qu'une ligne met à glisser et à se replier (V3.74), avant de
+   quitter la liste pour de bon : la suivante remonte sans saut. */
+const REPLI = 520;
 
 /* ── Icônes dessinées ─────────────────────────────────────────── */
 const TR: Record<string, string[]> = {
@@ -105,13 +114,18 @@ type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'semaine';
 type Periode = { k: '30' | '60' | 'date' | 'entre'; du: string; au: string };
 
 /* Un chiffre qui monte jusqu'à sa valeur à l'arrivée. */
+/* V3.74 : le chiffre part de celui qu'il affichait (3 → 2 quand une relance
+   est traitée), et non plus de zéro à chaque changement. */
 function Compteur({ n }: { n: number }) {
   const [v, setV] = useState(0);
+  const affiche = useRef(0);
   useEffect(() => {
-    let raf = 0; const t0 = performance.now(); const de = 0;
+    let raf = 0; const t0 = performance.now(); const de = affiche.current;
     const pas = (t: number) => {
       const k = Math.min(1, (t - t0) / 650);
-      setV(Math.round(de + (n - de) * (1 - Math.pow(1 - k, 3))));
+      const x = Math.round(de + (n - de) * (1 - Math.pow(1 - k, 3)));
+      affiche.current = x;
+      setV(x);
       if (k < 1) raf = requestAnimationFrame(pas);
     };
     raf = requestAnimationFrame(pas);
@@ -133,6 +147,13 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   const [partantes, setPartantes] = useState<Record<string, boolean>>({});
   /* Un archivage s'annule aussi : le contact revient, ses relances rouvrent. */
   const [annulable, setAnnulable] = useState<{ id: string; nom: string; archive?: { clientId: string; relances: string[] } } | null>(null);
+  /* V3.74 : la relance en train d'être traitée (la fenêtre est ouverte). */
+  const [traitee, setTraitee] = useState<(typeof relances)[number] | null>(null);
+  const [noteFaite, setNoteFaite] = useState('');
+  /* La ligne traitée passe au vert un instant, avant de se replier. */
+  const [faites, setFaites] = useState<Record<string, boolean>>({});
+  /* Chaque bandeau du bas repart de zéro (son entrée, sa sortie). */
+  const [toastCle, setToastCle] = useState(0);
   /* Le tri : celles du jour et en retard, ou toutes (V3.73). */
   const [triTout, setTriTout] = useState(false);
   const blocTri = useRef<HTMLElement | null>(null);
@@ -174,10 +195,12 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
   async function fait(r: any) {
     if (!(await verifie('La relance clôturée', supabase.from('relances').update({ statut: 'cloturee' }).eq('id', r.id).select('id'), { ligne: true }))) return;
     setPartantes(p => ({ ...p, [r.id]: true }));
+    setNoteFaite('');
     setAnnulable({ id: r.id, nom: r.clients ? `${r.clients.prenom} ${r.clients.nom}`.trim() : 'la relance' });
+    setToastCle(k => k + 1);
     if (minuterie.current) clearTimeout(minuterie.current);
     minuterie.current = setTimeout(() => setAnnulable(null), 6000);
-    setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id)); signalerMaj(); }, 420);
+    setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id)); signalerMaj(); }, REPLI);
   }
 
   /* Le tri (V3.73) : il ne reste pas dans le fichier. Le contact passe dans
@@ -191,11 +214,59 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     const { ids, erreur } = await cloreRelancesArchive(c.id);
     if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
     await addJournal(c.id, 'statut_change', 'Contact archivé', estTri(r.note) ? 'Après le dernier appel pour faire le tri.' : undefined, { archive: true });
-    setPartantes(p => ({ ...p, [r.id]: true }));
+    partir(r, true);
+    setNoteFaite('');
     setAnnulable({ id: r.id, nom, archive: { clientId: c.id, relances: ids.length ? ids : [r.id] } });
+    setToastCle(k => k + 1);
     if (minuterie.current) clearTimeout(minuterie.current);
     minuterie.current = setTimeout(() => setAnnulable(null), 6000);
-    setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id && x.client_id !== c.id)); signalerMaj(); }, 420);
+    setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id && x.client_id !== c.id)); signalerMaj(); }, REPLI);
+  }
+
+  /* V3.74 — La fenêtre a écrit la ligne du Suivi (et la prochaine relance
+     s'il en fallait une) : la relance traitée se clôt et sa ligne s'efface.
+     Pour le tri, « Il ne reste pas » archive le contact au passage. */
+  async function traitement(r: (typeof relances)[number], info?: { archiver: boolean }) {
+    setTraitee(null);
+    const c = r.clients;
+    const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : '';
+    /* La ligne passe au vert tout de suite ; si la base refuse, elle revient. */
+    const t0 = Date.now();
+    setFaites(p => ({ ...p, [r.id]: true }));
+    if (!(await verifie('La relance traitée', supabase.from('relances').update({ statut: 'cloturee' }).eq('id', r.id).select('id'), { ligne: true }))) {
+      setFaites(p => { const x = { ...p }; delete x[r.id]; return x; });
+      charger();
+      return;
+    }
+    if (info?.archiver && c) {
+      if (await verifie('L’archivage du contact', supabase.from('clients').update({ archive: true, updated_at: new Date().toISOString() }).eq('id', c.id).select('id'), { ligne: true })) {
+        const { erreur } = await cloreRelancesArchive(c.id);
+        if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
+        await addJournal(c.id, 'statut_change', 'Contact archivé', estTri(r.note) ? 'Après le dernier appel pour faire le tri.' : undefined, { archive: true });
+      }
+    }
+    setNoteFaite(info?.archiver ? `${nom || 'Le contact'} : noté dans son suivi, et archivé.` : `Noté dans le suivi de ${nom || 'ce contact'}.`);
+    setToastCle(k => k + 1);
+    if (minuterie.current) clearTimeout(minuterie.current);
+    setAnnulable(null);
+    minuterie.current = setTimeout(() => setNoteFaite(''), 4500);
+    /* Le vert reste un instant, puis la ligne glisse et se replie ; la liste
+       se relit ensuite : une prochaine relance posée dans la fenêtre apparaît
+       à sa date. */
+    const vert = Math.max(0, 520 - (Date.now() - t0));
+    setTimeout(() => {
+      partir(r, !!info?.archiver);
+      setTimeout(() => { setRelances(l => l.filter(x => x.id !== r.id && (!info?.archiver || x.client_id !== c?.id))); signalerMaj(); charger(); }, REPLI);
+    }, vert);
+  }
+
+  /* Une ligne s'en va : elle seule, ou toutes celles du contact s'il est archivé. */
+  function partir(r: (typeof relances)[number], toutLeContact: boolean) {
+    setPartantes(p => {
+      const n: Record<string, boolean> = { ...p, [r.id]: true };
+      if (toutLeContact) relances.forEach(x => { if (x.client_id === r.client_id) n[x.id] = true; });
+      return n;
+    });
   }
 
   async function annuler() {
@@ -339,17 +410,24 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     /* Le tri : la note sans son en-tête, ni le nom qui est juste au-dessus. */
     const texte = !r.note || r.note === o.lib ? '' : enTri ? String(r.note).slice(NOTE_TRI.length).replace(/^[^·]*·\s*/, s0 => (nom && s0.trim().replace(/\s*·$/, '') === nom ? '' : s0)) : r.note;
     return (
-      <div key={r.id} className="rl-entre" style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
-        <div className="rl-ligne" data-partante={partantes[r.id] ? '' : undefined}
+      <div key={r.id} className="rl-entre rl-pli" data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + (rang++) * 45}ms` }}>
+        <div className="rl-pli-in">
+        <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined}
           style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
-          <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
+          <span aria-hidden="true" className="rl-barre" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
           <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 240px', minWidth: 0 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
-                {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
-              </span>
+              {faites[r.id] ? (
+                <span className="rl-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: '#15803d', background: '#dcfce7', borderRadius: 20, padding: '3px 9px' }}>
+                  <Ic n="coche" t={12} ep={2.8} />Noté dans le suivi
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
+                  {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
+                </span>
+              )}
             </span>
             <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: o.fort ? 800 : 700, color: o.fort ? NAVY : OR_FONCE, background: o.fort ? OR : '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
@@ -375,10 +453,17 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
                 <Ic n="archive" t={14} ep={2.1} />Archiver
               </button>
             )}
-            <button type="button" className="rl-appui" onClick={() => fait(r)}
-              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button type="button" className="rl-appui" onClick={() => fait(r)} title="Clore la relance sans rien noter"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               <Ic n="coche" t={15} ep={2.6} />C’est fait
             </button>
+            {/* V3.74 : noter ce qui s'est passé, sans quitter la page. */}
+            {c && (
+              <button type="button" className="rl-appui rl-traiter" onClick={() => { setReport(null); setTraitee(r); }} title="Noter ce qui s’est passé sans quitter la page"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 15px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <Ic n="tel" t={14} ep={2.2} />Traiter
+              </button>
+            )}
           </span>
         </div>
 
@@ -402,6 +487,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
             </button>
           </div>
         )}
+        </div>
       </div>
     );
   };
@@ -410,15 +496,32 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
     <div className="rl-page" style={{ padding: '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
       <style>{`
         @keyframes rlEntre{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-        @keyframes rlPart{to{opacity:0;transform:translateX(24px) scale(.98);max-height:0;margin-bottom:-10px;padding-top:0;padding-bottom:0}}
-        @keyframes rlBandeau{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+        @keyframes rlToastCourt{0%{opacity:0;transform:translate(-50%,18px) scale(.96)}8%{opacity:1;transform:translate(-50%,0) scale(1)}91%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,12px)}}
+        @keyframes rlToastLong{0%{opacity:0;transform:translate(-50%,18px) scale(.96)}6%{opacity:1;transform:translate(-50%,0) scale(1)}93%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,12px)}}
+        @keyframes rlPop{0%{opacity:0;transform:scale(.4)}60%{opacity:1;transform:scale(1.18)}100%{opacity:1;transform:scale(1)}}
         @keyframes rlPouls{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}60%{box-shadow:0 0 0 7px rgba(220,38,38,0)}}
         .rl-entre{animation:rlEntre .45s cubic-bezier(.2,.9,.3,1) both}
-        .rl-carte{transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease,border-color .18s ease}
+        .rl-carte{transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease,border-color .3s ease,background-color .3s ease,opacity .2s ease}
         .rl-carte:hover{transform:translateY(-2px);box-shadow:0 16px 30px -22px rgba(16,24,40,.45)}
-        .rl-ligne{transition:box-shadow .18s ease,border-color .18s ease;max-height:400px}
+        .rl-ligne{transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease}
         .rl-ligne:hover{box-shadow:0 14px 28px -22px rgba(16,24,40,.5);border-color:#d7deea}
-        .rl-ligne[data-partante]{animation:rlPart .42s cubic-bezier(.4,0,.2,1) both;overflow:hidden}
+        /* V3.74 — Traitée : la ligne passe au vert, puis glisse et se replie
+           à sa vraie hauteur (grille 1fr → 0fr) ; celles du dessous remontent
+           sans saut. Le dernier d'un groupe emmène son titre. */
+        .rl-ligne[data-ok]{border-color:#9fdcb6 !important;background:#f3fcf6 !important;box-shadow:0 0 0 4px rgba(22,163,74,.09)}
+        .rl-ligne > .rl-barre{transition:background-color .25s ease}
+        .rl-ligne[data-ok] > .rl-barre{background:#16a34a !important}
+        .rl-ok{animation:rlPop .34s cubic-bezier(.2,.9,.3,1) both}
+        .rl-pli{display:grid;grid-template-rows:1fr;transition:grid-template-rows .5s cubic-bezier(.4,0,.2,1),margin-top .5s cubic-bezier(.4,0,.2,1)}
+        .rl-pli-in{min-height:0}
+        .rl-pli[data-partante]{grid-template-rows:0fr;margin-top:-10px;pointer-events:none}
+        .rl-pli-g[data-partante]{margin-top:-22px}
+        .rl-pli[data-partante] > .rl-pli-in{overflow:hidden}
+        .rl-pli[data-partante] .rl-ligne{opacity:0;transform:translateX(32px) scale(.98);transition:opacity .34s ease,transform .45s cubic-bezier(.4,0,.2,1),background-color .25s ease,border-color .25s ease}
+        .rl-pli-g[data-partante] > .rl-pli-in{opacity:0;transition:opacity .4s ease}
+        .rl-toast-court{animation:rlToastCourt 4.5s cubic-bezier(.2,.9,.3,1) both}
+        .rl-toast-long{animation:rlToastLong 6s cubic-bezier(.2,.9,.3,1) both}
+        .rl-toast-ok{animation:rlPop .4s cubic-bezier(.2,.9,.3,1) .12s both}
         .rl-appui{transition:transform .15s ease,background-color .15s ease,border-color .15s ease,color .15s ease}
         .rl-appui:hover{transform:translateY(-1px)}
         .rl-appui:active{transform:scale(.97)}
@@ -430,21 +533,22 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         .rl-al-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center}
         .rl-al-ping{animation:rlPing 2s ease-out infinite}
         @keyframes rlPing{0%{box-shadow:0 0 0 0 rgba(201,168,76,.5)}80%,100%{box-shadow:0 0 0 10px rgba(201,168,76,0)}}
-        @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ligne[data-partante]{animation:none}}
+        @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ok,.rl-toast,.rl-toast-ok{animation:none !important}.rl-pli,.rl-pli .rl-ligne{transition:none !important}}
         @media (max-width: 760px){
           .rl-page{padding:16px 12px 96px !important;gap:16px !important}
           .rl-cartes{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:8px !important}
           .rl-carte{padding:10px !important;border-radius:16px !important;flex-direction:column !important;align-items:flex-start !important;gap:6px !important}
           .rl-carte-sous{display:none !important}
           .rl-ligne{flex-wrap:wrap !important}
-          .rl-actions{width:100%;justify-content:stretch !important}
+          .rl-actions{width:100%;display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px !important}
+          .rl-actions > .rl-traiter{grid-column:1 / -1;order:-1}
           .rl-al{grid-template-columns:40px minmax(0,1fr);gap:12px;padding:14px}
           .rl-al-ic{width:40px;height:40px;border-radius:12px}
           .rl-al-btns{grid-column:1 / -1}
           .rl-al-btns > button{flex:1 1 0}
           .rl-actions > button{flex:1 1 0;padding:0 8px !important;white-space:nowrap}
           .rl-tri{padding:12px 10px 14px !important;border-radius:18px !important}
-          .rl-tri .rl-actions{display:grid !important;grid-template-columns:1fr 1fr;gap:8px !important}
+          .rl-tri .rl-actions{grid-template-columns:1fr 1fr}
           .rl-long{display:none}
           .rl-court{display:inline !important}
           .rl-titre{font-size:22px !important}
@@ -594,7 +698,9 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           {visibles.map(g => (
-            <section key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            /* Le dernier qui part emmène son groupe (« En retard »…), en douceur. */
+            <div key={g.id} className="rl-pli rl-pli-g" data-partante={g.liste.every(r => partantes[r.id]) ? '' : undefined}><div className="rl-pli-in">
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.1, textTransform: 'uppercase', color: g.couleur }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.couleur }} />
                 <span>{g.titre}</span>
@@ -602,6 +708,7 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
               </div>
               {g.liste.map(r => ligne(r))}
             </section>
+            </div></div>
           ))}
         </div>
       )}
@@ -632,9 +739,30 @@ export default function PageRelances({ onNavigate }: { onNavigate: (page: string
         </section>
       )}
 
+      {traitee && traitee.clients && (() => {
+        const r = traitee, c = r.clients;
+        const enTri = estTri(r.note);
+        const k = jourDe(r.date_echeance);
+        const lib = enTri ? 'Dernier appel pour faire le tri' : origineDe(r, liens[r.id]).lib;
+        const texte = enTri ? String(r.note).slice(NOTE_TRI.length) : r.note && r.note !== lib ? r.note : '';
+        return (
+          <FenetreAction clientId={c.id} prenom={`${c.prenom || ''} ${c.nom || ''}`.trim()} edition={null} typeInitial="appel"
+            rechercheId={r.recherche_id || null} titre="Traiter la relance" libelleValider="✓ Valider" proposerArchive={enTri}
+            contexte={{ titre: `${lib} · prévue le ${dateCourte(k)}`, texte, telephones: c.telephones || [] }}
+            onFermer={() => setTraitee(null)} onFait={info => { void traitement(r, info); }} />
+        );
+      })()}
+
+      {noteFaite && (
+        <div key={toastCle} role="status" className="rl-toast rl-toast-court" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', maxWidth: 'calc(100vw - 24px)' }}>
+          <span className="rl-toast-ok" style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
+          <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{noteFaite}</span>
+        </div>
+      )}
+
       {annulable && (
-        <div role="status" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', animation: 'rlBandeau .3s cubic-bezier(.2,.9,.3,1) both', maxWidth: 'calc(100vw - 24px)' }}>
-          <span style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
+        <div key={toastCle} role="status" className="rl-toast rl-toast-long" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', maxWidth: 'calc(100vw - 24px)' }}>
+          <span className="rl-toast-ok" style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
           <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{annulable.archive ? `${annulable.nom} archivé.` : `Relance de ${annulable.nom} clôturée.`}</span>
           <button type="button" onClick={annuler} style={{ height: 32, padding: '0 12px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,.12)', color: OR, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Annuler</button>
         </div>
