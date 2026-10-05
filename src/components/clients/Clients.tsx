@@ -27,6 +27,7 @@ import { Ic } from '@/components/documents/ApercuActe';
 import { colonneSourceAbsente, libelleSource, sourceDe } from '@/lib/sources';
 import { TABLE_DEMANDES, type PreRemplissage } from '@/lib/demandes-site';
 import cc from '@/components/contacts/Contacts.module.css';
+import FiltresAcheteurs, { FILTRES_A_VIDES, correspond, nbFiltresA, type FiltresA } from './FiltresAcheteurs';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -348,12 +349,12 @@ const D_CHAMBRE = <><path d="M4 21V8l8-5 8 5v13" /><path d="M10 21v-6h4v6" /></>
 
 const PA_BASE: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 9,
-  padding: '4px 10px 4px 8px', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
+  padding: 'var(--pa-p, 4px 10px 4px 8px)', fontSize: 'var(--pa-t, 12.5px)', fontWeight: 700, whiteSpace: 'nowrap',
 };
 const PA_TYPE: React.CSSProperties = { ...PA_BASE, background: '#eef4fb', border: '1px solid #dbe7f6', color: '#2d5c8f' };
 const PA_NOMBRE: React.CSSProperties = { ...PA_BASE, background: '#f8fafc', border: '1px solid #eef2f7', color: '#45566e' };
-const PA_FORT: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13.5, fontWeight: 800, color: 'var(--emilio)' };
-const PA_FAIBLE: React.CSSProperties = { fontSize: 11, color: '#a3b0c2', fontWeight: 600 };
+const PA_FORT: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 'var(--pa-f, 13.5px)', fontWeight: 800, color: 'var(--emilio)' };
+const PA_FAIBLE: React.CSSProperties = { fontSize: 'var(--pa-n, 11px)', color: '#a3b0c2', fontWeight: 600 };
 
 /* Deux types tiennent sur une ligne, au-delà on compte. */
 function texteType(v: unknown) {
@@ -503,6 +504,8 @@ export default function Clients({ onNavigate, fenetre }: {
   const [biensV, setBiensV] = useState<BienDuContact[]>([]);
   /* Le second filtre, croisé avec le premier : « Actifs » + « Propriétaires ». */
   const [filtreSit, setFiltreSit] = useState('toutes');
+  /* V3.75 : ce qu'ils cherchent (pièces, chambres, surface, budget, ville). */
+  const [fa, setFa] = useState<FiltresA>(FILTRES_A_VIDES);
   const [search, setSearch] = useState('');
   /* Venue du « + » ou de « Nouveau contact » : la fenêtre est ouverte dès
      le premier affichage, sans montrer la liste une fraction de seconde. */
@@ -616,7 +619,9 @@ export default function Clients({ onNavigate, fenetre }: {
       recherches = rs;
     }
 
-    const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur'];
+    /* V3.75 : `chambres_min` aussi. La pastille des chambres lisait
+       `clients.chambres_min`, l'ancienne colonne qui n'est plus tenue à jour. */
+    const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'chambres_min', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur'];
 
     const merged = clientsList.map(c => {
       const rechs = recherches.filter(r => r.client_id === c.id);
@@ -782,7 +787,9 @@ export default function Clients({ onNavigate, fenetre }: {
   const seul = cats.length === 1 ? cats[0] : null;
   const biensDe = (id: string) => biensV.filter(b => b.client_id === id);
 
-  const filtered = clients.filter(c => {
+  /* Les acheteurs du statut, du logement et de la recherche tapée ; puis
+     ceux qui demandent ce qu'on a choisi dans « Ce qu'il cherche » (V3.75). */
+  const avantCriteres = clients.filter(c => {
     if (!avecAcheteurs || !estAcheteur(c) || estArchive(c)) return false;
     if (seulsNonFiltres && !sansCriteres(c)) return false;
     const matchStatut = filtre === 'tous' || c.statut === filtre;
@@ -803,6 +810,7 @@ export default function Clients({ onNavigate, fenetre }: {
       (!!motSituation && motSituation.includes(normer(search.trim())));
     return matchStatut && matchSit && matchSearch;
   });
+  const filtered = nbFiltresA(fa) ? avantCriteres.filter(c => correspond(c as never, fa)) : avantCriteres;
   /* Les compteurs du second filtre suivent le premier : « 3 propriétaires »
      parmi les actifs, pas dans toute la base. */
   const nbParSituation = (k: string) => clients
@@ -1526,34 +1534,24 @@ export default function Clients({ onNavigate, fenetre }: {
           .map(x => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur,
             ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
-      {/* LE DOSSIER DES ACHETEURS — leur statut, puis leur situation */}
-      {avecAcheteurs && <div className={`${styles.situations} ligne-entre`}>
-        <span className={styles.situationsTitre}>Dossier</span>
-        {STATUTS.map(s => {
-          const actif = filtre === s.key;
-          return (
-            <button key={s.key} type="button" className={`${styles.sitBtn} ${actif ? styles.sitBtnActif : ''}`} onClick={() => setFiltre(s.key)}>
-              {s.color && <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />}
-              <span>{s.label}</span>
-              <span className={styles.sitBadge}>{nbParStatut(s.key)}</span>
-            </button>
-          );
-        })}
-      </div>}
-      {avecAcheteurs && <div className={`${styles.situations} ligne-entre`} style={{ animationDelay: '40ms' }}>
-        <span className={styles.situationsTitre}>Son logement</span>
-        {SITUATIONS.map(s => {
-          const actif = filtreSit === s.key;
-          return (
-            <button key={s.key} type="button"
-              className={`${styles.sitBtn} ${actif ? styles.sitBtnActif : ''} ${s.key === 'proprietaire' || s.key === 'vendeur' ? styles.sitBtnOr : ''}`}
-              onClick={() => setFiltreSit(actif && s.key !== 'toutes' ? 'toutes' : s.key)}>
-              {(s.key === 'proprietaire' || s.key === 'vendeur') && <Ico t={12} d={D_CLE} c={actif ? '#1a2332' : '#9a7d2e'} />}
-              <span>{s.label}</span>
-              <span className={styles.sitBadge}>{nbParSituation(s.key)}</span>
-            </button>
-          );
-        })}
+      {/* LES ACHETEURS — une seule ligne « Affiner » (V3.75) : le statut du
+          dossier, son logement, puis ce qu'il cherche. Avant : deux rangées de
+          boutons (« Dossier », « Son logement ») au-dessus. */}
+      {avecAcheteurs && <div className="ligne-entre">
+        <FiltresAcheteurs base={avantCriteres as never[]} f={fa} onF={setFa} n={filtered.length}
+          statut={{
+            v: filtre, tout: 'tous', onChange: setFiltre,
+            options: STATUTS.map(x => ({ k: x.key, l: x.key === 'tous' ? 'Tous les statuts' : x.label, n: nbParStatut(x.key), c: x.color || undefined })),
+          }}
+          logement={{
+            v: filtreSit, tout: 'toutes', onChange: setFiltreSit,
+            options: SITUATIONS.map(x => ({
+              k: x.key, l: x.key === 'toutes' ? 'Tous les logements' : x.label, n: nbParSituation(x.key), dans: x.key === 'vendeur',
+              aide: x.key === 'vendeur' ? 'Des propriétaires qui revendront après leur achat : un mandat vendeur possible. Ils sont aussi comptés dans « Propriétaires ».'
+                : x.key === 'proprietaire' ? 'Propriétaires de leur logement, revente possible comprise.'
+                  : x.key === 'inconnue' ? 'Leur situation n’est pas renseignée : à compléter sur leur fiche.' : undefined,
+            })),
+          }} />
       </div>}
 
       {/* LISTE — les acheteurs dans leur tableau détaillé ; « Tous » et les
@@ -1587,8 +1585,9 @@ export default function Clients({ onNavigate, fenetre }: {
               {filtered.length === 0 ? (
                 <div className={styles.empty}>
                   <div className={styles.emptyIcon}>👥</div>
-                  <div className={styles.emptyTitle}>{search || filtre !== 'tous' || filtreSit !== 'toutes' || seulsNonFiltres ? 'Aucun acheteur ici' : 'Aucun acheteur pour l\'instant'}</div>
-                  <div className={styles.emptySub}>{seulsNonFiltres ? 'Tous tes acheteurs ont leurs critères.' : filtre !== 'tous' ? 'Change de statut, juste au-dessus.' : 'Clique sur « + Nouveau contact » pour commencer.'}</div>
+                  <div className={styles.emptyTitle}>{nbFiltresA(fa) ? 'Aucun acheteur ne demande cela' : search || filtre !== 'tous' || filtreSit !== 'toutes' || seulsNonFiltres ? 'Aucun acheteur ici' : 'Aucun acheteur pour l\'instant'}</div>
+                  <div className={styles.emptySub}>{nbFiltresA(fa) ? `Parmi les ${avantCriteres.length} acheteurs de ce statut, aucun ne correspond à « Ce qu’il cherche ».` : seulsNonFiltres ? 'Tous tes acheteurs ont leurs critères.' : filtre !== 'tous' ? 'Change de statut, juste au-dessus.' : 'Clique sur « + Nouveau contact » pour commencer.'}</div>
+                  {nbFiltresA(fa) > 0 && <button type="button" className={styles.btnSecondary} style={{ marginTop: 12 }} onClick={() => setFa(FILTRES_A_VIDES)}>Effacer « Ce qu’il cherche »</button>}
                 </div>
               ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1642,7 +1641,7 @@ export default function Clients({ onNavigate, fenetre }: {
                 <span className={styles.colSig}>Signal</span>
               </div>
 
-              <div className={styles.list} key={`${cats.join('+')}:${filtre}:${filtreSit}:${search}`}>
+              <div className={styles.list} key={`${cats.join('+')}:${filtre}:${filtreSit}:${search}:${JSON.stringify(fa)}`}>
                 {ordonne.map((client, rang) => {
                   const st = stats[client.id];
                   const sig = signalDe(client, st);
@@ -1663,7 +1662,7 @@ export default function Clients({ onNavigate, fenetre }: {
                     >
                       <span className={styles.colClient}>
                         {/* Un petit personnage plutôt qu'une initiale (deux pour un couple). */}
-                        <AvatarContact c={client as never} teinte={t} className={styles.avatar} />
+                        <AvatarContact c={client as never} teinte={t} className={styles.avatar} libre />
                         <span style={{ minWidth: 0 }}>
                           <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
                           <span className={styles.ref}>
@@ -1700,31 +1699,35 @@ export default function Clients({ onNavigate, fenetre }: {
                         <span className={styles.pastilles} style={clos ? { opacity: 0.68 } : undefined}>
                           <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>
                           {(() => {
+                            /* V3.75 : les chambres dans la même pastille que les pièces
+                               (« 4 pièces · 3 ch. », deux minimums) : on peut filtrer
+                               dessus, il faut les voir, sans une quatrième pastille. */
                             const p = borne(client.nb_pieces_min, client.nb_pieces_max);
-                            return p ? (
+                            const ch = Number((client as { chambres_min?: unknown }).chambres_min) || 0;
+                            if (!p && !ch) return null;
+                            if (!p) return (
+                              <span style={PA_NOMBRE}>
+                                <Ico d={D_CHAMBRE} />
+                                <span style={PA_FORT}>{ch}</span> {ch > 1 ? 'chambres' : 'chambre'}
+                                <span style={PA_FAIBLE}>min</span>
+                              </span>
+                            );
+                            return (
                               <span style={PA_NOMBRE}>
                                 <Ico d={D_PIECES} />
                                 <span style={PA_FORT}>{p.valeur}</span> pièces
-                                {p.note && <span style={PA_FAIBLE}>{p.note}</span>}
+                                {p.note && (!ch || p.note !== 'min') && <span style={PA_FAIBLE}>{p.note}</span>}
+                                {ch > 0 && <>{' · '}<span style={PA_FORT}>{ch}</span>{' ch.'}</>}
                               </span>
-                            ) : null;
+                            );
                           })()}
                           {(() => {
                             const su = borne(client.surface_min, client.surface_max);
-                            if (su) return (
+                            return su ? (
                               <span style={PA_NOMBRE}>
                                 <Ico d={D_SURFACE} />
                                 <span style={PA_FORT}>{su.valeur}</span> m²
                                 {su.note && <span style={PA_FAIBLE}>{su.note}</span>}
-                              </span>
-                            );
-                            /* Pas de surface demandée : les chambres disent au moins
-                               quelque chose du logement cherché. */
-                            return (client as any).chambres_min ? (
-                              <span style={PA_NOMBRE}>
-                                <Ico d={D_CHAMBRE} />
-                                <span style={PA_FORT}>{(client as any).chambres_min}</span> chambres
-                                <span style={PA_FAIBLE}>min</span>
                               </span>
                             ) : null;
                           })()}

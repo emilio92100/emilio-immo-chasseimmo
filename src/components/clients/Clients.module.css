@@ -191,10 +191,12 @@
   text-transform: uppercase; letter-spacing: 1.3px;
 }
 
-.colClient { width: 248px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
+/* V3.75 : un peu plus de place pour « Recherche » (les chambres y sont
+   maintenant, avec les pièces), prise sur les autres colonnes. */
+.colClient { width: 232px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
 .colRech   { flex: 1 1 auto; min-width: 0; padding-right: 14px; }
-.colSect   { width: 172px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
-.colBud    { width: 134px; flex-shrink: 0; text-align: right; }
+.colSect   { width: 168px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.colBud    { width: 124px; flex-shrink: 0; text-align: right; }
 .colSig    { width: 150px; flex-shrink: 0; text-align: right; }
 
 .ligne {
@@ -426,7 +428,9 @@
   .ligne > .colBud { grid-area: bud; width: auto; align-self: start; padding-top: 4px; }
   .ligne > .colSig { grid-area: sig; width: auto; }
 
-  .avatar { width: 36px; height: 36px; font-size: 14px; }
+  /* 38 px comme avant : la règle n'avait pas d'effet (taille posée en ligne)
+     jusqu'à la V3.75, où l'avatar prend sa taille de cette classe. */
+  .avatar { width: 38px; height: 38px; font-size: 14px; }
   .nom { font-size: 14.5px; }
   .ref { font-size: 10.5px; }
   .budget { font-size: 15px; }
@@ -524,4 +528,34 @@
   .situations::-webkit-scrollbar { display: none; }
   .situationsTitre { display: none; }
   .sitBtn { flex-shrink: 0; padding: 6px 11px; font-size: 12.5px; }
+}
+
+/* ═══ V3.75 — Plus grand sur un grand écran ═══════════════════════════════
+   Alexandre : « au zoom classique à 100 %, la présentation des contacts est
+   un peu petite ». Au-delà de 1 360 px (un portable 14 pouces et plus), la
+   liste prend un cran : lignes plus hautes, nom, pastilles, budget et
+   signal plus grands, colonnes un peu plus larges. En dessous, rien ne
+   change (la colonne Recherche aurait été écrasée). */
+@media (min-width: 1360px) {
+  .list { gap: 9px; }
+  .entete { padding: 12px 20px; margin-bottom: 8px; }
+  .entete > span { font-size: 12px; }
+  .ligne { padding: 15px 20px; border-radius: 14px; }
+  .colClient { width: 268px; gap: 13px; }
+  .colSect { width: 184px; }
+  .colBud { width: 144px; }
+  .colSig { width: 164px; }
+  .avatar { width: 44px; height: 44px; }
+  .nom { font-size: 16px; }
+  .ref { font-size: 11.5px; margin-top: 3px; }
+  .etiquette, .proprio, .occupe, .aRenseigner { font-size: 10.5px; padding-top: 2px; padding-bottom: 2px; }
+  /* Sur deux lignes au besoin, plutôt que coupées. */
+  .pastilles { flex-wrap: wrap; gap: 6px 7px; --pa-t: 13.5px; --pa-p: 4px 11px 4px 9px; --pa-f: 14.5px; --pa-n: 12px; }
+  .ville { font-size: 12.5px; padding: 3px 10px; }
+  .villePlus { font-size: 12.5px; }
+  .budget { font-size: 17px; }
+  .signal { font-size: 12.5px; padding: 5px 12px; }
+  .situationsTitre { font-size: 11.5px; }
+  .sitBtn { font-size: 13px; padding: 5px 12px; }
+  .sitBadge { font-size: 11px; }
 }

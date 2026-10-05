@@ -1,0 +1,8 @@
+/* V3.75 — La ligne « Affiner » des acheteurs : sur ordinateur, elle passe à
+   la ligne quand les choix s'allongent (« Chambres 3 ch. », « Surface 70 –
+   90 m² »…) au lieu de cacher le dernier bouton et le compte. Au téléphone,
+   elle défile au doigt, comme celle des biens. */
+@media (min-width: 901px) {
+  .ligne { flex-wrap: wrap; overflow: visible; row-gap: 8px; }
+}
+.sep { flex-shrink: 0; width: 1px; height: 22px; background: #dfe5ee; margin: 0 4px; }
