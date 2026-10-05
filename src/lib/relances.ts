@@ -139,3 +139,40 @@ export async function solderRelancesAcheteur(clientId: string, rechercheId?: str
     signalerEchec('Les relances de l’acheteur', (e as Error)?.message || '');
   }
 }
+
+/* ═══ V3.73 — Le tri d'après l'import ═════════════════════════════════════
+   Des contacts repris d'ImmoFacile sans nouvelles depuis longtemps : un
+   dernier appel pour savoir s'ils restent dans le fichier. Leur relance
+   porte cette note. La page Relances les range à part (« Tri à faire ») et
+   les pastilles ne les comptent pas (Alexandre : « pas envie qu'ils se
+   mélangent avec les contacts dont les relances sont à jour »). */
+export const NOTE_TRI = 'Dernier appel pour faire le tri — ';
+export const estTri = (note: unknown) => String(note || '').startsWith(NOTE_TRI);
+
+/* Les relances dues, en retard ou du jour, sans celles du tri : la pastille
+   du menu et celle de la barre du haut. Fin de journée, pour que celles du
+   jour comptent quelle que soit l'heure. */
+export async function compterRelancesDues(): Promise<number> {
+  const finDuJour = new Date(); finDuJour.setHours(23, 59, 59, 999);
+  const { data } = await supabase.from('relances').select('note')
+    .eq('statut', 'en_attente').lte('date_echeance', finDuJour.toISOString()).limit(5000);
+  return ((data || []) as { note: string | null }[]).filter(r => !estTri(r.note)).length;
+}
+
+/* Archiver un contact (V3.73) : ses relances en attente se ferment — un
+   contact rangé dans « Archivés » ne remonte plus dans Relances —, sauf
+   celles qu'une clôture ne ferme jamais (un compromis, l'agenda). Rend le
+   nombre de relances fermées (pour pouvoir annuler), ou le message d'erreur. */
+export async function cloreRelancesArchive(clientId: string): Promise<{ ids: string[]; erreur: string }> {
+  try {
+    const { data, error } = await supabase.from('relances').select('id, note').eq('client_id', clientId).eq('statut', 'en_attente');
+    if (error) return { ids: [], erreur: error.message };
+    const ids = ((data || []) as { id: string; note: string | null }[]).filter(r => !relanceAGarder(r.note)).map(r => r.id);
+    if (!ids.length) return { ids: [], erreur: '' };
+    const rep = await supabase.from('relances').update({ statut: 'cloturee' }).in('id', ids).eq('statut', 'en_attente').select('id');
+    if (rep.error) return { ids: [], erreur: rep.error.message };
+    return { ids: ((rep.data || []) as { id: string }[]).map(r => r.id), erreur: '' };
+  } catch (e) {
+    return { ids: [], erreur: (e as Error)?.message || 'erreur inconnue' };
+  }
+}

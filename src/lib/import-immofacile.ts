@@ -112,7 +112,23 @@ export type FicheIF = {
      « Historique des relances » (une action par ligne, « 08/12/2025 ·
      Relance : … »). Vides dans un export ordinaire. */
   prochain: string; historique: string;
+  /* V3.73 : « Tri à faire », ajoutée pour les contacts sans prochain contact
+     relu un par un : « Dernier appel : … » ou « À relancer : … ». */
+  tri: string;
 };
+/* Le tri d'un contact sans prochain contact dans ImmoFacile (V3.73) :
+   « dernier » = un dernier appel pour savoir s'il reste dans le fichier
+   (bloc « Tri à faire » de Relances, jamais « Actif ») ; « relancer » = un
+   projet encore vivant, une relance ordinaire. `motif` : ce qui a décidé. */
+export type TriImport = { sorte: 'dernier' | 'relancer'; motif: string };
+export function lireTri(t: string): TriImport | null {
+  const x = net(t);
+  if (!x) return null;
+  const k = sansAccents(x).toLowerCase();
+  const sorte = /^dernier/.test(k) ? 'dernier' : /^a relancer|^relancer/.test(k) ? 'relancer' : null;
+  if (!sorte) return null;
+  return { sorte, motif: x.includes(':') ? x.slice(x.indexOf(':') + 1).trim() : '' };
+}
 /* Une action de son historique ImmoFacile : sa date, ce que c'était
    (« Relance », « Messagerie »…), son commentaire. */
 export type ActionIF = { date: string; quoi: string; texte: string };
@@ -148,6 +164,7 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
   const cols = (k: string) => index.get(k) || [];
   const iProchain = tete.findIndex(k => /^(date de )?prochain contact( le)?$/.test(k));
   const iHistorique = tete.findIndex(k => /^historique( des (relances|actions))?$/.test(k));
+  const iTri = tete.findIndex(k => /^tri( a faire| a l.?import)?$/.test(k));
   /* Les recherches : « Prix 1 », « Chambres 2 »… et la colonne où chaque bloc commence. */
   const numeros = new Map<number, number>();
   tete.forEach((h, i) => { const m = h.match(/^(.+?) (\d+)$/); if (m && BASES_RECHERCHE[m[1]] && !numeros.has(Number(m[2]))) numeros.set(Number(m[2]), i); });
@@ -173,7 +190,7 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
       situation: net(v(l, col('situation'))), recherches: [],
       consentMail: net(v(l, col('accepte les communications par email'))).toLowerCase(),
       consentBiens: net(v(l, col('accepte les propositions de biens'))).toLowerCase(),
-      prochain: net(v(l, iProchain)), historique: netTexte(v(l, iHistorique)),
+      prochain: net(v(l, iProchain)), historique: netTexte(v(l, iHistorique)), tri: net(v(l, iTri)),
     };
     for (const [n, debut] of blocs) {
       if (debut >= l.length) continue;
@@ -446,6 +463,8 @@ export type Contact = {
   /* Le prochain contact noté dans ImmoFacile, et son historique (V3.70). */
   prochain: string | null;
   historique: ActionIF[];
+  /* V3.73 : le tri décidé pour un contact sans prochain contact. */
+  tri: TriImport | null;
   /* Ce qu'il a refusé dans ImmoFacile (« les e-mails », « les propositions
      de biens ») : il ne passe pas « Actif » tout seul. */
   refus: string[];
@@ -512,7 +531,7 @@ function contactDe(f: FicheIF): Contact {
     creeLe: dateImmo(f.creeLe), suiviPar: f.suiviPar ? nomConseiller(f.suiviPar) : '',
     commentaires: f.commentaire ? [f.commentaire] : [],
     recherches: f.recherches.map(rechercheDesColonnes),
-    prochain: dateImmo(f.prochain), historique: lireHistorique(f.historique),
+    prochain: dateImmo(f.prochain), historique: lireHistorique(f.historique), tri: lireTri(f.tri),
     refus: [f.consentMail === 'non' ? 'les e-mails' : '', f.consentBiens === 'non' ? 'les propositions de biens' : ''].filter(Boolean),
     mailsInvalides: mailsDe(f.email).filter(m => !mailValide(m)),
     aVoir: [],
@@ -560,6 +579,7 @@ function fondre(a: Contact, b: Contact): void {
   ajouter(a.recherches, b.recherches, r => JSON.stringify({ ...r, n: 0 }));
   /* Deux fiches ImmoFacile pour la même personne : le contact le plus proche. */
   if (b.prochain && (!a.prochain || b.prochain < a.prochain)) a.prochain = b.prochain;
+  if (!a.tri && b.tri) a.tri = b.tri;
   if (b.historique.length) {
     ajouter(a.historique, b.historique, x => `${x.date}|${x.quoi}|${x.texte}`);
     a.historique.sort((u, v) => v.date.localeCompare(u.date));
@@ -839,7 +859,9 @@ export type BienActuel = { aVendre: boolean; type: string | null; surface: numbe
 export type ASuivre = { donnees: Record<string, unknown>; resume: string; rappel: string | null; rappelTexte: string; retard: string | null };
 /* Le rappel posé sur le contact (sans fiche bien) : celui de son projet de
    vente, ou son prochain contact noté dans ImmoFacile (`immofacile`, V3.70). */
-export type RappelContact = { date: string; retard: string | null; texte: string | null; rappelTexte: string; immofacile: boolean };
+export type RappelContact = { date: string; retard: string | null; texte: string | null; rappelTexte: string; immofacile: boolean;
+  /* V3.73 : posée par le tri d'après l'import (« Dernier appel » ou « À relancer »). */
+  tri?: TriImport['sorte'] | null };
 /* Une action de son historique ImmoFacile → une ligne de son Suivi, à sa
    date. Alexandre : « les relances, c'est toujours un appel passé ».
    « Autorisation manuelle du numéro » : un détail technique, laissé. */
@@ -880,6 +902,8 @@ export type Plan = {
   projetVente: boolean;
   /* Son rappel, sur lui, quand il n'a pas de fiche bien. */
   rappel: RappelContact | null;
+  /* V3.73 : le tri d'après l'import. « dernier » : jamais « Actif ». */
+  tri: TriImport | null;
   suivi: string;
   /* Son historique d'ImmoFacile, une ligne du Suivi par action (V3.70). */
   historique: LigneSuivi[];
@@ -1164,7 +1188,7 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
   const main = choix.rappel !== null ? (dateValide(choix.rappel) ? (choix.rappel < aujourdhui ? aujourdhui : choix.rappel) : null) : null;
   const rappel = !(projetVente || veutSuivre || pc) ? null : choix.rappel !== null ? main : prevu?.date || null;
   const retard = choix.rappel !== null ? null : prevu?.retard || null;
-  const quoiRappel = pc ? 'prochain contact' : 'rappel';
+  const quoiRappel = c.tri?.sorte === 'dernier' ? 'dernier appel' : c.tri ? 'relance' : pc ? 'prochain contact' : 'rappel';
   const rappelTexte = !rappel ? 'sans date de rappel' : rappel === aujourdhui ? `${quoiRappel} aujourd’hui${retard ? ` (en retard, ${retard})` : ''}` : `${quoiRappel} le ${dateFr(rappel)}`;
   const rappelRetard = rappel && retard ? `Rappel en retard, ${retard} : posé pour aujourd’hui` : '';
   let aSuivre: ASuivre | null = null;
@@ -1202,8 +1226,10 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
      récent de son historique). */
   const historique = lignesSuivi(c.historique);
   const dernier = historique.find(h => h.texte && h.type !== 'note') || null;
-  const texteRappel = pc ? (dernier ? `dernier échange le ${dateFr(dernier.date)} : ${dernier.texte}` : null) : v?.rappel.texte || null;
-  const rappelContact: RappelContact | null = !aSuivre && rappel ? { date: rappel, retard, texte: texteRappel, rappelTexte, immofacile: !!pc } : null;
+  /* V3.73 : un contact trié porte en note ce qui a décidé (le motif). */
+  const texteRappel = c.tri?.motif ? c.tri.motif
+    : pc ? (dernier ? `dernier échange le ${dateFr(dernier.date)} : ${dernier.texte}` : null) : v?.rappel.texte || null;
+  const rappelContact: RappelContact | null = !aSuivre && rappel ? { date: rappel, retard, texte: texteRappel, rappelTexte, immofacile: !!pc, tri: c.tri?.sorte || null } : null;
   /* Pas dans « Revente possible » : son logement, en entier, dans « À savoir ». */
   const bienEnNote = roles.proprietaire && b && !bienActuel.aVendre ? [
     resumeBien(b),
@@ -1232,7 +1258,7 @@ export function planifier(c: Contact, lec: Lecture | null, etat: EtatLecture, ch
     exclu: choix.exclu, roles, force, types, recherches, tiree,
     aSavoir: texteASavoir(c, lec, { bienEnNote, location: locTexte, locationSeule, precisions: c.recherches.map(r => r.precision).filter(Boolean), rappelRetard }),
     occupation: roles.proprietaire ? 'proprietaire' : null,
-    bienActuel, aSuivre, aSuivrePossible, projetVente, rappel: rappelContact, suivi, historique, location: locTexte, locationSeule,
+    bienActuel, aSuivre, aSuivrePossible, projetVente, rappel: rappelContact, tri: c.tri, suivi, historique, location: locTexte, locationSeule,
     emails, telephones, adresse: c.adresse, source, aVerifier, verifFiche,
   };
 }
@@ -1364,7 +1390,8 @@ export function completer(p: Plan, x: ClientCRM, o: {
   if (bienActuel) lignes.push('« Revente possible » et son bien');
   if (recherche) lignes.push('sa recherche');
   if (aSuivre) lignes.push('son bien « À suivre »');
-  if (rappel) lignes.push(p.rappel?.immofacile ? `une relance au ${p.rappel.rappelTexte}` : `un rappel pour sa vente (${p.rappel?.rappelTexte.replace(/^rappel /, '')})`);
+  if (rappel) lignes.push(p.rappel?.tri === 'dernier' ? `un dernier appel pour faire le tri (${p.rappel.rappelTexte.replace(/^dernier appel /, '')})`
+    : p.rappel?.immofacile || p.rappel?.tri ? `une relance au ${p.rappel.rappelTexte}` : `un rappel pour sa vente (${p.rappel?.rappelTexte.replace(/^rappel /, '')})`);
   if (source) lignes.push('sa source');
   if (notes) lignes.push('le bloc « Repris d’ImmoFacile » dans « À savoir »');
   /* Son historique : les lignes déjà reprises (un réimport) ne sont pas
