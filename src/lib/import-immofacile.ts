@@ -138,13 +138,20 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
   const iTete = lignes.findIndex(l => { const k = l.map(cleCol); return k.includes('nom') && k.includes('prenom') && (k.includes('statut') || k.includes('commentaires')); });
   if (iTete < 0) return { ...vide, erreur: 'Ce fichier ne ressemble pas à un export de contacts d’ImmoFacile (colonnes Nom, Prénom, Statut introuvables).' };
   const tete = lignes[iTete].map(cleCol);
-  const col = (k: string) => tete.indexOf(k);
-  const cols = (k: string) => tete.map((x, i) => (x === k ? i : -1)).filter(i => i >= 0);
+  /* V3.72 : certains exports d'ImmoFacile annoncent des milliers de blocs de
+     recherche (« Prix 15097 »… : 226 000 colonnes) alors que chaque ligne
+     s'arrête à la 44e. Les colonnes sont rangées une fois, et un bloc qui
+     commence après la fin de la ligne n'est pas lu (sinon l'aperçu se figeait). */
+  const index = new Map<string, number[]>();
+  tete.forEach((k, i) => { const l = index.get(k); if (l) l.push(i); else index.set(k, [i]); });
+  const col = (k: string) => index.get(k)?.[0] ?? -1;
+  const cols = (k: string) => index.get(k) || [];
   const iProchain = tete.findIndex(k => /^(date de )?prochain contact( le)?$/.test(k));
   const iHistorique = tete.findIndex(k => /^historique( des (relances|actions))?$/.test(k));
-  /* Les recherches : « Prix 1 », « Chambres 2 »… */
-  const numeros = new Set<number>();
-  tete.forEach(h => { const m = h.match(/^(.+?) (\d+)$/); if (m && BASES_RECHERCHE[m[1]]) numeros.add(Number(m[2])); });
+  /* Les recherches : « Prix 1 », « Chambres 2 »… et la colonne où chaque bloc commence. */
+  const numeros = new Map<number, number>();
+  tete.forEach((h, i) => { const m = h.match(/^(.+?) (\d+)$/); if (m && BASES_RECHERCHE[m[1]] && !numeros.has(Number(m[2]))) numeros.set(Number(m[2]), i); });
+  const blocs = [...numeros].sort((a, b) => a[0] - b[0]);
   const v = (l: string[], i: number) => (i >= 0 && i < l.length ? l[i] : '');
   const fiches: FicheIF[] = [];
   let ignorees = 0;
@@ -168,7 +175,8 @@ export function lireFichier(nom: string, octets: Uint8Array): FichierLu {
       consentBiens: net(v(l, col('accepte les propositions de biens'))).toLowerCase(),
       prochain: net(v(l, iProchain)), historique: netTexte(v(l, iHistorique)),
     };
-    for (const n of [...numeros].sort((a, b) => a - b)) {
+    for (const [n, debut] of blocs) {
+      if (debut >= l.length) continue;
       const r: RechIF = { n, precision: '', types: '', transaction: '', secteur: '', cpVilles: '', rayon: '', loyerHC: '', loyerCC: '', prix: [], pieces: '', chambres: '', surface: '', terrain: '', kelquartier: '' };
       for (const [base, cle] of Object.entries(BASES_RECHERCHE)) {
         const idx = cols(`${base} ${n}`);
@@ -844,9 +852,9 @@ export function lignesSuivi(l: ActionIF[]): LigneSuivi[] {
     const quoi = a.quoi.charAt(0).toUpperCase() + a.quoi.slice(1);
     const [type, titre]: [LigneSuivi['type'], string] = /messagerie|repondeur/.test(k) ? ['appel', 'Appel — messagerie']
       : /^(relance|appel|rappel)/.test(k) ? ['appel', 'Appel passé']
-        : /consentement/.test(k) ? ['note', 'Consentement recueilli']
-          : /\brdv\b|rendez|visite|estimation/.test(k) ? ['rdv', quoi]
-            : /e-?mail|courriel/.test(k) ? ['email_libre', quoi]
+        : /consentement/.test(k) ? ['note', /refus/.test(k) ? 'Consentement refusé' : 'Consentement recueilli']
+          : /\brdv\b|rendez|visite|estimation|terrain|physique/.test(k) ? ['rdv', quoi]
+            : /e-? ?mail|courriel/.test(k) ? ['email_libre', quoi]
               : ['note', quoi];
     out.push({ type, titre, date: a.date, texte: a.texte });
   }
