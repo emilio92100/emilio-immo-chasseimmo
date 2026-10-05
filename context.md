@@ -1461,6 +1461,39 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.77 — 5 octobre 2026 · Import ImmoFacile : les vendeurs (signés, archivés)
+
+Rien à passer dans Supabase (la colonne `clients.archive` existe depuis la V3.73).
+
+Alexandre exporte ses vendeurs d'ImmoFacile (statuts « Vendeur », « Vendeur Signé », « Vendeur
+Archivé ») : « vendeur signé, ceux qui ont fait affaire avec moi ; vendeur archivé, ceux qui ont
+vendu avec une autre agence, de leur côté, ou qui ne vendent plus ». Le statut d'ImmoFacile ne
+suffit pas à trancher (certains « archivés » ont vendu avec lui) : chaque fiche est relue, et la
+colonne « Tri à faire » ajoutée au fichier porte la décision. Deux valeurs de plus (`lireTri`) :
+- **« Vendeur signé : … »** → le type « Vendeur signé » à la place de « Propriétaire », sans
+  relance (sauf un prochain contact déjà noté dans ImmoFacile), sans situation « Propriétaire ».
+- **« Archivé : … »** → la fiche est créée dans « Archivés » (`archive: true`), type « Vendeur »
+  (un vendeur archivé le garde sans bien, pour être retrouvé), avec une ligne « Contact archivé »
+  dans son Suivi, sans relance ni bien « À suivre ». Une fiche qui existe déjà dans le CRM n'est
+  jamais archivée par l'import (un souci le dit).
+- **« Archivés » se filtre par type** (`Clients.tsx`, Alexandre : « je peux filtrer par vendeur
+  archivé, ou c'est tout en vrac ? ») : sous les tuiles, une rangée « Tous les archivés · Acheteurs
+  · Vendeurs · Propriétaires… », seulement les types présents, avec leur nombre.
+- Ni l'un ni l'autre n'est jamais « Actif ». Dans l'aperçu : deux onglets (« Vendeurs signés »,
+  « Rangés dans Archivés »), une étiquette sur la ligne, le statut et le bien dits en clair.
+- **Défaut corrigé** : un statut à plusieurs valeurs dans la même case (« Demandeur,Vendeur ») ne
+  comptait que la première ; chacune compte maintenant (acheteur et propriétaire).
+- **L'ordre des tuiles de Contacts** (Alexandre : « qu'on voie direct, en lisant de gauche à
+  droite, les propriétaires, ensuite vendeurs, ensuite acheteurs, ensuite gardiens ou autre ; à la
+  fin Tri à faire, Archivés, Tous… un bouton Archivés vraiment différent ») : Propriétaires,
+  Vendeurs, Vendeurs signés, Acheteurs, Acheteurs non filtrés, Gardiens, Notaires, Confrères,
+  Partenaires ; puis, tout à droite (`fin`), « Tri à faire », « Tous », « Archivés ». « Archivés »
+  a son style (`archive` d'`EnteteRubrique` : bord en pointillés, boîte d'archives). Sur
+  téléphone, la rangée défile jusqu'à la tuile allumée (« Tous » est maintenant au bout).
+
+Le rattachement de chaque vendeur à son bien (et « Vendeur » pour un mandat en cours) se fera avec
+la reprise des biens d'ImmoFacile : les biens portent le nom de leur vendeur.
+
 ### V3.76 — 5 octobre 2026 · « Tri à faire » dans Contacts
 
 Rien à passer dans Supabase.
