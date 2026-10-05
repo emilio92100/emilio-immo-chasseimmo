@@ -276,8 +276,55 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
 .actIssue { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 8px; border-radius: 11px; border: 1.5px solid #e3e8f0; background: white; font: 700 13px 'DM Sans', sans-serif; color: #52607a; cursor: pointer; white-space: nowrap; }
 .actIssue i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .actRelance { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 12px; background: #fbfcfe; border: 1px solid #eef2f7; }
+/* V3.74 — Traiter une relance : son rappel en haut de la fenêtre */
+.actContexte { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: #fbf8ef; border: 1px solid #efe3c2; }
+.actContexteT { display: inline-flex; align-items: center; gap: 7px; font: 800 11.5px 'DM Sans', sans-serif; letter-spacing: .5px; text-transform: uppercase; color: #8a6a1f; }
+.actContexteX { font-size: 13.5px; line-height: 1.5; color: #4a5568; }
+.actTels { display: flex; flex-wrap: wrap; gap: 8px; }
+.actTels a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 99px; border: 1px solid #e3d3ab; background: white; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; text-decoration: none; }
 .actRelance[data-pose='oui'] { background: #fffbf4; border-color: #ecdcb4; }
 .actRelanceT { display: inline-flex; align-items: center; gap: 7px; font: 800 11.5px 'DM Sans', sans-serif; letter-spacing: .6px; text-transform: uppercase; color: #8593a8; }
+
+/* V3.74 — La fenêtre d'une action, en douceur (Alexandre : « que ce ne soit
+   pas brutal »). Elle monte (sur téléphone, elle glisse du bas), ses blocs
+   arrivent l'un après l'autre ; « Valider » passe au vert avec sa coche
+   dessinée, puis elle redescend. Les choix changent de couleur sans à-coup. */
+@keyframes fenVoile { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fenVoileFin { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fenMonte { from { opacity: 0; transform: translateY(22px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes fenDescend { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(18px) scale(.98); } }
+@keyframes fenGlisse { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fenGlisseFin { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes fenBloc { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fenPoint { 0% { transform: scale(.3); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+@keyframes fenTrace { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes fenTourne { to { transform: rotate(360deg); } }
+.fenAnime { animation: fenVoile .24s ease both; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.fenAnime > .fenIn { animation: fenMonte .36s cubic-bezier(.2, .9, .3, 1) both; }
+.fenAnime[data-ouverture] .fenCorps > * { animation: fenBloc .4s cubic-bezier(.2, .9, .3, 1) both; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(1) { animation-delay: .07s; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(2) { animation-delay: .12s; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(3) { animation-delay: .17s; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(4) { animation-delay: .22s; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(5) { animation-delay: .27s; }
+.fenAnime[data-ouverture] .fenCorps > :nth-child(n+6) { animation-delay: .32s; }
+.fenAnime[data-sortie] { animation: fenVoileFin .24s ease .03s both; pointer-events: none; }
+.fenAnime[data-sortie] > .fenIn { animation: fenDescend .24s cubic-bezier(.4, 0, 1, 1) both; }
+.actApparait { animation: fenBloc .32s cubic-bezier(.2, .9, .3, 1) both; }
+.fenAnime .btn, .actType, .actIssue, .actRelance, .pill { transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .2s ease, opacity .18s ease; }
+.actType:hover:not(.actTypeOn), .actIssue:hover:not([aria-pressed='true']) { border-color: #d5dde8; background: #fafbfd; }
+.actIssue[aria-pressed='true'] i { animation: fenPoint .34s cubic-bezier(.2, .9, .3, 1); }
+.actValider { justify-content: center; min-width: 132px; }
+.actReussi, .actReussi:disabled, .actReussi:hover { background: #16a34a; border-color: #16a34a; color: white; opacity: 1; box-shadow: 0 0 0 4px rgba(22, 163, 74, .16); }
+.actCoche path { stroke-dasharray: 24; animation: fenTrace .36s cubic-bezier(.4, 0, .2, 1) .04s both; }
+.actTourne { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: fenTourne .7s linear infinite; }
+@media (max-width: 760px) {
+  .fenAnime > .fenIn { animation-name: fenGlisse; animation-duration: .4s; }
+  .fenAnime[data-sortie] > .fenIn { animation: fenGlisseFin .26s cubic-bezier(.4, 0, 1, 1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fenAnime, .fenAnime > .fenIn, .fenAnime .fenCorps > *, .actApparait, .actIssue i, .actCoche path { animation: none !important; }
+}
 
 /* ── V3.23 — le suivi d'un contact (FicheContact) ── */
 .suiviBande { border-radius: 16px; overflow: hidden; border: 1px solid #e3e8f0; background: #f7f9fc; }

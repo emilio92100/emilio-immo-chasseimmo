@@ -19,7 +19,15 @@ import c from './Contacts.module.css';
    `recherche_id: null` (le journal est lu sur `client_id`, AGENTS.md §3.1 ;
    la page Relances lit toutes les relances en attente, avec le client).
    Même règle qu'ailleurs : la relance est créée d'abord, son identifiant va
-   dans la ligne du journal, et les deux partent ensemble à la suppression. */
+   dans la ligne du journal, et les deux partent ensemble à la suppression.
+
+   V3.74 — « Traiter » une relance depuis la page Relances (Alexandre : « on
+   reste sur la page, un petit pop-up : qu'est-ce qui s'est passé suite à
+   l'appel »). La même fenêtre, avec en haut le rappel de la relance et le
+   téléphone du client (un clic pour appeler), la recherche de la relance
+   (`rechercheId` : la ligne et la prochaine relance restent sur sa
+   recherche), et pour le tri d'après l'import, « Il reste » ou « Il ne reste
+   pas » (onFait dit s'il faut l'archiver). */
 
 const TYPES: { v: string; l: string; ic: string }[] = [
   { v: 'appel', l: 'Appel passé', ic: 'telephone' },
@@ -34,6 +42,8 @@ const titreAuto = (t: string) => !t.trim() || TITRES_AUTO.has(t.trim());
 
 const jourPlus = (j: number) => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + j); return d.toISOString().split('T')[0]; };
 const jourDe = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+/* Le téléphone ou l'ordinateur réglé sur « réduire les animations ». */
+const sansMouvement = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /* Supprimer une ligne du suivi d'un contact, et sa relance si elle attend encore. */
 export async function supprimerActionContact(j: { id: string; titre: string; metadata?: { relance_id?: string } | null }, clientId: string): Promise<boolean> {
@@ -51,12 +61,21 @@ export async function supprimerActionContact(j: { id: string; titre: string; met
   return verifie('La suppression de l’action', supabase.from('journal').delete().eq('id', j.id).select('id'), { ligne: !rid });
 }
 
-export default function FenetreAction({ clientId, prenom, edition, typeInitial = 'note', onFermer, onFait }: {
+export type ContexteRelance = { titre: string; texte?: string | null; telephones?: string[] | null };
+export default function FenetreAction({ clientId, prenom, edition, typeInitial = 'note', onFermer, onFait, rechercheId = null, contexte, titre: titreImpose, libelleValider, proposerArchive = false }: {
   clientId: string; prenom: string;
   /* Une ligne du journal à modifier, ou null pour en créer une. */
   edition: { id: string; type: string; titre: string; description: string | null; metadata?: { relance_id?: string } | null } | null;
   typeInitial?: 'note' | 'appel';
-  onFermer: () => void; onFait: () => void;
+  onFermer: () => void;
+  /* V3.74 : `archiver`, pour le tri d'après l'import (« Il ne reste pas »). */
+  onFait: (info?: { archiver: boolean }) => void;
+  /* V3.74 — Traiter une relance : sa recherche, son rappel, le titre et le bouton. */
+  rechercheId?: string | null;
+  contexte?: ContexteRelance;
+  titre?: string;
+  libelleValider?: string;
+  proposerArchive?: boolean;
 }) {
   const [f, setF] = useState(() => edition
     ? { type: edition.type || 'note', titre: edition.titre || '', description: edition.description || '', relance: '' }
@@ -65,7 +84,40 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
   const [relanceId, setRelanceId] = useState<string | null>(null);
   const [delai, setDelai] = useState(5);
   const [occupe, setOccupe] = useState(false);
+  /* Le tri : il reste dans le fichier (null tant qu'on n'a pas choisi), ou non. */
+  const [reste, setReste] = useState<boolean | null>(null);
   const notes = useRef<HTMLTextAreaElement>(null);
+  /* V3.74 — Rien de brutal : la fenêtre monte (les blocs arrivent l'un après
+     l'autre), « Valider » passe au vert avec sa coche, puis elle redescend. */
+  const [ouverture, setOuverture] = useState(true);
+  const [reussi, setReussi] = useState(false);
+  const [sortie, setSortie] = useState(false);
+  const bloque = occupe || reussi || sortie;
+  useEffect(() => { const t = setTimeout(() => setOuverture(false), 700); return () => clearTimeout(t); }, []);
+  /* Les minuteries ne sont pas annulées si la fenêtre disparaît : `onFait`
+     doit partir quoi qu'il arrive (la page Relances y clôt la relance). */
+  const fermer = () => {
+    if (bloque) return;
+    if (sansMouvement()) { onFermer(); return; }
+    setSortie(true);
+    setTimeout(onFermer, 230);
+  };
+  const finir = (info?: { archiver: boolean }) => {
+    if (sansMouvement()) { onFait(info); return; }
+    setReussi(true);
+    setTimeout(() => { setSortie(true); setTimeout(() => onFait(info), 240); }, 620);
+  };
+  /* Échap ferme, comme un clic à côté. */
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || bloque) return;
+      if (sansMouvement()) { onFermer(); return; }
+      setSortie(true);
+      setTimeout(onFermer, 230);
+    };
+    window.addEventListener('keydown', touche);
+    return () => window.removeEventListener('keydown', touche);
+  }, [bloque, onFermer]);
 
   useEffect(() => {
     delaiRelance().then(setDelai);
@@ -94,28 +146,28 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
           ]);
         } else if (!relanceId && f.relance) {
           const { data: rel, error } = await supabase.from('relances').insert({
-            client_id: clientId, recherche_id: null, type: 'manuelle', statut: 'en_attente', date_echeance: echeance, note: noteRelance,
+            client_id: clientId, recherche_id: rechercheId, type: 'manuelle', statut: 'en_attente', date_echeance: echeance, note: noteRelance,
           }).select('id').single();
           if (error) signalerEchec('La relance', error.message);
           if (rel?.id) await verifie('Le lien entre l’action et sa relance', supabase.from('journal').update({ metadata: { relance_id: rel.id } }).eq('id', edition.id));
         }
-        onFait();
+        finir();
         return;
       }
       let rid: string | null = null;
       if (f.relance) {
         const { data: rel, error } = await supabase.from('relances').insert({
-          client_id: clientId, recherche_id: null, type: 'manuelle', statut: 'en_attente', date_echeance: echeance, note: noteRelance,
+          client_id: clientId, recherche_id: rechercheId, type: 'manuelle', statut: 'en_attente', date_echeance: echeance, note: noteRelance,
         }).select('id').single();
         if (error) { signalerEchec('La relance', error.message); return; }
         rid = rel?.id || null;
       }
       const ok = await verifie('L’action', supabase.from('journal').insert({
-        client_id: clientId, recherche_id: null, type: f.type, titre, description: f.description || null,
+        client_id: clientId, recherche_id: rechercheId, type: f.type, titre, description: f.description || null,
         metadata: rid ? { relance_id: rid } : {},
       }));
       if (!ok) { if (rid) await verifie('La relance créée avec l’action', supabase.from('relances').delete().eq('id', rid)); return; }
-      onFait();
+      finir({ archiver: proposerArchive && reste === false });
     } finally {
       setOccupe(false);
     }
@@ -123,16 +175,32 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
 
   const RACCOURCIS: [string, number][] = [['Demain', 1], ['Dans 3 j', 3], [`Dans ${delai} j`, delai], ['Dans 15 j', 15], ['Dans 1 mois', 30]];
   const pose = !!f.relance;
-  const titreFen = edition ? 'Modifier l’action' : f.type === 'appel' && typeInitial === 'appel' ? 'Noter un appel' : 'Ajouter une action';
+  const titreFen = titreImpose || (edition ? 'Modifier l’action' : f.type === 'appel' && typeInitial === 'appel' ? 'Noter un appel' : 'Ajouter une action');
+  /* Le tri : il faut avoir dit s'il reste, et « il ne reste pas » ne pose pas de relance. */
+  const attendTri = proposerArchive && reste === null;
+  const telephones = (contexte?.telephones || []).filter(Boolean);
 
   const fen = (
-    <div className={c.fen} onClick={e => { if (e.target === e.currentTarget && !occupe) onFermer(); }}>
+    <div className={`${c.fen} ${c.fenAnime}`} data-ouverture={ouverture ? '' : undefined} data-sortie={sortie ? '' : undefined}
+      onClick={e => { if (e.target === e.currentTarget) fermer(); }}>
       <div className={c.fenIn} style={{ width: 'min(720px, 100%)' }} role="dialog" aria-modal="true" aria-label={titreFen}>
         <div className={c.fenTete}>
           <h3>{`${titreFen}${prenom ? ` · ${prenom}` : ''}`}</h3>
-          <button type="button" className={c.btn} onClick={onFermer} aria-label="Fermer" disabled={occupe}>✕</button>
+          <button type="button" className={c.btn} onClick={fermer} aria-label="Fermer" disabled={bloque}>✕</button>
         </div>
         <div className={c.fenCorps}>
+          {contexte && (
+            <div className={c.actContexte}>
+              <span className={c.actContexteT}><Ic n="alarme" t={14} />{contexte.titre}</span>
+              {contexte.texte && <span className={c.actContexteX}>{contexte.texte}</span>}
+              {telephones.length > 0 && (
+                <span className={c.actTels}>
+                  {telephones.map(t => <a key={t} href={`tel:${t.replace(/[^\d+]/g, '')}`}><Ic n="telephone" t={14} /><span>{t}</span></a>)}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className={c.ch}>
             <span>Type d’action</span>
             <div className={c.actTypes}>
@@ -146,14 +214,14 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
           </div>
 
           {f.type === 'appel' && (
-            <div className={c.ch}>
+            <div className={`${c.ch} ${c.actApparait}`}>
               <span>Comment ça s’est passé ?</span>
               <div className={c.actIssues}>
                 {ISSUES_APPEL.map(x => {
                   const on = f.titre.trim() === x.titre;
                   return (
                     <button key={x.k} type="button" aria-pressed={on} className={c.actIssue}
-                      style={on ? { borderColor: x.c, background: x.bg, color: x.c } : undefined}
+                      style={on ? { borderColor: x.c, background: x.bg, color: x.c, boxShadow: `0 0 0 3px ${x.bg}` } : undefined}
                       onClick={() => {
                         setF(v => ({ ...v, titre: on ? 'Appel passé' : x.titre }));
                         if (!on && x.k === 'repondu') setTimeout(() => notes.current?.focus(), 30);
@@ -173,7 +241,24 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
             <textarea ref={notes} className={c.notes} style={{ minHeight: 96 }} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} />
           </label>
 
-          <div className={c.actRelance} data-pose={pose ? 'oui' : 'non'}>
+          {proposerArchive && (
+            <div className={c.ch}>
+              <span>Après cet appel</span>
+              <div className={c.actIssues}>
+                <button type="button" aria-pressed={reste === true} className={c.actIssue} onClick={() => setReste(true)}
+                  style={reste === true ? { borderColor: '#15803d', background: '#ecfdf3', color: '#15803d', boxShadow: '0 0 0 3px #ecfdf3' } : undefined}>
+                  <i style={{ background: '#15803d' }} />Il reste
+                </button>
+                <button type="button" aria-pressed={reste === false} className={c.actIssue} onClick={() => { setReste(false); setF(x => ({ ...x, relance: '' })); }}
+                  style={reste === false ? { borderColor: '#475569', background: '#f1f5f9', color: '#334155', boxShadow: '0 0 0 3px #f1f5f9' } : undefined}>
+                  <i style={{ background: '#64748b' }} />Il ne reste pas
+                </button>
+              </div>
+              <p key={String(reste)} className={`${c.pied} ${c.actApparait}`} style={{ margin: 0 }}>{reste === false ? 'Il sera archivé : rangé dans « Archivés », ses relances en attente se fermeront.' : reste ? 'Il reste dans ton fichier : pose-lui une prochaine relance si besoin.' : 'Dis s’il reste dans ton fichier, ou s’il faut l’archiver.'}</p>
+            </div>
+          )}
+
+          {!(proposerArchive && reste === false) && <div className={`${c.actRelance} ${c.actApparait}`} data-pose={pose ? 'oui' : 'non'}>
             <span className={c.actRelanceT}><Ic n="alarme" t={14} />{'Prochaine relance'}<em className={c.facult}>{' · facultatif'}</em></span>
             <div className={c.pills}>
               <button type="button" className={`${c.pill} ${!pose ? c.pillOn : ''}`} onClick={() => setF({ ...f, relance: '' })}>Aucune</button>
@@ -184,12 +269,20 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
             </div>
             <ChoixDate valeur={f.relance} min={new Date().toISOString().split('T')[0]} placeholder="Choisir une autre date" onChange={v => setF({ ...f, relance: v })} />
             <span className={c.pied}>{pose ? `Elle apparaîtra dans « Relances » le ${new Date(`${f.relance}T12:00:00`).toLocaleDateString('fr-FR')}.` : 'Laissez « Aucune » si rien n’est à rappeler.'}</span>
-          </div>
+          </div>}
         </div>
         <div className={c.fenPied}>
-          <button type="button" className={c.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
-          <button type="button" className={`${c.btn} ${c.btnOr}`} disabled={occupe} onClick={enregistrer}>
-            {occupe ? 'Enregistrement…' : edition ? '✓ Enregistrer'
+          <button type="button" className={c.btn} disabled={bloque} onClick={fermer}>Annuler</button>
+          <button type="button" className={`${c.btn} ${c.btnOr} ${c.actValider} ${reussi ? c.actReussi : ''}`} disabled={bloque || attendTri} onClick={enregistrer} title={attendTri ? 'Dis d’abord s’il reste dans le fichier' : undefined}>
+            {reussi ? (
+              <>
+                <svg className={c.actCoche} width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>{edition ? 'Enregistré' : 'Noté dans le suivi'}</span>
+              </>
+            ) : occupe ? <><span className={c.actTourne} aria-hidden="true" /><span>Enregistrement…</span></> : edition ? '✓ Enregistrer'
+              : libelleValider ? (pose ? `${libelleValider} · relance le ${new Date(`${f.relance}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}` : libelleValider)
               : pose ? `✓ Ajouter au journal · relance le ${new Date(`${f.relance}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
                 : '✓ Ajouter au journal'}
           </button>
