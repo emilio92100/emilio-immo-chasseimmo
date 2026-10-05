@@ -49,6 +49,11 @@ const surfaceDe = (c: Acheteur) => nombre(c.surface_min);
 const budgetDe = (c: Acheteur) => nombre(c.budget_max) ?? nombre(c.budget_min);
 /* 5 pièces = 5 et plus ; 4 chambres = 4 et plus. */
 const PLUS_PIECES = 5, PLUS_CHAMBRES = 4;
+/* V3.78 : la recherche dans les villes, sans tenir compte des accents ni
+   des majuscules (« boul » trouve « Boulogne-Billancourt »). */
+const sansAccents = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/* Les villes montrées d'un coup, sans recherche tapée. */
+const MAX_VILLES = 30;
 const egal = (v: number | null, k: number, plus: number) => !!v && (k >= plus ? v >= plus : v === k);
 
 export function correspond(c: Acheteur, f: FiltresA): boolean {
@@ -104,13 +109,14 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
   statut: ChoixUnique; logement: ChoixUnique;
 }) {
   const [ouvert, setOuvert] = useState<Panneau>(null);
+  const [qVille, setQVille] = useState('');
   useEffect(() => {
     if (!ouvert) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(null); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [ouvert]);
-  const basculer = (p: Panneau) => setOuvert(o => (o === p ? null : p));
+  const basculer = (p: Panneau) => { if (p === 'ville') setQVille(''); setOuvert(o => (o === p ? null : p)); };
   /* Combien d'acheteurs on aurait avec ce choix, les autres critères gardés. */
   const combien = (g: Partial<FiltresA>) => base.filter(c => correspond(c, { ...f, ...g })).length;
   const actifs = nbFiltresA(f) + (logement.v !== logement.tout ? 1 : 0);
@@ -260,12 +266,42 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
               <p className={b.affAide}>Son budget maximum.</p>
             </>
           )}
-          {ouvert === 'ville' && (
-            <div className={s.pills}>
-              {villes.length === 0 && <span className={b.vide}>Aucun secteur saisi dans leurs recherches.</span>}
-              {villes.slice(0, 30).map(v => <Puce key={v} l={v} n={combien({ villes: [v] })} on={f.villes.includes(v)} onClick={() => onF({ ...f, villes: basculerDans(f.villes, v) })} />)}
-            </div>
-          )}
+          {/* V3.78 (Alexandre : « quand il y a beaucoup de villes, une petite
+              barre de recherche pour sélectionner plus vite ») : on tape, la
+              liste se réduit ; Entrée coche la première trouvée. Les villes
+              déjà cochées restent toujours en vue. */}
+          {ouvert === 'ville' && (() => {
+            const q = sansAccents(qVille.trim());
+            const trouvees = q ? villes.filter(v => sansAccents(v).includes(q)) : villes;
+            const tete = q ? trouvees : trouvees.slice(0, MAX_VILLES);
+            const vues = [...f.villes.filter(v => !tete.includes(v)), ...tete];
+            const reste = trouvees.length - tete.length;
+            return (
+              <>
+                {villes.length > 0 && (
+                  <label className={l.cherche}>
+                    <Ic n="loupe" t={15} e={2.2} />
+                    <input value={qVille} onChange={e => setQVille(e.target.value)} placeholder={`Chercher parmi ${villes.length} ville${villes.length > 1 ? 's' : ''}…`}
+                      aria-label="Chercher une ville" autoFocus={typeof window !== 'undefined' && window.innerWidth > 760}
+                      onKeyDown={e => {
+                        if (e.key !== 'Enter' || !q || !trouvees.length) return;
+                        e.preventDefault();
+                        const v = trouvees[0];
+                        if (!f.villes.includes(v)) onF({ ...f, villes: [...f.villes, v] });
+                        setQVille('');
+                      }} />
+                    {qVille && <button type="button" className={l.chercheVider} onClick={() => setQVille('')} aria-label="Effacer la recherche"><Ic n="croix" t={13} e={2.4} /></button>}
+                  </label>
+                )}
+                <div className={s.pills}>
+                  {villes.length === 0 && <span className={b.vide}>Aucun secteur saisi dans leurs recherches.</span>}
+                  {q && trouvees.length === 0 && <span className={b.vide}>{`Aucune ville ne contient « ${qVille.trim()} ».`}</span>}
+                  {vues.map(v => <Puce key={v} l={v} n={combien({ villes: [v] })} on={f.villes.includes(v)} onClick={() => onF({ ...f, villes: basculerDans(f.villes, v) })} />)}
+                </div>
+                {reste > 0 && <p className={b.affAide}>{`Et ${reste} autre${reste > 1 ? 's' : ''} ville${reste > 1 ? 's' : ''} : tape le début du nom pour ${reste > 1 ? 'les' : 'la'} trouver.`}</p>}
+              </>
+            );
+          })()}
           <button type="button" className={b.affFermer} onClick={() => setOuvert(null)} aria-label="Fermer ce panneau"><Ic n="haut" t={15} e={2.4} /></button>
         </div>
       )}

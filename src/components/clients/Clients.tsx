@@ -67,8 +67,14 @@ const CATEGORIES: { cle: Categorie; lib: string; couleur?: string }[] = [
    droite, les propriétaires, ensuite vendeurs, ensuite acheteurs, ensuite
    gardiens ou autre ; à la fin Tri à faire, Archivés, Tous ») : les types
    d'abord, puis le groupe de fin, tout à droite. */
-const ORDRE_TUILES: Categorie[] = ['proprietaire', 'vendeur', 'vendeur_signe', 'acheteur', 'non_filtre', 'gardien', 'notaire', 'confrere', 'partenaire'];
+/* V3.78 (« propriétaire au début, vendeur et acheteur, ensuite gardien,
+   vendeur signé ou autre ») : les trois du métier, puis le reste. */
+const ORDRE_TUILES: Categorie[] = ['proprietaire', 'vendeur', 'acheteur', 'gardien', 'vendeur_signe', 'non_filtre', 'notaire', 'confrere', 'partenaire'];
 const FIN_TUILES: Categorie[] = ['tri', 'tous', 'archives'];
+/* V3.78 (« à côté de Acheteurs, une petite flèche, on clique et on choisit
+   les autres types ; on ne met pas tout sur la même ligne ») : ceux-ci
+   passent dans « Autres types ▾ », chacun dès qu'il a un contact. */
+const MENU_TUILES: Categorie[] = ['gardien', 'vendeur_signe', 'non_filtre', 'notaire', 'confrere', 'partenaire'];
 /* V3.76 : la tuile du tri d'après l'import. */
 const TUILE_TRI: { cle: Categorie; lib: string; couleur?: string } = { cle: 'tri', lib: 'Tri à faire', couleur: '#fbbf24' };
 /* Les catégories d'une vue (« vendeur », « acheteur+proprietaire »…) ; rien de
@@ -1558,17 +1564,19 @@ export default function Clients({ onNavigate, fenetre }: {
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
         phrase="Clique plusieurs types pour les voir ensemble."
         label="Filtrer par type de contact" actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
-        tuiles={[...ORDRE_TUILES.map(k => CATEGORIES.find(x => x.cle === k)).filter((x): x is (typeof CATEGORIES)[number] => !!x), TUILE_TRI, CATEGORIES[0], ...(nbCat('archives') ? [{ cle: 'archives' as Categorie, lib: 'Archivés' }] : [])]
+        tuiles={[...ORDRE_TUILES.map(k => CATEGORIES.find(x => x.cle === k)).filter((x): x is (typeof CATEGORIES)[number] => !!x), TUILE_TRI, CATEGORIES[0], { cle: 'archives' as Categorie, lib: 'Archivés' }]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
              depuis le menu, alors qu'il n'y en a pas encore). « Tri à faire »
              (V3.76) suit la même règle : le dernier appel passé, elle reste
              le temps de lire « Tri terminé », puis disparaît. */
-          .filter(x => x.cle === 'tous' || nbCat(x.cle) > 0 || cats.includes(x.cle))
+          /* V3.78 : « Archivés » toujours là, même vide : sa place ne bouge pas. */
+          .filter(x => x.cle === 'tous' || x.cle === 'archives' || nbCat(x.cle) > 0 || cats.includes(x.cle))
           .map((x, i, l) => ({ cle: x.cle, lib: x.lib, n: nbCat(x.cle), couleur: x.couleur, alerte: x.cle === 'tri',
             /* V3.77 : la première du groupe de fin part tout à droite. */
             fin: FIN_TUILES.includes(x.cle) && !FIN_TUILES.includes(l[i - 1]?.cle as Categorie),
             archive: x.cle === 'archives',
+            menu: MENU_TUILES.includes(x.cle),
             ...(x.cle === 'tous' ? { tete: true, ic: <Ic n="groupe" t={14} e={2.1} /> } : {}) }))} />
 
       {/* LES ACHETEURS — une seule ligne « Affiner » (V3.75) : le statut du

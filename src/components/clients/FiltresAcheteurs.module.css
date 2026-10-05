@@ -6,3 +6,22 @@
   .ligne { flex-wrap: wrap; overflow: visible; row-gap: 8px; }
 }
 .sep { flex-shrink: 0; width: 1px; height: 22px; background: #dfe5ee; margin: 0 4px; }
+
+/* V3.78 — la recherche dans les villes, en tête du panneau « Ville ». */
+.cherche {
+  display: flex; align-items: center; gap: 8px; max-width: 360px; height: 38px; box-sizing: border-box;
+  padding: 0 10px 0 12px; border-radius: 10px; border: 1px solid #e3e8f0; background: #f6f8fb; color: #94a3b8; cursor: text;
+  transition: border-color .15s, background .15s;
+}
+.cherche:focus-within { background: #fff; border-color: #c9a84c; }
+.cherche input { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; font: inherit; font-size: 13.5px; color: var(--emilio); }
+.cherche input::placeholder { color: #94a3b8; }
+.chercheVider {
+  width: 24px; height: 24px; flex: 0 0 auto; border-radius: 50%; border: none; background: #e9edf3; color: #64748b;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.chercheVider:hover { background: #dfe5ee; color: var(--emilio); }
+@media (max-width: 760px) {
+  .cherche { max-width: none; }
+  .cherche input { font-size: 16px; } /* 16 px : iOS ne zoome pas au toucher */
+}
