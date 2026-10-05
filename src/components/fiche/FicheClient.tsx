@@ -300,6 +300,71 @@ function remettreEnForme(e: React.FocusEvent<HTMLInputElement>) {
   if (n !== null) e.currentTarget.value = ecrireMontant(n, '');
 }
 
+/* V3.72 — Une adresse proposée pendant la frappe, dans « Modifier le
+   contact » comme à sa création : la base adresse nationale, la même que
+   pour les biens. Un choix remplit « rue, code postal ville » d'un coup, sans
+   faute de frappe ; la carte la retrouve donc à coup sûr. Une ville seule
+   (on a tapé un code postal) donne « code postal ville », sans doublon.
+   Déclaré hors du rendu : sinon le champ perd le focus à chaque lettre. */
+type AdresseProposee = { properties?: { label?: string; name?: string; postcode?: string; city?: string; type?: string } };
+function adresseChoisie(p: NonNullable<AdresseProposee['properties']>): string {
+  const ville = [p.postcode, p.city].filter(Boolean).join(' ');
+  if (p.type === 'municipality') return ville || p.label || '';
+  return [p.name || p.label || '', ville].filter(Boolean).join(', ');
+}
+function ChampAdresseAuto({ etiquette, valeur, onChange }: { etiquette: string; valeur: string; onChange: (v: string) => void }) {
+  const [sug, setSug] = useState<AdresseProposee[]>([]);
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const derniere = useRef('');
+  useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  const taper = (q: string) => {
+    onChange(q);
+    derniere.current = q;
+    if (minuterie.current) clearTimeout(minuterie.current);
+    if (q.trim().length < 4) { setSug([]); return; }
+    minuterie.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(q)}&limit=5&autocomplete=1`);
+        const j = await r.json();
+        if (derniere.current === q) setSug(Array.isArray(j.features) ? j.features : []);
+      } catch { setSug([]); }
+    }, 250);
+  };
+  const choisir = (f: AdresseProposee) => {
+    onChange(adresseChoisie(f.properties || {}));
+    derniere.current = '';
+    setSug([]);
+  };
+  return (
+    <div>
+      <label className={styles.lbl}>{etiquette}</label>
+      <div className={styles.adr}>
+        <input className={styles.inp} value={valeur} autoComplete="off" placeholder="Tapez le début : 12 rue de Silly…"
+          onChange={e => taper(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') setSug([]); }}
+          onBlur={() => setTimeout(() => setSug([]), 180)} />
+        {sug.length > 0 && (
+          <ul className={styles.adrSug} role="listbox" aria-label="Adresses proposées">
+            {sug.map((f, i) => {
+              const p = f.properties || {};
+              const ville = p.type === 'municipality' ? (p.postcode || '') : [p.postcode, p.city].filter(Boolean).join(' ');
+              return (
+                <li key={i}>
+                  <button type="button" role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => choisir(f)}>
+                    <b>{p.name || p.label}</b>
+                    {ville && <small>{ville}</small>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      {sug.length === 0 && <span className={styles.adrAide}>{'Tapez l’adresse et choisissez-la dans la liste.'}</span>}
+    </div>
+  );
+}
+
 /* V3.50 — Un bien d'acheteur qui est en fait un mandat de l'agence (une copie
    portant `bien_vente_id`) : l'offre, le compromis et l'acte se suivent sur
    la fiche du bien, pas dans une transaction de chasse (la vente y compte
@@ -4948,7 +5013,7 @@ ${signatureMail()}`,
                   <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.c2_email} onChange={e => setCf(f => ({ ...f, c2_email: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.c2_tel} onChange={e => setCf(f => ({ ...f, c2_tel: e.target.value }))}  /></div></div>
                 </div>
               )}
-              <div><label className={styles.lbl}>Adresse</label><input className={styles.inp} value={cf.adresse} onChange={e => setCf(f => ({ ...f, adresse: e.target.value }))} /></div>
+              <ChampAdresseAuto etiquette="Adresse" valeur={cf.adresse} onChange={v => setCf(f => ({ ...f, adresse: v }))} />
               {cf.couple ? (
                 <div className={styles.formRow}><div><label className={styles.lbl}>Autre e-mail (facultatif)</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div><div><label className={styles.lbl}>Autre téléphone (facultatif)</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
               ) : (
@@ -4980,7 +5045,7 @@ ${signatureMail()}`,
                   <div><label className={styles.lbl}>Valeur estimée (€)</label><input className={styles.inp} type="number" value={cf.bien_actuel_valeur} onChange={e => setCf(f => ({ ...f, bien_actuel_valeur: e.target.value }))} /></div>
                   <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_meme_adresse: !f.bien_actuel_meme_adresse }))} style={{ alignSelf: 'flex-start', padding: '7px 13px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#e2e8f0'}`, background: cf.bien_actuel_meme_adresse ? '#f0f9ff' : 'white', color: cf.bien_actuel_meme_adresse ? '#0ea5e9' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_meme_adresse ? '✓ ' : ''}📍 Bien à la même adresse que le contact</button>
                   {!cf.bien_actuel_meme_adresse && (
-                    <div><label className={styles.lbl}>Adresse du bien à revendre</label><input className={styles.inp} value={cf.bien_actuel_adresse} onChange={e => setCf(f => ({ ...f, bien_actuel_adresse: e.target.value }))} /></div>
+                    <ChampAdresseAuto etiquette="Adresse du bien à revendre" valeur={cf.bien_actuel_adresse} onChange={v => setCf(f => ({ ...f, bien_actuel_adresse: v }))} />
                   )}
                   <div><label className={styles.lbl}>Précisions sur le bien à revendre</label><textarea className={styles.inp} rows={2} value={cf.bien_actuel_notes} onChange={e => setCf(f => ({ ...f, bien_actuel_notes: e.target.value }))} /></div>
                 </div>
