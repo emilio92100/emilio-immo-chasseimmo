@@ -95,6 +95,10 @@
 .adrSug small { font-size: 12px; color: #8593a8; }
 .adrAide { display: block; margin-top: 4px; font-size: 11.5px; color: #94a3b8; }
 
+/* V3.73 — Un acheteur archivé : dit tout en haut de sa fiche */
+.archiveBandeau { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 24px 0; padding: 11px 14px; border-radius: 14px; background: #f8fafc; border: 1px solid #e3e8f0; font-size: 13px; color: #64748b; }
+.archiveBandeau button { height: 32px; padding: 0 13px; border-radius: 10px; border: 1px solid #d6dee9; background: white; color: var(--emilio); font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+
 .suggestions { position: absolute; top: 100%; left: 0; right: 0; z-index: 50; background: white; border: 1px solid #e3e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow: hidden; margin-top: 3px; }
 .suggItem { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: background 0.12s; }
 .suggItem:hover { background: #f8fafc; }
@@ -567,6 +571,7 @@ a.coLien:hover { color: #1a2332; }
   .rapproIllu { display: none; }
   .rapproCta { justify-content: center; width: 100%; }
   .teteZone { padding: 10px 10px 0; }
+  .archiveBandeau { margin: 10px 10px 0; }
   .tete { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 14px 44px; border-radius: 18px; }
   .teteQui { gap: 12px; }
   .teteAvatar { width: 44px; height: 44px; font-size: 16px; }

@@ -2,12 +2,12 @@
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { lirePro, lireStructure } from '@/lib/contacts';
+import { estArchive, lirePro, lireStructure } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
-import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur } from '@/lib/relances';
+import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur, cloreRelancesArchive } from '@/lib/relances';
 import { annulerVisites } from '@/lib/annuler-visites';
 import { lireMontant, ecrireMontant } from '@/lib/montant';
 import { visitePassee } from '@/lib/visites';
@@ -2164,6 +2164,32 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
     loadRecherches(); chargerRelances(); load();
   }
 
+  /* V3.73 — Archiver un acheteur, comme les autres contacts (Alexandre :
+     « quand on va dans les archives, on peut tout retrouver d'un coup ») : il
+     quitte la liste et se range dans « Archivés ». Sa veille s'arrête (un
+     archivé n'est plus cherché) et ses relances en attente se ferment, sauf
+     un compromis ou l'agenda. Sortir des archives ne remet rien en marche :
+     on choisit son état ensuite. */
+  async function basculerArchive() {
+    const archiver = !estArchive(client);
+    if (archiver && !confirm(`Archiver ${nomFoyer(client) || 'ce contact'} ?\n\nIl quitte la liste des contacts et se range dans « Archivés », où tu le retrouves quand tu veux. Sa veille s’arrête et ses relances en attente se ferment.`)) return;
+    const { data, error } = await supabase.from('clients').update({ archive: archiver, updated_at: new Date().toISOString() }).eq('id', client.id).select().maybeSingle();
+    if (error || !data) {
+      signalerEchec(archiver ? 'L’archivage du contact' : 'La sortie des archives', error?.message || 'aucune ligne n’a été modifiée. La session a peut-être expiré : recharge la page, puis recommence.');
+      return;
+    }
+    setClient(data as Client);
+    if (archiver) {
+      await verifie('L’arrêt de la veille', supabase.from('recherches').update({ active: false }).eq('client_id', client.id));
+      const { erreur } = await cloreRelancesArchive(client.id);
+      if (erreur) signalerEchec('Le contact est archivé, mais ses relances', erreur);
+    }
+    await addJournal(client.id, 'statut_change', archiver ? 'Contact archivé' : 'Contact sorti des archives',
+      archiver ? 'La veille est arrêtée et ses relances en attente sont fermées.' : 'Rien n’est remis en marche : choisis son état.', { archive: archiver });
+    signalerMaj();
+    load();
+  }
+
   async function rouvrirDossier() {
     if (!confirm('Rouvrir ce dossier ?\n\nLe statut repasse à « Actif » et la veille reprend sur cette recherche.')) return;
     setSaving(true);
@@ -3502,6 +3528,14 @@ ${signatureMail()}`,
         </div>
       </div>
 
+      {/* V3.73 : un acheteur archivé le dit tout en haut, avec la sortie. */}
+      {estArchive(client) && (
+        <div className={styles.archiveBandeau}>
+          <span>Ce contact est archivé : il n’apparaît plus dans la liste des contacts, seulement dans « Archivés ».</span>
+          <button type="button" onClick={() => void basculerArchive()}>Sortir des archives</button>
+        </div>
+      )}
+
       {/* ══ L'EN-TÊTE (V3.29) : qui, où en est son dossier, comment le joindre ══
           Le bloc bleu ne grandit jamais : les coordonnées tiennent dans un
           panneau qui se déplie par-dessus les onglets, et la situation est
@@ -3652,6 +3686,15 @@ ${signatureMail()}`,
                                   </button>
                                 </>
                               )}
+                              {/* V3.73 : l'archive, comme pour les autres contacts. */}
+                              <button onClick={() => { setMenuStatut(null); void basculerArchive(); }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderTop: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#475569', fontWeight: 700, fontSize: 13 }}>
+                                <span>🗄️</span>
+                                <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  <span>{estArchive(client) ? 'Sortir des archives' : 'Archiver le contact'}</span>
+                                  <span style={{ fontSize: 11.5, fontWeight: 500, color: '#94a3b8' }}>{estArchive(client) ? 'Il revient dans la liste des contacts' : 'Retrouvable ensuite dans « Archivés »'}</span>
+                                </span>
+                              </button>
                             </div>
                           </Portail>
                         )}
