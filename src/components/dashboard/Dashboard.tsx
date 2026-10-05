@@ -6,6 +6,7 @@ import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
 import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
 import { estAcheteur, estArchive } from '@/lib/contacts';
+import { estTri } from '@/lib/relances';
 import { jourParis } from '@/lib/mandat';
 import { honorairesEncaisses, honorairesPrevus, moisDe, moisCourant, eurosRonds, type Encaisse } from '@/lib/activite';
 import { maintenantParis, visitePasseeParis } from '@/lib/visites';
@@ -106,7 +107,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
     ]);
     const tous = (c || []) as Client[];
     setClients(tous);
-    setRelances(r || []);
+    /* V3.73 : les relances du tri d'après l'import restent dans leur bloc de la page Relances. */
+    setRelances(((r || []) as Relance[]).filter(x => !estTri(x.note)));
     setChiffres({ presentes: pres.count || 0, visitesFaites: faites.count || 0 });
     /* V3.50 : sans les transactions d'un client perdu ou archivé : le dossier
        est clos, la transaction ne court plus. Un client « bien trouvé » et
@@ -151,7 +153,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
   const totalPrevu = (prevu || []).reduce((t, e) => t + e.ht, 0);
 
   /* Des acheteurs : un notaire ou un vendeur n'est ni actif ni prospect. */
-  const actifs    = clients.filter(c => estAcheteur(c) && c.statut === 'actif').length;
+  const actifs    = clients.filter(c => estAcheteur(c) && !estArchive(c) && c.statut === 'actif').length;
   const prospects = clients.filter(c => estAcheteur(c) && c.statut === 'prospect').length;
   const today     = jourParis();
 
