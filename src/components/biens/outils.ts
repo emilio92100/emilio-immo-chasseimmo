@@ -446,10 +446,28 @@ export async function ficheClient(id: string): Promise<Record<string, unknown>> 
 
 /* ══ Les acheteurs qui correspondent ══════════════════════════════════════
    La même note que dans l'espace de l'acheteur (src/lib/correspondance.ts),
-   sur ses recherches actives, clients actifs ou prospects, hors propriétaire. */
-export type Acheteur = { recherche: RechercheMini; client: ClientMini; corr: Correspondance; copie: Copie | null };
+   sur ses recherches actives, clients actifs ou prospects, hors propriétaire.
+
+   V3.99 (Alexandre : « ça me met des noms alors que je n'ai rien prévu, je ne
+   suis pas convaincu ») : seul un acheteur au statut Actif, dont la recherche
+   dit son budget ET son secteur, peut « correspondre » (`rang` 'ok'). Une
+   recherche sans l'un des deux n'était jugée que sur le reste : trois
+   critères suffisaient pour sortir à 100 % sur n'importe quel bien. Elle
+   passe « À compléter ». Les prospects sont à part. Les compteurs (onglet,
+   liste des biens, envoi groupé) ne comptent que les 'ok'. */
+export type RangAcheteur = 'ok' | 'incomplet' | 'prospect';
+export type Acheteur = { recherche: RechercheMini; client: ClientMini; corr: Correspondance; copie: Copie | null; rang: RangAcheteur; manque: string[] };
 export const SEUIL_CORRESPOND = 70;
 export const SEUIL_LISTE = 50;
+/* Ce qui manque à une recherche pour être jugée : « budget », « secteur ». */
+export function manqueRecherche(r: RechercheMini): string[] {
+  const m: string[] = [];
+  if (!(Number(r.budget_max) > 0)) m.push('budget');
+  const sect = (r as Record<string, unknown>).secteurs;
+  if (!Array.isArray(sect) || !sect.some(x => String(x || '').trim())) m.push('secteur');
+  return m;
+}
+export const fiable = (x: Acheteur) => x.rang === 'ok';
 
 /* V3.45 : un critère essentiel nettement raté écarte l'acheteur, quelle que
    soit sa note (src/lib/ecart-acheteur.ts). */
@@ -468,15 +486,18 @@ export function acheteursTries(b: BienVente, recherches: RechercheMini[], client
     const cr = criteresDepuisRecherche(r);
     const corr = correspondance(bc, cr);
     if (!corr) continue;
-    const x: Acheteur = { recherche: r, client: c, corr, copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null };
+    const manque = manqueRecherche(r);
+    const rang: RangAcheteur = c.statut === 'prospect' ? 'prospect' : manque.length ? 'incomplet' : 'ok';
+    const x: Acheteur = { recherche: r, client: c, corr, copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null, rang, manque };
     const raison = raisonEcart(corr, bc, cr);
     if (raison) ecartes.push({ acheteur: x, raison });
     else retenus.push(x);
   }
   return { retenus: retenus.sort((x, y) => y.corr.note - x.corr.note), ecartes };
 }
+/* Ceux qui correspondent pour de bon (V3.99) : actifs, budget et secteur dits. */
 export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): Acheteur[] {
-  return acheteursTries(b, recherches, clients, copies).retenus;
+  return acheteursTries(b, recherches, clients, copies).retenus.filter(fiable);
 }
 /* « 4 autres recherches ne sont pas montrées : budget trop court (2), autre secteur (2). » */
 export function phraseEcartes(l: Ecarte[]): string {

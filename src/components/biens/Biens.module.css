@@ -1568,3 +1568,112 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 .repriseCreerTx { flex: 1 1 220px; min-width: 0; font-weight: 650; color: #1f2d44; }
 .repriseEnCours { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 650; color: #8a6a1f; }
 .repriseCreer > button { max-width: 100%; white-space: normal; text-align: left; height: auto; min-height: 36px; }
+
+/* ══ Le haut de la fiche (V3.99) ═════════════════════════════════════════════
+   Alexandre : « Mandat en cours à côté du nom du propriétaire », « une
+   connexion entre mandat en cours et diffusion », « Modifier, Note… que ce
+   soit collé ». Trois blocs de la hauteur de la pastille du propriétaire, à
+   cheval sur le haut du bandeau : la pastille ; l'étape et la diffusion
+   d'un seul tenant (une gélule, un trait les relie) ; à droite, les gestes
+   collés. La diffusion en cours est verte, comme l'étape « en vente ». */
+.statutBien {
+  position: relative; flex-shrink: 0; display: inline-flex; align-items: stretch; height: 46px; box-sizing: border-box; padding: 3px; border-radius: 99px;
+  background: #fff; border: 1.5px solid color-mix(in srgb, var(--etC, #c9a84c) 42%, #fff);
+  box-shadow: 0 12px 26px -12px rgba(26, 35, 50, .5), 0 2px 6px rgba(26, 35, 50, .08);
+}
+.statutEtape {
+  display: inline-flex; align-items: center; gap: 8px; padding: 0 12px 0 13px; border: none; border-radius: 99px; background: transparent;
+  color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background .2s;
+}
+.statutEtape:hover, .statutEtape[aria-expanded='true'] { background: color-mix(in srgb, var(--etC, #c9a84c) 10%, #fff); }
+.statutEtape > svg { color: color-mix(in srgb, var(--etC, #c9a84c) 70%, #1a2332); }
+.etArchive { padding: 1px 7px; border-radius: 99px; background: #f1f5f9; color: #64748b; font-size: 11px; font-weight: 800; }
+.statutDiff {
+  --dC: #94a3b8; --dF: #f3f5f8; --dT: #475569;
+  position: relative; display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; padding: 0 13px; border: none; border-radius: 99px;
+  background: var(--dF); color: var(--dT); font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background .2s, box-shadow .2s;
+}
+/* Le trait qui relie l'étape à la diffusion, de la couleur de l'une à celle de l'autre. */
+.statutDiff::before {
+  content: ''; position: absolute; left: -12px; top: 0; bottom: 0; margin: auto 0; width: 12px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--etC, #c9a84c) 70%, #fff), var(--dC));
+}
+.statutDiff[data-ton='on'] { --dC: #0f9d63; --dF: #e6f7ee; --dT: #0b6b44; }
+.statutDiff[data-ton='regler'] { --dC: #d97706; --dF: #fff3df; --dT: #92400e; }
+.statutDiff:hover { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--dC) 55%, transparent); }
+.statutDiff[data-ton='on'] > .diffPoint::after, .statutDiff[data-ton='regler'] > .diffPoint::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--dC); animation: pointRespire 2.2s ease-out infinite; }
+.diffCourt { display: none; }
+/* Les supports où il part : une pastille de leur couleur, l'une sur l'autre. */
+.diffSupports { display: inline-flex; align-items: center; margin-left: 1px; }
+.diffSupports i {
+  width: 22px; height: 22px; margin-left: -6px; box-sizing: border-box; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sC); color: #fff; border: 2px solid var(--dF); font: 800 8.5px/1 'Plus Jakarta Sans', sans-serif; font-style: normal; letter-spacing: -.2px;
+}
+.diffSupports i:first-child { margin-left: 0; }
+.menuGauche { left: 0; right: auto; }
+/* Les gestes, collés : un bloc, un trait entre chacun. */
+.gestes {
+  display: inline-flex; align-items: stretch; height: 46px; box-sizing: border-box; border-radius: 99px; background: #fff; border: 1px solid #e3e8f0; overflow: hidden;
+  box-shadow: 0 12px 26px -12px rgba(26, 35, 50, .5), 0 2px 6px rgba(26, 35, 50, .08);
+}
+.geste {
+  position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 0 17px; border: none; border-radius: 0; background: transparent;
+  color: #1a2332; font: 700 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background .15s;
+}
+.geste:first-child { padding-left: 19px; }
+.geste + .geste::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 1px; background: #e3e8f0; }
+.geste:hover, .geste[aria-expanded='true'] { background: #f3f6fa; }
+.geste > svg { color: #64748b; }
+.gestePlus { padding: 0 17px 0 15px; }
+.chevalCourt .statutDiff .diffLong { display: none; }
+.chevalCourt .statutDiff .diffCourt { display: inline; }
+.chevalSerre .gesteTx, .chevalSerre .statutEtape .etLong { display: none; }
+.chevalSerre .statutEtape .etCourt { display: inline; }
+.chevalSerre .geste { padding: 0 14px; }
+/* Au téléphone, deux rangs : la pastille du propriétaire, en entier, à
+   cheval sur le bord ; dessous, sur le bandeau, l'étape et la diffusion,
+   puis les gestes en icônes. Le bandeau descend d'autant :
+   44 + 8 + 42 = 94 px de haut, le bord au milieu du premier rang (22 px). */
+@media (max-width: 760px) {
+  .chevalHaut { flex-wrap: wrap; row-gap: 8px; margin-bottom: -84px; }
+  .chevalHaut + .hero { padding-top: 84px; }
+  .chevalHaut > .proprioCheval { flex: 1 1 100%; min-width: 0; }
+  .chevalHaut > .proprioCheval .pProprio { width: fit-content; max-width: 100%; }
+  .chevalHaut .pProprioBtn { max-width: 100%; }
+  .statutBien { height: 42px; flex: 0 1 auto; min-width: 0; }
+  .statutEtape { padding: 0 10px; gap: 6px; font-size: 13px; }
+  .statutDiff { margin-left: 10px; padding: 0 11px; gap: 6px; font-size: 13px; }
+  .statutDiff::before { left: -10px; width: 10px; }
+  .statutDiff .diffLong { display: none; }
+  .statutDiff .diffCourt { display: inline; }
+  .chevalHaut > .barreActions { margin-left: auto; }
+  .gestes { height: 42px; }
+  .geste, .geste:first-child, .gestePlus, .chevalSerre .geste { padding: 0 12px; }
+  .gesteTx { display: none; }
+}
+/* Un téléphone : la note reste dans « ⋯ » (« Ajouter une note »), pour
+   que l'étape et la diffusion tiennent sur le même rang que les gestes. */
+@media (max-width: 480px) {
+  .diffSupports, .gesteNote { display: none; }
+  .statutEtape { padding: 0 9px; gap: 5px; }
+  .statutDiff { margin-left: 9px; padding: 0 10px; gap: 5px; }
+  .statutDiff::before { left: -9px; width: 9px; }
+}
+
+/* Les sous-rubriques de « Le bien », en tuiles (V3.99, Alexandre : « des
+   onglets un peu différents, pour faire plus joli ») : l'icône dans une
+   pastille ronde de la couleur de sa carte, le nom dessous. La tuile
+   choisie est blanche, sa pastille pleine. Au téléphone, la rangée défile. */
+.sousOnglets button { flex-direction: column; gap: 6px; padding: 9px 12px 8px; min-width: 86px; font-size: 12.5px; letter-spacing: .1px; }
+nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
+.sousOnglets .sousOngletIc { width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--sousC) 40%, #31466b); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); transition: background .3s, box-shadow .3s, transform .3s; }
+.sousOnglets .sousOngletIc svg { color: color-mix(in srgb, var(--sousC) 18%, #fff); }
+.sousOnglets button:hover:not([aria-pressed="true"]) .sousOngletIc { transform: translateY(-1px); }
+.sousOnglets button[aria-pressed="true"] .sousOngletIc { background: var(--sousC); box-shadow: 0 7px 14px -7px var(--sousC); }
+.sousOnglets button[aria-pressed="true"] .sousOngletL { font-weight: 800; }
+.sousOnglets button[data-k="tout"]::after { top: 16px; bottom: 16px; }
+.sousOngletL { line-height: 1.15; }
+@media (max-width: 760px) {
+  .sousOnglets button { min-width: 74px; padding: 8px 9px 7px; font-size: 12px; }
+  .sousOnglets .sousOngletIc { width: 30px; height: 30px; }
+}

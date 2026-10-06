@@ -12,7 +12,11 @@
      « L'envoi s'ouvre au mandat ». On sait déjà qui appeler.
    · En pause, vendu, retiré : la liste reste, en lecture.
 
-   La carte « Les acheteurs » de la Vue d'ensemble est ici aussi. */
+   La carte « Les acheteurs » de la Vue d'ensemble est ici aussi.
+
+   V3.99 : « Correspondent » et « En partie » ne parlent que des acheteurs
+   actifs dont la recherche dit son budget et son secteur (outils.ts, `rang`).
+   Les autres sont à part, dans « À compléter » et « Prospects ». */
 
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,7 +25,7 @@ import { euros } from '@/lib/mandat';
 import { dateCourte, titreBien, type BienVente } from '@/lib/biens-vente';
 import { demanderOuvertureFiche } from '@/lib/intentions';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, envoyerDansEspace, mettreEnSelection, nomClient,
+  SEUIL_CORRESPOND, SEUIL_LISTE, envoyerDansEspace, fiable, mettreEnSelection, nomClient,
   type Acheteur, type Copie,
 } from './outils';
 import a from './AcheteursBien.module.css';
@@ -35,14 +39,14 @@ export const modeAcheteurs = (etape: string): ModeAcheteurs =>
 
 /* ── Petits morceaux ── */
 const C = 113.1; // périmètre du cercle de la note (r = 18)
-function Note({ n, t = 48 }: { n: number; t?: number }) {
-  const coul = n >= 85 ? '#16a34a' : n >= SEUIL_CORRESPOND ? '#c9a84c' : '#94a3b8';
+function Note({ n, t = 48, gris }: { n: number; t?: number; gris?: boolean }) {
+  const coul = gris ? '#cbd5e1' : n >= 85 ? '#16a34a' : n >= SEUIL_CORRESPOND ? '#c9a84c' : '#94a3b8';
   return (
     <svg className={a.note} width={t} height={t} viewBox="0 0 48 48" role="img" aria-label={`${n} pour cent`}>
       <circle cx="24" cy="24" r="18" fill="none" stroke="#eef1f6" strokeWidth="4.5" />
       <circle cx="24" cy="24" r="18" fill="none" stroke={coul} strokeWidth="4.5" strokeLinecap="round"
         strokeDasharray={`${(C * n / 100).toFixed(1)} ${C}`} transform="rotate(-90 24 24)" />
-      <text x="24" y="28.5" textAnchor="middle" fill="#1a2332" style={{ font: "800 12.5px 'Plus Jakarta Sans', sans-serif" }}>{n}</text>
+      <text x="24" y="28.5" textAnchor="middle" fill={gris ? '#94a3b8' : '#1a2332'} style={{ font: "800 12.5px 'Plus Jakarta Sans', sans-serif" }}>{n}</text>
     </svg>
   );
 }
@@ -62,8 +66,11 @@ export function Avatar({ acheteur, petit }: { acheteur: Acheteur; petit?: boolea
   return <AvatarContact c={acheteur.client} teinte={{ bg: c.f, fg: c.t }} className={petit ? a.avPetit : a.av} libre />;
 }
 
-/* Ce qui ne colle pas, en une ligne ; sinon « Tout correspond ». */
+/* Ce qui ne colle pas, en une ligne ; sinon « Tout correspond ».
+   V3.99 : une recherche sans budget ou sans secteur le dit d'abord. */
+const MANQUE: Record<string, string> = { budget: 'pas de budget', secteur: 'pas de secteur' };
 function ecart(x: Acheteur): { t: string; ok: boolean } {
+  if (x.manque.length) return { t: `Recherche à compléter : ${x.manque.map(k => MANQUE[k] || k).join(', ')}`, ok: false };
   const pb = x.corr.lignes.filter(l => l.etat !== 'oui');
   if (!pb.length) return { t: `Tout correspond : ${x.corr.lignes.map(l => l.lib.toLowerCase()).slice(0, 4).join(', ')}`, ok: true };
   const l = pb.find(y => y.etat === 'non') || pb[0];
@@ -125,13 +132,19 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
   max?: number; onTout?: () => void; titre?: string;
 }) {
   const liste = useMemo(() => acheteurs.filter(x => x.corr.note >= SEUIL_LISTE), [acheteurs]);
-  const bons = liste.filter(x => x.corr.note >= SEUIL_CORRESPOND);
-  const partiels = liste.length - bons.length;
-  const [filtre, setFiltre] = useState<'tout' | 'bons' | 'partiels'>(() => (bons.length ? 'bons' : 'tout'));
+  /* V3.99 : les acheteurs actifs, budget et secteur dits ; les autres à part. */
+  const principaux = liste.filter(fiable);
+  const incomplets = liste.filter(x => x.rang === 'incomplet');
+  const prospects = liste.filter(x => x.rang === 'prospect');
+  const bons = principaux.filter(x => x.corr.note >= SEUIL_CORRESPOND);
+  const partiels = principaux.length - bons.length;
+  const [filtre, setFiltre] = useState<'tout' | 'bons' | 'partiels' | 'incomplets' | 'prospects'>(() => (bons.length ? 'bons' : 'tout'));
   const vente = mode === 'vente' && !!onAgir;
   /* Les trois premiers qui correspondent et n'ont pas encore le bien sont cochés d'office. */
   const [choisis, setChoisis] = useState<string[]>(() => (vente ? bons.filter(x => !x.copie).slice(0, 3).map(x => x.recherche.id) : []));
-  const vus = (max ? liste : liste.filter(x => filtre === 'tout' || (filtre === 'bons' ? x.corr.note >= SEUIL_CORRESPOND : x.corr.note < SEUIL_CORRESPOND)));
+  const vus = max ? principaux
+    : filtre === 'incomplets' ? incomplets : filtre === 'prospects' ? prospects
+      : principaux.filter(x => filtre === 'tout' || (filtre === 'bons' ? x.corr.note >= SEUIL_CORRESPOND : x.corr.note < SEUIL_CORRESPOND));
   const montres = max ? vus.slice(0, max) : vus;
   const coches = liste.filter(x => choisis.includes(x.recherche.id) && !presente(x.copie));
   const basculer = (id: string) => setChoisis(c => (c.includes(id) ? c.filter(y => y !== id) : [...c, id]));
@@ -139,7 +152,7 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
   const titreBloc = titre || (mode === 'avant' ? 'Qui pourrait l’acheter' : 'Acheteurs qui correspondent');
   const sous = mode === 'avant'
     ? 'Sur les critères de leur recherche et la surface, les pièces, le secteur du bien. Le prix compte dès qu’il est défini.'
-    : `Parmi vos ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''}, avec la même note que dans leur espace. Un budget trop court, un autre secteur, trop petit ou pas assez de chambres : la recherche est écartée.`;
+    : `Parmi vos ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''} : les acheteurs actifs dont la recherche dit son budget et son secteur, avec la même note que dans leur espace. Budget trop court, autre secteur, trop petit ou pas assez de chambres : écartée.`;
   const verrou = mode === 'avant' ? 'L’envoi s’ouvre au mandat' : mode === 'pause' ? 'Vente en pause : l’envoi reprend avec elle' : mode === 'fini' ? 'Le bien n’est plus en vente' : '';
 
   return (
@@ -156,15 +169,29 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
         </div>
         {!max && liste.length > 0 && (
           <div className={a.puces} role="group" aria-label="Filtrer">
-            <button type="button" className={filtre === 'tout' ? a.puceOn : a.puce} aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tous <b>{liste.length}</b></button>
-            <button type="button" className={filtre === 'bons' ? a.puceOn : a.puce} aria-pressed={filtre === 'bons'} onClick={() => setFiltre('bons')}>Correspondent <b>{bons.length}</b></button>
-            <button type="button" className={filtre === 'partiels' ? a.puceOn : a.puce} aria-pressed={filtre === 'partiels'} onClick={() => setFiltre('partiels')}>En partie <b>{partiels}</b></button>
+            <span className={a.pucesL}>
+              <button type="button" className={filtre === 'tout' ? a.puceOn : a.puce} aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tous <b>{principaux.length}</b></button>
+              <button type="button" className={filtre === 'bons' ? a.puceOn : a.puce} aria-pressed={filtre === 'bons'} onClick={() => setFiltre('bons')}>Correspondent <b>{bons.length}</b></button>
+              <button type="button" className={filtre === 'partiels' ? a.puceOn : a.puce} aria-pressed={filtre === 'partiels'} onClick={() => setFiltre('partiels')}>En partie <b>{partiels}</b></button>
+            </span>
+            {(incomplets.length > 0 || prospects.length > 0) && (
+              <span className={`${a.pucesL} ${a.pucesAPart}`}>
+                {incomplets.length > 0 && (
+                  <button type="button" className={filtre === 'incomplets' ? a.puceOn : `${a.puce} ${a.puceAPart}`} aria-pressed={filtre === 'incomplets'} onClick={() => setFiltre('incomplets')}
+                    title="Recherches sans budget ou sans secteur : à compléter avant de les rapprocher">À compléter <b>{incomplets.length}</b></button>
+                )}
+                {prospects.length > 0 && (
+                  <button type="button" className={filtre === 'prospects' ? a.puceOn : `${a.puce} ${a.puceAPart}`} aria-pressed={filtre === 'prospects'} onClick={() => setFiltre('prospects')}
+                    title="Contacts au statut Prospect">Prospects <b>{prospects.length}</b></button>
+                )}
+              </span>
+            )}
           </div>
         )}
         {max && verrou && <span className={a.verrou}><Ic n="cadenas" t={14} />{verrou}</span>}
       </div>
 
-      {liste.length === 0 ? (
+      {(max ? principaux : liste).length === 0 ? (
         <div className={a.vide}>
           <span className={a.videIc}><Ic n="groupe" t={24} /></span>
           <b>Aucune recherche ne lui correspond pour l’instant.</b>
@@ -186,11 +213,12 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
                     <Ic n="check" t={13} e={3.2} />
                   </button>
                 )}
-                <Note n={x.corr.note} t={max ? 44 : 48} />
+                <Note n={x.corr.note} t={max ? 44 : 48} gris={!!x.manque.length} />
                 <Avatar acheteur={x} />
                 <div className={a.qui}>
                   <div className={a.quiL1}>
                     <button type="button" className={a.nom} onClick={() => onFiche(x.client.id)}>{nomClient(x.client)}</button>
+                    {x.rang === 'prospect' && <span className={a.tagProspect}>Prospect</span>}
                     {x.recherche.budget_max ? <span className={a.budget}>{`jusqu’à ${euros(x.recherche.budget_max)}`}</span> : null}
                   </div>
                   <span className={e.ok ? a.ecartOk : a.ecartKo}>{e.t}</span>
@@ -214,7 +242,11 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
               </div>
             );
           })}
-          {!max && !montres.length && <div className={a.videPetit}>Personne dans ce filtre.</div>}
+          {!max && !montres.length && (
+            <div className={a.videPetit}>{(filtre === 'tout' || filtre === 'bons') && !principaux.length
+              ? `Aucun acheteur actif avec un budget et un secteur ne lui correspond.${incomplets.length ? ' Regardez « À compléter »' : ''}${incomplets.length && prospects.length ? ' et « Prospects »' : prospects.length ? ' Regardez « Prospects »' : ''}${incomplets.length || prospects.length ? '.' : ''}`
+              : 'Personne dans ce filtre.'}</div>
+          )}
         </div>
       )}
 
@@ -241,7 +273,7 @@ export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir,
 
 /* ══ LA CARTE DE LA VUE D'ENSEMBLE ═══════════════════════════════════════ */
 export function CarteAcheteurs({ acheteurs, mode, onVoir }: { acheteurs: Acheteur[]; mode: ModeAcheteurs; onVoir: () => void }) {
-  const liste = acheteurs.filter(x => x.corr.note >= SEUIL_LISTE);
+  const liste = acheteurs.filter(x => fiable(x) && x.corr.note >= SEUIL_LISTE);
   const bons = liste.filter(x => x.corr.note >= SEUIL_CORRESPOND);
   const nouveaux = bons.filter(estNouveau).length;
   const avant = mode === 'avant';

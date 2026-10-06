@@ -25,6 +25,13 @@
 }
 .puce b, .puceOn b { font-weight: 800; }
 .puceOn { background: #2e4166; border-color: #2e4166; color: #fff; }
+/* V3.99 : « À compléter » et « Prospects », à part, sous les trois filtres. */
+.puces { flex-direction: column; align-items: flex-end; gap: 6px; }
+.pucesL { display: flex; gap: 8px; }
+.puceAPart { height: 30px; padding: 0 11px; border-style: dashed; background: #fbfcfe; color: #64748b; font-size: 12.5px; }
+.puceAPart:hover { border-color: #cbd5e1; color: #334155; }
+.pucesAPart .puceOn { height: 30px; padding: 0 11px; font-size: 12.5px; }
+.tagProspect { align-self: center; padding: 2px 8px; border-radius: 99px; background: #f1f5f9; color: #64748b; font-size: 10.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; }
 .verrou { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #64748b; white-space: nowrap; }
 
 .lignes { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; }
@@ -143,7 +150,8 @@
   .tete { flex-wrap: wrap; padding: 14px 14px 12px; gap: 10px; }
   .illu { display: none; }
   .teteL1 h3 { font-size: 16.5px; }
-  .puces { width: 100%; overflow-x: auto; }
+  .puces { width: 100%; align-items: flex-start; }
+  .pucesL { flex-wrap: wrap; gap: 6px; }
   .puce, .puceOn { height: 32px; padding: 0 11px; font-size: 12.5px; }
   .lignes { padding: 8px; gap: 8px; }
   .ligne, .ligneVente {

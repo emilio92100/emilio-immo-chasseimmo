@@ -22,7 +22,7 @@ import {
 } from './FenetresBien';
 import type { ChoixGuide } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
   MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
@@ -44,7 +44,7 @@ import { PastilleProprio } from './PastilleProprio';
 import { OngletVisitesOffres } from './VisitesOffres';
 import { FenPointVendeur } from './PointVendeur';
 import FenDiffusion from './FenDiffusion';
-import { etapeDiffusee, etatDiffusion, lireDiffusion, nomsSupports, supportsCoches } from '@/lib/diffusion';
+import { etapeDiffusee, etatDiffusion, lireDiffusion, nomsSupports, supportDe, supportsCoches } from '@/lib/diffusion';
 import Depliant from '@/components/shared/Depliant';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import {
@@ -655,6 +655,9 @@ export function vuesDuBien(d: Donnees, avant: boolean): { k: SousVue; l: string;
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
   return [
     { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c' },
+    /* V3.99 (Alexandre : « le prix est trop à droite, mettez-le tout à
+       gauche, à côté de Surfaces ») : juste après « Tout ». */
+    { k: 'prix', l: avant ? 'Estimation et prix' : 'Prix', ic: 'etiquette', c: '#a9822f' },
     /* V3.91 (Alexandre : « il y a beaucoup d'onglets ») : l'onglet Surfaces
        devient une sous-rubrique de « Le bien », la même page (OngletSurfaces). */
     { k: 'surfaces', l: 'Surfaces', ic: 'regle', c: '#475569' },
@@ -664,7 +667,6 @@ export function vuesDuBien(d: Donnees, avant: boolean): { k: SousVue; l: string;
     { k: 'quartier', l: 'Quartier', ic: 'carte', c: '#0891b2' },
     { k: 'energie', l: 'Énergie', ic: 'eclair', c: '#d97706' },
     { k: 'copro', l: d.copro === 'non' ? 'Charges et taxes' : 'Copropriété et charges', ic: 'lots', c: '#0d9488' },
-    { k: 'prix', l: avant ? 'Estimation et prix' : 'Prix', ic: 'etiquette', c: '#a9822f' },
   ];
 }
 const FR_NB = (n: number) => String(n).replace('.', ',');
@@ -859,7 +861,9 @@ export function OngletBien({ bien, vue = 'tout', onModifier, onSurfaces, onEstim
             {/* Plus de bande de photos ici (V3.31) : elles sont dans l'onglet Photos. */}
             {/* À toutes les étapes (V3.81), l'estimation comprise. */}
             <CarteAnnonce titre={txt(d, 'annonceTitre')} texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} mentionsTexte={mentionsAnnonce(d)} onEcrire={M('annonce')} onReformuler={onAnnonce ? x => reformulerAnnonce(d, x) : undefined} onAppliquer={onAnnonce} />
+            {/* V3.99 : le prix en tête, comme dans les sous-rubriques. */}
             <Familles>
+              {prix}
               {interieur}
               {immeuble}
               {copro}
@@ -867,7 +871,6 @@ export function OngletBien({ bien, vue = 'tout', onModifier, onSurfaces, onEstim
               {quartier}
               {energie}
               {charges}
-              {prix}
             </Familles>
           </Col>
         ) : (
@@ -1519,24 +1522,38 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   /* V3.81 : la pastille du propriétaire et les gestes du bien partagent une
      ligne. Trop étroite pour tous les boutons (la pastille garde 200 px),
      Modifier, Visite, Note et Point vendeur passent dans « ⋯ », où ils sont
-     déjà. La largeur des gestes se mesure quand ils sont tous visibles. */
+     déjà. La largeur des gestes se mesure quand ils sont tous visibles.
+     V3.99 : l'étape et la diffusion rejoignent la pastille. Trop serré, en
+     deux temps : d'abord la diffusion dit « En ligne » au lieu de
+     « Diffusion en cours » (1), puis Modifier et Note gardent leur icône (2). */
   const cheval = useRef<HTMLDivElement>(null);
-  const largeurGestes = useRef(0);
-  const [serre, setSerre] = useState(false);
+  const largeurGestes = useRef({ plein: 0, gain: 0 });
+  const [serre, setSerre] = useState<0 | 1 | 2>(0);
   useLayoutEffect(() => {
     const el = cheval.current;
     if (!el) return;
     const mesurer = () => {
       const g = el.querySelector<HTMLElement>('[data-gestes]');
+      const st = el.querySelector<HTMLElement>('[data-statut]');
       if (!g) return;
-      if (!el.dataset.serre) largeurGestes.current = g.scrollWidth;
-      setSerre(largeurGestes.current > el.clientWidth - 212);
+      if (!el.dataset.serre) {
+        const long = el.querySelector<HTMLElement>('[data-dlong]')?.offsetWidth || 0;
+        largeurGestes.current = { plein: g.scrollWidth + (st ? st.scrollWidth + 12 : 0), gain: Math.max(0, long - 60) };
+      }
+      const { plein, gain } = largeurGestes.current;
+      /* La pastille du propriétaire garde son nom entier tant qu'il tient en
+         340 px : sa largeur, plus ce que les points de suite cachent. */
+      const pastille = el.querySelector<HTMLElement>(`.${b.proprioCheval}`);
+      const nom = el.querySelector<HTMLElement>(`.${b.pProprioTx} > b`);
+      const proprioPlein = pastille ? pastille.offsetWidth + (nom ? nom.scrollWidth - nom.clientWidth : 0) : 212;
+      const dispo = el.clientWidth - Math.min(340, Math.max(212, proprioPlein)) - 12;
+      setSerre(plein <= dispo ? 0 : plein - gain <= dispo ? 1 : 2);
     };
     mesurer();
     const ro = new ResizeObserver(mesurer);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [avant, pointVendeur, e]);
+  }, [avant, pointVendeur, e, diff.ton, diff.supports.length]);
   /* L'ordre voulu par Alexandre (V3.30) : Vue d'ensemble, Photos, Le bien,
      Surfaces, puis Acheteurs, Documents, Historique. V3.91 (« il y a beaucoup
      d'onglets ») : sept au lieu de huit — « Vue d'ensemble » devient
@@ -1544,7 +1561,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
     { k: 'apercu', l: 'Résumé', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
     ...(avant || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
-    { k: 'acheteurs', l: 'Acheteurs', n: acheteurs.filter(a => a.corr.note >= SEUIL_CORRESPOND).length, ic: 'cible' },
+    { k: 'acheteurs', l: 'Acheteurs', n: acheteurs.filter(a => fiable(a) && a.corr.note >= SEUIL_CORRESPOND).length, ic: 'cible' },
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
   ];
 
@@ -1945,38 +1962,42 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           niveau que propriétaire, à droite, qu'ils empiètent sur l'encadré
           bleu ; on ne les trouve pas ») : les gestes du bien la rejoignent, à
           droite, sur la même ligne. */}
-      <div ref={cheval} className={`${b.chevalHaut} ${serre ? b.chevalSerre : ''}`} data-serre={serre ? 'oui' : undefined}>
+      <div ref={cheval} className={`${b.chevalHaut} ${serre ? b.chevalCourt : ''} ${serre === 2 ? b.chevalSerre : ''}`} data-serre={serre ? 'oui' : undefined}>
       <div className={b.proprioCheval}>
         <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} plus={plusP} tel={telP} mail={mailP}
           onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')}
           onCreerFiche={!proprio && p0Saisi ? creerFicheProprioBien : undefined} onRetirer={nomP || proprio ? retirerProprio : undefined} onApres={() => { void apres(); }} />
       </div>
-        <div className={b.barreActions} data-gestes="">
-          <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => onModifier()}><Ic n="crayon" t={15} />Modifier</button>
-          {/* La note, en un clic : elle était cachée dans « ⋯ ». V3.81
-              (Alexandre : « juste Modifier, Note, l'étape et les trois
-              points ») : Visite et Point vendeur sont dans « ⋯ ». */}
-          <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'note' })}><Ic n="bulle" t={15} />Note</button>
-          {/* V3.81 : en blanc, bordé de la couleur de l'étape (« Estimation est
-              de la même couleur que l'encadré bleu »). */}
-          <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}
-            style={{ ['--etC' as string]: et.c } as React.CSSProperties} title={`Étape : ${et.lib}`} aria-label={`Étape : ${et.lib}, changer`}>
-            <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{e === 'mandat' && !txt(d, 'mandatDate') ? 'En vente' : et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
+        {/* V3.99 (Alexandre : « Mandat en cours, on le mettrait pas à côté du
+            nom du propriétaire ? » ; « une connexion entre mandat en cours et
+            diffusion, qu'ils aillent bien ensemble ; la diffusion en cours
+            toujours en vert ») : l'étape et la diffusion d'un seul tenant,
+            juste après la pastille du propriétaire. Une moitié par geste :
+            l'étape ouvre son menu, la diffusion sa fenêtre. */}
+        <div className={b.statutBien} data-statut="" style={{ ['--etC' as string]: et.c } as React.CSSProperties}>
+          <button type="button" className={b.statutEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}
+            title={`Étape : ${et.lib}`} aria-label={`Étape : ${et.lib}, changer`}>
+            <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{e === 'mandat' && !txt(d, 'mandatDate') ? 'En vente' : et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? <span className={b.etArchive}>archivé</span> : null}<Ic n="bas" t={14} e={2.6} />
           </button>
-          {/* V3.91 (Alexandre : « un bouton Diffusion en cours / Non diffusé,
-              pour garder la main sur chaque bien ») : à côté de l'étape, aux
-              étapes où le bien part sur ses supports (lib/diffusion.ts). Vert,
-              il part ; ambre, il est à régler ; gris, il ne part pas. */}
+          {/* V3.91 : vert, il part ; ambre, il est à régler ; gris, il ne part pas (lib/diffusion.ts). */}
           {diff.concerne && (
-            <button type="button" className={b.btnDiff} data-ton={diff.ton} onClick={() => setFen({ k: 'diffusion' })}
+            <button type="button" className={b.statutDiff} data-ton={diff.ton} onClick={() => setFen({ k: 'diffusion' })}
               title={`${diff.lib} · ${diff.detail}`} aria-label={`Diffusion : ${diff.lib}. ${diff.detail} Régler`}>
-              <span className={b.diffPoint} /><Ic n="megaphone" t={15} /><span className={b.diffLong}>{diff.ton === 'on' ? 'Diffusion en cours' : diff.lib}</span>
+              <span className={b.diffPoint} />
+              <span className={b.diffLong} data-dlong="">{diff.ton === 'on' ? 'Diffusion en cours' : diff.ton === 'regler' ? 'Diffusion à régler' : diff.ton === 'pause' ? 'Diffusion en pause' : 'Non diffusé'}</span>
+              <span className={b.diffCourt}>{diff.ton === 'on' ? 'En ligne' : diff.ton === 'regler' ? 'À régler' : diff.ton === 'pause' ? 'En pause' : 'Hors ligne'}</span>
+              {diff.ton === 'on' && diff.supports.length > 0 && (
+                <span className={b.diffSupports} aria-hidden="true">
+                  {diff.supports.map(k => {
+                    const x = supportDe(k);
+                    return <i key={k} style={{ ['--sC' as string]: x.c } as React.CSSProperties}>{k === 'site' ? <Ic n="globe" t={11} e={2.4} /> : x.court}</i>;
+                  })}
+                </span>
+              )}
             </button>
           )}
-          <button type="button" className={s.btn} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
-          {menu && <div className={b.voileMenu} onClick={() => setMenu(null)} />}
           {menu === 'etape' && (
-            <div className={b.menu} role="menu">
+            <div className={`${b.menu} ${b.menuGauche}`} role="menu">
               <div className={b.menuT}>{suite.length ? 'Ensuite' : 'Étape'}</div>
               {suite.map(x => (
                 <button key={x.t} type="button" role="menuitem" className={`${b.menuItem} ${x.danger ? b.menuDanger : ''}`} onClick={() => { setMenu(null); x.go(); }}>
@@ -1985,6 +2006,17 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               ))}
             </div>
           )}
+        </div>
+        {menu && <div className={b.voileMenu} onClick={() => setMenu(null)} />}
+        {/* V3.99 (« Modifier, Note… que ça soit collé ») : les trois gestes
+            d'un seul bloc, séparés d'un trait. Au téléphone, les icônes. */}
+        <div className={b.barreActions} data-gestes="">
+          <div className={b.gestes} role="group" aria-label="Gestes du bien">
+            <button type="button" className={b.geste} onClick={() => onModifier()} aria-label="Modifier la fiche"><Ic n="crayon" t={15} /><span className={b.gesteTx}>Modifier</span></button>
+            {/* La note, en un clic (V3.81) ; Visite et Point vendeur sont dans « ⋯ ». */}
+            <button type="button" className={`${b.geste} ${b.gesteNote}`} onClick={() => setFen({ k: 'note' })} aria-label="Ajouter une note"><Ic n="bulle" t={15} /><span className={b.gesteTx}>Note</span></button>
+            <button type="button" className={`${b.geste} ${b.gestePlus}`} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
+          </div>
           {menu === 'plus' && (
             <div className={b.menu} role="menu">
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); onModifier(); }}><Ic n="crayon" t={16} /><span><b>Modifier la fiche</b><small>Étape par étape ou tout sur une page</small></span></button>
@@ -2023,7 +2055,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         <Depliant ouvert={onglet === 'bien'}>
           <div className={b.tiroir}>
             <BarreOnglets label="Les caractéristiques du bien" className={b.sousOnglets} actif={sousVue} onChoisir={setSousVue}
-              onglets={vuesDuBien(d, avant).map(x => ({ k: x.k, l: x.l, ic: <span className={b.sousOngletIc} style={{ ['--sousC' as string]: x.c } as React.CSSProperties}><Ic n={x.ic} t={14} e={2.2} /></span> }))} />
+              onglets={vuesDuBien(d, avant).map(x => ({ k: x.k, l: <span className={b.sousOngletL}>{x.l}</span>, ic: <span className={b.sousOngletIc} style={{ ['--sousC' as string]: x.c } as React.CSSProperties}><Ic n={x.ic} t={16} e={2.1} /></span> }))} />
           </div>
         </Depliant>
       </div>
