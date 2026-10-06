@@ -1,0 +1,49 @@
+import { createClient } from '@supabase/supabase-js';
+import { composerAdresse, adresseUtile, cleAdresse, placerAdresses, garderPositions } from '@/lib/carte';
+import { ETAPES_DIFFUSEES, diffuseSur } from '@/lib/diffusion';
+import { bienPourSite, gpsFiche, type BienSite } from '@/lib/flux-site';
+import type { BienVente } from '@/lib/biens-vente';
+
+/* ═══ Les biens publiés sur le site, lus côté serveur (V3.92) ══════════════
+   Pour /api/flux-site (le JSON du site) et /api/flux-site/sitemap (le plan
+   que lit Google). La clé de service lit la base : ces routes sont publiques
+   (src/proxy.ts) et ne rendent que ce que `bienPourSite` laisse sortir.
+
+   Un bien sans position dans sa fiche est placé par son adresse, comme sur
+   la carte du CRM (src/lib/carte.ts) : une adresse cherchée une fois est
+   gardée dans `geocodes`. L'adresse elle-même ne sort jamais. */
+
+export function baseServeur() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+}
+
+export async function lireBiensSite(): Promise<{ biens: BienSite[]; brut: BienVente[] }> {
+  const sb = baseServeur();
+  const { data, error } = await sb.from('biens_vente').select('*').eq('archive', false).in('etape', ETAPES_DIFFUSEES);
+  if (error) throw new Error(error.message);
+  const brut = ((data || []) as BienVente[]).filter(b => diffuseSur(b, 'site'));
+
+  const gps = new Map<string, { lat: number; lng: number }>();
+  const aPlacer = new Map<string, string>();   // id du bien → adresse
+  for (const b of brut) {
+    const g = gpsFiche(b);
+    if (g) { gps.set(b.id, g); continue; }
+    const d = b.donnees || {};
+    const adresse = typeof d.adresse === 'string' ? d.adresse : b.adresse || '';
+    if (adresseUtile(adresse)) aPlacer.set(b.id, composerAdresse(adresse, b.code_postal || (typeof d.cp === 'string' ? d.cp : ''), b.ville || (typeof d.ville === 'string' ? d.ville : '')));
+  }
+  if (aPlacer.size) {
+    try {
+      const res = await placerAdresses(sb, [...aPlacer.values()]);
+      for (const [id, a] of aPlacer) {
+        const p = res.positions.get(cleAdresse(a));
+        if (p && p.precision !== 'municipality') gps.set(id, { lat: p.lat, lng: p.lng });
+      }
+      if (res.aEcrire.length && !res.tableAbsente) await garderPositions(sb, res.aEcrire);
+    } catch { /* le géocodeur ne répond pas : ces biens n'auront pas de point sur la carte du site */ }
+  }
+
+  const biens = brut.map(b => bienPourSite(b, gps.get(b.id) || null))
+    .sort((x, y) => y.dateAdded.localeCompare(x.dateAdded));
+  return { biens, brut };
+}
