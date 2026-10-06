@@ -1461,6 +1461,30 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.87 — 6 octobre 2026 · « Envoyer un mail » en fenêtre ; « Envoyer à Camille » ; moins de boutons « relance »
+
+Rien à passer dans Supabase.
+
+- **« Envoyer un mail »** (Alexandre : « quand on appuie sur Nouveau mail, un pop-up joli, assez
+  rectangulaire, qui reprend tout ce qu'il y a dans Nouveau mail, au lieu d'aller sur la page ; et
+  enlève Nouveau mail des Outils, ça fait doublon »). Le bouton du haut s'appelle « Envoyer un mail » et
+  ouvre, par-dessus l'écran en cours, la même rédaction que la page (destinataires, objet, style,
+  texte, messages pré-rédigés, pièces jointes, aperçu avant envoi) : `FenetreMail` sans contact,
+  montée une fois dans AppLayout (`NouveauMailPartout`, événement `EVT_NOUVEAU_MAIL`,
+  `demanderNouveauMail`). Même geste depuis l'accueil et le « + » du téléphone. « Nouveau mail » ne
+  figure plus dans Outils ; la page existe encore (`mail`) mais plus rien n'y mène.
+- **La pastille « 🔔 13 relances » de la barre du haut est retirée** (avec son comptage toutes les
+  20 s) : le compteur reste à « Relances », dans le menu de gauche et la barre du bas du téléphone.
+- **« Relance J+5 » est retiré de la fiche d'un acheteur** (`creerRelanceManuelle` supprimée) : la
+  prochaine relance se pose en notant l'action (« Noter un appel », « + Action »).
+- **Un seul bouton « Envoyer à Camille »** dans la fiche d'un acheteur (Alexandre : « Envoyer, envoyer
+  quoi ? et Mail fait doublon »). « ✉️ Mail » est retiré ; « Envoyer » s'appelle « Envoyer à Camille »
+  (« Lui envoyer » pour un prénom long) et ouvre trois choix : **Un mail** (la fenêtre de rédaction,
+  son adresse déjà mise), **Des biens** (les biens de sa fiche, pas refusés : le mail d'envoi
+  habituel), **Un compte rendu de visite** (l'onglet Visites ; grisé sans visite faite). « Présentation
+  des services », qui n'affichait que « V2 », est retiré. Au téléphone, la rangée des gestes passe à
+  trois boutons (Envoyer, Action, Ajouter un bien).
+
 ### V3.86 — 6 octobre 2026 · La recherche du haut mène droit au bien
 
 Rien à passer dans Supabase. Alexandre : « quand je cherche un nom en haut, s'il a des biens, que je
