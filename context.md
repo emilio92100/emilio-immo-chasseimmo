@@ -14,7 +14,7 @@ Alexandre Rogelet dirige **Emilio Immobilier**, agence indépendante sur Paris e
 **chasse immobilière** : un acquéreur lui confie une recherche, il écume le marché pour lui.
 
 Ce dépôt est le CRM sur mesure qui remplace Immofacile — sauf pour la diffusion portails, qui reste
-sur Immofacile faute de partenariats techniques reproductibles (le passage au CRM est à l'étude : §7).
+sur Immofacile le temps de la bascule (le passage au CRM est en cours depuis le 6 octobre : §7).
 
 L'outil a **trois faces** :
 
@@ -956,21 +956,50 @@ Chacun est un projet en soi, à ouvrir quand Alexandre le décide :
    met pas en colonne (calme, travaux, exposition, état), seulement sur les biens ayant passé un
    seuil en couche 1. Les notes libres sont une consigne de matching en langage naturel.
 
-### À l'étude — diffuser les annonces depuis le CRM, plus depuis Immofacile (28 septembre)
+### En cours — diffuser les annonces depuis le CRM, plus depuis Immofacile (depuis le 6 octobre)
 
-- Pas d'API chez SeLoger ni Leboncoin : une **passerelle** dépose chaque jour un fichier sur leur
-  serveur. Format commun : **Poliris** (celui de SeLoger) — un `Annonces.csv` d'environ 300
-  colonnes numérotées, séparateur `!#`, CP-1252, plus les photos (ou leurs URL), dans un zip
-  déposé par FTP ; identifiant agence et accès fournis par chaque portail après un test.
-- Deux voies : en direct (chaque portail doit accepter un logiciel développé en interne — LA
-  question à leur poser), ou un multidiffuseur (Ubiflow…) : un seul flux, redistribué ; abonnement
-  en plus. Les abonnements pro des portails restent payés à part dans les deux cas.
-- Les photos des biens sont déjà dans un bucket public (`photos-vente`) : le flux donne leurs URL.
-- Les mentions obligatoires sont déjà des champs de la fiche (DPE, GES, valeurs, date, dépenses
-  d'énergie, lots, charges, procédure, honoraires) : reste à faire la table de correspondance.
-- Le site emilio-immo.com lit aujourd'hui un **flux XML d'Immofacile** (ses mandats en cours) : le
-  CRM publierait le sien, idéalement au même format pour que le site n'ait qu'une adresse à
-  changer. Ce flux Immofacile peut aussi servir une fois à importer les biens en cours.
+Les deux portails ont répondu (mails des 28 septembre au 1er octobre, relus le 6 octobre) : tout est
+faisable en direct, sans multidiffuseur. **Aucun secret dans ce dépôt** (mot de passe SFTP, secret
+SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
+
+- **Les réglages, par bien** (V3.91, `lib/diffusion.ts`) : `donnees.diffusion` = `{ actif, supports:
+  { site, seloger, bd, jinka }, le }`. Diffusé aux étapes `mandat`, `offre`, `compromis`,
+  `annonce_type` ; en pause, rien ne part (les choix sont gardés). Les envois ne liront que
+  `diffuseSur(bien, support)`.
+- **SeLoger, Logic-Immo, Belles Demeures** : une **API**, pas un fichier (« Classifieds Management
+  V4 », la même qu'utilise l'éditeur d'ImmoFacile). Connexion OAuth `client_credentials` sur
+  `https://auth.api.aviv-group.com/oauth/token` avec `client_id`, `client_secret`, `audience`
+  (`https://api.aviv-group.com/caas/v4`, test : `…/sandbox/caas/v4`) et `intermediary_id`
+  **RC-621209** ; le jeton vaut 24 h et **doit être gardé et réutilisé** (vérifié pendant la recette,
+  condition du passage en production) ; un `User-Agent` à chaque appel, sinon refus. `POST /classifieds`,
+  `PUT /classifieds/{id}`, `DELETE …` ; `portals: ["SL"]` ou `["SL","BD"]` (Logic-Immo suit SeLoger
+  tout seul) ; `data.metaData.source.offererEstateId` (identifiant unique et stable) et
+  `offererMarketingKey` (la référence lisible) : **garder ceux qu'envoyait ImmoFacile** pour éviter
+  les doublons (à faire confirmer par Christiane Roussel, chef de projet SeLoger, qui fait la recette).
+  Webhooks (`PUT /webhooks`) : statuts, lien de l'annonce publiée et note de qualité (ces deux-là en
+  production seulement). Photos par URL (`media[]`), adresse affichable au quartier
+  (`mapDisplayPrecision: PARTIAL`). La doc OpenAPI a été fournie par Alexandre (le portail des
+  développeurs AVIV bloque les accès automatiques).
+- **Les demandes de contact SeLoger** : API « Seeker Leads » v1 (même connexion, audience
+  `…/seeker-leads/v1`) : un webhook (`POST /webhook/subscriptions`, url + `apiKey`) et
+  `GET /leads?minDate&maxDate` (7 jours au plus par appel) ; annonce (`offererEstateId`), page
+  agence (vendre / acheter / question), appels suivis. Elles iront dans « Demandes Internet »
+  (l'actuelle « Demandes du site », maquette validée le 6 octobre).
+- **Jinka** : un fichier **POLIRIS 4.12** (`Annonces.csv`, séparateur `!#`, guillemets, sans ligne
+  d'en-tête, **ISO-8859-1** — remplacer ’ œ € … qui n'y existent pas), seul dans `emilio-immo.zip`,
+  déposé en **SFTP** sur le serveur de Jinka (port 22 ; hôte, utilisateur et mot de passe dans Vercel) sous un nom temporaire
+  puis renommé ; **toutes** les annonces actives à chaque dépôt (une absente est retirée ; un fichier
+  vide est ignoré) ; relevé toutes les 5 minutes. Champ 175 = identifiant stable : pour les 16
+  annonces déjà chez eux, **le numéro ImmoFacile du bien** (`AFF_ID` du flux XML, ex. 55334496).
+  Champ 1 `emilioimmo`, champ 2 la référence, 301 `4.12`, 300 vide, 298/299 en degrés décimaux avec
+  un point ; nombres sans espace ni symbole (`2600`, `56.18`) ; libellé 64 caractères au plus,
+  descriptif 4 000, `<BR>` pour les retours. Bascule : fichier final déposé → Jinka active et coupe
+  ImmoFacile → seulement ensuite, couper Jinka dans ImmoFacile. Contact : Rémi Bruder.
+- **Le site** : la fonction `fetch-properties` (dans le Supabase du CRM) lit le flux XML
+  d'ImmoFacile et rend du JSON au site. Elle lira `biens_vente` à la place, même JSON : le site ne
+  change pas. Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
+- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site ; 3. Jinka ; 4. SeLoger (test, recette,
+  production) ; 5. « Demandes Internet » ; 6. couper ImmoFacile (passerelles, puis abonnement).
 
 ### Plus tard
 
@@ -1460,6 +1489,30 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.91 — 6 octobre 2026 · La diffusion de chaque bien ; la fiche du bien passe à sept onglets
+
+Rien à passer dans Supabase (tout vit dans `biens_vente.donnees`). Première étape de la diffusion
+depuis le CRM (§7, « En cours »).
+
+- **`lib/diffusion.ts`** (nouveau) : les supports (Mon site, SeLoger avec Logic-Immo, Belles Demeures,
+  Jinka), `lireDiffusion`, `etatDiffusion` (diffusé, non diffusé, en pause, à régler) et
+  `diffuseSur`, la seule question que poseront les envois. Tant que le bien n'est pas réglé, rien ne
+  part ; la fenêtre propose alors tout sauf Belles Demeures (Alexandre la réserve à certains biens).
+- **Le bouton du bandeau** (Alexandre : « un bouton Diffusion en cours / Non diffusé, pour garder la
+  main sur chaque bien ») : à droite de l'étape, aux étapes réglables (en vente, sous offre, sous
+  compromis, annonce type, en pause). Point vert : il part ; ambre : à régler ; gris : il ne part
+  pas. Aussi dans « ⋯ › Diffusion de l'annonce ». Au téléphone, l'icône et le point seuls.
+- **`FenDiffusion.tsx`** (nouveau) : l'interrupteur « Diffusion en cours / Non diffusé », puis une
+  tuile par support à cocher. Elle s'ouvre toute seule quand le mandat vient d'être signé et que
+  rien n'est réglé (« à chaque mandat, je choisis sur quel portail le diffuser »). Elle dit que le
+  site et les portails reçoivent encore les annonces d'ImmoFacile : ces choix serviront tels quels.
+- **La liste des biens** : une pastille en bas de la photo (cartes) et un mot à côté de l'étape
+  (lignes).
+- **Sept onglets** (Alexandre : « il y a beaucoup d'onglets ») : « Vue d'ensemble » devient
+  **Résumé** ; **Surfaces** n'est plus un onglet mais une sous-rubrique de « Le bien », deuxième du
+  tiroir (même page, `OngletSurfaces`). « Les surfaces et les pièces » (bas de « Le bien ») et le
+  bloc « Le bien en bref » y mènent (`voirSurfaces`).
 
 ### V3.90 — 6 octobre 2026 · L'onglet Surfaces et le dossier « Diagnostics et pièces », refaits
 
