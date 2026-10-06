@@ -1494,6 +1494,25 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.99b — 7 octobre 2026 · La fenêtre de diffusion réparée ; Demandes Internet sans bande du haut
+
+Rien à passer dans Supabase.
+
+- **La fenêtre « Diffusion du bien » était cassée par la V3.99** (Alexandre, capture : coupée à
+  gauche, Jinka coupé à droite, une barre de défilement) : les pastilles des supports dans la
+  gélule du bandeau avaient pris le nom `.diffSupports`, celui de la grille 2 × 2 de la fenêtre
+  (Biens.module.css, V3.91). Renommées `.diffLogos`. **Avant d'ajouter une classe à
+  Biens.module.css (1 600 lignes), chercher si le nom existe déjà.**
+- **Demandes Internet** (Alexandre : « je ne vois pas l'intérêt de mettre Site et portails en haut,
+  il y a déjà Tout, Mon site, Portails en bas ; choisir le timing, et avoir Nouvelles, En cours,
+  Traitées, Archivées pareil ») : la bande du haut disparaît. Sous la provenance (et son tiroir),
+  une ligne : la période, qui **filtre désormais la liste et tous ses compteurs** (elle s'ouvre
+  sur « Depuis le début »), le nombre de demandes reçues sur la période, et « N à traiter ».
+- **« N à traiter »** (« quand on clique, ça ne fait pas un petit pop sur le message ») : une
+  seule nouvelle, sa fenêtre s'ouvre ; plusieurs, la liste passe sur « Nouvelles » (recherche et
+  formulaire effacés, période remise à « Depuis le début » si l'une en sort), on y descend, et
+  les cartes s'allument deux fois en or (`.carteEclair`).
+
 ### V3.99 — 7 octobre 2026 · Le haut de la fiche du bien ; « Le bien » en tuiles ; des acheteurs plus fiables ; le haut de « Demandes Internet »
 
 Rien à passer dans Supabase.
