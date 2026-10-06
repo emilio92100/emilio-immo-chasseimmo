@@ -1001,8 +1001,8 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   d'ImmoFacile et rend du JSON au site. Le site lira `/api/flux-site` du CRM à la place (V3.92),
   même JSON : seule l'adresse change dans son dépôt (`src/lib/properties.ts`, et le plan des biens
   dans `vercel.json`). Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
-- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, branché sur le CRM en V3.96) ; 3. Jinka (l'envoi est prêt en V3.97, en attente des codes et de l'essai) ;
-  4. SeLoger (test, recette, production) ; 5. les demandes des portails dans « Demandes Internet »
+- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, branché sur le CRM en V3.96) ; 3. Jinka (V3.97, fichier test déposé le 6 octobre, en attente de l'activation par Jinka) ;
+  4. SeLoger (V3.98 : l'envoi est prêt, en sandbox ; puis recette, production) ; 5. les demandes des portails dans « Demandes Internet »
   (l'écran est prêt, V3.93) ; 6. couper ImmoFacile (passerelles, puis abonnement).
 
 ### Plus tard
@@ -1493,6 +1493,49 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.98 — 6 octobre 2026 · L'envoi des annonces à SeLoger (API Aviv Classified v4, sandbox d'abord) ; Jinka branché
+
+Rien à passer dans Supabase. Les codes sont dans Vercel depuis ce soir (Alexandre) :
+`JINKA_SFTP_HOTE`, `JINKA_SFTP_UTILISATEUR`, `JINKA_SFTP_MOT_DE_PASSE`, `SELOGER_CLIENT_ID`,
+`SELOGER_CLIENT_SECRET`. Facultatifs pour SeLoger : `SELOGER_ENV` (`sandbox` par défaut ;
+`production` après la recette avec Christiane), `SELOGER_INTERMEDIAIRE` (`RC-621209` par défaut, le
+code de l'agence donné par SeLoger le 29 septembre), `SELOGER_AUDIENCE` (par défaut l'adresse de
+l'API : `https://api.aviv-group.com/sandbox/caas/v4`, puis `…/caas/v4`), `SELOGER_SCOPE`. Après
+tout changement de ces variables : **Redeploy** dans Vercel (une variable n'agit qu'au déploiement
+suivant).
+
+- **Jinka branché** : premier dépôt réel le 6 octobre à 21 h 42 (15 annonces, la 16e de leur liste,
+  58445258 à Meudon, n'est plus en vente). Le 3 pièces Bentouati (EMI-V-2026-333, 56527064) a reçu
+  la case Jinka : il était chez eux via ImmoFacile. Mail de Rémi du 1er octobre : nombres sans
+  séparateur de milliers, point décimal, champ 300 vide — c'est déjà le cas.
+- **`lib/seloger.ts`** (isomorphe) : un bien du CRM → une annonce `AvivClassified`. Portails `SL`
+  (SeLoger, donc Logic-Immo) si la case SeLoger est cochée, `BD` si Belles Demeures l'est.
+  `offererEstateId` = le même identifiant que chez Jinka (`idJinka` : ImmoFacile, sinon la
+  référence) ; `offererMarketingKey` = la référence du CRM. Rue et numéro vides, position floutée
+  (`mapdisplayprecision: PARTIAL`). Honoraires ALUR (`brokerageFee` : qui paie, montant, taux sur le
+  prix hors honoraires, barème), copropriété (`management.countrySpecific.fr`), DPE
+  (`energyCertificate`, version selon la date, `EMPTY` vierge, `NOT_APPLICABLE` non soumis), mandat
+  (`agentMandate`), photos (30, la première en couverture). Le titre et le texte sont ceux du site,
+  mentions légales comprises. Vérifié contre le schéma de l'OpenAPI d'AVIV (ajv) : seul
+  `brokerageFee` y paraît invalide, parce que le schéma combine `allOf` et
+  `additionalProperties: false` ; c'est la forme documentée, à confirmer au premier envoi.
+- **`lib/seloger-serveur.ts`** : le jeton OAuth (`auth.api.aviv-group.com/oauth/token`,
+  `client_credentials`, `intermediary_id`) est gardé 24 heures (mémoire, puis bucket `mandats`,
+  `diffusion/seloger-jeton-<env>.json`) — AVIV vérifie la réutilisation pendant la recette. Un
+  refus est retenu 30 minutes (sauf envoi forcé), pour ne pas redemander un jeton toutes les
+  5 minutes. Chaque annonce : POST si nouvelle, PUT si elle a changé (empreinte), DELETE si le bien
+  ne doit plus y être ; un « Duplicated classified » devient un PUT sur l'annonce existante, un 404
+  sur PUT devient un POST. L'état (`classifiedId`, empreinte) : `diffusion/seloger-<env>.json`.
+  Budget de 45 secondes par passage, la suite au suivant. User-Agent obligatoire
+  (`EmilioImmoCRM/3.98 Node/… Linux/Vercel`).
+- **`/api/diffusion/portails`** : POST et cron envoient à Jinka et à SeLoger côte à côte (la nuit :
+  Jinka complet, SeLoger seulement les écarts). GET derrière le badge : l'état des deux ;
+  `?seloger=annonces` (le JSON envoyé, pour la recette) ; `?seloger=statuts` (le dernier statut de
+  chaque annonce chez SeLoger : reçue, créée, photos en erreur…).
+- Reste pour SeLoger : vérifier le premier passage en sandbox (le jeton, les statuts), le webhook
+  (URL de publication), puis le mail à Christiane pour la recette ; en production, prévoir avec elle
+  la bascule pour éviter les doublons avec les annonces d'ImmoFacile.
 
 ### V3.97 — 6 octobre 2026 · L'envoi des annonces à Jinka (POLIRIS en SFTP)
 
