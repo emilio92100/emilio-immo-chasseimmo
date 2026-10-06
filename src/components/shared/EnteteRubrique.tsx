@@ -122,7 +122,7 @@ function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif:
 }
 
 export default function EnteteRubrique({
-  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types',
+  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true,
 }: {
   titre: string;
   icone: ReactNode;
@@ -140,6 +140,10 @@ export default function EnteteRubrique({
   /* Le nom du bouton qui ouvre les tuiles `menu` (V3.80 : « Autres étapes »
      dans Biens). */
   libMenu?: string;
+  /* Au téléphone, amener la tuile allumée en vue (V3.77). Relances (V3.82)
+     s'en passe : « Tout » est au bout, et les tuiles qui pressent (en retard,
+     aujourd'hui) doivent rester visibles à l'arrivée. */
+  defiler?: boolean;
 }) {
   /* V3.77 : sur téléphone, la rangée défile au doigt ; la tuile allumée
      (« Tous » est maintenant en fin de rangée) vient se montrer. */
@@ -147,12 +151,12 @@ export default function EnteteRubrique({
   const cleActive = Array.isArray(actif) ? actif.join('+') : actif;
   useEffect(() => {
     const r = rangee.current;
-    if (!r || r.scrollWidth <= r.clientWidth + 2) return;
+    if (!defiler || !r || r.scrollWidth <= r.clientWidth + 2) return;
     const on = r.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!on) return;
     const g = on.offsetLeft - r.offsetLeft, d = g + on.offsetWidth;
     if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 12);
-  }, [cleActive, tuiles.length]);
+  }, [cleActive, tuiles.length, defiler]);
   return (
     <section className={styles.bloc}>
       <div className={styles.haut}>
