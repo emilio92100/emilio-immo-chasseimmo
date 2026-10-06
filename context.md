@@ -1461,6 +1461,49 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.89 — 6 octobre 2026 · Tous les numéros d'un contact ; envoyer les biens cochés ; changer d'étape ou de statut en lot
+
+Rien à passer dans Supabase.
+
+- **Bug : le 3e numéro effacé** (Alexandre : « sur un client je vois trois numéros, et quand je fais
+  Modifier le contact, je n'en vois que deux »). L'import ImmoFacile garde jusqu'à quatre numéros et
+  quatre e-mails ; « Modifier le contact » (`FicheClient`, `cfDe` / `saveContact`) et la fiche des
+  autres contacts (`FicheContact`) n'avaient que deux cases, et l'enregistrement effaçait le reste.
+  **`shared/ListeCoordonnees.tsx`** (nouveau) : une ligne par numéro ou par e-mail, « + Ajouter un
+  numéro », une croix pour en retirer un, l'étoile pour en faire le principal (le premier : c'est lui
+  qui part dans les mails, les actes, l'espace). `lignesDe` (ce que la fiche a, ou une ligne vide),
+  `nettoyer` (sans vides ni doublons, e-mails en minuscules). La reprise des coordonnées d'un mandat
+  signé en ligne (`MandatEnLigne`, `reprendre`) ne coupe plus à deux. Le formulaire « Nouveau
+  contact » garde ses deux cases (rien à perdre à la création).
+- **`shared/Selection.tsx`** : un geste de la barre peut ouvrir un petit menu au-dessus d'elle
+  (`menu`, `ChoixMenu` ; `icone` pour « ⋯ ») ; Échap ferme le menu, puis décoche. Pour les contacts,
+  `CaseLigne` (un carré toujours visible, à gauche de la ligne) et `CaseTout` (« Tout cocher » dans
+  l'en-tête, vide, à moitié ou plein) remplacent la case posée sur l'avatar (Alexandre : « j'aime pas
+  trop la sélection de la fiche de contact ») ; `AvecCase` est retiré. `ConfirmerLot` prend `ic`.
+- **Biens cochés** (`biens/LotBiens.tsx`, nouveau) : trois gestes, **Envoyer à des acheteurs**,
+  **Changer d'étape ▴**, **⋯** (Archiver / Sortir des archives, Supprimer).
+  - `FenEnvoiLot` : les acheteurs à qui ces biens correspondent (`acheteursPour`, la note de l'onglet
+    « Acheteurs »), un par ligne avec ses biens en pastilles (« 100 % Paris 16e · 4 p. », « déjà
+    reçu », « en sélection ») ; ceux qui ont une chose à recevoir sont cochés d'office ; « Aussi en
+    partie (50 à 69 %) ». Puis **Mettre en sélection** (`mettreEnSelection`, rien ne part), **Dans
+    leur espace** (`envoyerDansEspace(…, { suite: false })` puis `suiteEnvoi` : une relance et une
+    notification par acheteur, et non plus une par bien) ou **Par mail…** : un texte (le modèle « Sélection
+    de biens » des Paramètres, sinon un texte qui va à un bien comme à plusieurs), relu, puis un mail
+    par acheteur (`outils.ts`, `envoyerParMail` : les biens entrent dans son dossier, `/api/send-mail`
+    en mode « biens » remplace {{prénom}}, puis chaque bien passe « Présenté », canal mail, une ligne
+    par bien dans son Suivi, la relance et la notification — le même chemin que `saveEnvoiBien` de sa
+    fiche : ⚠️ à garder ensemble). Les biens qui ne sont pas en vente sont laissés de côté avec leur
+    raison ; les acheteurs sans e-mail sont nommés.
+  - **Changer d'étape** : À suivre, Estimation, En pause, Retiré — les passages du menu d'étape de la
+    fiche qui ne demandent qu'une raison (`bloqueEtape`, `passerEtape`, `RaisonEtape` avec les raisons
+    de `FenRaison`, exportées `RAISONS_ETAPE`). Laissé de côté, avec sa raison : un passage que la fiche
+    ne propose pas, une offre en cours, des visites prévues, un rendez-vous d'estimation à venir, une
+    estimation déjà faite (« repartir de zéro ? »). Le menu dit combien peuvent y passer.
+- **Contacts cochés** : **Envoyer un mail**, **Changer de statut ▴** (Actif, Prospect, Suspendu :
+  `lib/supprimer-contacts.ts`, `changerStatutContact`, comme le menu de statut de la fiche — la
+  veille suit, Actif la relance sur les recherches d'avant la pause ou la plus récente, une ligne au
+  Suivi ; seuls les acheteurs, et pas un dossier clos), **⋯** (Archiver, Supprimer).
+
 ### V3.88 — 6 octobre 2026 · Cocher plusieurs contacts ou biens, et agir d'un coup
 
 Rien à passer dans Supabase. Alexandre : « des petites coches sur les biens et les contacts, dans
@@ -1486,7 +1529,6 @@ envoyer un mail à tous les contacts sélectionnés, ou les supprimer d'un coup 
   pousse. Gestes : **Archiver** (seulement un bien terminé : vendu, retiré, annonce type ; les autres
   sont laissés de côté avec la raison) ou « Sortir des archives », **Supprimer** (`supprimerBien`,
   un par un ; un bien vendu est laissé de côté).
-- Prochaine étape (V3.89) : envoyer les biens cochés à des contacts, dans un mail tout prêt.
 
 ### V3.87 — 6 octobre 2026 · « Envoyer un mail » en fenêtre ; « Envoyer à Camille » ; moins de boutons « relance »
 
