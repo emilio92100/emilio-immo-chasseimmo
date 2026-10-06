@@ -21,13 +21,12 @@ import CarteASavoir from './CarteASavoir';
 import BlocSociete from './BlocSociete';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
-import { avantMandat, etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
-import { euros } from '@/lib/mandat';
+import { avantMandat, etapeDe } from '@/lib/biens-vente';
+import { BiensHero, useBiensBandeau, type ActiviteVente, type BienHero } from './BiensBandeau';
 import { demanderNouveauBien, demanderOngletBien, lireOuvertureFiche, oublierOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import { cloreRelancesArchive } from '@/lib/relances';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
-import { libelleVisites } from '@/lib/visites';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import c from './Contacts.module.css';
@@ -118,7 +117,6 @@ function Li({ ic, l, v }: { ic: string; l: string; v?: string | null }) {
    échange et la prochaine relance. La société reste à droite du nom ; son
    détail, juste sous le bandeau — comme pour l'acheteur. Au niveau du
    module (AGENTS.md §2.4). */
-type BienHero = { id: string; etape: string; titre: string | null; prix: number | null; photo?: string | null; donnees?: Record<string, unknown> | null };
 const ECHANGES = ['appel', 'rdv', 'rdv_planifie', 'note', 'email_libre', 'envoi_externe', 'mail_envoye'];
 const LIB_ECHANGE: Record<string, string> = { appel: 'Appel', rdv: 'Rendez-vous', rdv_planifie: 'Rendez-vous', note: 'Note', email_libre: 'E-mail', envoi_externe: 'Envoi', mail_envoye: 'E-mail' };
 function dureeSuivi(j: number): string {
@@ -131,16 +129,6 @@ function dureeSuivi(j: number): string {
   return `${ans} an${ans > 1 ? 's' : ''}${reste ? ` et ${reste} mois` : ''}`;
 }
 const jourCourt = (iso: string) => new Date(iso.length <= 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-/* Les visites et les offres sur ses biens (V3.33) : le nombre, ce qui se
-   dit en dessous (« dont 1 à venir », « en attente de réponse »), et bien
-   par bien pour ouvrir le bon. */
-type ActiviteVente = {
-  /* Faites (la date est passée) et prévues : jamais « 3 visites » tout court (V3.33). */
-  faites: number; prevues: number; derniereVisite: string | null; prochaineVisite: string | null;
-  offres: number; enAttente: number; acceptee: number;
-  parBien: Record<string, { f: number; p: number; o: number }>;
-};
-const VENTE_VIDE: ActiviteVente = { faites: 0, prevues: 0, derniereVisite: null, prochaineVisite: null, offres: 0, enAttente: 0, acceptee: 0, parBien: {} };
 const pl = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
 
 /* Le bandeau (V3.33) : les tuiles (src/components/shared/Tuiles.tsx), puis
@@ -210,62 +198,6 @@ function ActiviteHero({ proprio, biens, archives = 0, vente, journal, relances, 
   );
 }
 
-/* Ses biens, sur toute la largeur du bandeau (V3.33) : côte à côte, à parts
-   égales (un seul prend toute la place et dit tout sur une ligne). */
-function BiensHero({ biens, vente, onBien, onCreerBien }: {
-  biens: BienHero[]; vente: ActiviteVente; onBien: (id: string, onglet?: string) => void; onCreerBien: () => void;
-}) {
-  /* V3.59 : « Ses biens » n'est plus répété sous le bandeau (Alexandre : « on
-     a déjà l'info sur la partie bleue ») ; au-delà de quatre, « + N autres »
-     les déplie ici même. */
-  const [tous, setTous] = useState(false);
-  if (!biens.length) {
-    return (
-      <div className={c.biensRang} id="biens-hero">
-        <button type="button" className={c.heroBienVide} onClick={onCreerBien}><Ic n="plus" t={14} e={2.4} /><span>Créer son bien : estimation, mandat, tout y est</span></button>
-      </div>
-    );
-  }
-  const montres = biens.length > 4 && !tous ? biens.slice(0, 3) : biens;
-  return (
-    <div className={c.biensZone} id="biens-hero">
-    <div className={`${c.biensRang} ${biens.length === 1 ? c.biensSeul : ''}`}>
-      {montres.map(b => {
-        const e = etapeDe(b.etape);
-        const d = (b.donnees || {}) as Record<string, unknown>;
-        const photo = b.photo || lirePhotos(d.photos)[0]?.url || '';
-        const n = vente.parBien[b.id];
-        const activite = [libelleVisites(n?.f || 0, n?.p || 0), n?.o ? pl(n.o, 'offre', 'offres') : ''].filter(Boolean);
-        /* Seul, il a la place : ses visites et offres en pastilles à droite.
-           Côte à côte, elles suivent l'étape et le prix. */
-        const seul = biens.length === 1;
-        return (
-          <button key={b.id} type="button" className={c.heroBien} onClick={() => onBien(b.id)} title="Ouvrir la fiche du bien">
-            <span className={c.heroBienPh}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {photo ? <img src={photo} alt="" /> : <Ic n="maison" t={16} />}
-            </span>
-            <span className={c.heroBienTx}>
-              <b>{b.titre || titreBien(d as Parameters<typeof titreBien>[0]) || 'Son bien'}</b>
-              <small><i style={{ background: e.c }} />{`${e.lib}${b.prix ? ` · ${euros(b.prix)}` : ''}${!seul && activite.length ? ` · ${activite.join(' · ')}` : ''}`}</small>
-            </span>
-            {seul && activite.length > 0 && <span className={c.heroBienAct}>{activite.map(a => <em key={a}>{a}</em>)}</span>}
-            <Ic n="droite" t={14} e={2.2} />
-          </button>
-        );
-      })}
-      {biens.length > 4 && !tous && (
-        <button type="button" className={`${c.heroBien} ${c.heroBienPlus}`} onClick={() => setTous(true)}>
-          <span className={c.heroBienTx}><b>{`+ ${biens.length - 3} autres biens`}</b><small>les voir tous ici</small></span>
-          <Ic n="bas" t={14} e={2.2} />
-        </button>
-      )}
-    </div>
-    <button type="button" className={c.heroBienAjout} onClick={onCreerBien} title="Créer un autre bien pour ce contact"><Ic n="plus" t={14} e={2.4} /><span>Nouveau bien</span></button>
-    </div>
-  );
-}
-
 /* V3.59 — les rubriques d'un contact qui n'est pas acheteur, à cheval sur le
    bas du bandeau, comme la fiche d'un acheteur ou d'un bien (Alexandre :
    « il y a trop d'infos sur une seule page ; qu'on ne soit pas obligé de
@@ -324,45 +256,9 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   const proprio = aUnBien(typesDe(x));
   const ouvrirBien = (id: string, onglet?: string) => { if (onglet) demanderOngletBien(id, onglet); onNavigate('biens', { bien: id }); };
 
-  /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32). */
-  const [biensH, setBiensH] = useState<BienHero[] | null>(null);
-  const [nbArchives, setNbArchives] = useState(0);
-  const [vo, setVo] = useState<ActiviteVente>(VENTE_VIDE);
-  useEffect(() => {
-    let vivant = true;
-    (async () => {
-      const { data, error } = await supabase.from('biens_vente').select('*').eq('client_id', depart.id).order('updated_at', { ascending: false });
-      if (!vivant) return;
-      const l = (error ? [] : data || []) as (BienHero & { archive?: boolean | null })[];
-      setBiensH(l.filter(b => !b.archive));
-      setNbArchives(l.filter(b => b.archive).length);
-      if (!l.length) return;
-      const { data: sv } = await supabase.from('biens_vente_suivi').select('bien_id, type, statut, le').in('bien_id', l.map(b => b.id)).in('type', ['visite', 'offre']);
-      if (!vivant) return;
-      const rows = (sv || []) as { bien_id: string; type: string; statut: string | null; le: string | null }[];
-      const visites = rows.filter(r => r.type === 'visite' && r.statut !== 'annulee');
-      const offres = rows.filter(r => r.type === 'offre');
-      /* Faite : marquée faite, ou sa date est passée (comme la fiche du bien).
-         Prévue : à venir, et pas encore passée. */
-      const maintenant = Date.now();
-      const passee = (r: { statut: string | null; le: string | null }) => r.statut === 'faite' || (!!r.le && Date.parse(r.le) < maintenant);
-      const faites = visites.filter(passee);
-      const prevues = visites.filter(r => !passee(r));
-      const datesF = faites.filter(r => r.le).map(r => String(r.le)).sort();
-      const datesP = prevues.filter(r => r.le).map(r => String(r.le)).sort();
-      const parBien: ActiviteVente['parBien'] = {};
-      const de = (id: string) => parBien[id] || (parBien[id] = { f: 0, p: 0, o: 0 });
-      for (const r of faites) de(r.bien_id).f++;
-      for (const r of prevues) de(r.bien_id).p++;
-      for (const r of offres) de(r.bien_id).o++;
-      setVo({
-        faites: faites.length, prevues: prevues.length, derniereVisite: datesF[datesF.length - 1] || null, prochaineVisite: datesP[0] || null,
-        offres: offres.length, enAttente: offres.filter(r => r.statut === 'en_attente' || r.statut === 'contre').length, acceptee: offres.filter(r => r.statut === 'acceptee').length,
-        parBien,
-      });
-    })();
-    return () => { vivant = false; };
-  }, [depart.id]);
+  /* Ses biens, et les visites et offres sur eux : le bandeau (V3.32 ; le
+     chargement et le rang vivent dans BiensBandeau.tsx depuis la V3.84). */
+  const { biens: biensH, archives: nbArchives, vente: vo } = useBiensBandeau(depart.id);
   useEffect(() => {
     let vivant = true;
     supabase.from('journal').select('*').eq('client_id', depart.id).order('created_at', { ascending: false })
