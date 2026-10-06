@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
 import {
   estPerso, lignesDossier, lireDossier, lireFichiers, lirePiecesPerso,
-  type Donnees, type EtatPiece, type FichierBien, type LigneDossier, type PieceDossier,
+  type Donnees, type FichierBien, type LigneDossier, type PieceDossier,
 } from '@/lib/biens-vente';
 import { Anneau } from './OngletsBien';
 import { jourParis } from '@/lib/mandat';
@@ -36,8 +36,8 @@ import x from './DossierBien.module.css';
      avec le nom qu'on veut (Kbis de la SCI, statuts, bail…) —
      `donnees.piecesPerso`. Elles se renomment et se retirent ; les autres
      documents se renomment aussi.
-   · Le dossier : une tuile par pièce, rangées par groupe, en grille. Reçu,
-     demandé, non concerné, le fichier, la date.
+   · Le dossier : une ligne par pièce, rangées par groupe (V3.90 ; avant,
+     une tuile par pièce). Où elle en est, et le geste qui va avec.
    · Envoyer : on coche les fichiers (ou « Envoyer des documents… »), une
      fenêtre récapitule à qui, l'objet, le message (déjà écrit, modifiable)
      et les pièces ; le mail part au nom d'Alexandre (/api/biens-vente,
@@ -45,9 +45,9 @@ import x from './DossierBien.module.css';
      Suivi du contact. */
 
 const GROUPES: { k: LigneDossier['groupe'] | 'autres'; l: string; ic: string }[] = [
-  { k: 'diag', l: 'Les diagnostics', ic: 'eclair' },
-  { k: 'copro', l: 'La copropriété', ic: 'lots' },
-  { k: 'vendeur', l: 'Du vendeur', ic: 'personne' },
+  { k: 'diag', l: 'Le logement · diagnostics', ic: 'eclair' },
+  { k: 'copro', l: 'L’immeuble · copropriété', ic: 'immeuble' },
+  { k: 'vendeur', l: 'Le vendeur', ic: 'personne' },
   { k: 'autres', l: 'Autres documents', ic: 'dossier' },
 ];
 /* Des idées de pièces à ajouter, par groupe : un clic les pose. */
@@ -113,7 +113,172 @@ function Contenu({ lignes, on, onBasculer, desactive }: { lignes: LigneDossier[]
   );
 }
 
-/* ══ LE DOSSIER ════════════════════════════════════════════════════════════ */
+/* ══ LE DOSSIER ════════════════════════════════════════════════════════════
+   V3.90 (maquette validée par Alexandre) : une ligne par pièce, au lieu des
+   tuiles et de leurs trois boutons Reçu / Demandé / Non concerné. Chaque
+   ligne dit où en est la pièce (reçu le…, demandé il y a 16 jours, expiré)
+   et propose le geste qui va avec : Voir, Relancer, Demander, Déposer, Le
+   refaire ; le reste dans « ⋯ ». Les non concernés se replient en une ligne
+   grise au bas de leur groupe. En tête, « Ce qu'il faut pour ce bien »,
+   d'après la fiche. « Demander » ouvre la fenêtre de demande, la pièce déjà
+   cochée : on en coche d'autres, un seul mail part. */
+
+/* La validité d'un diagnostic, en mois, depuis sa date (celle de la ligne). */
+const VALIDITE: Record<string, number> = { dpe: 120, electricite: 36, gaz: 36, termites: 6, erp: 6 };
+/* Au bout d'une semaine sans réponse, « Relancer ». */
+const RELANCE_JOURS = 7;
+export type StatutPiece = 'recu' | 'expire' | 'demande' | 'relance' | 'afaire' | 'tard' | 'nc';
+const plusMois = (ymd: string, n: number) => {
+  const d = new Date(`${ymd.slice(0, 10)}T12:00:00`);
+  if (isNaN(d.getTime())) return '';
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().slice(0, 10);
+};
+const joursDepuis = (ymd: string) => {
+  const t = Date.parse(`${ymd.slice(0, 10)}T12:00:00`);
+  return isNaN(t) ? null : Math.max(0, Math.round((Date.parse(`${aujourdhui()}T12:00:00`) - t) / 86400000));
+};
+const ilYa = (ymd: string) => {
+  const j = joursDepuis(ymd);
+  return j === null ? '' : j === 0 ? 'aujourd’hui' : j === 1 ? 'hier' : j < 30 ? `il y a ${j} jours` : `le ${dateFr(ymd)}`;
+};
+/* La fin de validité d'une pièce reçue (vide : pas de limite). */
+export const finValidite = (k: string, p: PieceDossier) => (VALIDITE[k] && p.etat === 'recu' && p.date ? plusMois(p.date, VALIDITE[k]) : '');
+/* Où en est une pièce. La date d'une demande : `demandeLe`, ou la date posée
+   par la visite sur place (VisiteSurPlace) quand elle l'a demandée. */
+export function statutPiece(k: string, p: PieceDossier | undefined, etape: string): StatutPiece {
+  if (!p || !p.etat) return k === 'preetat' && etape !== 'offre' && etape !== 'compromis' ? 'tard' : 'afaire';
+  if (p.etat === 'nc') return 'nc';
+  if (p.etat === 'recu') { const fin = finValidite(k, p); return fin && fin < aujourdhui() ? 'expire' : 'recu'; }
+  const depuis = p.relanceLe || p.demandeLe || p.date;
+  const j = depuis ? joursDepuis(depuis) : null;
+  return j !== null && j >= RELANCE_JOURS ? 'relance' : 'demande';
+}
+const IC_STATUT: Record<StatutPiece, string> = { recu: 'check', expire: 'info', demande: 'horloge', relance: 'horloge', afaire: 'plus', tard: 'pause', nc: 'oeilBarre' };
+
+/* Le petit menu « ⋯ » d'une ligne. Défini au niveau du module (AGENTS.md §2.4). */
+type ChoixLigne = { lib: string; ic: string; onClick?: () => void; fichier?: (f: File) => void; danger?: boolean };
+function MenuLigne({ choix, titre }: { choix: ChoixLigne[]; titre: string }) {
+  const [ouvert, setOuvert] = useState(false);
+  const boite = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ouvert) return;
+    const dehors = (e: MouseEvent) => { if (boite.current && !boite.current.contains(e.target as Node)) setOuvert(false); };
+    const touche = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(false); };
+    document.addEventListener('mousedown', dehors);
+    document.addEventListener('keydown', touche);
+    return () => { document.removeEventListener('mousedown', dehors); document.removeEventListener('keydown', touche); };
+  }, [ouvert]);
+  if (!choix.length) return null;
+  return (
+    <div className={x.menuL} ref={boite}>
+      <button type="button" className={x.points} aria-label={`Autres actions : ${titre}`} title="Autres actions" aria-haspopup="menu" aria-expanded={ouvert} onClick={() => setOuvert(o => !o)}>
+        <Ic n="points" t={16} e={2.4} />
+      </button>
+      {ouvert && (
+        <div className={x.menuPop} role="menu" aria-label={titre}>
+          {choix.map(c => (c.fichier ? (
+            <label key={c.lib} className={x.menuChoix} data-danger={c.danger ? 'oui' : undefined}>
+              <Ic n={c.ic} t={15} />{c.lib}
+              <input type="file" accept=".pdf,image/*" onChange={e => { const f = e.target.files?.[0]; if (f) c.fichier!(f); e.target.value = ''; setOuvert(false); }} />
+            </label>
+          ) : (
+            <button key={c.lib} type="button" role="menuitem" className={x.menuChoix} data-danger={c.danger ? 'oui' : undefined} onClick={() => { setOuvert(false); c.onClick?.(); }}>
+              <Ic n={c.ic} t={15} />{c.lib}
+            </button>
+          )))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* « Ce qu'il faut pour ce bien » : d'après la fiche, ce qui est prêt pour
+   mettre en vente, ce qui manque pour le compromis, et ce qui ne s'applique
+   sans doute pas (une proposition : un clic la pose, le diagnostiqueur
+   confirme). */
+const LE_BIEN: Record<string, string> = { appartement: 'Appartement', maison: 'Maison', duplex: 'Duplex', studio: 'Studio', loft: 'Loft', terrain: 'Terrain', local: 'Local', parking: 'Parking', immeuble: 'Immeuble' };
+const CLE_GUIDE = 'emilio.dossier.guide';
+type Proposition = { k: string; l: string; pourquoi: string };
+function propositionsNc(d: Donnees, lignes: LigneDossier[], st: (k: string) => StatutPiece): Proposition[] {
+  const annee = Number(d.annee) || 0;
+  const cette = Number(aujourdhui().slice(0, 4));
+  const out: Proposition[] = [];
+  const libre = (k: string) => lignes.some(l => l.k === k) && ['afaire', 'demande', 'relance', 'tard'].includes(st(k));
+  if (annee >= 1950 && libre('plomb')) out.push({ k: 'plomb', l: 'Plomb', pourquoi: `construit en ${annee}` });
+  if (annee >= 2000 && libre('amiante')) out.push({ k: 'amiante', l: 'Amiante', pourquoi: `construit en ${annee}` });
+  if (annee && annee > cette - 15) {
+    if (libre('electricite')) out.push({ k: 'electricite', l: 'Électricité', pourquoi: 'installation de moins de 15 ans' });
+    if (libre('gaz')) out.push({ k: 'gaz', l: 'Gaz', pourquoi: 'installation de moins de 15 ans' });
+  }
+  return out;
+}
+function Guide({ d, lignes, st, onNc, onDemander }: {
+  d: Donnees; lignes: LigneDossier[]; st: (k: string) => StatutPiece;
+  onNc: (k: string) => void; onDemander: (ks: string[]) => void;
+}) {
+  const [replie, setReplie] = useState(() => { try { return localStorage.getItem(CLE_GUIDE) === 'replie'; } catch { return false; } });
+  const plier = (v: boolean) => { setReplie(v); try { localStorage.setItem(CLE_GUIDE, v ? 'replie' : 'ouvert'); } catch { /* sans mémoire */ } };
+  const annee = Number(d.annee) || 0;
+  const quoi = `${LE_BIEN[String(d.typeBien || '')] || 'Bien'}${d.copro === 'oui' ? ' en copropriété' : ''}`;
+  const fiche = [quoi, annee ? `construit en ${annee}` : '', d.chauffageEnergie === 'gaz' ? 'chauffage au gaz' : '', d.occupation === 'loue' ? 'loué' : ''].filter(Boolean).join(', ');
+  const dpe = lignes.some(l => l.k === 'dpe') ? st('dpe') : 'nc';
+  const manquent = lignes.filter(l => !['recu', 'nc'].includes(st(l.k)));
+  const aDemander = manquent.filter(l => ['afaire', 'expire', 'tard'].includes(st(l.k))).map(l => l.k);
+  const props = propositionsNc(d, lignes, st);
+  const deja = lignes.filter(l => st(l.k) === 'nc');
+  const court = (l: string) => l.replace(/\s*\(.*\)$/, '').replace(/ de la copropriété$/, '');
+  return (
+    <div className={x.guide}>
+      <button type="button" className={x.guideT} aria-expanded={!replie} onClick={() => plier(!replie)}>
+        <span className={x.guideIc}><Ic n="boussole" t={17} /></span>
+        <span className={x.guideTx}><b>Ce qu’il faut pour ce bien</b><small>{`D’après sa fiche : ${fiche.charAt(0).toLowerCase()}${fiche.slice(1)}.`}</small></span>
+        <PastillePli ouvert={!replie} />
+      </button>
+      <Depliant ouvert={!replie}>
+        <div className={x.etapes}>
+          <div className={x.et}>
+            <small>Pour mettre en vente</small>
+            <b>{dpe === 'recu' || dpe === 'nc' ? 'C’est bon' : dpe === 'expire' ? 'Le DPE a expiré' : 'Il manque le DPE'}</b>
+            <p>{dpe === 'recu' || dpe === 'nc' ? 'Le DPE suffit pour publier l’annonce.' : 'Il le faut pour publier l’annonce : la classe énergie y figure.'}</p>
+            <div className={x.chips}>
+              <span className={x.chip} data-ton={dpe === 'recu' || dpe === 'nc' ? 'ok' : 'manque'}>{dpe === 'recu' && <Ic n="check" t={11} e={3} />}DPE</span>
+              {(dpe === 'afaire' || dpe === 'expire') && <button type="button" className={x.lien} onClick={() => onDemander(['dpe'])}>Le demander</button>}
+            </div>
+          </div>
+          <div className={x.et}>
+            <small>Pour signer le compromis</small>
+            <b>{manquent.length ? `Il en manque ${manquent.length}` : 'C’est complet'}</b>
+            <p>{manquent.length ? 'Les diagnostics, les pièces de copropriété et celles du vendeur que le notaire demandera.' : 'Tout ce que le notaire demandera est dans le dossier.'}</p>
+            {manquent.length > 0 && (
+              <div className={x.chips}>
+                {manquent.slice(0, 6).map(l => <span key={l.k} className={x.chip} data-ton={st(l.k) === 'expire' ? 'expire' : 'manque'}>{`${court(l.l)}${st(l.k) === 'expire' ? ' expiré' : ''}`}</span>)}
+                {manquent.length > 6 && <span className={x.chip} data-ton="manque">{`+ ${manquent.length - 6}`}</span>}
+                {aDemander.length > 0 && <button type="button" className={x.lien} onClick={() => onDemander(aDemander)}>{aDemander.length > 1 ? 'Les demander' : 'La demander'}</button>}
+              </div>
+            )}
+          </div>
+          <div className={x.et}>
+            <small>Pas pour ce bien</small>
+            <b>{props.length ? `${props.length} sans doute non concerné${props.length > 1 ? 's' : ''}` : deja.length ? `${deja.length} non concerné${deja.length > 1 ? 's' : ''}` : 'Rien à écarter'}</b>
+            <p>{props.length ? 'Proposés d’après la fiche : un clic les écarte, le diagnostiqueur confirme.' : deja.length ? 'Écartés à la main : « ⋯ » sur la ligne pour les rétablir.' : annee ? 'D’après la fiche, tous les diagnostics peuvent s’appliquer.' : 'Renseigne l’année de construction : le CRM proposera ce qui ne s’applique pas.'}</p>
+            {(props.length > 0 || deja.length > 0) && (
+              <div className={x.chips}>
+                {props.map(p => (
+                  <button key={p.k} type="button" className={x.chip} data-ton="propose" title={`Marquer « non concerné » : ${p.pourquoi}`} onClick={() => onNc(p.k)}>
+                    <Ic n="oeilBarre" t={11} e={2.4} />{`${p.l} · ${p.pourquoi}`}
+                  </button>
+                ))}
+                {deja.map(l => <span key={l.k} className={x.chip} data-ton="nc">{court(l.l)}</span>)}
+              </div>
+            )}
+          </div>
+        </div>
+      </Depliant>
+    </div>
+  );
+}
+
 export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, etape = '' }: {
   bienId: string; d: Donnees; maj: Maj;
   /* L'étape du bien : le motif proposé d'une demande de documents (V3.51). */
@@ -131,9 +296,10 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
   const autres = fichiers.filter(f => f.sorte !== 'ddt');
   const diags = lignes.filter(l => l.groupe === 'diag');
   const [filtre, setFiltre] = useState<'tout' | 'reunir' | 'demande' | 'recu'>('tout');
-  const [choix, setChoix] = useState<string[]>([]);
-  const [fen, setFen] = useState(false);
-  const [demande, setDemande] = useState(false);
+  /* L'envoi : les fichiers à cocher d'office (vide : tous). */
+  const [fen, setFen] = useState<string[] | null>(null);
+  /* La demande : les pièces déjà cochées, relance ou non, et celles qu'on refait. */
+  const [demande, setDemande] = useState<{ depart: string[]; relance: boolean; refaire: string[] } | null>(null);
   const [aRanger, setARanger] = useState<ARanger[]>([]);
   const [occupe, setOccupe] = useState('');
   const [erreur, setErreur] = useState('');
@@ -144,6 +310,10 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
   const [ajout, setAjout] = useState<{ g: LigneDossier['groupe']; v: string } | null>(null);
   /* Le DDT dont on corrige le contenu. */
   const [contenuDe, setContenuDe] = useState('');
+  /* La ligne dont on corrige la date. */
+  const [dateDe, setDateDe] = useState('');
+  /* Les groupes dont on montre les non concernés. */
+  const [ncVus, setNcVus] = useState<string[]>([]);
   /* Les groupes repliés (V3.31) : le choix est gardé dans ce navigateur ;
      sans choix, un groupe complet (tout reçu ou non concerné) se replie seul. */
   const [replis, setReplis] = useState<Record<string, boolean>>(() => {
@@ -157,14 +327,16 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
   });
   const ddtDe = (k: string) => (doss[k]?.dans ? ddts.find(f => f.id === doss[k].dans) : undefined);
   const couverts = (id: string) => lignes.filter(l => doss[l.k]?.dans === id);
+  const st = (k: string) => statutPiece(k, doss[k], etape);
+  /* Reçu : la date du jour, sauf une pièce déjà reçue qui garde la sienne
+     (une demande gardait sa date de demande comme date de réception). */
+  const dateRecu = (k: string) => (doss[k]?.etat === 'recu' && doss[k]?.date ? doss[k].date : aujourdhui());
 
-  /* Les chiffres : reçus + non concernés sur le total, comme l'anneau d'avant. */
-  const recus = lignes.filter(l => doss[l.k]?.etat === 'recu').length;
-  const demandes = lignes.filter(l => doss[l.k]?.etat === 'demande').length;
-  const nc = lignes.filter(l => doss[l.k]?.etat === 'nc').length;
-  const faits = recus + nc;
-  const reunir = lignes.length - faits;
-  const detail = [`${recus} reçu${recus > 1 ? 's' : ''}`, demandes ? `${demandes} demandé${demandes > 1 ? 's' : ''}` : '', nc ? `${nc} non concerné${nc > 1 ? 's' : ''}` : '', reunir - demandes > 0 ? `${reunir - demandes} à demander` : ''].filter(Boolean).join(' · ');
+  /* Les chiffres, sur les pièces qui concernent le bien. */
+  const concernes = lignes.filter(l => st(l.k) !== 'nc');
+  const nb = (...s: StatutPiece[]) => concernes.filter(l => s.includes(st(l.k))).length;
+  const recus = nb('recu'), demandes = nb('demande', 'relance'), aRelancer = nb('relance'), expires = nb('expire'), aFaire = nb('afaire', 'tard');
+  const reunir = concernes.length - recus;
 
   /* Tout ce qui peut partir par mail : les lignes qui ont leur fichier, les
      dossiers de diagnostics (avec ce qu'ils couvrent), les autres documents. */
@@ -176,8 +348,6 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
     ...lignes.filter(l => doss[l.k]?.chemin).map(l => ({ cle: l.k, titre: l.l, chemin: doss[l.k].chemin, nom: doss[l.k].nom || l.l, taille: doss[l.k].taille })),
     ...autres.map(f => ({ cle: f.id, titre: f.titre || titreDeFichier(f.nom), chemin: f.chemin, nom: f.nom, taille: f.taille })),
   ];
-  const choisis = envoyables.filter(p => choix.includes(p.chemin));
-  const basculer = (chemin: string) => setChoix(c => (c.includes(chemin) ? c.filter(y => y !== chemin) : [...c, chemin]));
 
   /* ── Déposer ── */
   /* Ce qu'un DDT couvre d'office : les diagnostics sans fichier et pas « non concerné ». */
@@ -229,11 +399,11 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
           };
           maj('fichiers', (avant: unknown) => [...lireFichiers(avant), f]);
           /* Chaque diagnostic couvert passe « Reçu » et pointe vers ce fichier. */
-          if (a.cle === DDT) for (const k of a.contient) poser(k, { dans: a.id, etat: 'recu', date: doss[k]?.date || aujourdhui() });
+          if (a.cle === DDT) for (const k of a.contient) poser(k, { dans: a.id, etat: 'recu', date: dateRecu(k) });
         } else {
           const ancien = doss[a.cle]?.chemin;
           const r = await deposerPiece(bienId, a.cle, a.f);
-          poser(a.cle, { chemin: r.chemin, nom: r.nom, taille: a.f.size, etat: 'recu', date: doss[a.cle]?.date || aujourdhui() });
+          poser(a.cle, { chemin: r.chemin, nom: r.nom, taille: a.f.size, etat: 'recu', date: dateRecu(a.cle) });
           if (ancien) retirerPiece(ancien).catch(() => { /* l'ancien reste au stockage, sans lien */ });
         }
         n++;
@@ -257,7 +427,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
   }
   async function retirerFichier(f: FichierBien) {
     const c = f.sorte === 'ddt' ? couverts(f.id) : [];
-    const suite = c.length ? `\n\nLes ${c.length} diagnostics qu’il couvre repasseront « à voir », sauf ceux qui ont leur propre fichier.` : '';
+    const suite = c.length ? `\n\nLes ${c.length} diagnostics qu’il couvre repasseront « à demander », sauf ceux qui ont leur propre fichier.` : '';
     if (!confirm(`Retirer « ${f.titre || f.nom} » du dossier ?${suite}`)) return;
     setOccupe(f.id); setErreur('');
     try {
@@ -272,7 +442,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
     try {
       const ancien = doss[k]?.chemin;
       const r = await deposerPiece(bienId, k, f);
-      poser(k, { chemin: r.chemin, nom: r.nom, taille: f.size, etat: 'recu', date: doss[k]?.date || aujourdhui() });
+      poser(k, { chemin: r.chemin, nom: r.nom, taille: f.size, etat: 'recu', date: st(k) === 'expire' ? aujourdhui() : dateRecu(k) });
       if (ancien) retirerPiece(ancien).catch(() => { /* rien */ });
     } catch (e) { setErreur((e as Error).message); }
     setOccupe('');
@@ -281,7 +451,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
   function basculerContenu(f: FichierBien, k: string) {
     const p = doss[k] || VIDE;
     if (p.dans === f.id) poser(k, p.chemin ? { dans: '' } : { dans: '', etat: p.etat === 'recu' ? '' : p.etat });
-    else poser(k, { dans: f.id, etat: 'recu', date: p.date || aujourdhui() });
+    else poser(k, { dans: f.id, etat: 'recu', date: dateRecu(k) });
   }
 
   /* ── Ses propres pièces, et les noms ── */
@@ -313,23 +483,26 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
     setNom(null);
   }
   /* Le nom d'une pièce ajoutée ou d'un document, et son champ pour le
-     changer. Une fonction appelée, pas un composant : défini ici comme
-     composant, il se remonterait à chaque lettre et le champ perdrait le
-     curseur (AGENTS.md §2.4). */
+     changer. Une fonction appelée, pas un composant (AGENTS.md §2.4). */
   const nomDe = (k: string, l: string, sous?: ReactNode) => (nom?.k === k ? (
-    <div className={x.tuileNom}>
+    <div className={x.lgNom}>
       <input className={x.nomEdit} value={nom.v} autoFocus aria-label="Nouveau nom" onChange={e => setNom({ k, v: e.target.value })}
         onKeyDown={e => { if (e.key === 'Enter') enregistrerNom(); if (e.key === 'Escape') setNom(null); }} onBlur={enregistrerNom} />
     </div>
   ) : (
-    <div className={x.tuileNom}><b>{l}</b>{sous && <small>{sous}</small>}</div>
+    <div className={x.lgNom}><b>{l}</b>{sous && <small>{sous}</small>}</div>
   ));
+
+  /* Demander, relancer, refaire : la fenêtre de demande, ces pièces cochées. */
+  const demander = (ks: string[], relance = false) => setDemande({ depart: ks, relance, refaire: ks.filter(k => st(k) === 'expire') });
+  /* Relancer : toutes les pièces demandées et pas encore reçues, cochées. */
+  const relancer = (k: string) => demander([k, ...lignes.filter(l => l.k !== k && (st(l.k) === 'demande' || st(l.k) === 'relance')).map(l => l.k)], true);
 
   /* Replié ? Le choix d'Alexandre d'abord ; sinon, replié s'il est complet.
      Un filtre (À réunir, Demandés, Reçus) montre toujours tout. */
   const complet = (g: string) => {
     const ls = lignes.filter(l => l.groupe === g);
-    return ls.length > 0 && ls.every(l => doss[l.k]?.etat === 'recu' || doss[l.k]?.etat === 'nc');
+    return ls.length > 0 && ls.every(l => ['recu', 'nc'].includes(st(l.k)));
   };
   const replie = (g: string) => filtre === 'tout' && (g in replis ? replis[g] : g !== 'autres' && complet(g));
   const plier = (g: string, v: boolean) => setReplis(r => {
@@ -348,65 +521,193 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
     const r = replie(g.k);
     return (
       <button type="button" className={x.groupeT} aria-expanded={!r} onClick={() => plier(g.k, !r)} disabled={filtre !== 'tout'}>
-        <span className={x.groupeIc}><Ic n={g.ic} t={14} /></span>
+        <span className={x.groupeIc}><Ic n={g.ic} t={15} /></span>
         <span className={x.groupeNom}>{g.l}</span>
         {compte && <i>{compte}</i>}
         {part !== null && <span className={x.groupeJauge} aria-hidden="true"><span style={{ width: `${Math.round(part * 100)}%` }} /></span>}
-        {/* « Voir le détail » à côté du titre, pas tout à droite (V3.33). */}
-        {filtre === 'tout' && <PastillePli ouvert={!r} />}
         {r && resume && <span className={x.groupeResume}>{resume}</span>}
+        {filtre === 'tout' && <span className={x.groupePli}><PastillePli ouvert={!r} /></span>}
       </button>
     );
   };
   const resumeDe = (g: string) => {
     const ls = lignes.filter(l => l.groupe === g);
-    const n = (e: string) => ls.filter(l => (doss[l.k]?.etat || '') === e).length;
-    const aVoir = n('');
-    return [n('recu') ? `${n('recu')} reçu${n('recu') > 1 ? 's' : ''}` : '', n('demande') ? `${n('demande')} demandé${n('demande') > 1 ? 's' : ''}` : '', aVoir ? `${aVoir} à voir` : '', !aVoir && !n('demande') ? 'tout est réglé' : ''].filter(Boolean).join(' · ');
+    const n = (...s: StatutPiece[]) => ls.filter(l => s.includes(st(l.k))).length;
+    const r = n('recu'), dm = n('demande', 'relance'), ex = n('expire'), af = n('afaire', 'tard');
+    return [r ? `${r} reçu${r > 1 ? 's' : ''}` : '', dm ? `${dm} demandé${dm > 1 ? 's' : ''}` : '', ex ? `${ex} expiré${ex > 1 ? 's' : ''}` : '', af ? `${af} à demander` : '', !dm && !ex && !af ? 'tout est réglé' : ''].filter(Boolean).join(' · ');
   };
-
   const visible = (k: string) => {
-    const e = doss[k]?.etat || '';
-    return filtre === 'tout' || (filtre === 'reunir' ? e !== 'recu' && e !== 'nc' : filtre === 'demande' ? e === 'demande' : e === 'recu');
+    const s = st(k);
+    return filtre === 'tout' ? s !== 'nc' : filtre === 'reunir' ? s !== 'recu' && s !== 'nc' : filtre === 'demande' ? s === 'demande' || s === 'relance' : s === 'recu';
   };
-  const poids = choisis.reduce((t, p) => t + (p.taille || 0), 0);
   const idees = (g: LigneDossier['groupe']) => [...(g === 'vendeur' && d.qui === 'sci' ? IDEES_SCI : []), ...IDEES[g]]
     .filter(t => !lignes.some(y => sansAccent(y.l) === sansAccent(t))).slice(0, 8);
 
-  /* La tuile « + Ajouter une pièce » d'un groupe, ou son petit formulaire. */
-  const tuileAjout = (g: LigneDossier['groupe']) => (filtre !== 'tout' ? null : ajout?.g === g ? (
-    <div className={`${x.tuile} ${x.tuileAjout}`}>
-      <div className={x.tuileNom}><b>Une pièce à ajouter</b><small>Le nom que tu veux : il apparaîtra comme les autres, avec reçu, demandé, le fichier.</small></div>
-      <input className={x.nomEdit} value={ajout.v} autoFocus placeholder="Ex. : Kbis de la SCI" aria-label="Nom de la pièce"
-        onChange={e => setAjout({ g, v: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') ajouterPiece(); if (e.key === 'Escape') setAjout(null); }} />
-      {idees(g).length > 0 && (
-        <div className={x.idees}>{idees(g).map(t => <button key={t} type="button" onClick={() => setAjout({ g, v: t })}>{t}</button>)}</div>
-      )}
-      <div className={x.fichier}>
+  /* ── Une ligne du dossier ── */
+  const btnDeposer = (k: string, lib = 'Déposer') => (
+    <label className={x.btnP} data-occupe={occupe === k ? 'oui' : undefined}>
+      <Ic n="telecharger" t={13} e={2.2} />{occupe === k ? 'Envoi…' : lib}
+      <input type="file" accept=".pdf,image/*" disabled={occupe === k} onChange={e => { const f = e.target.files?.[0]; if (f) deposerSur(k, f); e.target.value = ''; }} />
+    </label>
+  );
+  const ligne = (l: LigneDossier) => {
+    const p = doss[l.k] || VIDE;
+    const s = st(l.k);
+    const ddt = ddtDe(l.k);
+    const chemin = p.chemin || ddt?.chemin || '';
+    const perso = estPerso(l.k);
+    const fin = finValidite(l.k, p);
+    const sous = perso ? 'Ajoutée par toi' : s === 'tard' ? 'Au syndic, une fois l’offre acceptée' : l.aide;
+    const depuisDemande = p.demandeLe || (p.etat === 'demande' ? p.date : '');
+    /* Où elle en est, en deux lignes. */
+    const etatTx: ReactNode = dateDe === l.k ? (
+      <label className={x.dateEdit}>
+        <span>{VALIDITE[l.k] ? 'Daté du' : 'Reçu le'}</span>
+        <input type="date" value={p.date} autoFocus onChange={e => poser(l.k, { date: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setDateDe(''); }} />
+        <button type="button" className={x.lien} onClick={() => setDateDe('')}>OK</button>
+      </label>
+    ) : s === 'recu' ? (
+      <><b data-ton="vert">{p.date ? `Reçu le ${dateFr(p.date)}` : 'Reçu'}</b><span>{[ddt ? `dans « ${ddt.titre || TITRE_DDT} »` : p.chemin ? '' : 'sans fichier', fin ? `valable jusqu’au ${dateFr(fin)}` : ''].filter(Boolean).join(' · ')}</span></>
+    ) : s === 'expire' ? (
+      <><b data-ton="rouge">{`Expiré le ${dateFr(fin)}`}</b><span>{`reçu le ${dateFr(p.date)} · à refaire`}</span></>
+    ) : s === 'demande' || s === 'relance' ? (
+      <>
+        <b data-ton="orange">{p.relanceLe ? `Relancé ${ilYa(p.relanceLe)}` : depuisDemande ? `Demandé ${ilYa(depuisDemande)}` : 'Demandé'}</b>
+        <span>{[p.relanceLe && p.demandeLe ? `demandé le ${dateFr(p.demandeLe)}` : '', p.demandeA ? `à ${p.demandeA}` : '', s === 'relance' ? 'pas encore reçu' : ''].filter(Boolean).join(' · ')}</span>
+      </>
+    ) : s === 'tard' ? <span data-ton="gris">{'Plus tard · une fois l’offre acceptée'}</span>
+      : s === 'nc' ? <span data-ton="gris">Non concerné</span>
+        : <span data-ton="gris">À demander</span>;
+    /* Le geste qui va avec. */
+    const actions: ReactNode = s === 'nc' ? (
+      <button type="button" className={x.btnP} onClick={() => poser(l.k, { etat: '' })}><Ic n="boucle" t={13} e={2.2} />Rétablir</button>
+    ) : s === 'recu' ? (chemin
+      ? <button type="button" className={x.btnP} onClick={() => (p.chemin ? ouvrirPiece(p.chemin, p.nom) : ddt && ouvrirPiece(ddt.chemin, ddt.nom))}><Ic n="oeil" t={13} e={2.2} />Voir</button>
+      : btnDeposer(l.k)
+    ) : s === 'expire' ? (
+      <>
+        <button type="button" className={x.btnP} data-fort="oui" onClick={() => demander([l.k])}><Ic n="boucle" t={13} e={2.2} />Le refaire</button>
+        {chemin && <button type="button" className={x.btnP} onClick={() => (p.chemin ? ouvrirPiece(p.chemin, p.nom) : ddt && ouvrirPiece(ddt.chemin, ddt.nom))}><Ic n="oeil" t={13} e={2.2} />Voir</button>}
+      </>
+    ) : s === 'relance' ? (
+      <><button type="button" className={x.btnP} data-fort="oui" onClick={() => relancer(l.k)}><Ic n="envoyer" t={13} e={2.2} />Relancer</button>{btnDeposer(l.k)}</>
+    ) : s === 'demande' ? btnDeposer(l.k)
+      : s === 'tard' ? <button type="button" className={x.btnP} onClick={() => demander([l.k])}><Ic n="mail" t={13} e={2.2} />Demander</button>
+        : <><button type="button" className={x.btnP} data-fort="oui" onClick={() => demander([l.k])}><Ic n="mail" t={13} e={2.2} />Demander</button>{btnDeposer(l.k)}</>;
+    /* Le reste, dans « ⋯ ». */
+    const menu: ChoixLigne[] = s === 'nc' ? [] : [
+      ...(p.chemin ? [
+        { lib: 'Envoyer par mail…', ic: 'envoyer', onClick: () => setFen([p.chemin]) },
+        { lib: 'Remplacer le fichier', ic: 'telecharger', fichier: (f: File) => { void deposerSur(l.k, f); } },
+      ] : []),
+      ...(ddt ? [
+        { lib: 'Envoyer le dossier par mail…', ic: 'envoyer', onClick: () => setFen([ddt.chemin]) },
+        { lib: 'Pas dans ce dossier de diagnostics', ic: 'croix', onClick: () => basculerContenu(ddt, l.k) },
+      ] : []),
+      ...(s === 'demande' ? [{ lib: 'Relancer maintenant', ic: 'envoyer', onClick: () => relancer(l.k) }] : []),
+      ...(s === 'recu' || s === 'expire' ? [{ lib: VALIDITE[l.k] ? 'Corriger la date du diagnostic' : 'Corriger la date', ic: 'calendrier', onClick: () => setDateDe(l.k) }] : []),
+      ...(s !== 'recu' && s !== 'expire' ? [{ lib: 'Marquer reçu, sans fichier', ic: 'check', onClick: () => poser(l.k, { etat: 'recu', date: aujourdhui() }) }] : []),
+      ...(s === 'demande' || s === 'relance' ? [{ lib: 'Annuler la demande', ic: 'croix', onClick: () => poser(l.k, { etat: '', demandeLe: '', demandeA: '', relanceLe: '' }) }] : []),
+      ...(s === 'recu' && !chemin ? [{ lib: 'Remettre « à demander »', ic: 'boucle', onClick: () => poser(l.k, { etat: '' }) }] : []),
+      { lib: 'Non concerné', ic: 'oeilBarre', onClick: () => poser(l.k, { etat: 'nc' }) },
+      ...(p.chemin ? [{ lib: 'Retirer le fichier', ic: 'corbeille', danger: true, onClick: () => { void retirerLigne(l.k); } }] : []),
+      ...(perso && nom?.k !== l.k ? [
+        { lib: 'Renommer', ic: 'crayon', onClick: () => setNom({ k: l.k, v: l.l }) },
+        { lib: 'Retirer du dossier', ic: 'corbeille', danger: true, onClick: () => { void retirerPerso(l.k, l.l); } },
+      ] : []),
+    ];
+    return (
+      <div key={l.k} className={x.lg} data-st={s}>
+        <span className={x.st} data-st={s} aria-hidden="true"><Ic n={IC_STATUT[s]} t={14} e={2.4} /></span>
+        {perso ? nomDe(l.k, l.l, sous) : <div className={x.lgNom}><b>{l.l}</b>{sous && <small>{sous}</small>}</div>}
+        <div className={x.lgEtat}>{etatTx}</div>
+        <div className={x.lgAct}>{actions}<MenuLigne choix={menu} titre={l.l} /></div>
+      </div>
+    );
+  };
+  /* Un dossier de diagnostics en un seul fichier : en tête des diagnostics. */
+  const ligneDdt = (f: FichierBien) => {
+    const c = couverts(f.id);
+    const edit = contenuDe === f.id;
+    return (
+      <div key={f.id} className={`${x.lg} ${x.lgDdt}`} data-st="recu">
+        <span className={x.st} data-st="ddt" aria-hidden="true"><Ic n="dossier" t={14} e={2.2} /></span>
+        {nomDe(f.id, f.titre || TITRE_DDT, `Un seul fichier pour ${c.length} diagnostic${c.length > 1 ? 's' : ''}${f.taille ? ` · ${tailleFr(f.taille)}` : ''}`)}
+        <div className={x.lgEtat}><b data-ton="vert">{f.le ? `Déposé le ${dateFr(f.le)}` : 'Déposé'}</b></div>
+        <div className={x.lgAct}>
+          <button type="button" className={x.btnP} onClick={() => ouvrirPiece(f.chemin, f.nom)}><Ic n="oeil" t={13} e={2.2} />Voir</button>
+          <MenuLigne titre={f.titre || TITRE_DDT} choix={[
+            { lib: 'Ce qu’il contient…', ic: 'liste', onClick: () => setContenuDe(edit ? '' : f.id) },
+            { lib: 'Envoyer par mail…', ic: 'envoyer', onClick: () => setFen([f.chemin]) },
+            { lib: 'Renommer', ic: 'crayon', onClick: () => setNom({ k: f.id, v: f.titre || TITRE_DDT }) },
+            { lib: 'Retirer ce fichier', ic: 'corbeille', danger: true, onClick: () => { void retirerFichier(f); } },
+          ]} />
+        </div>
+        <div className={x.lgPlus}>
+          {edit ? (
+            <>
+              <Contenu lignes={diags} on={c.map(l => l.k)} onBasculer={k => basculerContenu(f, k)} />
+              <button type="button" className={`${x.btn} ${x.btnMarine}`} onClick={() => setContenuDe('')}><Ic n="check" t={14} e={2.6} />Terminé</button>
+            </>
+          ) : (
+            <div className={x.contenu}>{c.length ? c.map(l => <span key={l.k} className={x.puceLue}><Ic n="check" t={11} e={3} />{l.l}</span>) : <span className={x.aide}>Il ne couvre encore aucun diagnostic : « ⋯ », puis « Ce qu’il contient ».</span>}</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+  /* Un autre document (bail, plan…) : son nom, sa date, Voir. */
+  const ligneAutre = (f: FichierBien) => (
+    <div key={f.id} className={x.lg} data-st="recu">
+      <span className={x.st} data-st="recu" aria-hidden="true"><Ic n="doc" t={14} e={2.2} /></span>
+      {nomDe(f.id, f.titre || titreDeFichier(f.nom), tailleFr(f.taille))}
+      <div className={x.lgEtat}><b data-ton="vert">{f.le ? `Déposé le ${dateFr(f.le)}` : 'Déposé'}</b></div>
+      <div className={x.lgAct}>
+        <button type="button" className={x.btnP} onClick={() => ouvrirPiece(f.chemin, f.nom)}><Ic n="oeil" t={13} e={2.2} />Voir</button>
+        <MenuLigne titre={f.titre || f.nom} choix={[
+          { lib: 'Envoyer par mail…', ic: 'envoyer', onClick: () => setFen([f.chemin]) },
+          { lib: 'Renommer', ic: 'crayon', onClick: () => setNom({ k: f.id, v: f.titre || titreDeFichier(f.nom) }) },
+          { lib: 'Retirer ce document', ic: 'corbeille', danger: true, onClick: () => { void retirerFichier(f); } },
+        ]} />
+      </div>
+    </div>
+  );
+  /* « + Ajouter une pièce » au bas d'un groupe, ou son petit formulaire. */
+  const ligneAjout = (g: LigneDossier['groupe']) => (filtre !== 'tout' ? null : ajout?.g === g ? (
+    <div className={x.lgAjout}>
+      <div className={x.lgAjoutL}>
+        <input className={x.nomEdit} value={ajout.v} autoFocus placeholder="Ex. : Kbis de la SCI" aria-label="Nom de la pièce"
+          onChange={e => setAjout({ g, v: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') ajouterPiece(); if (e.key === 'Escape') setAjout(null); }} />
         <button type="button" className={`${x.btn} ${x.btnMarine}`} disabled={!ajout.v.trim()} onClick={ajouterPiece}><Ic n="check" t={14} e={2.6} />Ajouter</button>
         <button type="button" className={x.lien} onClick={() => setAjout(null)}>Annuler</button>
       </div>
+      {idees(g).length > 0 && <div className={x.idees}>{idees(g).map(t => <button key={t} type="button" onClick={() => setAjout({ g, v: t })}>{t}</button>)}</div>}
     </div>
   ) : (
-    <button type="button" className={x.ajouter} onClick={() => { setAjout({ g, v: '' }); setErreur(''); }}>
-      <Ic n="plus" t={16} e={2.4} /><span>Ajouter une pièce<small>avec le nom de ton choix</small></span>
+    <button type="button" className={x.lgPlusBtn} onClick={() => { setAjout({ g, v: '' }); setErreur(''); }}>
+      <Ic n="plus" t={14} e={2.4} />Ajouter une pièce, avec le nom de ton choix
     </button>
   ));
 
   return (
     <section className={x.dossier} onDragOver={e => { e.preventDefault(); setSurvol(true); }} onDragLeave={e => { if (e.currentTarget === e.target) setSurvol(false); }} onDrop={surDepot}>
       <div className={x.tete}>
-        <Anneau part={lignes.length ? faits / lignes.length : 0} taille={68} ep={8} c="#16a34a" fond="#eef1f6" texteC="#1a2332" texte={`${faits}/${lignes.length}`} label={`${faits} pièces du dossier réglées sur ${lignes.length}`} />
+        <Anneau part={concernes.length ? recus / concernes.length : 0} taille={64} ep={7} c="#16a34a" fond="#eef1f6" texteC="#1a2332" texte={`${recus}/${concernes.length}`} label={`${recus} pièces reçues sur ${concernes.length}`} />
         <div className={x.teteTx}>
-          <h3>Le dossier : diagnostics et pièces</h3>
-          <span>{detail}{autres.length ? ` · ${autres.length} autre${autres.length > 1 ? 's' : ''} document${autres.length > 1 ? 's' : ''}` : ''}</span>
+          <h3>Diagnostics et pièces</h3>
+          <div className={x.etats2}>
+            <span><i style={{ background: '#16a34a' }} />{`${recus} reçu${recus > 1 ? 's' : ''}`}</span>
+            {demandes > 0 && <span><i style={{ background: '#ea7a2b' }} />{`${demandes} demandé${demandes > 1 ? 's' : ''}${aRelancer ? ` · ${aRelancer} à relancer` : ''}`}</span>}
+            {expires > 0 && <span><i style={{ background: '#dc2626' }} />{`${expires} expiré${expires > 1 ? 's' : ''}`}</span>}
+            {aFaire > 0 && <span><i style={{ background: '#cbd5e1' }} />{`${aFaire} à demander`}</span>}
+          </div>
         </div>
         <div className={x.teteBtns}>
           {/* V3.51 : demander au propriétaire ce qui manque, en quelques clics. */}
-          <button type="button" className={x.btn} onClick={() => setDemande(true)}>
-            <Ic n="liste" t={15} />Demander des documents…
+          <button type="button" className={x.btn} onClick={() => demander([])}>
+            <Ic n="mail" t={15} />Demander des documents…
           </button>
-          <button type="button" className={x.btn} disabled={!envoyables.length} onClick={() => setFen(true)} title={envoyables.length ? undefined : 'Aucun fichier déposé pour l’instant'}>
+          <button type="button" className={x.btn} disabled={!envoyables.length} onClick={() => setFen([])} title={envoyables.length ? undefined : 'Aucun fichier déposé pour l’instant'}>
             <Ic n="envoyer" t={15} />Envoyer des documents…
           </button>
           <button type="button" className={`${x.btn} ${x.btnOr}`} onClick={() => champ.current?.click()}><Ic n="plus" t={15} e={2.4} />Déposer des documents</button>
@@ -414,13 +715,15 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
         </div>
       </div>
 
+      <Guide d={d} lignes={lignes} st={st} onNc={k => poser(k, { etat: 'nc' })} onDemander={ks => demander(ks)} />
+
       {/* La zone de dépôt, et ce qui attend d'être rangé. */}
       {aRanger.length === 0 ? (
         <button type="button" className={`${x.zone} ${survol ? x.zoneSurvol : ''}`} onClick={() => champ.current?.click()}>
-          <span className={x.zoneIc}><Ic n="telecharger" t={22} /></span>
+          <span className={x.zoneIc}><Ic n="telecharger" t={18} /></span>
           <span className={x.zoneTx}>
-            <b>{survol ? 'Lâchez les fichiers ici' : 'Glissez vos documents ici, ou cliquez pour les choisir'}</b>
-            <small>Plusieurs à la fois : le CRM reconnaît le DPE, l’amiante, les PV d’AG… à leur nom. Un dossier de diagnostics en un seul fichier se range aussi. PDF, JPG ou PNG, 25 Mo au plus.</small>
+            <b>{survol ? 'Lâche les fichiers ici' : 'Glisse tes documents ici, ou clique pour les choisir.'}</b>
+            <small>Le CRM reconnaît le DPE, l’amiante, les PV d’AG… à leur nom, et les range à leur ligne. Un dossier de diagnostics en un seul fichier aussi. PDF, JPG ou PNG, 25 Mo au plus.</small>
           </span>
         </button>
       ) : (
@@ -479,8 +782,8 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
 
       <div className={x.outils}>
         <div className={x.filtres} role="group" aria-label="Filtrer le dossier">
-          {([['tout', 'Tout', lignes.length], ['reunir', 'À réunir', reunir], ['demande', 'Demandés', demandes], ['recu', 'Reçus', recus]] as const).map(([k, l, nb]) => (
-            <button key={k} type="button" aria-pressed={filtre === k} onClick={() => setFiltre(k)}>{l}<i>{nb}</i></button>
+          {([['tout', 'Tout', concernes.length], ['reunir', 'À réunir', reunir], ['demande', 'Demandés', demandes], ['recu', 'Reçus', recus]] as const).map(([k, l, n]) => (
+            <button key={k} type="button" aria-pressed={filtre === k} onClick={() => setFiltre(k)}>{l}<i>{n}</i></button>
           ))}
         </div>
         {filtre === 'tout' && (
@@ -497,23 +800,11 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
           return (
             <div key={g.k} className={x.groupe}>
               {teteGroupe(g, autres.length ? autres.length : null, autres.length ? `${autres.length} document${autres.length > 1 ? 's' : ''}` : 'aucun', null)}
-              <Depliant ouvert={!replie(g.k)}><div className={x.grille}>
-                {autres.map(f => (
-                  <div key={f.id} className={x.tuile} data-etat="recu" data-choisi={choix.includes(f.chemin) ? 'oui' : 'non'}>
-                    <div className={x.tuileT}>
-                      <button type="button" className={x.coche} aria-pressed={choix.includes(f.chemin)} aria-label={`Choisir ${f.titre || f.nom} pour l’envoyer`} onClick={() => basculer(f.chemin)}><Ic n="check" t={12} e={3.2} /></button>
-                      {nomDe(f.id, f.titre || titreDeFichier(f.nom), [f.le ? `Déposé le ${dateFr(f.le)}` : '', tailleFr(f.taille)].filter(Boolean).join(' · '))}
-                      {nom?.k !== f.id && <button type="button" className={x.icBtn} aria-label="Renommer" title="Renommer" onClick={() => setNom({ k: f.id, v: f.titre || titreDeFichier(f.nom) })}><Ic n="crayon" t={13} /></button>}
-                    </div>
-                    <div className={x.fichier}>
-                      <button type="button" className={x.fichierNom} onClick={() => ouvrirPiece(f.chemin, f.nom)}><Ic n="trombone" t={13} /><span>{f.nom}</span></button>
-                      <button type="button" className={x.icBtn} aria-label="Retirer ce document" disabled={occupe === f.id} onClick={() => retirerFichier(f)}><Ic n="corbeille" t={14} /></button>
-                    </div>
-                  </div>
-                ))}
+              <Depliant ouvert={!replie(g.k)}><div className={x.lignes}>
+                {autres.map(ligneAutre)}
                 {filtre === 'tout' && (
-                  <button type="button" className={x.ajouter} onClick={() => champ.current?.click()}>
-                    <Ic n="plus" t={16} e={2.4} /><span>Ajouter un document<small>un bail, un plan… tu choisis son nom</small></span>
+                  <button type="button" className={x.lgPlusBtn} onClick={() => champ.current?.click()}>
+                    <Ic n="plus" t={14} e={2.4} />Ajouter un document : un bail, un plan… tu choisis son nom
                   </button>
                 )}
               </div></Depliant>
@@ -522,119 +813,62 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
         }
         const ls = lignes.filter(l => l.groupe === g.k);
         const vus = ls.filter(l => visible(l.k));
+        const lesNc = ls.filter(l => st(l.k) === 'nc');
         const lesDdt = g.k === 'diag' && (filtre === 'tout' || filtre === 'recu') ? ddts : [];
-        if (!ls.length && filtre !== 'tout') return null;
+        if (!ls.length) return null;
         if (!vus.length && !lesDdt.length && filtre !== 'tout') return null;
-        const ok = ls.filter(l => doss[l.k]?.etat === 'recu' || doss[l.k]?.etat === 'nc').length;
+        const cons = ls.length - lesNc.length;
+        const ok = ls.filter(l => st(l.k) === 'recu').length;
+        const ncOuvert = ncVus.includes(g.k);
         return (
           <div key={g.k} className={x.groupe}>
-            {teteGroupe(g, `${ok} sur ${ls.length}`, resumeDe(g.k), ls.length ? ok / ls.length : 0)}
-            <Depliant ouvert={!replie(g.k)}><div className={x.grille}>
-              {/* Le dossier de diagnostics en un seul fichier : en tête, sur toute la largeur. */}
-              {lesDdt.map(f => {
-                const c = couverts(f.id);
-                const edit = contenuDe === f.id;
-                return (
-                  <div key={f.id} className={x.ddt} data-choisi={choix.includes(f.chemin) ? 'oui' : 'non'}>
-                    <div className={x.ddtT}>
-                      <button type="button" className={x.coche} aria-pressed={choix.includes(f.chemin)} aria-label={`Choisir ${f.titre || TITRE_DDT} pour l’envoyer`} onClick={() => basculer(f.chemin)}><Ic n="check" t={12} e={3.2} /></button>
-                      <span className={x.ddtIc}><Ic n="dossier" t={20} /></span>
-                      {nomDe(f.id, f.titre || TITRE_DDT, `Un seul fichier pour ${c.length} diagnostic${c.length > 1 ? 's' : ''}${f.le ? ` · déposé le ${dateFr(f.le)}` : ''}${f.taille ? ` · ${tailleFr(f.taille)}` : ''}`)}
-                      {nom?.k !== f.id && <button type="button" className={x.icBtn} aria-label="Renommer" title="Renommer" onClick={() => setNom({ k: f.id, v: f.titre || TITRE_DDT })}><Ic n="crayon" t={13} /></button>}
-                    </div>
-                    {edit
-                      ? <Contenu lignes={diags} on={c.map(l => l.k)} onBasculer={k => basculerContenu(f, k)} />
-                      : <div className={x.contenu}>{c.length ? c.map(l => <span key={l.k} className={x.puceLue}><Ic n="check" t={11} e={3} />{l.l}</span>) : <span className={x.aide}>Il ne couvre encore aucun diagnostic : « Ce qu’il contient » pour les cocher.</span>}</div>}
-                    <div className={x.fichier}>
-                      <button type="button" className={x.fichierNom} onClick={() => ouvrirPiece(f.chemin, f.nom)} title={f.nom}><Ic n="trombone" t={13} /><span>{f.nom}</span></button>
-                      <button type="button" className={`${x.btn} ${edit ? x.btnMarine : ''}`} onClick={() => setContenuDe(edit ? '' : f.id)}>{edit ? <><Ic n="check" t={14} e={2.6} />Terminé</> : 'Ce qu’il contient…'}</button>
-                      <button type="button" className={x.icBtn} aria-label="Retirer ce dossier de diagnostics" disabled={occupe === f.id} onClick={() => retirerFichier(f)}><Ic n="corbeille" t={14} /></button>
-                    </div>
+            {teteGroupe(g, `${ok} sur ${cons}`, resumeDe(g.k), cons ? ok / cons : 1)}
+            <Depliant ouvert={!replie(g.k)}><div className={x.lignes}>
+              {lesDdt.map(ligneDdt)}
+              {vus.map(ligne)}
+              {filtre === 'tout' && lesNc.length > 0 && (
+                <>
+                  <div className={x.ncPli}>
+                    <Ic n="oeilBarre" t={15} />
+                    <span>{`${lesNc.length} non concerné${lesNc.length > 1 ? 's' : ''} :`}</span>
+                    <span className={x.ncNoms}>{lesNc.map(l => <span key={l.k}>{l.l}</span>)}</span>
+                    <button type="button" className={x.lien} onClick={() => setNcVus(v => (ncOuvert ? v.filter(y => y !== g.k) : [...v, g.k]))}>{ncOuvert ? 'Masquer' : 'Afficher'}</button>
                   </div>
-                );
-              })}
-              {vus.map(l => {
-                const p = doss[l.k] || VIDE;
-                const etat: EtatPiece = p.etat;
-                const ddt = ddtDe(l.k);
-                const chemin = p.chemin || ddt?.chemin || '';
-                const perso = estPerso(l.k);
-                return (
-                  <div key={l.k} className={x.tuile} data-etat={etat || 'vide'} data-choisi={chemin && choix.includes(chemin) ? 'oui' : 'non'}>
-                    <div className={x.tuileT}>
-                      {chemin
-                        ? <button type="button" className={x.coche} aria-pressed={choix.includes(chemin)} aria-label={`Choisir ${l.l} pour l’envoyer`} onClick={() => basculer(chemin)}><Ic n="check" t={12} e={3.2} /></button>
-                        : <span className={x.pastille} data-etat={etat || 'vide'} aria-hidden="true">{etat === 'nc' ? '–' : etat === 'demande' ? '!' : ''}</span>}
-                      {perso ? nomDe(l.k, l.l, 'Ajoutée par toi') : <div className={x.tuileNom}><b>{l.l}</b>{l.aide && <small>{l.aide}</small>}</div>}
-                      {perso && nom?.k !== l.k && (
-                        <>
-                          <button type="button" className={x.icBtn} aria-label={`Renommer ${l.l}`} title="Renommer" onClick={() => setNom({ k: l.k, v: l.l })}><Ic n="crayon" t={13} /></button>
-                          <button type="button" className={x.icBtn} aria-label={`Retirer ${l.l} du dossier`} title="Retirer du dossier" disabled={occupe === l.k} onClick={() => retirerPerso(l.k, l.l)}><Ic n="croix" t={13} e={2.2} /></button>
-                        </>
-                      )}
-                    </div>
-                    <div className={x.etats} role="group" aria-label={l.l}>
-                      <button type="button" data-k="recu" aria-pressed={etat === 'recu'} onClick={() => poser(l.k, { etat: etat === 'recu' ? '' : 'recu', date: p.date || aujourdhui() })}>Reçu</button>
-                      <button type="button" data-k="demande" aria-pressed={etat === 'demande'} onClick={() => poser(l.k, { etat: etat === 'demande' ? '' : 'demande' })}>Demandé</button>
-                      <button type="button" data-k="nc" aria-pressed={etat === 'nc'} onClick={() => poser(l.k, { etat: etat === 'nc' ? '' : 'nc' })}>Non concerné</button>
-                    </div>
-                    {etat !== 'nc' && (
-                      <div className={x.fichier}>
-                        {p.chemin ? (
-                          <>
-                            <button type="button" className={x.fichierNom} onClick={() => ouvrirPiece(p.chemin, p.nom)} title={p.nom}><Ic n="trombone" t={13} /><span>{p.nom || 'Le fichier'}</span></button>
-                            <button type="button" className={x.icBtn} aria-label="Retirer le fichier" disabled={occupe === l.k} onClick={() => retirerLigne(l.k)}><Ic n="corbeille" t={14} /></button>
-                          </>
-                        ) : ddt ? (
-                          <>
-                            <button type="button" className={`${x.fichierNom} ${x.fichierDans}`} onClick={() => ouvrirPiece(ddt.chemin, ddt.nom)} title={`Dans ${ddt.titre || TITRE_DDT} (${ddt.nom})`}><Ic n="dossier" t={13} /><span>{!ddt.titre || ddt.titre === TITRE_DDT ? 'Dans le DDT' : `Dans « ${ddt.titre} »`}</span></button>
-                            <button type="button" className={x.icBtn} aria-label="Ne plus le compter dans le dossier de diagnostics" title="Pas dans ce fichier" onClick={() => basculerContenu(ddt, l.k)}><Ic n="croix" t={13} e={2.2} /></button>
-                          </>
-                        ) : (
-                          <label className={x.deposer}>
-                            <Ic n="telecharger" t={13} />{occupe === l.k ? 'Envoi…' : 'Déposer le fichier'}
-                            <input type="file" accept=".pdf,image/*" disabled={occupe === l.k} onChange={e => { const f = e.target.files?.[0]; if (f) deposerSur(l.k, f); e.target.value = ''; }} />
-                          </label>
-                        )}
-                        {etat === 'recu' && (
-                          <label className={x.date}>
-                            <span>Reçu le</span>
-                            <input type="date" value={p.date} onChange={e => poser(l.k, { date: e.target.value })} />
-                          </label>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {tuileAjout(g.k)}
+                  {ncOuvert && lesNc.map(ligne)}
+                </>
+              )}
+              {ligneAjout(g.k)}
             </div></Depliant>
           </div>
         );
       })}
       <div className={x.pied}>Les fichiers sont privés : visibles par toi seul, jamais dans un espace client. Ils ne partent que si tu les envoies.</div>
 
-      {/* La barre du choix : elle suit en bas de l'écran. */}
-      {choisis.length > 0 && (
-        <div className={x.barre} role="region" aria-label="Documents choisis">
-          <span className={x.barreN}><b>{choisis.length}</b>{`document${choisis.length > 1 ? 's' : ''} choisi${choisis.length > 1 ? 's' : ''}`}{poids ? <small>{tailleFr(poids)}</small> : null}</span>
-          <button type="button" className={x.lienClair} onClick={() => setChoix([])}>Tout décocher</button>
-          <button type="button" className={`${x.btn} ${x.btnOr}`} onClick={() => setFen(true)}><Ic n="envoyer" t={15} />Envoyer par mail…</button>
-        </div>
-      )}
-
       {demande && (
         <FenDemandeDocuments bienId={bienId} d={d} doss={doss} lignes={lignes} destinataires={destinataires} lieu={lieu} etape={etape}
-          onFermer={() => setDemande(false)}
+          depart={demande.depart} relance={demande.relance} refaire={demande.refaire}
+          onFermer={() => setDemande(null)}
           onFait={(r, m) => {
-            setDemande(false);
+            const refaire = demande.refaire;
+            const relance = demande.relance;
+            setDemande(null);
             /* Les pièces ajoutées pour l'occasion entrent dans le dossier, et
-               tout ce qui a été demandé passe « Demandé ». */
+               tout ce qui a été demandé passe « Demandé », daté, avec à qui
+               (V3.90). Une relance garde la date de la demande. */
             if (r.nouvelles.length) maj('piecesPerso', (avant: unknown) => [...lirePiecesPerso(avant), ...r.nouvelles]);
             const ks = [...r.cles, ...r.nouvelles.map(n => n.k)];
+            const jour = aujourdhui();
             if (ks.length) maj('dossier', (avant: unknown) => {
               const o = lireDossier(avant);
-              for (const k of ks) if (o[k]?.etat !== 'recu') o[k] = { ...(o[k] || VIDE), etat: 'demande' };
+              for (const k of ks) {
+                if (o[k]?.etat === 'recu' && !refaire.includes(k)) continue;
+                const avantK = o[k] || VIDE;
+                const dejaDemande = avantK.etat === 'demande';
+                o[k] = {
+                  ...avantK, etat: 'demande', demandeA: r.a || avantK.demandeA,
+                  ...(relance && dejaDemande ? { relanceLe: jour, demandeLe: avantK.demandeLe || avantK.date || jour } : { demandeLe: jour, relanceLe: undefined }),
+                };
+              }
               return { ...o };
             });
             onMessage(m);
@@ -642,14 +876,13 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
       )}
 
       {fen && (
-        <FenEnvoiDocuments bienId={bienId} pieces={envoyables} depart={choisis.map(p => p.chemin)} destinataires={destinataires} lieu={lieu}
-          onFermer={() => setFen(false)}
-          onFait={m => { setFen(false); setChoix([]); onMessage(m); }} />
+        <FenEnvoiDocuments bienId={bienId} pieces={envoyables} depart={fen} destinataires={destinataires} lieu={lieu}
+          onFermer={() => setFen(null)}
+          onFait={m => { setFen(null); onMessage(m); }} />
       )}
     </section>
   );
 }
-
 /* ══ LA FENÊTRE D'ENVOI ════════════════════════════════════════════════════ */
 function messageType(prenom: string, lieu: string, titres: string[], signature: string) {
   const liste = titres.map(t => `– ${t}`).join('\n');
@@ -800,18 +1033,28 @@ function messageDemande(prenom: string, motif: Motif, lieu: string, titres: stri
   const un = titres.length === 1;
   return `Bonjour${prenom ? ` ${prenom}` : ''},\n\nSuite à nos échanges, voici ${un ? 'le document dont j’aurais besoin' : 'les documents dont j’aurais besoin'} pour ${MOTIFS[motif].pour} de ${lieu || 'votre bien'} :\n${titres.map(t => `– ${t}`).join('\n')}\n\nVous pouvez ${un ? 'me l’envoyer' : 'me les envoyer'} en réponse à ce mail : un scan ou une photo bien lisible suffit.\n\nJe reste à votre disposition si vous avez la moindre question.\n\n${signature}`;
 }
+/* V3.90 : relancer une demande restée sans réponse. */
+function messageRelance(prenom: string, lieu: string, titres: string[], signature: string) {
+  const un = titres.length === 1;
+  return `Bonjour${prenom ? ` ${prenom}` : ''},\n\nJe reviens vers vous au sujet ${un ? 'du document' : 'des documents'} pour ${lieu || 'votre bien'} : je n’ai pas encore reçu ${un ? 'celui-ci' : 'ceux-ci'} :\n${titres.map(t => `– ${t}`).join('\n')}\n\nVous pouvez ${un ? 'me l’envoyer' : 'me les envoyer'} en réponse à ce mail : un scan ou une photo bien lisible suffit.\n\nMerci d’avance, et je reste à votre disposition si besoin.\n\n${signature}`;
+}
 type Extra = { l: string; g: LigneDossier['groupe'] };
-export type DemandeFaite = { cles: string[]; nouvelles: { k: string; l: string; groupe: LigneDossier['groupe'] }[] };
+/* `a` (V3.90) : à qui la demande est partie, pour la ligne « Demandé … à Paul ». */
+export type DemandeFaite = { cles: string[]; nouvelles: { k: string; l: string; groupe: LigneDossier['groupe'] }[]; a: string };
 
-export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, lieu, etape, onFermer, onFait }: {
+export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, lieu, etape, onFermer, onFait, depart = [], relance = false, refaire = [] }: {
   bienId: string; d: Donnees; doss: Record<string, PieceDossier>; lignes: LigneDossier[]; destinataires: DestPropose[]; lieu: string; etape: string;
   onFermer: () => void; onFait: (r: DemandeFaite, m: { t: string; ok: boolean }) => void;
+  /* V3.90 : les pièces déjà cochées (le « Demander » d'une ligne), une
+     relance (son texte à elle), et les pièces reçues mais expirées à refaire. */
+  depart?: string[]; relance?: boolean; refaire?: string[];
 }) {
-  /* Ce qui manque : ni reçu, ni non concerné, ni couvert par un dossier de diagnostics. */
-  const manquent = lignes.filter(l => doss[l.k]?.etat !== 'recu' && doss[l.k]?.etat !== 'nc' && !doss[l.k]?.chemin && !doss[l.k]?.dans);
+  /* Ce qui manque : ni reçu, ni non concerné, ni couvert par un dossier de
+     diagnostics ; plus ce qui est à refaire (expiré). */
+  const manquent = lignes.filter(l => refaire.includes(l.k) || (doss[l.k]?.etat !== 'recu' && doss[l.k]?.etat !== 'nc' && !doss[l.k]?.chemin && !doss[l.k]?.dans));
   const proprios = destinataires.filter(y => !y.role.startsWith('Acheteur'));
   const [motif, setMotif] = useState<Motif>(() => motifDe(etape));
-  const [choix, setChoix] = useState<string[]>([]);
+  const [choix, setChoix] = useState<string[]>(() => depart.filter(k => manquent.some(l => l.k === k)));
   const [extras, setExtras] = useState<Extra[]>([]);
   const [saisie, setSaisie] = useState('');
   const [dests, setDests] = useState<string[]>(() => (proprios[0] ? [proprios[0].cle] : destinataires[0] ? [destinataires[0].cle] : []));
@@ -854,8 +1097,8 @@ export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, li
   const autreOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(autre.trim());
   const tous: DestDocuments[] = [...lesDests.map(y => ({ email: y.email, nom: y.nom, clientId: y.clientId, rechercheId: y.rechercheId })), ...(autreOk ? [{ email: autre.trim().toLowerCase(), nom: '' }] : [])];
   const prenom = tous.length === 1 && lesDests.length === 1 ? (lesDests[0].nom.split(' ')[0] || '') : '';
-  const message = texte ?? messageDemande(prenom, motif, lieu, titres, signature);
-  const leObjet = objet ?? MOTIFS[motif].objet;
+  const message = texte ?? (relance ? messageRelance(prenom, lieu, titres, signature) : messageDemande(prenom, motif, lieu, titres, signature));
+  const leObjet = objet ?? (relance ? `Petit rappel · ${MOTIFS[motif].objet.charAt(0).toLowerCase()}${MOTIFS[motif].objet.slice(1)}` : MOTIFS[motif].objet);
 
   async function envoyer() {
     if (!titres.length) { setErreur('Choisis au moins un document à demander.'); return; }
@@ -865,8 +1108,8 @@ export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, li
       const r = await demanderDocuments({ bienId, destinataires: tous, sujet: leObjet.trim(), message: message.trim(), demandes: titres });
       const a = r.envoyes.length > 1 ? `${r.envoyes.length} destinataires` : lesDests[0]?.nom || r.envoyes[0];
       const nouvelles = extras.map((e, i) => ({ k: `perso${Date.now().toString(36)}${i}${Math.random().toString(36).slice(2, 5)}`, l: e.l, groupe: e.g }));
-      onFait({ cles: manquent.filter(l => choix.includes(l.k)).map(l => l.k), nouvelles },
-        { t: `${titres.length > 1 ? `${titres.length} documents demandés` : 'Document demandé'} à ${a} : ${titres.length > 1 ? 'ils passent' : 'il passe'} « Demandé » dans le dossier.${r.avertissements.length ? ` ${r.avertissements.join(' · ')}` : ''}`, ok: true });
+      onFait({ cles: manquent.filter(l => choix.includes(l.k)).map(l => l.k), nouvelles, a: tous.length > 1 ? `${tous.length} personnes` : lesDests[0]?.nom || tous[0]?.email || '' },
+        { t: `${relance ? 'Relance envoyée' : titres.length > 1 ? `${titres.length} documents demandés` : 'Document demandé'} à ${a} : ${titres.length > 1 ? 'ils sont' : 'il est'} « Demandé » dans le dossier, avec la date.${r.avertissements.length ? ` ${r.avertissements.join(' · ')}` : ''}`, ok: true });
     } catch (e) {
       setErreur((e as Error).message);
       setEn(false);
@@ -875,12 +1118,12 @@ export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, li
 
   const fen = (
     <div className={x.voile} onMouseDown={e => { if (e.target === e.currentTarget && !en && !titres.length) onFermer(); }}>
-      <div className={x.fen} role="dialog" aria-modal="true" aria-label="Demander des documents">
+      <div className={x.fen} role="dialog" aria-modal="true" aria-label={relance ? 'Relancer une demande' : 'Demander des documents'}>
         <div className={x.fenTete}>
-          <span className={x.fenIc}><Ic n="liste" t={20} /></span>
+          <span className={x.fenIc}><Ic n={relance ? 'envoyer' : 'mail'} t={20} /></span>
           <div className={x.fenTx}>
-            <h2>Demander des documents</h2>
-            <p>Coche ce qu’il te faut : le mail se rédige tout seul. Tu le relis, puis il part à ton nom.</p>
+            <h2>{relance ? 'Relancer une demande' : 'Demander des documents'}</h2>
+            <p>{relance ? 'Les documents demandés et pas encore reçus sont cochés : un seul mail, que tu relis avant qu’il parte.' : 'Coche ce qu’il te faut, autant que tu veux : un seul mail, rédigé tout seul. Tu le relis, puis il part à ton nom.'}</p>
           </div>
           <button type="button" className={x.fermer} aria-label="Fermer" disabled={en} onClick={onFermer}><Ic n="croix" t={16} e={2.2} /></button>
         </div>
@@ -979,7 +1222,7 @@ export function FenDemandeDocuments({ bienId, d, doss, lignes, destinataires, li
         <div className={x.fenPied}>
           <button type="button" className={x.btn} disabled={en} onClick={onFermer}>Annuler</button>
           <button type="button" className={`${x.btn} ${x.btnOr}`} disabled={en || !titres.length || !tous.length} onClick={envoyer}>
-            <Ic n="envoyer" t={15} />{en ? 'Envoi…' : tous.length === 1 ? `Envoyer la demande à ${lesDests[0]?.nom.split(' ')[0] || tous[0].email}` : tous.length > 1 ? `Envoyer à ${tous.length} personnes` : 'Envoyer la demande'}
+            <Ic n="envoyer" t={15} />{en ? 'Envoi…' : tous.length === 1 ? `${relance ? 'Relancer' : 'Envoyer la demande à'} ${lesDests[0]?.nom.split(' ')[0] || tous[0].email}` : tous.length > 1 ? `Envoyer à ${tous.length} personnes` : relance ? 'Relancer' : 'Envoyer la demande'}
           </button>
         </div>
       </div>

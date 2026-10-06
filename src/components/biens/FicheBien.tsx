@@ -7,7 +7,7 @@ import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
   ETAPES_BIEN, PARCOURS, permisBien, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, mentionsAnnonce, villeAffichee, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
-  lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
+  lireDossier, lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type Observation, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -627,9 +627,14 @@ function surfacesDe(d: Donnees): SurfacesBien {
     /* Box, garage, piscine n'ont pas de surface à saisir : pas de « surface non saisie ». */
     else annexes.push({ ic: PICTO_ANN[v] || 'plan', l: n ? l : cle ? 'Surface non saisie' : 'Annexe', v: n ? m2(n) : l });
   }
+  /* V3.90 : la date du mesurage Carrez, s'il est reçu dans le dossier. */
+  const carrez = lireDossier(d.dossier).carrez;
+  const typeB = String(d.typeBien || '');
   return {
     surface: num(d, 'surface'), carrez: num(d, 'carrez'), sejour: num(d, 'sejour'), terrain: num(d, 'terrain'),
     carrezAttendu: d.copro === 'oui', chambres: num(d, 'chambres'), pieces: num(d, 'pieces'), annexes,
+    etage: num(d, 'etage'), etages: num(d, 'etages'), ascenseur: liste(d, 'immeuble').includes('ascenseur'), expo: txt(d, 'expo'),
+    maison: typeB === 'maison' || typeB === 'terrain', carrezLe: carrez?.etat === 'recu' ? carrez.date : '', lots: txt(d, 'annexesNum'),
   };
 }
 
