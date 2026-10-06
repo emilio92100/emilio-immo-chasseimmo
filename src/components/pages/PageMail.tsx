@@ -8,6 +8,7 @@ import { identiteDuJour } from '@/components/documents/outils';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { signalerEchec } from '@/lib/ecritures';
+import { EVT_NOUVEAU_MAIL, signalerMaj } from '@/lib/intentions';
 import { CLES_MAIL, conseillerDe, signatureDe } from '@/lib/mail-variables';
 import { estArchive, typeDe, typesDe } from '@/lib/contacts';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
@@ -622,7 +623,7 @@ function Redaction({ pour = null, enFenetre = false, onNavigate, onFermer, onEnv
 
         {/* ── Le pied ── */}
         <div className={s.pied}>
-          <span className={s.piedNote}>{enFenetre
+          <span className={s.piedNote}>{enFenetre && pour
             ? 'Tu relis le mail tel qu’il arrivera, puis tu l’envoies. Il se range dans son Suivi.'
             : 'Tu relis le mail tel qu’il arrivera, puis tu l’envoies. Un mail par personne : chacun ne voit que son adresse, et l’envoi se range dans le Suivi des contacts du CRM.'}</span>
           <div className={s.piedBoutons}>
@@ -654,32 +655,50 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
 /* ── Écrire à un contact sans quitter sa fiche (V3.51) ──
    La même rédaction que « Nouveau mail », dans une fenêtre, le contact déjà
    en destinataire. Ni Échap ni un clic à côté ne la ferment : un mail à
-   moitié écrit ne se perd pas par mégarde ; la croix demande avant. */
-export function FenetreMail({ contact, rechercheId = null, onFermer, onEnvoye }: {
-  contact: ContactMail; rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
+   moitié écrit ne se perd pas par mégarde ; la croix demande avant.
+   V3.87 : sans contact, c'est « Envoyer un mail » du haut de l'écran
+   (Alexandre : « que ça affiche un pop-up joli, qui reprend tout ce qu'il y
+   a dans Nouveau mail, au lieu d'aller sur la page »). */
+export function FenetreMail({ contact = null, rechercheId = null, onFermer, onEnvoye }: {
+  contact?: ContactMail | null; rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
 }) {
   const sale = useRef(false);
   const fermer = () => {
     if (sale.current && !confirm('Fermer sans envoyer ? Le mail que tu as commencé sera perdu.')) return;
     onFermer();
   };
-  const nom = nomDe(contact);
+  const nom = contact ? nomDe(contact) : '';
+  const titre = contact ? `Écrire à ${nom}` : 'Envoyer un mail';
   const fen = (
     <div className={s.voile}>
-      <div className={`${s.fen} ${s.fenMail}`} role="dialog" aria-modal="true" aria-label={`Écrire à ${nom}`}>
+      <div className={`${s.fen} ${s.fenMail}`} role="dialog" aria-modal="true" aria-label={titre}>
         <div className={s.fenTete}>
           <span className={s.fenIc}><Ic n="mail" t={20} /></span>
           <div className={s.fenTx}>
-            <h2>{`Écrire à ${nom}`}</h2>
-            <p>{'Le mail part de arogelet@emilio-immo.com, à ton nom.'}</p>
+            <h2>{titre}</h2>
+            <p>{contact ? 'Le mail part de arogelet@emilio-immo.com, à ton nom.' : 'À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom.'}</p>
           </div>
           <button type="button" className={s.fermer} aria-label="Fermer" onClick={fermer}><Croix /></button>
         </div>
         <div className={s.fenCorps}>
-          <Redaction pour={{ contact, rechercheId }} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
+          <Redaction pour={contact ? { contact, rechercheId } : null} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
         </div>
       </div>
     </div>
   );
   return typeof document === 'undefined' ? null : createPortal(fen, document.body);
+}
+
+/* « Envoyer un mail », de n'importe quel écran (V3.87) : montée une fois dans
+   AppLayout, elle s'ouvre sur EVT_NOUVEAU_MAIL (lib/intentions). */
+export function NouveauMailPartout() {
+  const [ouvert, setOuvert] = useState(false);
+  const [cle, setCle] = useState(0);
+  useEffect(() => {
+    const ouvrir = () => { setCle(k => k + 1); setOuvert(true); };
+    window.addEventListener(EVT_NOUVEAU_MAIL, ouvrir);
+    return () => window.removeEventListener(EVT_NOUVEAU_MAIL, ouvrir);
+  }, []);
+  if (!ouvert) return null;
+  return <FenetreMail key={cle} onFermer={() => setOuvert(false)} onEnvoye={() => signalerMaj()} />;
 }
