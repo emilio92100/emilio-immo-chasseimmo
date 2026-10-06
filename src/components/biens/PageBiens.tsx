@@ -14,6 +14,7 @@ import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenMandat, FenNouveau } from './FenetresBien';
 import ImportBiensIF from './ImportBiensIF';
+import RepriseDiffusion from './RepriseDiffusion';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
 import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, ficheClient, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, majBien as ecrireBien, MESSAGE_VENDU_SUPPR, type ListeBiens } from './outils';
@@ -467,6 +468,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           )}
         </div>
       )}
+      {/* V3.92 : la diffusion des biens en vente, reprise d'ImmoFacile d'un clic (lib/flux-immofacile.ts). */}
+      {liste && !installer && <RepriseDiffusion biens={actifs} onFait={() => { void charger(); }} />}
       {liste && !installer && ailleurs > 0 && (
         <div className={b.ailleurs} role="status">
           <Ic n="loupe" t={15} />

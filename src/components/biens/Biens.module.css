@@ -1553,3 +1553,9 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 
 /* « Le bien » : un sous-onglet arrive en fondu (Surfaces y vit depuis la V3.91). */
 .vueEntre { animation: etapeEntre .35s cubic-bezier(.2, .8, .2, 1) both; }
+
+/* La reprise de la diffusion depuis ImmoFacile (V3.92, RepriseDiffusion.tsx) : le bandeau de la
+   mise en paragraphes, une ligne pour les biens du flux qu'on n'a pas retrouvés. */
+.repriseSeules { color: #8a6a1f; }
+.repriseRond { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(26, 35, 50, .25); border-top-color: #1a2332; animation: repriseTourne .8s linear infinite; }
+@keyframes repriseTourne { to { transform: rotate(360deg); } }
