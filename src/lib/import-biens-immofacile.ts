@@ -105,7 +105,7 @@ export function villeDe(ville: string, cp: string): string {
 const date = (s: string) => dateImmo(s) || '';
 
 /* ── Les choix : le mot d'ImmoFacile → la valeur du CRM ──────────────────── */
-function typeBienDe(s: string): string {
+export function typeBienDe(s: string): string {
   const k = cle(s);
   if (!k) return '';
   if (/duplex|triplex/.test(k)) return 'duplex';
@@ -119,7 +119,7 @@ function typeBienDe(s: string): string {
   if (/local|bureau|commerce|boutique|fonds/.test(k)) return 'local';
   return 'autre';
 }
-function etatDe(s: string): string {
+export function etatDe(s: string): string {
   const k = cle(s);
   if (!k) return '';
   if (/neuf|refait|renove/.test(k)) return 'refait_neuf';
@@ -145,7 +145,7 @@ function standingDe(s: string): string {
   return '';
 }
 /* « Aluminium Double Vitrage », « Bois double vitrage », « Simple et double vitrage ». */
-function fenetresDe(s: string): { vitrage: string; menuiseries: string; complet: boolean } {
+export function fenetresDe(s: string): { vitrage: string; menuiseries: string; complet: boolean } {
   const k = cle(s);
   const simple = /simple/.test(k), double = /double/.test(k), triple = /triple/.test(k);
   const vitrage = triple ? 'triple' : simple && double ? '' : double ? 'double' : simple ? 'simple' : '';
@@ -154,7 +154,7 @@ function fenetresDe(s: string): { vitrage: string; menuiseries: string; complet:
   /* « Simple et double », deux matières : une case vide, le mot aux notes. */
   return { vitrage, menuiseries, complet: !!k && (!!vitrage || !(simple || double || triple)) && (!!menuiseries || !(bois || alu || pvc)) };
 }
-function voletsMateriauDe(s: string): string {
+export function voletsMateriauDe(s: string): string {
   const k = cle(s);
   if (/pvc/.test(k)) return 'pvc';
   if (/bois/.test(k)) return 'bois';
@@ -162,7 +162,7 @@ function voletsMateriauDe(s: string): string {
   if (/metal|fer|acier/.test(k)) return 'metal';
   return '';
 }
-function voletsDe(s: string): string {
+export function voletsDe(s: string): string {
   const k = cle(s);
   if (!k) return '';
   if (/mixte/.test(k)) return '';
@@ -174,7 +174,7 @@ function voletsDe(s: string): string {
   if (/aucun|sans|^non$/.test(k)) return 'aucun';
   return '';
 }
-function cuisineDe(s: string): { cuisine: string; equip: string } {
+export function cuisineDe(s: string): { cuisine: string; equip: string } {
   const k = cle(s);
   const cuisine = /semi/.test(k) ? 'semiOuverte' : /independante|separee|fermee/.test(k) ? 'independante' : /americaine|ouverte|us\b/.test(k) ? 'ouverte' : /kitchenette|coin cuisine/.test(k) ? 'kitchenette' : '';
   const equip = /non equipe|vide|\bnue?\b/.test(k) ? 'non' : /equipe/.test(k) ? 'equipee' : /amenage/.test(k) ? 'amenagee' : '';
@@ -194,7 +194,7 @@ export function expoDe(s: string): string {
   const v = `${nsv}${eo}`;
   return ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'].includes(v) ? v : '';
 }
-function chauffageDe(type: string, meca: string, mode: string): { mode: string; energie: string; emetteurs: string } {
+export function chauffageDe(type: string, meca: string, mode: string): { mode: string; energie: string; emetteurs: string } {
   const t = cle(type), m = cle(meca), e = cle(mode);
   return {
     mode: /collectif/.test(t) ? 'collectif' : /individuel/.test(t) ? 'individuel' : '',
@@ -210,7 +210,7 @@ function stationnementDe(s: string): string {
   if (/exterieur|aerien|plein air|cour/.test(k)) return 'exterieur';
   return '';
 }
-function vueDe(s: string): string {
+export function vueDe(s: string): string {
   const k = cle(s);
   if (/seine|monument|tour eiffel/.test(k)) return 'monument';
   if (/jardin|parc|verdure/.test(k)) return 'jardin';
@@ -219,7 +219,7 @@ function vueDe(s: string): string {
   if (/rue/.test(k)) return 'rue';
   return '';
 }
-const mandatTypeDe = (s: string) => { const k = cle(s); return /semi/.test(k) ? 'semi' : /exclusi/.test(k) ? 'exclusif' : /simple/.test(k) ? 'simple' : ''; };
+export const mandatTypeDe = (s: string) => { const k = cle(s); return /semi/.test(k) ? 'semi' : /exclusi/.test(k) ? 'exclusif' : /simple/.test(k) ? 'simple' : ''; };
 const lettre = (s: string) => { const t = net(s).toUpperCase(); return /^[A-G]$/.test(t) ? t : ''; };
 
 /* Le niveau d'une pièce : « 3 » (son étage), « RDC », « -1 ». Toutes au même

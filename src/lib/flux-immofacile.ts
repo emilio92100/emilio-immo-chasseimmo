@@ -33,11 +33,11 @@ export type AnnonceIF = {
 };
 
 const sansCdata = (t: string) => t.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim();
-function balise(xml: string, nom: string): string {
+export function balise(xml: string, nom: string): string {
   const m = xml.match(new RegExp(`<${nom}(?:\\s[^>]*)?>([\\s\\S]*?)</${nom}>`, 'i'));
   return m ? sansCdata(m[1]) : '';
 }
-function section(xml: string, nom: string): string {
+export function section(xml: string, nom: string): string {
   const m = xml.match(new RegExp(`<${nom}(?:\\s[^>]*)?>([\\s\\S]*?)</${nom}>`, 'i'));
   return m ? m[1] : '';
 }
@@ -70,6 +70,14 @@ export function lireFluxImmoFacile(xml: string): AnnonceIF[] {
     });
   }
   return out;
+}
+
+/* Le bloc XML d'une annonce du flux, par son numéro (AFF_ID). */
+export function blocAnnonce(xml: string, affId: string): string | null {
+  const re = /<bien(?:\s[^>]*)?>([\s\S]*?)<\/bien>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) if (balise(section(m[1], 'info_generales'), 'aff_id') === affId) return m[1];
+  return null;
 }
 
 /* ── Rapprocher un bien du flux d'un bien du CRM ──────────────────────────
