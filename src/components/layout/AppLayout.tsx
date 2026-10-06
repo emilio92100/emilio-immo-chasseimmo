@@ -19,6 +19,7 @@ import PageCarte from '@/components/carte/PageCarte';
 import PageDemandesSite from '@/components/demandes/PageDemandesSite';
 import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
+import EnvoiPortails from '@/components/layout/EnvoiPortails';
 import Avertissements from '@/components/layout/Avertissements';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
@@ -345,6 +346,7 @@ export default function AppLayout() {
       <NouveauMailPartout />
       {/* « Une nouvelle version est prête — Recharger », après une mise en ligne. */}
       <NouvelleVersion />
+      <EnvoiPortails />
       {/* « … : pas enregistré », quand une écriture échoue (V3.17). */}
       <Avertissements />
     </div>
