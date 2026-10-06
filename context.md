@@ -1461,6 +1461,29 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.84 — 6 octobre 2026 · Fiche d’un acheteur : ses biens dans le bandeau bleu ; la recherche du haut défile
+
+Rien à passer dans Supabase. Alexandre : « pourquoi, sur un client, on est obligé de descendre en
+bas pour voir s'il a des biens qui lui appartiennent ? Sur certains, ça s'affiche directement dans
+le bloc bleu ». Sur la fiche d'un vendeur ou d'un propriétaire (`FicheContact`), ses biens étaient
+dans le bandeau depuis la V3.32 ; dès que le contact est aussi acheteur, c'est `FicheClient` qui
+s'ouvre, et « Ses biens » était un bloc replié tout en bas de la Vue d'ensemble.
+
+- **`contacts/BiensBandeau.tsx`** (nouveau) : le chargement (`useBiensBandeau` : ses biens pas
+  archivés, le nombre d'archivés, les visites et offres sur eux) et le rang `BiensHero`, sortis de
+  `FicheContact` sans changement, pour servir aux deux fiches.
+- **Fiche d'un acheteur** : sous les tuiles de sa recherche et les coordonnées, sur toute la largeur
+  du bandeau, « Son bien » / « Ses biens 2 · + 1 archivé », puis le même rang que pour un vendeur
+  (photo, étape, prix, visites et offres, un clic ouvre la fiche du bien) et « Nouveau bien ». Sans
+  bien mais vendeur, propriétaire ou « revente possible » : « Créer son bien ». Un acheteur seul n'a
+  rien de plus. Le bloc « Ses biens » du bas de la Vue d'ensemble est retiré (`BiensDuContact` reste
+  exporté dans `ChampsContact`, il ne sert plus ici).
+- **La recherche du haut** (`Topbar.module.css`). Alexandre : « quand il y a beaucoup de résultats,
+  ça descend jusqu'en bas de l'écran ; il faut que ça s'arrête aux trois quarts, avec une barre pour
+  défiler à la souris ». La liste s'arrête aux deux tiers de l'écran (620 px au plus ; 70 % de la
+  hauteur au téléphone) et défile dedans, avec une barre fine visible ; « Contacts · 8 » reste en
+  haut, un léger fondu en bas dit qu'il y en a d'autres.
+
 ### V3.83 — 6 octobre 2026 · La fiche et « Relances » se parlent ; le tiroir des appels
 
 Rien à passer dans Supabase.
