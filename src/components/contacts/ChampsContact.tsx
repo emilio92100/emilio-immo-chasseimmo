@@ -13,7 +13,7 @@ import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import BlocRepliable from '@/components/documents/BlocRepliable';
 import AvatarContact from './AvatarContact';
-import { AvecCase, STYLE_CHOISI } from '@/components/shared/Selection';
+import { CaseLigne, CaseTout, STYLE_CHOISI } from '@/components/shared/Selection';
 import sd from '@/components/documents/Documents.module.css';
 import c from './Contacts.module.css';
 
@@ -372,10 +372,11 @@ function resumeRecherche(x: ContactListe): string {
   ].filter(Boolean).join(' · ');
 }
 
-export function EnteteContacts() {
+/* V3.89 : « Tout cocher », au-dessus de la colonne des cases. */
+export function EnteteContacts({ tout }: { tout?: { n: number; total: number; onTout: () => void; onRien: () => void } }) {
   return (
     <div className={c.lEntete}>
-      <span className={c.lQui}>Contact</span>
+      <span className={c.lQui}>{tout && <CaseTout {...tout} />}Contact</span>
       <span className={c.lSuivi}>Ce qu’on suit</span>
       <span className={c.lJoindre}>Le joindre</span>
       <span className={c.lDepuis}>Dernier échange</span>
@@ -385,7 +386,8 @@ export function EnteteContacts() {
 
 export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien, selection }: {
   x: ContactListe; biens: BienDuContact[]; derniere?: string | null; onOuvrir: () => void; onBien: (id: string) => void;
-  /* V3.88 : la case pour cocher plusieurs contacts (Selection.tsx). */
+  /* V3.88 : la case pour cocher plusieurs contacts (Selection.tsx). V3.89 :
+     une colonne de cases carrées, toujours visibles ; l'avatar reste nu. */
   selection?: { on: boolean; mode: boolean; onBasculer: () => void };
 }) {
   /* V3.50 : les biens archivés ne comptent pas, comme sur sa fiche. */
@@ -404,11 +406,8 @@ export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien, 
       <span className={c.lQui}>
         {/* Le même petit personnage que dans « Acheteurs » (V3.31), à la couleur
             de son type ; une mallette pour un professionnel. Avant : ses initiales. */}
-        {selection ? (
-          <AvecCase on={selection.on} mode={selection.mode} onBasculer={selection.onBasculer} titre={selection.on ? `Décocher ${nom}` : `Cocher ${nom}`}>
-            <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />
-          </AvecCase>
-        ) : <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />}
+        {selection && <span className={c.lCase}><CaseLigne on={selection.on} onBasculer={selection.onBasculer} titre={selection.on ? `Décocher ${nom}` : `Cocher ${nom}`} /></span>}
+        <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />
         <span className={c.lNom}>
           <b title={nom}>{nom}</b>
           <span className={c.puces}>{types.map(k => <Puce key={k} k={k} />)}</span>

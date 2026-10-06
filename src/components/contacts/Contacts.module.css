@@ -64,6 +64,8 @@
 .lLigne:focus-visible { outline: 2px solid var(--emilio); outline-offset: 2px; }
 .lArchive { opacity: .72; }
 .lQui { width: 300px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
+/* V3.89 : la case de la ligne, dans sa propre colonne. */
+.lCase { display: inline-flex; flex-shrink: 0; }
 .lSuivi { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .lJoindre { width: 210px; flex-shrink: 0; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .lDepuis { width: 118px; flex-shrink: 0; text-align: right; font-size: 12px; font-weight: 600; color: #94a3b8; white-space: nowrap; }
@@ -226,6 +228,8 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
   .heroAv { width: 52px; height: 52px; border-radius: 16px; font-size: 19px; }
   .lEntete { display: none; }
   .lLigne { display: grid; grid-template-columns: 38px 1fr auto; grid-template-areas: 'av nom depuis' 'suivi suivi suivi'; gap: 8px 11px; padding: 12px 14px; }
+  .lLigne:has(.lCase) { grid-template-columns: 22px 38px minmax(0, 1fr) auto; grid-template-areas: 'case av nom depuis' '. suivi suivi suivi'; }
+  .lCase { grid-area: case; align-self: center; }
   .lQui { display: contents; }
   .lAv { grid-area: av; }
   .lNom { grid-area: nom; align-self: center; }

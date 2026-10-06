@@ -29,6 +29,7 @@ import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
+import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -85,7 +86,7 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
    la personne 2 a son nom, son e-mail, son téléphone. */
 type Form = {
   types: TypeContact[]; civilite: string; prenom: string; nom: string;
-  tel1: string; tel2: string; email1: string; email2: string; adresse: string; pro: InfosPro;
+  tels: string[]; emails: string[]; adresse: string; pro: InfosPro;
   couple: boolean; c2_civilite: string; c2_prenom: string; c2_nom: string; c2_email: string; c2_tel: string;
   source: string; source_detail: string;
 };
@@ -95,7 +96,8 @@ const formDe = (x: Client): Form => {
   const j = conjointDe(x.conjoint);
   return {
     types: typesDe(x), civilite: x.civilite || '', prenom: x.prenom || '', nom: x.nom || '',
-    tel1: x.telephones?.[0] || '', tel2: x.telephones?.[1] || '', email1: x.emails?.[0] || '', email2: x.emails?.[1] || '',
+    /* Tous les numéros et tous les e-mails (V3.89), pas seulement deux. */
+    tels: lignesDe(x.telephones), emails: lignesDe(x.emails),
     adresse: x.adresse || '', pro: lirePro(x.pro),
     couple: !!x.couple, c2_civilite: j?.civilite || '', c2_prenom: j?.prenom || '', c2_nom: j?.nom || '', c2_email: j?.email || '', c2_tel: j?.telephone || '',
     source: (x as AvecSource).source || '', source_detail: (x as AvecSource).source_detail || '',
@@ -336,7 +338,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       : {};
     const r = await ecrire({
       types: edit.types, civilite: edit.civilite || null, prenom: edit.prenom.trim(), nom: edit.nom.trim(),
-      telephones: [edit.tel1, edit.tel2].map(s => s.trim()).filter(Boolean), emails: [edit.email1, edit.email2].map(s => s.trim().toLowerCase()).filter(Boolean),
+      telephones: nettoyer(edit.tels, 'tel'), emails: nettoyer(edit.emails, 'mail'),
       adresse: edit.adresse.trim() || null, pro: structurePropre(edit.pro), ...foyer,
     }, 'La fiche n’a pas pu être enregistrée');
     if (!r) { setOccupe(false); return; }
@@ -680,10 +682,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                 <div className={c.g2}>
                   <label className={c.ch}><span>Prénom</span><input className={c.in} value={edit.prenom} onChange={e => setEdit({ ...edit, prenom: e.target.value })} /></label>
                   <label className={c.ch}><span>Nom</span><input className={c.in} value={edit.nom} onChange={e => setEdit({ ...edit, nom: e.target.value })} /></label>
-                  <label className={c.ch}><span>Téléphone</span><input className={c.in} value={edit.tel1} onChange={e => setEdit({ ...edit, tel1: e.target.value })} /></label>
-                  <label className={c.ch}><span>E-mail</span><input className={c.in} type="email" value={edit.email1} onChange={e => setEdit({ ...edit, email1: e.target.value })} /></label>
-                  <label className={c.ch}><span>Autre téléphone</span><input className={c.in} value={edit.tel2} onChange={e => setEdit({ ...edit, tel2: e.target.value })} /></label>
-                  <label className={c.ch}><span>Autre e-mail</span><input className={c.in} type="email" value={edit.email2} onChange={e => setEdit({ ...edit, email2: e.target.value })} /></label>
+                  <ListeCoordonnees genre="tel" etiquette="Téléphones" valeurs={edit.tels} onChange={v => setEdit({ ...edit, tels: v })} classeBloc={c.ch} classeChamp={c.in} />
+                  <ListeCoordonnees genre="mail" etiquette="E-mails" valeurs={edit.emails} onChange={v => setEdit({ ...edit, emails: v })} classeBloc={c.ch} classeChamp={c.in} />
                 </div>
                 <label className={c.ch}><span>Adresse</span><input className={c.in} value={edit.adresse} onChange={e => setEdit({ ...edit, adresse: e.target.value })} /></label>
               </div>
