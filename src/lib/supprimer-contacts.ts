@@ -12,11 +12,15 @@
      leurs photos, ses recherches), puis la fiche, en vérifiant qu'elle est
      bien partie (la base fermée refuse parfois sans erreur).
 
-   ⚠️ Si une étape est ajoutée à la suppression de FicheClient, l'ajouter ici. */
+   ⚠️ Si une étape est ajoutée à la suppression de FicheClient, l'ajouter ici.
+
+   V3.89 : changer le statut de plusieurs acheteurs (changerStatutContact),
+   comme le menu de statut de leur fiche. */
 
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosDeBiens } from '@/lib/photos';
 import { cloreRelancesArchive } from '@/lib/relances';
+import { colonneSuspensionAbsente, lireSuspension } from '@/lib/suspension';
 
 const absente = (m: string) => /does not exist|schema cache/i.test(m || '');
 
@@ -89,4 +93,52 @@ export async function archiverContact(id: string, archive: boolean): Promise<voi
   }
   await addJournal(id, 'statut_change', archive ? 'Contact archivé' : 'Contact sorti des archives',
     archive ? 'Archivé depuis la liste, avec d’autres contacts : la veille est arrêtée et ses relances en attente sont fermées.' : 'Rien n’est remis en marche : choisis son état.', { archive });
+}
+
+/* ═══ Changer le statut de plusieurs acheteurs (V3.89) ═══════════════════
+   Comme le menu de statut de leur fiche (FicheClient : changeStatut,
+   confirmerSuspension sans date) :
+   · le statut, et la date de reprise d'une suspension effacée ;
+   · la veille va avec : seul « Actif » fait chercher. Repris, il cherche à
+     nouveau sur les recherches qui tournaient avant la pause, sinon sur la
+     plus récente (comme la reprise automatique, src/lib/suspension.ts) ;
+   · une ligne dans son Suivi.
+   « Bien trouvé » et « Perdu » ferment un dossier : ils passent par la
+   fenêtre de clôture de sa fiche, pas d'ici.
+   ⚠️ Si changeStatut change, changer ici aussi. */
+export type StatutLot = 'actif' | 'prospect' | 'suspendu';
+export const STATUTS_LOT: { k: StatutLot; lib: string; sous: string; c: string }[] = [
+  { k: 'actif', lib: 'Actif', sous: 'Recherche en cours : la veille cherche', c: '#10b981' },
+  { k: 'prospect', lib: 'Prospect', sous: 'Premier contact, rien de signé', c: '#8b5cf6' },
+  { k: 'suspendu', lib: 'Suspendu', sous: 'En pause, sans date de reprise', c: '#f59e0b' },
+];
+
+export async function changerStatutContact(id: string, statut: StatutLot): Promise<void> {
+  /* Ce qu'il faudra rallumer s'il était suspendu avec une date. */
+  let aReprendre: string[] = [];
+  if (statut === 'actif') {
+    const { data: avant } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
+    aReprendre = lireSuspension(avant)?.recherches || [];
+  }
+  let { data, error } = await supabase.from('clients').update({ statut, suspension: null }).eq('id', id).select('id');
+  if (error && colonneSuspensionAbsente(error.message)) ({ data, error } = await supabase.from('clients').update({ statut }).eq('id', id).select('id'));
+  if (error) throw new Error(error.message);
+  if (!data || !(data as unknown[]).length) throw new Error('la base n’a rien modifié (session expirée ? recharge la page)');
+  let detail = 'La veille est arrêtée sur ce dossier.';
+  if (statut === 'actif') {
+    if (!aReprendre.length) {
+      const { data: r } = await supabase.from('recherches').select('id').eq('client_id', id).order('updated_at', { ascending: false }).limit(1);
+      aReprendre = ((r || []) as { id: string }[]).map(x => x.id);
+    }
+    if (aReprendre.length) {
+      const v = await supabase.from('recherches').update({ active: true, updated_at: new Date().toISOString() }).in('id', aReprendre).eq('client_id', id);
+      if (v.error && !absente(v.error.message)) throw new Error(`statut changé, mais sa veille : ${v.error.message}`);
+      detail = 'La veille reprend sur sa recherche.';
+    } else detail = 'Aucune recherche à relancer : ouvre-lui une recherche depuis sa fiche.';
+  } else {
+    const v = await supabase.from('recherches').update({ active: false }).eq('client_id', id);
+    if (v.error && !absente(v.error.message)) throw new Error(`statut changé, mais sa veille : ${v.error.message}`);
+  }
+  const nom = STATUTS_LOT.find(x => x.k === statut)?.lib || statut;
+  await addJournal(id, 'statut_change', `Statut → ${nom}`, `${detail} Changé depuis la liste, avec d’autres contacts.`);
 }
