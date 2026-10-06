@@ -1490,6 +1490,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.92 — 6 octobre 2026 · Le flux des biens pour le site ; la diffusion reprise d'ImmoFacile
+
+Rien à passer dans Supabase. Deuxième étape de la diffusion depuis le CRM (§7, « En cours »).
+
+- **`/api/flux-site`** (publique, `src/proxy.ts`) : le JSON que lit le site emilio-immo.com, au
+  format de son ancienne fonction `fetch-properties` (`{ properties, lastFetched }`, l'interface
+  `Property` du site), pour qu'il n'ait que l'adresse à changer. `lib/flux-site.ts` (`bienPourSite`)
+  ne laisse sortir que ce qu'une annonce peut dire : ni propriétaire, ni adresse exacte, ni codes,
+  ni notes, ni mandat. Seuls les biens que leur fiche publie sur le site (`diffuseSur(b, 'site')`).
+  En plus du format d'avant : `statut` (en vente, sous offre, sous compromis) et `mentions`. Les
+  mentions légales suivent le texte de l'annonce, sauf s'il parle déjà d'honoraires.
+- **L'adresse d'une page du site**, `/biens/<id>` : le numéro ImmoFacile pour un bien repris
+  (`donnees.idImmofacile`, les liens et Google ne voient rien changer), sinon la référence du CRM.
+- **La position** pour la carte du site : `donnees.gps` ({ lat, lon }, posé par le choix de
+  l'adresse dans l'éditeur ou par la reprise ci-dessous), sinon l'adresse géocodée et gardée dans
+  `geocodes` (`lib/flux-site-serveur.ts`). L'adresse ne sort jamais.
+- **`/api/flux-site/sitemap`** (publique) : le plan des biens pour Google, au format de l'ancienne
+  fonction `sitemap` ; une erreur répond 503 (« repasse ») plutôt qu'un plan vide.
+- **`/api/diffusion/reprise`** (derrière le badge) et **`RepriseDiffusion.tsx`** : un bandeau dans
+  Biens tant que des biens en vente sont « À régler ». « Reprendre d'ImmoFacile » lit le flux XML
+  d'ImmoFacile (`lib/flux-immofacile.ts`), retrouve chaque bien (référence ImmoFacile gardée à
+  l'import = `AFF_NUM`, sinon n° de mandat, sinon code postal, prix à 1 % et surface à 2 m²), et
+  écrit le numéro ImmoFacile (`AFF_ID`), la position si la fiche n'en a pas, et un premier réglage
+  de diffusion **si la fiche n'en a pas** : le site ; Jinka et SeLoger s'il est dans la liste de
+  Jinka du 28 septembre (`ANNONCES_JINKA`) ; jamais Belles Demeures. Relançable. À faire **avant**
+  de couper ImmoFacile : après, le flux n'existera plus.
+- Le site ne lit pas encore ce flux : son adresse change dans son dépôt une fois le contenu comparé
+  à celui d'ImmoFacile (même liste de biens).
+
 ### V3.91 — 6 octobre 2026 · La diffusion de chaque bien ; la fiche du bien passe à sept onglets
 
 Rien à passer dans Supabase (tout vit dans `biens_vente.donnees`). Première étape de la diffusion
