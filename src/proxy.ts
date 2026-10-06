@@ -18,6 +18,8 @@ import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
  *  - /signer/... et /api/signer     (le lien personnel d'un co-signataire : protégé par son jeton)
  *  - /api/demandes-site/notifier   (le mail « Nouvelle demande du site » : ne reçoit rien, n'envoie
  *                                   que ce qui n'a pas encore été annoncé — V3.37)
+ *  - /api/flux-site et /api/flux-site/sitemap (les biens que lit le site emilio-immo.com et son
+ *                                   plan pour Google : seulement ce que les fiches publient — V3.92)
  *  - les fichiers statiques
  */
 
@@ -26,7 +28,7 @@ const COOKIE = COOKIE_BADGE;
 // Chemins accessibles sans code
 /* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
    Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
-const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier'];
+const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap'];
 const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
 
 /* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
