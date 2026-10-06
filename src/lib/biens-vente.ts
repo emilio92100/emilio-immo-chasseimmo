@@ -732,9 +732,10 @@ export const ETAPES_BIEN: EtapeBien[] = [
     ],
   },
   {
-    /* Les notes sont parties dans « Les observations » (V3.16) : l'annonce
-       n'a plus rien à dire avant le mandat. */
-    id: 'annonce', titre: 'L’annonce', court: 'Annonce', sous: 'Le texte de l’annonce, prêt à copier.', ic: 'megaphone', pour: e => !avantMandat(e),
+    /* V3.81 (Alexandre : « à l'estimation, on ne peut pas mettre de texte ;
+       il faut remettre le texte d'annonce dans le bien, quel que soit le
+       statut ») : l'annonce s'écrit à toutes les étapes. */
+    id: 'annonce', titre: 'L’annonce', court: 'Annonce', sous: 'Le texte de l’annonce, prêt à copier.', ic: 'megaphone',
     champs: [
       /* V3.79 : le titre, à part (ImmoFacile en a un ; les portails aussi). */
       { t: 'texte', cle: 'annonceTitre', lib: 'Titre de l’annonce', ic: 'megaphone', large: true, exemple: 'Boulogne centre, 2 pièces avec balcon-terrasse côté jardin' },
