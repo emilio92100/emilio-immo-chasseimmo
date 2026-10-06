@@ -278,7 +278,11 @@ export type EtatPiece = 'recu' | 'demande' | 'nc' | '';
 /* `dans` (V3.31) : l'id d'un fichier de `donnees.fichiers` qui contient
    cette pièce — un dossier de diagnostic technique (DDT) d'un seul PDF couvre
    le DPE, l'amiante, le plomb… Le fichier n'est stocké qu'une fois. */
-export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string; taille?: number; dans?: string };
+/* V3.90 : `demandeLe` (AAAA-MM-JJ) et `demandeA` (le nom de qui l'on a
+   sollicité) quand la pièce est demandée ; `relanceLe` à chaque relance.
+   La ligne dit « Demandé il y a 16 jours à Paul », et propose « Relancer »
+   au bout d'une semaine. */
+export type PieceDossier = { etat: EtatPiece; date: string; chemin: string; nom: string; taille?: number; dans?: string; demandeLe?: string; demandeA?: string; relanceLe?: string };
 export type LigneDossier = { k: string; l: string; aide?: string; si?: (d: Donnees) => boolean; groupe: 'diag' | 'copro' | 'vendeur' };
 export const DOSSIER: LigneDossier[] = [
   { k: 'dpe', l: 'DPE', aide: 'Valable 10 ans', groupe: 'diag' },
@@ -317,6 +321,9 @@ export const lireDossier = (x: unknown): Record<string, PieceDossier> => {
       etat: e, date: typeof p.date === 'string' ? p.date : '', chemin: typeof p.chemin === 'string' ? p.chemin : '', nom: typeof p.nom === 'string' ? p.nom : '',
       ...(typeof p.taille === 'number' && p.taille > 0 ? { taille: p.taille } : {}),
       ...(typeof p.dans === 'string' && p.dans ? { dans: p.dans } : {}),
+      ...(typeof p.demandeLe === 'string' && p.demandeLe ? { demandeLe: p.demandeLe } : {}),
+      ...(typeof p.demandeA === 'string' && p.demandeA ? { demandeA: p.demandeA } : {}),
+      ...(typeof p.relanceLe === 'string' && p.relanceLe ? { relanceLe: p.relanceLe } : {}),
     };
   }
   return out;
