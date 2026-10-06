@@ -9,6 +9,18 @@ import { compterRelancesDues } from '@/lib/relances';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { estAcheteur, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
+import { etapeDe, titreBien, villeAffichee, type Donnees } from '@/lib/biens-vente';
+import { euros } from '@/lib/mandat';
+import { Ic } from '@/components/documents/ApercuActe';
+
+/* V3.86 — Ses biens, sous son nom, dans les résultats (Alexandre : « quand je
+   cherche un nom en haut, s'il a des biens, que je puisse cliquer directement
+   sur le bien ; aujourd'hui je clique sur le client, puis sur l'appartement »).
+   Les biens de la rubrique Biens (pas archivés), lus avec le fichier des
+   contacts ; trois au plus sous chaque contact. */
+type BienRecherche = { id: string; client_id: string | null; etape: string; archive: boolean | null; titre: string | null; type_bien: string | null; ville: string | null; code_postal: string | null; surface: number | null; nb_pieces: number | null; prix: number | null; photo: string | null };
+const BIENS_MAX = 3;
+const titreDe = (b: BienRecherche) => b.titre || titreBien({ typeBien: b.type_bien || undefined, pieces: b.nb_pieces ?? undefined, surface: b.surface ?? undefined } as unknown as Donnees) || 'Son bien';
 
 /* Minuscules, sans accents ni ponctuation : « Rue de l'Église » → « rue de l eglise ». */
 function sansAccent(t: string) {
@@ -163,7 +175,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
      Le fichier est petit : on le charge une fois, à la première frappe, puis
      on cherche dans le navigateur. Il se recharge quand un écran signale un
      changement (EVT_MAJ) ou au bout de deux minutes. */
-  const index = useRef<{ le: number; clients: any[] } | null>(null);
+  const index = useRef<{ le: number; clients: any[]; biens: Record<string, BienRecherche[]> } | null>(null);
   const chargement = useRef<Promise<void> | null>(null);
   useEffect(() => {
     const perimer = () => { index.current = null; };
@@ -182,7 +194,14 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
       let c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint');
       if (c.erreur) c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
       if (c.erreur) { chargement.current = null; return; }
-      index.current = { le: Date.now(), clients: c.data || [] };
+      /* Les biens (V3.86) : s'ils ne se lisent pas, la recherche des contacts marche quand même. */
+      const b = await toutLire<BienRecherche>((de, a) => supabase.from('biens_vente').select('id, client_id, etape, archive, titre, type_bien, ville, code_postal, surface, nb_pieces, prix, photo').order('id').range(de, a));
+      const biens: Record<string, BienRecherche[]> = {};
+      for (const x of b.erreur ? [] : b.data || []) {
+        if (!x.client_id || x.archive) continue;
+        (biens[x.client_id] ||= []).push(x);
+      }
+      index.current = { le: Date.now(), clients: c.data || [], biens };
       chargement.current = null;
     })();
     return chargement.current;
@@ -229,6 +248,13 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     setResults([]);
     setOpen(false);
     onNavigate('fiche', client);
+  }
+  function selectBien(id: string) {
+    setQuery('');
+    setCherchee('');
+    setResults([]);
+    setOpen(false);
+    onNavigate('biens', { bien: id });
   }
   const lesClients = results.filter(r => r.genre === 'client');
   const attente = !!query.trim() && (loading || cherchee !== query);
@@ -284,8 +310,11 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
             ) : (
               <div key={cherchee} className={styles.searchListe}>
                 {lesClients.length > 0 && <div className={styles.searchSection}>{`Contacts · ${lesClients.length}`}</div>}
-                {lesClients.map(({ c, raison }, i) => (
-                  <div key={c.id} className={styles.searchItem} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
+                {lesClients.map(({ c, raison }, i) => {
+                  const sesBiens = index.current?.biens[c.id] || [];
+                  return (
+                  <div key={c.id} className={styles.searchBloc}>
+                  <div className={styles.searchItem} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
                     <AvatarContact c={c} teinte={teinteDe(c)} className={styles.searchAv} libre />
                     <div className={styles.searchInfo}>
                       <div className={styles.searchName}><Surligne texte={`${c.prenom || ''} ${c.nom || ''}`.trim()} mots={motsTapes} /></div>
@@ -305,7 +334,33 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                       </span>
                     )}
                   </div>
-                ))}
+                  {sesBiens.length > 0 && (
+                    <div className={styles.searchBiens} style={{ animationDelay: `${Math.min(i, 8) * 28 + 40}ms` }}>
+                      {sesBiens.slice(0, BIENS_MAX).map(b => {
+                        const e = etapeDe(b.etape);
+                        const lieu = villeAffichee(b.ville, b.code_postal);
+                        return (
+                          <button key={b.id} type="button" className={styles.searchBien} onClick={() => selectBien(b.id)} title="Ouvrir la fiche du bien">
+                            <span className={styles.searchBienPh}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              {b.photo ? <img src={b.photo} alt="" /> : <Ic n="maison" t={14} />}
+                            </span>
+                            <span className={styles.searchBienTx}>
+                              <b>{titreDe(b)}</b>
+                              <small><i style={{ background: e.c }} /><span>{[e.lib, lieu, b.prix ? euros(b.prix) : ''].filter(Boolean).join(' · ')}</span></small>
+                            </span>
+                            <span className={styles.searchBienVa}><Ic n="droite" t={13} e={2.3} /></span>
+                          </button>
+                        );
+                      })}
+                      {sesBiens.length > BIENS_MAX && (
+                        <button type="button" className={styles.searchBienPlus} onClick={() => selectClient(c)}>{`+ ${sesBiens.length - BIENS_MAX} autre${sesBiens.length - BIENS_MAX > 1 ? 's' : ''} : voir sa fiche`}</button>
+                      )}
+                    </div>
+                  )}
+                  </div>
+                  );
+                })}
               </div>
             )}
           </div>
