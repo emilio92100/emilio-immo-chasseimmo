@@ -1461,6 +1461,33 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.83 — 6 octobre 2026 · La fiche et « Relances » se parlent ; le tiroir des appels
+
+Rien à passer dans Supabase.
+
+- **Clore la relance en notant l'action** (`shared/CloreRelances.tsx`). Alexandre : « si, depuis la
+  fiche, je note un appel avec la prochaine relance dans cinq jours, est-ce que la relance indiquée
+  dans Relances disparaît ? Il faut que ça communique ». Avant, non : seul « Traiter » (page
+  Relances) clôturait ; une action notée depuis la fiche créait la nouvelle relance et laissait
+  l'ancienne en attente. Maintenant, « Ajouter une action » et « Noter un appel » montrent, au-dessus
+  de « Prochaine relance », les relances de ce contact encore en attente : « Clore la relance du
+  4 oct. · En retard de 2 j », avec sa note. Cochées d'office : celles qui sont dues (aujourd'hui ou
+  en retard) et celle d'où la fiche a été ouverte (`ouverture.relanceId`) ; une relance à venir reste
+  décochée. Elles passent à `cloturee` seulement **après** l'écriture de la ligne du journal (un
+  refus s'affiche en rouge sans défaire l'action), puis `signalerMaj()` recale les compteurs. Dans
+  la fiche d'un acheteur (`FicheClient`, `aClore`) et dans `FenetreAction` (contacts qui ne sont pas
+  acheteurs : `relanceVisee` passé par `FicheContact`) ; pas en modification, pas depuis « Traiter »
+  (qui clôt déjà la sienne).
+- **Le tiroir des appels** (`FriseSuivi.tsx`, `.tiroir`). Alexandre : « dans Appels, un petit tiroir
+  pour catégoriser les appels : les décrochés, les messageries… pour aller directement aux appels
+  décrochés ; pas besoin pour les rendez-vous ». Sous le filtre « Appels », un tiroir se déplie
+  (`Depliant`) : « Quels appels ? », « 3 réponses sur 7 appels passés », une barre répartie par issue,
+  et une puce par issue avec son nombre — Tous, A répondu, Messagerie, Pas de réponse, Appel reçu,
+  Sans précision (un appel noté sans issue ; masquée à zéro). Un clic n'affiche qu'elle. Les issues
+  sont relues dans le titre (`issueAppel`, les raccourcis de la fenêtre d'action). La liste arrive
+  en fondu à chaque changement de filtre ou d'issue. Au téléphone, les puces passent sur deux
+  colonnes.
+
 ### V3.82 — 6 octobre 2026 · Relances : une page plus moderne
 
 Rien à passer dans Supabase. Alexandre : « en retard, aujourd'hui, cette semaine, voir plus loin :
