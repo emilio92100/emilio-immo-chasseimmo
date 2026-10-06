@@ -1,0 +1,29 @@
+/* Tous les numéros, tous les e-mails d'un contact (V3.89) : voir ListeCoordonnees.tsx. */
+
+.bloc { display: flex; flex-direction: column; min-width: 0; }
+.titre { display: block; }
+.liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ligne { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.champ { position: relative; flex: 1 1 auto; min-width: 0; display: block; }
+.in { width: 100%; box-sizing: border-box; }
+.principal {
+  position: absolute; top: 0; bottom: 0; right: 8px; margin: auto 0; height: 20px; display: inline-flex; align-items: center;
+  padding: 0 8px; border-radius: 99px; background: #fbf5e3; color: #8a6a1f; border: 1px solid #ecdcae;
+  font: 800 10px 'DM Sans', sans-serif; letter-spacing: .4px; text-transform: uppercase; pointer-events: none;
+}
+.bouton {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; border: none; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; padding: 0;
+  transition: background .15s, color .15s;
+}
+.bouton:hover { background: #f5efdc; color: #a9822f; }
+.retirer:hover { background: #fef2f2; color: #b91c1c; }
+.ajouter {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 7px; padding: 4px 2px; border: none; background: none;
+  cursor: pointer; color: #a9822f; font: 700 12.5px 'DM Sans', sans-serif;
+}
+.ajouter:hover { color: #1a2332; }
+.ajouter:hover span { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: none) {
+  .bouton { width: 36px; height: 36px; }
+}
