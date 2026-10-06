@@ -1494,6 +1494,30 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.94 — 6 octobre 2026 · La reprise d'ImmoFacile corrige ses mauvais liens
+
+Rien à passer dans Supabase. Trouvé en comparant, après la première reprise, le flux du CRM pour
+le site (21 biens) à celui d'ImmoFacile (26 biens).
+
+- **ImmoFacile réutilise ses numéros courts** (`AFF_NUM`) : 312 était à la fois le 3 pièces à
+  669 000 € (annonce 56527064) et le 4 pièces à 880 000 € (49323480). Le CRM ayant deux fiches du
+  880 000 € (un doublon), la première reprise a donné à l'une le numéro du 669 000 € (et sa
+  position), à l'autre le bon.
+- **`rapprocher`** (`lib/flux-immofacile.ts`) ne garde un lien que si le bien ressemble à
+  l'annonce (`ressemble` : prix à 25 % près, surface à 10 % et 5 m² près), y compris pour un
+  numéro déjà gardé. Un bien archivé n'est pris que si aucun bien actif ne convient. Un bien qui
+  porte le numéro d'une annonce sans l'avoir prise est délié (`delier`) : `/api/diffusion/reprise`
+  lui retire le numéro, et la position si elle venait de cette annonce. Les changements d'un même
+  bien partent en une seule écriture.
+- Le bandeau dit « Lien corrigé : … » ; il revient avec `?page=biens&reprise=1` même quand plus rien
+  n'est « À régler », pour relancer la reprise.
+- **`lireBiensSite`** : deux fiches ne partagent jamais une adresse sur le site (le plus ancien bien
+  garde le numéro, l'autre prend sa référence).
+- Reste à Alexandre, avant de brancher le site : archiver le doublon du 880 000 € ; dire si le
+  669 000 € (56527064, encore en ligne chez ImmoFacile et Jinka, absent du CRM) est toujours à
+  vendre ; la diffusion du 1 630 000 € (en vente, « Non diffusé ») ; deux biens « En pause » et deux
+  « Retiré » dans le CRM mais encore en ligne chez ImmoFacile ; les six biens « À régler ».
+
 ### V3.93 — 6 octobre 2026 · « Demandes Internet » remplace « Demandes du site »
 
 Rien à passer dans Supabase. L'écran qui recevra aussi les demandes des portails, d'après la
