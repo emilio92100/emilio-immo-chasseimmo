@@ -1461,6 +1461,20 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.86 — 6 octobre 2026 · La recherche du haut mène droit au bien
+
+Rien à passer dans Supabase. Alexandre : « quand je cherche un nom en haut, s'il a des biens, que je
+puisse cliquer directement sur le bien ; aujourd'hui je clique sur le client, puis sur l'appartement ».
+
+- **`Topbar`** : avec le fichier des contacts, la recherche lit aussi les biens de la rubrique Biens
+  (`biens_vente` : id, propriétaire, étape, titre, ville, surface, pièces, prix, photo ; pas archivés,
+  par pages de 1 000). Sous chaque contact trouvé, ses biens (trois au plus, puis « + N autres : voir
+  sa fiche ») : la photo, le titre, l'étape à sa couleur, la ville (l'arrondissement à Paris), le prix ;
+  un clic ouvre la fiche du bien. Un contact sans bien ne change pas. Si les biens ne se lisent pas,
+  la recherche des contacts marche comme avant. Les résultats font 440 px de large au moins.
+- La recherche ne cherche toujours pas dans les biens eux-mêmes (une rue, une référence) : elle trouve
+  le contact, ses biens viennent avec lui.
+
 ### V3.85 — 6 octobre 2026 · Reporter une relance depuis le Suivi ; voir le mail envoyé ; Relances s'ouvre sur « À faire »
 
 Rien à passer dans Supabase. Alexandre : « on peut reporter depuis Relances, mais pas depuis le suivi
