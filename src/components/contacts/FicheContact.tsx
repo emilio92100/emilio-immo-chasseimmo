@@ -23,7 +23,7 @@ import BoutonCarte from '@/components/carte/BoutonCarte';
 import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe, lirePhotos, titreBien } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
-import { demanderNouveauBien, demanderOngletBien, signalerMaj } from '@/lib/intentions';
+import { demanderNouveauBien, demanderOngletBien, lireOuvertureFiche, oublierOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import { cloreRelancesArchive } from '@/lib/relances';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
@@ -275,6 +275,13 @@ const ORDRE_ONGLETS: OngletContact[] = ['savoir', 'documents', 'suivi'];
 
 function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
   const [x, setX] = useState<Client>(depart);
+  /* V3.81 (Alexandre : « depuis une relance, Ouvrir la fiche ne mène pas au
+     Suivi pour certains ») : la fiche d'un vendeur, d'un propriétaire, d'un
+     notaire… ne lisait pas la demande laissée par la relance (seule la fiche
+     d'acheteur le faisait) et s'ouvrait sur « Ce qu'on sait ». Elle s'ouvre
+     maintenant sur le Suivi, avec le bon filtre, et vient en vue. */
+  const [ouverture] = useState(() => lireOuvertureFiche(depart.id));
+  useEffect(() => { if (ouverture) oublierOuvertureFiche(); }, [ouverture]);
   const [edit, setEdit] = useState<Form | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -288,12 +295,20 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [journal, setJournal] = useState<any[]>([]);
   const [relances, setRelances] = useState<{ id: string; date_echeance: string; note: string | null; recherche_id?: string | null }[]>([]);
-  const [filtre, setFiltre] = useState('tout');
+  const [filtre, setFiltre] = useState<string>(() => {
+    const f = ouverture?.filtre;
+    return f === 'message' ? 'communications' : f && ['appel', 'rdv', 'note', 'communications', 'systeme'].includes(f) ? f : 'tout';
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [action, setAction] = useState<{ edition: any | null; type: 'note' | 'appel' } | null>(null);
   const [tour, setTour] = useState(0);
   const [mail, setMail] = useState(false);
-  const [onglet, setOnglet] = useState<OngletContact>('savoir');
+  const [onglet, setOnglet] = useState<OngletContact>(() => (ouverture ? 'suivi' : 'savoir'));
+  useEffect(() => {
+    if (!ouverture) return;
+    const t = window.setTimeout(() => document.getElementById('onglets-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    return () => window.clearTimeout(t);
+  }, [ouverture]);
   /* Un onglet choisi depuis le bandeau (une tuile, « Ajouter » la société) :
      la barre vient en vue si elle est plus bas. */
   const allerA = (k: OngletContact) => {
