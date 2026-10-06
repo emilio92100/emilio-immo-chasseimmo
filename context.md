@@ -1461,6 +1461,34 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.85 — 6 octobre 2026 · Reporter une relance depuis le Suivi ; voir le mail envoyé ; Relances s'ouvre sur « À faire »
+
+Rien à passer dans Supabase. Alexandre : « on peut reporter depuis Relances, mais pas depuis le suivi
+de la fiche, quand il y a marqué Relance · aujourd'hui ; il faut un petit bouton à côté ».
+
+- **`FriseSuivi`** : chaque relance de « À venir » a un bouton « Reporter » à côté de son échéance
+  (« aujourd'hui », « en retard de 2 j », « dans 9 j »). Il déplie sous la carte les jours en un clic,
+  comme la page Relances : Demain, Dans 3 j, Dans 7 j, Dans 15 j, Dans 1 mois, une autre date au
+  calendrier (le délai des Paramètres choisi d'avance), puis « Reporter au 9 oct. ». La carte se range
+  à sa nouvelle date ; l'étiquette de l'entête (« Relance aujourd'hui ») et les compteurs suivent.
+- **`reporterRelance(id, jour)`** (nouveau, `lib/relances.ts`) : la date à midi, seulement si la
+  relance attend encore, vérifiée (`verifie`, une ligne touchée). Branché dans la fiche d'un acheteur
+  et dans celle des autres contacts (`onReporter`).
+- **Voir le mail envoyé** (`FriseSuivi`, `MailPlie`). Alexandre : « sur le point sur la recherche, je
+  ne vois pas le mail en entier ; replié par défaut c'est bien, mais un petit bouton Voir le détail ».
+  Une carte d'envoi (« Point sur votre recherche », À …) a maintenant « Voir le mail » : il déplie le
+  mail présenté comme un mail (objet, destinataire, texte, et les biens joints, nommés quand ils sont
+  dans la recherche). Le texte vient de l'envoi (`envois.corps`) dans la fiche d'un acheteur, et de la
+  ligne « Mail envoyé » du Suivi (« À : … », puis le texte, `mailDuJournal`) dans celle des autres
+  contacts, où il s'affichait en entier : il y est replié lui aussi. Un compte rendu de visite ne
+  change pas.
+- **La page Relances s'ouvre sur « À faire »** (`PageRelances`, filtre `afaire`). Alexandre : « il ne
+  faut pas que ça affiche cette semaine ou plus loin de base, c'est à moi de le mettre ; qu'on voie
+  direct ». À l'arrivée : En retard puis Aujourd'hui, rien d'autre. La tuile du bout « Tout » (jusqu'à
+  la fin de la semaine) devient « À faire » (en retard + aujourd'hui) ; « Cette semaine » (demain et les
+  six jours suivants) et « Plus loin » se choisissent. Rien à faire : « Rien en retard, rien pour
+  aujourd'hui », et combien sont prévues cette semaine ou plus loin, avec la tuile qui les montre.
+
 ### V3.84 — 6 octobre 2026 · Fiche d’un acheteur : ses biens dans le bandeau bleu ; la recherche du haut défile
 
 Rien à passer dans Supabase. Alexandre : « pourquoi, sur un client, on est obligé de descendre en
