@@ -25,7 +25,7 @@ export type { Donnees };
 /* ── Les étapes de la vente ─────────────────────────────────────────────── */
 /* `a_suivre` : un propriétaire qui pense vendre, pas encore estimé. La
    colonne `etape` est un texte libre (pas de contrainte en base). */
-export type EtapeVente = 'a_suivre' | 'estimation' | 'mandat' | 'suspendu' | 'offre' | 'compromis' | 'vendu' | 'retire';
+export type EtapeVente = 'a_suivre' | 'estimation' | 'mandat' | 'suspendu' | 'offre' | 'compromis' | 'vendu' | 'retire' | 'annonce_type';
 export const ETAPES_VENTE: { k: EtapeVente; lib: string; court: string; pluriel: string; c: string }[] = [
   { k: 'a_suivre', lib: 'À suivre', court: 'À suivre', pluriel: 'À suivre', c: '#0ea5a4' },
   { k: 'estimation', lib: 'Estimation', court: 'Estimation', pluriel: 'Estimations', c: '#8b5cf6' },
@@ -35,6 +35,11 @@ export const ETAPES_VENTE: { k: EtapeVente; lib: string; court: string; pluriel:
   { k: 'compromis', lib: 'Sous compromis', court: 'Sous compromis', pluriel: 'Sous compromis', c: '#3b82f6' },
   { k: 'vendu', lib: 'Vendu', court: 'Vendu', pluriel: 'Vendus', c: '#34496e' },
   { k: 'retire', lib: 'Retiré de la vente', court: 'Retiré', pluriel: 'Retirés', c: '#b4532a' },
+  /* V3.79 (Alexandre : « une annonce un peu similaire au bien d'un client qui
+     ne veut pas que le sien soit diffusé, pour capter des acheteurs ; pas
+     besoin de mandat, juste créer la fiche et la publier ») : hors du
+     parcours d'une vente, sans propriétaire, sans visite ni offre. */
+  { k: 'annonce_type', lib: 'Annonce type', court: 'Annonce type', pluriel: 'Annonces type', c: '#c026d3' },
 ];
 /* Le fil du bandeau de la fiche : le chemin normal d'une vente. */
 export const PARCOURS: EtapeVente[] = ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis', 'vendu'];
@@ -70,13 +75,16 @@ export type PermisBien = {
 export function permisBien(b: { etape: EtapeVente; archive?: boolean | null }): PermisBien {
   const e = b.etape;
   const ferme = e === 'vendu' || e === 'retire' || !!b.archive;
-  const ouvert = !ferme && !avantMandat(e);
+  /* V3.79 : une annonce type n'a ni visite ni offre (l'acheteur intéressé
+     se suit sur le vrai bien) ; son prix, lui, se change. */
+  const annonceType = e === 'annonce_type';
+  const ouvert = !ferme && !avantMandat(e) && !annonceType;
   return {
-    visite: ouvert, offre: ouvert, prix: ouvert, repondreOffre: !ferme, presenter: ouvert,
+    visite: ouvert, offre: ouvert, prix: ouvert || (annonceType && !ferme), repondreOffre: !ferme && !annonceType, presenter: ouvert,
     attention: e === 'compromis' ? 'Le bien est sous compromis. Continuer quand même ?'
       : e === 'suspendu' ? 'La vente est en pause. Continuer quand même ?' : null,
     passerSousOffre: e === 'mandat' || e === 'suspendu',
-    archiver: e === 'vendu' || e === 'retire' || !!b.archive,
+    archiver: e === 'vendu' || e === 'retire' || annonceType || !!b.archive,
     prixFige: e === 'offre' || e === 'compromis' || e === 'vendu',
   };
 }
@@ -367,7 +375,7 @@ export const estChampActe = (c: ChampBien): c is Champ => !['lettres', 'pieces',
 /* Dans l'éditeur, les données portent l'étape de vente sous `_stade` (jamais
    enregistrée) : un champ réservé au mandat s'efface avant. Sans `_stade`
    (la fiche, l'annonce), tout se montre. */
-const sousMandat = (d: Donnees) => !avantMandat(String(d._stade || ''));
+const sousMandat = (d: Donnees) => !avantMandat(String(d._stade || '')) && d._stade !== 'annonce_type';
 const pasASuivre = (e: EtapeVente) => e !== 'a_suivre';
 /* Des réponses qui reviennent : chacune avec son dessin (V3.16). */
 const OUI_NON: Option[] = [{ v: 'oui', l: 'Oui', ic: 'check' }, { v: 'non', l: 'Non', ic: 'croix' }];
@@ -380,6 +388,7 @@ export const DELAIS: Option[] = [
 export const ETAPES_BIEN: EtapeBien[] = [
   {
     id: 'proprio', titre: 'Le propriétaire', court: 'Propriétaire', sous: 'Qui vend, et pourquoi.', ic: 'personne',
+    pour: e => e !== 'annonce_type',
     champs: [
       { t: 'proprio', cle: 'clientId', lib: 'Sa fiche client' },
       { t: 'choix', cle: 'qui', lib: 'Qui vend ?', tuiles: true, options: [
@@ -441,15 +450,47 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'titre', cle: 't-terrain', lib: 'Le terrain', ic: 'terrain', si: estTerrain },
       { t: 'choix', cle: 'constructible', lib: 'Constructible', ic: 'maison', si: estTerrain, options: [{ v: 'oui', l: 'Oui', ic: 'check' }, { v: 'partiel', l: 'En partie', ic: 'plan' }, { v: 'non', l: 'Non', ic: 'croix' }] },
       { t: 'choix', cle: 'viabilise', lib: 'Viabilisé', ic: 'eclair', si: estTerrain, aide: 'Eau, électricité, assainissement en bordure', options: OUI_NON },
+      /* V3.79 : une maison, un terrain — comment partent les eaux usées (ImmoFacile : « Assainissement »). */
+      { t: 'choix', cle: 'assainissement', lib: 'Assainissement', ic: 'eau', si: d => estMaison(d) || estTerrain(d), options: [
+        { v: 'collectif', l: 'Tout-à-l’égout', ic: 'eau' }, { v: 'fosse', l: 'Fosse septique', ic: 'cave' }, { v: 'micro', l: 'Micro-station', ic: 'usine' }, { v: 'aRefaire', l: 'À mettre aux normes', ic: 'outil' },
+      ] },
       { t: 'titre', cle: 't-imm', lib: 'L’immeuble', ic: 'immeuble', si: enImmeuble },
       { t: 'titre', cle: 't-constr', lib: 'La construction', ic: 'maison', si: estMaison },
       { t: 'compteur', cle: 'etage', lib: 'Étage', ic: 'ascenseur', min: 0, si: enImmeuble, mots: n => (n === 0 ? 'RDC' : '') },
       { t: 'compteur', cle: 'etages', lib: 'Étages en tout', ic: 'immeuble', min: 0, si: enImmeuble },
       { t: 'nombre', cle: 'annee', lib: 'Année de construction', ic: 'calendrier', si: d => !estTerrain(d), exemple: '1968' },
+      /* V3.79 : repris d'ImmoFacile (« Construction », « Standing », « État des communs »). */
+      { t: 'texte', cle: 'constructionType', lib: 'Construction', ic: 'cube', si: d => !estTerrain(d), exemple: 'Pierre de taille, brique, béton' },
+      { t: 'texte', cle: 'style', lib: 'Style', ic: 'colonne', si: d => !estTerrain(d), exemple: 'Haussmannien, Art déco, années 30, contemporain' },
+      /* Une maison : mitoyenne ou non (ImmoFacile : « Mitoyenneté »). */
+      { t: 'choix', cle: 'mitoyennete', lib: 'Mitoyenneté', ic: 'maison', si: estMaison, options: [
+        { v: 'independante', l: 'Indépendante', ic: 'maison' }, { v: 'un', l: 'Mitoyenne d’un côté', ic: 'separation' }, { v: 'deux', l: 'Mitoyenne des deux côtés', ic: 'lots' },
+      ] },
+      { t: 'choix', cle: 'standing', lib: 'Standing', ic: 'etoile', si: d => !estTerrain(d) && d.typeBien !== 'parking', options: [
+        { v: 'standard', l: 'Standard', ic: 'immeuble' }, { v: 'bon', l: 'Bon standing', ic: 'etoile' }, { v: 'haut', l: 'Haut de gamme', ic: 'etoilePleine' }, { v: 'prestige', l: 'Prestige', ic: 'colonne' },
+      ] },
+      { t: 'choix', cle: 'etatCommuns', lib: 'Parties communes', ic: 'escalier', si: enImmeuble, options: [
+        { v: 'tres_bon', l: 'Très bon état', ic: 'etincelle' }, { v: 'bon', l: 'Bon état', ic: 'check' }, { v: 'moyen', l: 'Moyen', ic: 'lignes' }, { v: 'a_refaire', l: 'À rafraîchir', ic: 'pinceau' },
+      ] },
+      /* L'extérieur de l'immeuble ou de la maison : façade, toiture (ImmoFacile : « État extérieur »). */
+      { t: 'choix', cle: 'etatExterieur', lib: 'État extérieur, façade', ic: 'immeuble', si: d => !estTerrain(d), options: [
+        { v: 'tres_bon', l: 'Très bon état', ic: 'etincelle' }, { v: 'bon', l: 'Bon état', ic: 'check' }, { v: 'moyen', l: 'Moyen', ic: 'lignes' }, { v: 'a_refaire', l: 'À rafraîchir', ic: 'pinceau' },
+      ] },
       { t: 'cases', cle: 'immeuble', lib: 'Dans l’immeuble', ic: 'immeuble', si: enImmeuble, options: [
         { v: 'ascenseur', l: 'Ascenseur', ic: 'ascenseur' }, { v: 'gardien', l: 'Gardien', ic: 'personne' }, { v: 'digicode', l: 'Digicode', ic: 'clavier' },
         { v: 'interphone', l: 'Interphone', ic: 'interphone' }, { v: 'velos', l: 'Local vélos', ic: 'velo' }, { v: 'fibre', l: 'Fibre', ic: 'wifi' },
       ] },
+      /* V3.79 : la proximité et les transports (ImmoFacile : distance des
+         commerces en km, accès au bus, au métro, au RER, à l'école en minutes ;
+         la phrase « Situation »). */
+      { t: 'titre', cle: 't-prox', lib: 'Proximité et transports', ic: 'carte' },
+      { t: 'nombre', cle: 'proxCommerces', lib: 'Commerces', ic: 'sac', unite: 'km' },
+      { t: 'nombre', cle: 'proxEcole', lib: 'École', ic: 'livre', unite: 'min' },
+      { t: 'nombre', cle: 'proxBus', lib: 'Bus', ic: 'bus', unite: 'min' },
+      { t: 'nombre', cle: 'proxMetro', lib: 'Métro', ic: 'metro', unite: 'min' },
+      { t: 'nombre', cle: 'proxTram', lib: 'Tramway', ic: 'train', unite: 'min' },
+      { t: 'nombre', cle: 'proxRer', lib: 'RER, train', ic: 'train', unite: 'min' },
+      { t: 'zone', cle: 'situation', lib: 'La situation', ic: 'lieu', exemple: 'Centre-ville, rue calme ; métro Marcel Sembat à 5 min à pied, commerces au pied de l’immeuble' },
     ],
   },
   {
@@ -462,7 +503,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
       ] },
       { t: 'titre', cle: 't-cuis', lib: 'La cuisine', ic: 'cuisine', si: aDesPieces },
       { t: 'choix', cle: 'cuisine', lib: 'Cuisine', ic: 'cuisine', si: aDesPieces, options: [
-        { v: 'independante', l: 'Indépendante', ic: 'porte' }, { v: 'ouverte', l: 'Ouverte', ic: 'canape' }, { v: 'kitchenette', l: 'Kitchenette', ic: 'cuisine' }, { v: 'aucune', l: 'Sans cuisine', ic: 'croix' },
+        { v: 'independante', l: 'Indépendante', ic: 'porte' }, { v: 'semiOuverte', l: 'Semi-ouverte', ic: 'porte' }, { v: 'ouverte', l: 'Ouverte', ic: 'canape' }, { v: 'kitchenette', l: 'Kitchenette', ic: 'cuisine' }, { v: 'aucune', l: 'Sans cuisine', ic: 'croix' },
       ] },
       { t: 'choix', cle: 'cuisineEquip', lib: 'Équipement', ic: 'four', si: aDesPieces, options: [
         { v: 'equipee', l: 'Équipée', ic: 'four' }, { v: 'amenagee', l: 'Aménagée', ic: 'placard' }, { v: 'non', l: 'Non équipée', ic: 'croix' },
@@ -475,14 +516,35 @@ export const ETAPES_BIEN: EtapeBien[] = [
       ] },
       { t: 'choix', cle: 'chauffageEmetteurs', lib: 'Par', ic: 'radiateur', si: aDesPieces, options: [
         { v: 'radiateurs', l: 'Radiateurs', ic: 'radiateur' }, { v: 'sol', l: 'Plancher chauffant', ic: 'sol' }, { v: 'convecteurs', l: 'Convecteurs', ic: 'convecteur' }, { v: 'poele', l: 'Poêle', ic: 'poele' },
+        /* V3.79 : ImmoFacile les connaît aussi. */
+        { v: 'plafond', l: 'Plafond chauffant', ic: 'toit' }, { v: 'air', l: 'Air pulsé', ic: 'flocon' },
       ] },
       { t: 'choix', cle: 'eauChaude', lib: 'Eau chaude', ic: 'eau', si: aDesPieces, options: [{ v: 'individuelle', l: 'Individuelle', ic: 'ballon' }, { v: 'collective', l: 'Collective', ic: 'immeuble' }] },
+      /* V3.79 (Alexandre : « simple vitrage, double vitrage, aluminium, bois,
+         triple vitrage ; les volets électriques, manuels, pliants »). */
+      { t: 'titre', cle: 't-fen', lib: 'Fenêtres et volets', ic: 'fenetre', si: aDesPieces },
+      { t: 'choix', cle: 'vitrage', lib: 'Vitrage', ic: 'fenetre', si: aDesPieces, options: [
+        { v: 'simple', l: 'Simple vitrage', ic: 'fenetre' }, { v: 'double', l: 'Double vitrage', ic: 'fenetre' }, { v: 'triple', l: 'Triple vitrage', ic: 'fenetre' },
+      ] },
+      { t: 'choix', cle: 'menuiseries', lib: 'Fenêtres en', ic: 'fenetre', si: aDesPieces, options: [
+        { v: 'bois', l: 'Bois', ic: 'bois' }, { v: 'pvc', l: 'PVC', ic: 'fenetre' }, { v: 'alu', l: 'Aluminium', ic: 'fenetre' }, { v: 'boisAlu', l: 'Bois et aluminium', ic: 'bois' },
+      ] },
+      { t: 'choix', cle: 'volets', lib: 'Volets', ic: 'volet', si: aDesPieces, options: [
+        { v: 'electriques', l: 'Électriques', ic: 'eclair' }, { v: 'roulants', l: 'Roulants manuels', ic: 'volet' }, { v: 'battants', l: 'Battants', ic: 'volet' },
+        { v: 'pliants', l: 'Pliants', ic: 'volet' }, { v: 'persiennes', l: 'Persiennes', ic: 'volet' }, { v: 'aucun', l: 'Sans volets', ic: 'croix' },
+      ] },
+      /* La matière des volets (ImmoFacile écrit « PVC », « Électrique PVC »). */
+      { t: 'choix', cle: 'voletsMateriau', lib: 'Volets en', ic: 'volet', si: d => aDesPieces(d) && d.volets !== 'aucun', options: [
+        { v: 'bois', l: 'Bois', ic: 'bois' }, { v: 'pvc', l: 'PVC', ic: 'volet' }, { v: 'alu', l: 'Aluminium', ic: 'volet' }, { v: 'metal', l: 'Métal', ic: 'volet' },
+      ] },
       { t: 'titre', cle: 't-equip', lib: 'Ce qu’il a', ic: 'etoile', si: aDesPieces },
       { t: 'cases', cle: 'equipements', lib: 'Équipements et qualités', ic: 'etoile', si: aDesPieces, options: [
         { v: 'traversant', l: 'Traversant', ic: 'traversant' }, { v: 'lumineux', l: 'Lumineux', ic: 'soleil' }, { v: 'calme', l: 'Calme', ic: 'lune' }, { v: 'dernierEtage', l: 'Dernier étage', ic: 'toit' },
         { v: 'parquet', l: 'Parquet', ic: 'parquet' }, { v: 'moulures', l: 'Moulures, cachet', ic: 'colonne' }, { v: 'cheminee', l: 'Cheminée', ic: 'cheminee' }, { v: 'placards', l: 'Placards, rangements', ic: 'placard' },
         { v: 'doubleVitrage', l: 'Double vitrage', ic: 'fenetre' }, { v: 'voletsElec', l: 'Volets électriques', ic: 'volet' }, { v: 'clim', l: 'Climatisation', ic: 'flocon' }, { v: 'alarme', l: 'Alarme', ic: 'alarme' },
-        { v: 'pmr', l: 'Accessible PMR', ic: 'pmr' }, { v: 'meuble', l: 'Vendu meublé', ic: 'canape' },
+        { v: 'pmr', l: 'Accessible PMR', ic: 'pmr' }, { v: 'meuble', l: 'Vendu meublé', ic: 'canape' }, { v: 'solaire', l: 'Panneaux solaires', ic: 'soleil' },
+        /* V3.79 : ImmoFacile le note (« Séjour double »). */
+        { v: 'sejourDouble', l: 'Séjour double', ic: 'canape' },
       ] },
       { t: 'zone', cle: 'interieurNote', lib: 'Ce qu’il faut savoir de l’intérieur', ic: 'bulle', exemple: 'Belle hauteur sous plafond, parquet d’origine, séjour en angle' },
     ],
@@ -493,6 +555,8 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'cases', cle: 'annexes', lib: 'Ce qu’il y a', ic: 'parasol', options: [
         { v: 'balcon', l: 'Balcon', ic: 'balcon' }, { v: 'terrasse', l: 'Terrasse', ic: 'parasol' }, { v: 'loggia', l: 'Loggia', ic: 'loggia' }, { v: 'jardin', l: 'Jardin', ic: 'terrain' },
         { v: 'cave', l: 'Cave', ic: 'cave' }, { v: 'parking', l: 'Parking', ic: 'parking' }, { v: 'box', l: 'Box', ic: 'box' }, { v: 'garage', l: 'Garage', ic: 'voiture' }, { v: 'piscine', l: 'Piscine', ic: 'piscine' },
+        /* V3.79 : trois annexes qu'ImmoFacile note aussi. */
+        { v: 'veranda', l: 'Véranda', ic: 'vitrine' }, { v: 'grenier', l: 'Grenier, combles', ic: 'toit' }, { v: 'sousSol', l: 'Sous-sol', ic: 'escalier' },
       ] },
       { t: 'nombre', cle: 'surfBalcon', lib: 'Balcon', ic: 'balcon', unite: 'm²', si: d => liste(d, 'annexes').includes('balcon') },
       { t: 'nombre', cle: 'surfTerrasse', lib: 'Terrasse', ic: 'parasol', unite: 'm²', si: d => liste(d, 'annexes').includes('terrasse') },
@@ -500,6 +564,10 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'nombre', cle: 'surfJardin', lib: 'Jardin', ic: 'terrain', unite: 'm²', si: d => liste(d, 'annexes').includes('jardin') },
       { t: 'nombre', cle: 'surfCave', lib: 'Cave', ic: 'cave', unite: 'm²', si: d => liste(d, 'annexes').includes('cave') },
       { t: 'compteur', cle: 'nbParking', lib: 'Places de parking', ic: 'parking', si: d => liste(d, 'annexes').some(x => ['parking', 'box', 'garage'].includes(x)) },
+      /* V3.79 : où l'on se gare (ImmoFacile : « Type de stationnement »). */
+      { t: 'choix', cle: 'stationnement', lib: 'Stationnement', ic: 'parking', si: d => liste(d, 'annexes').some(x => ['parking', 'box', 'garage'].includes(x)), options: [
+        { v: 'sousSol', l: 'En sous-sol', ic: 'escalier' }, { v: 'exterieur', l: 'En extérieur', ic: 'soleil' }, { v: 'couvert', l: 'Couvert', ic: 'toit' }, { v: 'ferme', l: 'Garage ou box fermé', ic: 'cadenas' },
+      ] },
       { t: 'titre', cle: 't-vue', lib: 'Exposition et vue', ic: 'soleil' },
       { t: 'choix', cle: 'expo', lib: 'Exposition principale', ic: 'boussole', options: [...EXPOSITIONS.map(e => ({ ...e, ic: `dir${e.v}` })), { v: 'traversant', l: 'Traversant', ic: 'traversant' }] },
       { t: 'choix', cle: 'vue', lib: 'Vue', ic: 'oeil', options: [
@@ -524,6 +592,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'lettres', cle: 'ges', lib: 'Classe climat (GES)', ic: 'nuage', genre: 'ges', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
       { t: 'nombre', cle: 'gesValeur', lib: 'Émissions', ic: 'nuage', unite: 'kg CO₂/m²/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
       { t: 'date', cle: 'dpeDate', lib: 'Date du DPE', ic: 'calendrier', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
+      { t: 'texte', cle: 'dpeNumero', lib: 'N° ADEME du DPE', ic: 'doc', exemple: '2392E0123456K', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
       { t: 'titre', cle: 't-cout', lib: 'Les dépenses d’énergie écrites sur le DPE', ic: 'euro', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non',
         aide: 'Ce n’est pas la copropriété : c’est l’estimation du DPE pour chauffer et éclairer le logement. Le DPE la donne en fourchette, l’annonce la reprend telle quelle.' },
       { t: 'euros', cle: 'coutMin', lib: 'Montant bas', ic: 'bas', unite: '€/an', si: d => d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non' },
@@ -537,6 +606,8 @@ export const ETAPES_BIEN: EtapeBien[] = [
       { t: 'titre', cle: 't-copro', lib: 'La copropriété', ic: 'lots' },
       { t: 'choix', cle: 'copro', lib: 'En copropriété ?', ic: 'lots', options: OUI_NON },
       { t: 'nombre', cle: 'lots', lib: 'Nombre de lots', ic: 'lots', si: d => d.copro === 'oui', aide: 'Obligatoire dans l’annonce' },
+      /* V3.79 : « dont lots d'habitation » (ImmoFacile, loi ALUR). */
+      { t: 'nombre', cle: 'lotsHabitation', lib: 'Dont lots d’habitation', ic: 'lots', si: d => d.copro === 'oui' },
       { t: 'choix', cle: 'procedure', lib: 'Procédure en cours contre le syndicat ?', ic: 'balance', si: d => d.copro === 'oui', options: [{ v: 'non', l: 'Non', ic: 'croix' }, { v: 'oui', l: 'Oui', ic: 'check' }] },
       { t: 'texte', cle: 'procedureNature', lib: 'Laquelle', ic: 'balance', large: true, si: d => d.copro === 'oui' && d.procedure === 'oui' },
       { t: 'texte', cle: 'syndic', lib: 'Syndic', ic: 'agence', si: d => d.copro === 'oui', exemple: 'Foncia Boulogne' },
@@ -606,6 +677,7 @@ export const ETAPES_BIEN: EtapeBien[] = [
     /* V3.16 : ouvert dès l'ajout du bien (occupé ou libre, clés, codes),
        plus seulement au mandat. */
     id: 'pratique', titre: 'Les indications de visite', court: 'Indications', sous: 'Occupé ou libre, les clés, les codes, qui appeler sur place.', ic: 'cle',
+    pour: e => e !== 'annonce_type',
     champs: [
       { t: 'titre', cle: 't-occup', lib: 'L’occupation', ic: 'porte' },
       { t: 'choix', cle: 'occupation', lib: 'Le bien est', ic: 'porte', options: [
@@ -645,6 +717,8 @@ export const ETAPES_BIEN: EtapeBien[] = [
        n'a plus rien à dire avant le mandat. */
     id: 'annonce', titre: 'L’annonce', court: 'Annonce', sous: 'Le texte de l’annonce, prêt à copier.', ic: 'megaphone', pour: e => !avantMandat(e),
     champs: [
+      /* V3.79 : le titre, à part (ImmoFacile en a un ; les portails aussi). */
+      { t: 'texte', cle: 'annonceTitre', lib: 'Titre de l’annonce', ic: 'megaphone', large: true, exemple: 'Boulogne centre, 2 pièces avec balcon-terrasse côté jardin' },
       { t: 'annonce', cle: 'annonceTexte', lib: 'L’annonce' },
     ],
   },
@@ -921,7 +995,6 @@ export const passoire = (d: Donnees) => d.dpe === 'F' || d.dpe === 'G';
 /* Un texte d'annonce à partir de la fiche, à retoucher. Aucun mot de métier,
    aucune promesse : les faits de la fiche, dans l'ordre où on les lit. */
 export function brouillonAnnonce(d: Donnees): string {
-  const a = argentBien(d);
   const t = nomType(d.typeBien).toLowerCase();
   const p = nb(d, 'pieces'), s = nb(d, 'surface'), ch = nb(d, 'chambres'), e = nb(d, 'etage'), et = nb(d, 'etages');
   const lieu = [txt(d, 'ville'), txt(d, 'quartier') ? `quartier ${txt(d, 'quartier')}` : ''].filter(Boolean).join(', ');
@@ -967,6 +1040,15 @@ export function brouillonAnnonce(d: Donnees): string {
   if (ext.length) phrases.push(`Avec ${ext.join(', ').replace(/, ([^,]*)$/, ' et $1')}.`);
   if (d.etat === 'refait_neuf') phrases.push('Il a été entièrement refait.');
   else if (d.etat === 'bon_etat') phrases.push('Il est en bon état.');
+  return `${phrases.join(' ')}\n\n${mentionsAnnonce(d)}`;
+}
+
+/* Les mentions obligatoires, écrites depuis la fiche (V3.79 : à part, pour
+   que la reformulation par l'IA les reprenne mot pour mot, sans jamais les
+   écrire elle-même) : le prix et les honoraires, la copropriété, le DPE,
+   Géorisques. */
+export function mentionsAnnonce(d: Donnees): string {
+  const a = argentBien(d);
   const legal: string[] = [];
   if (a.prix) {
     if (a.acq && a.net && a.hono !== null && a.taux !== null) legal.push(`Prix : ${euros(a.prix)} honoraires inclus, dont ${pourcent(a.taux)} TTC à la charge de l’acquéreur (${euros(a.net)} hors honoraires).`);
@@ -984,7 +1066,55 @@ export function brouillonAnnonce(d: Donnees): string {
     if (nb(d, 'coutMin') && nb(d, 'coutMax')) legal.push(`Montant estimé des dépenses annuelles d’énergie pour un usage standard : entre ${euros(nb(d, 'coutMin') as number)} et ${euros(nb(d, 'coutMax') as number)}${nb(d, 'coutAnnee') ? ` (prix de l’énergie de ${nb(d, 'coutAnnee')})` : ''}.`);
   }
   legal.push('Les informations sur les risques auxquels ce bien est exposé sont disponibles sur le site Géorisques : www.georisques.gouv.fr.');
-  return `${phrases.join(' ')}\n\n${legal.join('\n')}`;
+  return legal.join('\n');
+}
+
+/* ══ L'annonce, assez longue pour être bien référencée (V3.79) ════════════
+   Alexandre : « minimum 2 100 caractères, pour que ce soit bien référencé,
+   pas un petit texte ». Compté sur tout le texte, mentions comprises. */
+export const LONGUEUR_ANNONCE = 2100;
+
+/* Ce que la fiche dit du bien, ligne à ligne, pour la reformulation par
+   l'IA (src/app/api/biens-vente/annonce). Seulement ce qu'une annonce peut
+   dire : ni le propriétaire, ni l'adresse exacte, ni les codes, les clés,
+   le contact sur place ou les consignes de visite, ni les notes et les
+   observations (« pour toi seul »), ni le mandat. Le prix, les honoraires,
+   la copropriété et le DPE n'y sont pas non plus : le CRM les écrit lui-même
+   à la fin (mentionsAnnonce). */
+const ETAPES_FAITS = ['bien', 'interieur', 'exterieur', 'pratique'];
+const CLES_TUES = new Set([
+  'adresse', 'cp', 'lot', 'cadastre', 'interphone', 'digicode', 'porte', 'itineraire', 'annexesNum', 'contactNom', 'contactTel',
+  'creneaux', 'consignes', 'trousseau', 'cles', 'accesBas', 'accesAscenseur', 'loyer', 'finBail',
+]);
+export function faitsAnnonce(d: Donnees): string {
+  const l: string[] = [];
+  const val = (v: unknown) => (typeof v === 'number' ? String(v).replace('.', ',') : typeof v === 'string' ? v.trim() : '');
+  for (const e of ETAPES_BIEN) {
+    if (!ETAPES_FAITS.includes(e.id)) continue;
+    for (const c0 of e.champs) {
+      const c = c0 as { t: string; cle?: string; lib?: string; si?: (d: Donnees) => boolean; options?: Option[]; unite?: string; mots?: (n: number) => string };
+      if (!c.cle || CLES_TUES.has(c.cle) || c.t === 'titre' || c.t === 'guide') continue;
+      if (c.si && !c.si(d)) continue;
+      const v = d[c.cle];
+      let x = '';
+      if (c.t === 'choix' && typeof v === 'string') x = c.options?.find(o => o.v === v)?.l || '';
+      else if (c.t === 'cases') x = liste(d, c.cle).map(k => c.options?.find(o => o.v === k)?.l || '').filter(Boolean).join(', ');
+      else if (c.t === 'nombre' || c.t === 'compteur') {
+        const n = num(d, c.cle);
+        if (n !== null) x = `${val(n)}${c.unite ? ` ${c.unite}` : ''}${c.mots && c.mots(n) ? ` (${c.mots(n)})` : ''}`;
+      } else if (c.t === 'texte' || c.t === 'zone') x = val(v);
+      if (x) l.push(`${c.lib} : ${x}`);
+    }
+  }
+  if (d.typeBien) l.unshift(`Type de bien : ${nomType(d.typeBien)}`);
+  const pieces = lirePieces(d.detailPieces).filter(p => p.nom);
+  if (pieces.length) {
+    l.push('Les pièces, dans l’ordre de la visite :');
+    for (const p of pieces) l.push(`- ${[p.nom, p.surface ? m2(p.surface) : '', p.expo ? `exposée ${nomExpo(p.expo).toLowerCase()}` : '', p.niveau ? `niveau ${p.niveau}` : '', p.note].filter(Boolean).join(', ')}`);
+  }
+  if (d.copro === 'oui') l.push('En copropriété');
+  if (typeof d.dpe === 'string' && d.dpe) l.push(`Classe énergie : ${d.dpe}`);
+  return l.join('\n');
 }
 
 /* ══ Vers les autres rubriques ══════════════════════════════════════════ */
