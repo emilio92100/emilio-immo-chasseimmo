@@ -264,6 +264,7 @@ import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import Rapprochement from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
+import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -688,8 +689,10 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
 function cfDe(client: any) {
   const j = conjointDe(client.conjoint);
   return {
-    prenom: client.prenom, nom: client.nom, adresse: client.adresse || '', email1: client.emails?.[0] || '', email2: client.emails?.[1] || '',
-    tel1: client.telephones?.[0] || '', tel2: client.telephones?.[1] || '', statut_occupation: client.statut_occupation || '',
+    prenom: client.prenom, nom: client.nom, adresse: client.adresse || '',
+    /* Tous les e-mails et tous les numéros, pas seulement deux (V3.89) :
+       l'import ImmoFacile en garde jusqu'à quatre. */
+    emails: lignesDe(client.emails), tels: lignesDe(client.telephones), statut_occupation: client.statut_occupation || '',
     bien_actuel_type: client.bien_actuel_type || '', bien_actuel_surface: client.bien_actuel_surface?.toString() || '',
     bien_actuel_valeur: client.bien_actuel_valeur?.toString() || '', bien_actuel_a_vendre: client.bien_actuel_a_vendre || false,
     bien_actuel_notes: client.bien_actuel_notes || '', bien_actuel_adresse: client.bien_actuel_adresse || '', bien_actuel_meme_adresse: !client.bien_actuel_adresse,
@@ -1821,14 +1824,14 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   async function saveContact() {
     setSaving(true);
     // Détecter les vrais changements avant de logger
-    const newEmails = [cf.email1, cf.email2].filter(Boolean);
-    const newTels = [cf.tel1, cf.tel2].filter(Boolean);
+    const newEmails = nettoyer(cf.emails, 'mail');
+    const newTels = nettoyer(cf.tels, 'tel');
     const changes: string[] = [];
     if ((client.prenom||'') !== cf.prenom) changes.push(`Prénom : "${client.prenom||'—'}" → "${cf.prenom||'—'}"`);
     if ((client.nom||'') !== cf.nom) changes.push(`Nom : "${client.nom||'—'}" → "${cf.nom||'—'}"`);
     if ((client.adresse||'') !== (cf.adresse||'')) changes.push(`Adresse mise à jour`);
-    if (JSON.stringify(client.emails||[]) !== JSON.stringify(newEmails)) changes.push(`Email modifié`);
-    if (JSON.stringify(client.telephones||[]) !== JSON.stringify(newTels)) changes.push(`Téléphone modifié`);
+    if (JSON.stringify(nettoyer(client.emails || [], 'mail')) !== JSON.stringify(newEmails)) changes.push(newEmails.length > 1 ? `E-mails : ${newEmails.join(', ')}` : `E-mail : ${newEmails[0] || '—'}`);
+    if (JSON.stringify(nettoyer(client.telephones || [], 'tel')) !== JSON.stringify(newTels)) changes.push(newTels.length > 1 ? `Téléphones : ${newTels.join(', ')}` : `Téléphone : ${newTels[0] || '—'}`);
     if (((client as any).statut_occupation||'') !== cf.statut_occupation) changes.push(`Situation actuelle modifiée`);
     /* Une personne ou un couple : écrit seulement si la colonne existe (SQL
        « signature-plusieurs » lancé) ou si Alexandre vient de choisir. */
@@ -5058,7 +5061,10 @@ ${signatureMail()}`,
                     ))}
                   </div>
                   <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
-                  <div className={styles.formRow}><div><label className={styles.lbl}>Email</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Téléphone</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div></div>
+                  <div className={styles.formRow}>
+                    <ListeCoordonnees genre="mail" etiquette="E-mails" valeurs={cf.emails} onChange={v => setCf(f => ({ ...f, emails: v }))} classeEtiquette={styles.lbl} classeChamp={styles.inp} />
+                    <ListeCoordonnees genre="tel" etiquette="Téléphones" valeurs={cf.tels} onChange={v => setCf(f => ({ ...f, tels: v }))} classeEtiquette={styles.lbl} classeChamp={styles.inp} />
+                  </div>
                 </div>
               ) : (
                 <div className={styles.formRow}><div><label className={styles.lbl}>Prénom</label><input className={styles.inp} value={cf.prenom} onChange={e => setCf(f => ({ ...f, prenom: e.target.value }))} /></div><div><label className={styles.lbl}>Nom</label><input className={styles.inp} value={cf.nom} onChange={e => setCf(f => ({ ...f, nom: e.target.value }))} /></div></div>
@@ -5077,13 +5083,12 @@ ${signatureMail()}`,
                 </div>
               )}
               <ChampAdresseAuto etiquette="Adresse" valeur={cf.adresse} onChange={v => setCf(f => ({ ...f, adresse: v }))} />
-              {cf.couple ? (
-                <div className={styles.formRow}><div><label className={styles.lbl}>Autre e-mail (facultatif)</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div><div><label className={styles.lbl}>Autre téléphone (facultatif)</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
-              ) : (
-                <>
-                  <div className={styles.formRow}><div><label className={styles.lbl}>Email principal</label><input className={styles.inp} type="email" value={cf.email1} onChange={e => setCf(f => ({ ...f, email1: e.target.value }))} /></div><div><label className={styles.lbl}>Email secondaire</label><input className={styles.inp} type="email" value={cf.email2} onChange={e => setCf(f => ({ ...f, email2: e.target.value }))} /></div></div>
-                  <div className={styles.formRow}><div><label className={styles.lbl}>Tél. principal</label><input className={styles.inp} value={cf.tel1} onChange={e => setCf(f => ({ ...f, tel1: e.target.value }))} /></div><div><label className={styles.lbl}>Tél. secondaire</label><input className={styles.inp} value={cf.tel2} onChange={e => setCf(f => ({ ...f, tel2: e.target.value }))} /></div></div>
-                </>
+              {/* Tous ses e-mails et tous ses numéros (V3.89) : le premier est le principal. */}
+              {!cf.couple && (
+                <div className={styles.formRow}>
+                  <ListeCoordonnees genre="mail" etiquette="E-mails" valeurs={cf.emails} onChange={v => setCf(f => ({ ...f, emails: v }))} classeEtiquette={styles.lbl} classeChamp={styles.inp} />
+                  <ListeCoordonnees genre="tel" etiquette="Téléphones" valeurs={cf.tels} onChange={v => setCf(f => ({ ...f, tels: v }))} classeEtiquette={styles.lbl} classeChamp={styles.inp} />
+                </div>
               )}
 
               {/* Situation actuelle (propriétaire / locataire) */}

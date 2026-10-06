@@ -321,8 +321,9 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
   });
 
   /* ── Reprendre dans la fiche ce que le client a saisi en signant ──
-     Deux adresses e-mail et deux téléphones au plus : c'est ce que le
-     formulaire Contact sait afficher. La nouvelle passe en premier. */
+     La nouvelle adresse (ou le nouveau numéro) passe en premier ; les
+     autres restent derrière : depuis la V3.89, « Modifier le contact »
+     les montre tous, il n'y a plus à en retirer. */
   async function reprendre(cles: Ecart['cle'][]) {
     const m = sig?.mandant;
     if (!m || !client?.id) return;
@@ -334,14 +335,14 @@ export default function MandatEnLigne({ recherche, client, onMaj, onClient, onAv
     }
     if (cles.includes('email') && m.email) {
       const avant = liste(client.emails);
-      const apres = [m.email.trim(), ...avant.filter(x => net(x) !== net(m.email))].slice(0, 2);
+      const apres = [m.email.trim(), ...avant.filter(x => net(x) !== net(m.email))];
       const sort = avant.filter(x => !apres.map(net).includes(net(x)));
       maj.emails = apres;
       faits.push(`E-mail : ${apres.join(', ')}${sort.length ? ` (retiré : ${sort.join(', ')})` : ''}`);
     }
     if (cles.includes('telephone') && m.telephone) {
       const avant = liste(client.telephones);
-      const apres = [String(m.telephone).trim(), ...avant.filter(x => tel(x) !== tel(m.telephone))].slice(0, 2);
+      const apres = [String(m.telephone).trim(), ...avant.filter(x => tel(x) !== tel(m.telephone))];
       const sort = avant.filter(x => !apres.map(tel).includes(tel(x)));
       maj.telephones = apres;
       faits.push(`Téléphone : ${apres.join(', ')}${sort.length ? ` (retiré : ${sort.join(', ')})` : ''}`);
