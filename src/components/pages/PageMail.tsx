@@ -358,15 +358,18 @@ export type ContactMail = Contact;
 type PourMail = { contact: Contact; rechercheId?: string | null };
 const destDe = (c: Contact): Dest[] => (mailsDe(c).length ? [{ cle: `c-${c.id}`, contact: c, email: mailsDe(c)[0] }] : []);
 
-function Redaction({ pour = null, enFenetre = false, onNavigate, onFermer, onEnvoye, refSale }: {
-  pour?: PourMail | null; enFenetre?: boolean;
+function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNavigate, onFermer, onEnvoye, refSale }: {
+  pour?: PourMail | null;
+  /* V3.88 : les contacts cochés dans la liste, tous en destinataires. */
+  pourPlusieurs?: Contact[] | null;
+  enFenetre?: boolean;
   onNavigate?: (page: string, data?: unknown) => void;
   onFermer?: () => void; onEnvoye?: () => void;
   /* Vrai dès que quelque chose est écrit : la fenêtre demande avant de fermer. */
   refSale?: React.MutableRefObject<boolean>;
 }) {
   const [contacts, setContacts] = useState<Contact[] | null>(null);
-  const [dests, setDests] = useState<Dest[]>(() => (pour ? destDe(pour.contact) : []));
+  const [dests, setDests] = useState<Dest[]>(() => (pour ? destDe(pour.contact) : pourPlusieurs ? pourPlusieurs.flatMap(destDe) : []));
   const [objet, setObjet] = useState('');
   const [style, setStyle] = useState<StyleMail>('simple');
   const [html, setHtml] = useState('');
@@ -567,6 +570,10 @@ function Redaction({ pour = null, enFenetre = false, onNavigate, onFermer, onEnv
         onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDepose(true); } }}
         onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDepose(false); }} onDrop={deposer}>
 
+        {pourPlusieurs && pourPlusieurs.some(c => !mailsDe(c).length) && (() => {
+          const sans = pourPlusieurs.filter(c => !mailsDe(c).length).map(nomDe);
+          return <div className={s.erreur}>{`${sans.length > 1 ? `${sans.length} contacts n’ont` : '1 contact n’a'} pas d’adresse e-mail sur sa fiche : ${sans.slice(0, 6).join(', ')}${sans.length > 6 ? '…' : ''}. Ils ne recevront rien.`}</div>;
+        })()}
         {pour && !mailsDe(pour.contact).length && !dests.length && (
           <div className={s.erreur}>{`${nomDe(pour.contact)} n’a pas d’adresse e-mail sur sa fiche : ajoute-la avec « Modifier », ou tape une adresse ci-dessous.`}</div>
         )}
@@ -659,8 +666,11 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
    V3.87 : sans contact, c'est « Envoyer un mail » du haut de l'écran
    (Alexandre : « que ça affiche un pop-up joli, qui reprend tout ce qu'il y
    a dans Nouveau mail, au lieu d'aller sur la page »). */
-export function FenetreMail({ contact = null, rechercheId = null, onFermer, onEnvoye }: {
-  contact?: ContactMail | null; rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
+export function FenetreMail({ contact = null, contacts = null, rechercheId = null, onFermer, onEnvoye }: {
+  contact?: ContactMail | null;
+  /* V3.88 : plusieurs contacts (la sélection de la liste). */
+  contacts?: ContactMail[] | null;
+  rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
 }) {
   const sale = useRef(false);
   const fermer = () => {
@@ -668,7 +678,7 @@ export function FenetreMail({ contact = null, rechercheId = null, onFermer, onEn
     onFermer();
   };
   const nom = contact ? nomDe(contact) : '';
-  const titre = contact ? `Écrire à ${nom}` : 'Envoyer un mail';
+  const titre = contact ? `Écrire à ${nom}` : contacts?.length ? `Envoyer un mail à ${contacts.length > 1 ? `${contacts.length} contacts` : nomDe(contacts[0])}` : 'Envoyer un mail';
   const fen = (
     <div className={s.voile}>
       <div className={`${s.fen} ${s.fenMail}`} role="dialog" aria-modal="true" aria-label={titre}>
@@ -676,12 +686,12 @@ export function FenetreMail({ contact = null, rechercheId = null, onFermer, onEn
           <span className={s.fenIc}><Ic n="mail" t={20} /></span>
           <div className={s.fenTx}>
             <h2>{titre}</h2>
-            <p>{contact ? 'Le mail part de arogelet@emilio-immo.com, à ton nom.' : 'À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom.'}</p>
+            <p>{contact ? 'Le mail part de arogelet@emilio-immo.com, à ton nom.' : contacts?.length ? 'Un mail par personne : chacun ne voit que son adresse. Il part de arogelet@emilio-immo.com, à ton nom.' : 'À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom.'}</p>
           </div>
           <button type="button" className={s.fermer} aria-label="Fermer" onClick={fermer}><Croix /></button>
         </div>
         <div className={s.fenCorps}>
-          <Redaction pour={contact ? { contact, rechercheId } : null} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
+          <Redaction pour={contact ? { contact, rechercheId } : null} pourPlusieurs={contacts} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
         </div>
       </div>
     </div>
