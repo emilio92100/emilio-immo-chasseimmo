@@ -18,10 +18,12 @@ export function sansMentions(texte: string, d: Donnees): string {
   return t.split('\n').filter(l => !LIGNES_MENTIONS.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-export async function reformulerAnnonce(d: Donnees): Promise<{ titre: string; texte: string }> {
+/* `brouillon` (V3.80) : le texte en cours dans la fenêtre « Modifier
+   l'annonce », pas encore enregistré dans la fiche. */
+export async function reformulerAnnonce(d: Donnees, brouillon?: { titre: string; texte: string }): Promise<{ titre: string; texte: string }> {
   version += 1;
-  const actuel = typeof d.annonceTexte === 'string' ? d.annonceTexte : '';
-  const titre = typeof d.annonceTitre === 'string' ? d.annonceTitre : '';
+  const actuel = brouillon ? brouillon.texte : typeof d.annonceTexte === 'string' ? d.annonceTexte : '';
+  const titre = brouillon ? brouillon.titre : typeof d.annonceTitre === 'string' ? d.annonceTitre : '';
   const r = await fetch('/api/biens-vente/annonce', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ faits: faitsAnnonce(d), texte: sansMentions(actuel, d), titre, version }),

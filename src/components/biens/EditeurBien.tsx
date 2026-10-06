@@ -50,7 +50,7 @@ function groupes(champs: TChamp[], d: Donnees): Groupe[] {
 
 /* `anime` : en « étape par étape », l'étape qui arrive glisse en place,
    ses blocs l'un après l'autre (V3.16). */
-function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; bienId: string; anime?: boolean }) {
+function BlocEtape({ e, i, n, d, maj, bienId, anime = false, sens = 1 }: { e: EtapeBien; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; bienId: string; anime?: boolean; sens?: 1 | -1 }) {
   const champProprio = e.champs.find(c => c.t === 'proprio') || null;
   const reste = champProprio ? e.champs.filter(c => c !== champProprio) : e.champs;
   const verrou = !!champProprio && !proprioOuvert(d);
@@ -60,7 +60,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
      acheteurs) ; vendus, ils sont ceux de l'acte. */
   const fige = permisBien({ etape: String(d._stade || '') as EtapeVente }).prixFige && e.champs.some(c => PRIX_FIGES.includes(c.cle));
   return (
-    <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
+    <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id} style={anime ? { ['--sens' as string]: sens } as React.CSSProperties : undefined}>
       <div className={s.etapeTete}>
         <span className={`${s.etapeIc} ${b.etapeIcVif}`}><Ic n={e.ic} t={22} /></span>
         <div className={b.etapeTeteTxt}>
@@ -78,7 +78,8 @@ function BlocEtape({ e, i, n, d, maj, bienId, anime = false }: { e: EtapeBien; i
       {champProprio && verrou && <div className={b.verrouMot}><Ic n="cadenas" t={14} />La suite s’ouvre dès que le propriétaire est choisi, créé, ou laissé pour plus tard.</div>}
       <div className={verrou ? b.suiteVerrou : champProprio && nouveau ? b.suiteNouveau : b.suite} inert={verrou || undefined} aria-disabled={verrou || undefined}>
         {groupes(reste, d).map((g, k) => (
-          <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect} data-sect={g.titre?.cle || undefined}>
+          <div key={g.titre?.cle || k} className={!g.titre && g.champs.every(c => SANS_CADRE.includes(c.t)) ? b.sectNu : b.sect} data-sect={g.titre?.cle || undefined}
+            style={anime ? { ['--k' as string]: k } as React.CSSProperties : undefined}>
             {g.titre && (
               <div className={b.sectT}>
                 <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
@@ -204,6 +205,8 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
      Alexandre : « Modifier » des surfaces renvoyait au début du formulaire. */
   const [etapeDepart, sectDepart] = (depart || '').split(':');
   const [etape, setEtape] = useState(() => Math.max(0, etapesDuBien(bien.etape).findIndex(e => e.id === etapeDepart)));
+  /* Le sens du dernier pas (V3.80) : l'étape arrive de la droite ou de la gauche. */
+  const [sens, setSens] = useState<1 | -1>(1);
   /* « Modifier » d'un bloc qui n'est pas encore ouvert à cette étape de
      vente (le prix d'un bien à suivre) : on le dit, au lieu d'ouvrir
      ailleurs sans un mot. */
@@ -395,6 +398,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
 
   const aller = (i: number) => {
     const k = Math.max(0, Math.min(ETAPES.length - 1, i));
+    setSens(k >= etape ? 1 : -1);
     setEtape(k);
     setVue('form');
     if (mode === 'tout') {
@@ -468,7 +472,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
             {semblables.length > 0 && <Semblables l={semblables} onOuvrir={id => { void ouvrirExistant(id); }} onIgnorer={id => setIgnores(l => [...l, id])} />}
             {mode === 'tout'
               ? ETAPES.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} />)
-              : <BlocEtape key={ETAPES[cur].id} e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} anime />}
+              : <BlocEtape key={ETAPES[cur].id} e={ETAPES[cur]} i={cur} n={ETAPES.length} d={dv} maj={maj} bienId={row.id} anime sens={sens} />}
             <div className={s.suite}>
               {mode === 'etapes' && cur > 0 ? <button type="button" className={s.btn} onClick={() => aller(cur - 1)}><Ic n="retour" t={15} />{ETAPES[cur - 1].court}</button> : <span />}
               {mode === 'etapes' && cur < ETAPES.length - 1

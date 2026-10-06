@@ -2,7 +2,7 @@
 import { euros } from '@/lib/mandat';
 import { num, txt } from '@/lib/actes';
 import {
-  argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, motMandat, nomProprio, specsBien, type BienVente, type EtatMandatDoc, type SuiviVente,
+  argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, motMandat, nomProprio, specsBien, villeAffichee, type BienVente, type EtatMandatDoc, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import b from './Biens.module.css';
@@ -114,7 +114,7 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, 
   const prix = prixCarte(bien);
   const etat = ligneEtat(bien, suivi, mandatDoc);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
-  const lieu = [bien.ville || txt(d, 'ville'), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
+  const lieu = [villeAffichee(bien.ville || txt(d, 'ville'), bien.code_postal || txt(d, 'cp')), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
   return (
     <button type="button" className={b.ligneB} onClick={onClick}>
@@ -150,7 +150,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevu
   const prix = prixCarte(bien);
   const etat = ligneEtat(bien, suivi, mandatDoc);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
-  const lieu = [bien.ville || txt(d, 'ville'), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
+  const lieu = [villeAffichee(bien.ville || txt(d, 'ville'), bien.code_postal || txt(d, 'cp')), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
   const conclu = bien.etape === 'compromis' || bien.etape === 'vendu';
   const hono = conclu ? honorairesVente(bien, suivi) : null;

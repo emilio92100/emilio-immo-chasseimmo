@@ -41,7 +41,14 @@
    obligatoires dessous, en un bandeau sur plusieurs colonnes (avant : une
    colonne de 220 px à droite, plus haute que le texte, et un grand blanc). */
 .annonceCorps { display: flex; flex-direction: column; gap: 12px; }
-.annonceTexte { font-size: 13.5px; line-height: 1.7; color: #3d4a5c; white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px 16px; border-radius: 14px; background: #fbfaf6; border: 1px solid #f1ead6; border-left: 3px solid #c9a84c; max-height: 420px; overflow: auto; min-width: 0; }
+/* V3.80 : replié, le titre et le début du texte ; un clic déplie. */
+.annonceApercu { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 11px 14px; border-radius: 12px; background: #fbfaf6; border: 1px solid #f1ead6; border-left: 3px solid #c9a84c; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: background .2s, border-color .2s; }
+.annonceApercu:hover { background: #f8f4e8; border-color: #eadfbd; }
+.annonceApercu b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.annonceApercu span { font-size: 13px; line-height: 1.55; color: #5b6878; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.annonceTexte p { margin: 0 0 .85em; white-space: pre-line; }
+.annonceTexte p:last-child { margin-bottom: 0; }
+.annonceTexte { font-size: 13.5px; line-height: 1.7; color: #3d4a5c; white-space: normal; overflow-wrap: anywhere; padding: 14px 16px; border-radius: 14px; background: #fbfaf6; border: 1px solid #f1ead6; border-left: 3px solid #c9a84c; max-height: 420px; overflow: auto; min-width: 0; }
 /* V3.79 : « Reformuler l'annonce » (l'IA), sa roue, ce qu'elle dit. */
 .annonceBtns { display: flex; gap: 8px; flex-shrink: 0; }
 .actIa { background: #fbf6e9; border-color: #ecdcae; color: #7a5d1c; }

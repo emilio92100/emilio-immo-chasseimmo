@@ -16,6 +16,7 @@ import {
   type ChampBien, type Donnees, type Observation, type Piece, type Photo, type PieceDossier,
 } from '@/lib/biens-vente';
 import { reformulerAnnonce } from './annonce-ia';
+import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { creerFicheProprio, deposerPhoto, deposerPiece, doublonsContact, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
@@ -766,6 +767,12 @@ function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
             <Ic n="plume" t={14} />{v ? 'Réécrire depuis la fiche' : 'Écrire un brouillon depuis la fiche'}
           </button>
         )}
+        {/* V3.80 : un texte d'un seul bloc (repris d'ImmoFacile) → ses paragraphes. */}
+        {!off && texteEnBloc(v) && (
+          <button type="button" className={b.mini} onClick={() => { setAvant({ titre: txt(d, 'annonceTitre'), texte: v }); maj('annonceTexte', aererTexte(v)); }}>
+            <Ic n="lignes" t={14} />Aérer en paragraphes
+          </button>
+        )}
         {v && (
           <button type="button" className={b.mini} onClick={() => { navigator.clipboard?.writeText(v).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1600); }).catch(() => {}); }}>
             <Ic n={copie ? 'check' : 'copier'} t={14} />{copie ? 'Copié' : 'Copier le texte'}
@@ -776,7 +783,7 @@ function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
       {erreur && <div className={s.erreur}>{erreur}</div>}
       {!erreur && avant && (
         <div className={b.iaInfo}>
-          {'Nouvelle version écrite. '}
+          {'Nouvelle version enregistrée. '}
           <button type="button" className={b.mini} onClick={() => { maj('annonceTitre', avant.titre); maj('annonceTexte', avant.texte); setAvant(null); }}><Ic n="retour" t={13} />Revenir au texte d’avant</button>
         </div>
       )}

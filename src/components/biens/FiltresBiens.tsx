@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { num } from '@/lib/actes';
-import { TYPES_BIEN, type BienVente } from '@/lib/biens-vente';
+import { TYPES_BIEN, villeAffichee, type BienVente } from '@/lib/biens-vente';
+import { txt } from '@/lib/actes';
 import { Ic } from '@/components/documents/ApercuActe';
 import { COULEURS, SaisieNombre } from './ChampsBien';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
+import l from '@/components/clients/FiltresAcheteurs.module.css';
 
 /* ═══ Affiner la liste des biens (V3.16) ══════════════════════════════════
    Une ligne sous les catégories : le type, la surface, les pièces, le
@@ -17,10 +19,13 @@ export type Tri = 'etape' | 'prixC' | 'prixD' | 'surface' | 'recents';
 export type Filtres = {
   types: string[]; pieces: number[]; dpeMax: string;
   surfMin: number | null; surfMax: number | null; budMin: number | null; budMax: number | null;
+  /* V3.80 (Alexandre : « dans Affiner, je n'ai pas Ville ; faire pareil que
+     pour les contacts ») : « Paris 16e », « Boulogne-Billancourt »… */
+  villes: string[];
 };
-export const FILTRES_VIDES: Filtres = { types: [], pieces: [], dpeMax: '', surfMin: null, surfMax: null, budMin: null, budMax: null };
+export const FILTRES_VIDES: Filtres = { types: [], pieces: [], dpeMax: '', surfMin: null, surfMax: null, budMin: null, budMax: null, villes: [] };
 export const nbFiltres = (f: Filtres) =>
-  (f.types.length ? 1 : 0) + (f.pieces.length ? 1 : 0) + (f.dpeMax ? 1 : 0) + (f.surfMin || f.surfMax ? 1 : 0) + (f.budMin || f.budMax ? 1 : 0);
+  (f.types.length ? 1 : 0) + (f.pieces.length ? 1 : 0) + (f.dpeMax ? 1 : 0) + (f.surfMin || f.surfMax ? 1 : 0) + (f.budMin || f.budMax ? 1 : 0) + (f.villes.length ? 1 : 0);
 
 const LETTRES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 const TRIS: { v: Tri; l: string; ic: string }[] = [
@@ -40,10 +45,15 @@ export function prixDe(x: BienVente): number | null {
 const surfaceDe = (x: BienVente) => x.surface ?? num(x.donnees || {}, 'surface') ?? num(x.donnees || {}, 'carrez');
 const piecesDe = (x: BienVente) => x.nb_pieces ?? num(x.donnees || {}, 'pieces');
 const typeDe = (x: BienVente) => x.type_bien || (typeof x.donnees?.typeBien === 'string' ? x.donnees.typeBien : '');
+/* La ville telle que la carte l'écrit (« Paris 16e »). */
+export const villeDe = (x: BienVente) => villeAffichee(x.ville || txt(x.donnees || {}, 'ville'), x.code_postal || txt(x.donnees || {}, 'cp'));
+const sansAccents = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const MAX_VILLES = 30;
 
 export function filtrer(l: BienVente[], f: Filtres): BienVente[] {
   return l.filter(x => {
     if (f.types.length && !f.types.includes(typeDe(x))) return false;
+    if (f.villes.length && !f.villes.includes(villeDe(x))) return false;
     if (f.pieces.length) {
       const n = piecesDe(x);
       if (!n || !f.pieces.some(k => (k >= 5 ? n >= 5 : n === k))) return false;
@@ -83,12 +93,13 @@ const entre = (a: number | null, z: number | null, u: string, f: (n: number) => 
   a && z ? `${f(a)} – ${f(z)} ${u}` : a ? `dès ${f(a)} ${u}` : z ? `jusqu’à ${f(z)} ${u}` : '';
 const nomType = (v: string) => TYPES_BIEN.find(t => t.v === v)?.l || v;
 
-type Panneau = 'type' | 'surface' | 'pieces' | 'budget' | 'dpe' | 'tri' | null;
+type Panneau = 'type' | 'ville' | 'surface' | 'pieces' | 'budget' | 'dpe' | 'tri' | null;
 
-function Puce({ l, on, ic, onClick }: { l: string; on: boolean; ic?: string; onClick: () => void }) {
+function Puce({ l, on, ic, n, onClick }: { l: string; on: boolean; ic?: string; n?: number; onClick: () => void }) {
   return (
-    <button type="button" className={`${s.pill} ${on ? s.pillOn : ''}`} aria-pressed={on} onClick={onClick}>
-      {ic && <Ic n={ic} t={15} />}{l}
+    <button type="button" className={`${s.pill} ${on ? s.pillOn : ''}`} aria-pressed={on} onClick={onClick}
+      style={n === 0 && !on ? { opacity: 0.45 } : undefined}>
+      {ic && <Ic n={ic} t={15} />}{l}{n !== undefined && <i className={b.affPuceN}>{n}</i>}
     </button>
   );
 }
@@ -104,14 +115,24 @@ export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total, vue,
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [ouvert]);
-  const basculer = (p: Panneau) => setOuvert(o => (o === p ? null : p));
+  const [qVille, setQVille] = useState('');
+  const basculer = (p: Panneau) => { if (p === 'ville') setQVille(''); setOuvert(o => (o === p ? null : p)); };
   /* Les types proposés : ceux de la liste, et ceux déjà choisis. */
   const presents = new Set(biens.map(typeDe).filter(Boolean));
   const types = TYPES_BIEN.filter(t => presents.has(t.v) || f.types.includes(t.v));
   const actifs = nbFiltres(f);
+  /* Les villes des biens, de la plus fréquente à la moins fréquente, et
+     celles déjà choisies. */
+  const parVille = new Map<string, number>();
+  biens.forEach(x => { const v = villeDe(x); if (v) parVille.set(v, (parVille.get(v) || 0) + 1); });
+  const villes = [...parVille.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'fr')).map(x => x[0]);
+  f.villes.forEach(v => { if (!villes.includes(v)) villes.push(v); });
+  const combien = (v: string) => filtrer(biens, { ...f, villes: [v] }).length;
+  const plusieurs = (l2: string[], mot: string) => (l2.length === 1 ? l2[0] : l2.length ? `${l2.length} ${mot}` : '');
 
   const boutons: { p: Exclude<Panneau, null>; l: string; ic: string; v: string }[] = [
     { p: 'type', l: 'Type', ic: 'maison', v: f.types.length === 1 ? nomType(f.types[0]) : f.types.length ? `${f.types.length} types` : '' },
+    { p: 'ville', l: 'Ville', ic: 'lieu', v: plusieurs(f.villes, 'villes') },
     { p: 'surface', l: 'Surface', ic: 'regle', v: entre(f.surfMin, f.surfMax, 'm²') },
     { p: 'pieces', l: 'Pièces', ic: 'plan', v: [...f.pieces].sort((x, y) => x - y).map(x => (x >= 5 ? '5+' : String(x))).join(', ') },
     { p: 'budget', l: 'Budget', ic: 'euro', v: entre(f.budMin, f.budMax, '€', k) },
@@ -161,6 +182,40 @@ export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total, vue,
               ))}
             </div>
           )}
+          {/* La ville (V3.80), comme dans Contacts : on tape, la liste se
+              réduit ; Entrée coche la première trouvée. */}
+          {ouvert === 'ville' && (() => {
+            const q = sansAccents(qVille.trim());
+            const trouvees = q ? villes.filter(v => sansAccents(v).includes(q)) : villes;
+            const tete = q ? trouvees : trouvees.slice(0, MAX_VILLES);
+            const vues = [...f.villes.filter(v => !tete.includes(v)), ...tete];
+            const reste = trouvees.length - tete.length;
+            return (
+              <>
+                {villes.length > 0 && (
+                  <label className={l.cherche}>
+                    <Ic n="loupe" t={15} e={2.2} />
+                    <input value={qVille} onChange={e => setQVille(e.target.value)} placeholder={`Chercher parmi ${villes.length} ville${villes.length > 1 ? 's' : ''}…`}
+                      aria-label="Chercher une ville" autoFocus={typeof window !== 'undefined' && window.innerWidth > 760}
+                      onKeyDown={e => {
+                        if (e.key !== 'Enter' || !q || !trouvees.length) return;
+                        e.preventDefault();
+                        const v = trouvees[0];
+                        if (!f.villes.includes(v)) onF({ ...f, villes: [...f.villes, v] });
+                        setQVille('');
+                      }} />
+                    {qVille && <button type="button" className={l.chercheVider} onClick={() => setQVille('')} aria-label="Effacer la recherche"><Ic n="croix" t={13} e={2.4} /></button>}
+                  </label>
+                )}
+                <div className={s.pills}>
+                  {villes.length === 0 && <span className={b.vide}>Aucune ville saisie sur ces biens.</span>}
+                  {q && trouvees.length === 0 && <span className={b.vide}>{`Aucune ville ne contient « ${qVille.trim()} ».`}</span>}
+                  {vues.map(v => <Puce key={v} l={v} n={combien(v)} on={f.villes.includes(v)} onClick={() => onF({ ...f, villes: f.villes.includes(v) ? f.villes.filter(x => x !== v) : [...f.villes, v] })} />)}
+                </div>
+                {reste > 0 && <p className={b.affAide}>{`Et ${reste} autre${reste > 1 ? 's' : ''} ville${reste > 1 ? 's' : ''} : tape le début du nom pour ${reste > 1 ? 'les' : 'la'} trouver.`}</p>}
+              </>
+            );
+          })()}
           {ouvert === 'surface' && (
             <>
               <div className={s.pills}>

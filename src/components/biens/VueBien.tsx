@@ -5,7 +5,7 @@
    offres, le propriétaire. Dessous, les prochaines visites et ce qui s'est
    passé dernièrement. Maquettes validées : « La nouvelle fiche bien ». */
 
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import Depliant from '@/components/shared/Depliant';
 import { Ic } from '@/components/documents/ApercuActe';
 import v from './VueBien.module.css';
@@ -64,24 +64,38 @@ export function ParcoursEstimation({ titre, jalons, ensuite, action, onDejaSigne
   titre: string; jalons: Jalon[]; ensuite: string; action?: { l: string; onClick: () => void }; onDejaSigne: () => void; children?: ReactNode;
 }) {
   const n = jalons.findIndex(j => j.etat === 'encours');
+  const actuel = n >= 0 ? jalons[n] : null;
+  /* V3.80 (Alexandre : « plus joli, plus moderne, ou plus petit : ça prend
+     pas mal d'espace, il faut scroller ») : une barre en segments, les
+     jalons en une ligne sous elle ; au téléphone, les segments et le seul
+     jalon en cours. */
   return (
     <section className={v.parcours}>
       <div className={v.parcoursT}>
-        <span className={v.parcoursIc}><Ic n="regle" t={17} /></span>
+        <span className={v.parcoursIc}><Ic n="regle" t={15} /></span>
         <h3>{titre}</h3>
-        <span className={v.parcoursN}>{n >= 0 ? `étape ${n + 1} sur ${jalons.length}` : ''}</span>
+        <span className={v.parcoursN}>{n >= 0 ? `Étape ${n + 1} sur ${jalons.length}` : 'Terminé'}</span>
       </div>
       <ol className={v.jalons} style={{ gridTemplateColumns: `repeat(${jalons.length}, minmax(0, 1fr))` }}>
-        {jalons.map(j => (
-          <li key={j.cle} data-etat={j.etat}>
-            <span className={v.jRond}><Ic n={j.etat === 'fait' ? 'check' : j.ic} t={j.etat === 'fait' ? 16 : 15} e={j.etat === 'fait' ? 2.8 : 1.9} /></span>
-            <span className={v.jTx}><b>{j.l}</b><small>{j.v}</small></span>
+        {jalons.map((j, i) => (
+          <li key={j.cle} data-etat={j.etat} title={`${j.l} : ${j.v}`} style={{ ['--i' as string]: i } as CSSProperties}>
+            <span className={v.jBarre} aria-hidden="true" />
+            <span className={v.jLigne}>
+              <span className={v.jRond}><Ic n={j.etat === 'fait' ? 'check' : j.ic} t={j.etat === 'fait' ? 12 : 12} e={j.etat === 'fait' ? 3 : 2.1} /></span>
+              <span className={v.jTx}><b>{j.l}</b><small>{j.v}</small></span>
+            </span>
           </li>
         ))}
       </ol>
+      {actuel && (
+        <div className={v.jActuel}>
+          <span className={v.jRond}><Ic n={actuel.ic} t={13} e={2.1} /></span>
+          <span className={v.jTx}><b>{actuel.l}</b><small>{actuel.v}</small></span>
+        </div>
+      )}
       {children}
       <div className={v.ensuite}>
-        <span>{`Ensuite : ${ensuite}`}</span>
+        <span><b>Ensuite</b>{` · ${ensuite}`}</span>
         <span className={v.ensuiteBtns}>
           {action && <button type="button" className={v.ensuiteBtn} onClick={action.onClick}>{action.l}</button>}
           <button type="button" className={v.ensuiteLien} onClick={onDejaSigne}>Le mandat est déjà signé ?</button>

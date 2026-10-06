@@ -6,6 +6,8 @@ import { ETATS_PIECE, LONGUEUR_ANNONCE, echangesDe, etapeDe, m2, montantActuel, 
 import { Ic } from '@/components/documents/ApercuActe';
 import Depliant from '@/components/shared/Depliant';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
+import { paragraphes } from '@/lib/annonce-texte';
+import FenAnnonce from './FenAnnonce';
 import { COULEURS, habitable, nbPrincipales } from './ChampsBien';
 import f from '@/components/fiche/FriseSuivi.module.css';
 import o from './OngletsBien.module.css';
@@ -175,14 +177,19 @@ export function Lettres({ genre, v, titre }: { genre: 'dpe' | 'ges'; v: string; 
    d'avant ». `onReformuler` rend la nouvelle version ; `onAppliquer`
    l'enregistre dans la fiche. */
 const fr = (n: number) => n.toLocaleString('fr-FR');
-export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformuler, onAppliquer }: {
-  titre?: string; texte: string; mentions: { ok: boolean; l: string }[]; onEcrire: () => void;
-  onReformuler?: () => Promise<{ titre: string; texte: string }>; onAppliquer?: (titre: string, texte: string) => void;
+export function CarteAnnonce({ titre = '', texte, mentions, mentionsTexte, onEcrire, onReformuler, onAppliquer }: {
+  titre?: string; texte: string; mentions: { ok: boolean; l: string; aide?: string }[]; onEcrire: () => void;
+  /* V3.80 : les mentions telles qu'elles s'écrivent (« Ajouter les mentions
+     à la fin », dans la fenêtre). */
+  mentionsTexte?: string;
+  onReformuler?: (brouillon?: { titre: string; texte: string }) => Promise<{ titre: string; texte: string }>; onAppliquer?: (titre: string, texte: string) => void;
 }) {
-  /* V3.45 — Alexandre : « il faut que le texte soit déjà affiché, pas
-     appuyer sur Lire le texte ». Il s'affiche d'office ; « Replier le
-     texte » le range. */
-  const [replie, setReplie] = useState(false);
+  /* V3.80 (Alexandre : « le texte de l'annonce, il faut le replier par
+     défaut ») : replié, on lit le titre et le début ; « Afficher le texte »
+     le déplie. (V3.45 l'avait déplié d'office.) */
+  const [replie, setReplie] = useState(true);
+  /* « Modifier » ouvre la fenêtre de l'annonce (V3.80), plus l'éditeur entier. */
+  const [fen, setFen] = useState(false);
   const [copie, setCopie] = useState(false);
   const [ecrit, setEcrit] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -226,7 +233,7 @@ export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformul
               {ecrit ? 'L’IA écrit…' : texte ? 'Reformuler l’annonce' : 'Rédiger avec l’IA'}
             </button>
           )}
-          <button type="button" className={`${o.act} ${texte || ia ? '' : o.actMarine}`} onClick={onEcrire}>{texte ? 'Modifier' : 'Écrire l’annonce'}</button>
+          <button type="button" className={`${o.act} ${texte || ia ? '' : o.actMarine}`} onClick={onAppliquer ? () => setFen(true) : onEcrire}>{texte ? 'Modifier' : 'Écrire l’annonce'}</button>
         </div>
       </div>
       {(erreur || avant) && (
@@ -239,6 +246,12 @@ export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformul
           )}
         </div>
       )}
+      {texte && replie && (
+        <button type="button" className={o.annonceApercu} onClick={() => setReplie(false)} aria-label="Afficher le texte de l’annonce">
+          {titre && <b>{titre}</b>}
+          <span>{texte}</span>
+        </button>
+      )}
       {texte && (
         <Depliant ouvert={!replie} ecart={10}>
           {/* V3.79 (Alexandre : « bien voir que c'est le texte de l'annonce ;
@@ -247,7 +260,8 @@ export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformul
               sous un texte court). La carte s'appelle « Le texte de
               l'annonce », plus « L'annonce ». */}
           <div className={o.annonceCorps}>
-            <div className={`${o.annonceTexte} ${ecrit ? o.annonceTexteEcrit : ''}`}>{titre && <b className={o.annonceTitre}>{titre}</b>}{texte}</div>
+            {/* V3.80 : en paragraphes (une ligne vide entre deux). */}
+            <div className={`${o.annonceTexte} ${ecrit ? o.annonceTexteEcrit : ''}`}>{titre && <b className={o.annonceTitre}>{titre}</b>}{paragraphes(texte).map((x, i) => <p key={i}>{x}</p>)}</div>
             <div className={o.longueur} data-ok={assez ? 'oui' : 'non'}>
               <span className={o.longueurBarre}><i style={{ width: `${Math.min(100, (n / LONGUEUR_ANNONCE) * 100)}%` }} /></span>
               <span className={o.longueurTx}>{assez ? `${fr(n)} caractères · les ${fr(LONGUEUR_ANNONCE)} sont atteints` : `${fr(n)} caractères · encore ${fr(LONGUEUR_ANNONCE - n)} pour atteindre ${fr(LONGUEUR_ANNONCE)}`}</span>
@@ -276,6 +290,11 @@ export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformul
             <Ic n={copie ? 'check' : 'copier'} t={13} />{copie ? 'Copié' : 'Copier le texte'}
           </button>
         </div>
+      )}
+      {fen && onAppliquer && (
+        <FenAnnonce titre={titre} texte={texte} mentions={mentions} mentionsTexte={mentionsTexte}
+          onReformuler={onReformuler} onEnregistrer={(t, x) => { setAvant(null); onAppliquer(t, x); }}
+          onFiche={() => { setFen(false); onEcrire(); }} onFermer={() => setFen(false)} />
       )}
     </div>
   );
@@ -457,6 +476,10 @@ const familleDe = (nom: string): GenrePiece => {
 export type SurfacesBien = {
   surface: number | null; carrez: number | null; sejour: number | null; terrain: number | null;
   carrezAttendu: boolean; chambres: number | null;
+  /* V3.80 : le nombre de pièces de la fiche (« Pièces : 4 »). Avant, la tuile
+     ne comptait que le détail pièce par pièce : vide pour un bien repris
+     d'ImmoFacile, elle affichait « — » alors que la fiche dit 4. */
+  pieces: number | null;
   annexes: { ic: string; l: string; v: string }[];
 };
 export function OngletSurfaces({ s: x, pieces, onPieces, onBien }: { s: SurfacesBien; pieces: Piece[]; onPieces: () => void; onBien: () => void }) {
@@ -480,7 +503,8 @@ export function OngletSurfaces({ s: x, pieces, onPieces, onBien }: { s: Surfaces
   });
   if (x.carrezAttendu || x.carrez) tuiles.push({ ic: 'regle', ton: 'bleu', l: 'Loi Carrez', v: x.carrez ? m2(x.carrez) : 'À mesurer', sous: x.carrez ? 'Mesurage du diagnostiqueur' : 'Obligatoire pour vendre un lot de copropriété' });
   if (sejour) tuiles.push({ ic: 'canape', ton: 'bleu', l: 'Séjour', v: m2(sejour), sous: x.surface ? `${Math.round((sejour / x.surface) * 100)} % de la surface` : undefined });
-  if (princ || x.chambres) tuiles.push({ ic: 'plan', ton: 'violet', l: 'Pièces', v: princ ? `${princ} pièce${princ > 1 ? 's' : ''}` : '—', sous: x.chambres ? `dont ${x.chambres} chambre${x.chambres > 1 ? 's' : ''}` : undefined });
+  const nbP = x.pieces || princ;
+  if (nbP || x.chambres) tuiles.push({ ic: 'plan', ton: 'violet', l: 'Pièces', v: nbP ? `${nbP} pièce${nbP > 1 ? 's' : ''}` : '—', sous: x.chambres ? `dont ${x.chambres} chambre${x.chambres > 1 ? 's' : ''}` : undefined });
   if (x.terrain) tuiles.push({ ic: 'terrain', ton: 'vert', l: 'Terrain', v: m2(x.terrain) });
   return (
     <div className={o.col}>

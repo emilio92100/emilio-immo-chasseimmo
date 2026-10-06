@@ -12,8 +12,10 @@ import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenMandat, FenNouveau } from './FenetresBien';
 import ImportBiensIF from './ImportBiensIF';
+import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, supprimerBien, supprimerBrouillon, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, type ListeBiens } from './outils';
+import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 
@@ -27,9 +29,15 @@ import b from './Biens.module.css';
 
 type Filtre = 'tout' | EtapeVente | 'archives';
 const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
-/* Les catégories toujours montrées ; « En pause », « Retirés » et
-   « Annonces type » (V3.79) seulement quand il y en a. */
-const CATEGORIES: EtapeVente[] = ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis', 'vendu'];
+/* V3.80 (Alexandre : « trop de sous-catégories, on ne comprend pas trop ;
+   mandat en cours en premier, ensuite estimation, et c'est tout ; les restes,
+   un petit bouton pour filtrer ») : deux tuiles sur la ligne, les autres
+   étapes dans « Autres étapes ▾ », « Tous » et « Archivés » à droite.
+   « Mandats en cours » compte aussi les biens sous offre et sous compromis :
+   leur mandat court toujours. */
+const PRINCIPALES: EtapeVente[] = ['mandat', 'estimation'];
+const AUTRES: EtapeVente[] = ['offre', 'compromis', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
+const dansEtape = (x: BienVente, f: EtapeVente) => (f === 'mandat' ? EN_COURS.includes(x.etape) : x.etape === f);
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const lireBienUrl = () => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('bien'));
@@ -41,9 +49,10 @@ function ecrireBienUrl(id: string | null) {
   if (url !== window.location.pathname + window.location.search) window.history.pushState(null, '', url);
 }
 
-/* La catégorie d'une vue (« estimation »…) ; rien de reconnu : « Tous ». */
+/* La catégorie d'une vue (« estimation »…) ; rien de reconnu : les mandats
+   en cours (V3.80 : « quand on arrive, on arrive sur mandat en cours »). */
 const lireFiltre = (v: string | null): Filtre =>
-  v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'tout';
+  v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'mandat';
 
 /* « C'est vendu » : le bandeau qui le confirme, en haut de la liste (V3.47). */
 export function BandeauVendu({ titre, texte, onFiche, onVendus, onFermer }: { titre: string; texte: string; onFiche: () => void; onVendus: () => void; onFermer: () => void }) {
@@ -80,6 +89,12 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   });
   const choisirVue = (x: 'cartes' | 'lignes') => { setVue(x); try { localStorage.setItem('biens.vue', x); } catch { /* sans mémoire */ } };
   const [ouvert, setOuvert] = useState<string | null>(null);
+  /* V3.80 (Alexandre : « quand on clique sur le bien, il faut que
+     l'apparition se fasse jolie ») : la fiche monte en fondu, la liste
+     redescend au retour ; un lien direct vers une fiche montre sa
+     silhouette le temps de lire la liste. */
+  const [retour, setRetour] = useState(false);
+  const [attendu] = useState(() => lireBienUrl());
   /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
      place, sans recharger ; une fiche de bien ouverte se referme (V3.25). */
   useEffect(() => {
@@ -146,6 +161,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   }, []);
 
   const ouvrir = (id: string | null) => {
+    setRetour(!id && !!ouvert);
     setOuvert(id);
     ecrireBienUrl(id);
     document.querySelector('main')?.scrollTo({ top: 0 });
@@ -245,11 +261,37 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* Les filtres fins comptent comme la recherche : les nombres des
      catégories les suivent. */
   const cherches = filtrer(trouves, fins);
-  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || x.etape === filtre;
+  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || dansEtape(x, filtre);
   const parEtape = (p: BienVente, r: BienVente) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at);
   const visibles = trier(cherches.filter(dansCategorie), tri, parEtape);
   const avantFiltres = trouves.filter(dansCategorie).length;
-  const n = (e: EtapeVente) => cherches.filter(x => x.etape === e).length;
+  const n = (e: EtapeVente) => cherches.filter(x => dansEtape(x, e)).length;
+  /* Une recherche qui trouve ailleurs que dans la catégorie ouverte : on le
+     dit, avec de quoi tout voir (sinon « 12 rue… » semble introuvable). */
+  const ailleurs = q && filtre !== 'tout' && filtre !== 'archives' ? cherches.filter(x => !dansCategorie(x)).length : 0;
+
+  /* V3.80 (Alexandre : « les textes importés s'affichent en bordel ; est-ce
+     qu'on peut tout modifier d'un seul trait ») : les annonces reprises
+     d'ImmoFacile d'un seul bloc, à mettre en paragraphes d'un clic. Le texte
+     d'origine reste dans la fiche (annonceTexteOrigine). */
+  const enBloc = useMemo(() => (liste?.biens || []).filter(x => typeof x.donnees?.refImmofacile === 'string' && typeof x.donnees?.annonceTexte === 'string' && texteEnBloc(x.donnees.annonceTexte)), [liste]);
+  const [aeration, setAeration] = useState<{ fait: number; total: number; erreurs: number } | null>(null);
+  const [aerationCachee, setAerationCachee] = useState(false);
+  async function aererTout() {
+    const l = enBloc;
+    setAeration({ fait: 0, total: l.length, erreurs: 0 });
+    let fait = 0, erreurs = 0;
+    for (const x of l) {
+      const t = String(x.donnees?.annonceTexte || '');
+      try {
+        const r = await poserDansBien(x.id, { annonceTexte: aererTexte(t), ...(typeof x.donnees?.annonceTexteOrigine === 'string' ? {} : { annonceTexteOrigine: t }) });
+        majBien(r);
+        fait += 1;
+      } catch { erreurs += 1; }
+      setAeration({ fait, total: l.length, erreurs });
+    }
+    if (erreurs) setErreur(`${erreurs} annonce${erreurs > 1 ? 's n’ont' : ' n’a'} pas pu être mise${erreurs > 1 ? 's' : ''} en paragraphes : relance « Les mettre en paragraphes ».`);
+  }
 
   const exclus = actifs.filter(x => EN_COURS.includes(x.etape) && x.mandat_type === 'exclusif').length;
   const honoCompromis = actifs.filter(x => x.etape === 'compromis').reduce((t, x) => t + (honorairesVente(x, (liste?.suivi || []).filter(s2 => s2.bien_id === x.id)) || 0), 0);
@@ -281,29 +323,36 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   if (bienOuvert && liste) {
     return (
       <>
-        <FicheBien key={bienOuvert.id} bien={bienOuvert} liste={liste} onRetour={() => ouvrir(null)} onMaj={majBien}
+        <div key={bienOuvert.id} className="ecran-avant">
+        <FicheBien bien={bienOuvert} liste={liste} onRetour={() => ouvrir(null)} onMaj={majBien}
           onSupprime={id => { setListe(l => (l ? { ...l, biens: l.biens.filter(x => x.id !== id) } : l)); ouvrir(null); }}
           onModifier={etape => setEdition({ bien: bienOuvert, etape })} onNavigate={onNavigate} onRecharger={() => { void charger(); }}
           onOuvrir={id => ouvrir(id)}
           onVendu={(r, texte) => { setAnnonce({ id: r.id, titre: r.titre || titreBien(r.donnees || {}), texte }); setFiltre('mandat'); ouvrir(null); }} />
+        </div>
         {editeur}
       </>
     );
   }
 
+  if (!liste && attendu) return <SqueletteFiche label="Chargement du bien" />;
   const installer = erreur === MESSAGE_SQL;
   return (
-    <div className={s.page}>
+    <div className={`${s.page} ${retour ? 'ecran-arriere' : ''}`}>
       <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase}
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
         bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
         bouton2={installer ? undefined : { lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportIF(true) }}
         label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
+        libMenu="Autres étapes"
         tuiles={biens.length === 0 ? [] : [
-          { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, ic: <Ic n="maison" t={14} e={2.1} /> },
-          ...[...CATEGORIES, 'suspendu' as const, 'retire' as const, 'annonce_type' as const].map(k => etapeDe(k)).filter(e => CATEGORIES.includes(e.k) || n(e.k) > 0)
-            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => x.etape === e.k).length : n(e.k), couleur: e.c })),
-          ...(archives.length ? [{ cle: 'archives', lib: 'Archivés', n: archives.length, couleur: '#cbd5e1' }] : []),
+          /* Les deux étapes du quotidien, puis les autres dans le menu (celles
+             qui ont des biens, ou celle qu'on regarde). */
+          ...[...PRINCIPALES, ...AUTRES.filter(k => (filtre === 'archives' ? actifs.some(x => x.etape === k) : n(k) > 0) || k === filtre)].map(k => etapeDe(k))
+            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c, menu: !PRINCIPALES.includes(e.k) })),
+          { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, fin: true, ic: <Ic n="maison" t={14} e={2.1} /> },
+          /* « Archivés » toujours là, même vide : sa place ne bouge pas. */
+          { cle: 'archives', lib: 'Archivés', n: archives.length, archive: true },
         ]} />
 
       {annonce && (
@@ -333,8 +382,31 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         </div>
       )}
 
+      {liste && !installer && !aerationCachee && (enBloc.length > 0 || aeration) && (
+        <div className={b.aerer} role="status">
+          <span className={b.aererIc}><Ic n="lignes" t={16} e={2.1} /></span>
+          {aeration && aeration.fait + aeration.erreurs >= aeration.total ? (
+            <span className={b.aererTx}><b>{`${aeration.fait} annonce${aeration.fait > 1 ? 's mises' : ' mise'} en paragraphes.`}</b>{' Le texte d’origine reste gardé dans chaque fiche.'}</span>
+          ) : aeration ? (
+            <span className={b.aererTx}><b>{`Mise en paragraphes… ${aeration.fait + aeration.erreurs} sur ${aeration.total}`}</b><i className={b.aererBarre}><i style={{ width: `${((aeration.fait + aeration.erreurs) / aeration.total) * 100}%` }} /></i></span>
+          ) : (
+            <span className={b.aererTx}><b>{enBloc.length > 1 ? `${enBloc.length} annonces reprises d’ImmoFacile sont d’un seul bloc.` : 'Une annonce reprise d’ImmoFacile est d’un seul bloc.'}</b>{' Les mêmes phrases, regroupées en paragraphes ; rien n’est réécrit.'}</span>
+          )}
+          {!aeration && <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => { void aererTout(); }}>{enBloc.length > 1 ? 'Les mettre en paragraphes' : 'La mettre en paragraphes'}</button>}
+          {(!aeration || aeration.fait + aeration.erreurs >= aeration.total) && (
+            <button type="button" className={b.annonceVenteX} aria-label="Fermer" onClick={() => { setAerationCachee(true); setAeration(null); }}><Ic n="croix" t={14} /></button>
+          )}
+        </div>
+      )}
+      {liste && !installer && ailleurs > 0 && (
+        <div className={b.ailleurs} role="status">
+          <Ic n="loupe" t={15} />
+          <span>{ailleurs > 1 ? `${ailleurs} autres biens correspondent à « ${cherche.trim()} » dans d’autres étapes.` : `Un autre bien correspond à « ${cherche.trim()} » dans une autre étape.`}</span>
+          <button type="button" className={b.lien} onClick={() => setFiltre('tout')}>Voir dans « Tous »</button>
+        </div>
+      )}
       {liste && !installer && biens.length > 0 && (
-        <FiltresBiens biens={filtre === 'archives' ? archives : actifs} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres}
+        <FiltresBiens biens={(filtre === 'archives' ? archives : actifs).filter(dansCategorie)} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres}
           vue={vue} onVue={choisirVue} />
       )}
 

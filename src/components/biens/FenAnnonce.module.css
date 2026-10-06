@@ -1,0 +1,59 @@
+/* Modifier l'annonce, dans une fenêtre (V3.80) : voir FenAnnonce.tsx. */
+.corps { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.champ { display: flex; flex-direction: column; gap: 6px; }
+.champ > span { font-size: 12px; font-weight: 800; letter-spacing: .4px; color: #64748b; }
+
+.outils { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.vide { flex: 1 1 auto; }
+.outil {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid #e3e8f0; background: #fff; color: #34496e; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.outil:hover:not(:disabled) { background: #f5f7fa; border-color: #cfd7e3; }
+.outil:disabled { opacity: .55; cursor: default; }
+.outilIa { border-color: #ecdcb0; background: #fdf8ec; color: #7a5d1c; }
+.outilIa:hover:not(:disabled) { background: #fbf1d6; border-color: #e0c77d; }
+.roue { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(169, 130, 47, .3); border-top-color: #a9822f; animation: roue .8s linear infinite; }
+@keyframes roue { to { transform: rotate(360deg); } }
+
+.info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; font-weight: 600; background: #f0fdf4; color: #15803d; animation: arrive .3s cubic-bezier(.16, 1, .3, 1) both; }
+.info button { display: inline-flex; align-items: center; gap: 5px; border: none; background: none; padding: 0; color: #1a2332; font: 700 12.5px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+@keyframes arrive { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Le texte : assez haut pour lire l'annonce entière, les paragraphes visibles. */
+.texte { min-height: 220px; height: 34vh; max-height: 480px; resize: vertical; font-size: 14px !important; line-height: 1.65 !important; padding: 14px 16px !important; border-left: 3px solid #c9a84c !important; background: #fffefb !important; }
+.texteEcrit { opacity: .55; }
+
+.longueur { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; color: #b45309; }
+.longueur[data-ok='oui'] { color: #15803d; }
+.barre { flex: 0 0 140px; height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; }
+.barre i { display: block; height: 100%; border-radius: 99px; background: #e0a43a; transition: width .4s cubic-bezier(.16, 1, .3, 1); }
+.longueur[data-ok='oui'] .barre i { background: #16a34a; }
+
+.mentions { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px 13px; border-radius: 14px; border: 1px solid #eef1f6; background: #fcfdfe; }
+.mentionsT { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mentionsT b { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #64748b; }
+.mentionsT span { font-size: 11.5px; font-weight: 800; padding: 2px 9px; border-radius: 99px; background: #dcfce7; color: #15803d; }
+.mentionsT span[data-ok='non'] { background: #ffedd5; color: #9a3412; }
+.lien { margin-left: auto; border: none; background: none; padding: 0; color: #a07c28; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+.lien:hover { text-decoration: underline; text-underline-offset: 3px; }
+.mentions ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 7px 20px; }
+.mentions li { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.35; color: #475569; min-width: 0; }
+.mentions li > span { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #dcfce7; color: #15803d; }
+.mentions li[data-ok='non'] { color: #9a3412; font-weight: 600; }
+.mentions li[data-ok='non'] > span { background: #ffedd5; color: #c2410c; }
+.mentionsNote { margin: 0; font-size: 12px; line-height: 1.45; color: #64748b; }
+
+.quitter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
+.quitter > span { flex: 1 1 200px; font-size: 13px; font-weight: 700; color: #9a3412; }
+
+@media (max-width: 720px) {
+  .texte { height: 36vh; min-height: 200px; font-size: 14.5px !important; }
+  .outil { height: 36px; }
+  .vide { display: none; }
+  .mentions ul { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .info { animation: none; }
+}

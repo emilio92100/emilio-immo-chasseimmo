@@ -206,10 +206,14 @@
 .bref { background: white; border: 1px solid #e3e8f0; border-radius: 18px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; box-shadow: 0 1px 3px rgba(15,23,42,.03); }
 .brefT { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .brefT h3 { margin: 0; flex: 1 1 auto; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
-.faits { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 10px; }
+/* V3.80 : une seule ligne. Les tuiles se partagent la largeur ; plus
+   étroit, la ligne défile au doigt plutôt que de passer à la ligne. */
+.faits { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; padding: 2px 1px 6px; margin: -2px -1px -6px; }
+.faits::-webkit-scrollbar { display: none; }
+.faits > .fait { flex: 1 1 0; min-width: 132px; scroll-snap-align: start; }
 .fait {
   --t: #a07c28; --tf: #fbf1d6;
-  display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 14px; min-width: 0;
+  display: flex; align-items: center; gap: 10px; padding: 10px 11px; border-radius: 14px; min-width: 0;
   background: #fff; border: 1px solid #e6ebf2; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 20px -18px rgba(26,35,50,.45);
   animation: faitEntre .45s cubic-bezier(.16,1,.3,1) backwards;
 }
@@ -220,10 +224,10 @@
 .fait[data-ton='vert'] { --t: #15803d; --tf: #e7f8ee; }
 .fait[data-ton='ambre'] { --t: #b45309; --tf: #fff3df; }
 .fait > div { min-width: 0; }
-.fait b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; color: #1a2332; line-height: 1.2; overflow-wrap: anywhere; }
-.fait small { display: block; margin-top: 2px; font-size: 12px; color: #64748b; line-height: 1.3; }
-.faitIc { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: var(--tf); color: var(--t); display: flex; align-items: center; justify-content: center; }
-.faitDpe { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font: 800 19px 'Plus Jakarta Sans', sans-serif; box-shadow: 0 2px 6px rgba(15,23,42,.12); }
+.fait b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; color: #1a2332; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fait small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin-top: 2px; font-size: 11.5px; color: #64748b; line-height: 1.3; overflow: hidden; }
+.faitIc { flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; background: var(--tf); color: var(--t); display: flex; align-items: center; justify-content: center; }
+.faitDpe { flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font: 800 19px 'Plus Jakarta Sans', sans-serif; box-shadow: 0 2px 6px rgba(15,23,42,.12); }
 @keyframes faitEntre { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .fait { animation: none; } }
 
@@ -539,6 +543,13 @@
 .modesBarre { margin-left: 0; }
 .fil { position: relative; flex-shrink: 0; background: white; border-bottom: 1px solid #e3e8f0; }
 div.fil > .edPas { border-bottom: none; padding: 10px 18px; gap: 4px; }
+/* V3.80 : le fond de l'étape en cours glisse (FilEtapes.tsx). */
+div.fil > .edPas { position: relative; }
+.filPastille { position: absolute; top: 0; left: 0; z-index: 0; border-radius: 99px; background: var(--emilio-fond); box-shadow: 0 8px 18px -10px rgba(26, 35, 50, .7); pointer-events: none; }
+.filPastilleAnime { transition: transform .45s cubic-bezier(.16, 1, .3, 1), width .45s cubic-bezier(.16, 1, .3, 1); }
+.edPas[data-pastille] > button { position: relative; z-index: 1; transition: color .3s, background .2s; }
+.edPas[data-pastille] > button[aria-current="step"], .edPas[data-pastille] > button[aria-current="step"]:hover { background: transparent; }
+@media (prefers-reduced-motion: reduce) { .filPastilleAnime { transition: none; } }
 button.pas { padding: 6px 12px 6px 6px; font-size: 13px; }
 .filFleche { position: absolute; top: 0; bottom: 0; z-index: 2; width: 46px; border: none; display: flex; align-items: center; color: var(--emilio); cursor: pointer; padding: 0; }
 .filG { left: 0; justify-content: flex-start; padding-left: 10px; background: linear-gradient(90deg, white 55%, rgba(255,255,255,0)); }
@@ -564,12 +575,14 @@ button.pas:hover .pasIc { transform: translateY(-1px) scale(1.07); }
 .etapeTeteTxt { flex: 1 1 auto; min-width: 0; }
 .etapeJauge { display: block; margin-top: 10px; height: 4px; max-width: 260px; border-radius: 99px; background: #e8edf4; overflow: hidden; }
 .etapeJauge i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #c9a84c, #e3c872); animation: jaugeEntre .6s cubic-bezier(.2,.7,.3,1) both; }
+/* V3.80 : l'étape arrive du côté où l'on va (« Étape suivante » : de la
+   droite ; « Retour » : de la gauche), puis ses blocs l'un après l'autre.
+   Avant, la règle visait des blocs qui n'étaient pas enfants directs : rien
+   ne bougeait. La dernière image ne garde aucun transform. */
+.etapeEntre { animation: etapeGlisse .46s cubic-bezier(.16, 1, .3, 1) both; }
 .etapeEntre .etapeIcVif { animation: bienPop .45s ease both; }
-.etapeEntre > .sect, .etapeEntre > .sectNu { animation: etapeEntre .42s cubic-bezier(.2,.7,.3,1) both; }
-.etapeEntre > :nth-child(3) { animation-delay: .05s; }
-.etapeEntre > :nth-child(4) { animation-delay: .1s; }
-.etapeEntre > :nth-child(5) { animation-delay: .15s; }
-.etapeEntre > :nth-child(n+6) { animation-delay: .2s; }
+.etapeEntre .sect, .etapeEntre .sectNu { animation: etapeEntre .5s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(min(var(--k, 0), 6) * 55ms + 70ms); }
+@keyframes etapeGlisse { from { opacity: 0; transform: translateX(calc(var(--sens, 1) * 34px)); } to { opacity: 1; transform: none; } }
 @keyframes etapeEntre { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes bienPop { 0% { transform: scale(.85) rotate(-6deg); } 60% { transform: scale(1.07) rotate(2deg); } 100% { transform: none; } }
 @keyframes jaugeEntre { from { transform: translateX(-100%); } to { transform: none; } }
@@ -718,8 +731,9 @@ input.pcNote { flex: 1 1 200px; min-width: 0; width: auto; }
   .energie { grid-template-columns: 1fr; }
   .piecesT { grid-template-columns: 1fr; gap: 6px; }
   .pieceIc { width: 32px; height: 32px; }
-  .faits { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .fait { padding: 9px 10px; gap: 9px; }
+  .faits { gap: 7px; }
+  .faits > .fait { flex: 0 0 auto; min-width: 0; max-width: 72vw; }
+  .fait { padding: 9px 11px 9px 9px; gap: 9px; }
   .faitIc, .faitDpe { width: 34px; height: 34px; border-radius: 11px; }
   .fait b { font-size: 14.5px; }
   .mosaic { columns: 1; }
@@ -977,9 +991,14 @@ small.estimAlerte { color: #b45309; font-weight: 700; }
 .jalonOk { background: #f0fdf4 !important; border-color: #d1fae5 !important; }
 .jalonOk .jalonIc { background: #16a34a; border-color: #16a34a; color: white; animation: bienPop .45s ease both; }
 .jalonOk small { color: #15803d; font-weight: 600; }
-.estimVue { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: linear-gradient(160deg, #fdfaf1 0%, #f8f3e4 100%); border: 1px solid #efe3c0; }
-.estimVueF small, .estimVueP small { display: block; font-size: 11px; letter-spacing: 1.1px; text-transform: uppercase; font-weight: 800; color: #a07c28; }
-.estimVueF b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 22px; font-weight: 800; color: var(--emilio); }
+/* V3.80 : sur une ligne (fourchette, prix conseillé, jauge, « Modifier »),
+   pour que le parcours tienne sans faire défiler. */
+.estimVue { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; padding: 10px 14px; border-radius: 12px; background: linear-gradient(160deg, #fdfaf1 0%, #f8f3e4 100%); border: 1px solid #efe3c0; }
+.estimVue > .jEst { flex: 1 1 240px; min-width: 0; }
+.estimVue > .estimVueS { flex: 1 1 100%; }
+.estimVue > button:last-child { margin-left: auto; }
+.estimVueF small, .estimVueP small { display: block; font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; font-weight: 800; color: #a07c28; }
+.estimVueF b { display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 17px; font-weight: 800; color: var(--emilio); white-space: nowrap; }
 .estimVueP { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .estimVueP small { width: 100%; }
 .estimVueP b { font-size: 16px; color: var(--emilio); }
@@ -1334,6 +1353,19 @@ button.pillRouge svg { color: white !important; }
 .guideFleche { color: var(--c); flex-shrink: 0; display: inline-flex; }
 
 /* ── V3.50 : les brouillons vides (« Nouveau bien » ouvert puis laissé) ── */
+/* V3.80 : les annonces d'un seul bloc, à mettre en paragraphes d'un clic. */
+.aerer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 12px 10px 12px; border-radius: 14px; background: #fff; border: 1px solid #ecdcb0; box-shadow: 0 8px 20px -18px rgba(160, 124, 40, .9); animation: aererEntre .4s cubic-bezier(.16, 1, .3, 1) both; }
+.aererIc { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #fdf6e3; color: #a07c28; }
+.aererTx { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.45; color: #64748b; }
+.aererTx b { color: #1a2332; font-weight: 800; }
+.aererBarre { display: block; height: 5px; border-radius: 99px; background: #f1ead6; overflow: hidden; max-width: 320px; }
+.aererBarre > i { display: block; height: 100%; border-radius: inherit; background: #c9a84c; transition: width .3s; }
+@keyframes aererEntre { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .aerer { animation: none; } }
+/* V3.80 : la recherche trouve aussi dans d'autres étapes que celle ouverte. */
+.ailleurs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 9px 14px; border-radius: 12px; background: #fdf8ec; border: 1px solid rgba(201, 168, 76, 0.35); color: #6b5317; font-size: 13.5px; }
+.ailleurs > svg { color: #b8913a; flex-shrink: 0; }
+.ailleurs > span { flex: 1 1 240px; min-width: 0; line-height: 1.45; }
 .brouillons { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 11px 14px; border: 1px dashed #cbd5e1; border-radius: 14px; background: #f8fafc; color: #475569; font-size: 13.5px; }
 .brouillonsT { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .brouillonsT > svg { color: #64748b; flex-shrink: 0; }
@@ -1408,9 +1440,15 @@ nav.sousOnglets { background: #eef2f7; border-color: transparent; padding: 4px; 
 .sousOnglets button:hover:not([aria-pressed="true"]) { background: rgba(255, 255, 255, .55); color: #1a2332; }
 .sousOnglets button[aria-pressed="true"] { color: #1a2332; }
 .sousOnglets:not(:has(> span[aria-hidden="true"])) button[aria-pressed="true"] { background: #fff; }
+/* « Tout » au bout de la rangée, séparé des familles par un trait (V3.80). */
+.sousOnglets button[data-k="tout"] { margin-left: 9px; }
+.sousOnglets button[data-k="tout"]::before { content: ''; position: absolute; left: -7px; top: 9px; bottom: 9px; width: 1px; background: #d3dbe6; }
 .sousOngletIc { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: color-mix(in srgb, var(--sousC) 14%, transparent); transition: background .3s; }
 .sousOnglets .sousOngletIc svg { opacity: 1; color: var(--sousC); transition: color .3s; }
 .sousOnglets button[aria-pressed="true"] .sousOngletIc { background: var(--sousC); }
 .sousOnglets button[aria-pressed="true"] .sousOngletIc svg { color: #fff; }
 /* Un sous-onglet ouvert : sa carte (ou ses deux cartes), en pleine largeur. */
 .vueSeule { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.aerer .annonceVenteX { border-color: #ecdcb0; color: #8a6a1f; }
+/* Le nombre de biens d'une ville, dans le filtre « Ville » (V3.80). */
+.affPuceN { font-style: normal; margin-left: 2px; color: #94a3b8; font-weight: 800; }

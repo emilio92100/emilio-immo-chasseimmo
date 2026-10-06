@@ -6,7 +6,7 @@ import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/act
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
-  ETAPES_BIEN, PARCOURS, permisBien, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
+  ETAPES_BIEN, PARCOURS, permisBien, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, mentionsAnnonce, villeAffichee, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
   lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type Observation, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -227,35 +227,39 @@ function exterieurCourt(d: Donnees): string {
     ann.includes('jardin') && (s2('surfJardin', 'Jardin') || 'Jardin'), ann.includes('loggia') && (s2('surfLoggia', 'Loggia') || 'Loggia')].filter(Boolean) as string[];
   return avec[0] || (ann.length ? libs(d, 'annexes').slice(0, 2).join(', ') : 'Aucun');
 }
-/* Le bien en bref : des tuiles à icône, seulement ce qui est rempli. */
+/* Le bien en bref : des tuiles à icône, seulement ce qui est rempli.
+   V3.80 (Alexandre : « le bien en bref, mettre que sur une seule ligne ») :
+   les sept faits qui comptent, sur une ligne — surface, pièces et chambres
+   ensemble, étage, extérieur, exposition, DPE, charges (ou taxe foncière
+   pour une maison). Les salles d'eau, l'année de construction : dans
+   « Le bien ». */
 const PICTO_ANNEXE: Record<string, string> = { balcon: 'balcon', terrasse: 'parasol', loggia: 'balcon', jardin: 'terrain', cave: 'cave', parking: 'parking', box: 'voiture', garage: 'voiture', piscine: 'eau' };
 function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
   const asc = liste(d, 'immeuble').includes('ascenseur');
   const n = (k: string) => num(d, k);
-  const eau = (n('sdb') || 0) + (n('salleseau') || 0);
   const ann = liste(d, 'annexes');
   const icExt = PICTO_ANNEXE[['terrasse', 'jardin', 'balcon', 'loggia'].find(x => ann.includes(x)) || ann[0] || ''] || 'terrain';
   /* V3.30 : chaque tuile a sa teinte (la même famille que dans « Le bien »),
      sur fond blanc : sur le gris de la page, les tuiles grises se perdaient. */
   type Ton = 'or' | 'bleu' | 'violet' | 'cyan' | 'ardoise' | 'vert' | 'ambre';
   const items: { ic: string; v: string; l: string; dpe?: string; ton: Ton }[] = [];
+  const pl = (x: number, mot: string) => `${x} ${mot}${x > 1 ? 's' : ''}`;
   if (n('surface')) items.push({ ic: 'regle', ton: 'or', v: m2(n('surface') as number), l: n('carrez') ? `Carrez ${m2(n('carrez') as number)}` : 'Habitable' });
   else if (n('terrain')) items.push({ ic: 'terrain', ton: 'vert', v: m2(n('terrain') as number), l: 'Terrain' });
-  if (n('pieces')) items.push({ ic: 'plan', ton: 'bleu', v: `${n('pieces')} pièce${(n('pieces') as number) > 1 ? 's' : ''}`, l: n('sejour') ? `Séjour ${m2(n('sejour') as number)}` : 'Pièces' });
-  if (n('chambres')) items.push({ ic: 'lit', ton: 'violet', v: String(n('chambres')), l: (n('chambres') as number) > 1 ? 'Chambres' : 'Chambre' });
-  if (eau) items.push({ ic: n('sdb') ? 'bain' : 'douche', ton: 'cyan', v: String(eau), l: eau > 1 ? 'Salles d’eau ou de bains' : n('sdb') ? 'Salle de bains' : 'Salle d’eau' });
-  if (enImm && n('etage') !== null) items.push({ ic: asc ? 'ascenseur' : 'escalier', ton: 'ardoise', v: etageTexte(n('etage'), n('etages')).replace(' étage', ''), l: n('etage') === 0 ? (asc ? 'Avec ascenseur' : 'Étage') : asc ? 'Étage, avec ascenseur' : 'Étage, sans ascenseur' });
-  if (!enImm && n('etages')) items.push({ ic: 'escalier', ton: 'ardoise', v: n('etages') === 1 ? 'Plain-pied' : String(n('etages')), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
-  if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', ton: 'ardoise', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
+  const ch = n('chambres');
+  if (n('pieces')) items.push({ ic: 'plan', ton: 'bleu', v: pl(n('pieces') as number, 'pièce'), l: ch ? `dont ${pl(ch, 'chambre')}` : n('sejour') ? `Séjour ${m2(n('sejour') as number)}` : 'Pièces' });
+  else if (ch) items.push({ ic: 'lit', ton: 'violet', v: pl(ch, 'chambre'), l: 'Chambres' });
+  if (enImm && n('etage') !== null) items.push({ ic: asc ? 'ascenseur' : 'escalier', ton: 'ardoise', v: etageTexte(n('etage'), n('etages')).replace(' étage', ''), l: (n('niveaux') || 0) >= 2 ? (n('niveaux') === 2 ? 'En duplex' : n('niveaux') === 3 ? 'En triplex' : `Sur ${n('niveaux')} niveaux`) : n('etage') === 0 ? (asc ? 'Avec ascenseur' : 'Étage') : asc ? 'Avec ascenseur' : 'Sans ascenseur' });
+  else if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', ton: 'ardoise', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
+  if (!enImm && n('etages')) items.push({ ic: 'escalier', ton: 'ardoise', v: n('etages') === 1 ? 'Plain-pied' : pl(n('etages') as number, 'niveau'), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
   if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', ton: 'vert', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
   if (ann.length) items.push({ ic: icExt, ton: 'vert', v: exterieurCourt(d), l: 'Extérieur' });
   if (d.expo) items.push({ ic: 'boussole', ton: 'ambre', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo).replace(/^./, x => x.toUpperCase()), l: 'Exposition' });
-  if (d.dpe) items.push({ ic: '', ton: 'ambre', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: 'DPE, par m² et par an' });
+  if (d.dpe) items.push({ ic: '', ton: 'ambre', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: n('dpeValeur') ? 'DPE, m² par an' : 'DPE' });
   else if (d.dpeStatut === 'vierge') items.push({ ic: 'eclair', ton: 'ambre', v: 'Vierge', l: 'DPE' });
-  if (n('chargesAn')) items.push({ ic: 'lots', ton: 'ardoise', v: `${euros((n('chargesAn') as number) / 12)}`, l: 'Charges par mois' });
-  if (n('taxeFonciere')) items.push({ ic: 'fiscal', ton: 'ardoise', v: euros(n('taxeFonciere') as number), l: 'Taxe foncière' });
-  if (n('annee')) items.push({ ic: 'calendrier', ton: 'ardoise', v: String(n('annee')), l: 'Construction' });
+  if (n('chargesAn')) items.push({ ic: 'lots', ton: 'ardoise', v: `${euros((n('chargesAn') as number) / 12)}`, l: 'Charges / mois' });
+  else if (n('taxeFonciere')) items.push({ ic: 'fiscal', ton: 'ardoise', v: euros(n('taxeFonciere') as number), l: 'Taxe foncière' });
   if (!items.length) return <div className={b.vide}>{vide || 'Les caractéristiques du bien s’afficheront ici.'}</div>;
   return (
     <div className={b.faits}>
@@ -622,7 +626,7 @@ function surfacesDe(d: Donnees): SurfacesBien {
   }
   return {
     surface: num(d, 'surface'), carrez: num(d, 'carrez'), sejour: num(d, 'sejour'), terrain: num(d, 'terrain'),
-    carrezAttendu: d.copro === 'oui', chambres: num(d, 'chambres'), annexes,
+    carrezAttendu: d.copro === 'oui', chambres: num(d, 'chambres'), pieces: num(d, 'pieces'), annexes,
   };
 }
 
@@ -812,8 +816,9 @@ export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnon
   );
 
   /* Les sous-onglets : leur icône dans la couleur de leur carte. */
+  /* V3.80 : « Tout » au bout, à droite (comme « Tous » dans les listes),
+     toujours ouvert en premier. */
   const VUES: { k: SousVue; l: string; ic: string; c: string; cartes: ReactNode[] }[] = [
-    { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c', cartes: [] },
     { k: 'interieur', l: 'Intérieur', ic: 'canape', c: '#2d5c8f', cartes: [interieur] },
     { k: 'immeuble', l: enImm ? 'Immeuble' : 'Maison', ic: enImm ? 'immeuble' : 'maison', c: '#6d28d9', cartes: [immeuble] },
     { k: 'exterieur', l: 'Extérieur', ic: 'terrain', c: '#16a34a', cartes: [exterieur] },
@@ -821,8 +826,9 @@ export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnon
     { k: 'energie', l: 'Énergie', ic: 'eclair', c: '#d97706', cartes: [energie] },
     { k: 'copro', l: d.copro === 'non' ? 'Charges et taxes' : 'Copropriété et charges', ic: 'lots', c: '#0d9488', cartes: [copro, charges] },
     { k: 'prix', l: avant ? 'Estimation et prix' : 'Prix', ic: 'etiquette', c: '#a9822f', cartes: [prix] },
+    { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c', cartes: [] },
   ];
-  const choisie = VUES.find(x => x.k === vue) || VUES[0];
+  const choisie = VUES.find(x => x.k === vue) || VUES[VUES.length - 1];
   return (
     <Col>
       <BarreOnglets label="Les caractéristiques du bien" className={b.sousOnglets} actif={vue} onChoisir={setVue}
@@ -831,7 +837,7 @@ export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnon
         {vue === 'tout' ? (
           <Col>
             {/* Plus de bande de photos ici (V3.31) : elles sont dans l'onglet Photos. */}
-            {!avant && <CarteAnnonce titre={txt(d, 'annonceTitre')} texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} onEcrire={M('annonce')} onReformuler={onAnnonce ? () => reformulerAnnonce(d) : undefined} onAppliquer={onAnnonce} />}
+            {!avant && <CarteAnnonce titre={txt(d, 'annonceTitre')} texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} mentionsTexte={mentionsAnnonce(d)} onEcrire={M('annonce')} onReformuler={onAnnonce ? x => reformulerAnnonce(d, x) : undefined} onAppliquer={onAnnonce} />}
             <Familles>
               {interieur}
               {immeuble}
@@ -1056,7 +1062,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   /* La barre des fiches ouvertes (en bas de l'écran) : ce bien y prend
      place, et s'y allume tant qu'il est à l'écran. */
   const titreBarre = titreBien(bien.donnees || {});
-  const villeBarre = txt(bien.donnees || {}, 'ville') || bien.ville || '';
+  const villeBarre = villeAffichee(txt(bien.donnees || {}, 'ville') || bien.ville || '', txt(bien.donnees || {}, 'cp') || bien.code_postal);
   const photoBarre = lirePhotos((bien.donnees || {}).photos)[0]?.url || null;
   useEffect(() => {
     signalerFicheOuverte({ k: 'bien', id: bien.id, titre: titreBarre, sous: villeBarre || bien.reference || undefined, photo: photoBarre });

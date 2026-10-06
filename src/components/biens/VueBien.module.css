@@ -61,30 +61,41 @@ button.visiteNom:hover { color: #a07c28; }
 .recentLe { flex-shrink: 0; font-size: 12px; color: #94a3b8; white-space: nowrap; }
 
 /* ══ Le parcours de l'estimation (V3.31) ═══════════════════════════════ */
-.parcours { display: flex; flex-direction: column; gap: 18px; padding: 18px 22px 20px; border-radius: 20px; background: #fff; border: 1px solid #e3e8f0; margin-top: 4px; font-family: 'DM Sans', sans-serif; }
-.parcoursT { display: flex; align-items: center; gap: 10px; }
-.parcoursT h3 { margin: 0; font: 800 16.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
-.parcoursIc { width: 32px; height: 32px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #fdf6e3; color: #a07c28; }
-.parcoursN { margin-left: auto; font-size: 12.5px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
-.jalons { list-style: none; margin: 0; padding: 0; display: grid; }
-.jalons > li { position: relative; margin: 0; display: flex; flex-direction: column; gap: 8px; padding-right: 10px; min-width: 0; }
-.jalons > li::before { display: none; }
-.jalons > li::after { content: ''; position: absolute; top: 16px; left: 44px; right: 8px; height: 3px; border-radius: 3px; background: #e9edf3; }
-.jalons > li:last-child::after { display: none; }
-.jalons > li[data-etat='fait']::after { background: #c9a84c; }
-.jRond { width: 34px; height: 34px; box-sizing: border-box; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #f1f4f8; color: #94a3b8; }
+.parcours { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 14px; border-radius: 18px; background: #fff; border: 1px solid #e3e8f0; margin-top: 4px; font-family: 'DM Sans', sans-serif; box-shadow: 0 1px 3px rgba(15, 23, 42, .03); }
+.parcoursT { display: flex; align-items: center; gap: 9px; }
+.parcoursT h3 { margin: 0; font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.parcoursIc { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #fdf6e3; color: #a07c28; }
+.parcoursN { margin-left: auto; padding: 3px 10px; border-radius: 99px; background: #f4f6f9; font-size: 12px; font-weight: 800; color: #64748b; white-space: nowrap; }
+/* V3.80 : une barre en segments (fait : or plein ; en cours : or qui se
+   remplit ; à venir : gris), chaque jalon sous son segment, sur une ligne. */
+.jalons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.jalons > li { position: relative; margin: 0; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.jalons > li::before, .jalons > li::after { display: none; }
+.jBarre { position: relative; display: block; height: 6px; border-radius: 99px; background: #edf0f5; overflow: hidden; }
+.jBarre::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, #d8b85f, #c9a84c); transform-origin: left; transform: scaleX(0); }
+li[data-etat='fait'] .jBarre::after { transform: scaleX(1); animation: jRemplit .5s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i, 0) * 90ms); }
+li[data-etat='encours'] .jBarre::after { transform: scaleX(.45); background: linear-gradient(90deg, #c9a84c, #ecd48f); animation: jRemplitDemi .6s cubic-bezier(.16, 1, .3, 1) both, jLueur 2.4s ease-in-out .7s infinite; animation-delay: calc(var(--i, 0) * 90ms), calc(var(--i, 0) * 90ms + .7s); }
+@keyframes jRemplit { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes jRemplitDemi { from { transform: scaleX(0); } to { transform: scaleX(.45); } }
+@keyframes jLueur { 50% { opacity: .55; } }
+.jLigne { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.jRond { width: 20px; height: 20px; box-sizing: border-box; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #f1f4f8; color: #94a3b8; margin-top: 1px; }
 li[data-etat='fait'] .jRond { background: #c9a84c; color: #1a2332; }
-li[data-etat='encours'] .jRond { background: #fffbf0; color: #a07c28; border: 2px solid #c9a84c; box-shadow: 0 0 0 4px rgba(201, 168, 76, .16); }
-.jTx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.jTx b { font-size: 14px; color: #1a2332; }
-li[data-etat='encours'] .jTx b { color: #a07c28; }
-.jTx small { font-size: 12.5px; line-height: 1.4; color: #64748b; }
-.ensuite { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 12px 14px; border-radius: 14px; background: #fffbf0; border: 1px solid #f0e2b6; font-size: 13.5px; line-height: 1.45; color: #6b5420; }
-.ensuite > span:first-child { flex: 1 1 320px; min-width: 0; }
-.ensuiteBtns { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.ensuiteBtn { height: 40px; padding: 0 16px; border-radius: 12px; border: none; background: #c9a84c; color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
-.ensuiteBtn:hover { filter: brightness(.97); }
-.ensuiteLien { border: none; background: none; padding: 0; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+li[data-etat='encours'] .jRond, .jActuel .jRond { background: #fffbf0; color: #a07c28; border: 1.5px solid #c9a84c; box-shadow: 0 0 0 3px rgba(201, 168, 76, .16); }
+.jTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.jTx b { font-size: 13px; line-height: 1.3; color: #1a2332; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+li[data-etat='avenir'] .jTx b { color: #64748b; font-weight: 700; }
+li[data-etat='encours'] .jTx b { color: #8a6a1f; }
+.jTx small { font-size: 11.5px; line-height: 1.35; color: #8794a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Le jalon en cours, en entier : au téléphone seulement. */
+.jActuel { display: none; }
+.ensuite { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding: 8px 8px 8px 13px; border-radius: 12px; background: #fffbf0; border: 1px solid #f0e2b6; font-size: 13px; line-height: 1.4; color: #6b5420; }
+.ensuite > span:first-child { flex: 1 1 300px; min-width: 0; }
+.ensuite > span:first-child > b { color: #8a6a1f; font-weight: 800; }
+.ensuiteBtns { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ensuiteBtn { height: 34px; padding: 0 14px; border-radius: 10px; border: none; background: #c9a84c; color: #1a2332; font: 800 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 14px -8px rgba(160, 124, 40, .8); transition: filter .15s, box-shadow .15s; }
+.ensuiteBtn:hover { filter: brightness(.97); box-shadow: 0 8px 18px -8px rgba(160, 124, 40, .9); }
+.ensuiteLien { border: none; background: none; padding: 0 6px 0 0; color: #a07c28; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
 .ensuiteLien:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ══ Pour la visite (V3.31) ═════════════════════════════════════════════ */
@@ -128,19 +139,17 @@ li[data-etat='encours'] .jTx b { color: #a07c28; }
 }
 @media (max-width: 720px) {
   .kpis, .kpis[data-n="3"] { gap: 10px; }
-  .parcours { padding: 14px 14px 16px; gap: 14px; border-radius: 18px; }
-  .parcoursT h3 { font-size: 15px; }
-  /* La frise en colonne : un jalon par ligne, le trait descend. */
-  .jalons { grid-template-columns: minmax(0, 1fr) !important; gap: 0; }
-  .jalons > li { flex-direction: row; align-items: flex-start; gap: 12px; padding: 0 0 16px; }
-  .jalons > li:last-child { padding-bottom: 0; }
-  .jalons > li::after { top: 38px; bottom: 2px; left: 16px; right: auto; width: 3px; height: auto; }
-  .jTx { padding-top: 6px; }
-  .ensuite { flex-direction: column; align-items: stretch; }
-  .ensuite > span:first-child { flex: none; }
-  .ensuiteBtns { flex-direction: column; align-items: stretch; gap: 10px; }
-  .ensuiteBtn { height: 44px; }
-  .ensuiteLien { align-self: center; }
+  .parcours { padding: 12px 13px 13px; gap: 10px; border-radius: 16px; }
+  .parcoursT h3 { font-size: 14.5px; }
+  /* Au téléphone : les segments seuls, puis le jalon en cours en entier. */
+  .jalons { gap: 4px; }
+  .jLigne { display: none; }
+  .jActuel { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+  .jActuel .jTx b, .jActuel .jTx small { white-space: normal; }
+  .ensuite { padding: 10px 11px; }
+  .ensuite > span:first-child { flex: 1 1 100%; }
+  .ensuiteBtns { width: 100%; justify-content: space-between; gap: 10px; }
+  .ensuiteBtn { height: 40px; flex: 1 1 auto; }
   .kpis[data-n="3"] > *, .kpis[data-n="2"] > *, .kpis[data-n="1"] > * { grid-column: 1 / -1; }
   .kpiLarge { grid-column: 1 / -1; }
   .kpi { padding: 14px; border-radius: 18px; }
@@ -150,4 +159,5 @@ li[data-etat='encours'] .jTx b { color: #a07c28; }
 }
 @media (prefers-reduced-motion: reduce) {
   .barre span { animation: none; }
+  .jBarre::after { animation: none !important; }
 }
