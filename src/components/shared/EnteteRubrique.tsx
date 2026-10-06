@@ -45,7 +45,7 @@ export type Tuile = {
 /* ── « Autres types ▾ » : les tuiles `menu`, dans une liste qui s'ouvre.
    Posée sur la page (portail, position fixe) : la rangée défile au doigt sur
    téléphone et couperait une liste ouverte à l'intérieur. ── */
-function MenuAutres({ tuiles, actif, onChoisir }: { tuiles: Tuile[]; actif: string | string[]; onChoisir: (cle: string) => void }) {
+function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif: string | string[]; onChoisir: (cle: string) => void; lib: string }) {
   const [ouvert, setOuvert] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const bouton = useRef<HTMLButtonElement | null>(null);
@@ -93,7 +93,7 @@ function MenuAutres({ tuiles, actif, onChoisir }: { tuiles: Tuile[]; actif: stri
         {un && <span className={styles.n}>{un.n}</span>}
         <span className={styles.lib}>
           {un?.couleur && <span className={styles.point} style={{ background: un.couleur }} />}
-          <span>{un ? un.lib : allumees.length > 1 ? `Autres types · ${allumees.length}` : 'Autres types'}</span>
+          <span>{un ? un.lib : allumees.length > 1 ? `${lib} · ${allumees.length}` : lib}</span>
           <svg className={styles.chevron} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
             style={{ transform: ouvert ? 'rotate(180deg)' : undefined }}><path d="m6 9.5 6 6 6-6" /></svg>
         </span>
@@ -122,7 +122,7 @@ function MenuAutres({ tuiles, actif, onChoisir }: { tuiles: Tuile[]; actif: stri
 }
 
 export default function EnteteRubrique({
-  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label,
+  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types',
 }: {
   titre: string;
   icone: ReactNode;
@@ -137,6 +137,9 @@ export default function EnteteRubrique({
   actif: string | string[];
   onChoisir: (cle: string) => void;
   label: string;
+  /* Le nom du bouton qui ouvre les tuiles `menu` (V3.80 : « Autres étapes »
+     dans Biens). */
+  libMenu?: string;
 }) {
   /* V3.77 : sur téléphone, la rangée défile au doigt ; la tuile allumée
      (« Tous » est maintenant en fin de rangée) vient se montrer. */
@@ -222,7 +225,7 @@ export default function EnteteRubrique({
           return (
             <>
               {avant.map(tuile)}
-              {dansMenu.length > 0 && <MenuAutres tuiles={dansMenu} actif={actif} onChoisir={onChoisir} />}
+              {dansMenu.length > 0 && <MenuAutres tuiles={dansMenu} actif={actif} onChoisir={onChoisir} lib={libMenu} />}
               {apres.map((t, i) => tuile(t, avant.length + 1 + i))}
             </>
           );
