@@ -20,6 +20,8 @@
 
 /* Le bouton qui déplie les critères n'existe que sur téléphone. */
 html.crm .fc-crit-bascule { display: none; }
+/* « Envoyer à Camille » (V3.87) : le choix survolé se dore (ordinateur et téléphone). */
+html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important; background: #fffaf0 !important; box-shadow: 0 10px 22px -18px rgba(26, 35, 50, .55); }
 
 @media (max-width: 900px) {
   /* La hauteur réelle de l'écran : 100vh compte la barre d'adresse de
