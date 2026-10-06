@@ -1461,6 +1461,69 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.80 — 6 octobre 2026 · Biens : deux catégories, la fiche plus compacte, l'annonce en fenêtre, des mouvements
+
+Rien à passer dans Supabase.
+
+**La liste des biens** (`PageBiens.tsx`). Alexandre : « trop de sous-catégories, on ne comprend
+pas ; mandat en cours en premier, ensuite estimation, et c'est tout ; les autres derrière un petit
+bouton ». Sur la ligne : « Mandats en cours » (compte aussi les biens sous offre et sous compromis :
+leur mandat court toujours, `EN_COURS`) puis « Estimations » ; les autres étapes (sous offre, sous
+compromis, à suivre, en pause, vendus, retirés, annonces type) dans « Autres étapes ▾ » (le menu
+`menu` d'`EnteteRubrique`, qui prend maintenant `libMenu`) ; « Tous » et « Archivés » (toujours là)
+à droite. On arrive sur « Mandats en cours » : `lireFiltre` rend `'mandat'` par défaut, « Biens »
+dans le menu de gauche aussi (`Sidebar.tsx`, sous-menu réordonné). Une recherche qui trouve dans
+une autre étape le dit (« Voir dans « Tous » »).
+- La ville avec son arrondissement : `villeAffichee(ville, cp)` (`lib/biens-vente.ts`) — « Paris
+  16e » depuis 75016 ou 75116, de même Lyon et Marseille ; sur les cartes, les lignes, la barre
+  des fiches ouvertes.
+- « Affiner » a un filtre **Ville** (`FiltresBiens.tsx`, `Filtres.villes`), comme Contacts : on
+  tape, la liste se réduit, Entrée coche la première. Les choix proposés sont ceux de la catégorie
+  ouverte.
+- Les annonces reprises d'ImmoFacile d'un seul bloc : un bandeau « Les mettre en paragraphes »
+  les découpe toutes d'un coup (`aererTexte`, `lib/annonce-texte.ts` : mêmes phrases, même ordre,
+  paragraphes d'environ 300 caractères, les mentions de la fin ensemble). Le texte d'origine est
+  gardé dans `donnees.annonceTexteOrigine`. Vérifié sur le fichier réel : 166 annonces concernées,
+  aucun mot changé.
+
+**Retiré ou archivé** (expliqué à Alexandre). « Retiré » est une étape : la vente s'est arrêtée
+sans vendre (mandat échu, propriétaire qui renonce ou vend ailleurs) ; le dossier reste dans les
+listes et peut repartir. « Archivé » range un dossier terminé (vendu, retiré, annonce type) hors de
+toutes les listes ; un bien en cours ne s'archive pas (règle de la V3.48).
+
+**La fiche d'un bien.**
+- « Le bien » : le sous-onglet « Tout » passe au bout, à droite, séparé par un trait ; il reste
+  ouvert en premier.
+- « Le bien en bref » tient sur **une ligne** : sept faits au plus (surface, pièces « dont N
+  chambres », étage ou niveaux, extérieur, exposition, DPE, charges par mois — ou la taxe foncière
+  sans charges). Les salles d'eau et l'année de construction restent dans « Le bien ». Plus étroit,
+  la ligne défile au doigt.
+- Le parcours de l'estimation (`ParcoursEstimation`, `VueBien.tsx`) : une barre en segments (fait :
+  or plein ; en cours : or qui se remplit à moitié et respire ; à venir : gris), les jalons en une
+  ligne dessous, « Ensuite · … » et son bouton sur une ligne ; au téléphone, les segments et le seul
+  jalon en cours. La fourchette (`.estimVue`) tient sur une ligne.
+- Onglet Surfaces : la tuile « Pièces » prend le nombre de pièces de la fiche (`SurfacesBien.pieces`) ;
+  avant, elle ne comptait que le détail pièce par pièce et affichait « — » sans lui.
+- **Le texte de l'annonce** (`CarteAnnonce`) : replié par défaut (le titre et deux lignes ; un
+  clic le déplie), affiché en paragraphes (`paragraphes()`). « Modifier » ouvre une fenêtre
+  (`FenAnnonce.tsx`) au lieu de l'éditeur entier : titre, texte, longueur sur 2 100, mentions
+  obligatoires (« Compléter la fiche » ouvre l'éditeur), « Reformuler avec l'IA » (sur le texte en
+  cours : `reformulerAnnonce(d, brouillon)`), « Aérer en paragraphes », « Ajouter les mentions à la
+  fin » (masqué quand le texte parle déjà de Géorisques), « Revenir au texte d'avant », et rien
+  d'enregistré avant « Enregistrer ». L'éditeur a aussi « Aérer en paragraphes ».
+
+**Les mouvements** (Alexandre : « que l'UX soit jolie »).
+- Éditeur étape par étape : le fond marine de l'étape en cours glisse d'une étape à l'autre
+  (`FilEtapes.tsx`, partagé avec l'éditeur de documents) ; l'étape arrive du côté où l'on va et ses
+  blocs l'un après l'autre (`--sens`, `--k`). Avant, la règle CSS visait des blocs qui n'étaient pas
+  enfants directs : rien ne bougeait.
+- Recherche du haut (`Topbar.tsx`) : une petite roue remplace la loupe tant que ce qui est tapé
+  n'est pas cherché ; une silhouette de trois lignes la première fois ; ensuite les anciens
+  résultats pâlissent, les nouveaux arrivent en cascade ; les lettres tapées ressortent en gras.
+- Ouvrir une fiche : `SqueletteFiche` (bandeau, rubriques, deux cartes qui miroitent) remplace
+  « Chargement de la fiche… », puis la fiche arrive en fondu (`.fiche-entre`). Une fiche de bien
+  monte en fondu depuis la liste (`ecran-avant`), la liste redescend au retour (`ecran-arriere`).
+
 ### V3.79 — 6 octobre 2026 · Biens : la reprise d'ImmoFacile, les sous-onglets de « Le bien », l'annonce
 
 Rien à passer dans Supabase : les nouvelles cases vivent dans `biens_vente.donnees`, les photos dans
