@@ -130,7 +130,11 @@ function origineDe(r: any, typeAction?: string | null): Origine {
   return { lib: 'Relance manuelle', ico: 'cloche' };
 }
 
-type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'semaine' | 'plusloin';
+/* V3.85 — « À faire » (en retard + aujourd'hui) remplace « Tout » : la page
+   s'ouvre sur ce qui est à faire, sans les jours qui suivent (Alexandre : « il
+   ne faut pas que ça affiche cette semaine ou plus loin de base, c'est à moi
+   de le mettre »). « Cette semaine » et « Plus loin » se choisissent. */
+type Filtre = 'afaire' | 'retard' | 'aujourdhui' | 'semaine' | 'plusloin';
 /* Voir plus loin que la semaine (V3.71). */
 type Periode = { k: '30' | '60' | 'date' | 'entre'; du: string; au: string };
 
@@ -149,7 +153,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   const [relances, setRelances] = useState<any[]>([]);
   const [liens, setLiens] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>('tout');
+  const [filtre, setFiltre] = useState<Filtre>('afaire');
   const [periode, setPeriode] = useState<Periode | null>(null);
   /* V3.82 : chercher une relance (nom, téléphone, mail, note). */
   const [q, setQ] = useState('');
@@ -435,9 +439,9 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       else groupes.push(...parSemaine(l));
     } else groupes.push(...parSemaine(loin));
   } else {
-    if (filtre === 'tout' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', sous: 'à rattraper en premier', ico: 'alerte', couleur: '#dc2626', liste: retard });
-    if (filtre === 'tout' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', sous: majuscule(dateLongue(auj)), ico: 'soleil', couleur: '#d97706', liste: duJour });
-    if (filtre === 'tout' || filtre === 'semaine') {
+    if (filtre === 'afaire' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', sous: 'à rattraper en premier', ico: 'alerte', couleur: '#dc2626', liste: retard });
+    if (filtre === 'afaire' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', sous: majuscule(dateLongue(auj)), ico: 'soleil', couleur: '#d97706', liste: duJour });
+    if (filtre === 'semaine') {
       for (let n = 1; n <= 7; n++) {
         const k = plusJours(n);
         groupes.push({ id: `j${k}`, titre: n === 1 ? 'Demain' : majuscule(dateLongue(k)), sous: n === 1 ? majuscule(dateLongue(k)) : undefined, ico: 'calendrier', couleur: '#2563eb', liste: enTete(semaine.filter(r => jourDe(r.date_echeance) === k)) });
@@ -671,7 +675,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       {/* V3.82 (Alexandre : « en retard, aujourd'hui, cette semaine, plus
           loin : plus joli, plus moderne ») : le même bandeau que Contacts et
           Biens — le titre, la recherche, et les échéances en tuiles qui
-          filtrent ; « Tout » (jusqu'à la fin de la semaine) au bout. */}
+          filtrent ; « À faire » (en retard et aujourd'hui, V3.85) au bout. */}
       {!seulTri && (
         <EnteteRubrique titre="Relances" icone={<Ic n="cloche" t={22} ep={1.9} />}
           phrase={loading ? 'Les clients à recontacter, du plus pressé au moins pressé.' : retard.length ? `${retard.length > 1 ? `${retard.length} relances en retard` : 'Une relance en retard'} : à rattraper en premier.` : duJour.length ? `${duJour.length > 1 ? `${duJour.length} relances` : 'Une relance'} pour aujourd’hui, rien en retard.` : 'Rien en retard, rien pour aujourd’hui.'}
@@ -684,7 +688,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
             { cle: 'aujourdhui', lib: 'Aujourd’hui', n: duJour.length, couleur: '#d97706' },
             { cle: 'semaine', lib: 'Cette semaine', n: semaine.length, couleur: '#2563eb' },
             { cle: 'plusloin', lib: 'Plus loin', n: plusLoin, couleur: '#94a3b8' },
-            { cle: 'tout', lib: 'Tout', n: retard.length + duJour.length + semaine.length, tete: true, fin: true, ic: <Ic n="cloche" t={14} ep={2.1} /> },
+            { cle: 'afaire', lib: 'À faire', n: retard.length + duJour.length, tete: true, fin: true, ic: <Ic n="cloche" t={14} ep={2.1} /> },
           ]} />
       )}
 
@@ -780,9 +784,9 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       ) : visibles.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
           <span style={{ width: 50, height: 50, borderRadius: 16, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="soleil" t={24} ep={1.9} /></span>
-          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{qR ? `Aucune relance ne correspond à « ${q.trim()} »` : periode ? 'Aucune relance sur cette période' : filtre === 'retard' ? 'Rien en retard' : filtre === 'aujourdhui' ? 'Rien pour aujourd’hui' : 'Rien ici'}</b>
-          {!qR && !periode && filtre === 'tout' && plusLoin > 0 && <span style={{ fontSize: 13.5, color: DOUX }}>{`Rien d’ici le ${dateCourte(dansSept)}. ${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : la tuile « Plus loin » les montre.`}</span>}
-          {(periode || filtre !== 'tout') && <button type="button" className="rl-appui" onClick={() => { setFiltre('tout'); setPeriode(null); }} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir aux relances de la semaine</button>}
+          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{qR ? `Aucune relance ne correspond à « ${q.trim()} »` : periode ? 'Aucune relance sur cette période' : filtre === 'retard' ? 'Rien en retard' : filtre === 'aujourdhui' ? 'Rien pour aujourd’hui' : filtre === 'afaire' ? 'Rien en retard, rien pour aujourd’hui' : filtre === 'semaine' ? 'Rien cette semaine' : 'Rien ici'}</b>
+          {!qR && !periode && filtre === 'afaire' && (semaine.length > 0 || plusLoin > 0) && <span style={{ fontSize: 13.5, color: DOUX }}>{semaine.length ? `${semaine.length > 1 ? `${semaine.length} relances sont prévues` : '1 relance est prévue'} d’ici le ${dateCourte(dansSept)} : la tuile « Cette semaine » les montre.` : `${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : la tuile « Plus loin » les montre.`}</span>}
+          {(periode || filtre !== 'afaire') && <button type="button" className="rl-appui" onClick={() => { setFiltre('afaire'); setPeriode(null); }} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir aux relances à faire</button>}
         </div>
       ) : (
         <div className="rl-groupes" key={`${filtre}:${periode?.k || ''}`}>
