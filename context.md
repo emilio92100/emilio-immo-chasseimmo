@@ -1461,6 +1461,29 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.82 — 6 octobre 2026 · Relances : une page plus moderne
+
+Rien à passer dans Supabase. Alexandre : « en retard, aujourd'hui, cette semaine, voir plus loin :
+plus joli, plus moderne, présenté différemment ».
+
+- **Le bandeau des rubriques** (`EnteteRubrique`, comme Contacts et Biens) : le titre, une phrase qui
+  dit l'urgence (« 2 relances en retard : à rattraper en premier »), une **recherche** (nom,
+  téléphone, mail, note) et les échéances en tuiles qui filtrent : En retard (qui ressort tant
+  qu'il y en a), Aujourd'hui, Cette semaine, **Plus loin**, et « Tout » au bout (jusqu'à la fin de
+  la semaine). « Tri à faire » est le second bouton du bandeau. Les trois grandes cartes-compteurs
+  et la barre « Voir plus loin » permanente sont parties. Au téléphone, la rangée ne défile pas
+  vers « Tout » à l'arrivée (`defiler={false}`, nouveau dans `EnteteRubrique`) : en retard et
+  aujourd'hui restent en vue.
+- **Les groupes** : un titre à pastille (icône, nombre, la date du jour) suivi d'un trait, puis les
+  cartes le long d'une ligne de temps de la couleur du groupe. La semaine se lit **jour par jour**
+  (« Demain », « Jeudi 8 octobre »…). « Plus loin » : semaine par semaine après cette semaine, ou
+  une période (30 jours, 2 mois, un jour, entre deux dates), dans une barre qui n'apparaît que là.
+- **La carte d'une relance**, plus légère : l'avatar cerclé de la couleur de l'échéance (rouge,
+  ambre, bleu, gris), le nom, l'échéance et sa date sur la première ligne, l'origine et la note
+  sur la seconde ; à droite « Ouvrir la fiche » (discret), Reporter et C'est fait (l'icône seule
+  sous 1 180 px), et « Traiter » en avant. Au téléphone : « Traiter » sur toute la largeur, les
+  trois autres dessous. Les mêmes cartes servent au « Tri à faire » de Contacts.
+
 ### V3.81 — 6 octobre 2026 · Fiche du bien : les boutons sur le bandeau, « Le bien » relié, l'annonce à toutes les étapes, « Pour la visite »
 
 Rien à passer dans Supabase.
