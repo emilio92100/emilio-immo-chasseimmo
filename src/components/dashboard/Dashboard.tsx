@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import type { Client, Relance } from '@/lib/supabase';
 import styles from './Dashboard.module.css';
-import { demanderNouveauClient, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
+import { demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv, demanderOuvertureFiche, ouvertureDepuisRelance, demanderNouveauBien } from '@/lib/intentions';
 import { estAcheteur, estArchive } from '@/lib/contacts';
 import { estTri } from '@/lib/relances';
 import { jourParis } from '@/lib/mandat';
@@ -237,7 +237,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           </p>
         </div>
         <div className={styles.welcomeRight} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className={styles.mailBtn} onClick={() => onNavigate('mail')}>✉️ <span className={styles.motLong}>Nouveau mail</span><span className={styles.motCourt}>Mail</span></button>
+          <button className={styles.mailBtn} onClick={demanderNouveauMail}>✉️ <span className={styles.motLong}>Envoyer un mail</span><span className={styles.motCourt}>Mail</span></button>
           <button className={styles.mailBtn} onClick={demanderNouveauRdv}>📅 <span className={styles.motLong}>Nouveau RDV</span><span className={styles.motCourt}>RDV</span></button>
           <button className={styles.mailBtn} onClick={() => { demanderNouveauBien(); onNavigate('biens'); }}>🏡 <span className={styles.motLong}>Nouveau bien</span><span className={styles.motCourt}>Bien</span></button>
           {/* Comme celui de la barre du haut : il ouvre directement le formulaire. */}
