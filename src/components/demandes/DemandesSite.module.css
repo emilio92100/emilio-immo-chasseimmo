@@ -6,25 +6,12 @@
    couleur d'un portail ou d'un formulaire ne sert qu'à le reconnaître, l'or
    ne souligne que le neuf et l'estimation DVF. Rien n'apparaît d'un coup. */
 
-/* ── Le haut : une seule bande (V3.99) ────────────────────────────────────
-   Alexandre : « j'aime pas le haut ; devenues des contacts, je n'ai même pas
-   compris ; site et portails, c'est écrit en petit ». D'où (en grand, avec la
-   couleur de la provenance), la période, le total, la répartition en puces
-   qui filtrent la liste, et ce qui reste à traiter. */
-.bande {
-  background: white; border: 1px solid #e1e8f2; border-radius: 22px; padding: 18px 22px 20px; min-width: 0;
-  display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 40px -34px rgba(26, 35, 50, .35);
-  animation: monte .45s cubic-bezier(.2, .8, .2, 1) backwards;
-}
-.bandeTete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.portee { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.porteeIc {
-  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--c) 10%, white); color: var(--c); transition: background .3s ease, color .3s ease;
-}
-.porteeTx { display: flex; flex-direction: column; min-width: 0; }
-.porteeTx b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 19px; font-weight: 800; line-height: 1.2; color: var(--c); transition: color .3s ease; }
-.porteeTx small { font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px; }
+/* ── La période, dans le panneau (V3.99b) ───────────────────────────────────
+   Alexandre : « je ne vois pas l'intérêt du truc en haut, il y a déjà Tout,
+   Mon site, Portails en bas ». Plus de chiffres au-dessus : sous la
+   provenance, une ligne — la période (elle filtre la liste et ses
+   compteurs), le nombre de demandes reçues, et « N à traiter ». */
+.periodeLigne { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border-radius: 16px; background: #f7f9fd; border: 1px solid #e6ecf5; }
 .periodes { display: flex; gap: 3px; padding: 4px; background: white; border: 1px solid #e1e8f2; border-radius: 12px; }
 .periode {
   border: 0; background: transparent; border-radius: 9px; height: 32px; padding: 0 12px; font-family: inherit;
@@ -33,47 +20,21 @@
 .periode:hover { color: #22497c; }
 .periodeOn, .periodeOn:hover { background: #22497c; color: white; box-shadow: 0 6px 14px -8px rgba(34, 73, 124, .8); }
 .perCourt { display: none; }
-
-.bandeCorps { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'total repart action'; gap: 26px; align-items: center; }
-.total { grid-area: total; display: flex; flex-direction: column; }
-.total b {
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 46px; font-weight: 800; letter-spacing: -.03em; line-height: 1;
-  color: #1a2332; font-variant-numeric: tabular-nums;
-}
-.total span { font-size: 14px; color: #64748b; margin-top: 5px; white-space: nowrap; }
-.repart { grid-area: repart; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-.ccSous { font-size: 13px; color: #5b6475; line-height: 1.45; }
-.ccBarre {
-  display: flex; gap: 3px; height: 12px; border-radius: 99px; overflow: hidden; background: #edf1f7; transform-origin: left;
-  animation: pousse .8s cubic-bezier(.2, .8, .2, 1) .2s backwards;
-}
-.ccBarre > span { display: block; height: 100%; transition: width .6s cubic-bezier(.2, .8, .2, 1); }
-.parts { display: flex; flex-wrap: wrap; gap: 8px; }
-.part {
-  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px 0 6px; border-radius: 99px; box-sizing: border-box;
-  border: 1.5px solid var(--trait); background: var(--fond); color: #1a2332; font-family: inherit; font-size: 13.5px; font-weight: 700;
-  cursor: pointer; white-space: nowrap; transition: box-shadow .2s ease, border-color .2s ease;
-}
-.part:hover { border-color: color-mix(in srgb, var(--c) 55%, white); }
-.part b { color: var(--c); font-weight: 800; font-variant-numeric: tabular-nums; }
-.partOn, .partOn:hover { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 16%, transparent); }
-.partIc {
-  width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--c); color: white; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9.5px; font-weight: 800;
-}
+.recues { flex: 1 1 auto; min-width: 0; font-size: 14px; color: #5b6475; }
+.recues b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; font-weight: 800; color: #1a2332; font-variant-numeric: tabular-nums; }
 .aTraiter {
-  grid-area: action; display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 10px 0 18px; border: none; border-radius: 15px;
-  background: #c9a84c; color: #1a2332; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap;
-  box-shadow: 0 12px 24px -14px rgba(160, 124, 40, .9); transition: background .2s ease;
+  display: inline-flex; align-items: center; gap: 9px; height: 42px; padding: 0 7px 0 15px; border: none; border-radius: 13px;
+  background: #c9a84c; color: #1a2332; font-family: inherit; font-size: 14.5px; font-weight: 800; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 10px 20px -12px rgba(160, 124, 40, .9); transition: background .2s ease;
 }
 .aTraiter:hover { background: #d6b75e; }
 .aTraiter em {
-  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   background: #1a2332; color: #f0d27a; font-style: normal;
 }
 .toutTraite {
-  grid-area: action; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 13px;
-  background: #ecfdf5; color: #0f7a4f; font-size: 14px; font-weight: 800; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 13px; border-radius: 12px;
+  background: #ecfdf5; color: #0f7a4f; font-size: 13.5px; font-weight: 800; white-space: nowrap;
 }
 
 /* ── Le panneau : la provenance, son tiroir, le statut, la liste ───────── */
@@ -212,6 +173,13 @@
 .carte:focus-visible { outline: 3px solid #c9a84c; outline-offset: 2px; }
 .carte.carteOn { border-color: #c9a84c; background: #fffdf7; box-shadow: 0 0 0 3px rgba(201, 168, 76, .24), 0 12px 26px -18px rgba(30, 45, 75, .6); }
 .carteNeuve { background: linear-gradient(90deg, #f5f9ff 0%, white 62%); }
+/* « N à traiter » (V3.99b) : les nouvelles s'allument deux fois, en or. */
+.carteEclair { animation: eclair 1.6s .35s ease-out both; }
+@keyframes eclair {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 168, 76, 0); }
+  20%, 45% { border-color: #c9a84c; box-shadow: 0 0 0 4px rgba(201, 168, 76, .4); }
+  32% { box-shadow: 0 0 0 1px rgba(201, 168, 76, .2); }
+}
 .carteRobot { opacity: .62; }
 .carteRobot:hover, .carteRobot.carteOn { opacity: 1; }
 
@@ -558,21 +526,15 @@
   .cats::-webkit-scrollbar { display: none; }
   .cat { height: 36px; font-size: 13px; flex: 0 0 auto; }
 
-  /* La bande : le total et « à traiter » côte à côte, la répartition dessous. */
-  .bande { padding: 14px 14px 16px; border-radius: 20px; gap: 14px; }
-  .bandeTete { flex-direction: column; align-items: stretch; }
-  .porteeIc { width: 36px; height: 36px; border-radius: 11px; }
-  .porteeTx b { font-size: 17px; }
-  .periodes { min-width: 0; }
+  /* La période sur toute la largeur, en mots courts ; dessous, le nombre et « à traiter ». */
+  .periodeLigne { margin-top: 10px; padding: 8px; gap: 10px; border-radius: 14px; }
+  .periodes { width: 100%; box-sizing: border-box; min-width: 0; }
   .periode { flex: 1 1 0; min-width: 0; padding: 0 6px; font-size: 13px; }
   .perLong { display: none; }
   .perCourt { display: inline; }
-  .bandeCorps { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'total action' 'repart repart'; gap: 14px 12px; }
-  .total b { font-size: 38px; }
-  .aTraiter { height: 46px; font-size: 14px; padding: 0 8px 0 14px; }
-  .aTraiter em { width: 28px; height: 28px; }
-  .toutTraite { height: 40px; padding: 0 12px; font-size: 13px; }
-  .part { height: 34px; font-size: 13px; }
+  .recues { padding-left: 4px; font-size: 13px; }
+  .recues b { font-size: 16px; }
+  .aTraiter { height: 40px; font-size: 13.5px; }
 
   /* Le panneau : les trois onglets en colonnes, l'icône sur le nom. */
   .panneau { padding: 8px 8px 12px; border-radius: 20px; }
@@ -627,6 +589,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .carte, .bande, .tuileProv, .liste, .ccBarre, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
+  .carte, .carteEclair, .tuileProv, .liste, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
   .curseur, .tiroirProv::before, .prov, .carte, .tuileProv { transition: none; }
 }

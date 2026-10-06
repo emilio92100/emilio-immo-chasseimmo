@@ -17,7 +17,7 @@ import s from './DemandesSite.module.css';
 import {
   CATEGORIES, STATUTS, TABLE_DEMANDES, categorieDe, cleCategorie, correspond, dateLongue, normer, preRemplissage,
   depuis, emailUtile, fourchetteDvf, initiales, jourIso, joliTel, periode, prenomNom, presenter, rappel, rappelDu, resume, robot,
-  statutDe, tableAbsente, telUtile, PROVENANCES, PORTAILS, provenanceDe,
+  statutDe, tableAbsente, telUtile, PORTAILS, provenanceDe,
   type CategorieDemande, type DemandeSite, type PreRemplissage, type Provenance, type StatutDemande,
 } from '@/lib/demandes-site';
 
@@ -27,10 +27,11 @@ import {
    bien, messages), puis, avec la passerelle SeLoger (context.md §7), les
    demandes de SeLoger, Logic-Immo et Belles Demeures.
 
-   - En haut, une seule bande (V3.99) : d'où (« Site et portails », en
-     grand), la période (ce mois-ci, 3 mois, 12 mois, depuis le début), le
-     total, la répartition (des puces qui filtrent la liste) et ce qui reste
-     à traiter. Elle suit la provenance choisie dessous.
+   - V3.99b : plus de chiffres au-dessus du panneau (ils doublaient Tout /
+     Mon site / Portails). Sous la provenance, la période (ce mois-ci, 3 mois,
+     12 mois, depuis le début), qui filtre la liste et ses compteurs, le
+     nombre de demandes reçues, et « N à traiter » : une seule nouvelle
+     s'ouvre, plusieurs s'allument dans la liste.
    - La provenance : Tout / Mon site / Portails, un curseur qui glisse. Mon
      site et Portails ouvrent un tiroir : un formulaire, ou un portail.
    - Le statut (Nouvelles, En cours, Traitées, Archivées, Toutes) ; la
@@ -59,7 +60,6 @@ const dansFiltre = (d: DemandeSite, f: Filtre) =>
   f === 'archives' ? d.archive : !d.archive && (f === 'toutes' || statutDe(d.statut).k === f);
 const dansCategorie = (d: DemandeSite, c: Categorie) => c === 'toutes' || cleCategorie(d) === c;
 const pluriel = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
-const provenanceParCle = (k: Provenance) => PROVENANCES.find(x => x.k === k) || PROVENANCES[0];
 
 /* ── Demandes Internet (V3.93) ─────────────────────────────────────────────
    Alexandre (6 octobre) : « les chiffres généraux en haut, puis Tout / Mon
@@ -99,7 +99,9 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   const [cat, setCat] = useState<Categorie>('toutes');
   const [prov, setProv] = useState<Prov>('tout');
   const [portail, setPortail] = useState<Portail>('tous');
-  const [per, setPer] = useState<Periode>('mois');
+  /* V3.99b : la période filtre aussi la liste ; elle s'ouvre sur « Depuis le
+     début » pour que rien ne soit caché en arrivant. */
+  const [per, setPer] = useState<Periode>('tout');
   const [cherche, setCherche] = useState('');
   const [choisie, setChoisie] = useState<string | null>(null);
   /* La fenêtre de la demande se ferme en glissant (V3.93) : `sortie` le
@@ -119,8 +121,10 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   /* Une autre demande s'ouvre en haut de la fenêtre, pas à la hauteur où
      l'on avait laissé la précédente. */
   const cadre = useRef<HTMLDivElement>(null);
-  /* « N à traiter » (V3.99) descend jusqu'à la liste. */
+  /* « N à traiter » (V3.99) descend jusqu'à la liste ; V3.99b : les
+     nouvelles s'y allument un instant (`eclair`). */
   const panneau = useRef<HTMLElement>(null);
+  const [eclair, setEclair] = useState(false);
   useEffect(() => { cadre.current?.scrollTo({ top: 0 }); }, [choisie]);
 
   const charger = useCallback(async () => {
@@ -176,6 +180,18 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     setSortie(false);
     setChoisie(id);
   };
+  /* « N à traiter » (V3.99b, Alexandre : « quand on clique, ça ne fait pas
+     un petit pop sur le message en question ») : une seule nouvelle, elle
+     s'ouvre ; plusieurs, la liste passe sur « Nouvelles » (sans recherche ni
+     formulaire choisi), on y descend, et elles s'allument un instant. */
+  const allerATraiter = (l: DemandeSite[]) => {
+    setCherche(''); setCat('toutes'); setFiltre('nouveau');
+    if (l.some(d => !dansPer(d))) setPer('tout');
+    if (l.length === 1) { ouvrir(l[0].id); return; }
+    panneau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setEclair(true);
+    window.setTimeout(() => setEclair(false), 1900);
+  };
   useEffect(() => {
     if (!choisie || question || creation) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') fermer(); };
@@ -192,8 +208,19 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   }, [prov, portail]);
   /* Sous « Mon site », le tiroir choisit le formulaire ; ailleurs, les pastilles. */
   const f: Filtre = filtre;
+  /* ── La période (V3.99b, Alexandre : « choisir le timing, et avoir
+     Nouvelles, En cours, Traitées, Archivées pareil ») : elle filtre la
+     liste et ses compteurs, sous la provenance choisie. ── */
+  const P = PERIODES.find(x => x.k === per) || PERIODES[0];
+  const depuisLe = useMemo(() => {
+    const now = new Date(maintenant);
+    if (per === 'tout') return 0;
+    if (per === 'mois') return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return maintenant - (P.jours || 0) * 86_400_000;
+  }, [per, maintenant, P.jours]);
+  const dansPer = useCallback((d: DemandeSite) => Date.parse(d.created_at) >= depuisLe, [depuisLe]);
   const trouvees = useMemo(() => demandes.filter(d => correspond(d, cherche)), [demandes, cherche]);
-  const dansLaProv = trouvees.filter(dansProv);
+  const dansLaProv = trouvees.filter(d => dansProv(d) && dansPer(d));
   const visibles = dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, cat));
   const ouverte = demandes.find(d => d.id === choisie) || null;
   /* La liste repart en fondu à chaque changement de filtre (V3.93). */
@@ -225,43 +252,11 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
       derniere ? `dernière reçue ${depuis(derniere.created_at, maintenant)}` : '',
     ].filter(Boolean).join(' · ');
 
-  /* ── Les chiffres du haut : la provenance choisie, sur la période ── */
-  const P = PERIODES.find(x => x.k === per) || PERIODES[0];
-  const depuisLe = useMemo(() => {
-    const now = new Date(maintenant);
-    if (per === 'tout') return 0;
-    if (per === 'mois') return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    return maintenant - (P.jours || 0) * 86_400_000;
-  }, [per, maintenant, P.jours]);
-  const dansPeriode = demandes.filter(d => dansProv(d) && Date.parse(d.created_at) >= depuisLe && !robot(d));
-  const total = dansPeriode.length;
+  const total = demandes.filter(d => dansProv(d) && dansPer(d) && !robot(d)).length;
   /* « N à traiter » : les nouvelles de la provenance, toutes périodes (ce
      que montre l'onglet « Nouvelles »). */
-  const aTraiter = demandes.filter(d => dansProv(d) && !d.archive && statutDe(d.statut).k === 'nouveau').length;
-  /* Tant que tout vient du site, la répartition se fait par formulaire ;
-     dès qu'un portail apparaît, par provenance. V3.99 (Alexandre : « devenues
-     des contacts, je n'ai même pas compris ; le bien le plus demandé, je ne
-     sais pas ») : une seule bande, et chaque part est une puce qui filtre la
-     liste (le formulaire, ou la provenance). */
-  const parFormulaire = prov === 'site' || (prov === 'tout' && dansPeriode.every(d => provenanceDe(d).k === 'site'));
-  type Part = { k: string; lib: string; n: number; teinte: Teinte; ic: string; court: string; on: boolean; choisir: () => void };
-  const repart: Part[] = parFormulaire
-    ? CATEGORIES.map(c => ({
-      k: c.k, lib: c.pluriel, n: dansPeriode.filter(d => cleCategorie(d) === c.k).length, teinte: c, ic: c.ic, court: '',
-      on: cat === c.k, choisir: () => setCat(cat === c.k ? 'toutes' : c.k),
-    }))
-    : (prov === 'portails' ? PORTAILS : PROVENANCES).map(x => ({
-      k: x.k, lib: x.lib, n: dansPeriode.filter(d => provenanceDe(d).k === x.k).length, teinte: x, ic: x.k === 'site' ? 'globe' : '', court: x.court,
-      on: prov === 'portails' && portail === x.k,
-      choisir: () => {
-        if (x.k === 'site') { choisirProv('site'); return; }
-        setProv('portails'); setCat('toutes'); setPortail(prov === 'portails' && portail === x.k ? 'tous' : x.k);
-      },
-    }));
-  /* La plus grosse part d'abord : elle se lit en premier. */
-  const repartN = repart.filter(r => r.n > 0).sort((x, y) => y.n - x.n);
-  const scopeLib = prov === 'site' ? 'Mon site' : prov === 'portails' ? (portail === 'tous' ? 'Tous les portails' : provenanceParCle(portail).lib) : 'Site et portails';
-  const scopeC = prov === 'portails' && portail !== 'tous' ? provenanceParCle(portail).c : BLEU;
+  const nouvellesProv = demandes.filter(d => dansProv(d) && !d.archive && statutDe(d.statut).k === 'nouveau');
+  const aTraiter = nouvellesProv.length;
 
   /* ── Les compteurs des filtres ── */
   const nbFiltre = (k: Filtre) => dansLaProv.filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
@@ -406,45 +401,6 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
         recherche={demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Nom, téléphone, ville, bien…', label: 'Chercher une demande' } : undefined}
         label="Les demandes" actif="" onChoisir={() => {}} tuiles={[]} />
 
-      {demandes.length > 0 && (
-        <section className={s.bande} aria-label="Les chiffres" style={{ ['--c' as string]: scopeC } as CSSProperties}>
-          <div className={s.bandeTete}>
-            <div className={s.portee}>
-              <span className={s.porteeIc}>{prov === 'site' ? <Ic n="globe" t={19} e={2} /> : prov === 'portails' ? <Ic n="immeuble" t={19} e={2} /> : <PictoBoite taille={19} epaisseur={2} />}</span>
-              <span className={s.porteeTx}><b>{scopeLib}</b><small>{`Ce qui est arrivé ${P.phrase}`}</small></span>
-            </div>
-            <div className={s.periodes} role="group" aria-label="Période des chiffres">
-              {PERIODES.map(x => (
-                <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}><span className={s.perLong}>{x.lib}</span><span className={s.perCourt}>{x.court}</span></button>
-              ))}
-            </div>
-          </div>
-          <div className={s.bandeCorps}>
-            <div className={s.total}><b>{total}</b><span>{total > 1 ? 'demandes reçues' : 'demande reçue'}</span></div>
-            <div className={s.repart}>
-              {repartN.length ? (
-                <>
-                  <span className={s.ccBarre}>{repartN.map(r => <span key={r.k} style={{ width: `${(r.n / total) * 100}%`, background: r.teinte.c }} />)}</span>
-                  <div className={s.parts} role="group" aria-label="Filtrer la liste">
-                    {repartN.map(r => (
-                      <button key={r.k} type="button" aria-pressed={r.on} className={`${s.part} ${r.on ? s.partOn : ''}`} style={teinte(r.teinte)} onClick={r.choisir}>
-                        <span className={s.partIc}>{r.ic ? <Ic n={r.ic} t={13} e={2.3} /> : r.court}</span>
-                        <span>{r.lib}</span><b>{r.n}</b>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : <span className={s.ccSous}>{prov === 'portails' ? 'Les demandes des portails arriveront ici avec la passerelle SeLoger.' : 'Aucune demande sur la période.'}</span>}
-            </div>
-            {aTraiter > 0 ? (
-              <button type="button" className={s.aTraiter} onClick={() => { setFiltre('nouveau'); panneau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
-                {`${aTraiter} à traiter`}<em><Ic n="fleche" t={15} e={2.4} /></em>
-              </button>
-            ) : <span className={s.toutTraite}><Ic n="check" t={15} e={2.6} />Tout est traité</span>}
-          </div>
-        </section>
-      )}
-
       <section ref={panneau} className={s.panneau} aria-label="Les demandes">
         <div className={s.provs} role="tablist" aria-label="Provenance" style={{ ['--i' as string]: String({ tout: 0, site: 1, portails: 2 }[prov]) } as CSSProperties}>
           <span className={s.curseur} aria-hidden="true" />
@@ -479,6 +435,25 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
             </div>
           </div>
         </Depliant>
+
+        {/* V3.99b (Alexandre : « je ne vois pas l'intérêt du truc en haut, il y a
+            déjà Tout, Mon site, Portails en bas ») : plus de bande au-dessus.
+            Sous la provenance, la période, ce qui est arrivé, et « à traiter ». */}
+        {demandes.length > 0 && (
+          <div className={s.periodeLigne}>
+            <div className={s.periodes} role="group" aria-label="Période">
+              {PERIODES.map(x => (
+                <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}><span className={s.perLong}>{x.lib}</span><span className={s.perCourt}>{x.court}</span></button>
+              ))}
+            </div>
+            <span className={s.recues}><b>{total}</b>{` demande${total > 1 ? 's' : ''} reçue${total > 1 ? 's' : ''} ${P.phrase}`}</span>
+            {aTraiter > 0 ? (
+              <button type="button" className={s.aTraiter} onClick={() => allerATraiter(nouvellesProv)} title={aTraiter === 1 ? 'Ouvrir la demande' : 'Voir les nouvelles demandes'}>
+                {`${aTraiter} à traiter`}<em><Ic n="fleche" t={14} e={2.4} /></em>
+              </button>
+            ) : <span className={s.toutTraite}><Ic n="check" t={14} e={2.6} />Tout est traité</span>}
+          </div>
+        )}
 
         {demandes.length > 0 && (
           <div className={s.filtres}>
@@ -564,7 +539,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
               <div key={g.titre} className={s.groupe}>
                 <div className={s.groupeTitre}><span>{g.titre}</span><i>{g.l.length}</i></div>
                 {g.l.map((d, i) => (
-                  <CarteDemande key={d.id} d={d} on={d.id === choisie} maintenant={maintenant} rang={i} onChoisir={() => ouvrir(d.id)} />
+                  <CarteDemande key={d.id} d={d} on={d.id === choisie} eclair={eclair} maintenant={maintenant} rang={i} onChoisir={() => ouvrir(d.id)} />
                 ))}
               </div>
             ))}
@@ -599,8 +574,8 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
 }
 
 /* ── Une demande dans la liste ─────────────────────────────────────────── */
-function CarteDemande({ d, on, maintenant, rang, onChoisir }: {
-  d: DemandeSite; on: boolean; maintenant: number; rang: number; onChoisir: () => void;
+function CarteDemande({ d, on, eclair, maintenant, rang, onChoisir }: {
+  d: DemandeSite; on: boolean; eclair?: boolean; maintenant: number; rang: number; onChoisir: () => void;
 }) {
   const cat = categorieDe(d.form_type);
   const st = statutDe(d.statut);
@@ -615,7 +590,7 @@ function CarteDemande({ d, on, maintenant, rang, onChoisir }: {
   return (
     <button type="button" aria-pressed={on} onClick={onChoisir} aria-label={`Ouvrir la demande de ${d.name || 'sans nom'} (${pv.lib}, ${cat.lib})`}
       style={{ ...teinte(cat), ['--pc' as string]: pv.c, animationDelay: `${Math.min(rang, 8) * 35}ms` } as CSSProperties}
-      className={`${s.carte} ${on ? s.carteOn : ''} ${neuve ? s.carteNeuve : ''} ${bot ? s.carteRobot : ''}`}>
+      className={`${s.carte} ${on ? s.carteOn : ''} ${neuve ? s.carteNeuve : ''} ${neuve && eclair ? s.carteEclair : ''} ${bot ? s.carteRobot : ''}`}>
       <span className={s.provTuile} title={pv.lib}>
         <span>{pv.court}</span>
         {neuve && <span className={s.pointNeuf} title="Nouvelle demande" />}
