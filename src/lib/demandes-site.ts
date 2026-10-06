@@ -40,7 +40,22 @@ export type DemandeSite = {
   client_id: string | null;
   /* Quand le mail « Nouvelle demande » est parti (outils/sql/demandes-site-notifier.sql). */
   notifie_le?: string | null;
+  /* V3.93 : d'où vient la demande. Absent (toutes les demandes d'avant) : le
+     site. Les portails (SeLoger, Logic-Immo, Belles Demeures) arriveront avec
+     la passerelle SeLoger (context.md §7) ; la colonne viendra avec eux. */
+  source?: string | null;
 };
+
+/* ── D'où vient une demande (V3.93, « Demandes Internet ») ──────────────── */
+export type Provenance = 'site' | 'seloger' | 'logicimmo' | 'bellesdemeures';
+export const PROVENANCES: { k: Provenance; lib: string; court: string; c: string; fond: string; trait: string; portail: boolean }[] = [
+  { k: 'site', lib: 'Mon site', court: 'Site', c: '#22497c', fond: '#eef3fa', trait: '#c9d8ee', portail: false },
+  { k: 'seloger', lib: 'SeLoger', court: 'SL', c: '#b4233c', fond: '#fdf0f2', trait: '#f3c7cf', portail: true },
+  { k: 'logicimmo', lib: 'Logic-Immo', court: 'LI', c: '#0b6e6a', fond: '#e9f5f4', trait: '#bfe3df', portail: true },
+  { k: 'bellesdemeures', lib: 'Belles Demeures', court: 'BD', c: '#5b2d6e', fond: '#f5eef8', trait: '#dfc9e8', portail: true },
+];
+export const PORTAILS = PROVENANCES.filter(x => x.portail);
+export const provenanceDe = (d: Pick<DemandeSite, 'source'>) => PROVENANCES.find(x => x.k === d.source) || PROVENANCES[0];
 
 export const TABLE_DEMANDES = 'contact_submissions';
 
