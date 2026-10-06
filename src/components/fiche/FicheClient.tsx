@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
-import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur, cloreRelancesArchive, reporterRelance } from '@/lib/relances';
+import { programmerRelance, delaiRelance, solderRelancesAcheteur, cloreRelancesArchive, reporterRelance } from '@/lib/relances';
 import { annulerVisites } from '@/lib/annuler-visites';
 import { lireMontant, ecrireMontant } from '@/lib/montant';
 import { visitePassee } from '@/lib/visites';
@@ -3387,22 +3387,6 @@ ${signatureMail()}`,
     refuse:           { label: '❌ Refusé',            color: '#ef4444', bg: '#fef2f2' },
   };
 
-  /* La fiche n'affichait jamais la table `relances` : l'étiquette qu'on y
-     voyait était une ligne de journal. Clôturer une relance ailleurs ne
-     changeait donc rien ici, et une relance en retard n'apparaissait sur
-     aucun dossier. */
-  async function creerRelanceManuelle() {
-    const jours = await delaiRelance();
-    const { error } = await supabase.from('relances').insert({
-      client_id: client.id, recherche_id: rechercheId || null, type: 'manuelle',
-      statut: 'en_attente', date_echeance: echeanceDans(jours), note: 'Relance manuelle',
-    });
-    if (error) { alert(`La relance n'a pas pu être créée.\n\n${error.message}`); return; }
-    await addJournal(client.id, 'relance_manuelle', `🔔 Relance créée pour J+${jours}`, undefined, undefined, { rechercheId });
-    chargerRelances();
-    load();
-    alert(`Relance créée pour dans ${jours} jours.`);
-  }
 
   /* Les relances en attente de ce client, pour l'étiquette de l'entête. */
   const chargerRelances = useCallback(async () => {
@@ -3519,19 +3503,15 @@ ${signatureMail()}`,
         {/* Sur téléphone, les quatre gestes deviennent une rangée de boutons
             à pictogramme, tous visibles sans défiler. */}
         <div className={styles.actionsFiche} style={{ display: 'flex', gap: 8 }}>
+          {/* V3.87 — Un seul bouton (Alexandre : « Envoyer, envoyer quoi ? et
+              Mail fait doublon ») : « Envoyer à Camille » ouvre le choix, un
+              mail, des biens, un compte rendu de visite. */}
           <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>
-            <span className={styles.surBureau}>📤 Envoyer</span>
+            <span className={styles.surBureau}>{`📤 ${client.prenom && client.prenom.length <= 14 ? `Envoyer à ${client.prenom}` : 'Lui envoyer'}`}</span>
             <span className={styles.surMobile}><Icone nom="envoi" taille={20} epaisseur={1.9} /><span>Envoyer</span></span>
           </button>
-          {/* V3.51 : lui écrire sans quitter sa fiche (la trame de « Nouveau mail »). */}
-          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowMail(true)}>
-            <span className={styles.surBureau}>✉️ Mail</span>
-            <span className={styles.surMobile}><Icone nom="mail" taille={20} epaisseur={1.9} /><span>Mail</span></span>
-          </button>
-          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={creerRelanceManuelle}>
-            <span className={styles.surBureau}>🔔 Relance J+{delaiJours}</span>
-            <span className={styles.surMobile}><Icone nom="cloche" taille={20} epaisseur={1.9} /><span>{`Relance J+${delaiJours}`}</span></span>
-          </button>
+          {/* V3.87 : « Relance J+5 » est parti (Alexandre : « ça ne sert à rien,
+              on pose déjà la prochaine relance en notant l'action dans le Suivi »). */}
           <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => nouvelleAction()}>
             <span className={styles.surBureau}>+ Action</span>
             <span className={styles.surMobile}><Icone nom="note" taille={20} epaisseur={1.9} /><span>Action</span></span>
@@ -5859,36 +5839,49 @@ ${signatureMail()}`,
       {showMail && <FenetreMail contact={client as unknown as ContactMail} rechercheId={rechercheId || null} onFermer={() => setShowMail(false)} onEnvoye={() => { void load(); }} />}
 
       {/* ═══ MODAL ENVOI ═══ */}
-      {showEnvoi && (
-        <Portail>
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoi(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 520 }}>
-            <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>📤 Envoyer à {client.prenom}</h2>
-              <button className={styles.modalClose} onClick={() => setShowEnvoi(false)}>✕</button>
-            </div>
-            <div className={styles.modalBody}>
-              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Que souhaitez-vous envoyer à ce client ?</p>
-              {[
-                { icon: '📄', label: 'Sélection de biens', sub: `${biens.filter(b => b.badge_retour !== 'refuse').length} bien${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} actif${biens.filter(b => b.badge_retour !== 'refuse').length !== 1 ? 's' : ''} dans la fiche`, action: () => { setShowEnvoi(false); if (biens.filter(b => b.badge_retour !== 'refuse').length === 0) { alert("Ajoutez d'abord des biens à la fiche."); return; } openEnvoiMulti(); }, primary: true },
-                { icon: '🤝', label: 'Présentation des services', sub: 'Plaquette Emilio Immobilier', action: () => { setShowEnvoi(false); alert('PDF Présentation — V2'); }, primary: false },
-                { icon: '📋', label: 'Compte-rendu de visites', sub: `${visites.filter(v=>v.statut==='effectuee').length} visite(s) effectuée(s)`, action: () => { setShowEnvoi(false); if (!visites.filter(v=>v.statut==='effectuee').length) { alert('Aucune visite effectuée.'); return; } setTab('visites'); }, primary: false },
-                { icon: '✉️', label: 'Mail libre', sub: 'Rédiger un message personnalisé sans bien', action: () => { setShowEnvoi(false); setShowMail(true); }, primary: false },
-              ].map((btn, i) => (
-                <button key={i} onClick={btn.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: btn.primary ? '2px solid var(--emilio)' : '1px solid #e3e8f0', background: btn.primary ? 'var(--emilio)' : 'white', cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all 0.15s' }}>
-                  <span style={{ fontSize: 24, flexShrink: 0 }}>{btn.icon}</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: btn.primary ? 'white' : 'var(--emilio)' }}>{btn.label}</div>
-                    <div style={{ fontSize: 12, color: btn.primary ? 'rgba(255,255,255,0.5)' : '#94a3b8', marginTop: 2 }}>{btn.sub}</div>
-                  </div>
-                  <span style={{ marginLeft: 'auto', color: btn.primary ? 'rgba(255,255,255,0.4)' : '#cbd5e1', fontSize: 18 }}>›</span>
-                </button>
-              ))}
+      {showEnvoi && (() => {
+        /* V3.87 — Envoyer à Camille : trois choix clairs. « Présentation des
+           services » ne faisait rien (« V2 ») : il est parti ; « Mail libre »
+           et le bouton « Mail » n'en font plus qu'un. */
+        const nbBiens = biens.filter(b => b.badge_retour !== 'refuse').length;
+        const nbVisites = visites.filter(v => v.statut === 'effectuee').length;
+        const CHOIX: { k: string; ic: string; lib: string; sous: string; ok: boolean; go: () => void }[] = [
+          { k: 'mail', ic: 'mail', lib: 'Un mail', sous: 'Écrire un message, son adresse déjà mise. Avec ou sans pièce jointe.', ok: true, go: () => setShowMail(true) },
+          { k: 'biens', ic: 'maison', lib: 'Des biens', sous: nbBiens ? `${nbBiens > 1 ? `${nbBiens} biens` : '1 bien'} dans sa fiche : tu choisis lesquels, photos, prix et lien.` : 'Aucun bien dans sa fiche : ajoute-en depuis « Rapprochement » ou « + Ajouter un bien ».', ok: nbBiens > 0, go: () => openEnvoiMulti() },
+          { k: 'visites', ic: 'calendrier', lib: 'Un compte rendu de visite', sous: nbVisites ? `${nbVisites > 1 ? `${nbVisites} visites faites` : '1 visite faite'} : il part depuis l’onglet Visites.` : 'Aucune visite faite pour l’instant.', ok: nbVisites > 0, go: () => setTab('visites') },
+        ];
+        return (
+          <Portail>
+          <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowEnvoi(false); }}>
+            <div className={styles.modal} style={{ maxWidth: 560 }}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <h2 className={styles.modalTitle}>{`Envoyer à ${client.prenom || 'ce client'}`}</h2>
+                  <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 3 }}>Que veux-tu lui envoyer ?</div>
+                </div>
+                <button className={styles.modalClose} onClick={() => setShowEnvoi(false)}>✕</button>
+              </div>
+              <div className={styles.modalBody} style={{ gap: 10 }}>
+                {CHOIX.map(x => (
+                  <button key={x.k} type="button" disabled={!x.ok} className="fc-envoi-choix"
+                    onClick={() => { setShowEnvoi(false); x.go(); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', borderRadius: 14, border: `1.5px solid ${x.ok ? '#e3e8f0' : '#eef1f6'}`, background: x.ok ? 'white' : '#fafbfc', cursor: x.ok ? 'pointer' : 'default', fontFamily: 'inherit', textAlign: 'left', opacity: x.ok ? 1 : 0.62, transition: 'border-color .15s, background .15s, box-shadow .15s' }}>
+                    <span style={{ width: 44, height: 44, borderRadius: 13, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: x.ok ? 'var(--emilio-fond)' : '#eef2f7', color: x.ok ? '#e8c96a' : '#94a3b8' }}>
+                      <Icone nom={x.ic} taille={20} epaisseur={1.9} />
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+                      <b style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: 'var(--emilio)' }}>{x.lib}</b>
+                      <span style={{ fontSize: 12.5, lineHeight: 1.45, color: '#64748b' }}>{x.sous}</span>
+                    </span>
+                    {x.ok && <span style={{ color: '#a07c28', display: 'flex', flexShrink: 0, transform: 'rotate(-90deg)' }}><Icone nom="chevron" taille={18} epaisseur={2.2} /></span>}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-        </Portail>
-      )}
+          </Portail>
+        );
+      })()}
 
       {/* ═══ MODAL FICHE BIEN ═══ */}
       {showFicheBien && editBienForm && (

@@ -262,7 +262,7 @@
 
   .actionsFiche {
     flex: 1 1 100%; display: grid !important;
-    grid-template-columns: repeat(5, minmax(0, 1fr)) 36px; gap: 5px !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; gap: 5px !important;
   }
   .actionsFiche .actionFiche {
     flex-direction: column; justify-content: center; align-items: center; gap: 4px;
