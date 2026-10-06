@@ -1461,6 +1461,33 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.88 — 6 octobre 2026 · Cocher plusieurs contacts ou biens, et agir d'un coup
+
+Rien à passer dans Supabase. Alexandre : « des petites coches sur les biens et les contacts, dans
+n'importe quelle catégorie ; quand j'en ai sélectionné, un petit bouton à droite qui dit combien ;
+envoyer un mail à tous les contacts sélectionnés, ou les supprimer d'un coup ».
+
+- **`shared/Selection.tsx`** (nouveau) : `CaseSelection` (la case : sur l'avatar d'un contact, au coin
+  de la photo d'un bien ; elle apparaît au survol de la ligne, classe globale `sel-ligne`, et reste
+  visible dès qu'une case est cochée ; au téléphone, une petite case ronde au coin de l'avatar),
+  `AvecCase`, `BarreSelection` (en bas à droite, au-dessus de la barre d'onglets au téléphone : le
+  nombre, « Tout sélectionner (N) » de ce qui est affiché, les gestes, la croix ; Échap décoche tout),
+  `ConfirmerLot` (la liste de ce qui sera touché, ce qui est laissé de côté et pourquoi, l'avancement,
+  les erreurs une par une).
+- **Contacts** (`Clients.tsx`, `LigneContact`) : la case sur l'avatar, dans le tableau des acheteurs
+  comme dans les autres listes (archivés compris). Gestes : **Envoyer un mail** (la fenêtre de
+  rédaction, les contacts cochés en destinataires ; ceux sans adresse sont nommés : `FenetreMail`
+  prend `contacts`), **Archiver** (ou « Sortir des archives » : `archiverContact`, comme la fiche :
+  la veille s'arrête, les relances en attente se ferment, une ligne au Suivi), **Supprimer**
+  (`lib/supprimer-contacts.ts` : on laisse de côté un contact relié à un bien de « Biens », à un
+  document ou à une vente signée ; les autres sont effacés comme depuis la fiche d'un acheteur,
+  table par table, puis la fiche, vérifiée ; ils quittent la barre des fiches ouvertes).
+- **Biens** (`PageBiens.tsx`) : la case au coin de la photo (cartes et lignes), la pastille d'étape se
+  pousse. Gestes : **Archiver** (seulement un bien terminé : vendu, retiré, annonce type ; les autres
+  sont laissés de côté avec la raison) ou « Sortir des archives », **Supprimer** (`supprimerBien`,
+  un par un ; un bien vendu est laissé de côté).
+- Prochaine étape (V3.89) : envoyer les biens cochés à des contacts, dans un mail tout prêt.
+
 ### V3.87 — 6 octobre 2026 · « Envoyer un mail » en fenêtre ; « Envoyer à Camille » ; moins de boutons « relance »
 
 Rien à passer dans Supabase.
