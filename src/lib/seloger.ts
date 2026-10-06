@@ -12,8 +12,12 @@
      · l'identifiant de l'annonce chez SeLoger (`offererEstateId`) ne change
        jamais : le numéro ImmoFacile pour un bien repris, sinon la référence
        du CRM — le même que pour Jinka (lib/poliris.ts, `idJinka`) ;
-     · la position part, mais SeLoger la montre floutée dans le quartier
-       (`PARTIAL`) ; le numéro et la rue restent vides, comme sur le site ;
+     · l'adresse et la position partent, comme ImmoFacile les envoyait :
+       SeLoger s'en sert pour la carte et la recherche, et montre la
+       position floutée dans le quartier (`PARTIAL`) ; ce qu'il affiche de
+       l'adresse se règle dans MySeLogerPRO (« Localisation des biens ») ;
+     · le contact de l'agence (le standard et l'adresse de l'agence, ceux
+       que SeLoger avait déjà) ;
      · les mentions ALUR : honoraires (qui paie, combien, le barème),
        copropriété, DPE ;
      · jamais le propriétaire, les notes, les codes, les consignes. */
@@ -27,6 +31,16 @@ import { idJinka } from '@/lib/poliris';
 export const SELOGER_LOGICIEL = 'EmilioImmoCRM';
 export const SELOGER_VERSION_LOGICIEL = '3.98';
 const BAREME = 'https://www.emilio-immo.com/honoraires';
+/* Le contact que SeLoger affichait avec les annonces d'ImmoFacile (relevé
+   dans leur comparaison du 6 octobre). */
+const CONTACT = { companyName: 'Emilio Immobilier', phoneNumber: '01 84 80 14 00', email: 'agence@emilio-immo.com' };
+
+/* « 12 bis Rue Edouard Detaille, 92100 Boulogne » → numéro et rue. */
+export function rueEtNumero(adresse: string): { houseNumber: string; street: string } {
+  const t = adresse.replace(/,?\s*\d{5}\b.*$/, '').replace(/\s+/g, ' ').trim();
+  const m = t.match(/^(\d+\s*(?:bis|ter|quater|[a-d])?)\b[\s,]*(.+)$/i);
+  return m ? { houseNumber: m[1].replace(/\s+/g, ' ').trim(), street: m[2].trim() } : { houseNumber: '', street: t };
+}
 
 export type Portail = 'SL' | 'BD';
 type Json = Record<string, unknown>;
@@ -103,7 +117,7 @@ function dpe(d: BienVente['donnees'], energyClass?: string, gesClass?: string): 
 }
 
 /* ── Une annonce ───────────────────────────────────────────────────────── */
-export type AnnonceSeLoger = { portals: Portail[]; data: Json; media?: Json[] };
+export type AnnonceSeLoger = { portals: Portail[]; data: Json; specific?: Json; media?: Json[] };
 
 export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } | null): AnnonceSeLoger {
   const d = b.donnees || {};
@@ -134,6 +148,8 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
   const mandatType = b.mandat_type || txt(d, 'mandatType');
   const energie = String(d.chauffageEnergie || '');
 
+  const { houseNumber, street } = rueEtNumero(txt(d, 'adresse') || b.adresse || '');
+
   const data: Json = {
     estateType: type.estateType,
     ...(type.sous ? { estateSubType: type.sous } : {}),
@@ -141,19 +157,23 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
     location: {
       postalcode: s.postalCode || '',
       city: s.city || '',
-      street: '',
-      houseNumber: '',
+      street,
+      houseNumber,
       country: 'FRA',
       ...(typeof s.floor === 'number' ? { floorNumber: Math.round(s.floor) } : {}),
       ...(g ? { geometry: { type: 'Point', coordinates: [Math.round(g.lng * 1e6) / 1e6, Math.round(g.lat * 1e6) / 1e6] }, mapdisplayprecision: 'PARTIAL' } : {}),
     },
     prices: {
       currency: 'EUR',
-      buy: { price: { amount: prix } },
+      buy: { price: { amount: prix, isVatIncluded: true } },
       brokerageFee,
     },
     spaces: {
       spaceMeasureUnit: 'SQUARE_METER',
+      /* SeLoger lit la surface du bien (« Area ») ailleurs que dans la
+         surface habitable : la même valeur, aux trois endroits. */
+      overallSpace: arrondi(positif(num(d, 'surface')) ?? positif(s.surface)),
+      usableFloorSpace: arrondi(positif(num(d, 'surface')) ?? positif(s.surface)),
       plotSpace: arrondi(positif(num(d, 'terrain'))),
       residential: {
         livingSpace: arrondi(positif(num(d, 'surface')) ?? positif(s.surface)),
@@ -184,6 +204,9 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
             open: cuisine === 'ouverte' || cuisine === 'semiOuverte' || undefined,
             separated: cuisine === 'independante' || undefined,
             kitchenette: cuisine === 'kitchenette' || undefined,
+            /* Équipée ou aménagée : sans lui, SeLoger lit « américaine »
+               au lieu de « américaine équipée ». */
+            builtIn: equipee === 'FULLY_EQUIPPED' || equipee === 'STORAGE' || undefined,
           },
           kitchenEquipment: equipee,
         },
@@ -209,6 +232,7 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
       furnished: eq.includes('meuble') ? 'FULL' : undefined,
       wheelchairUse: oui(eq.includes('pmr')),
       garden: annexes.includes('jardin') ? { private: true } : undefined,
+      floorCovering: eq.includes('parquet') ? { parquet: 'YES' } : undefined,
       security: {
         buildingIntercom: oui(immeuble.includes('interphone')),
         digitalLock: oui(immeuble.includes('digicode')),
@@ -236,7 +260,7 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
             numberOfUnits: entierPositif(num(d, 'lots')),
             operatingCostsPerYear: arrondi(positif(num(d, 'chargesAn'))),
             isSyndicProcedure: d.procedure === 'oui' ? true : d.procedure === 'non' ? false : undefined,
-            procedureDetails: d.procedure === 'oui' ? txt(d, 'procedureNature') || undefined : undefined,
+            procedureDetails: d.procedure === 'oui' ? txt(d, 'procedureNature') || undefined : d.procedure === 'non' ? 'Pas de procédure en cours' : undefined,
           }
           : d.copro === 'non' ? { isCondo: false } : undefined,
       },
@@ -264,10 +288,11 @@ export function annonceSeLoger(b: BienVente, gps?: { lat: number; lng: number } 
   const propre = net(data) as Json;
   /* Les champs que le schéma exige, même vides (la rue, le numéro). */
   const loc = (propre.location || {}) as Json;
-  propre.location = { ...loc, street: '', houseNumber: '' };
+  propre.location = { ...loc, street, houseNumber };
 
+  const specific = { gsl: { mainContactPerson: CONTACT } };
   const media = photos.map((url, i) => ({ url, mediaType: 'PICTURE', ...(i === 0 ? { category: 'COVER_PICTURE' } : {}) }));
-  return { portals: portailsDe(b), data: propre, ...(media.length ? { media } : {}) };
+  return { portals: portailsDe(b), data: propre, specific, ...(media.length ? { media } : {}) };
 }
 
 /* ── Le lot du moment ──────────────────────────────────────────────────── */
@@ -299,6 +324,8 @@ export function lotSeLoger(biens: BienVente[], gps?: Map<string, { lat: number; 
     if (!annonce.media?.length) out.avertissements.push(`${nom} : aucune photo`);
     const energie = ((dt.energy as Json)?.countrySpecific as Json | undefined)?.fr as Json | undefined;
     if (!energie?.energyCertificate) out.avertissements.push(`${nom} : DPE non renseigné`);
+    const fee = ((dt.prices as Json)?.brokerageFee || {}) as Json;
+    if (fee.feeFor === 'BUYER_OR_TENANT' && !fee.feePercentage) out.avertissements.push(`${nom} : honoraires à la charge de l’acquéreur, sans taux ni montant (à préciser dans la fiche)`);
     vus.add(id);
     out.annonces.push({ bienId: b.id, reference: b.reference, id, portails, annonce });
   }

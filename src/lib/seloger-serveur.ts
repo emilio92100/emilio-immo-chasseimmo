@@ -242,26 +242,38 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
 }
 
 /* ── Où en sont les annonces chez SeLoger ──────────────────────────────── */
-/* Le dernier statut de chaque annonce (reçue, créée, photos refusées…),
-   pour la recette et pour le CRM. Un appel par annonce : à la demande. */
-export async function statutsSeLoger(): Promise<{ ok: boolean; erreur?: string; env: Env; annonces: { id: string; reference: string | null; classifiedId: string; statut: string; message: string; le: string; photosEnErreur: number }[] }> {
+/* Où en est chaque annonce (reçue, comparée, créée, photos refusées…),
+   pour la recette et pour le CRM. Un appel par annonce : à la demande.
+   `historique` : les derniers statuts, du plus récent au plus ancien. */
+type Statut = { status?: string; subStatus?: string; subStatusDetails?: string; message?: string; statusDate?: string; mediaStatuses?: { status?: string }[] };
+export type StatutAnnonce = {
+  id: string; reference: string | null; classifiedId: string; statut: string; message: string; le: string;
+  photos: number; photosEnErreur: number; historique: { statut: string; le: string }[];
+};
+export async function statutsSeLoger(): Promise<{ ok: boolean; erreur?: string; env: Env; annonces: StatutAnnonce[] }> {
   const sb = baseServeur();
   const env = envSeLoger();
   const a = acces();
   if (!a) return { ok: true, env, annonces: [] };
   const etat = await lireEtatSeLoger(sb);
-  const out: { id: string; reference: string | null; classifiedId: string; statut: string; message: string; le: string; photosEnErreur: number }[] = [];
+  const out: StatutAnnonce[] = [];
+  const nom = (it?: Statut) => [it?.status, it?.subStatus].filter(Boolean).join(' · ') || 'inconnu';
   try {
     for (const [id, g] of Object.entries(etat.annonces)) {
-      const rep = await appel(sb, a, 'GET', `/classifieds/${encodeURIComponent(g.classifiedId)}/statuses?filter=latest`);
-      const it = (Array.isArray(rep.json?.items) ? rep.json!.items : [])[0] as
-        | { status?: string; subStatus?: string; message?: string; statusDate?: string; mediaStatuses?: { status?: string }[] } | undefined;
+      const rep = await appel(sb, a, 'GET', `/classifieds/${encodeURIComponent(g.classifiedId)}/statuses?limit=15`);
+      const items = ((Array.isArray(rep.json?.items) ? rep.json!.items : []) as Statut[])
+        .sort((x, y) => String(y.statusDate || '').localeCompare(String(x.statusDate || '')));
+      const it = items[0];
+      /* Les photos : le dernier statut qui en parle. */
+      const media = items.find(x => Array.isArray(x.mediaStatuses) && x.mediaStatuses.length)?.mediaStatuses || [];
       out.push({
         id, reference: g.reference, classifiedId: g.classifiedId,
-        statut: rep.status === 200 ? [it?.status, it?.subStatus].filter(Boolean).join(' · ') || 'inconnu' : `erreur ${rep.status}`,
-        message: rep.status === 200 ? it?.message || '' : erreurDe(rep),
+        statut: rep.status === 200 ? nom(it) : `erreur ${rep.status}`,
+        message: rep.status === 200 ? it?.message || it?.subStatusDetails || '' : erreurDe(rep),
         le: it?.statusDate || '',
-        photosEnErreur: (it?.mediaStatuses || []).filter(m => /FAILED/.test(String(m.status || ''))).length,
+        photos: media.length,
+        photosEnErreur: media.filter(m => /FAILED/.test(String(m.status || ''))).length,
+        historique: items.map(x => ({ statut: nom(x), le: x.statusDate || '' })),
       });
     }
   } catch (e) {
