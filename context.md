@@ -1001,7 +1001,7 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   d'ImmoFacile et rend du JSON au site. Le site lira `/api/flux-site` du CRM à la place (V3.92),
   même JSON : seule l'adresse change dans son dépôt (`src/lib/properties.ts`, et le plan des biens
   dans `vercel.json`). Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
-- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, branché sur le CRM en V3.96) ; 3. Jinka ;
+- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, branché sur le CRM en V3.96) ; 3. Jinka (l'envoi est prêt en V3.97, en attente des codes et de l'essai) ;
   4. SeLoger (test, recette, production) ; 5. les demandes des portails dans « Demandes Internet »
   (l'écran est prêt, V3.93) ; 6. couper ImmoFacile (passerelles, puis abonnement).
 
@@ -1493,6 +1493,42 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.97 — 6 octobre 2026 · L'envoi des annonces à Jinka (POLIRIS en SFTP)
+
+Rien à passer dans Supabase. Une nouvelle dépendance : `ssh2-sftp-client` (et ses types). À mettre
+dans Vercel par Alexandre (jamais dans ce dépôt) : `JINKA_SFTP_HOTE`, `JINKA_SFTP_UTILISATEUR`,
+`JINKA_SFTP_MOT_DE_PASSE` ; facultatifs `JINKA_SFTP_PORT` (22), `JINKA_SFTP_DOSSIER` (la racine),
+`JINKA_ZIP` (`emilio-immo.zip`). Sans eux, rien ne part (la route répond « en attente des codes »).
+
+- **`lib/poliris.ts`** (isomorphe) : une ligne POLIRIS 4.12 par bien diffusé sur Jinka
+  (`diffuseSur(b, 'jinka')`), 335 champs entre guillemets séparés par `!#`, sans en-tête, en
+  ISO-8859-1 (’ œ € … remplacés, guillemets en apostrophes, retours en `<BR>`). Champ 1
+  `emilioimmo` ; 2 la référence du CRM ; 175 l'identifiant stable (`idJinka` : le numéro
+  ImmoFacile du bien repris, sinon la référence) ; titre 64 et texte 4 000 caractères, celui du site
+  avec ses mentions légales ; photos par leurs adresses HTTPS (85-93, 164-174, 264-273) ; position
+  (298, 299 ; 300 vide) ; DPE, GES, date et version du DPE, coûts ; ALUR (honoraires 15/302/303,
+  copropriété 258-262, barème `emilio-immo.com/honoraires`) ; chauffage et cuisine selon les codes
+  du format. Ni propriétaire, ni adresse exacte, ni notes, ni consignes de visite. Un bien sans code
+  postal, ville, prix, titre ou texte est laissé de côté et signalé ; deux biens au même identifiant,
+  le plus ancien seul.
+- **`lib/zip.ts`** : une archive zip sans dépendance (deflate de Node), `Annonces.csv` seul à la
+  racine.
+- **`lib/jinka-serveur.ts`** : prépare le fichier depuis la base (positions comme pour le site :
+  `positionsBiens`, sorti de `lib/flux-site-serveur.ts`), le compare au dernier dépôt (empreinte
+  gardée dans le bucket privé `mandats`, `diffusion/jinka.json`) et ne dépose que s'il a changé,
+  sous un nom temporaire puis renommé. Jamais un fichier vide.
+- **`/api/diffusion/portails`** (publique dans `proxy.ts`, la serrure est dedans : le badge ou
+  `CRON_SECRET`) : POST du CRM (dépôt si changement, `{ forcer }`), GET du cron de Vercel la nuit
+  (`vercel.json`, 3 h 30 : redépôt complet), GET derrière le badge (l'état, et `?fichier=csv` pour
+  télécharger `Annonces.csv` et le regarder ou l'envoyer à Jinka).
+- **`EnvoiPortails.tsx`** (dans `AppLayout`, invisible) : tant que le CRM est ouvert, demande un
+  dépôt 20 secondes après chaque modification signalée et toutes les 5 minutes (Jinka : « déposer
+  à chaque modification, ou au minimum toutes les heures »).
+- **`next.config.ts`** : `ssh2` et `ssh2-sftp-client` laissés à Node (`serverExternalPackages`).
+- Reste : les codes dans Vercel, un premier dépôt d'essai, le mail à Rémi Bruder (rapport de
+  Jinka, puis activation de notre flux et arrêt de celui d'ImmoFacile), et seulement ensuite couper
+  Jinka dans ImmoFacile.
 
 ### V3.96 — 6 octobre 2026 · Diffuser quand même hors vente ; « Diffusion en cours » dans Biens ; le site lit le CRM
 
