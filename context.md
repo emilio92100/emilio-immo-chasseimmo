@@ -984,7 +984,9 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   `…/seeker-leads/v1`) : un webhook (`POST /webhook/subscriptions`, url + `apiKey`) et
   `GET /leads?minDate&maxDate` (7 jours au plus par appel) ; annonce (`offererEstateId`), page
   agence (vendre / acheter / question), appels suivis. Elles iront dans « Demandes Internet »
-  (l'actuelle « Demandes du site », maquette validée le 6 octobre).
+  (V3.93, l'ancienne « Demandes du site » : la provenance, les tuiles des portails et leurs
+  chiffres sont prêts, à zéro). Il faudra la colonne `contact_submissions.source` (`seloger`,
+  `logicimmo`, `bellesdemeures` ; vide = le site) et l'identifiant du lead pour ne rien doubler.
 - **Jinka** : un fichier **POLIRIS 4.12** (`Annonces.csv`, séparateur `!#`, guillemets, sans ligne
   d'en-tête, **ISO-8859-1** — remplacer ’ œ € … qui n'y existent pas), seul dans `emilio-immo.zip`,
   déposé en **SFTP** sur le serveur de Jinka (port 22 ; hôte, utilisateur et mot de passe dans Vercel) sous un nom temporaire
@@ -996,10 +998,12 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   descriptif 4 000, `<BR>` pour les retours. Bascule : fichier final déposé → Jinka active et coupe
   ImmoFacile → seulement ensuite, couper Jinka dans ImmoFacile. Contact : Rémi Bruder.
 - **Le site** : la fonction `fetch-properties` (dans le Supabase du CRM) lit le flux XML
-  d'ImmoFacile et rend du JSON au site. Elle lira `biens_vente` à la place, même JSON : le site ne
-  change pas. Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
-- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site ; 3. Jinka ; 4. SeLoger (test, recette,
-  production) ; 5. « Demandes Internet » ; 6. couper ImmoFacile (passerelles, puis abonnement).
+  d'ImmoFacile et rend du JSON au site. Le site lira `/api/flux-site` du CRM à la place (V3.92),
+  même JSON : seule l'adresse change dans son dépôt (`src/lib/properties.ts`, et le plan des biens
+  dans `vercel.json`). Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
+- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, le CRM est prêt) ; 3. Jinka ;
+  4. SeLoger (test, recette, production) ; 5. les demandes des portails dans « Demandes Internet »
+  (l'écran est prêt, V3.93) ; 6. couper ImmoFacile (passerelles, puis abonnement).
 
 ### Plus tard
 
@@ -1489,6 +1493,35 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.93 — 6 octobre 2026 · « Demandes Internet » remplace « Demandes du site »
+
+Rien à passer dans Supabase. L'écran qui recevra aussi les demandes des portails, d'après la
+maquette validée par Alexandre le 6 octobre (« les chiffres généraux en haut, puis Tout / Mon site /
+Portails, avec un sous-onglet en tiroir » ; « joli, fluide, pas brut » ; « Mon site en bleu, pas
+en noir »). `PageDemandesSite.tsx` garde son nom et son adresse (`?page=demandes`).
+
+- **Les chiffres du haut**, sur une période (ce mois-ci, 3 mois, 12 mois, depuis le début) et pour
+  la provenance choisie : demandes reçues (dont nouvelles), devenues des contacts (et le taux),
+  la répartition (par formulaire tant que tout vient du site, par provenance ou par portail
+  ensuite), le bien le plus demandé. Les robots n'y comptent pas.
+- **La provenance** : Tout / Mon site / Portails, un curseur bleu qui glisse. Mon site ouvre un
+  tiroir avec un formulaire par tuile ; Portails, un portail par tuile (SeLoger, Logic-Immo, Belles
+  Demeures), à zéro avec « Avec la passerelle SeLoger » tant qu'elle n'est pas branchée.
+- **Le statut** en onglets (Nouvelles, avec un point qui bat, En cours, Traitées, Archivées,
+  Toutes), puis les sortes de demande en pastilles (sauf sous Mon site : c'est le tiroir).
+- **Une demande dans la liste** : la tuile de gauche dit d'où elle vient (« Site » en bleu, « SL »,
+  « LI », « BD »), le point doré qui bat dit qu'elle est neuve. La liste repart en fondu à chaque
+  filtre, les cartes arrivent l'une après l'autre.
+- **La demande ouverte** : une fenêtre, au centre sur ordinateur, qui monte du bas sur téléphone,
+  et se ferme en glissant (croix, Échap, clic à côté). Plus de colonne à droite ni de tiroir. Sa
+  tête passe au bleu du site et dit la provenance. Archiver ou remettre ferme la fenêtre.
+- **D'où vient une demande** : `lib/demandes-site.ts`, `PROVENANCES` et `provenanceDe(d)`, lus sur
+  `d.source` ; absent (toutes les demandes d'aujourd'hui), c'est le site. La colonne viendra avec
+  les demandes de SeLoger (§7).
+- Le menu dit « Demandes Internet ». Rien ne change pour les demandes du site : elles arrivent et
+  se traitent comme avant ; une demande reste une demande tant qu'on n'a pas cliqué « Créer le
+  contact ».
 
 ### V3.92 — 6 octobre 2026 · Le flux des biens pour le site ; la diffusion reprise d'ImmoFacile
 
