@@ -2,7 +2,7 @@
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { estArchive, lirePro, lireStructure } from '@/lib/contacts';
+import { estArchive, lirePro, lireStructure, reventePossible, typesDe } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
@@ -18,7 +18,7 @@ import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
-import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi } from '@/lib/intentions';
+import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi, demanderNouveauBien, demanderOngletBien } from '@/lib/intentions';
 import CloreRelances, { relancesACocher } from '@/components/shared/CloreRelances';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nomFoyer, conjointDe } from '@/lib/foyer';
@@ -30,7 +30,8 @@ import {
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
-import { BiensDuContact, TypesEnLigne } from '@/components/contacts/ChampsContact';
+import { TypesEnLigne } from '@/components/contacts/ChampsContact';
+import { BiensHero, useBiensBandeau } from '@/components/contacts/BiensBandeau';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
 import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
@@ -1113,6 +1114,10 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   const visiteEnCours = useRef(false);
   const [showBien, setShowBien] = useState(false);
   const [relancesAtt, setRelancesAtt] = useState<{ id: string; date_echeance: string; note: string | null; recherche_id?: string | null }[]>([]);
+  /* V3.84 — Ses biens à lui (rubrique Biens), dans le bandeau bleu, comme
+     pour un vendeur (« on est obligé de descendre en bas pour voir s'il a des
+     biens qui lui appartiennent »). */
+  const { biens: sesBiens, archives: sesArchives, vente: venteBiens } = useBiensBandeau(client.id);
   const [delaiJours, setDelaiJours] = useState(5);
   const [showAction, setShowAction] = useState(false);
 
@@ -3756,6 +3761,21 @@ ${signatureMail()}`,
               </div>
               <Coordonnees coords={coords} onModifier={() => { setCf(cfDe(client)); setShowContact(true); }}
                 pied={espaceEnPied ? <div className={styles.coPiedLigne}>{piedCarte}{boutonEspace(styles.coEspace)}</div> : piedCarte} />
+              {/* V3.84 — Ses biens, sur toute la largeur du bandeau : s'il en a
+                  dans la rubrique Biens ; sinon, s'il vend ou est propriétaire,
+                  « Créer son bien ». Un acheteur seul n'a rien de plus ici. */}
+              {sesBiens && (sesBiens.length > 0 || typesDe(client).some(t => t === 'vendeur' || t === 'proprietaire') || reventePossible(client)) && (
+                <div className={styles.teteBiens}>
+                  <span className={styles.teteBiensT}>
+                    <b>{sesBiens.length > 1 ? 'Ses biens' : 'Son bien'}</b>
+                    {sesBiens.length > 1 && <em>{sesBiens.length}</em>}
+                    {sesArchives > 0 && <small>{`+ ${sesArchives} archivé${sesArchives > 1 ? 's' : ''}`}</small>}
+                  </span>
+                  <BiensHero biens={sesBiens} vente={venteBiens}
+                    onBien={(id, onglet) => { if (onglet) demanderOngletBien(id, onglet); onNavigate('biens', { bien: id }); }}
+                    onCreerBien={() => { demanderNouveauBien(client.id); onNavigate('biens'); }} />
+                </div>
+              )}
             </div>
             <div className={`${styles.ongletsTete} fc-onglets`}>
               <BarreOnglets<VueFiche> label="Rubriques du contact" actif={vue} onChoisir={setVue}
@@ -4009,8 +4029,7 @@ ${signatureMail()}`,
                     </div>
                   );
                 })()}
-                {/* Il vend aussi : ses biens de la rubrique Biens (rien s'il n'en a pas). */}
-                <BiensDuContact clientId={client.id} prenom={client.prenom} onNavigate={onNavigate} />
+                {/* « Ses biens » n'est plus ici : il est dans le bandeau bleu (V3.84). */}
               </div>
             </div>
           </div>

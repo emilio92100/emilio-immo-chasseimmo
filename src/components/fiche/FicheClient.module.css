@@ -381,6 +381,14 @@
 .teteHalo1 { position: absolute; top: -140px; right: -90px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(201, 168, 76, .2), transparent 64%); }
 .teteHalo2 { position: absolute; bottom: -160px; left: -60px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(125, 185, 255, .12), transparent 66%); }
 .teteG { position: relative; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* Ses biens à lui (V3.84) : sous les tuiles et les coordonnées, sur toute la
+   largeur, le même rang que dans la fiche d'un vendeur (BiensBandeau.tsx). */
+.teteBiens { grid-column: 1 / -1; position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.teteBiensT { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: rgba(255, 255, 255, .62); }
+.teteBiensT::after { content: ''; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(232, 201, 106, .35), rgba(255, 255, 255, 0)); }
+.teteBiensT b { font-weight: 800; color: #e8c96a; }
+.teteBiensT em { font-style: normal; min-width: 18px; height: 18px; padding: 0 6px; box-sizing: border-box; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; background: rgba(232, 201, 106, .18); color: #f0dc9c; font-size: 11px; letter-spacing: 0; }
+.teteBiensT small { font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, .5); }
 .teteQui { display: flex; align-items: flex-start; gap: 17px; min-width: 0; }
 /* « Achète pour SCI … » ou « Pour une société (SCI…) ? Ajouter » (V3.31). */
 .teteSoc {
