@@ -15,6 +15,7 @@ import FicheBien from './FicheBien';
 import { FenMandat, FenNouveau } from './FenetresBien';
 import ImportBiensIF from './ImportBiensIF';
 import RepriseDiffusion from './RepriseDiffusion';
+import { etatDiffusion } from '@/lib/diffusion';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
 import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, ficheClient, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, majBien as ecrireBien, MESSAGE_VENDU_SUPPR, type ListeBiens } from './outils';
@@ -32,7 +33,7 @@ import b from './Biens.module.css';
    vit dans l'URL (?page=biens&bien=…) : un F5 ou le bouton Précédent y
    ramènent. */
 
-type Filtre = 'tout' | EtapeVente | 'archives';
+type Filtre = 'tout' | EtapeVente | 'archives' | 'diffusion';
 const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
 /* V3.80 (Alexandre : « trop de sous-catégories, on ne comprend pas trop ;
    mandat en cours en premier, ensuite estimation, et c'est tout ; les restes,
@@ -43,6 +44,9 @@ const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_su
 const PRINCIPALES: EtapeVente[] = ['mandat', 'estimation'];
 const AUTRES: EtapeVente[] = ['offre', 'compromis', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
 const dansEtape = (x: BienVente, f: EtapeVente) => (f === 'mandat' ? EN_COURS.includes(x.etape) : x.etape === f);
+/* V3.96 (Alexandre : « dans les onglets, diffusion en cours ») : tout ce qui
+   est en ligne, quelle que soit l'étape. */
+const enLigne = (x: BienVente) => etatDiffusion(x).enLigne;
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const lireBienUrl = () => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('bien'));
@@ -57,7 +61,7 @@ function ecrireBienUrl(id: string | null) {
 /* La catégorie d'une vue (« estimation »…) ; rien de reconnu : les mandats
    en cours (V3.80 : « quand on arrive, on arrive sur mandat en cours »). */
 const lireFiltre = (v: string | null): Filtre =>
-  v === 'tout' || v === 'archives' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'mandat';
+  v === 'tout' || v === 'archives' || v === 'diffusion' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'mandat';
 
 /* « C'est vendu » : le bandeau qui le confirme, en haut de la liste (V3.47). */
 export function BandeauVendu({ titre, texte, onFiche, onVendus, onFermer }: { titre: string; texte: string; onFiche: () => void; onVendus: () => void; onFermer: () => void }) {
@@ -274,7 +278,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* Les filtres fins comptent comme la recherche : les nombres des
      catégories les suivent. */
   const cherches = filtrer(trouves, fins);
-  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || dansEtape(x, filtre);
+  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || (filtre === 'diffusion' ? enLigne(x) : dansEtape(x, filtre));
   const parEtape = (p: BienVente, r: BienVente) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at);
   const visibles = trier(cherches.filter(dansCategorie), tri, parEtape);
   const avantFiltres = trouves.filter(dansCategorie).length;
@@ -418,8 +422,12 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         tuiles={biens.length === 0 ? [] : [
           /* Les deux étapes du quotidien, puis les autres dans le menu (celles
              qui ont des biens, ou celle qu'on regarde). */
-          ...[...PRINCIPALES, ...AUTRES.filter(k => (filtre === 'archives' ? actifs.some(x => x.etape === k) : n(k) > 0) || k === filtre)].map(k => etapeDe(k))
-            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c, menu: !PRINCIPALES.includes(e.k) })),
+          ...PRINCIPALES.map(k => etapeDe(k))
+            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c })),
+          /* V3.96 : ce qui est en ligne, à côté des deux étapes du quotidien. */
+          { cle: 'diffusion', lib: 'Diffusion en cours', n: filtre === 'archives' ? actifs.filter(enLigne).length : cherches.filter(enLigne).length, couleur: '#0f7a4f' },
+          ...AUTRES.filter(k => (filtre === 'archives' ? actifs.some(x => x.etape === k) : n(k) > 0) || k === filtre).map(k => etapeDe(k))
+            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c, menu: true })),
           { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, fin: true, ic: <Ic n="maison" t={14} e={2.1} /> },
           /* « Archivés » toujours là, même vide : sa place ne bouge pas. */
           { cle: 'archives', lib: 'Archivés', n: archives.length, archive: true },
