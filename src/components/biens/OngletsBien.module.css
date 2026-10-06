@@ -33,16 +33,43 @@
 .annonce { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 20px; background: #fff; border: 1px solid #e3e8f0; min-width: 0; }
 .annonceL { display: flex; align-items: center; gap: 16px; }
 .annonceTx { flex: 1; min-width: 0; }
-.annonceTx b { display: block; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.annonceTx b { display: flex; align-items: center; gap: 7px; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.annonceTxIc { display: inline-flex; color: #c9a84c; }
 .annonceTx span { display: block; margin-top: 3px; font-size: 13px; line-height: 1.5; color: #64748b; }
-.annonceTexte { font-size: 13.5px; line-height: 1.65; color: #3d4a5c; white-space: pre-wrap; padding: 12px 14px; border-radius: 14px; background: #f8fafc; max-height: 420px; overflow: auto; min-width: 0; }
-/* V3.45 : le texte affiché d'office, les mentions en petit à côté. */
-.annonceCorps { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: start; }
-.mentions { display: flex; flex-direction: column; gap: 7px; padding: 11px 12px; border-radius: 14px; border: 1px solid #eef1f6; }
-.mentions > b { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #64748b; }
-.mentions ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.mentions li { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.35; color: #475569; }
-.mentions li > span { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; background: #dcfce7; color: #15803d; }
+.annonceTitre { display: block; margin: 0 0 10px; font: 800 15px/1.4 'Plus Jakarta Sans', sans-serif; color: #1a2332; white-space: normal; }
+/* V3.79 : le texte en pleine largeur, sous son étiquette ; les mentions
+   obligatoires dessous, en un bandeau sur plusieurs colonnes (avant : une
+   colonne de 220 px à droite, plus haute que le texte, et un grand blanc). */
+.annonceCorps { display: flex; flex-direction: column; gap: 12px; }
+.annonceTexte { font-size: 13.5px; line-height: 1.7; color: #3d4a5c; white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px 16px; border-radius: 14px; background: #fbfaf6; border: 1px solid #f1ead6; border-left: 3px solid #c9a84c; max-height: 420px; overflow: auto; min-width: 0; }
+/* V3.79 : « Reformuler l'annonce » (l'IA), sa roue, ce qu'elle dit. */
+.annonceBtns { display: flex; gap: 8px; flex-shrink: 0; }
+.actIa { background: #fbf6e9; border-color: #ecdcae; color: #7a5d1c; }
+.actIa:hover:not(:disabled) { background: #f7edd2; border-color: #e3cd8f; }
+.actIa:disabled { cursor: progress; opacity: .85; }
+.actIa svg { color: #b08a2e; }
+.roue { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(169, 130, 47, .3); border-top-color: #a9822f; animation: roue .8s linear infinite; }
+@keyframes roue { to { transform: rotate(360deg); } }
+.iaInfo, .iaErreur { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; font-weight: 600; }
+.iaInfo { background: #f0fdf4; color: #15803d; }
+.iaErreur { background: #fef2f2; color: #b91c1c; }
+.iaInfo button { display: inline-flex; align-items: center; gap: 5px; border: none; background: none; padding: 0; color: #1a2332; font: 700 12.5px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.annonceTexteEcrit { opacity: .45; transition: opacity .3s; }
+/* La longueur : 2 100 caractères au moins (V3.79). */
+.longueur { display: flex; align-items: center; gap: 10px; margin-top: -4px; }
+.longueurBarre { flex: 0 0 140px; height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; }
+.longueurBarre i { display: block; height: 100%; border-radius: 99px; background: #e0a43a; transition: width .4s; }
+.longueur[data-ok='oui'] .longueurBarre i { background: #16a34a; }
+.longueurTx { font-size: 12px; font-weight: 700; color: #b45309; }
+.longueur[data-ok='oui'] .longueurTx { color: #15803d; }
+.mentions { display: flex; flex-direction: column; gap: 9px; padding: 12px 16px 13px; border-radius: 14px; border: 1px solid #eef1f6; background: #fcfdfe; }
+.mentionsT { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mentionsT b { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #64748b; }
+.mentionsT span { font-size: 11.5px; font-weight: 800; padding: 2px 9px; border-radius: 99px; background: #dcfce7; color: #15803d; }
+.mentionsT span[data-ok='non'] { background: #ffedd5; color: #9a3412; }
+.mentions ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 7px 22px; }
+.mentions li { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.35; color: #475569; min-width: 0; }
+.mentions li > span { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 0; background: #dcfce7; color: #15803d; }
 .mentions li[data-ok='non'] { color: #9a3412; font-weight: 600; }
 .mentions li[data-ok='non'] > span { background: #fee2e2; color: #b91c1c; }
 .lienOr { align-self: flex-start; border: none; background: none; padding: 0; cursor: pointer; color: #a07c28; font: 700 13px 'DM Sans', sans-serif; }
@@ -381,8 +408,9 @@ i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
   .haut { grid-template-columns: minmax(0, 1fr); }
   .annonce, .pieces, .dossier { padding: 14px; border-radius: 18px; }
   .annonceL { align-items: center; flex-wrap: wrap; gap: 12px 14px; }
-  .annonceCorps { grid-template-columns: minmax(0, 1fr); }
-  .annonceL > button { flex: 1 1 100%; height: 40px; }
+  .mentions ul { grid-template-columns: minmax(0, 1fr); }
+  .annonceBtns { flex: 1 1 100%; }
+  .annonceBtns > button { flex: 1 1 0; height: 40px; }
   .familles { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .pile { gap: 12px; }
   .fam { border-radius: 18px; }
@@ -548,3 +576,16 @@ i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
 .edSynC[data-etat='afaire'] .edSynTx small, .edSynC[data-etat='encours'] .edSynTx small { color: #a07c28; }
 .edSynC[data-etat='plustard'] .edSynTx small { color: #94a3b8; }
 @media (max-width: 640px) { .edSyn { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Une carte seule, en grand (V3.79, les sous-onglets de « Le bien ») : ses
+   lignes sur deux colonnes à l'écran large ; les pastilles, les notes, les
+   listes sur toute la largeur ; le DPE et le GES côte à côte. */
+.famLarge .famT { padding: 14px 20px; }
+.famLarge .famT b { font-size: 16px; }
+.famLarge .famC { padding: 16px 20px 18px; }
+@media (min-width: 721px) {
+  .famLarge .famC { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; row-gap: 0; align-items: start; }
+  .famLarge .famC > * { grid-column: 1 / -1; margin-top: 10px; }
+  .famLarge .famC > .kv:not(.kvLong) { grid-column: auto; margin-top: 0; padding: 9px 0; border-bottom: 1px solid #f1f4f8; }
+  .famLarge .famC > .ech { grid-column: auto; }
+}

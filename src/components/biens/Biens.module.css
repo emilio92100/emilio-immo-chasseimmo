@@ -517,6 +517,13 @@
 /* L'annonce */
 .annonceOutils { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .annonceOutils span { margin-left: auto; font-size: 12px; color: #94a3b8; }
+/* V3.79 : l'IA, et la longueur (2 100 caractères au moins). */
+.miniIa { background: #fbf6e9; border-color: #ecdcae; color: #7a5d1c; }
+.miniIa:disabled { cursor: progress; opacity: .8; }
+.miniIa svg { color: #b08a2e; }
+.annonceOutils span.longOk { color: #15803d; font-weight: 700; }
+.annonceOutils span.longCourt { color: #b45309; font-weight: 700; }
+.iaInfo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-radius: 12px; background: #f0fdf4; color: #15803d; font-size: 12.5px; font-weight: 600; }
 .controle { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 12px 13px; list-style: none; border: 1px solid #e3e8f0; border-radius: 13px; background: #fbfcfe; }
 .controle li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--emilio); }
 .controle li small { display: block; color: #94a3b8; font-size: 12px; }
@@ -1391,3 +1398,19 @@ button.pillRouge svg { color: white !important; }
   .pProprioPan { width: calc(100vw - 48px); }
   .pProprioAct { height: 42px; }
 }
+
+/* Les sous-onglets de « Le bien » (V3.79) : la même barre qui glisse que les
+   rubriques, en plus discret — un rail gris clair, la pastille blanche, et
+   chaque icône dans la couleur de sa carte. Au téléphone, la barre défile. */
+nav.sousOnglets { background: #eef2f7; border-color: transparent; padding: 4px; border-radius: 14px; }
+.sousOnglets > span[aria-hidden="true"] { top: 4px; bottom: 4px; background: #fff; box-shadow: 0 6px 16px -8px rgba(26, 35, 50, .4), 0 1px 2px rgba(26, 35, 50, .08); }
+.sousOnglets button { flex: 1 0 auto; justify-content: center; padding: 7px 13px 7px 8px; font-size: 13px; color: #5b6b80; }
+.sousOnglets button:hover:not([aria-pressed="true"]) { background: rgba(255, 255, 255, .55); color: #1a2332; }
+.sousOnglets button[aria-pressed="true"] { color: #1a2332; }
+.sousOnglets:not(:has(> span[aria-hidden="true"])) button[aria-pressed="true"] { background: #fff; }
+.sousOngletIc { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: color-mix(in srgb, var(--sousC) 14%, transparent); transition: background .3s; }
+.sousOnglets .sousOngletIc svg { opacity: 1; color: var(--sousC); transition: color .3s; }
+.sousOnglets button[aria-pressed="true"] .sousOngletIc { background: var(--sousC); }
+.sousOnglets button[aria-pressed="true"] .sousOngletIc svg { color: #fff; }
+/* Un sous-onglet ouvert : sa carte (ou ses deux cartes), en pleine largeur. */
+.vueSeule { display: flex; flex-direction: column; gap: 14px; min-width: 0; }

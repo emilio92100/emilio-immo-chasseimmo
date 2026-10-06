@@ -163,6 +163,8 @@ const DEPARTS: { k: EtapeVente; ic: string; t: string; s: string }[] = [
   { k: 'a_suivre', ic: 'drapeau', t: 'À suivre', s: 'Un propriétaire pense vendre : lui, son bien, ta visite. Pas encore de prix.' },
   { k: 'estimation', ic: 'regle', t: 'Une estimation', s: 'Le rendez-vous est pris ou fait : tout le bien, puis la fourchette et le prix conseillé.' },
   { k: 'mandat', ic: 'plume', t: 'Un mandat signé', s: 'Il est en vente : le prix, les honoraires, l’annonce, les visites.' },
+  /* V3.79 : sans mandat ni propriétaire, juste la fiche puis l'annonce. */
+  { k: 'annonce_type', ic: 'megaphone', t: 'Une annonce type', s: 'Une annonce proche d’un bien qu’on ne peut pas diffuser, pour faire venir des acheteurs. Sans mandat ni propriétaire.' },
 ];
 /* V3.50 : `existants` — le propriétaire a déjà un bien en cours. On le dit
    avant d'en créer un second : « Ouvrir la fiche existante », ou choisir

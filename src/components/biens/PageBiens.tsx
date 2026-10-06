@@ -11,6 +11,7 @@ import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
 import FicheBien from './FicheBien';
 import { FenMandat, FenNouveau } from './FenetresBien';
+import ImportBiensIF from './ImportBiensIF';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
 import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, supprimerBien, supprimerBrouillon, type ListeBiens } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -25,9 +26,9 @@ import b from './Biens.module.css';
    ramènent. */
 
 type Filtre = 'tout' | EtapeVente | 'archives';
-const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire'];
-/* Les catégories toujours montrées ; « En pause » et « Retirés » seulement
-   quand il y en a. */
+const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
+/* Les catégories toujours montrées ; « En pause », « Retirés » et
+   « Annonces type » (V3.79) seulement quand il y en a. */
 const CATEGORIES: EtapeVente[] = ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis', 'vendu'];
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -96,6 +97,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [mandatNeuf, setMandatNeuf] = useState<{ bien: BienVente; vus: string[] } | null>(null);
   const [cree, setCree] = useState(false);
   const [choixDepart, setChoixDepart] = useState(false);
+  const [importIF, setImportIF] = useState(false);
   const [erreurDepart, setErreurDepart] = useState('');
   /* « Créer son bien » depuis la fiche d'un contact : le propriétaire est déjà choisi. */
   const [pour, setPour] = useState<string | null>(null);
@@ -160,7 +162,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     if (!liste) return;
     setCree(true); setErreurDepart('');
     try {
-      const c = pour ? liste.clients[pour] : null;
+      /* V3.79 : une annonce type n'a pas de propriétaire. */
+      const c = pour && etape !== 'annonce_type' ? liste.clients[pour] : null;
       const vus = existantsPour.map(x => x.id);
       /* « Un mandat signé » (V3.50) : le bien naît à l'estimation, la fenêtre du
          mandat le fait passer « En vente » avec son prix, ses honoraires et son
@@ -236,6 +239,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const proprioDe = (x: BienVente) => (x.client_id && liste?.clients[x.client_id] ? nomClient(liste.clients[x.client_id]) : '');
   const trouves = (filtre === 'archives' ? archives : actifs).filter(x => !q || sansAccent([
     x.titre, x.adresse, x.ville, x.quartier, x.code_postal, x.reference, x.mandat_numero, nomProprio(x.donnees || {}), proprioDe(x),
+    /* V3.79 : « 74 » ou « immofacile 74 » retrouve le bien repris. */
+    typeof x.donnees?.refImmofacile === 'string' ? `immofacile ${x.donnees.refImmofacile}` : '',
   ].filter(Boolean).join(' ')).includes(q));
   /* Les filtres fins comptent comme la recherche : les nombres des
      catégories les suivent. */
@@ -292,10 +297,11 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase}
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
         bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
+        bouton2={installer ? undefined : { lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportIF(true) }}
         label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
         tuiles={biens.length === 0 ? [] : [
           { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, ic: <Ic n="maison" t={14} e={2.1} /> },
-          ...[...CATEGORIES, 'suspendu' as const, 'retire' as const].map(k => etapeDe(k)).filter(e => CATEGORIES.includes(e.k) || n(e.k) > 0)
+          ...[...CATEGORIES, 'suspendu' as const, 'retire' as const, 'annonce_type' as const].map(k => etapeDe(k)).filter(e => CATEGORIES.includes(e.k) || n(e.k) > 0)
             .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => x.etape === e.k).length : n(e.k), couleur: e.c })),
           ...(archives.length ? [{ cle: 'archives', lib: 'Archivés', n: archives.length, couleur: '#cbd5e1' }] : []),
         ]} />
@@ -362,6 +368,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} pour={pour && liste?.clients[pour] ? nomClient(liste.clients[pour]) : ''}
         existants={existantsPour} onOuvrir={id => { setChoixDepart(false); setPour(null); ouvrir(id); }}
         onFermer={() => { if (!cree) { setChoixDepart(false); setPour(null); } }} onChoisir={e => { void nouveau(e); }} />}
+      {/* V3.79 : la reprise des biens d'ImmoFacile. */}
+      {importIF && <ImportBiensIF onFermer={() => setImportIF(false)} onImporte={() => { void charger(); }} />}
       {mandatNeuf && typeof document !== 'undefined' && <FenMandat bien={mandatNeuf.bien} creation onFermer={() => { void abandonnerMandatNeuf(); }}
         onFait={r => { const vus = mandatNeuf.vus; setMandatNeuf(null); majBien(r); setEdition({ bien: r, nouveau: true, vus }); }} />}
     </div>

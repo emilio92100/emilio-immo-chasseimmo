@@ -12,9 +12,10 @@ import { lirePro, lireStructure } from '@/lib/contacts';
 import { txt, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
 import {
   EXPOSITIONS, NIVEAUX, PIECES_GROUPES, PIECES_TUILES, lirePieces, lirePhotos, lireDossier, lignesDossier, pictoPiece,
-  brouillonAnnonce, controleAnnonce, passoire, estChampActe, personneDepuisClient, m2, lireObservations,
+  LONGUEUR_ANNONCE, brouillonAnnonce, controleAnnonce, passoire, estChampActe, personneDepuisClient, m2, lireObservations,
   type ChampBien, type Donnees, type Observation, type Piece, type Photo, type PieceDossier,
 } from '@/lib/biens-vente';
+import { reformulerAnnonce } from './annonce-ia';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { creerFicheProprio, deposerPhoto, deposerPiece, doublonsContact, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
@@ -732,11 +733,34 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
 function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   const v = txt(d, 'annonceTexte');
   const [copie, setCopie] = useState(false);
+  /* V3.79 : « Reformuler l'annonce » (l'IA, depuis la fiche) et la longueur
+     minimale de 2 100 caractères. */
+  const [ecrit, setEcrit] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [avant, setAvant] = useState<{ titre: string; texte: string } | null>(null);
   const ctrl = controleAnnonce(d);
   const manque = ctrl.filter(x => !x.ok).length;
+  const n = v.length;
+  const fr = (x: number) => x.toLocaleString('fr-FR');
+  const reformuler = async () => {
+    if (ecrit) return;
+    setEcrit(true); setErreur('');
+    try {
+      const r = await reformulerAnnonce(d);
+      setAvant({ titre: txt(d, 'annonceTitre'), texte: v });
+      maj('annonceTitre', r.titre);
+      maj('annonceTexte', r.texte);
+    } catch (e) { setErreur((e as Error).message); }
+    finally { setEcrit(false); }
+  };
   return (
     <div className={b.pieces}>
       <div className={b.annonceOutils}>
+        {!off && (
+          <button type="button" className={`${b.mini} ${b.miniIa}`} onClick={reformuler} disabled={ecrit}>
+            <Ic n="etincelle" t={14} />{ecrit ? 'L’IA écrit…' : v ? 'Reformuler l’annonce' : 'Rédiger avec l’IA'}
+          </button>
+        )}
         {!off && (
           <button type="button" className={b.mini} onClick={() => { if (!v || confirm('Remplacer le texte actuel par un brouillon écrit à partir de la fiche ?')) maj('annonceTexte', brouillonAnnonce(d)); }}>
             <Ic n="plume" t={14} />{v ? 'Réécrire depuis la fiche' : 'Écrire un brouillon depuis la fiche'}
@@ -747,8 +771,15 @@ function ChampAnnonce({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
             <Ic n={copie ? 'check' : 'copier'} t={14} />{copie ? 'Copié' : 'Copier le texte'}
           </button>
         )}
-        <span>{v ? `${v.length} caractères` : ''}</span>
+        <span className={n >= LONGUEUR_ANNONCE ? b.longOk : n ? b.longCourt : undefined}>{n ? `${fr(n)} caractères sur ${fr(LONGUEUR_ANNONCE)} au moins` : `${fr(LONGUEUR_ANNONCE)} caractères au moins`}</span>
       </div>
+      {erreur && <div className={s.erreur}>{erreur}</div>}
+      {!erreur && avant && (
+        <div className={b.iaInfo}>
+          {'Nouvelle version écrite. '}
+          <button type="button" className={b.mini} onClick={() => { maj('annonceTitre', avant.titre); maj('annonceTexte', avant.texte); setAvant(null); }}><Ic n="retour" t={13} />Revenir au texte d’avant</button>
+        </div>
+      )}
       <textarea className={s.input} rows={10} disabled={off} value={v} placeholder="Le texte de l’annonce, tel qu’il partira sur les portails."
         onChange={e => maj('annonceTexte', e.target.value)} />
       <ul className={b.controle}>

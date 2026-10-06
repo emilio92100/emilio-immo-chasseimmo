@@ -2,7 +2,7 @@
 import { Children, Fragment, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
-import { ETATS_PIECE, echangesDe, etapeDe, m2, montantActuel, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type Reponse, type SuiviVente } from '@/lib/biens-vente';
+import { ETATS_PIECE, LONGUEUR_ANNONCE, echangesDe, etapeDe, m2, montantActuel, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type Reponse, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import Depliant from '@/components/shared/Depliant';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
@@ -74,7 +74,7 @@ export function Anneau({ part, taille = 64, ep = 7, c = '#c9a84c', fond = '#fdf3
 }
 
 /* ══ LE BIEN ════════════════════════════════════════════════════════════ */
-export type Ton = 'bleu' | 'violet' | 'sarcelle' | 'vert' | 'ambre' | 'ardoise' | 'or';
+export type Ton = 'bleu' | 'violet' | 'sarcelle' | 'vert' | 'ambre' | 'ardoise' | 'or' | 'ciel';
 const TONS: Record<Ton, { fond: string; c: string; ic: string; icC: string }> = {
   bleu: { fond: '#eff4fb', c: '#2d5c8f', ic: '#2d5c8f', icC: '#fff' },
   violet: { fond: '#f5f3ff', c: '#6d28d9', ic: '#6d28d9', icC: '#fff' },
@@ -83,13 +83,16 @@ const TONS: Record<Ton, { fond: string; c: string; ic: string; icC: string }> = 
   ambre: { fond: '#fffbeb', c: '#b45309', ic: '#d97706', icC: '#fff' },
   ardoise: { fond: '#f1f5f9', c: '#334155', ic: '#475569', icC: '#fff' },
   or: { fond: '#fbf6e9', c: '#7a5d1c', ic: '#c9a84c', icC: '#1a2332' },
+  ciel: { fond: '#ecfeff', c: '#0e7490', ic: '#0891b2', icC: '#fff' },
 };
 
 /* Une famille : l'en-tête de sa couleur, puis ses lignes. */
-export function Famille({ ton, ic, titre, onModifier, children }: { ton: Ton; ic: string; titre: string; onModifier?: () => void; children: ReactNode }) {
+/* `large` (V3.79) : la carte prend toute la largeur (un sous-onglet ne
+   montre qu'elle) et ses lignes passent sur deux colonnes à l'écran large. */
+export function Famille({ ton, ic, titre, onModifier, large, children }: { ton: Ton; ic: string; titre: string; onModifier?: () => void; large?: boolean; children: ReactNode }) {
   const t = TONS[ton];
   return (
-    <section className={o.fam} style={{ ['--fam' as string]: t.c, ['--famFond' as string]: t.fond, ['--famIc' as string]: t.ic, ['--famIcC' as string]: t.icC } as CSSProperties}>
+    <section className={`${o.fam} ${large ? o.famLarge : ''}`} style={{ ['--fam' as string]: t.c, ['--famFond' as string]: t.fond, ['--famIc' as string]: t.ic, ['--famIcC' as string]: t.icC } as CSSProperties}>
       <div className={o.famT}>
         <span className={o.famIc}><Ic n={ic} t={16} e={2} /></span>
         <b>{titre}</b>
@@ -116,6 +119,9 @@ const IC_KV: Record<string, string> = {
   'Estimation': 'regle', 'Fourchette': 'regle', 'Prix conseillé': 'etiquette', 'Prix affiché': 'etiquette', 'Net vendeur': 'banque',
   'Honoraires': 'pourcent', 'Prix au m²': 'regle', 'Le propriétaire espère': 'personne', 'Le propriétaire espérait': 'personne',
   'Diagnostic fait le': 'calendrier', 'Coût estimé': 'euro',
+  'Fenêtres': 'fenetre', 'Volets': 'volet', 'Standing': 'etoile', 'Parties communes': 'escalier', 'Stationnement': 'parking',
+  'Commerces': 'sac', 'École': 'livre', 'Bus': 'bus', 'Métro': 'metro', 'RER, train': 'train', 'Tramway': 'train', 'Extérieur, façade': 'immeuble', 'Style': 'colonne', 'Mitoyenneté': 'maison', 'Assainissement': 'eau', 'N° ADEME': 'doc', 'Quartier': 'boussole', 'Situation': 'lieu',
+  'Box': 'box', 'Garage': 'voiture', 'Véranda': 'soleil', 'Grenier': 'toit', 'Sous-sol': 'cave', 'Climatisation': 'flocon',
 };
 export function Kv({ l, v, alerte, ic }: { l: string; v: ReactNode; alerte?: boolean; ic?: string }) {
   if (v === '' || v === null || v === undefined || v === false) return null;
@@ -163,38 +169,95 @@ export function Lettres({ genre, v, titre }: { genre: 'dpe' | 'ges'; v: string; 
 }
 
 /* L'annonce : où elle en est, en un anneau. */
-export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; mentions: { ok: boolean; l: string }[]; onEcrire: () => void }) {
+/* V3.79 : 2 100 caractères au moins (LONGUEUR_ANNONCE, « pour que ce soit
+   bien référencé »), et « Reformuler l'annonce » (l'IA, depuis la fiche :
+   annonce-ia.ts) — autant de fois qu'on veut, avec « Revenir au texte
+   d'avant ». `onReformuler` rend la nouvelle version ; `onAppliquer`
+   l'enregistre dans la fiche. */
+const fr = (n: number) => n.toLocaleString('fr-FR');
+export function CarteAnnonce({ titre = '', texte, mentions, onEcrire, onReformuler, onAppliquer }: {
+  titre?: string; texte: string; mentions: { ok: boolean; l: string }[]; onEcrire: () => void;
+  onReformuler?: () => Promise<{ titre: string; texte: string }>; onAppliquer?: (titre: string, texte: string) => void;
+}) {
   /* V3.45 — Alexandre : « il faut que le texte soit déjà affiché, pas
-     appuyer sur Lire le texte ». Il s'affiche d'office, les mentions
-     obligatoires en petit à côté ; « Replier le texte » le range. */
+     appuyer sur Lire le texte ». Il s'affiche d'office ; « Replier le
+     texte » le range. */
   const [replie, setReplie] = useState(false);
   const [copie, setCopie] = useState(false);
+  const [ecrit, setEcrit] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [avant, setAvant] = useState<{ titre: string; texte: string } | null>(null);
   const manque = mentions.filter(x => !x.ok);
-  /* Le texte compte pour 60 %, les mentions obligatoires pour le reste :
-     une annonce pas écrite ne dépasse jamais 40 %. */
-  const part = (texte ? 0.6 : 0) + (mentions.length ? (0.4 * mentions.filter(x => x.ok).length) / mentions.length : 0.4);
+  const n = texte.length;
+  const assez = n >= LONGUEUR_ANNONCE;
+  /* Le texte compte pour 60 % (au prorata des 2 100 caractères), les
+     mentions obligatoires pour le reste. */
+  const part = 0.6 * Math.min(1, n / LONGUEUR_ANNONCE) + (mentions.length ? (0.4 * mentions.filter(x => x.ok).length) / mentions.length : 0.4);
   const pct = Math.round(part * 100);
   const liste = manque.map(x => x.l.charAt(0).toLowerCase() + x.l.slice(1)).join(', ');
+  const mq = manque.length ? ` Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''}${texte ? '' : ` : ${liste}`}.` : '';
   const phrase = !texte
-    ? `Pas encore écrite. L’éditeur en propose un brouillon à partir de la fiche.${manque.length ? ` Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''} : ${liste}.` : ''}`
-    : manque.length
-      ? `Texte prêt, ${texte.length} caractères. Il manque ${manque.length} mention${manque.length > 1 ? 's' : ''} obligatoire${manque.length > 1 ? 's' : ''}.`
-      : `Prête à publier : le texte, ${texte.length} caractères, et toutes les mentions obligatoires.`;
+    ? `Pas encore écrite : « Rédiger avec l’IA » l’écrit à partir de la fiche, en ${fr(LONGUEUR_ANNONCE)} caractères au moins.${mq}`
+    : !assez
+      ? `Trop courte pour être bien référencée : ${fr(n)} caractères sur ${fr(LONGUEUR_ANNONCE)} au moins.${mq}`
+      : manque.length ? `Texte prêt, ${fr(n)} caractères.${mq}` : `Prête à publier : ${fr(n)} caractères, et toutes les mentions obligatoires.`;
+  const reformuler = async () => {
+    if (!onReformuler || !onAppliquer || ecrit) return;
+    setEcrit(true); setErreur('');
+    try {
+      const r = await onReformuler();
+      setAvant({ titre, texte });
+      onAppliquer(r.titre, r.texte);
+      setReplie(false);
+    } catch (e) { setErreur((e as Error).message); }
+    finally { setEcrit(false); }
+  };
+  const ia = onReformuler && onAppliquer;
   return (
     <div className={o.annonce}>
       <div className={o.annonceL}>
         <Anneau part={part} texte={`${pct}${NBSP}%`} label={`Annonce complète à ${pct} pour cent`}
           c={pct === 100 ? '#16a34a' : '#c9a84c'} fond={pct === 100 ? '#dcfce7' : '#fdf3d8'} texteC={pct === 100 ? '#15803d' : '#7a5d1c'} />
-        <div className={o.annonceTx}><b>L’annonce</b><span>{phrase}</span></div>
-        <button type="button" className={`${o.act} ${texte ? '' : o.actMarine}`} onClick={onEcrire}>{texte ? 'Modifier' : 'Écrire l’annonce'}</button>
+        <div className={o.annonceTx}><b><i className={o.annonceTxIc}><Ic n="megaphone" t={15} e={2.1} /></i>Le texte de l’annonce</b><span>{phrase}</span></div>
+        <div className={o.annonceBtns}>
+          {ia && (
+            <button type="button" className={`${o.act} ${o.actIa}`} onClick={reformuler} disabled={ecrit} aria-busy={ecrit}>
+              {ecrit ? <span className={o.roue} aria-hidden="true" /> : <Ic n="etincelle" t={14} e={2.1} />}
+              {ecrit ? 'L’IA écrit…' : texte ? 'Reformuler l’annonce' : 'Rédiger avec l’IA'}
+            </button>
+          )}
+          <button type="button" className={`${o.act} ${texte || ia ? '' : o.actMarine}`} onClick={onEcrire}>{texte ? 'Modifier' : 'Écrire l’annonce'}</button>
+        </div>
       </div>
+      {(erreur || avant) && (
+        <div className={erreur ? o.iaErreur : o.iaInfo}>
+          {erreur || 'Nouvelle version écrite et enregistrée.'}
+          {!erreur && avant && onAppliquer && (
+            <button type="button" onClick={() => { onAppliquer(avant.titre, avant.texte); setAvant(null); }}>
+              <Ic n="retour" t={13} />Revenir au texte d’avant
+            </button>
+          )}
+        </div>
+      )}
       {texte && (
         <Depliant ouvert={!replie} ecart={10}>
+          {/* V3.79 (Alexandre : « bien voir que c'est le texte de l'annonce ;
+              les mentions pas sur la droite, au centre, juste en dessous du
+              texte » — à droite, une colonne haute laissait un grand blanc
+              sous un texte court). La carte s'appelle « Le texte de
+              l'annonce », plus « L'annonce ». */}
           <div className={o.annonceCorps}>
-            <div className={o.annonceTexte}>{texte}</div>
+            <div className={`${o.annonceTexte} ${ecrit ? o.annonceTexteEcrit : ''}`}>{titre && <b className={o.annonceTitre}>{titre}</b>}{texte}</div>
+            <div className={o.longueur} data-ok={assez ? 'oui' : 'non'}>
+              <span className={o.longueurBarre}><i style={{ width: `${Math.min(100, (n / LONGUEUR_ANNONCE) * 100)}%` }} /></span>
+              <span className={o.longueurTx}>{assez ? `${fr(n)} caractères · les ${fr(LONGUEUR_ANNONCE)} sont atteints` : `${fr(n)} caractères · encore ${fr(LONGUEUR_ANNONCE - n)} pour atteindre ${fr(LONGUEUR_ANNONCE)}`}</span>
+            </div>
             {mentions.length > 0 && (
               <div className={o.mentions}>
-                <b>Mentions obligatoires</b>
+                <div className={o.mentionsT}>
+                  <b>Mentions obligatoires</b>
+                  <span data-ok={manque.length ? 'non' : 'oui'}>{`${mentions.length - manque.length} sur ${mentions.length}`}</span>
+                </div>
                 <ul>
                   {mentions.map(x => (
                     <li key={x.l} data-ok={x.ok ? 'oui' : 'non'}><span><Ic n={x.ok ? 'check' : 'croix'} t={11} e={3} /></span>{x.l}</li>
@@ -209,7 +272,7 @@ export function CarteAnnonce({ texte, mentions, onEcrire }: { texte: string; men
         <div className={o.acts}>
           <BoutonPli ouvert={!replie} onClick={() => setReplie(!replie)} voir="Afficher le texte" replier="Replier le texte" />
           <span style={{ flex: 1 }} />
-          <button type="button" className={o.act} onClick={() => { navigator.clipboard?.writeText(texte).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1600); }).catch(() => {}); }}>
+          <button type="button" className={o.act} onClick={() => { navigator.clipboard?.writeText(titre ? `${titre}\n\n${texte}` : texte).then(() => { setCopie(true); setTimeout(() => setCopie(false), 1600); }).catch(() => {}); }}>
             <Ic n={copie ? 'check' : 'copier'} t={13} />{copie ? 'Copié' : 'Copier le texte'}
           </button>
         </div>
