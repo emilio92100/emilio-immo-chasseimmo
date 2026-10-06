@@ -1001,7 +1001,7 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   d'ImmoFacile et rend du JSON au site. Le site lira `/api/flux-site` du CRM à la place (V3.92),
   même JSON : seule l'adresse change dans son dépôt (`src/lib/properties.ts`, et le plan des biens
   dans `vercel.json`). Les pages `/biens/<numéro ImmoFacile>` gardent leur adresse pour les biens repris.
-- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, le CRM est prêt) ; 3. Jinka ;
+- **L'ordre** : 1. réglages et bouton (V3.91) ; 2. le site (V3.92, branché sur le CRM en V3.96) ; 3. Jinka ;
   4. SeLoger (test, recette, production) ; 5. les demandes des portails dans « Demandes Internet »
   (l'écran est prêt, V3.93) ; 6. couper ImmoFacile (passerelles, puis abonnement).
 
@@ -1493,6 +1493,24 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.96 — 6 octobre 2026 · Diffuser quand même hors vente ; « Diffusion en cours » dans Biens ; le site lit le CRM
+
+Rien à passer dans Supabase.
+
+- **Diffuser quand même** (Alexandre, pour deux biens retirés qu'il garde en vitrine : « on laisse
+  en diffusion comme si c'était en vente ») : hors des étapes de vente (retiré, vendu, estimation,
+  à suivre), « ⋯ › Diffusion de l'annonce » ouvre la fenêtre avec « Diffuser quand même ». Le
+  réglage retient l'étape où il est pris (`diffusion.horsEtape`, `lib/diffusion.ts`) et s'arrête
+  tout seul si l'étape change. Le site les montre « en vente ». La pause reste une pause.
+- **`lireBiensSite`** lit toutes les étapes (non archivées) et ne garde que `diffuseSur(b, 'site')`.
+- **Biens › « Diffusion en cours »** : une tuile à côté de Mandats en cours et Estimations, tout ce
+  qui est en ligne quelle que soit l'étape (Alexandre : « dans les onglets, diffusion en cours »).
+- **Le site emilio-immo.com lit le CRM** (dépôt du site : `src/lib/properties.ts` →
+  `/api/flux-site`, `vercel.json` : `/sitemap-biens.xml` → `/api/flux-site/sitemap`), après
+  comparaison avec le flux d'ImmoFacile : mêmes biens, mêmes adresses de page, mêmes prix,
+  surfaces et photos ; les deux biens « En pause » (Truchot, Tourret) quittent le site, à la
+  demande d'Alexandre. La fonction `fetch-properties` du Supabase n'est plus appelée.
 
 ### V3.95 — 6 octobre 2026 · Créer un bien depuis l'annonce ImmoFacile ; « Non diffusé » par défaut
 
