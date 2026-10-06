@@ -64,9 +64,26 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: 0 12px 36px rgba(0,0,0,0.12);
-  overflow: hidden;
+  /* V3.84 — Alexandre : « quand il y a beaucoup de résultats, ça descend
+     jusqu'en bas de l'écran ; il faut que ça s'arrête aux trois quarts, avec
+     une barre pour défiler à la souris ». La liste s'arrête aux deux tiers
+     de l'écran et défile dedans, la barre visible ; le titre « Contacts · 8 »
+     reste en haut. */
+  max-height: min(66vh, 620px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c3cddb transparent;
   z-index: 100;
 }
+.searchDropdown::-webkit-scrollbar { width: 10px; }
+.searchDropdown::-webkit-scrollbar-track { background: transparent; margin: 8px 0; }
+.searchDropdown::-webkit-scrollbar-thumb { background: #c9d3e0; border-radius: 99px; border: 3px solid #fff; }
+.searchDropdown::-webkit-scrollbar-thumb:hover { background: #a9b6c8; }
+/* En bas, un léger fondu dit qu'il y en a d'autres dessous ; arrivé au bout,
+   il ne couvre que du blanc. */
+.searchListe::after { content: ''; position: sticky; bottom: 0; display: block; height: 18px; background: linear-gradient(rgba(255, 255, 255, 0), #fff); pointer-events: none; }
 
 /* V3.80 : la liste s'ouvre en douceur, les résultats arrivent l'un après
    l'autre, la roue tourne le temps de chercher. */
@@ -96,6 +113,8 @@
   padding: 10px 14px 6px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+  /* Il reste en haut pendant qu'on fait défiler (V3.84). */
+  position: sticky; top: 0; z-index: 1;
 }
 
 .searchEmpty {
@@ -196,7 +215,7 @@
   .searchDropdown {
     position: fixed; left: 10px; right: 10px; min-width: 0;
     top: calc(62px + env(safe-area-inset-top, 0px));
-    max-height: calc(100dvh - 150px); overflow-y: auto;
+    max-height: min(70dvh, calc(100dvh - 150px));
     border-radius: 16px;
   }
   .searchItem { padding: 12px 14px; }
