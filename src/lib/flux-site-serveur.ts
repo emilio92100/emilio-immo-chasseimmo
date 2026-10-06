@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { composerAdresse, adresseUtile, cleAdresse, placerAdresses, garderPositions } from '@/lib/carte';
-import { ETAPES_DIFFUSEES, diffuseSur } from '@/lib/diffusion';
+import { diffuseSur } from '@/lib/diffusion';
 import { bienPourSite, gpsFiche, type BienSite } from '@/lib/flux-site';
 import type { BienVente } from '@/lib/biens-vente';
 
@@ -19,7 +19,9 @@ export function baseServeur() {
 
 export async function lireBiensSite(): Promise<{ biens: BienSite[]; brut: BienVente[] }> {
   const sb = baseServeur();
-  const { data, error } = await sb.from('biens_vente').select('*').eq('archive', false).in('etape', ETAPES_DIFFUSEES);
+  /* V3.96 : toutes les étapes — un bien retiré ou vendu peut être diffusé
+     quand même, à la demande d'Alexandre (lib/diffusion.ts). */
+  const { data, error } = await sb.from('biens_vente').select('*').eq('archive', false);
   if (error) throw new Error(error.message);
   const brut = ((data || []) as BienVente[]).filter(b => diffuseSur(b, 'site'));
 

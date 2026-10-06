@@ -17,10 +17,16 @@
    réglages : les portails partent encore d'ImmoFacile (context.md §7).
    Les envois (le site, Jinka, SeLoger) liront `diffuseSur`, et rien d'autre.
 
+   V3.96 (Alexandre : « on laisse en diffusion comme si c'était en vente »,
+   pour un bien retiré ou vendu qu'il garde en vitrine) : un bien peut être
+   diffusé quand même hors des étapes de vente, à sa demande. Le réglage
+   retient l'étape où il a été pris (`horsEtape`) et s'arrête tout seul si
+   l'étape change : un bien vendu ensuite quitte le site comme les autres.
+
    Isomorphe : le CRM, le serveur et les bancs d'essai le lisent. */
 
 import type { Donnees } from '@/lib/actes';
-import type { BienVente, EtapeVente } from '@/lib/biens-vente';
+import { etapeDe, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 
 export type Support = 'site' | 'seloger' | 'bd' | 'jinka';
 
@@ -49,6 +55,8 @@ export type Diffusion = {
   supports: Record<Support, boolean>;
   /* Quand le réglage a changé (ISO). */
   le?: string;
+  /* V3.96 : diffusé quand même à cette étape (retiré, vendu, estimation…). */
+  horsEtape?: EtapeVente;
 };
 
 export function lireDiffusion(d: Donnees | null | undefined): Diffusion | null {
@@ -60,11 +68,16 @@ export function lireDiffusion(d: Donnees | null | undefined): Diffusion | null {
     actif: o.actif !== false,
     supports: { site: s.site === true, seloger: s.seloger === true, bd: s.bd === true, jinka: s.jinka === true },
     ...(typeof o.le === 'string' && o.le ? { le: o.le } : {}),
+    ...(typeof o.horsEtape === 'string' && o.horsEtape ? { horsEtape: o.horsEtape as EtapeVente } : {}),
   };
 }
 
-export const nouvelleDiffusion = (actif: boolean, supports: Record<Support, boolean>): Diffusion =>
-  ({ actif, supports: { ...supports }, le: new Date().toISOString() });
+export const nouvelleDiffusion = (actif: boolean, supports: Record<Support, boolean>, horsEtape?: EtapeVente | null): Diffusion =>
+  ({ actif, supports: { ...supports }, le: new Date().toISOString(), ...(horsEtape ? { horsEtape } : {}) });
+
+/* Une étape où rien ne part d'office, mais où Alexandre peut tout de même
+   diffuser (V3.96) : tout sauf les étapes de vente et la pause. */
+export const etapeHorsVente = (e: string | null | undefined) => !!e && !ETAPES_REGLABLES.includes(e as EtapeVente);
 
 export const supportsCoches = (s: Record<Support, boolean>): Support[] => SUPPORTS.filter(x => s[x.k]).map(x => x.k);
 
@@ -87,8 +100,12 @@ export type EtatDiffusion = {
 
 export function etatDiffusion(b: Pick<BienVente, 'etape' | 'archive' | 'donnees'>): EtatDiffusion {
   const r = lireDiffusion(b.donnees);
-  const concerne = !b.archive && ETAPES_REGLABLES.includes(b.etape);
   const supports = r ? supportsCoches(r.supports) : [];
+  /* V3.96 : diffusé quand même, à l'étape où il a été réglé. */
+  if (!b.archive && r && r.actif && r.horsEtape === b.etape && etapeHorsVente(b.etape) && supports.length) {
+    return { concerne: true, regle: true, supports, enLigne: true, ton: 'on', lib: 'Diffusé', detail: `Sur ${nomsSupports(supports)}, à ta demande, bien que le bien soit « ${etapeDe(b.etape).lib} ».` };
+  }
+  const concerne = !b.archive && ETAPES_REGLABLES.includes(b.etape);
   const base = { concerne, regle: !!r, supports };
   if (!concerne) return { ...base, enLigne: false, ton: 'off', lib: 'Non diffusé', detail: b.archive ? 'Le bien est archivé.' : 'Rien à diffuser à cette étape.' };
   if (b.etape === 'suspendu') return { ...base, enLigne: false, ton: 'pause', lib: 'Non diffusé', detail: 'La vente est en pause : rien ne part. Tes choix sont gardés pour la reprise.' };
