@@ -1494,6 +1494,43 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.99 — 7 octobre 2026 · Le haut de la fiche du bien ; « Le bien » en tuiles ; des acheteurs plus fiables ; le haut de « Demandes Internet »
+
+Rien à passer dans Supabase.
+
+- **Le haut de la fiche** (Alexandre : « Mandat en cours, on le mettrait pas à côté du nom du
+  propriétaire ? », « une connexion entre mandat en cours et diffusion », « Modifier, Note… que
+  ce soit collé ») : la pastille du propriétaire, puis l'étape et la diffusion d'un seul tenant
+  (`.statutBien` : « Mandat en cours ▾ » — un trait — « Diffusion en cours » sur fond vert, avec
+  une pastille par support), puis à droite Modifier · Note · ⋯ collés (`.gestes`). Au téléphone,
+  deux rangs : la pastille entière (avant : « P… J… »), puis l'étape, la diffusion et les gestes
+  en icônes (Note reste dans « ⋯ » sous 480 px). Le menu de l'étape s'ouvre sous la gélule.
+  Une fiche étroite se resserre en deux temps (`serre` 1 puis 2, mesuré dans FicheBien) :
+  « En ligne » au lieu de « Diffusion en cours », puis « En vente » et les gestes en icônes ; la
+  pastille garde le nom du propriétaire entier jusqu'à 340 px.
+- **« Le bien »** : les sous-rubriques sont des tuiles (icône ronde de la couleur de la carte, nom
+  dessous). **Prix** vient juste après « Tout » (« le prix est trop à droite »), et sa carte
+  ouvre « Tout ».
+- **Acheteurs** (Alexandre : « ça me met des noms alors que je n'ai rien prévu »). Avant, une
+  recherche sans budget ou sans secteur n'était jugée que sur le reste : trois critères suffisaient
+  pour sortir à 100 % sur n'importe quel bien, prospects compris. Désormais (`rang` dans
+  `acheteursTries`, outils.ts) : « Correspondent » et « En partie » ne comptent que les acheteurs
+  **actifs** dont la recherche dit son **budget et son secteur** ; les autres sont dans
+  « À compléter » (ce qui manque est écrit sur la ligne, la note est grisée) et « Prospects ».
+  `acheteursPour` ne rend que les fiables : le chiffre de l'onglet, celui de la liste des biens et
+  « Envoyer à des acheteurs » suivent la même règle. Les alertes de rapprochement
+  (`alertes-rappro.ts`) et les biens proposés dans la fiche d'un acheteur (`rapprochement.ts`)
+  n'ont pas changé.
+- **Demandes Internet, le haut** (Alexandre : « j'aime pas le haut ; devenues des contacts, je n'ai
+  même pas compris ; site et portails, c'est écrit en petit » ; trois maquettes, il a laissé
+  choisir « la plus simple à lire, ordinateur et téléphone » : la A). Les quatre cartes deviennent
+  une seule bande : la provenance en grand (« Site et portails », « Mon site »…) et la période,
+  puis le total, la répartition (une barre et des puces, la plus grosse d'abord : un clic filtre la
+  liste, le formulaire ou la provenance) et « N à traiter → » (les nouvelles de la provenance, toutes
+  périodes ; il ouvre « Nouvelles » et descend à la liste), ou « Tout est traité ». Plus de
+  « Devenues des contacts » ni de « Bien le plus demandé ». Au téléphone, les périodes s'écrivent
+  « Ce mois, 3 mois, 12 mois, Tout ».
+
 ### V3.98 — 6 octobre 2026 · L'envoi des annonces à SeLoger (API Aviv Classified v4, sandbox d'abord) ; Jinka branché
 
 Rien à passer dans Supabase. Les codes sont dans Vercel depuis ce soir (Alexandre) :
