@@ -8,6 +8,7 @@ import { signalerMaj, demanderOuvertureFiche, ouvertureDepuisRelance, demanderOn
 import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } from '@/lib/alertes-rappro';
 import ChoixDate from '@/components/shared/ChoixDate';
 import FenetreAction from '@/components/contacts/FenetreAction';
+import EnteteRubrique from '@/components/shared/EnteteRubrique';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -129,30 +130,9 @@ function origineDe(r: any, typeAction?: string | null): Origine {
   return { lib: 'Relance manuelle', ico: 'cloche' };
 }
 
-type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'semaine';
+type Filtre = 'tout' | 'retard' | 'aujourdhui' | 'semaine' | 'plusloin';
 /* Voir plus loin que la semaine (V3.71). */
 type Periode = { k: '30' | '60' | 'date' | 'entre'; du: string; au: string };
-
-/* Un chiffre qui monte jusqu'à sa valeur à l'arrivée. */
-/* V3.74 : le chiffre part de celui qu'il affichait (3 → 2 quand une relance
-   est traitée), et non plus de zéro à chaque changement. */
-function Compteur({ n }: { n: number }) {
-  const [v, setV] = useState(0);
-  const affiche = useRef(0);
-  useEffect(() => {
-    let raf = 0; const t0 = performance.now(); const de = affiche.current;
-    const pas = (t: number) => {
-      const k = Math.min(1, (t - t0) / 650);
-      const x = Math.round(de + (n - de) * (1 - Math.pow(1 - k, 3)));
-      affiche.current = x;
-      setV(x);
-      if (k < 1) raf = requestAnimationFrame(pas);
-    };
-    raf = requestAnimationFrame(pas);
-    return () => cancelAnimationFrame(raf);
-  }, [n]);
-  return <>{v}</>;
-}
 
 /* V3.76 — Le bloc « Tri à faire » seul (`seulTri`), dans la page Contacts : la
    même liste, les mêmes boutons, sans le reste des relances. Contacts suit
@@ -171,6 +151,8 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>('tout');
   const [periode, setPeriode] = useState<Periode | null>(null);
+  /* V3.82 : chercher une relance (nom, téléphone, mail, note). */
+  const [q, setQ] = useState('');
   /* Reporter posait une date toute faite sans rien demander : on choisit
      désormais la date, et la ligne se range sous nos yeux. */
   const [report, setReport] = useState<{ id: string; date: string } | null>(null);
@@ -398,14 +380,24 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   /* Dans chaque groupe, « Veut faire une offre » passe en tête ; le reste
      garde l'ordre des échéances. */
   const enTete = (l: any[]) => [...l.filter(veutOffrir), ...l.filter(r => !veutOffrir(r))];
-  const retard = enTete(courantes.filter(r => jourDe(r.date_echeance) < auj));
-  const duJour = enTete(courantes.filter(r => jourDe(r.date_echeance) === auj));
-  const avenir = courantes.filter(r => jourDe(r.date_echeance) > auj);
+  /* V3.82 : la recherche du bandeau vaut pour toutes les relances. */
+  const qR = sansAccents(q.trim());
+  const chiffresR = qR.replace(/\D/g, '');
+  const cherchees = !qR ? courantes : courantes.filter(r => {
+    const c = r.clients || {};
+    const tels: string[] = c.telephones || [];
+    return sansAccents([c.prenom, c.nom, ...(c.emails || []), r.note].filter(Boolean).join(' ')).includes(qR)
+      || (chiffresR.length >= 3 && tels.some(t => String(t).replace(/\D/g, '').includes(chiffresR)));
+  });
+  const retard = enTete(cherchees.filter(r => jourDe(r.date_echeance) < auj));
+  const duJour = enTete(cherchees.filter(r => jourDe(r.date_echeance) === auj));
+  const avenir = cherchees.filter(r => jourDe(r.date_echeance) > auj);
   const demain = plusJours(1), dansSept = plusJours(7);
   const semaine = avenir.filter(r => jourDe(r.date_echeance) <= dansSept);
-  const plusLoin = avenir.length - semaine.length;
+  const loin = avenir.filter(r => jourDe(r.date_echeance) > dansSept);
+  const plusLoin = loin.length;
   /* Les relances d'une période (bornes comprises), de la plus proche à la plus lointaine. */
-  const entre = (du: string, au: string) => courantes.filter(r => { const k = jourDe(r.date_echeance); return k >= du && k <= au; });
+  const entre = (du: string, au: string) => cherchees.filter(r => { const k = jourDe(r.date_echeance); return k >= du && k <= au; });
   const PERIODES: { k: Periode['k']; lib: string; du: string; au: string }[] = [
     { k: '30', lib: '30 prochains jours', du: auj, au: plusJours(30) },
     { k: '60', lib: '2 prochains mois', du: auj, au: plusJours(61) },
@@ -416,50 +408,59 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     if (periode?.k === k) { setPeriode(null); return; }
     const x = PERIODES.find(y => y.k === k)!;
     setPeriode({ k, du: x.du, au: x.au });
-    setFiltre('tout');
+    setFiltre('plusloin');
   }
-
-  /* Les groupes affichés, du plus pressé au plus lointain : jusqu'à la fin
-     de la semaine ; une période choisie, rangée par semaine. */
-  const groupes: { id: string; titre: string; couleur: string; liste: any[] }[] = [];
-  if (periode) {
-    const l = enTete(entre(periode.du, periode.au));
-    if (periode.du === periode.au) groupes.push({ id: 'jour', titre: `Le ${dateLongue(periode.du)}`, couleur: '#2563eb', liste: l });
-    else {
-      const parSemaine = new Map<string, typeof l>();
-      for (const r of [...l].sort((a, b) => jourDe(a.date_echeance).localeCompare(jourDe(b.date_echeance)))) {
-        const k = lundiDe(jourDe(r.date_echeance));
-        if (!parSemaine.has(k)) parSemaine.set(k, []);
-        parSemaine.get(k)!.push(r);
-      }
-      for (const [k, liste] of parSemaine) groupes.push({ id: `s${k}`, titre: k === lundiDe(auj) ? 'Semaine en cours' : `Semaine du ${dateCourte(k)}`, couleur: '#2563eb', liste: enTete(liste) });
+  const majuscule = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  /* Par semaine : « Semaine du 13 oct. ». */
+  type Rel = (typeof relances)[number];
+  const parSemaine = (l: Rel[]) => {
+    const m = new Map<string, Rel[]>();
+    for (const r of [...l].sort((a, b) => jourDe(a.date_echeance).localeCompare(jourDe(b.date_echeance)))) {
+      const k = lundiDe(jourDe(r.date_echeance));
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(r);
     }
+    return [...m].map(([k, liste]) => ({ id: `s${k}`, titre: k === lundiDe(auj) ? 'Semaine en cours' : `Semaine du ${dateCourte(k)}`, ico: 'calendrier', couleur: '#64748b', liste: enTete(liste) }));
+  };
+
+  /* Les groupes affichés, du plus pressé au plus lointain (V3.82 : la
+     semaine jour par jour ; « Plus loin », semaine par semaine, ou la
+     période choisie). */
+  type Groupe = { id: string; titre: string; sous?: string; ico: string; couleur: string; liste: Rel[] };
+  const groupes: Groupe[] = [];
+  if (filtre === 'plusloin') {
+    if (periode) {
+      const l = enTete(entre(periode.du, periode.au));
+      if (periode.du === periode.au) groupes.push({ id: 'jour', titre: majuscule(dateLongue(periode.du)), ico: 'calendrier', couleur: '#2563eb', liste: l });
+      else groupes.push(...parSemaine(l));
+    } else groupes.push(...parSemaine(loin));
   } else {
-    if (filtre === 'tout' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', couleur: '#dc2626', liste: retard });
-    if (filtre === 'tout' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', couleur: '#d97706', liste: duJour });
+    if (filtre === 'tout' || filtre === 'retard') groupes.push({ id: 'retard', titre: 'En retard', sous: 'à rattraper en premier', ico: 'alerte', couleur: '#dc2626', liste: retard });
+    if (filtre === 'tout' || filtre === 'aujourdhui') groupes.push({ id: 'auj', titre: 'Aujourd’hui', sous: majuscule(dateLongue(auj)), ico: 'soleil', couleur: '#d97706', liste: duJour });
     if (filtre === 'tout' || filtre === 'semaine') {
-      groupes.push({ id: 'demain', titre: 'Demain', couleur: '#2563eb', liste: avenir.filter(r => jourDe(r.date_echeance) === demain) });
-      groupes.push({ id: 'semaine', titre: 'Cette semaine', couleur: '#2563eb', liste: avenir.filter(r => { const k = jourDe(r.date_echeance); return k > demain && k <= dansSept; }) });
+      for (let n = 1; n <= 7; n++) {
+        const k = plusJours(n);
+        groupes.push({ id: `j${k}`, titre: n === 1 ? 'Demain' : majuscule(dateLongue(k)), sous: n === 1 ? majuscule(dateLongue(k)) : undefined, ico: 'calendrier', couleur: '#2563eb', liste: enTete(semaine.filter(r => jourDe(r.date_echeance) === k)) });
+      }
     }
   }
   const visibles = groupes.filter(g => g.liste.length > 0);
   const nbPeriode = periode ? entre(periode.du, periode.au).length : 0;
 
-  const cartes: { id: Filtre; titre: string; n: number; sous: string; ico: string; encre: string; fond: string; trait: string }[] = [
-    { id: 'retard', titre: 'En retard', n: retard.length, sous: retard.length ? 'à rattraper en premier' : 'rien en retard', ico: 'alerte', encre: '#b91c1c', fond: '#fef2f2', trait: '#fecaca' },
-    { id: 'aujourdhui', titre: 'Aujourd’hui', n: duJour.length, sous: duJour.length ? 'prévues pour ce jour' : 'rien de prévu', ico: 'cloche', encre: '#b45309', fond: '#fff7e6', trait: '#fde3b0' },
-    { id: 'semaine', titre: 'Cette semaine', n: semaine.length, sous: semaine.length ? `d’ici le ${dateCourte(dansSept)}${plusLoin ? ` · ${plusLoin} plus loin` : ''}` : plusLoin ? `rien d’ici le ${dateCourte(dansSept)} · ${plusLoin} plus loin` : 'rien de programmé', ico: 'calendrier', encre: '#1d4ed8', fond: '#eff6ff', trait: '#cfe0fd' },
-  ];
-
   let rang = 0;
-  /* Une ligne de relance, du bloc des échéances comme de celui du tri. */
+  /* Une ligne de relance, du bloc des échéances comme de celui du tri.
+     V3.82 (Alexandre : « plus joli, plus moderne ») : une carte plus légère —
+     l'avatar cerclé de la couleur de l'échéance, le nom et l'échéance sur la
+     première ligne, l'origine et la note sur la seconde ; à droite, « Ouvrir
+     la fiche », deux gestes courts et « Traiter » en avant. */
   const ligne = (r: (typeof relances)[number]) => {
     const k = jourDe(r.date_echeance);
     const e = ecart(k, auj);
-    const tag = e < 0 ? { lib: `${-e} j de retard`, encre: '#b91c1c', fond: '#fef2f2' }
-      : e === 0 ? { lib: 'Aujourd’hui', encre: '#b45309', fond: '#fff7e6' }
-      : e === 1 ? { lib: 'Demain', encre: '#1d4ed8', fond: '#eff6ff' }
-      : { lib: `Dans ${e} jours`, encre: '#475569', fond: '#f1f5f9' };
+    const urg = e < 0 ? 'retard' : e === 0 ? 'auj' : e === 1 ? 'demain' : 'plus';
+    const tag = e < 0 ? { lib: `${-e} j de retard` }
+      : e === 0 ? { lib: 'Aujourd’hui' }
+      : e === 1 ? { lib: 'Demain' }
+      : { lib: `Dans ${e} jours` };
     const enTri = estTri(r.note);
     const o: Origine = enTri ? { lib: 'Dernier appel', ico: 'drapeau' } : origineDe(r, liens[r.id]);
     const c = r.clients;
@@ -471,55 +472,44 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     return (
       <div key={r.id} className="rl-entre rl-pli" data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + Math.min(rang++, 12) * 45}ms` }}>
         <div className="rl-pli-in">
-        <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined}
-          style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px 14px 18px', borderRadius: 18, background: 'white', border: `1px solid ${ouvert ? '#ecdcae' : BORD}`, overflow: 'hidden' }}>
-          <span aria-hidden="true" className="rl-barre" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tag.encre, opacity: .85 }} />
-          <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 44, height: 44, borderRadius: 14 }} />
-          <span className="rl-texte" style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 280px', minWidth: 0 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <b className="rl-nom" style={{ fontFamily: JAK, fontSize: 15.5, fontWeight: 800 }}>{nom}</b>
+        <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined} data-urg={urg} data-ouvert={ouvert ? '' : undefined}>
+          <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 42, height: 42, borderRadius: 13, flexShrink: 0 }} />
+          <span className="rl-texte">
+            <span className="rl-l1">
+              <b className="rl-nom">{nom}</b>
               {faites[r.id] ? (
-                <span className="rl-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: '#15803d', background: '#dcfce7', borderRadius: 20, padding: '3px 9px' }}>
-                  <Ic n="coche" t={12} ep={2.8} />Noté dans le suivi
-                </span>
+                <span className="rl-ok"><Ic n="coche" t={12} ep={2.8} />Noté dans le suivi</span>
               ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800, color: tag.encre, background: tag.fond, borderRadius: 20, padding: '3px 9px' }}>
-                  {e < 0 && <span className="rl-pouls" style={{ width: 6, height: 6, borderRadius: '50%', background: tag.encre }} />}{tag.lib}
-                </span>
+                <span className="rl-tag">{e < 0 && <span className="rl-pouls" />}{tag.lib}</span>
               )}
+              <span className="rl-date">{dateCourte(k)}</span>
             </span>
-            <span className="rl-note" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 13, color: DOUX }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: o.fort ? 800 : 700, color: o.fort ? NAVY : OR_FONCE, background: o.fort ? OR : '#fbf4e1', borderRadius: 8, padding: '2px 8px' }}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
+            <span className="rl-note">
+              <span className={`rl-orig${o.fort ? ' rl-orig-fort' : ''}`}><Ic n={o.ico} t={12} ep={2.2} />{o.lib}</span>
               {/* Le tri : le motif compte, il tient sur deux lignes. */}
-              <span style={enTri ? { minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4 } : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{texte}</span>
+              {texte && <span className={enTri ? 'rl-txt rl-txt-2' : 'rl-txt'}>{texte}</span>}
             </span>
-            <span style={{ fontSize: 11.5, color: PALE }}>{`prévue le ${dateCourte(k)}`}</span>
           </span>
-          <span className="rl-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, justifyContent: 'flex-end' }}>
+          <span className="rl-actions">
             {c && (
-              <button type="button" className="rl-appui" onClick={() => ouvrirFiche(r)} title="Ouvrir la fiche, au bon onglet"
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, height: 38, padding: '0 14px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button type="button" className="rl-b rl-b-fant rl-appui rl-fiche" onClick={() => ouvrirFiche(r)} title="Ouvrir la fiche, au bon onglet">
                 <span className="rl-long">Ouvrir la fiche</span><span className="rl-court">Fiche</span><Ic n="fleche" t={14} ep={2.2} />
               </button>
             )}
-            <button type="button" className="rl-appui" onClick={() => ouvrirReport(r.id)} aria-expanded={ouvert}
-              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${ouvert ? OR : BORD}`, background: ouvert ? '#fffaf0' : 'white', color: ouvert ? OR_FONCE : NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Ic n="report" t={14} ep={2.2} />Reporter
+            <button type="button" className="rl-b rl-appui" onClick={() => ouvrirReport(r.id)} aria-expanded={ouvert} title="Reporter à une autre date">
+              <Ic n="report" t={14} ep={2.2} /><span className="rl-b-lib">Reporter</span>
             </button>
             {enTri && c && (
-              <button type="button" className="rl-appui" onClick={() => archiver(r)} title="Il ne reste pas : rangé dans « Archivés », ses relances se ferment"
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${BORD}`, background: '#f8fafc', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                <Ic n="archive" t={14} ep={2.1} />Archiver
+              <button type="button" className="rl-b rl-appui" onClick={() => archiver(r)} title="Il ne reste pas : rangé dans « Archivés », ses relances se ferment">
+                <Ic n="archive" t={14} ep={2.1} /><span className="rl-b-lib">Archiver</span>
               </button>
             )}
-            <button type="button" className="rl-appui" onClick={() => fait(r)} title="Clore la relance sans rien noter"
-              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 13px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Ic n="coche" t={15} ep={2.6} />C’est fait
+            <button type="button" className="rl-b rl-appui" onClick={() => fait(r)} title="Clore la relance sans rien noter">
+              <Ic n="coche" t={15} ep={2.6} /><span className="rl-b-lib">C’est fait</span>
             </button>
             {/* V3.74 : noter ce qui s'est passé, sans quitter la page. */}
             {c && (
-              <button type="button" className="rl-appui rl-traiter" onClick={() => { setReport(null); setTraitee(r); }} title="Noter ce qui s’est passé sans quitter la page"
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 15px', borderRadius: 12, border: 'none', background: NAVY, color: 'white', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button type="button" className="rl-b rl-b-prim rl-appui rl-traiter" onClick={() => { setReport(null); setTraitee(r); }} title="Noter ce qui s’est passé sans quitter la page">
                 <Ic n="tel" t={14} ep={2.2} />Traiter
               </button>
             )}
@@ -560,20 +550,64 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         @keyframes rlPop{0%{opacity:0;transform:scale(.4)}60%{opacity:1;transform:scale(1.18)}100%{opacity:1;transform:scale(1)}}
         @keyframes rlPouls{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}60%{box-shadow:0 0 0 7px rgba(220,38,38,0)}}
         .rl-entre{animation:rlEntre .45s cubic-bezier(.2,.9,.3,1) both}
-        .rl-carte{transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease,border-color .3s ease,background-color .3s ease,opacity .2s ease}
-        .rl-carte:hover{transform:translateY(-2px);box-shadow:0 16px 30px -22px rgba(16,24,40,.45)}
-        .rl-ligne{transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease}
+        /* V3.82 : la carte d'une relance. */
+        .rl-ligne{position:relative;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid #e6ebf2;box-shadow:0 1px 2px rgba(16,24,40,.03);overflow:hidden;transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease,transform .2s ease}
+        .rl-ligne[data-ouvert]{border-color:#ecdcae}
+        /* L'avatar cerclé de la couleur de l'échéance. */
+        .rl-ligne .rl-av{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--uc,#cbd5e1);margin:4px}
+        .rl-ligne[data-urg=retard]{--uc:#ef4444;--uf:#fef2f2;--ut:#b91c1c}
+        .rl-ligne[data-urg=auj]{--uc:#f59e0b;--uf:#fff7e6;--ut:#b45309}
+        .rl-ligne[data-urg=demain]{--uc:#60a5fa;--uf:#eff6ff;--ut:#1d4ed8}
+        .rl-ligne[data-urg=plus]{--uc:#cbd5e1;--uf:#f1f5f9;--ut:#475569}
+        .rl-texte{display:flex;flex-direction:column;gap:5px;flex:1 1 280px;min-width:0}
+        .rl-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+        .rl-nom{font-family:${JAK};font-size:15px;font-weight:800;color:#1a2332}
+        .rl-tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;background:var(--uf);color:var(--ut);font-size:11.5px;font-weight:800}
+        .rl-tag > .rl-pouls{width:6px;height:6px;border-radius:50%;background:var(--ut)}
+        .rl-date{font-size:11.5px;font-weight:600;color:${PALE}}
+        .rl-ok{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;color:#15803d;background:#dcfce7;border-radius:20px;padding:2px 9px}
+        .rl-note{display:flex;align-items:center;gap:7px;min-width:0;font-size:13px;color:${DOUX}}
+        .rl-orig{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;padding:2px 8px;border-radius:8px;background:#fbf4e1;color:${OR_FONCE};font-size:11.5px;font-weight:700}
+        .rl-orig-fort{background:${OR};color:${NAVY};font-weight:800}
+        .rl-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .rl-txt-2{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
+        .rl-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;justify-content:flex-end}
+        .rl-b{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 12px;border-radius:11px;border:1px solid #e3e8f0;background:#fff;color:${NAVY};font:700 13px 'DM Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+        .rl-b:hover{background:#f6f8fb;border-color:#d3dbe7}
+        .rl-b[aria-expanded=true]{border-color:${OR};background:#fffaf0;color:${OR_FONCE}}
+        .rl-b-fant{border-color:transparent;background:transparent}
+        .rl-b-fant:hover{background:#f1f4f9;border-color:transparent}
+        .rl-b-prim{background:${NAVY};border-color:${NAVY};color:#fff;font-weight:800;padding:0 15px;box-shadow:0 8px 18px -10px rgba(52,73,110,.85)}
+        .rl-b-prim:hover{background:#2b3d5e;border-color:#2b3d5e}
+        /* Les groupes : un titre à pastille, puis les cartes le long d'un trait. */
+        .rl-groupes{display:flex;flex-direction:column;gap:20px}
+        .rl-groupe{display:flex;flex-direction:column;gap:10px}
+        .rl-gt{display:flex;align-items:center;gap:10px;min-width:0}
+        .rl-gt-ic{width:30px;height:30px;border-radius:10px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--gc) 13%,#fff);color:var(--gc)}
+        .rl-gt b{font-family:${JAK};font-size:15px;font-weight:800;color:#1a2332;white-space:nowrap}
+        .rl-gt-n{padding:2px 9px;border-radius:99px;background:color-mix(in srgb,var(--gc) 13%,#fff);color:var(--gc);font-size:12px;font-weight:800}
+        .rl-gt-sous{font-size:12.5px;font-weight:600;color:${PALE};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .rl-gt::after{content:'';flex:1 1 40px;height:1px;background:linear-gradient(90deg,color-mix(in srgb,var(--gc) 35%,transparent),transparent)}
+        .rl-gl{display:flex;flex-direction:column;gap:8px;margin-left:14px;padding-left:16px;border-left:2px solid color-mix(in srgb,var(--gc) 22%,transparent)}
+        /* « Plus loin » : la barre des périodes. */
+        .rl-periode{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-radius:16px;background:#fff;border:1px solid ${BORD}}
+        .rl-periode-t{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#475569;margin-right:2px}
+        .rl-puce{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;border:1px solid #dfe5ee;background:#fff;color:${NAVY};font:700 12.5px 'DM Sans',system-ui,sans-serif;cursor:pointer}
+        .rl-puce > i{font-style:normal;font-size:11px;font-weight:800;padding:1px 7px;border-radius:20px;background:#f1f5f9;color:#475569}
+        .rl-puce[aria-pressed=true]{background:${NAVY};border-color:${NAVY};color:#fff}
+        .rl-puce[aria-pressed=true] > i{background:rgba(255,255,255,.18);color:#fff}
+        .rl-entre-dates{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12.5px;font-weight:700;color:${DOUX}}
+        .rl-periode-n{margin-left:auto;font-size:12.5px;color:${DOUX}}
         /* V3.76 : sur un écran moyen (1280), les cinq boutons passent sous le
            texte plutôt que de l'écraser sur trois mots. */
         .rl-ligne{flex-wrap:wrap}
         .rl-actions{margin-left:auto}
-        .rl-ligne:hover{box-shadow:0 14px 28px -22px rgba(16,24,40,.5);border-color:#d7deea}
+        .rl-ligne:hover{box-shadow:0 14px 28px -22px rgba(16,24,40,.5);border-color:#d7deea;transform:translateY(-1px)}
+        @media (max-width:1180px){.rl-b-lib{display:none}.rl-actions > .rl-b:not(.rl-b-prim):not(.rl-fiche){width:36px;padding:0}}
         /* V3.74 — Traitée : la ligne passe au vert, puis glisse et se replie
            à sa vraie hauteur (grille 1fr → 0fr) ; celles du dessous remontent
            sans saut. Le dernier d'un groupe emmène son titre. */
         .rl-ligne[data-ok]{border-color:#9fdcb6 !important;background:#f3fcf6 !important;box-shadow:0 0 0 4px rgba(22,163,74,.09)}
-        .rl-ligne > .rl-barre{transition:background-color .25s ease}
-        .rl-ligne[data-ok] > .rl-barre{background:#16a34a !important}
         .rl-ok{animation:rlPop .34s cubic-bezier(.2,.9,.3,1) both}
         .rl-pli{display:grid;grid-template-rows:1fr;grid-template-columns:minmax(0,1fr);transition:grid-template-rows .5s cubic-bezier(.4,0,.2,1),margin-top .5s cubic-bezier(.4,0,.2,1)}
         /* V3.76 : min-width aussi. Sans lui, une note longue (« Prochain contact
@@ -602,9 +636,6 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ok,.rl-toast,.rl-toast-ok{animation:none !important}.rl-pli,.rl-pli .rl-ligne{transition:none !important}}
         @media (max-width: 760px){
           .rl-page{padding:16px 12px 96px !important;gap:16px !important}
-          .rl-cartes{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:8px !important}
-          .rl-carte{padding:10px !important;border-radius:16px !important;flex-direction:column !important;align-items:flex-start !important;gap:6px !important}
-          .rl-carte-sous{display:none !important}
           .rl-ligne{flex-wrap:wrap !important}
           .rl-texte{flex-basis:0 !important}
           .rl-actions{width:100%;display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px !important}
@@ -618,35 +649,44 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           .rl-tri .rl-actions{grid-template-columns:1fr 1fr}
           .rl-long{display:none}
           .rl-court{display:inline !important}
-          .rl-titre{font-size:22px !important}
           .rl-periode > span:first-child{width:100%}
+          .rl-gl{margin-left:0;padding-left:0;border-left:none}
+          .rl-gt-sous{display:none}
+          .rl-b-lib{display:inline !important}
+          .rl-actions > .rl-b:not(.rl-b-prim):not(.rl-fiche){width:auto !important;padding:0 8px !important}
           /* Un cran plus petit sur téléphone, au niveau du tableau de bord :
              les lignes étaient écrites trop gros. */
-          .rl-carte-n{font-size:22px !important}
-          .rl-carte-ico{width:26px !important;height:26px !important}
           .rl-ligne{gap:11px !important;padding:11px 12px 11px 15px !important;border-radius:16px !important}
           .rl-av{width:36px !important;height:36px !important;border-radius:11px !important;font-size:13px !important}
           .rl-nom{font-size:14px !important}
           .rl-note{font-size:12.5px !important;flex-wrap:wrap;row-gap:5px !important}
           /* V3.76 : la note passe sous l'étiquette, sur deux lignes, plutôt que
              coupée après trois mots. */
-          .rl-note > span:last-child{white-space:normal !important;display:-webkit-box !important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+          .rl-note > .rl-txt{white-space:normal !important;display:-webkit-box !important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+          .rl-ligne{align-items:flex-start !important}
           .rl-actions > button{height:34px !important;font-size:12.5px !important;border-radius:11px !important}
         }
       `}</style>
 
-      {!seulTri && <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <h1 className="rl-titre" style={{ margin: 0, fontFamily: JAK, fontSize: 28, fontWeight: 800, letterSpacing: -.5 }}>Relances</h1>
-        <p style={{ margin: 0, fontSize: 14, color: PALE }}>Les clients à recontacter cette semaine, du plus pressé au moins pressé. Plus loin : choisis une période.</p>
-        {!loading && tri.length > 0 && (
-          <button type="button" className="rl-appui" onClick={() => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            style={{ alignSelf: 'flex-start', marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 12px', borderRadius: 20, border: '1px solid #dfe5ee', background: '#f6f8fb', color: '#475569', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-            <Ic n="drapeau" t={13} ep={2.1} />
-            <span>{`Tri à faire : ${triDus.length ? `${triDus.length} à appeler` : 'rien pour aujourd’hui'}${triPlusTard ? ` · ${triPlusTard} plus tard` : ''}`}</span>
-            <Ic n="fleche" t={13} ep={2.1} />
-          </button>
-        )}
-      </header>}
+      {/* V3.82 (Alexandre : « en retard, aujourd'hui, cette semaine, plus
+          loin : plus joli, plus moderne ») : le même bandeau que Contacts et
+          Biens — le titre, la recherche, et les échéances en tuiles qui
+          filtrent ; « Tout » (jusqu'à la fin de la semaine) au bout. */}
+      {!seulTri && (
+        <EnteteRubrique titre="Relances" icone={<Ic n="cloche" t={22} ep={1.9} />}
+          phrase={loading ? 'Les clients à recontacter, du plus pressé au moins pressé.' : retard.length ? `${retard.length > 1 ? `${retard.length} relances en retard` : 'Une relance en retard'} : à rattraper en premier.` : duJour.length ? `${duJour.length > 1 ? `${duJour.length} relances` : 'Une relance'} pour aujourd’hui, rien en retard.` : 'Rien en retard, rien pour aujourd’hui.'}
+          recherche={{ valeur: q, onChange: setQ, placeholder: 'Nom, téléphone, note…', label: 'Chercher une relance' }}
+          bouton2={tri.length > 0 ? { lib: `Tri à faire · ${triDus.length ? `${triDus.length} à appeler` : 'rien aujourd’hui'}`, court: 'Tri', ic: <Ic n="drapeau" t={15} ep={2.1} />, onClick: () => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } : undefined}
+          label="Filtrer les relances" actif={filtre} defiler={false}
+          onChoisir={k => { setPeriode(null); setReport(null); setFiltre(k as Filtre); }}
+          tuiles={loading ? [] : [
+            { cle: 'retard', lib: 'En retard', n: retard.length, couleur: '#dc2626', alerte: true },
+            { cle: 'aujourdhui', lib: 'Aujourd’hui', n: duJour.length, couleur: '#d97706' },
+            { cle: 'semaine', lib: 'Cette semaine', n: semaine.length, couleur: '#2563eb' },
+            { cle: 'plusloin', lib: 'Plus loin', n: plusLoin, couleur: '#94a3b8' },
+            { cle: 'tout', lib: 'Tout', n: retard.length + duJour.length + semaine.length, tete: true, fin: true, ic: <Ic n="cloche" t={14} ep={2.1} /> },
+          ]} />
+      )}
 
       {!seulTri && alertes.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-label="Rapprochements">
@@ -696,37 +736,21 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         </section>
       )}
 
-      {!seulTri && !loading && (
-        <div className="rl-cartes" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-          {cartes.map((c, i) => {
-            const actif = !periode && filtre === c.id;
-            return (
-              <button key={c.id} type="button" className="rl-carte rl-entre" aria-pressed={actif} onClick={() => { setPeriode(null); setFiltre(f => (f === c.id && !periode ? 'tout' : c.id)); }}
-                style={{ animationDelay: `${i * 70}ms`, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 18, border: `1.5px solid ${actif ? c.encre : c.n ? c.trait : BORD}`, background: c.n ? c.fond : 'white', color: NAVY, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', boxShadow: actif ? `0 0 0 4px ${c.fond}` : 'none', opacity: (periode || filtre !== 'tout') && !actif ? .6 : 1 }}>
-                <span className={`rl-carte-ico${c.id === 'retard' && c.n ? ' rl-pouls' : ''}`} style={{ width: 42, height: 42, borderRadius: 13, background: 'white', color: c.n ? c.encre : PALE, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.n ? c.trait : BORD}`, flexShrink: 0 }}><Ic n={c.ico} t={19} ep={2.1} /></span>
-                <b className="rl-carte-n" style={{ fontFamily: JAK, fontSize: 32, fontWeight: 800, lineHeight: 1, color: c.n ? c.encre : '#b6c0cf', fontVariantNumeric: 'tabular-nums', minWidth: 24 }}><Compteur n={c.n} /></b>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 800 }}>{c.titre}</span>
-                  <span className="rl-carte-sous" style={{ fontSize: 12, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{actif ? 'filtré · cliquer pour tout revoir' : c.sous}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Plus loin que la semaine (V3.71) : une période, ou un jour, ou entre deux dates. */}
-      {!seulTri && !loading && courantes.length > 0 && (
-        <div className="rl-periode rl-entre" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 16, background: periode ? '#f5f8ff' : 'white', border: `1px solid ${periode ? '#cfe0fd' : BORD}` }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#1d4ed8', marginRight: 4 }}><Ic n="calendrier" t={14} ep={2.1} />Voir plus loin</span>
+      {/* Plus loin que la semaine (V3.71) : semaine par semaine, ou une
+          période — les 30 ou 60 prochains jours, un jour, entre deux dates. */}
+      {!seulTri && !loading && filtre === 'plusloin' && (
+        <div className="rl-periode rl-entre">
+          <span className="rl-periode-t"><Ic n="calendrier" t={14} ep={2.1} />Voir</span>
+          <button type="button" className="rl-puce rl-appui" aria-pressed={!periode} onClick={() => setPeriode(null)}>
+            <span>Après cette semaine</span><i>{plusLoin}</i>
+          </button>
           {PERIODES.map(x => {
             const actif = periode?.k === x.k;
             const n = x.k === '30' || x.k === '60' ? entre(x.du, x.au).length : null;
             return (
-              <button key={x.k} type="button" className="rl-appui" aria-pressed={actif} onClick={() => choisirPeriode(x.k)}
-                style={{ height: 32, padding: '0 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: `1px solid ${actif ? '#1d4ed8' : '#d6e2f5'}`, background: actif ? '#1d4ed8' : 'white', color: actif ? 'white' : NAVY, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button key={x.k} type="button" className="rl-puce rl-appui" aria-pressed={actif} onClick={() => choisirPeriode(x.k)}>
                 <span>{x.lib}</span>
-                {n !== null && <span style={{ fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 20, background: actif ? 'rgba(255,255,255,.2)' : '#eff6ff', color: actif ? 'white' : '#1d4ed8' }}>{n}</span>}
+                {n !== null && <i>{n}</i>}
               </button>
             );
           })}
@@ -734,19 +758,14 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
             <ChoixDate compact valeur={periode.du} placeholder="Choisir le jour" onChange={v => v && setPeriode({ k: 'date', du: v, au: v })} />
           )}
           {periode?.k === 'entre' && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 12.5, fontWeight: 700, color: DOUX }}>
+            <span className="rl-entre-dates">
               <span>du</span>
               <ChoixDate compact valeur={periode.du} placeholder="Début" onChange={v => v && setPeriode(p => (p ? { ...p, du: v, au: p.au < v ? v : p.au } : p))} />
               <span>au</span>
               <ChoixDate compact valeur={periode.au} min={periode.du} placeholder="Fin" onChange={v => v && setPeriode(p => (p ? { ...p, au: v < p.du ? p.du : v } : p))} />
             </span>
           )}
-          {periode && (
-            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 12px' }}>
-              <span style={{ fontSize: 12.5, color: DOUX }}>{`${nbPeriode > 1 ? `${nbPeriode} relances` : nbPeriode === 1 ? '1 relance' : 'Aucune relance'} ${periode.du === periode.au ? `le ${dateCourte(periode.du)}` : `du ${dateCourte(periode.du)} au ${dateCourte(periode.au)}`}`}</span>
-              <button type="button" onClick={() => setPeriode(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#1d4ed8', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir à la semaine</button>
-            </span>
-          )}
+          {periode && <span className="rl-periode-n">{`${nbPeriode > 1 ? `${nbPeriode} relances` : nbPeriode === 1 ? '1 relance' : 'Aucune relance'} ${periode.du === periode.au ? `le ${dateCourte(periode.du)}` : `du ${dateCourte(periode.du)} au ${dateCourte(periode.au)}`}`}</span>}
         </div>
       )}
 
@@ -761,22 +780,23 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       ) : visibles.length === 0 ? (
         <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
           <span style={{ width: 50, height: 50, borderRadius: 16, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="soleil" t={24} ep={1.9} /></span>
-          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{periode ? 'Aucune relance sur cette période' : 'Rien ici'}</b>
-          {!periode && filtre === 'tout' && plusLoin > 0 && <span style={{ fontSize: 13.5, color: DOUX }}>{`Rien d’ici le ${dateCourte(dansSept)}. ${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : choisis une période juste au-dessus.`}</span>}
+          <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{qR ? `Aucune relance ne correspond à « ${q.trim()} »` : periode ? 'Aucune relance sur cette période' : filtre === 'retard' ? 'Rien en retard' : filtre === 'aujourdhui' ? 'Rien pour aujourd’hui' : 'Rien ici'}</b>
+          {!qR && !periode && filtre === 'tout' && plusLoin > 0 && <span style={{ fontSize: 13.5, color: DOUX }}>{`Rien d’ici le ${dateCourte(dansSept)}. ${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : la tuile « Plus loin » les montre.`}</span>}
           {(periode || filtre !== 'tout') && <button type="button" className="rl-appui" onClick={() => { setFiltre('tout'); setPeriode(null); }} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir aux relances de la semaine</button>}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+        <div className="rl-groupes" key={`${filtre}:${periode?.k || ''}`}>
           {visibles.map(g => (
             /* Le dernier qui part emmène son groupe (« En retard »…), en douceur. */
             <div key={g.id} className="rl-pli rl-pli-g" data-partante={g.liste.every(r => partantes[r.id]) ? '' : undefined}><div className="rl-pli-in">
-            <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.1, textTransform: 'uppercase', color: g.couleur }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.couleur }} />
-                <span>{g.titre}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: g.couleur, background: `${g.couleur}14`, borderRadius: 20, padding: '1px 8px', letterSpacing: 0 }}>{g.liste.length}</span>
+            <section className="rl-groupe" style={{ ['--gc' as string]: g.couleur } as React.CSSProperties}>
+              <div className="rl-gt">
+                <span className="rl-gt-ic"><Ic n={g.ico} t={15} ep={2.1} /></span>
+                <b>{g.titre}</b>
+                <span className="rl-gt-n">{g.liste.length}</span>
+                {g.sous && <span className="rl-gt-sous">{g.sous}</span>}
               </div>
-              {g.liste.map(r => ligne(r))}
+              <div className="rl-gl">{g.liste.map(r => ligne(r))}</div>
             </section>
             </div></div>
           ))}
