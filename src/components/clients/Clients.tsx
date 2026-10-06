@@ -31,8 +31,8 @@ import dd from '@/components/documents/Documents.module.css';
 import FiltresAcheteurs, { FILTRES_A_VIDES, correspond, nbFiltresA, type FiltresA } from './FiltresAcheteurs';
 import PageRelances from '@/components/pages/PageRelances';
 import { estTri } from '@/lib/relances';
-import { AvecCase, BarreSelection, ConfirmerLot, STYLE_CHOISI, type Avancement } from '@/components/shared/Selection';
-import { archiverContact, effacerContact, empecheSuppression } from '@/lib/supprimer-contacts';
+import { BarreSelection, CaseLigne, CaseTout, ConfirmerLot, STYLE_CHOISI, type Avancement } from '@/components/shared/Selection';
+import { STATUTS_LOT, archiverContact, changerStatutContact, effacerContact, empecheSuppression, type StatutLot } from '@/lib/supprimer-contacts';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 
@@ -519,6 +519,8 @@ export default function Clients({ onNavigate, fenetre }: {
   const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
   const [lotMail, setLotMail] = useState<Client[] | null>(null);
   const [lot, setLot] = useState<{ quoi: 'supprimer' | 'archiver' | 'desarchiver'; cibles: Client[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null; verifie: boolean } | null>(null);
+  /* V3.89 : « Changer de statut » de plusieurs acheteurs. */
+  const [statutLot, setStatutLot] = useState<{ statut: StatutLot; cibles: Client[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null } | null>(null);
   const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
   const viderChoix = useCallback(() => setChoisis(new Set()), []);
   useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
@@ -1084,6 +1086,34 @@ export default function Clients({ onNavigate, fenetre }: {
     if (quoi === 'supprimer') { setClients(l => l.filter(c => !partis.includes(c.id))); partis.forEach(id => retirerFicheOuverte('contact', id)); }
     else setClients(l => l.map(c => (partis.includes(c.id) ? { ...c, archive: quoi === 'archiver' } : c)));
     setChoisis(l => { const n = new Set(l); partis.forEach(id => n.delete(id)); return n; });
+    signalerMaj();
+  }
+  /* V3.89 — Le statut est celui d'un acheteur ; un dossier clos (bien
+     trouvé, perdu) se rouvre depuis sa fiche. */
+  const bloqueStatut = (c: Client, statut: StatutLot): string | null => {
+    const st = String(c.statut || '');
+    if (!estAcheteur(c)) return 'Pas acheteur : le statut suit la recherche d’un acheteur.';
+    if (estArchive(c)) return 'Archivé : sors-le des archives d’abord.';
+    if (st === statut) return `Déjà « ${STATUTS_LOT.find(x => x.k === statut)?.lib} ».`;
+    if (st === 'bien_trouve' || st === 'perdu') return `Dossier clos (« ${st === 'perdu' ? 'Perdu' : 'Bien trouvé'} ») : rouvre-le depuis sa fiche.`;
+    return null;
+  };
+  function preparerStatut(statut: StatutLot) {
+    const r = coches.map(c => bloqueStatut(c, statut));
+    setStatutLot({ statut, cibles: coches.filter((_, i) => !r[i]), ignores: coches.map((c, i) => ({ nom: nomFoyer(c) || 'Sans nom', pourquoi: r[i] || '' })).filter(x => x.pourquoi), avancement: null });
+  }
+  async function faireStatut() {
+    if (!statutLot) return;
+    const { statut, cibles } = statutLot;
+    const av: Avancement = { fait: 0, total: cibles.length, erreurs: [] };
+    setStatutLot(x => (x ? { ...x, avancement: { ...av } } : x));
+    const faits: string[] = [];
+    for (const c of cibles) {
+      try { await changerStatutContact(c.id, statut); av.fait += 1; faits.push(c.id); }
+      catch (e) { av.erreurs.push(`${nomFoyer(c) || 'Sans nom'} : ${(e as Error).message}`); }
+      setStatutLot(x => (x ? { ...x, avancement: { ...av, erreurs: [...av.erreurs] } } : x));
+    }
+    setClients(l => l.map(c => (faits.includes(c.id) ? { ...c, statut } as Client : c)));
     signalerMaj();
   }
   const nbParStatut = (s: string) => s === 'tous' ? acheteursCat.length : acheteursCat.filter(c => c.statut === s).length;
@@ -1686,6 +1716,8 @@ export default function Clients({ onNavigate, fenetre }: {
                   l'œil sans transformer la page en tableur. */}
               <div className={`${styles.entete} ligne-entre`}>
                 <span className={styles.colClient} style={{ position: 'relative', gap: 8 }}>
+                  <CaseTout n={ordonne.filter(c => choisis.has(c.id)).length} total={ordonne.length}
+                    onTout={() => setChoisis(l => new Set([...l, ...ordonne.map(c => c.id)]))} onRien={() => setChoisis(l => { const n = new Set(l); ordonne.forEach(c => n.delete(c.id)); return n; })} />
                   Client
                   {menuTri && <span onClick={() => setMenuTri(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
                   {/* Le bouton dit l'ordre en cours, pas le mot « Classer » : on veut
@@ -1753,9 +1785,9 @@ export default function Clients({ onNavigate, fenetre }: {
                     >
                       <span className={styles.colClient}>
                         {/* Un petit personnage plutôt qu'une initiale (deux pour un couple). */}
-                        <AvecCase on={choisis.has(client.id)} mode={modeChoix} onBasculer={() => basculerChoix(client.id)} titre={choisis.has(client.id) ? `Décocher ${nomFoyer(client)}` : `Cocher ${nomFoyer(client)}`}>
-                          <AvatarContact c={client as never} teinte={t} className={styles.avatar} libre />
-                        </AvecCase>
+                        {/* V3.89 : la case, dans sa colonne ; l'avatar reste nu. */}
+                        <CaseLigne on={choisis.has(client.id)} onBasculer={() => basculerChoix(client.id)} titre={choisis.has(client.id) ? `Décocher ${nomFoyer(client)}` : `Cocher ${nomFoyer(client)}`} />
+                        <AvatarContact c={client as never} teinte={t} className={styles.avatar} libre />
                         <span style={{ minWidth: 0 }}>
                           <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
                           <span className={styles.ref}>
@@ -1882,7 +1914,8 @@ export default function Clients({ onNavigate, fenetre }: {
                   <button type="button" onClick={() => setCats(['tous'])}>Tout revoir</button>
                 </div>
               )}
-              <EnteteContacts />
+              <EnteteContacts tout={{ n: autres.filter(c => choisis.has(c.id)).length, total: autres.length,
+                onTout: () => setChoisis(l => new Set([...l, ...autres.map(c => c.id)])), onRien: () => setChoisis(l => { const n = new Set(l); autres.forEach(c => n.delete(c.id)); return n; }) }} />
               {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
                 selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
             </div>
@@ -1996,16 +2029,34 @@ export default function Clients({ onNavigate, fenetre }: {
       {/* La barre de la sélection ne cache pas les derniers contacts. */}
       {modeChoix && <div style={{ height: 120 }} aria-hidden="true" />}
       {/* V3.88 — Les contacts cochés : la barre, et ses gestes. */}
-      {!lot && !lotMail && (
+      {!lot && !lotMail && !statutLot && (
         <BarreSelection n={coches.length} un="contact sélectionné" plusieurs="contacts sélectionnés" onVider={viderChoix}
           toutes={listeVue.length ? { n: listeVue.length + coches.filter(c => !listeVue.includes(c)).length, onClick: () => setChoisis(l => new Set([...l, ...listeVue.map(c => c.id)])) } : null}
           gestes={[
+            /* V3.89 : trois gestes ; le statut et le reste dans de petits menus. */
             { k: 'mail', lib: 'Envoyer un mail', court: 'Mail', ic: 'mail', principal: true, onClick: () => setLotMail(coches) },
-            enArchives || coches.every(c => estArchive(c))
-              ? { k: 'desarchiver', lib: 'Sortir des archives', court: 'Désarchiver', ic: 'archive', onClick: () => { void preparerLot('desarchiver'); } }
-              : { k: 'archiver', lib: 'Archiver', ic: 'archive', titre: 'Ils quittent la liste, retrouvables dans « Archivés » ; leurs relances en attente se ferment', onClick: () => { void preparerLot('archiver'); } },
-            { k: 'supprimer', lib: 'Supprimer', ic: 'corbeille', danger: true, onClick: () => { void preparerLot('supprimer'); } },
+            { k: 'statut', lib: 'Changer de statut', court: 'Statut', ic: 'drapeau', menu: STATUTS_LOT.map(x => {
+              const ok = coches.filter(c => !bloqueStatut(c, x.k)).length;
+              return { k: x.k, lib: x.lib, couleur: x.c, onClick: () => preparerStatut(x.k),
+                sous: ok === coches.length ? x.sous : ok ? `${ok} sur ${coches.length} peuvent y passer d’ici` : `${coches.length > 1 ? 'Aucun ne peut' : 'Il ne peut pas'} y passer d’ici` };
+            }) },
+            { k: 'plus', lib: 'Autres actions', ic: 'points', icone: true, menu: [
+              enArchives || coches.every(c => estArchive(c))
+                ? { k: 'desarchiver', lib: 'Sortir des archives', sous: 'Ils reviennent dans la liste', ic: 'archive', onClick: () => { void preparerLot('desarchiver'); } }
+                : { k: 'archiver', lib: 'Archiver', sous: 'Ils quittent la liste ; leurs relances en attente se ferment', ic: 'archive', onClick: () => { void preparerLot('archiver'); } },
+              { k: 'supprimer', lib: 'Supprimer', sous: 'Définitif : fiche, historique, relances, recherches', ic: 'corbeille', danger: true, onClick: () => { void preparerLot('supprimer'); } },
+            ] },
           ]} />
+      )}
+      {statutLot && (
+        <ConfirmerLot ic="drapeau"
+          titre={`Passer ${statutLot.cibles.length > 1 ? `${statutLot.cibles.length} acheteurs` : statutLot.cibles.length ? '1 acheteur' : 'ces contacts'} « ${STATUTS_LOT.find(x => x.k === statutLot.statut)?.lib} » ?`}
+          phrase={statutLot.statut === 'actif' ? 'La veille cherche à nouveau pour eux, sur leur recherche la plus récente (ou celles d’avant leur pause). Une ligne dans leur suivi.'
+            : statutLot.statut === 'suspendu' ? 'Leur dossier se met en pause, sans date de reprise (elle se met depuis leur fiche). La veille s’arrête. Une ligne dans leur suivi.'
+              : 'Ils repassent « Prospect ». La veille s’arrête. Une ligne dans leur suivi.'}
+          liste={statutLot.cibles.map(c => nomFoyer(c) || 'Sans nom')} ignores={statutLot.ignores}
+          libValider={`Passer « ${STATUTS_LOT.find(x => x.k === statutLot.statut)?.lib} » (${statutLot.cibles.length})`}
+          avancement={statutLot.avancement} onValider={() => { void faireStatut(); }} onFermer={() => setStatutLot(null)} />
       )}
       {lotMail && (
         <FenetreMail contacts={lotMail as unknown as ContactMail[]} onFermer={() => setLotMail(null)} onEnvoye={() => { signalerMaj(); }} />

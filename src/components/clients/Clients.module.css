@@ -193,7 +193,7 @@
 
 /* V3.75 : un peu plus de place pour « Recherche » (les chambres y sont
    maintenant, avec les pièces), prise sur les autres colonnes. */
-.colClient { width: 232px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
+.colClient { width: 256px; flex-shrink: 0; display: flex; align-items: center; gap: 11px; min-width: 0; }
 .colRech   { flex: 1 1 auto; min-width: 0; padding-right: 14px; }
 .colSect   { width: 168px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .colBud    { width: 124px; flex-shrink: 0; text-align: right; }
