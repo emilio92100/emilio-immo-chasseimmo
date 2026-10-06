@@ -1461,6 +1461,50 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.90 — 6 octobre 2026 · L'onglet Surfaces et le dossier « Diagnostics et pièces », refaits
+
+Rien à passer dans Supabase (tout vit dans `biens_vente.donnees`). Maquettes validées par Alexandre
+avant d'être construites.
+
+- **Surfaces** (`OngletsBien.tsx`, `OngletSurfaces`, `LesPieces`) :
+  - « La fiche technique » : une bande de chiffres au lieu de grandes tuiles — surface habitable,
+    loi Carrez (et « Mesurée le … » quand le mesurage est reçu dans le dossier), somme des pièces et
+    l'écart, séjour, pièces (chambres, bureaux), étage (ascenseur, exposition) ou, pour une maison,
+    terrain / niveaux. `SurfacesBien` prend `etage`, `etages`, `ascenseur`, `expo`, `maison`,
+    `carrezLe`, `lots` (`FicheBien`, `surfacesDe`).
+  - L'écart entre la surface saisie et la somme des pièces se dit en clair (Alexandre : « pourquoi il
+    y a des différences ? »), avec « Compléter les pièces » (ou « Revoir les pièces » si elles font
+    plus) ; à égalité, « Même total que la surface ».
+  - « Les pièces » : **Par usage** (une carte par famille : pièces de vie, chambres, cuisine, eau et
+    WC, entrée et dégagements, le reste, puis « Hors surface habitable » ; total et part de chacune ;
+    le mot et l'exposition de la pièce à côté de son nom) ou **En liste** (« Par niveau » quand il y
+    en a plusieurs : la liste se coupe par niveau). Les cartes d'avant disparaissent ; le choix est
+    gardé (`emilio.pieces.vue`).
+  - « Hors surface habitable » : les annexes, leurs numéros de lots (`annexesNum`), « Ajouter une
+    annexe ».
+- **Le dossier** (`DossierBien.tsx`) : une ligne par pièce au lieu des tuiles à trois boutons.
+  - Chaque ligne dit où en est la pièce (`statutPiece`) : reçue le … (et « valable jusqu'au … » pour
+    le DPE 10 ans, électricité et gaz 3 ans, termites et ERP 6 mois : `VALIDITE`), **expirée**,
+    demandée (« il y a 16 jours », à qui), **à relancer** au bout de 7 jours, à demander, « plus
+    tard » (le pré-état daté, avant l'offre). Et le geste qui va avec : Voir, Relancer, Demander,
+    Déposer, Le refaire ; le reste dans « ⋯ » (`MenuLigne` : envoyer par mail, remplacer ou retirer
+    le fichier, corriger la date, reçu sans fichier, annuler la demande, non concerné, renommer…).
+  - `PieceDossier` prend `demandeLe`, `demandeA`, `relanceLe` (`lib/biens-vente.ts`, `lireDossier`).
+    Une pièce déposée après une demande prend la date du dépôt (elle gardait la date de la demande).
+  - Les non concernés se replient en une ligne grise au bas de leur groupe (« Afficher » → « Rétablir »).
+    Groupes : le logement · diagnostics, l'immeuble · copropriété, le vendeur, autres documents.
+  - « Ce qu'il faut pour ce bien » (`Guide`, replié ou non, gardé) : d'après la fiche, ce qui est
+    prêt pour mettre en vente (le DPE), ce qui manque pour le compromis (« Les demander »), et ce qui
+    ne s’applique sans doute pas (plomb après 1949, amiante à partir de 2000, électricité et gaz de moins
+    de 15 ans : un clic pose « non concerné », le diagnostiqueur confirme).
+  - **Demander** (Alexandre : « est-ce que je peux en sélectionner plusieurs ? ») ouvre la fenêtre de
+    demande, cette pièce déjà cochée ; on en coche d'autres, un seul mail. **Relancer** : la même,
+    toutes les pièces demandées et pas reçues cochées, un texte de relance (`messageRelance`).
+    **Le refaire** (expiré) : la pièce repasse « Demandé ». `FenDemandeDocuments` prend `depart`,
+    `relance`, `refaire` ; `DemandeFaite` rend `a` (à qui).
+  - Plus de cases à cocher sur les pièces ni de barre d'envoi : « Envoyer des documents… » (tout coché)
+    ou « ⋯ › Envoyer par mail… » (ce document seul), puis on coche dans la fenêtre.
+
 ### V3.89 — 6 octobre 2026 · Tous les numéros d'un contact ; envoyer les biens cochés ; changer d'étape ou de statut en lot
 
 Rien à passer dans Supabase.
