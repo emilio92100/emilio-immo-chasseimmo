@@ -1559,3 +1559,12 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 .repriseSeules { color: #8a6a1f; }
 .repriseRond { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(26, 35, 50, .25); border-top-color: #1a2332; animation: repriseTourne .8s linear infinite; }
 @keyframes repriseTourne { to { transform: rotate(360deg); } }
+
+/* V3.95 : une annonce d'ImmoFacile à créer dans le CRM, dans le bandeau de reprise. */
+.repriseCreer {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 10px 9px 12px; margin-top: 2px;
+  border-radius: 12px; background: #fff; border: 1px solid #ecdcb0;
+}
+.repriseCreerTx { flex: 1 1 220px; min-width: 0; font-weight: 650; color: #1f2d44; }
+.repriseEnCours { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 650; color: #8a6a1f; }
+.repriseCreer > button { max-width: 100%; white-space: normal; text-align: left; height: auto; min-height: 36px; }

@@ -469,7 +469,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         </div>
       )}
       {/* V3.92 : la diffusion des biens en vente, reprise d'ImmoFacile d'un clic (lib/flux-immofacile.ts). */}
-      {liste && !installer && <RepriseDiffusion biens={actifs} onFait={() => { void charger(); }} />}
+      {liste && !installer && <RepriseDiffusion biens={actifs} onFait={() => { void charger(); }} onOuvrir={id => ouvrir(id)} />}
       {liste && !installer && ailleurs > 0 && (
         <div className={b.ailleurs} role="status">
           <Ic n="loupe" t={15} />
