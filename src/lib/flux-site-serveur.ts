@@ -43,7 +43,17 @@ export async function lireBiensSite(): Promise<{ biens: BienSite[]; brut: BienVe
     } catch { /* le géocodeur ne répond pas : ces biens n'auront pas de point sur la carte du site */ }
   }
 
-  const biens = brut.map(b => bienPourSite(b, gps.get(b.id) || null))
+  /* V3.94 : deux fiches ne partagent jamais une adresse sur le site. Si
+     deux biens portent le même numéro ImmoFacile (un doublon dans le CRM),
+     le plus ancien le garde, l'autre prend sa référence du CRM. */
+  const vus = new Set<string>();
+  const biens = [...brut].sort((x, y) => (x.created_at || '').localeCompare(y.created_at || ''))
+    .map(b => {
+      const s = bienPourSite(b, gps.get(b.id) || null);
+      if (vus.has(s.id)) s.id = vus.has(b.reference || '') || !b.reference ? b.id : b.reference;
+      vus.add(s.id);
+      return s;
+    })
     .sort((x, y) => y.dateAdded.localeCompare(x.dateAdded));
   return { biens, brut };
 }
