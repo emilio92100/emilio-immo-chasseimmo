@@ -9,7 +9,7 @@ import FicheSelonType from '@/components/contacts/FicheContact';
 import PageRelances from '@/components/pages/PageRelances';
 import PageVisites from '@/components/pages/PageVisites';
 import PageAgenda, { NouveauRdvPartout } from '@/components/pages/PageAgenda';
-import PageMail from '@/components/pages/PageMail';
+import PageMail, { NouveauMailPartout } from '@/components/pages/PageMail';
 import PageActivite from '@/components/pages/PageActivite';
 import PageParametres from '@/components/pages/PageParametres';
 import PageDocuments, { type IntentionDocuments } from '@/components/documents/PageDocuments';
@@ -342,6 +342,7 @@ export default function AppLayout() {
       {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
           l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}
       <NouveauRdvPartout />
+      <NouveauMailPartout />
       {/* « Une nouvelle version est prête — Recharger », après une mise en ligne. */}
       <NouvelleVersion />
       {/* « … : pas enregistré », quand une écriture échoue (V3.17). */}

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Sidebar.module.css';
-import { EVT_MAJ, EVT_VUE, demanderNouveauBien, demanderNouveauClient, demanderNouveauRdv, demanderVue, vueDemandee } from '@/lib/intentions';
+import { EVT_MAJ, EVT_VUE, demanderNouveauBien, demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv, demanderVue, vueDemandee } from '@/lib/intentions';
 import { Ic } from '@/components/documents/ApercuActe';
 import { typeDe } from '@/lib/contacts';
 import { etapeDe } from '@/lib/biens-vente';
@@ -185,7 +185,6 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
         { id: 'carte', label: 'Carte', picto: 'carteplan', badge: null },
         { id: 'documents', label: 'Documents', picto: 'note', badge: counts.aSigner > 0
           ? { count: counts.aSigner, type: 'blue', titre: `${counts.aSigner} document${counts.aSigner > 1 ? 's' : ''} à faire signer` } : null },
-        { id: 'mail', label: 'Nouveau mail', picto: 'mail', badge: null },
       ]
     },
     {
@@ -376,7 +375,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
               { cle: 'client', ico: 'clients', t: 'Nouveau contact', s: 'Acheteur, vendeur, notaire…', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
               { cle: 'bien', ico: 'maison', t: 'Nouveau bien', s: 'À suivre, estimation, mandat…', go: () => { demanderNouveauBien(); onNavigate('biens'); } },
               { cle: 'rdv', ico: 'calendrier', t: 'Nouveau rendez-vous', s: 'Visite, appel, signature…', go: () => demanderNouveauRdv() },
-              { cle: 'mail', ico: 'mail', t: 'Nouveau mail', s: 'Écrire à un ou plusieurs clients', go: () => onNavigate('mail') },
+              { cle: 'mail', ico: 'mail', t: 'Envoyer un mail', s: 'À un ou plusieurs contacts', go: () => demanderNouveauMail() },
             ]).map(x => (
               <button key={x.cle} type="button" role="menuitem" className={styles.plusChoix}
                 onClick={() => { setPlusOuvert(false); x.go(); }}>

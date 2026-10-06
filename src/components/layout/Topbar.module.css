@@ -179,14 +179,6 @@
 /* SPACER + BTNS */
 .spacer { flex: 1; }
 
-.alertBtn {
-  display: flex; align-items: center; gap: 5px;
-  background: var(--red-bg); border: 1px solid var(--red-border);
-  color: var(--red); padding: 6px 12px; border-radius: var(--radius-sm);
-  font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s;
-}
-.alertBtn:hover { background: #fee2e2; }
-
 .btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 7px 13px; border-radius: var(--radius-sm);
@@ -200,11 +192,12 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
    LA VERSION TÉLÉPHONE
-   ☰ · recherche · cloche. Les deux boutons « Nouveau » vivent dans la
-   barre du bas et dans le tiroir.
+   ☰ · recherche (la cloche des relances est partie en V3.87 : elles sont
+   dans la barre du bas). Les boutons « Nouveau » vivent dans la barre du
+   bas et dans le tiroir.
    ═══════════════════════════════════════════════════════════════════════ */
 
-.menuBtn, .searchPicto, .alertPicto { display: none; }
+.menuBtn, .searchPicto { display: none; }
 
 /* Ordinateur : le bouton qui réduit le menu de gauche ou le remet. */
 .menuBureau {
@@ -250,11 +243,4 @@
   .searchName { font-size: 14.5px; }
   .searchMeta { font-size: 12px; }
 
-  /* La cloche : un pictogramme et le chiffre, sans le mot. */
-  .alertBtn {
-    flex-shrink: 0; height: 42px; padding: 0 11px; border-radius: 13px; gap: 4px;
-    font-size: 14px; font-weight: 800;
-  }
-  .alertEmoji, .alertMot { display: none; }
-  .alertPicto { display: inline-flex; }
 }

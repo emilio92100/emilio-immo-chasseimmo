@@ -4,8 +4,7 @@ import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
-import { EVT_MAJ, demanderNouveauClient, demanderNouveauRdv } from '@/lib/intentions';
-import { compterRelancesDues } from '@/lib/relances';
+import { EVT_MAJ, demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { estAcheteur, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
@@ -106,7 +105,6 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
      qui est tapé n'est pas encore cherché, la petite roue tourne. */
   const [cherchee, setCherchee] = useState('');
   const [open, setOpen] = useState(false);
-  const [relancesCount, setRelancesCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const champ = useRef<HTMLInputElement>(null);
 
@@ -128,24 +126,10 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     return () => window.removeEventListener('keydown', touche);
   }, []);
 
-  /* Comme la barre latérale : on n'annonce que les relances dues, en retard
-     ou du jour. Celles à venir attendent sagement dans leur page. */
-  useEffect(() => {
-    /* V3.73 : sans les relances du tri d'après l'import (compterRelancesDues). */
-    const compter = () => { compterRelancesDues().then(setRelancesCount).catch(() => {}); };
-    compter();
-    const revoir = () => { if (!document.hidden) compter(); };
-    const minuterie = setInterval(revoir, 20000);
-    window.addEventListener(EVT_MAJ, compter);
-    window.addEventListener('focus', revoir);
-    document.addEventListener('visibilitychange', revoir);
-    return () => {
-      clearInterval(minuterie);
-      window.removeEventListener(EVT_MAJ, compter);
-      window.removeEventListener('focus', revoir);
-      document.removeEventListener('visibilitychange', revoir);
-    };
-  }, []);
+  /* V3.87 : la pastille « 🔔 13 relances » du haut est partie (Alexandre :
+     « ça fait doublon, on a déjà les relances dans le menu et dans le
+     suivi »). Le compteur reste à « Relances », dans le menu de gauche et
+     dans la barre du bas du téléphone. */
 
   // Fermer si clic extérieur
   useEffect(() => {
@@ -369,15 +353,8 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
 
       <div className={styles.spacer} />
 
-      {relancesCount > 0 && (
-        <button className={`${styles.alertBtn} pulse`} onClick={() => onNavigate('relances')}
-          aria-label={`${relancesCount} relance${relancesCount > 1 ? 's' : ''} à faire`}>
-          <span className={styles.alertEmoji}>🔔</span>
-          <span className={styles.alertPicto}><Icone nom="cloche" taille={19} epaisseur={2} /></span>
-          <span>{relancesCount}<span className={styles.alertMot}>{relancesCount > 1 ? ' relances' : ' relance'}</span></span>
-        </button>
-      )}
-      <button className={`${styles.btn} ${styles.btnBureau}`} onClick={() => onNavigate('mail')}>✉️ Nouveau mail</button>
+      {/* V3.87 : la fenêtre de rédaction s'ouvre par-dessus l'écran en cours. */}
+      <button className={`${styles.btn} ${styles.btnBureau}`} onClick={demanderNouveauMail}>✉️ Envoyer un mail</button>
       {/* Un rendez-vous se note d'ici, sans passer par l'agenda : la même
           fenêtre s'ouvre par-dessus l'écran en cours. */}
       <button className={`${styles.btn} ${styles.btnBureau}`} onClick={demanderNouveauRdv}>📅 Nouveau rendez-vous</button>
