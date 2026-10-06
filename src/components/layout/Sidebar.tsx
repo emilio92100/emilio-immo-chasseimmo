@@ -163,10 +163,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
     {
       section: 'SUIVI',
       items: [
-        /* Ce que les formulaires du site ont déposé (V3.34) : une demande
-           nouvelle attend une réponse, pastille rouge comme une relance. */
-        { id: 'demandes', label: 'Demandes du site', picto: 'boite', badge: counts.site > 0
-          ? { count: counts.site, type: 'red', pulse: true, titre: `${counts.site} nouvelle${counts.site > 1 ? 's' : ''} demande${counts.site > 1 ? 's' : ''} du site` } : null },
+        /* Ce que les formulaires du site ont déposé (V3.34), et bientôt les
+           portails (V3.93 : « Demandes Internet ») : une demande nouvelle
+           attend une réponse, pastille rouge comme une relance. */
+        { id: 'demandes', label: 'Demandes Internet', picto: 'boite', badge: counts.site > 0
+          ? { count: counts.site, type: 'red', pulse: true, titre: `${counts.site} nouvelle${counts.site > 1 ? 's' : ''} demande${counts.site > 1 ? 's' : ''} sur Internet` } : null },
         { id: 'agenda', label: 'Agenda', picto: 'calendrier', badge: null },
         /* Une demande de visite à caler passe avant tout : pastille rouge,
            comme une relance. Sinon, le nombre de visites à venir, en bleu. */
