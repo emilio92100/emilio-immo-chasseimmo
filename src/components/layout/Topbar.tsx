@@ -16,6 +16,27 @@ function sansAccent(t: string) {
 }
 const chiffres = (t: string) => t.replace(/\D/g, '');
 
+/* V3.80 : dans les résultats, les lettres tapées ressortent en gras
+   (« dup » → <b>Dup</b>ont), accents et majuscules ignorés. */
+function Surligne({ texte, mots }: { texte: string; mots: string[] }) {
+  const lettres = Array.from(texte);
+  const plie = lettres.map(ch => ch.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+  const plat = plie.join('');
+  if (plat.length !== lettres.length || !mots.length) return <>{texte}</>;
+  const on = new Array<boolean>(lettres.length).fill(false);
+  for (const m of mots) {
+    if (m.length < 2) continue;
+    let i = plat.indexOf(m);
+    while (i >= 0) { for (let k = i; k < i + m.length; k++) on[k] = true; i = plat.indexOf(m, i + m.length); }
+  }
+  const morceaux: { t: string; on: boolean }[] = [];
+  lettres.forEach((ch, i) => {
+    const der = morceaux[morceaux.length - 1];
+    if (der && der.on === on[i]) der.t += ch; else morceaux.push({ t: ch, on: on[i] });
+  });
+  return <>{morceaux.map((x, i) => (x.on ? <b key={i} className={styles.searchTrouve}>{x.t}</b> : <span key={i}>{x.t}</span>))}</>;
+}
+
 /* Chaque mot doit se trouver dans la fiche du client. Un mot fait de chiffres
    se cherche aussi dans les téléphones sans espaces (« 06 10 26 » trouve
    0610261657). On dit à côté du nom ce qui a été trouvé, quand ce n'est pas
@@ -69,6 +90,9 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  /* La recherche dont les résultats sont affichés (V3.80) : tant que ce
+     qui est tapé n'est pas encore cherché, la petite roue tourne. */
+  const [cherchee, setCherchee] = useState('');
   const [open, setOpen] = useState(false);
   const [relancesCount, setRelancesCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
@@ -165,7 +189,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
   }
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setOpen(false); return; }
+    if (!query.trim()) { setResults([]); setCherchee(''); setOpen(false); return; }
     const timer = setTimeout(async () => {
       setLoading(true);
       await chargerIndex();
@@ -180,6 +204,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
       } else {
         setResults(chercher(index.current, mots));
       }
+      setCherchee(query);
       setOpen(true);
       setLoading(false);
     }, 250);
@@ -200,11 +225,14 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
 
   function selectClient(client: any) {
     setQuery('');
+    setCherchee('');
     setResults([]);
     setOpen(false);
     onNavigate('fiche', client);
   }
   const lesClients = results.filter(r => r.genre === 'client');
+  const attente = !!query.trim() && (loading || cherchee !== query);
+  const motsTapes = sansAccent(cherchee).split(/[\s,;]+/).filter(Boolean);
 
   return (
     <header className={styles.topbar}>
@@ -217,9 +245,12 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           <Icone nom="menu" taille={19} epaisseur={2} />
         </button>
       )}
-      <div className={styles.searchWrap} ref={ref}>
+      <div className={`${styles.searchWrap} ${attente ? styles.searchAttente : ''}`} ref={ref}>
         <span className={styles.searchIco}>🔍</span>
         <span className={styles.searchPicto}><Icone nom="loupe" taille={17} epaisseur={2} /></span>
+        {/* V3.80 (Alexandre : « un petit système de loading ») : la roue
+            remplace la loupe le temps de chercher. */}
+        <span className={styles.searchRoue} aria-hidden="true" />
         <input
           ref={champ}
           type="text"
@@ -230,24 +261,34 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           onChange={e => setQuery(e.target.value)}
           onFocus={() => { if (results.length > 0) setOpen(true); }}
         />
-        {query && <button onClick={() => { setQuery(''); setResults([]); setOpen(false); }} className={styles.clearBtn}>✕</button>}
+        {query && <button onClick={() => { setQuery(''); setResults([]); setCherchee(''); setOpen(false); }} className={styles.clearBtn} aria-label="Effacer la recherche">✕</button>}
         {!query && <span className={styles.searchHint} title={`${raccourci === '⌘K' ? 'Cmd' : 'Ctrl'} + K pour chercher depuis n’importe quel écran`}>{raccourci}</span>}
 
         {/* DROPDOWN RÉSULTATS */}
-        {open && (
-          <div className={styles.searchDropdown}>
-            {loading ? (
-              <div className={styles.searchEmpty}>Recherche...</div>
+        {/* La liste s'ouvre en douceur ; pendant une nouvelle recherche, les
+            résultats d'avant pâlissent au lieu de disparaître, puis les
+            nouveaux arrivent l'un après l'autre (V3.80). */}
+        {(open || (attente && !results.length && query.trim().length > 1)) && (
+          <div className={`${styles.searchDropdown} ${attente && results.length ? styles.searchPale : ''}`}>
+            {attente && !results.length ? (
+              <div className={styles.searchSquelette} aria-busy="true" aria-label="Recherche en cours">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className={styles.searchSqL} style={{ animationDelay: `${i * 50}ms` }}>
+                    <span className="sq-rond" style={{ width: 36, height: 36, borderRadius: 10 }} />
+                    <span className="sq-txt"><span className="sq-barre" style={{ width: `${46 - i * 8}%` }} /><span className="sq-barre sq-fine" style={{ width: '28%' }} /></span>
+                  </div>
+                ))}
+              </div>
             ) : results.length === 0 ? (
-              <div className={styles.searchEmpty}>Aucun résultat pour « {query} »</div>
+              <div className={`${styles.searchEmpty} ${styles.searchApparait}`}>{`Aucun contact ne correspond à « ${cherchee.trim()} ».`}</div>
             ) : (
-              <>
-                {lesClients.length > 0 && <div className={styles.searchSection}>Contacts</div>}
-                {lesClients.map(({ c, raison }) => (
-                  <div key={c.id} className={styles.searchItem} onClick={() => selectClient(c)}>
+              <div key={cherchee} className={styles.searchListe}>
+                {lesClients.length > 0 && <div className={styles.searchSection}>{`Contacts · ${lesClients.length}`}</div>}
+                {lesClients.map(({ c, raison }, i) => (
+                  <div key={c.id} className={styles.searchItem} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
                     <AvatarContact c={c} teinte={teinteDe(c)} className={styles.searchAv} libre />
                     <div className={styles.searchInfo}>
-                      <div className={styles.searchName}>{c.prenom} {c.nom}</div>
+                      <div className={styles.searchName}><Surligne texte={`${c.prenom || ''} ${c.nom || ''}`.trim()} mots={motsTapes} /></div>
                       <div className={styles.searchMeta}>{c.reference}</div>
                       {/* Ce qui a été trouvé, quand ce n'est pas le nom : sur sa
                           propre ligne, pour qu'une adresse se lise en entier. */}
@@ -265,7 +306,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                     )}
                   </div>
                 ))}
-              </>
+              </div>
             )}
           </div>
         )}

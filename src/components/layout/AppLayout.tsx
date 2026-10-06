@@ -29,6 +29,7 @@ import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, l
 import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
+import SqueletteFiche from '@/components/shared/SqueletteFiche';
 
 /**
  * L'écran affiché, et le client ouvert, vivent dans l'URL — pas seulement en
@@ -294,7 +295,7 @@ export default function AppLayout() {
         );
       }
       if (chargeFiche) {
-        return <div style={{ padding: '40px 24px', color: '#64748b', fontSize: 14 }}>Chargement de la fiche…</div>;
+        return <SqueletteFiche />;
       }
     }
     switch (activePage) {

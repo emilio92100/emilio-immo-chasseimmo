@@ -70,7 +70,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
      menu allume l'entrée qui lui correspond. */
   const [vues, setVues] = useState<Record<string, string>>({});
   useEffect(() => {
-    setVues({ clients: vueDemandee('clients') || 'tous', biens: vueDemandee('biens') || 'tout' });
+    setVues({ clients: vueDemandee('clients') || 'tous', biens: vueDemandee('biens') || 'mandat' });
     const ecoute = (e: Event) => {
       const d = (e as CustomEvent<{ page: string; vue: string }>).detail;
       if (d) setVues(v => ({ ...v, [d.page]: d.vue }));
@@ -206,7 +206,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 
   /* Les sous-menus. Contacts : trois types de contact, dans leur couleur ;
      « Contacts » lui-même ouvre « Tous ». Biens : trois étapes ; « Biens »
-     ouvre « Tous ». Documents : deux endroits de la page, et le registre. */
+     ouvre les mandats en cours. Documents : deux endroits de la page, et le registre. */
   type Sous = { cle: string; label: string; ic: string; c: string; fond: string; go: () => void; actif: boolean };
   const sousMenus: Record<string, Sous[]> = {
     clients: (['acheteur', 'vendeur', 'proprietaire'] as const).map(k => {
@@ -214,7 +214,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       return { cle: k, label: `Mes ${t.pluriel.toLowerCase()}`, ic: t.ic, c: t.c, fond: t.fond,
         go: () => allerVue('clients', k), actif: activePage === 'clients' && vues.clients === k };
     }),
-    biens: ([['a_suivre', 'Mes biens à suivre', 'oeil'], ['estimation', 'Mes estimations', 'euro'], ['mandat', 'Mes mandats en cours', 'panneau']] as const).map(([k, label, ic]) => {
+    biens: ([['mandat', 'Mes mandats en cours', 'panneau'], ['estimation', 'Mes estimations', 'euro'], ['a_suivre', 'Mes biens à suivre', 'oeil']] as const).map(([k, label, ic]) => {
       const e = etapeDe(k);
       return { cle: k, label, ic, c: e.c, fond: `${e.c}17`,
         go: () => allerVue('biens', k), actif: activePage === 'biens' && vues.biens === k };
@@ -225,8 +225,9 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       { cle: 'registre', label: 'Registre des mandats', ic: 'cadenas', c: '#34496e', fond: '#eef2f8', go: () => onNavigate('registre'), actif: activePage === 'registre' },
     ],
   };
-  /* Ce que la rubrique elle-même ouvre : « Tous ». */
-  const allerRubrique = (id: string) => (id === 'clients' || id === 'biens' ? allerVue(id, id === 'clients' ? 'tous' : 'tout') : onNavigate(id));
+  /* Ce que la rubrique elle-même ouvre : « Tous » des contacts, les mandats
+     en cours des biens (V3.80). */
+  const allerRubrique = (id: string) => (id === 'clients' || id === 'biens' ? allerVue(id, id === 'clients' ? 'tous' : 'mandat') : onNavigate(id));
 
   /* La barre du bas : les quatre écrans du quotidien, et le geste le plus
      fréquent au milieu. Le reste (mail, activité, paramètres) est dans le
