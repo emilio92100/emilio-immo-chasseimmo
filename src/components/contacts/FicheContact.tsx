@@ -24,7 +24,7 @@ import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe } from '@/lib/biens-vente';
 import { BiensHero, useBiensBandeau, type ActiviteVente, type BienHero } from './BiensBandeau';
 import { demanderNouveauBien, demanderOngletBien, lireOuvertureFiche, oublierOuvertureFiche, signalerMaj } from '@/lib/intentions';
-import { cloreRelancesArchive } from '@/lib/relances';
+import { cloreRelancesArchive, reporterRelance } from '@/lib/relances';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
@@ -269,6 +269,12 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     return () => { vivant = false; };
   }, [depart.id, tour]);
   const recharger = () => setTour(t => t + 1);
+  /* V3.85 — « Reporter » sur une relance « À venir » de l'Historique. */
+  const reporterDepuisSuivi = async (id: string, jour: string) => {
+    const ok = await reporterRelance(id, jour);
+    if (ok) { recharger(); signalerMaj(); }
+    return ok;
+  };
   /* Le nombre de ses documents (de ses délégations pour un confrère), pour
      l'onglet « Documents ». */
   const estConfrere = types.includes('confrere');
@@ -635,7 +641,8 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
                       onModifier={j => setAction({ edition: j, type: 'note' })}
                       onSupprimer={async j => { if (await supprimerActionContact(j, x.id)) recharger(); }}
                       onAjouter={() => setAction({ edition: null, type: 'note' })}
-                      onAppel={() => setAction({ edition: null, type: 'appel' })} />
+                      onAppel={() => setAction({ edition: null, type: 'appel' })}
+                      onReporter={reporterDepuisSuivi} />
                   </div>
                 </section>
               )}
