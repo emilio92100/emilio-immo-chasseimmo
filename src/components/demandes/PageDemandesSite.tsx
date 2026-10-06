@@ -6,7 +6,8 @@ import { toutLire } from '@/lib/registre';
 import { TYPES_CONTACT, colonneContactAbsente, typeDe, typesDe, type TypeContact } from '@/lib/contacts';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
-import EnteteRubrique, { type Tuile } from '@/components/shared/EnteteRubrique';
+import EnteteRubrique from '@/components/shared/EnteteRubrique';
+import Depliant from '@/components/shared/Depliant';
 import ChoixDate, { texteDate } from '@/components/shared/ChoixDate';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import PictoBoite from './PictoBoite';
@@ -16,24 +17,31 @@ import s from './DemandesSite.module.css';
 import {
   CATEGORIES, STATUTS, TABLE_DEMANDES, categorieDe, cleCategorie, correspond, dateLongue, normer, preRemplissage,
   depuis, emailUtile, fourchetteDvf, initiales, jourIso, joliTel, periode, prenomNom, presenter, rappel, rappelDu, resume, robot,
-  statutDe, tableAbsente, telUtile,
-  type CategorieDemande, type DemandeSite, type PreRemplissage, type StatutDemande,
+  statutDe, tableAbsente, telUtile, PROVENANCES, PORTAILS, provenanceDe,
+  type CategorieDemande, type DemandeSite, type PreRemplissage, type Provenance, type StatutDemande,
 } from '@/lib/demandes-site';
 
-/* ═══ Demandes du site (V3.34) ════════════════════════════════════════════
-   Ce que les formulaires d'emilio-immo.com ont déposé : estimations,
-   accompagnements acheteur, demandes d'info sur un bien, messages.
+/* ═══ Demandes Internet (V3.93, avant : Demandes du site, V3.34) ══════════
+   Tout ce qui arrive d'Internet, au même endroit : les formulaires
+   d'emilio-immo.com (estimations, accompagnements acheteur, questions sur un
+   bien, messages), puis, avec la passerelle SeLoger (context.md §7), les
+   demandes de SeLoger, Logic-Immo et Belles Demeures.
 
-   - En-tête : le statut (Nouvelles, En cours, Traitées, Archivées) — les
-     chiffres sont les filtres, comme ailleurs dans le CRM. La rubrique
-     s'ouvre toujours sur « Nouvelles », même vide : ce qui arrive d'abord.
-   - Dessous : une pastille par formulaire, pour ne voir qu'une catégorie.
-   - La liste, par période ; la demande ouverte à droite sur grand écran,
-     dans un tiroir sur portable et téléphone.
-   - Dans la demande : ses réponses en rubriques (src/lib/demandes-site.ts),
-     le statut, une date de rappel, les notes, « Créer le contact » (une
-     question, puis la fenêtre Nouveau contact de Contacts, remplie, sans
-     quitter la rubrique), archiver, supprimer.
+   - En haut, les chiffres de la période (ce mois-ci, 3 mois, 12 mois, depuis
+     le début) : reçues, devenues des contacts, la répartition, le bien le
+     plus demandé. Ils suivent la provenance choisie dessous.
+   - La provenance : Tout / Mon site / Portails, un curseur qui glisse. Mon
+     site et Portails ouvrent un tiroir : un formulaire, ou un portail.
+   - Le statut (Nouvelles, En cours, Traitées, Archivées, Toutes) ; la
+     rubrique s'ouvre toujours sur « Nouvelles », même vide.
+   - La liste, par période ; une demande s'ouvre dans une fenêtre, au centre
+     sur ordinateur, du bas sur téléphone. Dedans : ses réponses en rubriques
+     (src/lib/demandes-site.ts), le statut, une date de rappel, les notes,
+     « Créer le contact » (une question, puis la fenêtre Nouveau contact de
+     Contacts, remplie, sans quitter la rubrique), archiver, supprimer.
+
+   Une demande reste une demande tant qu'on n'a pas cliqué « Créer le
+   contact » : rien n'entre dans Contacts tout seul.
 
    La table est `contact_submissions` (outils/sql/demandes-site.sql). Le site
    y dépose avec la clé publique, qui ne peut rien lire : c'est le CRM
@@ -50,20 +58,24 @@ const dansFiltre = (d: DemandeSite, f: Filtre) =>
   f === 'archives' ? d.archive : !d.archive && (f === 'toutes' || statutDe(d.statut).k === f);
 const dansCategorie = (d: DemandeSite, c: Categorie) => c === 'toutes' || cleCategorie(d) === c;
 const pluriel = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
+const provenanceParCle = (k: Provenance) => PROVENANCES.find(x => x.k === k) || PROVENANCES[0];
 
-/* Le grand écran montre la demande à côté de la liste ; en dessous, elle
-   s'ouvre dans un tiroir. */
-function useGrandEcran() {
-  const [grand, setGrand] = useState(false);
-  useEffect(() => {
-    const m = window.matchMedia('(min-width: 1200px)');
-    const maj = () => setGrand(m.matches);
-    maj();
-    m.addEventListener('change', maj);
-    return () => m.removeEventListener('change', maj);
-  }, []);
-  return grand;
-}
+/* ── Demandes Internet (V3.93) ─────────────────────────────────────────────
+   Alexandre (6 octobre) : « les chiffres généraux en haut, puis Tout / Mon
+   site / Portails, avec un sous-onglet en tiroir » ; « que ce soit joli,
+   fluide quand on clique, pas brut » ; « Mon site en bleu, pas en noir ».
+   Maquette validée le 6 octobre. Les portails arriveront avec la passerelle
+   SeLoger : leurs tuiles sont déjà là, à zéro. */
+type Prov = 'tout' | 'site' | 'portails';
+type Portail = 'tous' | Provenance;
+type Periode = 'mois' | 'trois' | 'an' | 'tout';
+const PERIODES: { k: Periode; lib: string; phrase: string; jours: number | null }[] = [
+  { k: 'mois', lib: 'Ce mois-ci', phrase: 'ce mois-ci', jours: null },
+  { k: 'trois', lib: '3 mois', phrase: 'sur 3 mois', jours: 91 },
+  { k: 'an', lib: '12 mois', phrase: 'sur 12 mois', jours: 365 },
+  { k: 'tout', lib: 'Depuis le début', phrase: 'depuis le début', jours: null },
+];
+const BLEU = '#22497c';
 
 /* L'objet du mail, selon ce que le client a demandé. */
 function sujetMail(d: DemandeSite): string {
@@ -83,22 +95,27 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
      c'est ce qu'Alexandre veut voir en arrivant. */
   const [filtre, setFiltre] = useState<Filtre>('nouveau');
   const [cat, setCat] = useState<Categorie>('toutes');
+  const [prov, setProv] = useState<Prov>('tout');
+  const [portail, setPortail] = useState<Portail>('tous');
+  const [per, setPer] = useState<Periode>('mois');
   const [cherche, setCherche] = useState('');
   const [choisie, setChoisie] = useState<string | null>(null);
+  /* La fenêtre de la demande se ferme en glissant (V3.93) : `sortie` le
+     temps de l'animation. */
+  const [sortie, setSortie] = useState(false);
   const [annonce, setAnnonce] = useState<{ texte: string; annuler?: () => void; action?: string; n: number } | null>(null);
   /* « Créer le contact » : d'abord la question (et les contacts qui lui
      ressemblent), puis la fenêtre Nouveau contact, remplie. */
   const [question, setQuestion] = useState<DemandeSite | null>(null);
   const [creation, setCreation] = useState<{ d: DemandeSite; pre: PreRemplissage } | null>(null);
   const [maintenant, setMaintenant] = useState(() => Date.now());
-  const grand = useGrandEcran();
   /* La liste telle qu'elle est à l'écran, pour revenir en arrière si la base
      refuse une modification. */
   const courantes = useRef<DemandeSite[]>([]);
   courantes.current = demandes;
   const premiere = useRef(true);
-  /* La colonne (grand écran) ou le tiroir : une autre demande s'ouvre en haut,
-     pas à la hauteur où l'on avait laissé la précédente. */
+  /* Une autre demande s'ouvre en haut de la fenêtre, pas à la hauteur où
+     l'on avait laissé la précédente. */
   const cadre = useRef<HTMLDivElement>(null);
   useEffect(() => { cadre.current?.scrollTo({ top: 0 }); }, [choisie]);
 
@@ -142,18 +159,41 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     return () => clearTimeout(t);
   }, [annonce]);
 
-  /* Le tiroir se ferme avec Échap. */
+  /* La fenêtre se ferme en glissant, et avec Échap. Une autre demande
+     ouverte pendant la sortie annule la fermeture. */
+  const minuteSortie = useRef<number | null>(null);
+  const fermer = useCallback(() => {
+    setSortie(true);
+    if (minuteSortie.current) window.clearTimeout(minuteSortie.current);
+    minuteSortie.current = window.setTimeout(() => { minuteSortie.current = null; setChoisie(null); setSortie(false); }, 190);
+  }, []);
+  const ouvrir = (id: string) => {
+    if (minuteSortie.current) { window.clearTimeout(minuteSortie.current); minuteSortie.current = null; }
+    setSortie(false);
+    setChoisie(id);
+  };
   useEffect(() => {
-    if (grand || !choisie) return;
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setChoisie(null); };
+    if (!choisie || question || creation) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') fermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [grand, choisie]);
+  }, [choisie, question, creation, fermer]);
 
+  /* ── D'où viennent les demandes ── */
+  const dansProv = useCallback((d: DemandeSite) => {
+    const pv = provenanceDe(d);
+    if (prov === 'site') return pv.k === 'site';
+    if (prov === 'portails') return pv.portail && (portail === 'tous' || pv.k === portail);
+    return true;
+  }, [prov, portail]);
+  /* Sous « Mon site », le tiroir choisit le formulaire ; ailleurs, les pastilles. */
   const f: Filtre = filtre;
   const trouvees = useMemo(() => demandes.filter(d => correspond(d, cherche)), [demandes, cherche]);
-  const visibles = trouvees.filter(d => dansFiltre(d, f) && dansCategorie(d, cat));
+  const dansLaProv = trouvees.filter(dansProv);
+  const visibles = dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, cat));
   const ouverte = demandes.find(d => d.id === choisie) || null;
+  /* La liste repart en fondu à chaque changement de filtre (V3.93). */
+  const cleListe = `${prov}-${portail}-${f}-${cat}-${cherche ? 'q' : ''}`;
 
   /* Les groupes de la liste : aujourd'hui, hier, cette semaine… */
   const groupes = useMemo(() => {
@@ -167,7 +207,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     return out;
   }, [visibles, maintenant]);
 
-  /* ── Les chiffres ── */
+  /* ── La phrase de l'en-tête ── */
   const actives = demandes.filter(d => !d.archive);
   const nbNouvelles = actives.filter(d => statutDe(d.statut).k === 'nouveau').length;
   const nbRappels = actives.filter(d => statutDe(d.statut).k !== 'traite' && rappelDu(d.a_rappeler_le, new Date(maintenant))).length;
@@ -181,16 +221,47 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
       derniere ? `dernière reçue ${depuis(derniere.created_at, maintenant)}` : '',
     ].filter(Boolean).join(' · ');
 
-  const nbFiltre = (k: Filtre) => trouvees.filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
-  const tuiles: Tuile[] = demandes.length === 0 ? [] : [
-    { cle: 'toutes', lib: 'Toutes', n: nbFiltre('toutes'), tete: true, ic: <PictoBoite taille={13} epaisseur={2.2} /> },
-    { cle: 'nouveau', lib: 'Nouvelles', n: nbFiltre('nouveau'), couleur: '#ef4444', alerte: true },
-    { cle: 'en_cours', lib: 'En cours', n: nbFiltre('en_cours'), couleur: '#3b82f6' },
-    { cle: 'traite', lib: 'Traitées', n: nbFiltre('traite'), couleur: '#10b981' },
-    { cle: 'archives', lib: 'Archivées', n: nbFiltre('archives'), couleur: '#94a3b8' },
+  /* ── Les chiffres du haut : la provenance choisie, sur la période ── */
+  const P = PERIODES.find(x => x.k === per) || PERIODES[0];
+  const depuisLe = useMemo(() => {
+    const now = new Date(maintenant);
+    if (per === 'tout') return 0;
+    if (per === 'mois') return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return maintenant - (P.jours || 0) * 86_400_000;
+  }, [per, maintenant, P.jours]);
+  const dansPeriode = demandes.filter(d => dansProv(d) && Date.parse(d.created_at) >= depuisLe && !robot(d));
+  const total = dansPeriode.length;
+  const contacts = dansPeriode.filter(d => d.client_id).length;
+  const taux = total ? Math.round((contacts / total) * 100) : 0;
+  const nouvellesPer = dansPeriode.filter(d => !d.archive && statutDe(d.statut).k === 'nouveau').length;
+  /* Tant que tout vient du site, la répartition se fait par formulaire ;
+     dès qu'un portail apparaît, par provenance. */
+  const parFormulaire = prov === 'site' || (prov === 'tout' && dansPeriode.every(d => provenanceDe(d).k === 'site'));
+  const repart: { lib: string; n: number; c: string }[] = parFormulaire
+    ? CATEGORIES.map(c => ({ lib: c.pluriel, n: dansPeriode.filter(d => cleCategorie(d) === c.k).length, c: c.c }))
+    : (prov === 'portails' ? PORTAILS : PROVENANCES).map(x => ({ lib: x.lib, n: dansPeriode.filter(d => provenanceDe(d).k === x.k).length, c: x.c }));
+  const repartN = repart.filter(r => r.n > 0);
+  const titreRepart = prov === 'portails' ? 'Par portail' : parFormulaire ? 'Par formulaire' : 'Par provenance';
+  const parBien = new Map<string, { n: number; titre: string; ref: string }>();
+  for (const d of dansPeriode) {
+    if (cleCategorie(d) !== 'rappel_bien' || !(d.property_title || d.property_ref)) continue;
+    const k = d.property_ref || d.property_title || '';
+    const x = parBien.get(k) || { n: 0, titre: d.property_title || `Bien réf. ${d.property_ref}`, ref: d.property_ref || '' };
+    x.n++; parBien.set(k, x);
+  }
+  const top = [...parBien.values()].sort((a, b2) => b2.n - a.n)[0] || null;
+  const scopeLib = prov === 'site' ? 'Mon site' : prov === 'portails' ? (portail === 'tous' ? 'Tous les portails' : provenanceParCle(portail).lib) : 'Site et portails';
+  const scopeC = prov === 'portails' && portail !== 'tous' ? provenanceParCle(portail).c : BLEU;
+
+  /* ── Les compteurs des filtres ── */
+  const nbFiltre = (k: Filtre) => dansLaProv.filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
+  const nbCat = (c: Categorie) => dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, c)).length;
+  const STATS_FILTRES: { k: Filtre; lib: string; c: string }[] = [
+    { k: 'nouveau', lib: 'Nouvelles', c: BLEU }, { k: 'en_cours', lib: 'En cours', c: '#b45309' },
+    { k: 'traite', lib: 'Traitées', c: '#0f7a4f' }, { k: 'archives', lib: 'Archivées', c: '#64748b' }, { k: 'toutes', lib: 'Toutes', c: '#34496e' },
   ];
-  const nbCat = (c: Categorie) => trouvees.filter(d => dansFiltre(d, f) && dansCategorie(d, c)).length;
   const robots = visibles.filter(robot);
+  const choisirProv = (k: Prov) => { setProv(k); setPortail('tous'); setCat('toutes'); };
 
   /* ── Les écritures : l'écran change tout de suite, et revient en arrière
      si la base refuse (le message rouge dit pourquoi). ── */
@@ -210,34 +281,23 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   const enregistrerNote = useCallback((d: DemandeSite, t: string) =>
     modifier(d.id, { admin_notes: t.trim() || null }, 'La note'), [modifier]);
 
-  /* Après avoir rangé une demande, la suivante de la liste s'ouvre (grand
-     écran) ; le tiroir, lui, se referme. */
-  const suivante = (id: string) => {
-    if (!grand) return null;
-    const i = visibles.findIndex(x => x.id === id);
-    const n = visibles[i + 1] || visibles[i - 1];
-    return n && n.id !== id ? n.id : null;
-  };
-
+  /* Une demande rangée (archivée, remise, supprimée) : la fenêtre se ferme. */
   const archiver = async (d: DemandeSite) => {
-    const apres = suivante(d.id);
     if (!(await modifier(d.id, { archive: true, archive_le: new Date().toISOString() }, 'L’archivage de la demande'))) return;
-    if (f !== 'archives') setChoisie(apres);
+    fermer();
     setAnnonce({ texte: `Demande de ${prenomNom(d.name).prenom || d.name} archivée`, n: Date.now(), annuler: () => { modifier(d.id, { archive: false, archive_le: null }, 'Le retour de la demande'); } });
   };
   const desarchiver = async (d: DemandeSite) => {
-    const apres = suivante(d.id);
     if (!(await modifier(d.id, { archive: false, archive_le: null }, 'Le retour de la demande'))) return;
-    if (f === 'archives') setChoisie(apres);
+    fermer();
     setAnnonce({ texte: 'Demande remise dans la liste', n: Date.now() });
   };
 
   const supprimer = async (d: DemandeSite) => {
     if (!confirm(`Supprimer définitivement la demande de ${d.name || 'ce contact'} ?\n\nElle disparaît de la base. Pour la garder de côté, utilisez plutôt « Archiver ».`)) return;
-    const apres = suivante(d.id);
     if (!(await verifie('La suppression de la demande', supabase.from(TABLE_DEMANDES).delete().eq('id', d.id).select('id'), { ligne: true }))) return;
     setDemandes(l => l.filter(x => x.id !== d.id));
-    setChoisie(apres);
+    setChoisie(null);
     signalerMaj();
     setAnnonce({ texte: 'Demande supprimée', n: Date.now() });
   };
@@ -307,74 +367,178 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   };
   const voirFiche = (d: DemandeSite) => { if (d.client_id) ouvrirFiche(d.client_id); };
 
-  const choisirFiltre = (k: string) => { setFiltre(k as Filtre); };
-
   const fiche = ouverte ? (
-    <Fiche key={ouverte.id} d={ouverte} maintenant={maintenant}
-      onFermer={grand ? undefined : () => setChoisie(null)}
+    <Fiche key={ouverte.id} d={ouverte} maintenant={maintenant} onFermer={fermer}
       onStatut={changerStatut} onRappel={changerRappel} onNote={enregistrerNote}
       onArchiver={archiver} onDesarchiver={desarchiver} onSupprimer={supprimer}
       onCreerContact={creerContact} onVoirFiche={voirFiche} />
   ) : null;
 
+  /* Les tuiles du tiroir : les formulaires du site, ou les portails. */
+  const tuilesTiroir = prov === 'site'
+    ? [{ k: 'toutes', lib: 'Toutes', c: BLEU, ic: 'liste', court: '' }, ...CATEGORIES.map(c => ({ k: c.k as string, lib: c.pluriel, c: c.c, ic: c.ic, court: '' }))].map(t => {
+      const l = dansLaProv.filter(d => !d.archive && (t.k === 'toutes' || cleCategorie(d) === t.k));
+      const n = l.filter(d => statutDe(d.statut).k === 'nouveau').length;
+      return { ...t, n: l.length, sous: n ? pluriel(n, 'nouvelle', 'nouvelles') : 'Rien de nouveau', vif: n > 0, on: cat === t.k, choisir: () => setCat(t.k as Categorie) };
+    })
+    : prov === 'portails'
+      ? [{ k: 'tous', lib: 'Tous les portails', c: BLEU, ic: 'liste', court: '' }, ...PORTAILS.map(x => ({ k: x.k as string, lib: x.lib, c: x.c, ic: '', court: x.court }))].map(t => {
+        const l = demandes.filter(d => !d.archive && provenanceDe(d).portail && (t.k === 'tous' || provenanceDe(d).k === t.k));
+        const n = l.filter(d => statutDe(d.statut).k === 'nouveau').length;
+        return { ...t, n: l.length, sous: l.length ? (n ? pluriel(n, 'nouvelle', 'nouvelles') : 'Rien de nouveau') : 'Avec la passerelle SeLoger', vif: n > 0, on: portail === t.k, choisir: () => setPortail(t.k as Portail) };
+      })
+      : [];
+  const sansPortails = prov === 'portails' && !demandes.some(d => provenanceDe(d).portail);
+
   return (
     <div className={p.page}>
-      <EnteteRubrique titre="Demandes du site" icone={<PictoBoite />} phrase={phrase}
+      <EnteteRubrique titre="Demandes Internet" icone={<PictoBoite />} phrase={phrase}
         recherche={demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Nom, téléphone, ville, bien…', label: 'Chercher une demande' } : undefined}
-        label="Filtrer les demandes par statut" actif={f} onChoisir={choisirFiltre} tuiles={tuiles} />
+        label="Les demandes" actif="" onChoisir={() => {}} tuiles={[]} />
 
       {demandes.length > 0 && (
-        <div className={s.cats} role="group" aria-label="Filtrer par formulaire">
-          <button type="button" aria-pressed={cat === 'toutes'} style={teinte(MARINE)}
-            className={`${s.cat} ${cat === 'toutes' ? s.catOn : ''}`} onClick={() => setCat('toutes')}>
-            <span className={s.catIc}><PictoBoite taille={14} epaisseur={2.1} /></span>
-            <span>Tous</span>
-            <span className={s.catN}>{nbCat('toutes')}</span>
-          </button>
-          {CATEGORIES.map(c => {
-            const n = nbCat(c.k);
-            return (
-              <button key={c.k} type="button" aria-pressed={cat === c.k} style={teinte(c)}
-                className={`${s.cat} ${cat === c.k ? s.catOn : ''} ${n === 0 && cat !== c.k ? s.catVide : ''}`}
-                onClick={() => setCat(cat === c.k ? 'toutes' : c.k)}>
-                <span className={s.catIc}><Ic n={c.ic} t={14} e={2.1} /></span>
-                <span>{c.pluriel}</span>
-                <span className={s.catN}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
+        <section className={s.chiffres} aria-label="Les chiffres">
+          <div className={s.chiffresTete}>
+            <span className={s.portee} style={{ ['--c' as string]: scopeC } as CSSProperties}><span className={s.pointStatut} />{scopeLib}</span>
+            <div className={s.periodes} role="group" aria-label="Période des chiffres">
+              {PERIODES.map(x => (
+                <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}>{x.lib}</button>
+              ))}
+            </div>
+          </div>
+          <div className={s.cartesChiffres}>
+            <div className={`${s.carteChiffre} ${s.carteBleue}`}>
+              <span className={s.ccLib}>{`Demandes reçues ${P.phrase}`}</span>
+              <span className={s.ccGrand}>{total}</span>
+              <span className={s.ccSous}>{nouvellesPer ? `dont ${pluriel(nouvellesPer, 'nouvelle', 'nouvelles')} à traiter` : 'Tout est traité'}</span>
+            </div>
+            <div className={s.carteChiffre}>
+              <span className={s.ccLib}>Devenues des contacts</span>
+              <span className={s.ccLigne}><span className={s.ccGrand}>{contacts}</span><span className={s.ccTaux}>{`${taux} %`}</span></span>
+              <span className={s.ccJauge}><span style={{ width: `${taux}%` }} /></span>
+            </div>
+            <div className={s.carteChiffre}>
+              <span className={s.ccLib}>{titreRepart}</span>
+              {repartN.length ? (
+                <>
+                  <span className={s.ccBarre}>{repartN.map(r => <span key={r.lib} style={{ width: `${(r.n / total) * 100}%`, background: r.c }} />)}</span>
+                  <span className={s.ccLegende}>
+                    {repartN.map(r => <span key={r.lib}><i style={{ background: r.c }} /><span>{r.lib}</span><b>{r.n}</b></span>)}
+                  </span>
+                </>
+              ) : <span className={s.ccSous}>{prov === 'portails' ? 'Les demandes des portails arriveront ici avec la passerelle SeLoger.' : 'Aucune demande sur la période.'}</span>}
+            </div>
+            <div className={s.carteChiffre}>
+              <span className={s.ccLib}>Le bien le plus demandé</span>
+              {top ? (
+                <span className={s.ccBien}>
+                  <span className={s.ccBienIc}><Ic n="maison" t={22} /></span>
+                  <span style={{ minWidth: 0 }}><b>{top.titre}</b><small>{`${pluriel(top.n, 'demande', 'demandes')}${top.ref ? ` · réf.\u00a0${top.ref}` : ''}`}</small></span>
+                </span>
+              ) : <span className={s.ccSous}>Aucune demande sur un bien précis pour l’instant.</span>}
+            </div>
+          </div>
+        </section>
       )}
 
-      {charge ? (
-        <div className={p.empty}><div className={p.emptySub}>Chargement des demandes…</div></div>
-      ) : erreur ? (
-        <div className={s.vide}>
-          <span className={s.videIc}><PictoBoite taille={26} /></span>
-          {tableAbsente(erreur) ? (
-            <>
-              <div className={s.videTitre}>La table des demandes n’existe pas encore</div>
-              <div className={s.videSous}>
-                <span>Lancez </span><code>outils/sql/demandes-site.sql</code><span>{' dans Supabase › SQL Editor, puis rechargez la page.'}</span>
+      <section className={s.panneau} aria-label="Les demandes">
+        <div className={s.provs} role="tablist" aria-label="Provenance" style={{ ['--i' as string]: String({ tout: 0, site: 1, portails: 2 }[prov]) } as CSSProperties}>
+          <span className={s.curseur} aria-hidden="true" />
+          {([
+            { k: 'tout', lib: 'Tout', sous: 'Site et portails', ic: 'boite', n: trouvees.filter(d => !d.archive).length },
+            { k: 'site', lib: 'Mon site', sous: 'emilio-immo.com', ic: 'globe', n: trouvees.filter(d => !d.archive && provenanceDe(d).k === 'site').length },
+            { k: 'portails', lib: 'Portails', sous: 'SeLoger, Logic-Immo, Belles Demeures', ic: 'immeuble', n: trouvees.filter(d => !d.archive && provenanceDe(d).portail).length },
+          ] as { k: Prov; lib: string; sous: string; ic: string; n: number }[]).map(x => (
+            <button key={x.k} type="button" role="tab" aria-selected={prov === x.k} className={`${s.prov} ${prov === x.k ? s.provOn : ''}`} onClick={() => choisirProv(x.k)}>
+              <span className={s.provIc}>{x.ic === 'boite' ? <PictoBoite taille={17} epaisseur={2} /> : <Ic n={x.ic} t={17} e={2} />}</span>
+              <span className={s.provT}><b>{x.lib}</b><small>{x.sous}</small></span>
+              <span className={s.provN}>{x.n}</span>
+            </button>
+          ))}
+        </div>
+
+        <Depliant ouvert={prov !== 'tout'}>
+          <div className={s.tiroirProv} style={{ ['--fleche' as string]: prov === 'portails' ? '83.3%' : '50%' } as CSSProperties}>
+            <div className={s.tiroirTete}>
+              <span>{prov === 'portails' ? 'Portails · un par un' : 'Mon site · par formulaire'}</span>
+              <small>{prov === 'portails' ? 'Logic-Immo arrive avec SeLoger' : 'emilio-immo.com'}</small>
+            </div>
+            <div key={prov} className={s.tuilesProv}>
+              {tuilesTiroir.map((t, i) => (
+                <button key={t.k} type="button" aria-pressed={t.on} className={`${s.tuileProv} ${t.on ? s.tuileProvOn : ''}`}
+                  style={{ ...teinte({ c: t.c, fond: '#fff', trait: '#e1e8f2' }), animationDelay: `${i * 45}ms` }} onClick={t.choisir}>
+                  <span className={s.tuileIc}>{t.court ? t.court : <Ic n={t.ic} t={17} e={2.1} />}</span>
+                  <span className={s.tuileT}><b>{t.lib}</b><small className={t.vif ? s.tuileVif : undefined}>{t.sous}</small></span>
+                  <span className={s.tuileN}>{t.n}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Depliant>
+
+        {demandes.length > 0 && (
+          <div className={s.filtres}>
+            <div className={s.statutsBarre} role="tablist" aria-label="Statut">
+              {STATS_FILTRES.map(x => (
+                <button key={x.k} type="button" role="tab" aria-selected={f === x.k} className={`${s.statutTab} ${f === x.k ? s.statutTabOn : ''}`}
+                  style={{ ['--c' as string]: x.c } as CSSProperties} onClick={() => setFiltre(x.k)}>
+                  {x.k === 'nouveau' && nbFiltre('nouveau') > 0 && <span className={s.pouls} />}
+                  <span>{x.lib}</span><i>{nbFiltre(x.k)}</i>
+                </button>
+              ))}
+            </div>
+            {prov !== 'site' && (cat !== 'toutes' || CATEGORIES.some(c => nbCat(c.k) > 0)) && (
+              <div className={s.cats} role="group" aria-label="Filtrer par sorte de demande">
+                <button type="button" aria-pressed={cat === 'toutes'} style={teinte(MARINE)}
+                  className={`${s.cat} ${cat === 'toutes' ? s.catOn : ''}`} onClick={() => setCat('toutes')}>
+                  <span>Toutes</span>
+                  <span className={s.catN}>{nbCat('toutes')}</span>
+                </button>
+                {CATEGORIES.map(c => {
+                  const n = nbCat(c.k);
+                  if (!n && cat !== c.k) return null;
+                  return (
+                    <button key={c.k} type="button" aria-pressed={cat === c.k} style={teinte(c)}
+                      className={`${s.cat} ${cat === c.k ? s.catOn : ''}`} onClick={() => setCat(cat === c.k ? 'toutes' : c.k)}>
+                      <span className={s.catIc}><Ic n={c.ic} t={14} e={2.1} /></span>
+                      <span>{c.pluriel}</span>
+                      <span className={s.catN}>{n}</span>
+                    </button>
+                  );
+                })}
               </div>
-            </>
-          ) : (
-            <>
-              <div className={s.videTitre}>Les demandes n’ont pas pu être lues</div>
-              <div className={s.videSous}>{erreur}</div>
-            </>
-          )}
-          <button type="button" className={s.btn} onClick={() => { setCharge(true); charger(); }}>Réessayer</button>
-        </div>
-      ) : demandes.length === 0 ? (
-        <div className={s.vide}>
-          <span className={s.videIc}><PictoBoite taille={26} /></span>
-          <div className={s.videTitre}>Aucune demande pour l’instant</div>
-          <div className={s.videSous}>Les estimations, les demandes d’accompagnement, les questions sur un bien et les messages laissés sur emilio-immo.com arriveront ici.</div>
-        </div>
-      ) : (
-        <div className={s.zone}>
-          <div className={s.liste}>
+            )}
+          </div>
+        )}
+
+        {charge ? (
+          <div className={p.empty}><div className={p.emptySub}>Chargement des demandes…</div></div>
+        ) : erreur ? (
+          <div className={s.vide}>
+            <span className={s.videIc}><PictoBoite taille={26} /></span>
+            {tableAbsente(erreur) ? (
+              <>
+                <div className={s.videTitre}>La table des demandes n’existe pas encore</div>
+                <div className={s.videSous}>
+                  <span>Lancez </span><code>outils/sql/demandes-site.sql</code><span>{' dans Supabase › SQL Editor, puis rechargez la page.'}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={s.videTitre}>Les demandes n’ont pas pu être lues</div>
+                <div className={s.videSous}>{erreur}</div>
+              </>
+            )}
+            <button type="button" className={s.btn} onClick={() => { setCharge(true); charger(); }}>Réessayer</button>
+          </div>
+        ) : demandes.length === 0 ? (
+          <div className={s.vide}>
+            <span className={s.videIc}><PictoBoite taille={26} /></span>
+            <div className={s.videTitre}>Aucune demande pour l’instant</div>
+            <div className={s.videSous}>Les estimations, les demandes d’accompagnement, les questions sur un bien et les messages laissés sur emilio-immo.com arriveront ici, puis celles des portails.</div>
+          </div>
+        ) : (
+          <div key={cleListe} className={s.liste}>
             {robots.length > 0 && (
               <div className={s.bandeauRobots}>
                 <Ic n="alarme" t={17} />
@@ -385,42 +549,29 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
               </div>
             )}
             {visibles.length === 0 ? (
-              <div className={s.vide}>
-                <div className={s.videTitre}>{cherche ? 'Aucune demande trouvée' : f === 'nouveau' ? 'Aucune nouvelle demande' : 'Rien dans cette liste'}</div>
+              <div className={s.videDoux}>
+                <div className={s.videTitre}>{sansPortails ? 'Pas encore de demande des portails' : cherche ? 'Aucune demande trouvée' : f === 'nouveau' ? 'Aucune nouvelle demande' : 'Rien dans cette liste'}</div>
                 <div className={s.videSous}>
-                  {cherche ? `Rien ne correspond à « ${cherche} » ici.` : f === 'nouveau' ? 'Toutes les demandes reçues ont été prises en main.' : 'Changez de statut ou de formulaire pour en voir d’autres.'}
+                  {sansPortails ? 'Les messages, les demandes de la page agence et les appels de SeLoger, Logic-Immo et Belles Demeures arriveront ici dès que la passerelle SeLoger sera branchée.'
+                    : cherche ? `Rien ne correspond à « ${cherche} » ici.` : f === 'nouveau' ? 'Toutes les demandes reçues ont été prises en main.' : 'Changez de statut ou de provenance pour en voir d’autres.'}
                 </div>
               </div>
             ) : groupes.map(g => (
               <div key={g.titre} className={s.groupe}>
                 <div className={s.groupeTitre}><span>{g.titre}</span><i>{g.l.length}</i></div>
                 {g.l.map((d, i) => (
-                  <CarteDemande key={d.id} d={d} on={d.id === choisie} maintenant={maintenant} rang={i}
-                    onChoisir={() => setChoisie(d.id === choisie && !grand ? null : d.id)} />
+                  <CarteDemande key={d.id} d={d} on={d.id === choisie} maintenant={maintenant} rang={i} onChoisir={() => ouvrir(d.id)} />
                 ))}
               </div>
             ))}
           </div>
+        )}
+      </section>
 
-          {grand && (
-            <aside ref={cadre} className={s.colonne} aria-label="La demande ouverte">
-              {fiche || (
-                <div className={s.ficheVide}>
-                  <span className={s.videIc}><PictoBoite taille={26} /></span>
-                  <b>Choisissez une demande</b>
-                  <span>Ses réponses, son statut et vos notes s’afficheront ici.</span>
-                </div>
-              )}
-            </aside>
-          )}
-        </div>
-      )}
-
-      {!grand && fiche && typeof document !== 'undefined' && createPortal(
-        <>
-          <div className={s.voile} onClick={() => setChoisie(null)} aria-hidden="true" />
-          <div ref={cadre} className={s.tiroir} role="dialog" aria-modal="true" aria-label={`Demande de ${ouverte?.name || ''}`}>{fiche}</div>
-        </>,
+      {fiche && typeof document !== 'undefined' && createPortal(
+        <div className={`${s.voileModale} ${sortie ? s.sortie : ''}`} onClick={e => { if (e.target === e.currentTarget) fermer(); }}>
+          <div ref={cadre} className={s.modale} role="dialog" aria-modal="true" aria-label={`Demande de ${ouverte?.name || ''}`}>{fiche}</div>
+        </div>,
         document.body,
       )}
 
@@ -454,11 +605,15 @@ function CarteDemande({ d, on, maintenant, rang, onChoisir }: {
   const dvf = fourchetteDvf(d);
   const bot = robot(d);
   const rap = !d.archive && st.k !== 'traite' ? rappel(d.a_rappeler_le, new Date(maintenant)) : null;
+  /* V3.93 : la tuile de gauche dit d'où vient la demande (« Site » en bleu,
+     « SL » pour SeLoger…), la pastille dit ce qu'elle demande. */
+  const pv = provenanceDe(d);
   return (
-    <button type="button" aria-pressed={on} onClick={onChoisir} style={{ ...teinte(cat), animationDelay: `${Math.min(rang, 8) * 25}ms` }}
-      className={`${s.carte} ligne-entre ${on ? s.carteOn : ''} ${neuve ? s.carteNeuve : ''} ${bot ? s.carteRobot : ''}`}>
-      <span className={s.avatar}>
-        {initiales(d.name)}
+    <button type="button" aria-pressed={on} onClick={onChoisir} aria-label={`Ouvrir la demande de ${d.name || 'sans nom'} (${pv.lib}, ${cat.lib})`}
+      style={{ ...teinte(cat), ['--pc' as string]: pv.c, animationDelay: `${Math.min(rang, 8) * 35}ms` } as CSSProperties}
+      className={`${s.carte} ${on ? s.carteOn : ''} ${neuve ? s.carteNeuve : ''} ${bot ? s.carteRobot : ''}`}>
+      <span className={s.provTuile} title={pv.lib}>
+        <span>{pv.court}</span>
         {neuve && <span className={s.pointNeuf} title="Nouvelle demande" />}
       </span>
       <span className={s.ligne1}>
@@ -501,6 +656,7 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
   onVoirFiche: (d: DemandeSite) => void;
 }) {
   const cat = categorieDe(d.form_type);
+  const pv = provenanceDe(d);
   const st = statutDe(d.statut);
   const pr = useMemo(() => presenter(d), [d]);
   /* La note se garde en quittant le champ, ou avec « Enregistrer ». La fiche
@@ -535,7 +691,10 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
     <article className={s.fiche} style={teinte(cat)}>
       <header className={s.tete}>
         <div className={s.teteHaut}>
-          <span className={s.teteCat}><Ic n={cat.ic} t={14} e={2.1} /><span>{cat.lib}</span></span>
+          <span className={s.teteEtiq}>
+            <span className={s.teteProv} style={{ color: pv.c }}>{pv.lib}</span>
+            <span className={s.teteCat}><Ic n={cat.ic} t={14} e={2.1} /><span>{cat.lib}</span></span>
+          </span>
           {onFermer && (
             <button type="button" className={s.fermer} onClick={onFermer} aria-label="Fermer la demande"><Croix t={16} /></button>
           )}

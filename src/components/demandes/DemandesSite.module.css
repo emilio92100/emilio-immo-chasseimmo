@@ -1,8 +1,161 @@
-/* ═══ Demandes du site (V3.34) — voir PageDemandesSite.tsx ════════════════
-   Une boîte de réception : les catégories en pastilles sous l'en-tête, la
-   liste par période, et la demande ouverte à droite (grand écran) ou dans un
-   tiroir (portable, téléphone). Marine et gris ; la couleur d'une catégorie
-   ne sert qu'à la reconnaître, l'or ne souligne que l'estimation DVF. */
+/* ═══ Demandes Internet (V3.93, avant : Demandes du site, V3.34) ══════════
+   Voir PageDemandesSite.tsx. Les chiffres en haut, puis un panneau blanc :
+   la provenance (un curseur bleu qui glisse), son tiroir, le statut, la
+   liste par période. Une demande s'ouvre dans une fenêtre : au centre sur
+   ordinateur, du bas sur téléphone. Le bleu du site (#22497c) mène ; la
+   couleur d'un portail ou d'un formulaire ne sert qu'à le reconnaître, l'or
+   ne souligne que le neuf et l'estimation DVF. Rien n'apparaît d'un coup. */
+
+/* ── Les chiffres du haut ─────────────────────────────────────────────── */
+.chiffres { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.chiffresTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.portee {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 99px;
+  background: white; border: 1px solid #e1e8f2; color: var(--c); font-size: 13px; font-weight: 750; transition: color .3s ease;
+}
+.periodes { display: flex; gap: 3px; padding: 4px; background: white; border: 1px solid #e1e8f2; border-radius: 12px; }
+.periode {
+  border: 0; background: transparent; border-radius: 9px; height: 32px; padding: 0 12px; font-family: inherit;
+  font-size: 13px; font-weight: 700; color: #5b6475; cursor: pointer; white-space: nowrap; transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.periode:hover { color: #22497c; }
+.periodeOn, .periodeOn:hover { background: #22497c; color: white; box-shadow: 0 6px 14px -8px rgba(34, 73, 124, .8); }
+
+.cartesChiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.carteChiffre {
+  background: white; border: 1px solid #e1e8f2; border-radius: 20px; padding: 18px 20px; min-width: 0;
+  display: flex; flex-direction: column; gap: 8px; animation: monte .45s cubic-bezier(.2, .8, .2, 1) backwards;
+}
+.carteChiffre:nth-child(2) { animation-delay: .05s; }
+.carteChiffre:nth-child(3) { animation-delay: .1s; }
+.carteChiffre:nth-child(4) { animation-delay: .15s; }
+.carteBleue {
+  background: linear-gradient(150deg, #2b5a96 0%, #22497c 55%, #1c3e6b 100%); border-color: #22497c; color: white;
+  box-shadow: 0 18px 36px -24px rgba(34, 73, 124, .9);
+}
+.ccLib { font-size: 13px; font-weight: 650; color: #5b6475; }
+.ccSous { font-size: 13px; color: #5b6475; line-height: 1.45; }
+.carteBleue .ccLib, .carteBleue .ccSous { color: #d3deef; }
+.ccGrand {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 40px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05;
+  color: #1a2332; font-variant-numeric: tabular-nums;
+}
+.carteBleue .ccGrand { color: #f0d27a; }
+.ccLigne { display: flex; align-items: baseline; gap: 10px; }
+.ccTaux { font-size: 15px; font-weight: 800; color: #0f7a4f; }
+.ccJauge { display: block; height: 6px; border-radius: 99px; background: #edf1f7; overflow: hidden; margin-top: auto; }
+.ccJauge > span {
+  display: block; height: 100%; background: #0f7a4f; border-radius: 99px; transform-origin: left;
+  transition: width .6s cubic-bezier(.2, .8, .2, 1); animation: pousse .8s cubic-bezier(.2, .8, .2, 1) .2s backwards;
+}
+.ccBarre {
+  display: flex; gap: 2px; height: 10px; border-radius: 99px; overflow: hidden; background: #edf1f7; transform-origin: left;
+  animation: pousse .8s cubic-bezier(.2, .8, .2, 1) .2s backwards;
+}
+.ccBarre > span { display: block; height: 100%; transition: width .6s cubic-bezier(.2, .8, .2, 1); }
+.ccLegende { display: flex; flex-direction: column; gap: 5px; }
+.ccLegende > span { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; min-width: 0; }
+.ccLegende i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.ccLegende > span > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccLegende b { font-weight: 800; color: #1a2332; font-variant-numeric: tabular-nums; }
+.ccBien { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ccBienIc {
+  width: 48px; height: 48px; border-radius: 14px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: #eaf1fa; color: #22497c;
+}
+.ccBien b {
+  font-size: 14.5px; font-weight: 750; color: #1a2332; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ccBien small { display: block; font-size: 12.5px; font-weight: 700; color: #22497c; margin-top: 3px; }
+
+/* ── Le panneau : la provenance, son tiroir, le statut, la liste ───────── */
+.panneau {
+  background: white; border: 1px solid #e1e8f2; border-radius: 24px; padding: 14px 14px 18px; min-width: 0;
+  display: flex; flex-direction: column; box-shadow: 0 20px 40px -34px rgba(26, 35, 50, .35);
+}
+/* Tout / Mon site / Portails : le curseur bleu glisse sous l'onglet choisi
+   (--i : 0, 1, 2). */
+.provs { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: #f1f5fb; border-radius: 18px; padding: 5px; }
+.curseur {
+  position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 3); border-radius: 14px;
+  background: #22497c; box-shadow: 0 10px 22px -12px rgba(34, 73, 124, .85);
+  transform: translateX(calc(var(--i, 0) * 100%)); transition: transform .45s cubic-bezier(.2, .8, .2, 1);
+}
+.prov {
+  position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 0;
+  border: 0; border-radius: 14px; padding: 10px 14px; min-height: 60px; background: transparent; color: #22497c;
+  font-family: inherit; cursor: pointer; transition: color .3s ease;
+}
+.provOn { color: white; }
+.provIc {
+  width: 34px; height: 34px; border-radius: 11px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: white; color: #22497c; transition: background .3s ease, color .3s ease, box-shadow .3s ease;
+}
+.prov:not(.provOn):hover .provIc { box-shadow: 0 6px 14px -8px rgba(34, 73, 124, .7); }
+.provOn .provIc { background: rgba(255, 255, 255, .16); color: white; }
+.provT { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; text-align: left; }
+.provT b { font-size: 15px; font-weight: 800; white-space: nowrap; }
+.provT small { font-size: 12px; font-weight: 500; opacity: .78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.provN {
+  min-width: 28px; height: 24px; padding: 0 8px; border-radius: 99px; flex: 0 0 auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+  background: #dfe7f3; color: #22497c; transition: background .3s ease, color .3s ease;
+}
+.provOn .provN { background: #c9a84c; color: #1a2332; }
+
+/* Le tiroir de Mon site (les formulaires) ou des Portails (un par un). La
+   petite flèche suit l'onglet (--fleche). */
+.tiroirProv { position: relative; margin-top: 12px; background: #f7f9fd; border: 1px solid #e6ecf5; border-radius: 18px; padding: 14px; }
+.tiroirProv::before {
+  content: ''; position: absolute; top: -7px; left: var(--fleche, 50%); width: 12px; height: 12px; margin-left: -6px;
+  background: #f7f9fd; border-left: 1px solid #e6ecf5; border-top: 1px solid #e6ecf5; transform: rotate(45deg);
+  transition: left .45s cubic-bezier(.2, .8, .2, 1);
+}
+.tiroirTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 10px; flex-wrap: wrap; }
+.tiroirTete > span { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #5b6475; }
+.tiroirTete > small { font-size: 12px; font-weight: 600; color: #7a8396; }
+/* Une tuile : l'icône et le nombre en haut, le nom et ce qui est neuf
+   dessous — le nom garde toute la largeur, même à cinq de front. */
+.tuilesProv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tuileProv {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'ic n' 't t'; align-items: center; gap: 10px;
+  text-align: left; min-width: 0; box-sizing: border-box;
+  border: 1.5px solid var(--trait); border-radius: 16px; padding: 12px 14px 12px; background: white; color: #1a2332;
+  font-family: inherit; cursor: pointer;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+  animation: monte .4s cubic-bezier(.2, .8, .2, 1) backwards;
+}
+.tuileProv:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -16px rgba(34, 73, 124, .5); }
+.tuileProvOn { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 14%, transparent), 0 10px 24px -16px rgba(34, 73, 124, .5); }
+.tuileIc {
+  grid-area: ic; width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 800;
+  background: color-mix(in srgb, var(--c) 12%, white); color: var(--c); transition: background .22s ease, color .22s ease;
+}
+.tuileProvOn .tuileIc { background: var(--c); color: white; }
+.tuileT { grid-area: t; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tuileT b { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tuileT small { font-size: 12px; font-weight: 600; color: #7a8396; }
+.tuileT small.tuileVif { color: var(--c); font-weight: 750; }
+.tuileN { grid-area: n; justify-self: end; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 22px; font-weight: 800; color: #1a2332; font-variant-numeric: tabular-nums; }
+.tuileProvOn .tuileN { color: var(--c); }
+
+/* Le statut, puis les sortes de demande. */
+.filtres { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 2px 2px; }
+.statutsBarre { display: flex; flex-wrap: wrap; gap: 4px; background: #f1f5fb; border-radius: 14px; padding: 4px; }
+.statutTab {
+  display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 11px; height: 38px; padding: 0 14px;
+  font-family: inherit; font-size: 14px; font-weight: 700; background: transparent; color: #5b6475; cursor: pointer; white-space: nowrap;
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.statutTab:hover { color: var(--c); }
+.statutTab i { font-style: normal; font-size: 12px; font-weight: 800; opacity: .65; font-variant-numeric: tabular-nums; }
+.statutTabOn { background: white; color: var(--c); box-shadow: 0 4px 12px -6px rgba(26, 35, 50, .35); }
+.statutTabOn i { opacity: 1; }
+.pouls { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; animation: pouls 1.8s ease-out infinite; }
+.filtres .cats { margin-top: 0; gap: 6px; }
+.filtres .cat { height: 36px; font-size: 13px; }
 
 /* ── Les catégories ───────────────────────────────────────────────────── */
 .cats {
@@ -27,38 +180,41 @@
 .catOn { background: var(--fond); border-color: var(--trait); color: var(--c); box-shadow: 0 6px 16px -12px var(--c); }
 .catOn .catIc { background: white; }
 .catOn .catN { background: white; color: var(--c); }
-.catVide { opacity: .55; }
 
-/* ── La zone : la liste, et la demande ouverte à côté sur grand écran ─── */
-.zone { display: block; }
-@media (min-width: 1200px) {
-  .zone { display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 480px); gap: 20px; align-items: start; }
-}
-
-.liste { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+/* ── La liste : elle repart en fondu à chaque changement de filtre ─────── */
+.liste { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-top: 8px; animation: fondu .3s ease both; }
+.liste > .bandeauRobots { margin-top: 8px; }
 .groupe { display: flex; flex-direction: column; gap: 8px; }
 .groupeTitre {
-  display: flex; align-items: center; gap: 8px; padding: 0 4px;
-  font-size: 11px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: #8896a8;
+  display: flex; align-items: center; gap: 10px; padding: 12px 6px 2px;
+  font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #7a8396;
 }
-.groupeTitre i { font-style: normal; color: #b0bec5; font-weight: 700; }
+.groupeTitre i { font-style: normal; color: #a7b3c4; font-weight: 700; }
+.groupeTitre::after { content: ''; flex: 1; height: 1px; background: #edf1f7; }
 
 /* ── Une demande dans la liste ─────────────────────────────────────────── */
 .carte {
-  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 14px;
+  position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 14px;
   align-items: start; text-align: left; width: 100%; box-sizing: border-box;
-  padding: 14px 16px 14px 18px; border-radius: 14px; border: 1px solid #e3e8f0; background: white;
-  font-family: inherit; cursor: pointer; overflow: hidden;
-  transition: border-color .15s, box-shadow .15s, background .15s;
+  padding: 14px 16px; border-radius: 16px; border: 1px solid #e6ecf4; background: white;
+  font-family: inherit; cursor: pointer;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+  animation: monte .42s cubic-bezier(.2, .8, .2, 1) backwards;
 }
-.carte::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); opacity: .75;
-}
-.carte:hover { border-color: #cfd8e6; box-shadow: 0 10px 24px -18px rgba(30, 45, 75, .55); }
+.carte:hover { transform: translateY(-2px); border-color: #c9d6ea; box-shadow: 0 12px 28px -16px rgba(34, 73, 124, .45); }
+.carte:focus-visible { outline: 3px solid #c9a84c; outline-offset: 2px; }
 .carte.carteOn { border-color: #c9a84c; background: #fffdf7; box-shadow: 0 0 0 3px rgba(201, 168, 76, .24), 0 12px 26px -18px rgba(30, 45, 75, .6); }
-.carteNeuve { background: linear-gradient(90deg, #fffdf8 0%, white 60%); }
+.carteNeuve { background: linear-gradient(90deg, #f5f9ff 0%, white 62%); }
 .carteRobot { opacity: .62; }
 .carteRobot:hover, .carteRobot.carteOn { opacity: 1; }
+
+/* D'où vient la demande : « Site » en bleu, « SL » pour SeLoger… */
+.provTuile {
+  position: relative; width: 44px; height: 44px; border-radius: 14px; grid-row: span 3;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--pc, #22497c); color: white;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12.5px; font-weight: 800; letter-spacing: .2px;
+  box-shadow: 0 8px 16px -10px var(--pc, #22497c);
+}
 
 .avatar {
   width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
@@ -67,8 +223,8 @@
   grid-row: span 3; margin-top: 1px; position: relative;
 }
 .pointNeuf {
-  position: absolute; top: -1px; right: -1px; width: 11px; height: 11px; border-radius: 50%;
-  background: #ef4444; border: 2px solid white;
+  position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box;
+  background: #c9a84c; border: 2px solid white; animation: poulsOr 1.8s ease-out infinite;
 }
 .ligne1 { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .nom {
@@ -124,32 +280,31 @@
 .videTitre { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 750; font-size: 17px; color: var(--emilio); }
 .videSous { font-size: 14px; color: #8896a8; max-width: 460px; line-height: 1.5; }
 .videSous code { background: #f1f5f9; border-radius: 6px; padding: 1px 6px; font-size: 12.5px; color: #334155; }
+.panneau > .vide { border: none; padding: 44px 20px 30px; animation: fondu .3s ease both; }
+.videDoux { padding: 44px 20px 30px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 
 /* ── La demande ouverte ────────────────────────────────────────────────── */
 .fiche {
   background: white; border: 1px solid #e3e8f0; border-radius: 18px; overflow: hidden;
   box-shadow: 0 18px 40px -30px rgba(30, 45, 75, .6);
 }
-@media (min-width: 1200px) {
-  .colonne { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow-y: auto; border-radius: 18px; scrollbar-width: thin; }
-}
-.ficheVide {
-  border: 1px dashed #d0d7e3; border-radius: 18px; padding: 48px 28px; text-align: center; color: #8896a8;
-  font-size: 14px; line-height: 1.55; background: rgba(255, 255, 255, .6);
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-}
-.ficheVide b { color: var(--emilio); font-size: 15px; }
 
-/* La tête : le bandeau marine des fiches du CRM. */
+/* La tête : un bandeau bleu (V3.93 : le bleu du site plutôt que le marine,
+   « pas en noir »). */
 .tete {
   position: relative; overflow: hidden; isolation: isolate; color: white;
-  padding: 18px 20px 18px; background: linear-gradient(152deg, #3a5178 0%, #27395a 52%, #2e4166 100%);
+  padding: 18px 20px 18px; background: linear-gradient(152deg, #2d5b97 0%, #22497c 52%, #1d3f6c 100%);
 }
 .tete::before {
   content: ''; position: absolute; z-index: -1; width: 320px; height: 320px; right: -110px; top: -200px; border-radius: 50%;
   background: radial-gradient(circle, rgba(201, 168, 76, .22), transparent 64%);
 }
 .teteHaut { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.teteEtiq { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.teteProv {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 99px; background: white;
+  font-size: 12px; font-weight: 800; white-space: nowrap;
+}
 .teteCat {
   display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px 0 8px; border-radius: 99px;
   background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); font-size: 12px; font-weight: 750;
@@ -286,24 +441,47 @@
 .btnPetit { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 9px; }
 .supprimer { align-self: flex-start; }
 
-/* ── Le tiroir (portable, téléphone) ──────────────────────────────────── */
-.voile {
-  position: fixed; inset: 0; z-index: 88; background: rgba(15, 22, 35, .42);
-  animation: voileEntre .2s ease-out;
+/* ── La fenêtre de la demande (V3.93) ─────────────────────────────────────
+   Au centre sur ordinateur, du bas sur téléphone ; elle se ferme en glissant
+   (`.sortie`, le temps de l'animation). */
+.voileModale {
+  position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(17, 35, 64, .45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  animation: voileEntre .22s ease both;
 }
-.tiroir {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 90; width: min(540px, 100vw);
-  background: #f7f9fc; overflow-y: auto; overscroll-behavior: contain;
-  box-shadow: -24px 0 60px -30px rgba(15, 22, 35, .6);
-  animation: tiroirEntre .32s cubic-bezier(.16, 1, .3, 1);
+.modale {
+  width: min(680px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  background: white; border-radius: 24px; box-shadow: 0 30px 80px -20px rgba(17, 35, 64, .5);
+  animation: modaleEntre .32s cubic-bezier(.2, .8, .2, 1) both;
 }
-.tiroir .fiche { border-radius: 0; border: none; box-shadow: none; min-height: 100%; }
-@keyframes voileEntre { from { opacity: 0; } to { opacity: 1; } }
-@keyframes tiroirEntre { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.modale .fiche { border: none; border-radius: 0; box-shadow: none; }
+.sortie { animation: voileSort .2s ease both; }
+.sortie .modale { animation: modaleSort .2s ease both; }
 
-/* Les couches : le tiroir (88-90) passe au-dessus des barres du CRM (50 à 60),
-   la question (94-95) au-dessus du tiroir, et la fenêtre Nouveau contact de
+/* Les couches : la fenêtre (90) passe au-dessus des barres du CRM (50 à 60),
+   la question (94-95) au-dessus d'elle, et la fenêtre Nouveau contact de
    Contacts (100) au-dessus de tout ça. Le calendrier de ChoixDate est à 300. */
+
+/* ── Les mouvements ───────────────────────────────────────────────────── */
+@keyframes voileEntre { from { opacity: 0; } to { opacity: 1; } }
+@keyframes voileSort { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modaleEntre { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes modaleSort { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes feuilleEntre { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes feuilleSort { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes monte { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pousse { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes pouls {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c, #22497c) 45%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes poulsOr {
+  0% { box-shadow: 0 0 0 0 rgba(201, 168, 76, .55); }
+  70% { box-shadow: 0 0 0 7px rgba(201, 168, 76, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(201, 168, 76, 0); }
+}
 
 /* ── Le bouton « Créer la fiche contact », dans la tête ───────────────── */
 .ficheContact { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, .14); }
@@ -313,6 +491,7 @@
   cursor: pointer; white-space: nowrap; box-shadow: 0 8px 18px -12px rgba(0, 0, 0, .5);
 }
 .btnFiche:hover { background: #f5f0e1; }
+.btnFiche { color: #22497c; }
 
 /* ── « Créer la fiche contact ? » ─────────────────────────────────────── */
 .voileQuestion {
@@ -365,6 +544,9 @@
 @keyframes annonceEntre { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 /* ═══ Téléphone ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  .cartesChiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 760px) {
   .cats {
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -12px 0; padding: 2px 12px 4px;
@@ -372,16 +554,56 @@
   .cats::-webkit-scrollbar { display: none; }
   .cat { height: 36px; font-size: 13px; flex: 0 0 auto; }
 
-  .carte { padding: 13px 13px 13px 15px; gap: 3px 11px; border-radius: 16px; }
-  .avatar { width: 38px; height: 38px; font-size: 13.5px; grid-row: span 2; }
+  /* Les chiffres : les deux premiers côte à côte, les deux autres dessous. */
+  .cartesChiffres { gap: 10px; }
+  .carteChiffre { padding: 14px 15px; border-radius: 18px; gap: 6px; }
+  .carteChiffre:nth-child(n + 3) { grid-column: 1 / -1; }
+  .ccGrand { font-size: 32px; }
+  .ccLib, .ccSous { font-size: 12.5px; }
+  .chiffresTete { flex-direction: column; align-items: stretch; }
+  .portee { align-self: flex-start; }
+  .periodes { overflow-x: auto; scrollbar-width: none; }
+  .periodes::-webkit-scrollbar { display: none; }
+  .periode { flex: 1 0 auto; padding: 0 10px; }
+
+  /* Le panneau : les trois onglets en colonnes, l'icône sur le nom. */
+  .panneau { padding: 8px 8px 12px; border-radius: 20px; }
+  .provs { border-radius: 16px; padding: 4px; }
+  .curseur { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 13px; }
+  .prov { flex-direction: column; gap: 5px; padding: 10px 4px 9px; min-height: 0; }
+  .provIc { width: 30px; height: 30px; border-radius: 10px; }
+  .provT { align-items: center; }
+  .provT b { font-size: 13.5px; }
+  .provT small { display: none; }
+  .provN { position: absolute; top: 6px; right: 6px; min-width: 22px; height: 19px; padding: 0 6px; font-size: 11px; }
+  .tiroirProv { margin-top: 10px; padding: 12px 10px 10px; border-radius: 16px; }
+  .tuilesProv { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .tuileProv { padding: 10px 11px; gap: 8px; border-radius: 14px; }
+  .tuileIc { width: 32px; height: 32px; border-radius: 10px; font-size: 11px; }
+  .tuileT b { font-size: 13px; }
+  .tuileT small { font-size: 11.5px; }
+  .tuileN { font-size: 19px; }
+  .filtres { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; padding: 12px 0 0; }
+  .filtres > * { min-width: 0; }
+  .statutsBarre { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .statutsBarre::-webkit-scrollbar { display: none; }
+  .statutTab { flex: 0 0 auto; height: 36px; padding: 0 12px; font-size: 13.5px; }
+  .filtres .cats { margin: 0 -8px; padding: 2px 8px 2px; }
+
+  .carte { padding: 12px 12px 12px 12px; gap: 3px 11px; border-radius: 16px; grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .provTuile { width: 40px; height: 40px; border-radius: 13px; font-size: 12px; grid-row: span 2; }
+  .avatar { width: 38px; height: 38px; font-size: 13.5px; }
   .resume { grid-column: 1 / 4; font-size: 13.5px; margin-top: 4px; }
   .pied { grid-column: 1 / 4; }
   .nom { font-size: 15px; }
   .coord { display: none; }
 
-  .tiroir { width: 100vw; }
-  .tete { padding: calc(14px + env(safe-area-inset-top)) 16px 16px; }
-  .corps { padding: 16px 14px 28px; }
+  /* La fenêtre monte du bas, comme une feuille. */
+  .voileModale { align-items: flex-end; padding: 0; }
+  .modale { width: 100%; max-height: 92dvh; border-radius: 22px 22px 0 0; animation-name: feuilleEntre; animation-duration: .36s; }
+  .sortie .modale { animation-name: feuilleSort; }
+  .tete { padding: 16px 16px 16px; }
+  .corps { padding: 16px 14px calc(24px + env(safe-area-inset-bottom)); }
   .contacts { display: grid; grid-template-columns: 1fr 1fr; }
   .contacts > .btnClair { justify-content: center; height: 42px; }
   .contacts > .btnClair:only-child, .contacts > .btnClair:nth-child(3) { grid-column: 1 / 3; }
@@ -394,4 +616,9 @@
   .question { top: auto; bottom: 0; margin: 0 auto; width: 100vw; border-radius: 22px 22px 0 0; padding: 20px 16px calc(18px + env(safe-area-inset-bottom)); }
   .qPied > .btn { flex: 1 1 0; height: 46px; }
   .qProche { flex-direction: column; align-items: stretch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carte, .carteChiffre, .tuileProv, .liste, .ccBarre, .ccJauge > span, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
+  .curseur, .tiroirProv::before, .prov, .carte, .tuileProv { transition: none; }
 }
