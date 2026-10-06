@@ -48,6 +48,14 @@ export function demanderNouveauRdv() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_NOUVEAU_RDV));
 }
 
+/* « Envoyer un mail », de n'importe quel écran (V3.87) : la fenêtre de
+   rédaction s'ouvre par-dessus l'écran en cours (NouveauMailPartout, montée
+   dans AppLayout), au lieu d'aller sur la page « Nouveau mail ». */
+export const EVT_NOUVEAU_MAIL = 'emilio:nouveau-mail';
+export function demanderNouveauMail() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_NOUVEAU_MAIL));
+}
+
 export function prendreDemandeRendezVous(): string | null {
   try {
     const id = window.sessionStorage.getItem(CLE_RDV);
