@@ -34,6 +34,38 @@
 .filtre[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: white; }
 .filtre[data-on='oui'] b { background: rgba(255, 255, 255, .16); color: #f0dc9c; }
 
+/* ── Le tiroir des appels (V3.83) : sous « Appels », une rangée par issue ── */
+.tiroir {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 13px; border-radius: 14px;
+  border: 1px solid #dfe8f3; background: linear-gradient(180deg, #f5f9fd 0, #fbfcfe 100%);
+}
+.tiroirTete { display: flex; align-items: center; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; }
+.tiroirTitre { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #2d5c8f; }
+.tiroirTaux { font-size: 12.5px; font-weight: 700; color: #52607a; }
+.tiroirBarre { display: flex; gap: 2px; height: 6px; border-radius: 99px; overflow: hidden; background: #e8eef6; }
+.tiroirBarre i { display: block; min-width: 6px; flex-basis: 0; transition: flex-grow .45s cubic-bezier(.16, 1, .3, 1), opacity .2s; }
+.tiroirPuces { display: flex; gap: 7px; flex-wrap: wrap; }
+.tiroirPuce {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 99px;
+  border: 1.5px solid #e3e8f0; background: white; color: #52607a; cursor: pointer;
+  font: 700 12.5px 'DM Sans', sans-serif; white-space: nowrap; transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.tiroirPuce:hover:not(:disabled) { border-color: #cdd6e3; color: var(--emilio, #2e4166); }
+.tiroirPuce:disabled { cursor: default; color: #b3bdcb; }
+.tiroirPuce:disabled i { opacity: .35; }
+.tiroirPuce i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tiroirPuce b {
+  min-width: 19px; height: 19px; padding: 0 6px; box-sizing: border-box; border-radius: 99px; margin-right: -5px;
+  display: inline-flex; align-items: center; justify-content: center; background: #eef2f7; color: inherit; font-size: 11px; font-weight: 800;
+}
+.tiroirPuce[data-on='oui'] b { background: rgba(255, 255, 255, .75); }
+.tiroirPuce:first-child[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: white; }
+.tiroirPuce:first-child[data-on='oui'] b { background: rgba(255, 255, 255, .16); color: #f0dc9c; }
+
+/* La liste qui change (filtre ou issue) arrive en fondu. */
+.listeArrive { animation: listeArrive .3s cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes listeArrive { from { opacity: 0; transform: translateY(5px); } }
+
 /* ── La frise : un trait continu, du futur vers le passé ── */
 .liste { list-style: none; margin: 4px 0 0; padding: 0; position: relative; display: flex; flex-direction: column; gap: 12px; }
 .liste::before {
@@ -147,6 +179,13 @@
   .filtres { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
   .filtres::-webkit-scrollbar { display: none; }
   .filtre { flex-shrink: 0; }
+  .tiroir { padding: 11px 12px 12px; }
+  /* Sur téléphone, toutes les issues d'un coup d'œil : deux colonnes, la
+     première à la largeur de son plus long libellé, le nombre calé à droite. */
+  .tiroirPuces { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 6px; }
+  .tiroirPuce { min-width: 0; height: 38px; padding: 0 10px 0 11px; gap: 6px; font-size: 12px; }
+  .tiroirLib { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tiroirPuce b { margin-left: auto; margin-right: -3px; }
   .liste::before, .ligne[data-sorte='avenir']::before { left: 15px; }
   .ligne, .repere { grid-template-columns: 32px minmax(0, 1fr); column-gap: 10px; }
   .noeud { width: 32px; height: 32px; border-width: 2px; }
@@ -161,6 +200,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .carte, .actions { transition: none; }
+  .listeArrive { animation: none; }
+  .tiroirBarre i { transition: none; }
 }
 
 /* Les grandes étapes d'une vente (V3.47) : un liseré et un fond à leur couleur. */

@@ -1,5 +1,6 @@
 'use client';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
+import Depliant from '@/components/shared/Depliant';
 import s from './FriseSuivi.module.css';
 
 /* ═══ Le suivi du dossier, en frise ═══════════════════════════════════════
@@ -31,6 +32,18 @@ export const ISSUES_APPEL = [
   { k: 'recu', lib: 'Appel reçu', titre: 'Appel reçu', c: '#2d5c8f', bg: '#eaf2fb', bord: '#c9dcf1' },
 ] as const;
 export const issueAppel = (titre?: string | null) => ISSUES_APPEL.find(x => x.titre === (titre || '').trim()) || null;
+
+/* ── Le tiroir des appels (V3.83) ──
+   Alexandre : « dans Appels, un petit tiroir pour catégoriser les appels :
+   les décrochés, les messageries… comme ça je vais directement au détail des
+   appels qui ont été décrochés ». Sous le filtre « Appels », une rangée par
+   issue, avec son nombre ; un clic n'affiche qu'elle. Un appel noté sans
+   préciser (« Appel passé ») est « Sans précision ». */
+const ISSUES_TIROIR: { k: string; lib: string; c: string; bg: string; bord: string }[] = [
+  ...ISSUES_APPEL.map(x => ({ k: x.k as string, lib: x.lib as string, c: x.c as string, bg: x.bg as string, bord: x.bord as string })),
+  { k: 'autre', lib: 'Sans précision', c: '#64748b', bg: '#f1f5f9', bord: '#d8e0ea' },
+];
+const issueDe = (it: LigneSuivi): string | null => (it.kind === 'event' && it.data?.type === 'appel' ? issueAppel(it.data.titre)?.k || 'autre' : null);
 
 /* ── Les familles, leur couleur et leur icône ── */
 type Famille = { ic: string; c: string; bg: string; carte: boolean };
@@ -181,6 +194,20 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
   const futur = filtre === 'tout' ? [...aVenir].sort((a, b) => new Date(b.date_echeance).getTime() - new Date(a.date_echeance).getTime()) : [];
 
+  /* Le tiroir des appels : le nombre par issue, et celle choisie. Les
+     nombres restent ceux des appels pendant que le tiroir se replie. */
+  const appels = filtre === 'appel';
+  const parIssue: Record<string, number> = {};
+  for (const it of items) { const k = issueDe(it); if (k) parIssue[k] = (parIssue[k] || 0) + 1; }
+  const [gele, setGele] = useState<Record<string, number>>(parIssue);
+  if (appels && JSON.stringify(gele) !== JSON.stringify(parIssue)) setGele(parIssue);
+  const nb = appels ? parIssue : gele;
+  const nAppels = Object.values(nb).reduce((a, b) => a + b, 0);
+  const passes = nAppels - (nb.recu || 0);
+  const [issueChoisie, setIssueChoisie] = useState('tout');
+  const issue = appels && issueChoisie !== 'tout' && parIssue[issueChoisie] ? issueChoisie : 'tout';
+  const vus = issue === 'tout' ? items : items.filter(it => issueDe(it) === issue);
+
   /* Mois par mois : un repère sur le trait à chaque changement. */
   let moisCourant = '';
 
@@ -202,7 +229,8 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
           const n = comptes[f.id] || 0;
           const fam = f.fam ? FAMILLES[f.fam] : null;
           return (
-            <button key={f.id} type="button" className={s.filtre} data-on={filtre === f.id ? 'oui' : 'non'} data-vide={n ? 'non' : 'oui'} onClick={() => onFiltre(f.id)}>
+            <button key={f.id} type="button" className={s.filtre} data-on={filtre === f.id ? 'oui' : 'non'} data-vide={n ? 'non' : 'oui'} aria-expanded={f.id === 'appel' ? appels && !!n : undefined}
+              onClick={() => { if (f.id !== filtre) setIssueChoisie('tout'); onFiltre(f.id); }}>
               {fam && <i style={{ background: fam.c }} />}
               {f.lib}
               {n > 0 && <b>{n}</b>}
@@ -212,14 +240,43 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
         {enPlus}
       </div>
 
-      {items.length === 0 && futur.length === 0 ? (
+      <Depliant ouvert={appels && nAppels > 0} ecart={14}>
+        <div className={s.tiroir}>
+          <div className={s.tiroirTete}>
+            <span className={s.tiroirTitre}><IcSuivi n="tel" t={13} e={2.2} />Quels appels ?</span>
+            {passes > 0 && <span className={s.tiroirTaux}>{`${nb.repondu || 0} réponse${(nb.repondu || 0) > 1 ? 's' : ''} sur ${passes} appel${passes > 1 ? 's' : ''} passé${passes > 1 ? 's' : ''}`}</span>}
+          </div>
+          <div className={s.tiroirBarre} aria-hidden="true">
+            {ISSUES_TIROIR.map(x => (nb[x.k] ? <i key={x.k} style={{ flexGrow: nb[x.k], background: x.c, opacity: issue === 'tout' || issue === x.k ? 1 : .28 }} /> : null))}
+          </div>
+          <div className={s.tiroirPuces} role="group" aria-label="Les appels, par issue">
+            <button type="button" className={s.tiroirPuce} data-on={issue === 'tout' ? 'oui' : 'non'} aria-pressed={issue === 'tout'} onClick={() => setIssueChoisie('tout')}>
+              <span className={s.tiroirLib}>Tous</span><b>{nAppels}</b>
+            </button>
+            {ISSUES_TIROIR.map(x => {
+              const n = nb[x.k] || 0;
+              if (x.k === 'autre' && !n) return null;
+              const on = issue === x.k;
+              return (
+                <button key={x.k} type="button" className={s.tiroirPuce} data-on={on ? 'oui' : 'non'} aria-pressed={on} disabled={!n}
+                  style={on ? { color: x.c, background: x.bg, borderColor: x.c, boxShadow: `0 0 0 3px ${x.bg}` } : undefined}
+                  onClick={() => setIssueChoisie(on ? 'tout' : x.k)}>
+                  <i style={{ background: x.c }} /><span className={s.tiroirLib}>{x.lib}</span><b>{n}</b>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </Depliant>
+
+      {vus.length === 0 && futur.length === 0 ? (
         <div className={s.vide}>
           <span className={s.videIc}><IcSuivi n="note" t={22} e={1.8} /></span>
           <b>Rien à afficher</b>
           {filtre !== 'tout' && <span>{`Aucun élément dans « ${FILTRES_SUIVI.find(f => f.id === filtre)?.lib || filtre} ». « Tout » montre l’historique complet.`}</span>}
         </div>
       ) : (
-        <ol className={s.liste}>
+        <ol key={`${filtre}-${issue}`} className={`${s.liste} ${s.listeArrive}`}>
           {futur.length > 0 && (
             <li className={s.repere} data-sorte="avenir"><span className={s.repereRond} /><span className={s.repereTexte}>À venir</span></li>
           )}
@@ -242,11 +299,11 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
               </li>
             );
           })}
-          {futur.length > 0 && items.length > 0 && (
+          {futur.length > 0 && vus.length > 0 && (
             <li className={s.repere} data-sorte="aujourdhui"><span className={s.repereRond} /><span className={s.repereTexte}>Aujourd’hui</span></li>
           )}
 
-          {items.map(it => {
+          {vus.map(it => {
             const m = moisDe(it.ts);
             const nouveauMois = m !== moisCourant;
             moisCourant = m;

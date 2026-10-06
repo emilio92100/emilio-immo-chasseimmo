@@ -19,6 +19,7 @@ import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi } from '@/lib/intentions';
+import CloreRelances, { relancesACocher } from '@/components/shared/CloreRelances';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nomFoyer, conjointDe } from '@/lib/foyer';
 import {
@@ -1125,6 +1126,9 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   /* La relance née de cette action, s'il y en a une : c'est elle qu'on
      déplacera, supprimera — ou qu'on créera si elle manquait. */
   const [actionRelanceId, setActionRelanceId] = useState<string | null>(null);
+  /* V3.83 — Les relances en attente que cette action règle : elles se
+     ferment quand elle est notée (cochées d'office si elles sont dues). */
+  const [aClore, setAClore] = useState<string[]>([]);
 
   /* « Noter un appel » (onglet Suivi) ouvre la même fenêtre, l'appel déjà
      choisi et sans le bloc « Créer un rendez-vous » : il ne reste qu'à dire
@@ -1134,10 +1138,11 @@ export default function FicheClient({ client: init, onBack, onNavigate }: Props)
   function nouvelleAction(type: 'note' | 'appel' = 'note') {
     setActionEdit(null); setActionRelanceId(null); setAppelDirect(type === 'appel');
     setActionF({ type, titre: type === 'appel' ? 'Appel passé' : '', description: '', bien_id: '', relance: '' });
+    setAClore(relancesACocher(relancesAtt, ouverture?.relanceId));
     setShowAction(true);
   }
   function fermerAction() {
-    setShowAction(false); setActionEdit(null); setActionRelanceId(null); setAppelDirect(false);
+    setShowAction(false); setActionEdit(null); setActionRelanceId(null); setAppelDirect(false); setAClore([]);
     setActionF({ type: 'note', titre: '', description: '', bien_id: '', relance: '' });
   }
   const [url, setUrl] = useState('');
@@ -3088,6 +3093,15 @@ ${signatureMail()}`,
       if (relanceId) await verifie('La relance créée avec l’action', supabase.from('relances').delete().eq('id', relanceId));
       chargerRelances(); return;
     }
+
+    /* V3.83 — La relance que cet échange règle sort de « Relances », comme
+       avec « Traiter » là-bas. L'action est notée : un refus ici s'affiche en
+       rouge sans la défaire. */
+    const aFermer = aClore.filter(id => relancesAtt.some(r => r.id === id));
+    if (aFermer.length) {
+      await verifie(aFermer.length > 1 ? 'Les relances closes' : 'La relance close', supabase.from('relances').update({ statut: 'cloturee' }).in('id', aFermer).eq('statut', 'en_attente').select('id'));
+    }
+    if (aFermer.length || relanceId) signalerMaj();
 
     fermerAction(); load(); chargerRelances();
   }
@@ -6388,6 +6402,9 @@ ${signatureMail()}`,
               <div><label className={styles.lbl}>Titre <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={actionF.titre} onChange={e => setActionF(f => ({ ...f, titre: e.target.value }))} placeholder="Ex: Appel de suivi, RDV agence..." /></div>
               <div><label className={styles.lbl}>Notes / Détails</label><textarea ref={notesAction} className={styles.inp} rows={4} value={actionF.description} onChange={e => setActionF(f => ({ ...f, description: e.target.value }))}
                 placeholder={actionF.type === 'appel' && (actionF.titre === 'Appel — messagerie' || actionF.titre === 'Appel — pas de réponse') ? 'Facultatif — ex. : message laissé, rappeler après 18 h' : 'Ce dont on a discuté, ce qui a été convenu...'} /></div>
+              {!actionEdit && (
+                <CloreRelances relances={relancesAtt} cochees={aClore} onChange={setAClore} nouvelle={!!actionF.relance} />
+              )}
               {(() => {
                 /* Une date, et rien d'autre : le reste — qui, pourquoi — est déjà
                    au-dessus. Les raccourcis évitent de compter les jours de tête.
