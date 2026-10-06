@@ -13,6 +13,7 @@ import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import BlocRepliable from '@/components/documents/BlocRepliable';
 import AvatarContact from './AvatarContact';
+import { AvecCase, STYLE_CHOISI } from '@/components/shared/Selection';
 import sd from '@/components/documents/Documents.module.css';
 import c from './Contacts.module.css';
 
@@ -382,8 +383,10 @@ export function EnteteContacts() {
   );
 }
 
-export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien }: {
+export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien, selection }: {
   x: ContactListe; biens: BienDuContact[]; derniere?: string | null; onOuvrir: () => void; onBien: (id: string) => void;
+  /* V3.88 : la case pour cocher plusieurs contacts (Selection.tsx). */
+  selection?: { on: boolean; mode: boolean; onBasculer: () => void };
 }) {
   /* V3.50 : les biens archivés ne comptent pas, comme sur sa fiche. */
   const biens = tousBiens.filter(b => !b.archive);
@@ -397,11 +400,15 @@ export function LigneContact({ x, biens: tousBiens, derniere, onOuvrir, onBien }
   const vend = aUnBien(types);
   const nom = nomFoyer(x) || 'Sans nom';
   return (
-    <div role="button" tabIndex={0} className={`${c.lLigne} ${x.archive ? c.lArchive : ''}`} onClick={onOuvrir} onKeyDown={e => { if (e.key === 'Enter') onOuvrir(); }}>
+    <div role="button" tabIndex={0} className={`${c.lLigne} ${x.archive ? c.lArchive : ''} sel-ligne`} style={selection?.on ? STYLE_CHOISI : undefined} onClick={onOuvrir} onKeyDown={e => { if (e.key === 'Enter') onOuvrir(); }}>
       <span className={c.lQui}>
         {/* Le même petit personnage que dans « Acheteurs » (V3.31), à la couleur
             de son type ; une mallette pour un professionnel. Avant : ses initiales. */}
-        <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />
+        {selection ? (
+          <AvecCase on={selection.on} mode={selection.mode} onBasculer={selection.onBasculer} titre={selection.on ? `Décocher ${nom}` : `Cocher ${nom}`}>
+            <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />
+          </AvecCase>
+        ) : <AvatarContact c={x} teinte={{ bg: principal.fond, fg: principal.c, trait: `${principal.c}33` }} className={c.lAv} libre />}
         <span className={c.lNom}>
           <b title={nom}>{nom}</b>
           <span className={c.puces}>{types.map(k => <Puce key={k} k={k} />)}</span>
