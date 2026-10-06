@@ -5,6 +5,7 @@ import {
   argentBien, avantMandat, etapeDe, ligneEtat, lirePhotos, motMandat, nomProprio, specsBien, villeAffichee, type BienVente, type EtatMandatDoc, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
+import { etatDiffusion } from '@/lib/diffusion';
 import b from './Biens.module.css';
 
 /* ═══ La carte d'un bien (la liste, et l'aperçu de l'éditeur) ═════════════ */
@@ -113,6 +114,8 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, 
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
   const prix = prixCarte(bien);
   const etat = ligneEtat(bien, suivi, mandatDoc);
+  /* V3.91 : où part l'annonce (lib/diffusion.ts). */
+  const diff = etatDiffusion(bien);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
   const lieu = [villeAffichee(bien.ville || txt(d, 'ville'), bien.code_postal || txt(d, 'cp')), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
@@ -126,6 +129,7 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, 
         <span className={b.ligneEtape}>
           <span className={b.point} style={{ background: e.c }} />{e.court}
           {mandat && <em className={mandat === 'exclusif' ? b.exclu : undefined}>{NOM_MANDAT[mandat]?.toUpperCase()}</em>}
+          {diff.concerne && <span className={b.diffMini} data-ton={diff.ton} title={diff.detail}><span className={b.diffPoint} />{diff.lib}</span>}
         </span>
         <b className={prix.vide ? b.prixVide : undefined}>{prix.t}</b>
         <small>{specsBien(d) || 'Caractéristiques à saisir'}</small>
@@ -149,6 +153,8 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevu
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
   const prix = prixCarte(bien);
   const etat = ligneEtat(bien, suivi, mandatDoc);
+  /* V3.91 : où part l'annonce (lib/diffusion.ts). */
+  const diff = etatDiffusion(bien);
   const mandat = SOUS_MANDAT.includes(bien.etape) && bien.mandat_type ? bien.mandat_type : '';
   const lieu = [villeAffichee(bien.ville || txt(d, 'ville'), bien.code_postal || txt(d, 'cp')), bien.quartier || txt(d, 'quartier')].filter(Boolean).join(' · ');
   const qui = nomProprio(d) || proprio || '';
@@ -165,6 +171,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevu
         {photo ? <img src={photo} alt="" loading="lazy" /> : <span className={b.imgVide}><Ic n="photo" t={26} />Pas encore de photo</span>}
         <span className={b.pastille}><span className={b.point} style={{ background: e.c }} />{e.court}</span>
         {mandat && <span className={`${b.badgeMandat} ${mandat === 'exclusif' ? b.badgeExcl : ''}`}>{NOM_MANDAT[mandat]?.toUpperCase()}</span>}
+        {diff.concerne && <span className={b.diffPastille} data-ton={diff.ton} title={diff.detail}><span className={b.diffPoint} />{diff.lib}</span>}
       </div>
       <div className={b.carteCorps}>
         <div className={b.carteHaut}>

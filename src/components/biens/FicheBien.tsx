@@ -43,6 +43,8 @@ import { DossierBien, type DestPropose } from './DossierBien';
 import { PastilleProprio } from './PastilleProprio';
 import { OngletVisitesOffres } from './VisitesOffres';
 import { FenPointVendeur } from './PointVendeur';
+import FenDiffusion from './FenDiffusion';
+import { etapeDiffusee, etatDiffusion, lireDiffusion, nomsSupports, supportsCoches } from '@/lib/diffusion';
 import Depliant from '@/components/shared/Depliant';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import {
@@ -73,11 +75,13 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis
      bien et ses chiffres.
    Chaque bloc a son « Modifier », qui ouvre l'éditeur à la bonne étape. */
 
-type Onglet = 'apercu' | 'photos' | 'bien' | 'surfaces' | 'visites' | 'acheteurs' | 'documents' | 'historique';
+/* V3.91 : Surfaces est une sous-rubrique de « Le bien » (SousVue), plus un onglet. */
+type Onglet = 'apercu' | 'photos' | 'bien' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
   | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'revente' } | { k: 'vendu'; correction?: boolean } | { k: 'prix' } | { k: 'visite'; pour?: ChoixA } | { k: 'note' }
   | { k: 'deplacer'; v: VisiteU } | { k: 'point' }
-  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' };
+  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' }
+  | { k: 'diffusion'; premiere?: boolean };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
 const OPTIONS: Record<string, Record<string, string>> = {};
@@ -643,7 +647,7 @@ function surfacesDe(d: Donnees): SurfacesBien {
    joli, avec des icônes ») : une rangée de sous-onglets en tête — « Tout »
    (la vue d'ensemble d'avant, les cartes en colonnes), puis une carte à la
    fois, en grand, ses lignes sur deux colonnes. Mêmes cartes, même ordre. */
-export type SousVue = 'tout' | 'interieur' | 'immeuble' | 'exterieur' | 'quartier' | 'energie' | 'copro' | 'prix';
+export type SousVue = 'tout' | 'surfaces' | 'interieur' | 'immeuble' | 'exterieur' | 'quartier' | 'energie' | 'copro' | 'prix';
 /* Les sous-onglets, leur icône dans la couleur de leur carte. « Tout » en
    premier (V3.81). V3.81 : ils vivent dans le tiroir de la barre des
    rubriques (FicheBien), plus dans l'onglet lui-même. */
@@ -651,6 +655,9 @@ export function vuesDuBien(d: Donnees, avant: boolean): { k: SousVue; l: string;
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
   return [
     { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c' },
+    /* V3.91 (Alexandre : « il y a beaucoup d'onglets ») : l'onglet Surfaces
+       devient une sous-rubrique de « Le bien », la même page (OngletSurfaces). */
+    { k: 'surfaces', l: 'Surfaces', ic: 'regle', c: '#475569' },
     { k: 'interieur', l: 'Intérieur', ic: 'canape', c: '#2d5c8f' },
     { k: 'immeuble', l: enImm ? 'Immeuble' : 'Maison', ic: enImm ? 'immeuble' : 'maison', c: '#6d28d9' },
     { k: 'exterieur', l: 'Extérieur', ic: 'terrain', c: '#16a34a' },
@@ -840,7 +847,7 @@ export function OngletBien({ bien, vue = 'tout', onModifier, onSurfaces, onEstim
 
   /* Les cartes de chaque sous-onglet. */
   const CARTES: Record<SousVue, ReactNode[]> = {
-    tout: [], interieur: [interieur], immeuble: [immeuble], exterieur: [exterieur], quartier: [quartier],
+    tout: [], surfaces: [], interieur: [interieur], immeuble: [immeuble], exterieur: [exterieur], quartier: [quartier],
     energie: [energie], copro: [copro, charges], prix: [prix],
   };
   const ordre = vuesDuBien(d, avant).map(x => x.k);
@@ -870,7 +877,7 @@ export function OngletBien({ bien, vue = 'tout', onModifier, onSurfaces, onEstim
 
       <button type="button" className={b.versSurfaces} onClick={onSurfaces}>
         <span className={b.versSurfacesIc}><Ic n="regle" t={18} /></span>
-        <span><b>Les surfaces et les pièces</b><small>{pieces.length ? `${pieces.length} pièce${pieces.length > 1 ? 's' : ''} saisie${pieces.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''} · dans l’onglet Surfaces` : 'Pièce par pièce, dans l’onglet Surfaces'}</small></span>
+        <span><b>Les surfaces et les pièces</b><small>{pieces.length ? `${pieces.length} pièce${pieces.length > 1 ? 's' : ''} saisie${pieces.length > 1 ? 's' : ''}${surf ? ` · ${m2(surf)}` : ''} · dans la rubrique Surfaces` : 'Pièce par pièce, dans la rubrique Surfaces'}</small></span>
         <Ic n="droite" t={16} e={2.4} />
       </button>
     </Col>
@@ -1347,6 +1354,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const raison = (etape: EtapeVente, titre: string, sur: string) => () => setFen({ k: 'raison', etape, titre, sur });
   const suite: Choix[] = [];
   const e = bien.etape;
+  /* V3.91 : où part l'annonce (le bouton du bandeau, sa fenêtre). */
+  const diff = etatDiffusion(bien);
+  /* « Surfaces » vit dans le tiroir de « Le bien » depuis la V3.91. */
+  const voirSurfaces = () => { setOnglet('bien'); setSousVue('surfaces'); };
   /* V3.48 : ce que l'étape permet (lib/biens-vente.ts, permisBien). */
   const p = permisBien(bien);
   if (e === 'a_suivre') {
@@ -1527,10 +1538,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     return () => ro.disconnect();
   }, [avant, pointVendeur, e]);
   /* L'ordre voulu par Alexandre (V3.30) : Vue d'ensemble, Photos, Le bien,
-     Surfaces, puis Acheteurs, Documents, Historique. */
+     Surfaces, puis Acheteurs, Documents, Historique. V3.91 (« il y a beaucoup
+     d'onglets ») : sept au lieu de huit — « Vue d'ensemble » devient
+     « Résumé », Surfaces passe dans le tiroir de « Le bien ». */
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
-    { k: 'apercu', l: 'Vue d’ensemble', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
-    { k: 'surfaces', l: 'Surfaces', ic: 'regle' },
+    { k: 'apercu', l: 'Résumé', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
     ...(avant || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
     { k: 'acheteurs', l: 'Acheteurs', n: acheteurs.filter(a => a.corr.note >= SEUIL_CORRESPOND).length, ic: 'cible' },
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
@@ -1951,6 +1963,16 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             style={{ ['--etC' as string]: et.c } as React.CSSProperties} title={`Étape : ${et.lib}`} aria-label={`Étape : ${et.lib}, changer`}>
             <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{e === 'mandat' && !txt(d, 'mandatDate') ? 'En vente' : et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
           </button>
+          {/* V3.91 (Alexandre : « un bouton Diffusion en cours / Non diffusé,
+              pour garder la main sur chaque bien ») : à côté de l'étape, aux
+              étapes où le bien part sur ses supports (lib/diffusion.ts). Vert,
+              il part ; ambre, il est à régler ; gris, il ne part pas. */}
+          {diff.concerne && (
+            <button type="button" className={b.btnDiff} data-ton={diff.ton} onClick={() => setFen({ k: 'diffusion' })}
+              title={`${diff.lib} · ${diff.detail}`} aria-label={`Diffusion : ${diff.lib}. ${diff.detail} Régler`}>
+              <span className={b.diffPoint} /><Ic n="megaphone" t={15} /><span className={b.diffLong}>{diff.ton === 'on' ? 'Diffusion en cours' : diff.lib}</span>
+            </button>
+          )}
           <button type="button" className={s.btn} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
           {menu && <div className={b.voileMenu} onClick={() => setMenu(null)} />}
           {menu === 'etape' && (
@@ -1969,6 +1991,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); ouvrirVisite(); }}><Ic n="cle" t={16} /><span><b>Planifier une visite</b><small>Un acheteur suivi, ou quelqu’un hors du CRM</small></span></button>
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); ouvrirOffre(); }}><Ic n="euro" t={16} /><span><b>Enregistrer une offre</b><small>Montant, financement, validité</small></span></button>
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); garde('prix', () => setFen({ k: 'prix' }))(); }}><Ic n="etiquette" t={16} /><span><b>Changer le prix ou les honoraires</b><small>L’ancien reste dans l’historique</small></span></button>
+              {diff.concerne && <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'diffusion' }); }}><Ic n="megaphone" t={16} /><span><b>Diffusion de l’annonce</b><small>{`${diff.lib} · ${diff.detail}`}</small></span></button>}
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'note' }); }}><Ic n="bulle" t={16} /><span><b>Ajouter une note</b><small>Dans l’historique du bien</small></span></button>
               {pointVendeur && <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'point' }); }}><Ic n="megaphone" t={16} /><span><b>Point vendeur</b><small>{txt(d, 'dernierPointVendeur') ? `Le dernier : le ${dateLongue(txt(d, 'dernierPointVendeur'))}` : 'Visites, retours, offres : le texte prêt à envoyer'}</small></span></button>}
               <div className={b.menuSep} />
@@ -2018,7 +2041,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           )}
           {/* Le bien en bref d'abord (V3.32, Alexandre : « qu'on voie
               rapidement ce que c'est ») ; avant le mandat, juste sous le parcours. */}
-          <BlocBref d={d} onSurfaces={() => setOnglet('surfaces')} onModifier={() => onModifier('bien')} />
+          <BlocBref d={d} onSurfaces={voirSurfaces} onModifier={() => onModifier('bien')} />
           {/* Après le mandat (V3.32) : le mandat est dans le bandeau, les
               acheteurs dans leur onglet ; « Pour la visite » remonte ici. */}
           {/* V3.54 : la carte « Le propriétaire » est partie (Alexandre : « ça ne
@@ -2051,9 +2074,16 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </div>
       )}
 
-      {onglet === 'bien' && <OngletBien bien={bien} vue={sousVue} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} onEstimation={() => setFen({ k: 'estim' })} onAnnonce={(t, x) => { majDonnees('annonceTitre', t); majDonnees('annonceTexte', x); }} />}
-
-      {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien:t-surf')} />}
+      {/* V3.91 : Surfaces, sous-rubrique de « Le bien ». Entre les autres
+          sous-rubriques, OngletBien fait lui-même glisser ses cartes ; vers
+          Surfaces et retour, la page arrive en fondu. */}
+      {onglet === 'bien' && (
+        <div key={sousVue === 'surfaces' ? 'surfaces' : 'bien'} className={b.vueEntre}>
+          {sousVue === 'surfaces'
+            ? <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien:t-surf')} />
+            : <OngletBien bien={bien} vue={sousVue} onModifier={onModifier} onSurfaces={voirSurfaces} onEstimation={() => setFen({ k: 'estim' })} onAnnonce={(t, x) => { majDonnees('annonceTitre', t); majDonnees('annonceTexte', x); }} />}
+        </div>
+      )}
 
       {onglet === 'photos' && (
         <Bloc ic="photo" titre={<>{'Les photos'}<i>{nbPhotos ? ` · ${nbPhotos}` : ''}</i></>}>
@@ -2196,7 +2226,18 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {depotSigne && typeof document !== 'undefined' && createPortal(
         <FenetreSigne doc={depotSigne} onFermer={() => setDepotSigne(null)} onFait={() => { setDepotSigne(null); void apres(); }} />,
         document.body)}
-      {fen?.k === 'mandat' && <FenMandat bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {/* V3.91 : le mandat vient d'être signé et rien n'est encore réglé : la
+          fenêtre de diffusion s'ouvre (Alexandre : « à chaque mandat, je
+          choisis sur quel portail le diffuser, j'ai juste à cocher »). */}
+      {fen?.k === 'mandat' && <FenMandat bien={bien} offres={offres} onFermer={() => setFen(null)} onFait={r => {
+        void apres(r).then(() => { if (r && etapeDiffusee(r.etape) && !lireDiffusion(r.donnees)) setFen({ k: 'diffusion', premiere: true }); });
+      }} />}
+      {fen?.k === 'diffusion' && <FenDiffusion bien={bien} premiere={fen.premiere} onFermer={() => setFen(null)} onEnregistrer={x => {
+        majDonnees('diffusion', x);
+        setFen(null);
+        const l = supportsCoches(x.supports);
+        setMessage({ ok: true, t: !x.actif ? 'Diffusion coupée : l’annonce ne part nulle part.' : l.length ? `Diffusion enregistrée : ${nomsSupports(l)}.` : 'Diffusion enregistrée, sans support coché : rien ne part.' });
+      }} />}
       {fen?.k === 'estimation' && <FenEstimation bien={bien} reprise={cycleAvant} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'estim' && <FenDefinirEstimation bien={bien} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {/* La visite sur place : à sa sortie, la fiche se recharge, et la suite
