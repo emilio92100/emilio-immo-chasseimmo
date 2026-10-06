@@ -1512,8 +1512,10 @@ suivant).
 - **`lib/seloger.ts`** (isomorphe) : un bien du CRM → une annonce `AvivClassified`. Portails `SL`
   (SeLoger, donc Logic-Immo) si la case SeLoger est cochée, `BD` si Belles Demeures l'est.
   `offererEstateId` = le même identifiant que chez Jinka (`idJinka` : ImmoFacile, sinon la
-  référence) ; `offererMarketingKey` = la référence du CRM. Rue et numéro vides, position floutée
-  (`mapdisplayprecision: PARTIAL`). Honoraires ALUR (`brokerageFee` : qui paie, montant, taux sur le
+  référence) ; `offererMarketingKey` = la référence du CRM. Adresse (numéro et rue, comme ImmoFacile
+  les envoyait) et position, montrée floutée (`mapdisplayprecision: PARTIAL`) ; l'affichage de
+  l'adresse se règle dans MySeLogerPRO. Contact de l'agence (`specific.gsl.mainContactPerson` :
+  01 84 80 14 00, agence@emilio-immo.com, ceux que SeLoger avait). Honoraires ALUR (`brokerageFee` : qui paie, montant, taux sur le
   prix hors honoraires, barème), copropriété (`management.countrySpecific.fr`), DPE
   (`energyCertificate`, version selon la date, `EMPTY` vierge, `NOT_APPLICABLE` non soumis), mandat
   (`agentMandate`), photos (30, la première en couverture). Le titre et le texte sont ceux du site,
@@ -1533,7 +1535,17 @@ suivant).
   Jinka complet, SeLoger seulement les écarts). GET derrière le badge : l'état des deux ;
   `?seloger=annonces` (le JSON envoyé, pour la recette) ; `?seloger=statuts` (le dernier statut de
   chaque annonce chez SeLoger : reçue, créée, photos en erreur…).
-- Reste pour SeLoger : vérifier le premier passage en sandbox (le jeton, les statuts), le webhook
+- **Premier passage en sandbox** (6 octobre, 21 h 48) : jeton accepté (audience par défaut), les 14
+  annonces cochées SeLoger reçues (202). La sandbox **compare** chaque annonce à celle qu'ImmoFacile
+  diffuse aujourd'hui (statut `COMPARING_FAILED`, avec `errorList` et `warnList`, ancien → nouveau).
+  Corrigé dans la foulée : la surface (SeLoger lit « Area » ailleurs que `livingSpace` : envoyée
+  aussi en `overallSpace` et `usableFloorSpace`), le prix TTC (`isVatIncluded`), la cuisine équipée
+  (`builtIn`), le parquet, « Pas de procédure en cours », l'adresse et le contact. Restent des écarts
+  de données, à régler dans les fiches : DPE absent (8 biens), coûts estimés du DPE et
+  consommation finale (ImmoFacile envoyait 0), honoraires des deux biens à 4 200 000 € et
+  4 250 000 € (EMI-V-2026-309 et 321 : « acquéreur » sans taux dans le CRM, « vendeur » chez
+  ImmoFacile). `?seloger=statuts` rend aussi l'historique et les photos de chaque annonce.
+- Reste pour SeLoger : vérifier le second passage en sandbox (le jeton, les statuts), le webhook
   (URL de publication), puis le mail à Christiane pour la recette ; en production, prévoir avec elle
   la bascule pour éviter les doublons avec les annonces d'ImmoFacile.
 
