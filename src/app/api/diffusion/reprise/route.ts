@@ -3,7 +3,7 @@ import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
 import { ecritServeur } from '@/lib/ecritures';
 import { baseServeur } from '@/lib/flux-site-serveur';
 import { ANNONCES_JINKA, FLUX_IMMOFACILE, lireFluxImmoFacile, rapprocher, type BienARapprocher } from '@/lib/flux-immofacile';
-import { lireDiffusion, nouvelleDiffusion } from '@/lib/diffusion';
+import { SUPPORTS_DEFAUT, etapeDiffusee, lireDiffusion, nouvelleDiffusion } from '@/lib/diffusion';
 
 /* ═══ Reprendre d'ImmoFacile ce qui sert à la diffusion (V3.92) ════════════
    POST /api/diffusion/reprise → { ok, lus, relies: [...], seules: [...], erreur? }
@@ -21,6 +21,12 @@ import { lireDiffusion, nouvelleDiffusion } from '@/lib/diffusion';
    qu'un autre bien a pris) le perd, avec la position qui venait d'elle
    (`delies`). Relancer la reprise corrige donc un mauvais lien. Les
    changements d'un même bien partent en une seule écriture.
+
+   V3.95 (Alexandre : « s'ils n'étaient pas dans le flux, autant les mettre
+   sans diffusion ») : un bien en vente, sous offre, sous compromis ou
+   annonce type, qu'aucune annonce d'ImmoFacile ne reprend et qui n'a pas
+   encore de réglage, passe en « Non diffusé » — la situation d'aujourd'hui.
+   Les supports par défaut sont gardés cochés : un clic le met en ligne.
 
    Route du CRM : derrière le badge (proxy.ts), revérifié ici. */
 
@@ -79,6 +85,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  /* Pas en ligne chez ImmoFacile, pas encore réglé : « Non diffusé ». */
+  const relie = new Set(liens.map(l => l.bienId));
+  const nonDiffuses: string[] = [];
+  for (const b of biens) {
+    if (b.archive || relie.has(b.id) || !etapeDiffusee(b.etape)) continue;
+    const f = fiche(b.id);
+    if (lireDiffusion(f.d)) continue;
+    f.d.diffusion = nouvelleDiffusion(false, SUPPORTS_DEFAUT);
+    f.ecrit.push('non diffusé');
+    nonDiffuses.push(b.id);
+  }
+
   const avertissements: string[] = [];
   const echecs = new Set<string>();
   for (const [id, f] of fiches) {
@@ -97,6 +115,7 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json({
     ok: true, lus: annonces.length, relies, delies,
+    nonDiffuses: nonDiffuses.filter(id => !echecs.has(id)).map(id => { const b = biens.find(x => x.id === id)!; return { id, reference: b.reference, titre: b.titre }; }),
     seules: seules.map(a => ({ numero: a.affId, titre: a.titre, prix: a.prix, cp: a.cp, ville: a.ville })),
     ...(avertissements.length ? { avertissements } : {}),
   });
