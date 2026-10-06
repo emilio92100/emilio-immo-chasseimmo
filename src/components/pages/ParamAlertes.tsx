@@ -23,7 +23,7 @@ const DEMANDE_SITE: Ligne = {
   cle: CLE_ALERTE_DEMANDE, groupe: 'site', titre: 'Une nouvelle demande du site',
   objet: 'Nouvelle demande du site — Estimation — Paul Martin',
   quand: 'Quelqu’un remplit un formulaire d’emilio-immo.com : estimation, accompagnement acheteur, question sur un bien, message. Rien ne part pour une demande qui ressemble à un robot.',
-  crm: 'La demande dans Demandes du site, en « Nouvelle », avec ses réponses.',
+  crm: 'La demande dans Demandes Internet, en « Nouvelle », avec ses réponses.',
 };
 const LISTE: Ligne[] = ALERTES_MAIL.some(a => (a.cle as string) === CLE_ALERTE_DEMANDE) ? ALERTES_MAIL : [...ALERTES_MAIL, DEMANDE_SITE];
 const lireCoupees = (valeur: string | null | undefined): Set<Cle> => {
