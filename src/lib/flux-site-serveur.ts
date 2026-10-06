@@ -25,6 +25,26 @@ export async function lireBiensSite(): Promise<{ biens: BienSite[]; brut: BienVe
   if (error) throw new Error(error.message);
   const brut = ((data || []) as BienVente[]).filter(b => diffuseSur(b, 'site'));
 
+  const gps = await positionsBiens(sb, brut);
+
+  /* V3.94 : deux fiches ne partagent jamais une adresse sur le site. Si
+     deux biens portent le même numéro ImmoFacile (un doublon dans le CRM),
+     le plus ancien le garde, l'autre prend sa référence du CRM. */
+  const vus = new Set<string>();
+  const biens = [...brut].sort((x, y) => (x.created_at || '').localeCompare(y.created_at || ''))
+    .map(b => {
+      const s = bienPourSite(b, gps.get(b.id) || null);
+      if (vus.has(s.id)) s.id = vus.has(b.reference || '') || !b.reference ? b.id : b.reference;
+      vus.add(s.id);
+      return s;
+    })
+    .sort((x, y) => y.dateAdded.localeCompare(x.dateAdded));
+  return { biens, brut };
+}
+
+/* La position de chaque bien : celle de sa fiche, sinon son adresse
+   géocodée (gardée dans `geocodes`). Pour le site et pour Jinka (V3.97). */
+export async function positionsBiens(sb: ReturnType<typeof baseServeur>, brut: BienVente[]): Promise<Map<string, { lat: number; lng: number }>> {
   const gps = new Map<string, { lat: number; lng: number }>();
   const aPlacer = new Map<string, string>();   // id du bien → adresse
   for (const b of brut) {
@@ -44,18 +64,5 @@ export async function lireBiensSite(): Promise<{ biens: BienSite[]; brut: BienVe
       if (res.aEcrire.length && !res.tableAbsente) await garderPositions(sb, res.aEcrire);
     } catch { /* le géocodeur ne répond pas : ces biens n'auront pas de point sur la carte du site */ }
   }
-
-  /* V3.94 : deux fiches ne partagent jamais une adresse sur le site. Si
-     deux biens portent le même numéro ImmoFacile (un doublon dans le CRM),
-     le plus ancien le garde, l'autre prend sa référence du CRM. */
-  const vus = new Set<string>();
-  const biens = [...brut].sort((x, y) => (x.created_at || '').localeCompare(y.created_at || ''))
-    .map(b => {
-      const s = bienPourSite(b, gps.get(b.id) || null);
-      if (vus.has(s.id)) s.id = vus.has(b.reference || '') || !b.reference ? b.id : b.reference;
-      vus.add(s.id);
-      return s;
-    })
-    .sort((x, y) => y.dateAdded.localeCompare(x.dateAdded));
-  return { biens, brut };
+  return gps;
 }
