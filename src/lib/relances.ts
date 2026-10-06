@@ -1,4 +1,4 @@
-import { signalerEchec } from './ecritures';
+import { signalerEchec, verifie } from './ecritures';
 import { supabase } from '@/lib/supabase';
 import { relanceAGarder } from './relances-garder';
 export { relanceAGarder };
@@ -38,6 +38,16 @@ export function echeanceDans(jours: number): string {
   d.setHours(12, 0, 0, 0);
   d.setDate(d.getDate() + jours);
   return d.toISOString();
+}
+
+/* Reporter une relance à un autre jour, à midi (V3.85 : depuis la frise du
+   Suivi, comme depuis la page Relances). Elle doit encore attendre : une
+   relance close entre-temps n'est pas rouverte. */
+export async function reporterRelance(id: string, jour: string): Promise<boolean> {
+  if (!jour) return false;
+  return verifie('Le report de la relance', supabase.from('relances')
+    .update({ date_echeance: new Date(`${jour}T12:00:00`).toISOString() })
+    .eq('id', id).eq('statut', 'en_attente').select('id'), { ligne: true });
 }
 
 async function relanceAutoEnCours(clientId: string, rechercheId: string | null) {
