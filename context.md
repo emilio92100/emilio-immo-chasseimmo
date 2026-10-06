@@ -1461,6 +1461,46 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.81 — 6 octobre 2026 · Fiche du bien : les boutons sur le bandeau, « Le bien » relié, l'annonce à toutes les étapes, « Pour la visite »
+
+Rien à passer dans Supabase.
+
+- **Les gestes du bien à cheval sur le bandeau** (`FicheBien.tsx`, `.chevalHaut`). Alexandre : « les
+  boutons, il faut les descendre au même niveau que propriétaire, à droite, qu'ils empiètent sur
+  l'encadré bleu ; on ne les trouve pas », puis « juste Modifier, Note, l'étape et les trois
+  points ». La pastille du propriétaire et Modifier, Note, l'étape ▾ et ⋯ sont sur une même ligne,
+  posée sur le haut du bandeau ; « Biens » reste seul au-dessus ; Visite et Point vendeur sont dans
+  « ⋯ ». Quand la ligne est trop étroite (mesurée : la pastille garde 200 px), Modifier et Note
+  passent aussi dans « ⋯ », où ils étaient déjà (`chevalSerre`).
+  Le bouton d'étape est blanc, bordé de la couleur de l'étape (`--etC`) : en marine, il se
+  confondait avec le bandeau. Sur un téléphone étroit (≤ 560 px), il ne garde que son point et sa
+  flèche.
+- **« Le bien » et ses sous-catégories, un seul bloc** (« pas la flèche ; un bloc qui devient
+  commun, toujours animé »). La barre des rubriques est un cadre (`.ongletsCheval`, la barre
+  `.ongletsHaut` dedans) ; « Le bien » y ouvre un tiroir marine (`Depliant`, `.tiroir`) avec les
+  sous-catégories, et la pastille de l'onglet allumé descend jusqu'à lui (`.ongletsAttache`) : ils
+  ne font qu'un. Changer de rubrique referme le tiroir en glissant. Le sous-onglet choisi vit dans
+  `FicheBien` (`sousVue`) ; `OngletBien` le reçoit (`vue`) et `vuesDuBien(d, avant)` donne la liste.
+  « Tout » revient en premier, à gauche.
+- **L'annonce à toutes les étapes** (« à l'estimation, on ne peut pas mettre de texte ») : l'étape
+  « L'annonce » de l'éditeur n'est plus réservée aux biens sous mandat (`ETAPES_BIEN`), et la carte
+  « Le texte de l'annonce » s'affiche dans « Le bien » dès l'estimation.
+- **« Pour la visite »** (`CartePourLaVisite`, `VueBien.tsx`), refaite par usage : l'occupation en
+  pastille de couleur (libre vert, occupé ambre, loué bleu) et la disponibilité ; les codes en
+  tuiles (digicode, interphone, porte, cave · box) ; la personne sur place avec ses initiales et un
+  bouton d'appel (numéro lisible, `tel:`) ; les clés, les heures, l'accès en petites lignes ; le
+  chemin et les consignes en encart doré (quatre lignes, « Tout voir »). Elle prend plus de place
+  que sa voisine dans la Vue d'ensemble (`.kpis:has(> .pv)`). `visitePourCarte` rend maintenant
+  un objet rangé (`PourVisite`).
+- « Le bien en bref » : « Parking +1 » au lieu de « Parking, Ca… », intitulé « Annexes » quand il
+  n'y a ni terrasse, ni balcon, ni jardin, ni loggia.
+- **Relances › « Ouvrir la fiche »** (« pour certains, ça n'envoie pas dans Suivi ») : la fiche
+  d'un contact qui n'est pas acheteur (vendeur, propriétaire, notaire…, `FicheContact`) ne lisait
+  pas la demande laissée par la relance (`lireOuvertureFiche`) et s'ouvrait sur « Ce qu'on sait ».
+  Elle s'ouvre maintenant sur le Suivi, avec le filtre voulu (`message` → `communications`), et
+  vient en vue. Chez un acheteur, une relance automatique (« Biens présentés ») ou « Veut
+  visiter » ouvre toujours Présentés, et une réponse après visite l'onglet Visites, par choix.
+
 ### V3.80 — 6 octobre 2026 · Biens : deux catégories, la fiche plus compacte, l'annonce en fenêtre, des mouvements
 
 Rien à passer dans Supabase.
